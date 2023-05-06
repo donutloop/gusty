@@ -2,7 +2,6 @@ package integration
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/donutloop/gusty/pkg/lang"
 	"log"
 	"os"
@@ -15,17 +14,14 @@ func TestFunctionWithLetAndCaller(t *testing.T) {
 	tokens := lang.Tokenize(input)
 	nodes, err := lang.Parse(tokens)
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		t.Fatal(err)
 	}
 
 	actualLvmIR, err := lang.GenerateLLVMIR(nodes)
 	if err != nil {
 		t.Fatal(err)
-
 	}
 
-	// Save the LLVM IR to a file
 	expectedLlvmIR, err := os.ReadFile("./expected/program_1.ll")
 	if err != nil {
 		log.Fatal(err)
