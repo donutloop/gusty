@@ -105,20 +105,36 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	return module.String(), nil
 }
 
+// generateCaller takes a globalScope, a functionScope builder, and a callerNode,
+// and generates the LLVM IR for calling the function represented by the callerNode.
+// It returns an error if any issues are encountered.
 func generateCaller(globalScope *GlobalScope, functionScope llvm.Builder, callerNode *CallerNode) error {
+	// Retrieve the caller from the global scope using the function name
 	caller, ok := globalScope.Callers[callerNode.FunctionName]
+
+	// If the caller is not found, return an error
 	if !ok {
 		return fmt.Errorf("caller not found in scope: %s", callerNode.FunctionName)
 	}
+
+	// If the caller's Value is nil, return an error
 	if caller.Value == nil {
 		return fmt.Errorf("nil function value for caller: %s", callerNode.FunctionName)
 	}
+
+	// If the caller's Type is nil, return an error
 	if caller.Type == nil {
 		return fmt.Errorf("nil function type for caller: %s", callerNode.FunctionName)
 	}
+
+	// Dereference the caller's Type and Value pointers
 	callerType := *caller.Type
 	callerValue := *caller.Value
 
+	// Create the LLVM IR call instruction with the function scope builder,
+	// using the caller's Type, Value, and an empty slice of llvm.Value as arguments.
 	functionScope.CreateCall(callerType, callerValue, []llvm.Value{}, "")
+
+	// If no issues were encountered, return nil
 	return nil
 }
