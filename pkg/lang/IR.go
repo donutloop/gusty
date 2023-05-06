@@ -57,35 +57,46 @@ func init() {
 	llvm.InitializeAllAsmPrinters()
 }
 
+// Caller represents a function or method in the LLVM IR.
 type Caller struct {
-	Value *llvm.Value
-	Type  *llvm.Type
+	Value *llvm.Value // The LLVM value representing the function or method.
+	Type  *llvm.Type  // The LLVM type representing the function or method signature.
 }
 
+// Variable represents a local variable in the LLVM IR.
 type Variable struct {
-	Value *llvm.Value
+	Value *llvm.Value // The LLVM value representing the local variable.
 }
 
+// Argument represents a function or method argument in the LLVM IR.
 type Argument struct {
-	Value *llvm.Value
+	Value *llvm.Value // The LLVM value representing the function or method argument.
 }
 
+// Global represents a global variable in the LLVM IR.
 type Global struct {
-	Value *llvm.Value
+	Value *llvm.Value // The LLVM value representing the global variable.
 }
 
+// Scope represents the current scope for an LLVM function or method.
+// It contains mappings of names to callers (functions or methods),
+// local variables, and function or method arguments.
 type Scope struct {
 	Callers   map[string]Caller
 	Variables map[string]Variable
 	Arguments map[string]Argument
 }
 
+// GlobalScope represents the global scope for the LLVM module.
+// It contains mappings of names to callers (functions or methods),
+// global variables, and module-level globals.
 type GlobalScope struct {
 	Callers   map[string]Caller
 	Variables map[string]Variable
 	Globals   map[string]Global
 }
 
+// newScope creates a new empty scope.
 func newScope() Scope {
 	return Scope{
 		Callers:   make(map[string]Caller),
@@ -94,8 +105,10 @@ func newScope() Scope {
 	}
 }
 
+// globalScope is a package-level variable holding the global scope for the LLVM module.
 var globalScope GlobalScope
 
+// init initializes the global scope.
 func init() {
 	globalScope = GlobalScope{
 		Callers:   make(map[string]Caller),
@@ -104,6 +117,7 @@ func init() {
 	}
 }
 
+// printfIndentifier is a constant string representing the printf function identifier.
 const (
 	printfIndentifier = "printf"
 )
