@@ -5,6 +5,58 @@ import (
 	"tinygo.org/x/go-llvm"
 )
 
+func init() {
+	// Initialize LLVM
+	// lvm.InitializeAllAsmPrinters() is a function that initializes all the available
+	// assembly printers for various target architectures. Assembly printers are responsible for converting
+	// LLVM's intermediate representation (IR) into a human-readable assembly language format specific to the
+	// target architecture.
+	//
+	// When you use the LLVM library to compile or optimize your code, you typically need to initialize various
+	// components of the LLVM library. The InitializeAllAsmPrinters() function is one of these components.
+	// Other components include target information, target machine code, assembly parsers, and targets.
+	llvm.InitializeAllTargetInfos()
+
+	// llvm.InitializeAllTargets() is a function that initializes all the available
+	// targets for various target architectures. Targets are responsible for generating the machine code,
+	// assembly, and object files specific to a particular architecture or platform.
+	//
+	// When you use the LLVM library to compile or optimize your code, you typically need to initialize various
+	// components of the LLVM library. The InitializeAllTargets() function is one of these components.
+	// Other components include target information, target machine code, assembly printers, and assembly parsers.
+	llvm.InitializeAllTargets()
+
+	// llvm.InitializeAllTargetMCs() is a function that initializes all the available
+	// target machine code (MC) components for various target architectures. The machine code components are
+	// responsible for generating the actual machine code from the LLVM's intermediate representation (IR)
+	// specific to the target architecture.
+	//
+	// When using the LLVM library to compile or optimize your code, you typically need to initialize various
+	// components of the LLVM library. The InitializeAllTargetMCs() function is one of these components.
+	// Other components include target information, assembly printers, assembly parsers, and targets.
+	llvm.InitializeAllTargetMCs()
+
+	// llvm.InitializeAllAsmParsers() is a function that initializes all the available
+	// assembly parsers for various target architectures. Assembly parsers are responsible for parsing the
+	// human-readable assembly language into LLVM's intermediate representation (IR) specific to the target
+	// architecture.
+	//
+	// When you use the LLVM library to compile or optimize your code, you typically need to initialize various
+	// components of the LLVM library. The InitializeAllAsmParsers() function is one of these components.
+	// Other components include target information, target machine code, assembly printers, and targets.
+	llvm.InitializeAllAsmParsers()
+
+	// llvm.InitializeAllAsmPrinters() is a function that initializes all the available
+	// assembly printers for various target architectures. Assembly printers are responsible for converting
+	// LLVM's intermediate representation (IR) into a human-readable assembly language format specific to the
+	// target architecture.
+	//
+	// When you use the LLVM library to compile or optimize your code, you typically need to initialize various
+	// components of the LLVM library. The InitializeAllAsmPrinters() function is one of these components.
+	// Other components include target information, target machine code, assembly parsers, and targets.
+	llvm.InitializeAllAsmPrinters()
+}
+
 type Caller struct {
 	Value *llvm.Value
 	Type  *llvm.Type
@@ -59,10 +111,6 @@ const (
 func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	mainFunctionScope := newScope()
-
-	// Initialize LLVM
-	llvm.InitializeNativeTarget()
-	llvm.InitializeNativeAsmPrinter()
 
 	module := llvm.NewModule("example")
 
