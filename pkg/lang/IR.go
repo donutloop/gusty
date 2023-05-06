@@ -14,6 +14,10 @@ type Variable struct {
 	Value *llvm.Value
 }
 
+type Argument struct {
+	Value *llvm.Value
+}
+
 type Global struct {
 	Value *llvm.Value
 }
@@ -21,6 +25,7 @@ type Global struct {
 type Scope struct {
 	Callers   map[string]Caller
 	Variables map[string]Variable
+	Arguments map[string]Argument
 }
 
 type GlobalScope struct {
@@ -33,6 +38,7 @@ func newScope() Scope {
 	return Scope{
 		Callers:   make(map[string]Caller),
 		Variables: make(map[string]Variable),
+		Arguments: make(map[string]Argument),
 	}
 }
 
@@ -97,11 +103,28 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 			// Skipping LLVM IR generation for while node for simplicity
 		case *FunctionNode:
 			// Create function prototype
-			functionType := llvm.FunctionType(llvm.VoidType(), []llvm.Type{}, false)
+
+			var llvmParameters []llvm.Type
+			for _, parameter := range n.Parameters {
+				if parameter.Type == Integer32Type {
+					llvmParameters = append(llvmParameters, llvm.Int32Type())
+				}
+			}
+
+			functionType := llvm.FunctionType(llvm.VoidType(), llvmParameters, false)
 			function := llvm.AddFunction(module, n.Name, functionType)
 			function.SetFunctionCallConv(llvm.CCallConv)
 
 			currentFunctionScope := newScope()
+
+			var i int
+			for _, parameter := range n.Parameters {
+				llvmParameter := function.Param(i)
+				currentFunctionScope.Arguments[parameter.Identifier] = Argument{
+					Value: &llvmParameter,
+				}
+				i++
+			}
 
 			currentFunctionBuilder := llvm.NewBuilder()
 			defer currentFunctionBuilder.Dispose()
@@ -115,7 +138,7 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 				switch bodyNode := bodyNode.(type) {
 				case *LetNode:
 					letNodeValue := bodyNode.Value
-					if intValue, ok := letNodeValue.(int); ok {
+					if intValue, ok := letNodeValue.(int32); ok {
 						letNodeAlloca := currentFunctionBuilder.CreateAlloca(llvm.Int32Type(), bodyNode.Identifier)
 						letNodeAlloca.SetAlignment(4)
 						letNodeConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intValue), true)
@@ -160,10 +183,17 @@ func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *Call
 	// Special case for handling printf calls
 	if callerNode.FunctionName == printfIndentifier {
 		// Load the value of the parameter and create a GEP for the format string
-		value := functionBuilder.CreateLoad(scope.Variables[callerNode.Parameters[0].Identifier].Value.Type(), *scope.Variables[callerNode.Parameters[0].Identifier].Value, callerNode.Parameters[0].Identifier+"Value")
 		format := functionBuilder.CreateInBoundsGEP(globalScope.Globals["format_string"].Value.Type(), *globalScope.Globals["format_string"].Value, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
-		// Create the call instruction for printf with the format string and value as arguments
-		functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, value}, "")
+
+		if variable, ok := scope.Variables[callerNode.Parameters[0].Identifier]; ok {
+			value := functionBuilder.CreateLoad(variable.Value.Type(), *variable.Value, callerNode.Parameters[0].Identifier+"Value")
+			// Create the call instruction for printf with the format string and value as arguments
+			functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, value}, "")
+		} else if argument, ok := scope.Arguments[callerNode.Parameters[0].Identifier]; ok {
+			// Create the call instruction for printf with the format string and value as arguments
+			functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, *argument.Value}, "")
+		}
+
 		return nil
 	}
 
@@ -188,9 +218,16 @@ func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *Call
 	callerType := *caller.Type
 	callerValue := *caller.Value
 
+	var llvmParameterValues []llvm.Value
+	for _, parameter := range callerNode.Parameters {
+		if parameter.Type == Integer32Type {
+			llvmParameterValues = append(llvmParameterValues, llvm.ConstInt(llvm.Int32Type(), uint64(parameter.Value.(int32)), true))
+		}
+	}
+
 	// Create the LLVM IR call instruction with the function scope builder,
 	// using the caller's Type, Value, and an empty slice of llvm.Value as arguments.
-	functionBuilder.CreateCall(callerType, callerValue, []llvm.Value{}, "")
+	functionBuilder.CreateCall(callerType, callerValue, llvmParameterValues, "")
 
 	// If no issues were encountered, return nil
 	return nil

@@ -19,9 +19,17 @@ type LetNode struct {
 // IsNode is an empty method to satisfy the Node interface.
 func (n *LetNode) IsNode() {}
 
+type dataType int
+
+const (
+	Integer32Type dataType = iota
+)
+
 // Parameter represents a parameter in a function or function call.
 type Parameter struct {
 	Identifier string
+	Type       dataType
+	Value      any
 }
 
 // IsNode is an empty method to satisfy the Node interface.
@@ -39,7 +47,7 @@ func (n *WhileNode) IsNode() {}
 // FunctionNode represents a function definition.
 type FunctionNode struct {
 	Name       string
-	Parameters []Node
+	Parameters []*Parameter
 	Body       []Node
 }
 
@@ -133,10 +141,17 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	index++
 
 	// Initialize parameters slice and parse function parameters
-	var parameters []Node
+	var parameters []*Parameter
 	for {
 		if index < len(tokens) && tokens[index].Type == TokenIdentifier {
-			parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})
+			var p = &Parameter{Identifier: tokens[index].Value}
+
+			index++
+			if index < len(tokens) && tokens[index].Type != TokenInteger32 {
+				return nil, -1, fmt.Errorf("expected 'i32' after function parameter at position %d", index)
+			}
+			p.Type = Integer32Type
+			parameters = append(parameters, p)
 			index++
 		} else {
 			break
@@ -238,7 +253,7 @@ func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 	// Create a LetNode with the parsed identifier and value
 	letNode := &LetNode{
 		Identifier: tokens[index+1].Value,
-		Value:      intValue,
+		Value:      int32(intValue),
 	}
 
 	// Update the index to skip the processed tokens
@@ -267,7 +282,14 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	// Parse the function parameters
 	for {
 		if index < len(tokens) && tokens[index].Type == TokenIdentifier {
-			parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})
+
+			intValue, err := strconv.Atoi(tokens[index].Value)
+			if err == nil {
+				parameters = append(parameters, &Parameter{Value: int32(intValue), Type: Integer32Type, Identifier: tokens[index].Value})
+			} else {
+				parameters = append(parameters, &Parameter{Value: tokens[index].Value, Identifier: tokens[index].Value})
+			}
+
 			index++
 		} else {
 			break

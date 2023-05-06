@@ -5,17 +5,18 @@ source_filename = "example"
 
 define void @main() {
 entry:
-  call void @add()
+  call void @add(i32 1, i32 2)
   ret void
 }
 
 declare i32 @printf(ptr, ...)
 
-define void @add() {
+define void @add(i32 %0, i32 %1) {
 entry:
   %donut = alloca i32, align 4
   store i32 43, ptr %donut, align 4
   %donutValue = load ptr, ptr %donut, align 8
-  %0 = call i32 (ptr, ...) @printf(ptr @format_string, ptr %donutValue)
+  %2 = call i32 (ptr, ...) @printf(ptr @format_string, ptr %donutValue)
+  %3 = call i32 (ptr, ...) @printf(ptr @format_string, i32 %0)
   ret void
 }

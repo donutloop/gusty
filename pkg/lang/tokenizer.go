@@ -18,6 +18,7 @@ const (
 	TokenCloseCurly
 	TokenIdentifier
 	TokenEquals
+	TokenInteger32
 	TokenUnknown
 )
 
@@ -71,6 +72,17 @@ func Tokenize(input string) []Token {
 	var sb strings.Builder
 	for _, r := range input {
 		if isComma(r) {
+			if sb.Len() > 0 {
+				word := sb.String()
+				sb.Reset()
+
+				switch word {
+				case "i32":
+					tokens = append(tokens, Token{Type: TokenInteger32})
+				default:
+					tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
+				}
+			}
 			continue
 		}
 
@@ -91,6 +103,8 @@ func Tokenize(input string) []Token {
 					tokens = append(tokens, Token{Type: TokenLet})
 				case "function":
 					tokens = append(tokens, Token{Type: TokenFunction})
+				case "i32":
+					tokens = append(tokens, Token{Type: TokenInteger32})
 				default:
 					tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
 				}
@@ -126,10 +140,8 @@ func Tokenize(input string) []Token {
 				sb.Reset()
 
 				switch word {
-				case "while":
-					tokens = append(tokens, Token{Type: TokenWhile})
-				case "let":
-					tokens = append(tokens, Token{Type: TokenLet})
+				case "i32":
+					tokens = append(tokens, Token{Type: TokenInteger32})
 				default:
 					tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
 				}
