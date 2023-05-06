@@ -47,7 +47,7 @@ func init() {
 }
 
 const (
-	printfIndent = "printf"
+	printfIndentifier = "printf"
 )
 
 func GenerateLLVMIR(nodes []Node) (string, error) {
@@ -64,8 +64,8 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	mainFunc := llvm.AddFunction(module, "main", mainType)
 
 	printfType := llvm.FunctionType(llvm.Int32Type(), []llvm.Type{llvm.PointerType(llvm.Int32Type(), 0)}, true)
-	printf := llvm.AddFunction(module, printfIndent, printfType)
-	globalScope.Callers[printfIndent] = Caller{
+	printf := llvm.AddFunction(module, printfIndentifier, printfType)
+	globalScope.Callers[printfIndentifier] = Caller{
 		Value: &printf,
 		Type:  &printfType,
 	}
@@ -158,12 +158,12 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *CallerNode) error {
 
 	// Special case for handling printf calls
-	if callerNode.FunctionName == printfIndent {
+	if callerNode.FunctionName == printfIndentifier {
 		// Load the value of the parameter and create a GEP for the format string
 		value := functionBuilder.CreateLoad(scope.Variables[callerNode.Parameters[0].Identifier].Value.Type(), *scope.Variables[callerNode.Parameters[0].Identifier].Value, callerNode.Parameters[0].Identifier+"Value")
 		format := functionBuilder.CreateInBoundsGEP(globalScope.Globals["format_string"].Value.Type(), *globalScope.Globals["format_string"].Value, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
 		// Create the call instruction for printf with the format string and value as arguments
-		functionBuilder.CreateCall(*globalScope.Callers[printfIndent].Type, *globalScope.Callers[printfIndent].Value, []llvm.Value{format, value}, "")
+		functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, value}, "")
 		return nil
 	}
 
