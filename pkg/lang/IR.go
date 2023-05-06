@@ -48,20 +48,10 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	for _, node := range nodes {
 		switch n := node.(type) {
 		case *CallerNode:
-			caller, ok := globalScope.Callers[n.FunctionName]
-			if !ok {
-				return "", fmt.Errorf("caller not found in scope: %s", n.FunctionName)
+			err := generateCaller(&globalScope, mainBuilder, n)
+			if err != nil {
+				return "", err
 			}
-			if caller.Value == nil {
-				return "", fmt.Errorf("nil function value for caller: %s", n.FunctionName)
-			}
-			if caller.Type == nil {
-				return "", fmt.Errorf("nil function type for caller: %s", n.FunctionName)
-			}
-			callerType := *caller.Type
-			callerValue := *caller.Value
-
-			mainBuilder.CreateCall(callerType, callerValue, []llvm.Value{}, "")
 		case *LetNode:
 			// Skipping LLVM IR generation for while node for simplicity
 		case *WhileNode:
@@ -113,4 +103,22 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	}
 
 	return module.String(), nil
+}
+
+func generateCaller(globalScope *GlobalScope, functionScope llvm.Builder, callerNode *CallerNode) error {
+	caller, ok := globalScope.Callers[callerNode.FunctionName]
+	if !ok {
+		return fmt.Errorf("caller not found in scope: %s", callerNode.FunctionName)
+	}
+	if caller.Value == nil {
+		return fmt.Errorf("nil function value for caller: %s", callerNode.FunctionName)
+	}
+	if caller.Type == nil {
+		return fmt.Errorf("nil function type for caller: %s", callerNode.FunctionName)
+	}
+	callerType := *caller.Type
+	callerValue := *caller.Value
+
+	functionScope.CreateCall(callerType, callerValue, []llvm.Value{}, "")
+	return nil
 }
