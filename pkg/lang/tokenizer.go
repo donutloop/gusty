@@ -10,16 +10,16 @@ type TokenValue string
 type TokenRune rune
 
 const (
-	TokenWhile        TokenValue = "while"
-	TokenLet          TokenValue = "let"
-	TokenInteger32    TokenValue = "i32"
-	TokenFunction     TokenValue = "function"
-	TokenOpenBracket  TokenRune  = '('
-	TokenCloseBracket TokenRune  = ')'
-	TokenOpenCurly    TokenRune  = '{'
-	TokenCloseCurly   TokenRune  = '}'
-	TokenComma        TokenRune  = ','
-	TokenEquals       TokenRune  = '='
+	TokenWhile            TokenValue = "while"
+	TokenLet              TokenValue = "let"
+	TokenInteger32        TokenValue = "i32"
+	TokenFunction         TokenValue = "function"
+	TokenOpenParenthesis  TokenRune  = '('
+	TokenCloseParenthesis TokenRune  = ')'
+	TokenOpenCurly        TokenRune  = '{'
+	TokenCloseCurly       TokenRune  = '}'
+	TokenComma            TokenRune  = ','
+	TokenEquals           TokenRune  = '='
 )
 
 type TokenType int
@@ -28,8 +28,8 @@ const (
 	TokenWhileType TokenType = iota
 	TokenLetType
 	TokenFunctionType
-	TokenOpenBracketType
-	TokenCloseBracketType
+	TokenOpenParenthesisType
+	TokenCloseParenthesisType
 	TokenOpenCurlyType
 	TokenCloseCurlyType
 	TokenIdentifierType
@@ -51,10 +51,10 @@ func (t Token) String() string {
 		return string(TokenLet)
 	case TokenFunctionType:
 		return string(TokenFunction)
-	case TokenOpenBracketType:
-		return string(TokenOpenBracket)
-	case TokenCloseBracketType:
-		return string(TokenCloseBracket)
+	case TokenOpenParenthesisType:
+		return string(TokenOpenParenthesis)
+	case TokenCloseParenthesisType:
+		return string(TokenCloseParenthesis)
 	case TokenOpenCurlyType:
 		return string(TokenOpenCurly)
 	case TokenCloseCurlyType:
@@ -69,7 +69,7 @@ func (t Token) String() string {
 }
 
 func isBracket(r TokenRune) bool {
-	return r == TokenOpenBracket || r == TokenCloseBracket
+	return r == TokenOpenParenthesis || r == TokenCloseParenthesis
 }
 
 func isCurly(r TokenRune) bool {
@@ -143,10 +143,10 @@ func Tokenize(input string) []Token {
 			}
 
 			switch TokenRune(r) {
-			case TokenOpenBracket:
-				tokens = append(tokens, Token{Type: TokenOpenBracketType})
-			case TokenCloseBracket:
-				tokens = append(tokens, Token{Type: TokenCloseBracketType})
+			case TokenOpenParenthesis:
+				tokens = append(tokens, Token{Type: TokenOpenParenthesisType})
+			case TokenCloseParenthesis:
+				tokens = append(tokens, Token{Type: TokenCloseParenthesisType})
 			case TokenOpenCurly:
 				tokens = append(tokens, Token{Type: TokenOpenCurlyType})
 			case TokenCloseCurly:
@@ -166,10 +166,10 @@ func Tokenize(input string) []Token {
 			}
 
 			switch TokenRune(r) {
-			case TokenOpenBracket:
-				tokens = append(tokens, Token{Type: TokenOpenBracketType})
-			case TokenCloseBracket:
-				tokens = append(tokens, Token{Type: TokenCloseBracketType})
+			case TokenOpenParenthesis:
+				tokens = append(tokens, Token{Type: TokenOpenParenthesisType})
+			case TokenCloseParenthesis:
+				tokens = append(tokens, Token{Type: TokenCloseParenthesisType})
 			}
 		} else {
 			sb.WriteRune(r)

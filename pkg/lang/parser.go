@@ -135,7 +135,7 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	index++
 
 	// Ensure the next token is an open bracket '('
-	if index >= len(tokens) || tokens[index].Type != TokenOpenBracketType {
+	if index >= len(tokens) || tokens[index].Type != TokenOpenParenthesisType {
 		return nil, -1, fmt.Errorf("expected '(' after function name at position %d", index)
 	}
 	index++
@@ -159,7 +159,7 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	}
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseBracketType {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseParenthesisType {
 		return nil, -1, fmt.Errorf("expected ')' after function parameters at position %d", index)
 	}
 	index++
@@ -193,14 +193,14 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 // condition and body.
 func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	// Ensure the next token is an open bracket '('
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenBracketType {
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenParenthesisType {
 		return nil, -1, fmt.Errorf("expected '(' after 'while' at position %d", index)
 	}
 	condition := tokens[index+2].Value
 	index += 3
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseBracketType {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseParenthesisType {
 		return nil, -1, fmt.Errorf("expected ')' after while condition at position %d", index)
 	}
 	index++
@@ -268,7 +268,7 @@ func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 // function name and parameters.
 func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	// Ensure the next token is an open bracket '('
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenBracketType {
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenParenthesisType {
 		return nil, -1, fmt.Errorf("expected '(' after caller at position %d", index)
 	}
 
@@ -297,7 +297,7 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	}
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseBracketType {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseParenthesisType {
 		return nil, -1, fmt.Errorf("expected ')' after parameters at position %d", index)
 	}
 	index++
