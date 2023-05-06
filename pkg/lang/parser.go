@@ -87,7 +87,7 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 			}
 			index = newIndex
 			nodes = append(nodes, callerNode)
-		case TokenCloseCurlyType:
+		case TokenCloseCurlyBracketType:
 			if tokenType == TokenFunctionType {
 				return nodes, index, nil
 			}
@@ -165,7 +165,7 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	index++
 
 	// Ensure the next token is an open curly brace '{'
-	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyType {
+	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyBracketType {
 		return nil, -1, fmt.Errorf("expected '{' after function parameters at position %d", index)
 	}
 	index++
@@ -178,7 +178,7 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	index += newIndex
 
 	// Ensure the next token is a close curly brace '}'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyType {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyBracketType {
 		return nil, -1, fmt.Errorf("expected '}' after function body at position %d", index)
 	}
 	index++
@@ -206,7 +206,7 @@ func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	index++
 
 	// Ensure the next token is an open curly brace '{'
-	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyType {
+	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyBracketType {
 		return nil, -1, fmt.Errorf("expected '{' after while condition at position %d", index)
 	}
 	index++
@@ -219,7 +219,7 @@ func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	index += newIndex
 
 	// Ensure the next token is a close curly brace '}'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyType {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyBracketType {
 		return nil, -1, fmt.Errorf("expected '}' after while body at position %d", index)
 	}
 	index++

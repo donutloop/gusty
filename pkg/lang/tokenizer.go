@@ -10,16 +10,16 @@ type TokenValue string
 type TokenRune rune
 
 const (
-	TokenWhile            TokenValue = "while"
-	TokenLet              TokenValue = "let"
-	TokenInteger32        TokenValue = "i32"
-	TokenFunction         TokenValue = "function"
-	TokenOpenParenthesis  TokenRune  = '('
-	TokenCloseParenthesis TokenRune  = ')'
-	TokenOpenCurly        TokenRune  = '{'
-	TokenCloseCurly       TokenRune  = '}'
-	TokenComma            TokenRune  = ','
-	TokenEquals           TokenRune  = '='
+	TokenWhile             TokenValue = "while"
+	TokenLet               TokenValue = "let"
+	TokenInteger32         TokenValue = "i32"
+	TokenFunction          TokenValue = "function"
+	TokenOpenParenthesis   TokenRune  = '('
+	TokenCloseParenthesis  TokenRune  = ')'
+	TokenOpenCurlyBracket  TokenRune  = '{'
+	TokenCloseCurlyBracket TokenRune  = '}'
+	TokenComma             TokenRune  = ','
+	TokenEquals            TokenRune  = '='
 )
 
 type TokenType int
@@ -30,8 +30,8 @@ const (
 	TokenFunctionType
 	TokenOpenParenthesisType
 	TokenCloseParenthesisType
-	TokenOpenCurlyType
-	TokenCloseCurlyType
+	TokenOpenCurlyBracketType
+	TokenCloseCurlyBracketType
 	TokenIdentifierType
 	TokenEqualsType
 	TokenInteger32Type
@@ -55,10 +55,10 @@ func (t Token) String() string {
 		return string(TokenOpenParenthesis)
 	case TokenCloseParenthesisType:
 		return string(TokenCloseParenthesis)
-	case TokenOpenCurlyType:
-		return string(TokenOpenCurly)
-	case TokenCloseCurlyType:
-		return string(TokenCloseCurly)
+	case TokenOpenCurlyBracketType:
+		return string(TokenOpenCurlyBracket)
+	case TokenCloseCurlyBracketType:
+		return string(TokenCloseCurlyBracket)
 	case TokenInteger32Type:
 		return string(TokenInteger32)
 	case TokenIdentifierType:
@@ -73,7 +73,7 @@ func isBracket(r TokenRune) bool {
 }
 
 func isCurly(r TokenRune) bool {
-	return r == TokenOpenCurly || r == TokenCloseCurly
+	return r == TokenOpenCurlyBracket || r == TokenCloseCurlyBracket
 }
 
 func isComma(r TokenRune) bool {
@@ -147,10 +147,10 @@ func Tokenize(input string) []Token {
 				tokens = append(tokens, Token{Type: TokenOpenParenthesisType})
 			case TokenCloseParenthesis:
 				tokens = append(tokens, Token{Type: TokenCloseParenthesisType})
-			case TokenOpenCurly:
-				tokens = append(tokens, Token{Type: TokenOpenCurlyType})
-			case TokenCloseCurly:
-				tokens = append(tokens, Token{Type: TokenCloseCurlyType})
+			case TokenOpenCurlyBracket:
+				tokens = append(tokens, Token{Type: TokenOpenCurlyBracketType})
+			case TokenCloseCurlyBracket:
+				tokens = append(tokens, Token{Type: TokenCloseCurlyBracketType})
 			}
 		} else if isBracket(TokenRune(r)) {
 			if sb.Len() > 0 {
