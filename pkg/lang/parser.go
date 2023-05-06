@@ -137,55 +137,78 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 				return nil, -1, fmt.Errorf("expected '(' after 'while' at position %d", index)
 			}
 		case TokenFunction:
-			if index+1 < len(tokens) && tokens[index+1].Type == TokenIdentifier {
-				index++
-				name := tokens[index].Value
-				index++
-
-				if index < len(tokens) && tokens[index].Type != TokenOpenBracket {
-					return nil, -1, fmt.Errorf("expected '(' after function parameters at position %d", index)
-				}
-				index++
-
-				var parameters []Node
-				for {
-					if index < len(tokens) && tokens[index].Type == TokenIdentifier {
-						parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})
-						index++
-					} else {
-						break
-					}
-				}
-
-				if index < len(tokens) && tokens[index].Type != TokenCloseBracket {
-					return nil, -1, fmt.Errorf("expected ')' after function parameters at position %d", index)
-				}
-				index++
-
-				if index >= len(tokens) || tokens[index].Type != TokenOpenCurly {
-					return nil, -1, fmt.Errorf("expected '{' after function parameters at position %d", index)
-				}
-				index++
-
-				body, newIndex, err := parseNodes(tokens[index:], 0, TokenFunction)
-				if err != nil {
-					return nil, -1, err
-				}
-				index += newIndex
-
-				if index >= len(tokens) || tokens[index].Type != TokenCloseCurly {
-					return nil, -1, fmt.Errorf("expected '}' after function body at position %d", index)
-				}
-				index++
-
-				nodes = append(nodes, &FunctionNode{Name: name, Parameters: parameters, Body: body})
-			} else {
-				return nil, -1, fmt.Errorf("expected identifier after 'function' at position %d", index)
+			functionNodes, newIndex, err := parseFunction(tokens, index)
+			if err != nil {
+				return nil, -1, err
 			}
+			index = newIndex
+			nodes = append(nodes, functionNodes...)
 		default:
 			index++
 		}
 	}
 
 	return nodes, index, nil
+}
+
+// parseFunction takes a slice of tokens and an index as input parameters and
+// returns a slice of nodes, an updated index, and an error if there is any issue
+// during parsing. It processes tokens to generate a FunctionNode with its parameters
+// and body.
+func parseFunction(tokens []Token, index int) ([]Node, int, error) {
+	// Check if the next token is an identifier
+	if index+1 < len(tokens) && tokens[index+1].Type == TokenIdentifier {
+		index++
+		name := tokens[index].Value
+		index++
+
+		// Check if the next token is an open bracket '('
+		if index < len(tokens) && tokens[index].Type != TokenOpenBracket {
+			return nil, -1, fmt.Errorf("expected '(' after function parameters at position %d", index)
+		}
+		index++
+
+		// Initialize parameters slice
+		var parameters []Node
+		// Parse function parameters
+		for {
+			if index < len(tokens) && tokens[index].Type == TokenIdentifier {
+				parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})
+				index++
+			} else {
+				break
+			}
+		}
+
+		// Check if the next token is a close bracket ')'
+		if index < len(tokens) && tokens[index].Type != TokenCloseBracket {
+			return nil, -1, fmt.Errorf("expected ')' after function parameters at position %d", index)
+		}
+		index++
+
+		// Check if the next token is an open curly brace '{'
+		if index >= len(tokens) || tokens[index].Type != TokenOpenCurly {
+			return nil, -1, fmt.Errorf("expected '{' after function parameters at position %d", index)
+		}
+		index++
+
+		// Parse the function body
+		body, newIndex, err := parseNodes(tokens[index:], 0, TokenFunction)
+		if err != nil {
+			return nil, -1, err
+		}
+		index += newIndex
+
+		// Check if the next token is a close curly brace '}'
+		if index >= len(tokens) || tokens[index].Type != TokenCloseCurly {
+			return nil, -1, fmt.Errorf("expected '}' after function body at position %d", index)
+		}
+		index++
+
+		// Create a FunctionNode with the parsed information
+		nodes := []Node{&FunctionNode{Name: name, Parameters: parameters, Body: body}}
+		return nodes, index, nil
+	} else {
+		return nil, -1, fmt.Errorf("expected identifier after 'function' at position %d", index)
+	}
 }

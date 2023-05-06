@@ -46,6 +46,10 @@ func init() {
 	}
 }
 
+const (
+	printfIndent = "printf"
+)
+
 func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	mainFunctionScope := newScope()
@@ -60,8 +64,8 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	mainFunc := llvm.AddFunction(module, "main", mainType)
 
 	printfType := llvm.FunctionType(llvm.Int32Type(), []llvm.Type{llvm.PointerType(llvm.Int32Type(), 0)}, true)
-	printf := llvm.AddFunction(module, "printf", printfType)
-	globalScope.Callers["printf"] = Caller{
+	printf := llvm.AddFunction(module, printfIndent, printfType)
+	globalScope.Callers[printfIndent] = Caller{
 		Value: &printf,
 		Type:  &printfType,
 	}
@@ -142,7 +146,6 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	// Verify the module
 	if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
-
 		return "", err
 	}
 
@@ -155,12 +158,12 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *CallerNode) error {
 
 	// Special case for handling printf calls
-	if callerNode.FunctionName == "printf" {
+	if callerNode.FunctionName == printfIndent {
 		// Load the value of the parameter and create a GEP for the format string
 		value := functionBuilder.CreateLoad(scope.Variables[callerNode.Parameters[0].Identifier].Value.Type(), *scope.Variables[callerNode.Parameters[0].Identifier].Value, callerNode.Parameters[0].Identifier+"Value")
 		format := functionBuilder.CreateInBoundsGEP(globalScope.Globals["format_string"].Value.Type(), *globalScope.Globals["format_string"].Value, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
 		// Create the call instruction for printf with the format string and value as arguments
-		functionBuilder.CreateCall(*globalScope.Callers["printf"].Type, *globalScope.Callers["printf"].Value, []llvm.Value{format, value}, "")
+		functionBuilder.CreateCall(*globalScope.Callers[printfIndent].Type, *globalScope.Callers[printfIndent].Value, []llvm.Value{format, value}, "")
 		return nil
 	}
 
