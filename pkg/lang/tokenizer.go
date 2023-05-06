@@ -6,9 +6,13 @@ import (
 	"unicode"
 )
 
+// TokenValue represents the string value of a token.
 type TokenValue string
+
+// TokenRune represents a single rune token.
 type TokenRune rune
 
+// Constants for keyword and special character tokens.
 const (
 	TokenWhile             TokenValue = "while"
 	TokenLet               TokenValue = "let"
@@ -22,8 +26,10 @@ const (
 	TokenEquals            TokenRune  = '='
 )
 
+// TokenType represents the type of a token.
 type TokenType int
 
+// Constants for token types.
 const (
 	TokenWhileType TokenType = iota
 	TokenLetType
@@ -38,11 +44,13 @@ const (
 	TokenUnknown
 )
 
+// Token represents a token with its type and value.
 type Token struct {
 	Type  TokenType
 	Value string
 }
 
+// String method returns the string representation of a token.
 func (t Token) String() string {
 	switch t.Type {
 	case TokenWhileType:
@@ -68,27 +76,33 @@ func (t Token) String() string {
 	}
 }
 
+// isBracket checks if the given rune is a parenthesis.
 func isBracket(r TokenRune) bool {
 	return r == TokenOpenParenthesis || r == TokenCloseParenthesis
 }
 
+// isCurly checks if the given rune is a curly bracket.
 func isCurly(r TokenRune) bool {
 	return r == TokenOpenCurlyBracket || r == TokenCloseCurlyBracket
 }
 
+// isComma checks if the given rune is a comma.
 func isComma(r TokenRune) bool {
 	return r == TokenComma
 }
 
+// isEqual checks if the given rune is an equals sign.
 func isEqual(r TokenRune) bool {
 	return r == TokenEquals
 }
 
+// Tokenize function converts the input string into a slice of tokens
 func Tokenize(input string) []Token {
 	tokens := make([]Token, 0)
 
 	var sb strings.Builder
 	for _, r := range input {
+		// Handle comma-separated tokens
 		if isComma(TokenRune(r)) {
 			if sb.Len() > 0 {
 				word := TokenValue(sb.String())
@@ -104,11 +118,13 @@ func Tokenize(input string) []Token {
 			continue
 		}
 
+		// Handle equal sign tokens
 		if isEqual(TokenRune(r)) {
 			tokens = append(tokens, Token{Type: TokenEqualsType})
 			continue
 		}
 
+		// Handle whitespace-separated tokens
 		if unicode.IsSpace(r) {
 			if sb.Len() > 0 {
 				word := TokenValue(sb.String())
@@ -128,6 +144,7 @@ func Tokenize(input string) []Token {
 				}
 			}
 		} else if isCurly(TokenRune(r)) {
+			// Handle curly brackets as tokens
 			if sb.Len() > 0 {
 				word := TokenValue(sb.String())
 				sb.Reset()
@@ -153,6 +170,7 @@ func Tokenize(input string) []Token {
 				tokens = append(tokens, Token{Type: TokenCloseCurlyBracketType})
 			}
 		} else if isBracket(TokenRune(r)) {
+			// Handle curly parentheses
 			if sb.Len() > 0 {
 				word := TokenValue(sb.String())
 				sb.Reset()
@@ -172,11 +190,13 @@ func Tokenize(input string) []Token {
 				tokens = append(tokens, Token{Type: TokenCloseParenthesisType})
 			}
 		} else {
+			// Accumulate non-special characters into a word
 			sb.WriteRune(r)
 		}
 
 	}
 
+	// Process the last word if any
 	if sb.Len() > 0 {
 		word := TokenValue(sb.String())
 		switch word {
