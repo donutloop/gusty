@@ -14,7 +14,7 @@ declare i32 @printf(ptr, ...)
 define void @add() {
 entry:
   %donut = alloca i32, align 4
-  store i32 42, ptr %donut, align 4
+  store i32 43, ptr %donut, align 4
   %value = load ptr, ptr %donut, align 8
   %0 = call i32 (ptr, ...) @printf(ptr @format_string, ptr %value)
   ret void

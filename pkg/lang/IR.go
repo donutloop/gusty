@@ -51,14 +51,16 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 			for _, bodyNode := range n.Body {
 				switch bodyNode := bodyNode.(type) {
 				case *LetNode:
-					donut := builder.CreateAlloca(llvm.Int32Type(), bodyNode.Identifier)
-					donut.SetAlignment(4)
-					constant := llvm.ConstInt(llvm.Int32Type(), 42, false)
-
-					builder.CreateStore(constant, donut)
-					value := builder.CreateLoad(donut.Type(), donut, "value")
-					format := builder.CreateInBoundsGEP(formatGlobal.Type(), formatGlobal, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
-					builder.CreateCall(printfType, printf, []llvm.Value{format, value}, "")
+					letNodeValue := bodyNode.Value
+					if intValue, ok := letNodeValue.(int); ok {
+						letNodeAlloca := builder.CreateAlloca(llvm.Int32Type(), bodyNode.Identifier)
+						letNodeAlloca.SetAlignment(4)
+						letNodeConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intValue), true)
+						builder.CreateStore(letNodeConstInt, letNodeAlloca)
+						value := builder.CreateLoad(letNodeAlloca.Type(), letNodeAlloca, "value")
+						format := builder.CreateInBoundsGEP(formatGlobal.Type(), formatGlobal, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
+						builder.CreateCall(printfType, printf, []llvm.Value{format, value}, "")
+					}
 				}
 			}
 

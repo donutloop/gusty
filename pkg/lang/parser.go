@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"strconv"
 )
 
 type Node interface {
@@ -10,6 +11,7 @@ type Node interface {
 
 type LetNode struct {
 	Identifier string
+	Value      any
 }
 
 func (n *LetNode) IsNode() {}
@@ -54,8 +56,21 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 			index++
 		case TokenLet:
 			if index+1 < len(tokens) && tokens[index+1].Type == TokenIdentifier {
-				nodes = append(nodes, &LetNode{Identifier: tokens[index+1].Value})
-				index += 2
+				if index >= len(tokens) || tokens[index+2].Type != TokenEquals {
+					return nil, -1, fmt.Errorf("expected '=' after let at position %d", index)
+				}
+
+				intValue, err := strconv.Atoi(tokens[index+3].Value)
+				if err != nil {
+					return nil, -1, fmt.Errorf("expected 'int' after equal condition at position %d", index)
+				}
+
+				nodes = append(nodes, &LetNode{
+					Identifier: tokens[index+1].Value,
+					Value:      intValue,
+				})
+
+				index += 3
 			} else {
 				return nil, -1, fmt.Errorf("expected identifier after 'let' at position %d", index)
 			}
@@ -111,7 +126,7 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 				}
 
 				if index < len(tokens) && tokens[index].Type != TokenCloseBracket {
-					return nil, -1, fmt.Errorf("expected ')' after function parameters at position %d, %v", index, tokens[index])
+					return nil, -1, fmt.Errorf("expected ')' after function parameters at position %d", index)
 				}
 				index++
 

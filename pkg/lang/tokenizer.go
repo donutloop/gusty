@@ -17,6 +17,7 @@ const (
 	TokenOpenCurly
 	TokenCloseCurly
 	TokenIdentifier
+	TokenEquals
 	TokenUnknown
 )
 
@@ -60,12 +61,21 @@ func isComma(r rune) bool {
 	return r == ','
 }
 
+func isEqual(r rune) bool {
+	return r == '='
+}
+
 func Tokenize(input string) []Token {
 	tokens := make([]Token, 0)
 
 	var sb strings.Builder
 	for _, r := range input {
 		if isComma(r) {
+			continue
+		}
+
+		if isEqual(r) {
+			tokens = append(tokens, Token{Type: TokenEquals})
 			continue
 		}
 
