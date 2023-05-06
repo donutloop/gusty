@@ -80,33 +80,33 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 		token := tokens[index]
 
 		switch token.Type {
-		case TokenIdentifier:
+		case TokenIdentifierType:
 			callerNode, newIndex, err := parseCaller(tokens, index)
 			if err != nil {
 				return nil, -1, err
 			}
 			index = newIndex
 			nodes = append(nodes, callerNode)
-		case TokenCloseCurly:
-			if tokenType == TokenFunction {
+		case TokenCloseCurlyType:
+			if tokenType == TokenFunctionType {
 				return nodes, index, nil
 			}
 			index++
-		case TokenLet:
+		case TokenLetType:
 			letNode, newIndex, err := parseLet(tokens, index)
 			if err != nil {
 				return nil, -1, err
 			}
 			index = newIndex
 			nodes = append(nodes, letNode)
-		case TokenWhile:
+		case TokenWhileType:
 			whileNode, newIndex, err := parseWhile(tokens, index)
 			if err != nil {
 				return nil, -1, err
 			}
 			index = newIndex
 			nodes = append(nodes, whileNode)
-		case TokenFunction:
+		case TokenFunctionType:
 			functionNode, newIndex, err := parseFunction(tokens, index)
 			if err != nil {
 				return nil, -1, err
@@ -127,7 +127,7 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 // and body.
 func parseFunction(tokens []Token, index int) (Node, int, error) {
 	// Ensure there is a token following the 'function' keyword
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenIdentifier {
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenIdentifierType {
 		return nil, -1, fmt.Errorf("expected identifier after 'function' at position %d", index)
 	}
 	index++
@@ -135,7 +135,7 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	index++
 
 	// Ensure the next token is an open bracket '('
-	if index >= len(tokens) || tokens[index].Type != TokenOpenBracket {
+	if index >= len(tokens) || tokens[index].Type != TokenOpenBracketType {
 		return nil, -1, fmt.Errorf("expected '(' after function name at position %d", index)
 	}
 	index++
@@ -143,11 +143,11 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	// Initialize parameters slice and parse function parameters
 	var parameters []*Parameter
 	for {
-		if index < len(tokens) && tokens[index].Type == TokenIdentifier {
+		if index < len(tokens) && tokens[index].Type == TokenIdentifierType {
 			var p = &Parameter{Identifier: tokens[index].Value}
 
 			index++
-			if index < len(tokens) && tokens[index].Type != TokenInteger32 {
+			if index < len(tokens) && tokens[index].Type != TokenInteger32Type {
 				return nil, -1, fmt.Errorf("expected 'i32' after function parameter at position %d", index)
 			}
 			p.Type = Integer32Type
@@ -159,26 +159,26 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	}
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseBracket {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseBracketType {
 		return nil, -1, fmt.Errorf("expected ')' after function parameters at position %d", index)
 	}
 	index++
 
 	// Ensure the next token is an open curly brace '{'
-	if index >= len(tokens) || tokens[index].Type != TokenOpenCurly {
+	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyType {
 		return nil, -1, fmt.Errorf("expected '{' after function parameters at position %d", index)
 	}
 	index++
 
 	// Parse the function body
-	body, newIndex, err := parseNodes(tokens[index:], 0, TokenFunction)
+	body, newIndex, err := parseNodes(tokens[index:], 0, TokenFunctionType)
 	if err != nil {
 		return nil, -1, err
 	}
 	index += newIndex
 
 	// Ensure the next token is a close curly brace '}'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseCurly {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyType {
 		return nil, -1, fmt.Errorf("expected '}' after function body at position %d", index)
 	}
 	index++
@@ -193,20 +193,20 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 // condition and body.
 func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	// Ensure the next token is an open bracket '('
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenBracket {
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenBracketType {
 		return nil, -1, fmt.Errorf("expected '(' after 'while' at position %d", index)
 	}
 	condition := tokens[index+2].Value
 	index += 3
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseBracket {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseBracketType {
 		return nil, -1, fmt.Errorf("expected ')' after while condition at position %d", index)
 	}
 	index++
 
 	// Ensure the next token is an open curly brace '{'
-	if index >= len(tokens) || tokens[index].Type != TokenOpenCurly {
+	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyType {
 		return nil, -1, fmt.Errorf("expected '{' after while condition at position %d", index)
 	}
 	index++
@@ -219,7 +219,7 @@ func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	index += newIndex
 
 	// Ensure the next token is a close curly brace '}'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseCurly {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyType {
 		return nil, -1, fmt.Errorf("expected '}' after while body at position %d", index)
 	}
 	index++
@@ -235,12 +235,12 @@ func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 // identifier and value.
 func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 	// Ensure the next token is an identifier
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenIdentifier {
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenIdentifierType {
 		return nil, -1, fmt.Errorf("expected identifier after 'let' at position %d", index)
 	}
 
 	// Ensure the next token is an equals sign '='
-	if index+2 >= len(tokens) || tokens[index+2].Type != TokenEquals {
+	if index+2 >= len(tokens) || tokens[index+2].Type != TokenEqualsType {
 		return nil, -1, fmt.Errorf("expected '=' after let at position %d", index)
 	}
 
@@ -268,7 +268,7 @@ func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 // function name and parameters.
 func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	// Ensure the next token is an open bracket '('
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenBracket {
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenBracketType {
 		return nil, -1, fmt.Errorf("expected '(' after caller at position %d", index)
 	}
 
@@ -281,7 +281,7 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 
 	// Parse the function parameters
 	for {
-		if index < len(tokens) && tokens[index].Type == TokenIdentifier {
+		if index < len(tokens) && tokens[index].Type == TokenIdentifierType {
 
 			intValue, err := strconv.Atoi(tokens[index].Value)
 			if err == nil {
@@ -297,7 +297,7 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	}
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseBracket {
+	if index >= len(tokens) || tokens[index].Type != TokenCloseBracketType {
 		return nil, -1, fmt.Errorf("expected ')' after parameters at position %d", index)
 	}
 	index++

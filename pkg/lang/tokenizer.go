@@ -6,19 +6,35 @@ import (
 	"unicode"
 )
 
+type TokenValue string
+type TokenRune rune
+
+const (
+	TokenWhile        TokenValue = "while"
+	TokenLet          TokenValue = "let"
+	TokenInteger32    TokenValue = "i32"
+	TokenFunction     TokenValue = "function"
+	TokenOpenBracket  TokenRune  = '('
+	TokenCloseBracket TokenRune  = ')'
+	TokenOpenCurly    TokenRune  = '{'
+	TokenCloseCurly   TokenRune  = '}'
+	TokenComma        TokenRune  = ','
+	TokenEquals       TokenRune  = '='
+)
+
 type TokenType int
 
 const (
-	TokenWhile TokenType = iota
-	TokenLet
-	TokenFunction
-	TokenOpenBracket
-	TokenCloseBracket
-	TokenOpenCurly
-	TokenCloseCurly
-	TokenIdentifier
-	TokenEquals
-	TokenInteger32
+	TokenWhileType TokenType = iota
+	TokenLetType
+	TokenFunctionType
+	TokenOpenBracketType
+	TokenCloseBracketType
+	TokenOpenCurlyType
+	TokenCloseCurlyType
+	TokenIdentifierType
+	TokenEqualsType
+	TokenInteger32Type
 	TokenUnknown
 )
 
@@ -29,41 +45,43 @@ type Token struct {
 
 func (t Token) String() string {
 	switch t.Type {
-	case TokenWhile:
-		return "while"
-	case TokenLet:
-		return "let"
-	case TokenFunction:
-		return "function"
-	case TokenOpenBracket:
-		return "("
-	case TokenCloseBracket:
-		return ")"
-	case TokenOpenCurly:
-		return "{"
-	case TokenCloseCurly:
-		return "}"
-	case TokenIdentifier:
+	case TokenWhileType:
+		return string(TokenWhile)
+	case TokenLetType:
+		return string(TokenLet)
+	case TokenFunctionType:
+		return string(TokenFunction)
+	case TokenOpenBracketType:
+		return string(TokenOpenBracket)
+	case TokenCloseBracketType:
+		return string(TokenCloseBracket)
+	case TokenOpenCurlyType:
+		return string(TokenOpenCurly)
+	case TokenCloseCurlyType:
+		return string(TokenCloseCurly)
+	case TokenInteger32Type:
+		return string(TokenInteger32)
+	case TokenIdentifierType:
 		return fmt.Sprintf("identifier(%s)", t.Value)
 	default:
 		return fmt.Sprintf("unknown(%s)", t.Value)
 	}
 }
 
-func isBracket(r rune) bool {
-	return r == '(' || r == ')'
+func isBracket(r TokenRune) bool {
+	return r == TokenOpenBracket || r == TokenCloseBracket
 }
 
-func isCurly(r rune) bool {
-	return r == '{' || r == '}'
+func isCurly(r TokenRune) bool {
+	return r == TokenOpenCurly || r == TokenCloseCurly
 }
 
-func isComma(r rune) bool {
-	return r == ','
+func isComma(r TokenRune) bool {
+	return r == TokenComma
 }
 
-func isEqual(r rune) bool {
-	return r == '='
+func isEqual(r TokenRune) bool {
+	return r == TokenEquals
 }
 
 func Tokenize(input string) []Token {
@@ -71,87 +89,87 @@ func Tokenize(input string) []Token {
 
 	var sb strings.Builder
 	for _, r := range input {
-		if isComma(r) {
+		if isComma(TokenRune(r)) {
 			if sb.Len() > 0 {
-				word := sb.String()
+				word := TokenValue(sb.String())
 				sb.Reset()
 
 				switch word {
-				case "i32":
-					tokens = append(tokens, Token{Type: TokenInteger32})
+				case TokenInteger32:
+					tokens = append(tokens, Token{Type: TokenInteger32Type})
 				default:
-					tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
+					tokens = append(tokens, Token{Type: TokenIdentifierType, Value: string(word)})
 				}
 			}
 			continue
 		}
 
-		if isEqual(r) {
-			tokens = append(tokens, Token{Type: TokenEquals})
+		if isEqual(TokenRune(r)) {
+			tokens = append(tokens, Token{Type: TokenEqualsType})
 			continue
 		}
 
 		if unicode.IsSpace(r) {
 			if sb.Len() > 0 {
-				word := sb.String()
+				word := TokenValue(sb.String())
 				sb.Reset()
 
 				switch word {
-				case "while":
-					tokens = append(tokens, Token{Type: TokenWhile})
-				case "let":
-					tokens = append(tokens, Token{Type: TokenLet})
-				case "function":
-					tokens = append(tokens, Token{Type: TokenFunction})
-				case "i32":
-					tokens = append(tokens, Token{Type: TokenInteger32})
+				case TokenWhile:
+					tokens = append(tokens, Token{Type: TokenWhileType})
+				case TokenLet:
+					tokens = append(tokens, Token{Type: TokenLetType})
+				case TokenFunction:
+					tokens = append(tokens, Token{Type: TokenFunctionType})
+				case TokenInteger32:
+					tokens = append(tokens, Token{Type: TokenInteger32Type})
 				default:
-					tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
+					tokens = append(tokens, Token{Type: TokenIdentifierType, Value: string(word)})
 				}
 			}
-		} else if isCurly(r) {
+		} else if isCurly(TokenRune(r)) {
 			if sb.Len() > 0 {
-				word := sb.String()
+				word := TokenValue(sb.String())
 				sb.Reset()
 
 				switch word {
-				case "while":
-					tokens = append(tokens, Token{Type: TokenWhile})
-				case "let":
-					tokens = append(tokens, Token{Type: TokenLet})
+				case TokenWhile:
+					tokens = append(tokens, Token{Type: TokenWhileType})
+				case TokenLet:
+					tokens = append(tokens, Token{Type: TokenLetType})
 				default:
-					tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
+					tokens = append(tokens, Token{Type: TokenIdentifierType, Value: string(word)})
 				}
 			}
 
-			switch r {
-			case '(':
-				tokens = append(tokens, Token{Type: TokenOpenBracket})
-			case ')':
-				tokens = append(tokens, Token{Type: TokenCloseBracket})
-			case '{':
-				tokens = append(tokens, Token{Type: TokenOpenCurly})
-			case '}':
-				tokens = append(tokens, Token{Type: TokenCloseCurly})
+			switch TokenRune(r) {
+			case TokenOpenBracket:
+				tokens = append(tokens, Token{Type: TokenOpenBracketType})
+			case TokenCloseBracket:
+				tokens = append(tokens, Token{Type: TokenCloseBracketType})
+			case TokenOpenCurly:
+				tokens = append(tokens, Token{Type: TokenOpenCurlyType})
+			case TokenCloseCurly:
+				tokens = append(tokens, Token{Type: TokenCloseCurlyType})
 			}
-		} else if isBracket(r) {
+		} else if isBracket(TokenRune(r)) {
 			if sb.Len() > 0 {
-				word := sb.String()
+				word := TokenValue(sb.String())
 				sb.Reset()
 
 				switch word {
-				case "i32":
-					tokens = append(tokens, Token{Type: TokenInteger32})
+				case TokenInteger32:
+					tokens = append(tokens, Token{Type: TokenInteger32Type})
 				default:
-					tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
+					tokens = append(tokens, Token{Type: TokenIdentifierType, Value: string(word)})
 				}
 			}
 
-			switch r {
-			case '(':
-				tokens = append(tokens, Token{Type: TokenOpenBracket})
-			case ')':
-				tokens = append(tokens, Token{Type: TokenCloseBracket})
+			switch TokenRune(r) {
+			case TokenOpenBracket:
+				tokens = append(tokens, Token{Type: TokenOpenBracketType})
+			case TokenCloseBracket:
+				tokens = append(tokens, Token{Type: TokenCloseBracketType})
 			}
 		} else {
 			sb.WriteRune(r)
@@ -160,16 +178,16 @@ func Tokenize(input string) []Token {
 	}
 
 	if sb.Len() > 0 {
-		word := sb.String()
+		word := TokenValue(sb.String())
 		switch word {
-		case "while":
-			tokens = append(tokens, Token{Type: TokenWhile})
-		case "let":
-			tokens = append(tokens, Token{Type: TokenLet})
-		case "function":
-			tokens = append(tokens, Token{Type: TokenFunction})
+		case TokenWhile:
+			tokens = append(tokens, Token{Type: TokenWhileType})
+		case TokenLet:
+			tokens = append(tokens, Token{Type: TokenLetType})
+		case TokenFunction:
+			tokens = append(tokens, Token{Type: TokenFunctionType})
 		default:
-			tokens = append(tokens, Token{Type: TokenIdentifier, Value: word})
+			tokens = append(tokens, Token{Type: TokenIdentifierType, Value: string(word)})
 		}
 	}
 
