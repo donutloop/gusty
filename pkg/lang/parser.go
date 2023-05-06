@@ -35,6 +35,13 @@ type FunctionNode struct {
 	Body       []Node
 }
 
+type CallerNode struct {
+	FunctionName string
+	Parameters   []Node
+}
+
+func (n *CallerNode) IsNode() {}
+
 func (n *FunctionNode) IsNode() {}
 
 func Parse(tokens []Token) ([]Node, error) {
@@ -49,6 +56,31 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 		token := tokens[index]
 
 		switch token.Type {
+		case TokenIdentifier:
+			if index+1 < len(tokens) && tokens[index+1].Type != TokenOpenBracket {
+				return nil, -1, fmt.Errorf("expected '(' after caller at position %d", index)
+			}
+			name := tokens[index].Value
+			index++
+			index++
+
+			var parameters []Node
+			for {
+				if index < len(tokens) && tokens[index].Type == TokenIdentifier {
+					parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})
+					index++
+				} else {
+					break
+				}
+			}
+
+			if index < len(tokens) && tokens[index].Type != TokenCloseBracket {
+				return nil, -1, fmt.Errorf("expected ')' after parameters at position %d", index)
+			}
+			index++
+
+			nodes = append(nodes, &CallerNode{FunctionName: name, Parameters: parameters})
+
 		case TokenCloseCurly:
 			if tokenType == TokenFunction {
 				return nodes, index, nil
@@ -70,7 +102,7 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 					Value:      intValue,
 				})
 
-				index += 3
+				index += 4
 			} else {
 				return nil, -1, fmt.Errorf("expected identifier after 'let' at position %d", index)
 			}

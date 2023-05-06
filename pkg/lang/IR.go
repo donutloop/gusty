@@ -1,10 +1,24 @@
 package lang
 
 import (
+	"fmt"
 	"tinygo.org/x/go-llvm"
 )
 
+type Caller struct {
+	Value *llvm.Value
+	Type  *llvm.Type
+}
+
+type GlobalScope struct {
+	Callers map[string]Caller
+}
+
 func GenerateLLVMIR(nodes []Node) (string, error) {
+
+	globalScope := GlobalScope{
+		Callers: make(map[string]Caller),
+	}
 
 	// Initialize LLVM
 	llvm.InitializeNativeTarget()
@@ -33,6 +47,21 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	for _, node := range nodes {
 		switch n := node.(type) {
+		case *CallerNode:
+			caller, ok := globalScope.Callers[n.FunctionName]
+			if !ok {
+				return "", fmt.Errorf("caller not found in scope: %s", n.FunctionName)
+			}
+			if caller.Value == nil {
+				return "", fmt.Errorf("nil function value for caller: %s", n.FunctionName)
+			}
+			if caller.Type == nil {
+				return "", fmt.Errorf("nil function type for caller: %s", n.FunctionName)
+			}
+			callerType := *caller.Type
+			callerValue := *caller.Value
+
+			mainBuilder.CreateCall(callerType, callerValue, []llvm.Value{}, "")
 		case *LetNode:
 			// Skipping LLVM IR generation for while node for simplicity
 		case *WhileNode:
@@ -64,7 +93,11 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 				}
 			}
 
-			mainBuilder.CreateCall(functionType, function, []llvm.Value{}, "")
+			globalScope.Callers[n.Name] = Caller{
+				Value: &function,
+				Type:  &functionType,
+			}
+
 			// Return void
 			builder.CreateRetVoid()
 

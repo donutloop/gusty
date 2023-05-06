@@ -9,7 +9,7 @@ import (
 )
 
 func TestLang(t *testing.T) {
-	input := `function add(a, b) { let donut = 43 }`
+	input := `function add(a, b) { let donut = 43 } add(1,2)`
 
 	tokens := lang.Tokenize(input)
 	nodes, err := lang.Parse(tokens)
