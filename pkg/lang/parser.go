@@ -57,29 +57,12 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 
 		switch token.Type {
 		case TokenIdentifier:
-			if index+1 < len(tokens) && tokens[index+1].Type != TokenOpenBracket {
-				return nil, -1, fmt.Errorf("expected '(' after caller at position %d", index)
+			callerNode, newIndex, err := parseCaller(tokens, index)
+			if err != nil {
+				return nil, -1, err
 			}
-			name := tokens[index].Value
-			index++
-			index++
-
-			var parameters []*Parameter
-			for {
-				if index < len(tokens) && tokens[index].Type == TokenIdentifier {
-					parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})
-					index++
-				} else {
-					break
-				}
-			}
-
-			if index < len(tokens) && tokens[index].Type != TokenCloseBracket {
-				return nil, -1, fmt.Errorf("expected ')' after parameters at position %d", index)
-			}
-			index++
-
-			nodes = append(nodes, &CallerNode{FunctionName: name, Parameters: parameters})
+			index = newIndex
+			nodes = append(nodes, callerNode)
 		case TokenCloseCurly:
 			if tokenType == TokenFunction {
 				return nodes, index, nil
@@ -246,4 +229,43 @@ func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 	index += 4
 
 	return letNode, index, nil
+}
+
+// parseCaller takes a slice of tokens and an index as input parameters and
+// returns a CallerNode, an updated index, and an error if there is any issue
+// during parsing. It processes tokens to generate a CallerNode with its
+// function name and parameters.
+func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
+	// Ensure the next token is an open bracket '('
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenBracket {
+		return nil, -1, fmt.Errorf("expected '(' after caller at position %d", index)
+	}
+
+	// Retrieve the function name from the current token
+	name := tokens[index].Value
+	index += 2
+
+	// Initialize parameters slice
+	var parameters []*Parameter
+
+	// Parse the function parameters
+	for {
+		if index < len(tokens) && tokens[index].Type == TokenIdentifier {
+			parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})
+			index++
+		} else {
+			break
+		}
+	}
+
+	// Ensure the next token is a close bracket ')'
+	if index >= len(tokens) || tokens[index].Type != TokenCloseBracket {
+		return nil, -1, fmt.Errorf("expected ')' after parameters at position %d", index)
+	}
+	index++
+
+	// Create a CallerNode with the parsed function name and parameters
+	callerNode := &CallerNode{FunctionName: name, Parameters: parameters}
+
+	return callerNode, index, nil
 }
