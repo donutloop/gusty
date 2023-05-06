@@ -5,50 +5,66 @@ import (
 	"strconv"
 )
 
+// Node is an interface representing nodes in the abstract syntax tree.
 type Node interface {
 	IsNode()
 }
 
+// LetNode represents a let statement.
 type LetNode struct {
 	Identifier string
 	Value      any
 }
 
+// IsNode is an empty method to satisfy the Node interface.
 func (n *LetNode) IsNode() {}
 
+// Parameter represents a parameter in a function or function call.
 type Parameter struct {
 	Identifier string
 }
 
+// IsNode is an empty method to satisfy the Node interface.
 func (n *Parameter) IsNode() {}
 
+// WhileNode represents a while loop.
 type WhileNode struct {
 	Condition string
 	Body      []Node
 }
 
+// IsNode is an empty method to satisfy the Node interface.
 func (n *WhileNode) IsNode() {}
 
+// FunctionNode represents a function definition.
 type FunctionNode struct {
 	Name       string
 	Parameters []Node
 	Body       []Node
 }
 
+// CallerNode represents a function call.
 type CallerNode struct {
 	FunctionName string
 	Parameters   []*Parameter
 }
 
+// IsNode is an empty method to satisfy the Node interface.
 func (n *CallerNode) IsNode() {}
 
+// IsNode is an empty method to satisfy the Node interface.
 func (n *FunctionNode) IsNode() {}
 
+// Parse takes a slice of tokens as input and returns a slice of nodes
+// representing the abstract syntax tree.
 func Parse(tokens []Token) ([]Node, error) {
 	nodes, _, err := parseNodes(tokens, 0, -1)
 	return nodes, err
 }
 
+// parseNodes takes a slice of tokens, an index, and a token type as input parameters,
+// and returns a slice of nodes, an updated index, and an error if there is any issue
+// during parsing. It processes tokens to generate nodes representing the abstract syntax tree.
 func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, error) {
 	nodes := []Node{}
 
