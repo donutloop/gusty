@@ -126,7 +126,7 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	mainFunctionScope := newScope()
 
-	module := llvm.NewModule("example")
+	module := llvm.NewModule("main")
 
 	mainType := llvm.FunctionType(llvm.VoidType(), []llvm.Type{}, false)
 	mainFunc := llvm.AddFunction(module, "main", mainType)

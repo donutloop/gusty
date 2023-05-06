@@ -1,5 +1,5 @@
-; ModuleID = 'example'
-source_filename = "example"
+; ModuleID = 'main'
+source_filename = "main"
 
 @format_string = constant [3 x i8] c"%d\0A"
 
