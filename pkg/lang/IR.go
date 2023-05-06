@@ -160,12 +160,15 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 				return "", err
 			}
 		case *LetNode:
-			// Skipping LLVM IR generation for while node for simplicity
+			err := generateLet(&mainFunctionScope, mainBuilder, n)
+			if err != nil {
+				return "", err
+			}
 		case *WhileNode:
 			// Skipping LLVM IR generation for while node for simplicity
+			// todo to be implemented
 		case *FunctionNode:
 			// Create function prototype
-
 			var llvmParameters []llvm.Type
 			for _, parameter := range n.Parameters {
 				if parameter.Type == Integer32Type {
@@ -199,15 +202,9 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 			for _, bodyNode := range n.Body {
 				switch bodyNode := bodyNode.(type) {
 				case *LetNode:
-					letNodeValue := bodyNode.Value
-					if intValue, ok := letNodeValue.(int32); ok {
-						letNodeAlloca := currentFunctionBuilder.CreateAlloca(llvm.Int32Type(), bodyNode.Identifier)
-						letNodeAlloca.SetAlignment(4)
-						letNodeConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intValue), true)
-						currentFunctionBuilder.CreateStore(letNodeConstInt, letNodeAlloca)
-						currentFunctionScope.Variables[bodyNode.Identifier] = Variable{
-							Value: &letNodeAlloca,
-						}
+					err := generateLet(&currentFunctionScope, currentFunctionBuilder, bodyNode)
+					if err != nil {
+						return "", err
 					}
 				case *CallerNode:
 					err := generateCaller(&currentFunctionScope, currentFunctionBuilder, bodyNode)
@@ -240,6 +237,10 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 // generateCaller takes a scope, a functionBuilder builder, and a callerNode,
 // and generates the LLVM IR for calling the function represented by the callerNode.
 // It returns an error if any issues are encountered.
+//
+// scope:            A pointer to the current scope.
+// functionBuilder:  The LLVM builder associated with the current function.
+// callerNode:          The abstract syntax tree (AST) node representing the caller statement.
 func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *CallerNode) error {
 
 	// Special case for handling printf calls
@@ -292,5 +293,36 @@ func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *Call
 	functionBuilder.CreateCall(callerType, callerValue, llvmParameterValues, "")
 
 	// If no issues were encountered, return nil
+	return nil
+}
+
+// generateLet is a function that generates LLVM IR code for a "let" statement.
+// The let statement assigns a value to a new local variable in the current scope.
+// This function handles the case where the value is an int32.
+//
+// scope:            A pointer to the current scope.
+// functionBuilder:  The LLVM builder associated with the current function.
+// letNode:          The abstract syntax tree (AST) node representing the let statement.
+//
+// Returns an error if the value type of the letNode is not supported.
+func generateLet(scope *Scope, functionBuilder llvm.Builder, letNode *LetNode) error {
+	// Check if the value is of type int32
+	if intValue, ok := letNode.Value.(int32); ok {
+		// Create an alloca instruction to allocate memory for the new local variable
+		letNodeAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), letNode.Identifier)
+		// Set the alignment of the allocated memory to 4 bytes
+		letNodeAlloca.SetAlignment(4)
+		// Create a constant int32 LLVM value from the intValue
+		letNodeConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intValue), true)
+		// Store the constant int32 value in the allocated memory
+		functionBuilder.CreateStore(letNodeConstInt, letNodeAlloca)
+		// Add the new local variable to the current scope
+		scope.Variables[letNode.Identifier] = Variable{
+			Value: &letNodeAlloca,
+		}
+	} else {
+		// Return an error if the value type is not supported
+		return fmt.Errorf("invalid value type for let node: %v", letNode)
+	}
 	return nil
 }
