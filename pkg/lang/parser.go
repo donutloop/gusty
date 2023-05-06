@@ -37,7 +37,7 @@ type FunctionNode struct {
 
 type CallerNode struct {
 	FunctionName string
-	Parameters   []Node
+	Parameters   []*Parameter
 }
 
 func (n *CallerNode) IsNode() {}
@@ -64,7 +64,7 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 			index++
 			index++
 
-			var parameters []Node
+			var parameters []*Parameter
 			for {
 				if index < len(tokens) && tokens[index].Type == TokenIdentifier {
 					parameters = append(parameters, &Parameter{Identifier: tokens[index].Value})

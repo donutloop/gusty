@@ -10,22 +10,50 @@ type Caller struct {
 	Type  *llvm.Type
 }
 
+type Variable struct {
+	Value *llvm.Value
+}
+
+type Global struct {
+	Value *llvm.Value
+}
+
+type Scope struct {
+	Callers   map[string]Caller
+	Variables map[string]Variable
+}
+
 type GlobalScope struct {
-	Callers map[string]Caller
+	Callers   map[string]Caller
+	Variables map[string]Variable
+	Globals   map[string]Global
+}
+
+func newScope() Scope {
+	return Scope{
+		Callers:   make(map[string]Caller),
+		Variables: make(map[string]Variable),
+	}
+}
+
+var globalScope GlobalScope
+
+func init() {
+	globalScope = GlobalScope{
+		Callers:   make(map[string]Caller),
+		Variables: make(map[string]Variable),
+		Globals:   make(map[string]Global),
+	}
 }
 
 func GenerateLLVMIR(nodes []Node) (string, error) {
 
-	globalScope := GlobalScope{
-		Callers: make(map[string]Caller),
-	}
+	mainFunctionScope := newScope()
 
 	// Initialize LLVM
 	llvm.InitializeNativeTarget()
 	llvm.InitializeNativeAsmPrinter()
 
-	builder := llvm.NewBuilder()
-	defer builder.Dispose()
 	module := llvm.NewModule("example")
 
 	mainType := llvm.FunctionType(llvm.VoidType(), []llvm.Type{}, false)
@@ -33,12 +61,19 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	printfType := llvm.FunctionType(llvm.Int32Type(), []llvm.Type{llvm.PointerType(llvm.Int32Type(), 0)}, true)
 	printf := llvm.AddFunction(module, "printf", printfType)
+	globalScope.Callers["printf"] = Caller{
+		Value: &printf,
+		Type:  &printfType,
+	}
 
 	// Create format string
 	formatString := llvm.ConstString("%d\n", false)
 	formatGlobal := llvm.AddGlobal(module, formatString.Type(), "format_string")
 	formatGlobal.SetInitializer(formatString)
 	formatGlobal.SetGlobalConstant(true)
+	globalScope.Globals["format_string"] = Global{
+		Value: &formatGlobal,
+	}
 
 	entry := llvm.AddBasicBlock(mainFunc, "entry")
 	mainBuilder := llvm.NewBuilder()
@@ -48,7 +83,7 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	for _, node := range nodes {
 		switch n := node.(type) {
 		case *CallerNode:
-			err := generateCaller(&globalScope, mainBuilder, n)
+			err := generateCaller(&mainFunctionScope, mainBuilder, n)
 			if err != nil {
 				return "", err
 			}
@@ -62,9 +97,14 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 			function := llvm.AddFunction(module, n.Name, functionType)
 			function.SetFunctionCallConv(llvm.CCallConv)
 
+			currentFunctionScope := newScope()
+
+			currentFunctionBuilder := llvm.NewBuilder()
+			defer currentFunctionBuilder.Dispose()
+
 			// Create a new basic block and set the builder's insert point
 			entry := llvm.AddBasicBlock(function, "entry")
-			builder.SetInsertPointAtEnd(entry)
+			currentFunctionBuilder.SetInsertPointAtEnd(entry)
 
 			// Generate LLVM IR for the function body
 			for _, bodyNode := range n.Body {
@@ -72,25 +112,29 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 				case *LetNode:
 					letNodeValue := bodyNode.Value
 					if intValue, ok := letNodeValue.(int); ok {
-						letNodeAlloca := builder.CreateAlloca(llvm.Int32Type(), bodyNode.Identifier)
+						letNodeAlloca := currentFunctionBuilder.CreateAlloca(llvm.Int32Type(), bodyNode.Identifier)
 						letNodeAlloca.SetAlignment(4)
 						letNodeConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intValue), true)
-						builder.CreateStore(letNodeConstInt, letNodeAlloca)
-						value := builder.CreateLoad(letNodeAlloca.Type(), letNodeAlloca, "value")
-						format := builder.CreateInBoundsGEP(formatGlobal.Type(), formatGlobal, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
-						builder.CreateCall(printfType, printf, []llvm.Value{format, value}, "")
+						currentFunctionBuilder.CreateStore(letNodeConstInt, letNodeAlloca)
+						currentFunctionScope.Variables[bodyNode.Identifier] = Variable{
+							Value: &letNodeAlloca,
+						}
+					}
+				case *CallerNode:
+					err := generateCaller(&currentFunctionScope, currentFunctionBuilder, bodyNode)
+					if err != nil {
+						return "", err
 					}
 				}
 			}
 
-			globalScope.Callers[n.Name] = Caller{
+			mainFunctionScope.Callers[n.Name] = Caller{
 				Value: &function,
 				Type:  &functionType,
 			}
 
 			// Return void
-			builder.CreateRetVoid()
-
+			currentFunctionBuilder.CreateRetVoid()
 		}
 	}
 
@@ -105,13 +149,23 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	return module.String(), nil
 }
 
-// generateCaller takes a globalScope, a functionScope builder, and a callerNode,
+// generateCaller takes a scope, a functionBuilder builder, and a callerNode,
 // and generates the LLVM IR for calling the function represented by the callerNode.
 // It returns an error if any issues are encountered.
-func generateCaller(globalScope *GlobalScope, functionScope llvm.Builder, callerNode *CallerNode) error {
-	// Retrieve the caller from the global scope using the function name
-	caller, ok := globalScope.Callers[callerNode.FunctionName]
+func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *CallerNode) error {
 
+	// Special case for handling printf calls
+	if callerNode.FunctionName == "printf" {
+		// Load the value of the parameter and create a GEP for the format string
+		value := functionBuilder.CreateLoad(scope.Variables[callerNode.Parameters[0].Identifier].Value.Type(), *scope.Variables[callerNode.Parameters[0].Identifier].Value, callerNode.Parameters[0].Identifier+"Value")
+		format := functionBuilder.CreateInBoundsGEP(globalScope.Globals["format_string"].Value.Type(), *globalScope.Globals["format_string"].Value, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
+		// Create the call instruction for printf with the format string and value as arguments
+		functionBuilder.CreateCall(*globalScope.Callers["printf"].Type, *globalScope.Callers["printf"].Value, []llvm.Value{format, value}, "")
+		return nil
+	}
+
+	// Retrieve the caller from the global scope using the function name
+	caller, ok := scope.Callers[callerNode.FunctionName]
 	// If the caller is not found, return an error
 	if !ok {
 		return fmt.Errorf("caller not found in scope: %s", callerNode.FunctionName)
@@ -133,7 +187,7 @@ func generateCaller(globalScope *GlobalScope, functionScope llvm.Builder, caller
 
 	// Create the LLVM IR call instruction with the function scope builder,
 	// using the caller's Type, Value, and an empty slice of llvm.Value as arguments.
-	functionScope.CreateCall(callerType, callerValue, []llvm.Value{}, "")
+	functionBuilder.CreateCall(callerType, callerValue, []llvm.Value{}, "")
 
 	// If no issues were encountered, return nil
 	return nil
