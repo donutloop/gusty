@@ -80,32 +80,18 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 			index++
 
 			nodes = append(nodes, &CallerNode{FunctionName: name, Parameters: parameters})
-
 		case TokenCloseCurly:
 			if tokenType == TokenFunction {
 				return nodes, index, nil
 			}
 			index++
 		case TokenLet:
-			if index+1 < len(tokens) && tokens[index+1].Type == TokenIdentifier {
-				if index >= len(tokens) || tokens[index+2].Type != TokenEquals {
-					return nil, -1, fmt.Errorf("expected '=' after let at position %d", index)
-				}
-
-				intValue, err := strconv.Atoi(tokens[index+3].Value)
-				if err != nil {
-					return nil, -1, fmt.Errorf("expected 'int' after equal condition at position %d", index)
-				}
-
-				nodes = append(nodes, &LetNode{
-					Identifier: tokens[index+1].Value,
-					Value:      intValue,
-				})
-
-				index += 4
-			} else {
-				return nil, -1, fmt.Errorf("expected identifier after 'let' at position %d", index)
+			letNode, newIndex, err := parseLet(tokens, index)
+			if err != nil {
+				return nil, -1, err
 			}
+			index = newIndex
+			nodes = append(nodes, letNode)
 		case TokenWhile:
 			whileNode, newIndex, err := parseWhile(tokens, index)
 			if err != nil {
@@ -227,4 +213,37 @@ func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	// Create a WhileNode with the parsed condition and body
 	whileNode := &WhileNode{Condition: condition, Body: body}
 	return whileNode, index, nil
+}
+
+// parseLet takes a slice of tokens and an index as input parameters and
+// returns a LetNode, an updated index, and an error if there is any issue
+// during parsing. It processes tokens to generate a LetNode with its
+// identifier and value.
+func parseLet(tokens []Token, index int) (*LetNode, int, error) {
+	// Ensure the next token is an identifier
+	if index+1 >= len(tokens) || tokens[index+1].Type != TokenIdentifier {
+		return nil, -1, fmt.Errorf("expected identifier after 'let' at position %d", index)
+	}
+
+	// Ensure the next token is an equals sign '='
+	if index+2 >= len(tokens) || tokens[index+2].Type != TokenEquals {
+		return nil, -1, fmt.Errorf("expected '=' after let at position %d", index)
+	}
+
+	// Parse the integer value after the equals sign
+	intValue, err := strconv.Atoi(tokens[index+3].Value)
+	if err != nil {
+		return nil, -1, fmt.Errorf("expected 'int' after equal condition at position %d", index)
+	}
+
+	// Create a LetNode with the parsed identifier and value
+	letNode := &LetNode{
+		Identifier: tokens[index+1].Value,
+		Value:      intValue,
+	}
+
+	// Update the index to skip the processed tokens
+	index += 4
+
+	return letNode, index, nil
 }
