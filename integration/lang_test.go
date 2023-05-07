@@ -104,3 +104,34 @@ func TestAddTwoConst(t *testing.T) {
 	t.Log("Expected LLVM IR: ")
 	t.Log(string(expectedLlvmIR))
 }
+
+func TestFor(t *testing.T) {
+	input := `for i := 0; i < 10; i++ { printf(i) }`
+
+	tokens := lang.Tokenize(input)
+	nodes, err := lang.Parse(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	actualLvmIR, err := lang.GenerateLLVMIR(nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedLlvmIR, err := os.ReadFile("./expected/for.ll")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	v := bytes.Compare(expectedLlvmIR, []byte(actualLvmIR))
+	if v != 0 {
+		t.Error("program code is not bad")
+	}
+
+	t.Log("Actual LLVM IR: ")
+	t.Log(actualLvmIR)
+
+	t.Log("Expected LLVM IR: ")
+	t.Log(string(expectedLlvmIR))
+}

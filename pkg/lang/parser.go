@@ -63,6 +63,9 @@ type FunctionNode struct {
 	Body       []Node
 }
 
+// IsNode is an empty method to satisfy the Node interface.
+func (n *FunctionNode) IsNode() {}
+
 // CallerNode represents a function call.
 type CallerNode struct {
 	FunctionName         string
@@ -74,8 +77,47 @@ type CallerNode struct {
 // IsNode is an empty method to satisfy the Node interface.
 func (n *CallerNode) IsNode() {}
 
+// ForNode represents a for definition.
+// example: for i := 0; i < 10; i++ {}
+type ForNode struct {
+	Init      ShortVariableAssigmentNode
+	Condition ConditionNode
+	Post      PostNode
+	Body      []Node
+}
+
 // IsNode is an empty method to satisfy the Node interface.
-func (n *FunctionNode) IsNode() {}
+func (n *ForNode) IsNode() {}
+
+// ShortVariableAssigmentNode represents a short variable assignment statement.
+type ShortVariableAssigmentNode struct {
+	Identifier string
+	Value      any
+}
+
+// IsNode is an empty method to satisfy the Node interface.
+func (n *ShortVariableAssigmentNode) IsNode() {}
+
+// ConditionNode represents a condition of for node
+type ConditionNode struct {
+	LeftValue  string
+	Operator   any
+	RightValue any
+}
+
+type LessThanOperator struct{}
+
+// IsNode is an empty method to satisfy the Node interface.
+func (n *ConditionNode) IsNode() {}
+
+// PostNode represents a post statement of for node
+type PostNode struct {
+	Identifier string
+	Increment  bool
+}
+
+// IsNode is an empty method to satisfy the Node interface.
+func (n *PostNode) IsNode() {}
 
 // Parse takes a slice of tokens as input and returns a slice of nodes
 // representing the abstract syntax tree.
@@ -113,6 +155,8 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 		case TokenCloseCurlyBracketType:
 			if tokenType == TokenFunctionType {
 				return nodes, index, nil
+			} else if tokenType == TokenForType {
+				return nodes, index, nil
 			}
 			index++
 		case TokenLetType:
@@ -136,6 +180,13 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 			}
 			index = newIndex
 			nodes = append(nodes, functionNode)
+		case TokenForType:
+			forNode, newIndex, err := parseFor(tokens, index)
+			if err != nil {
+				return nil, -1, err
+			}
+			index = newIndex
+			nodes = append(nodes, forNode)
 		default:
 			index++
 		}
@@ -287,45 +338,6 @@ func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 	return letNode, index, nil
 }
 
-func parseAddOperation(tokens []Token, index int) (*AddOperationNode, int, error) {
-	// Ensure the next token is an identifier
-	if IsNotIdentifierToken(index, tokens) {
-		return nil, -1, fmt.Errorf("expected 'identifier' at start %d", index)
-	}
-
-	// Parse the integer value
-	leftValue, err := strconv.Atoi(tokens[index].Value)
-	if err != nil {
-		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
-	}
-	index++
-
-	// Ensure the next token is an add sign
-	if IsNotAddToken(index, tokens) {
-		return nil, -1, fmt.Errorf("expected 'add sign' after 'identifier' at position %d", index)
-	}
-	index++
-	// Ensure the next token is an identifier
-	if IsNotIdentifierToken(index, tokens) {
-		return nil, -1, fmt.Errorf("expected 'identifier' after 'add sign' at position %d", index)
-	}
-
-	// Parse the integer value
-	rightValue, err := strconv.Atoi(tokens[index].Value)
-	if err != nil {
-		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
-	}
-	index++
-
-	// Create a AddOperationNode with the parsed left and right values
-	addOperationNode := &AddOperationNode{
-		LeftValue:  int32(leftValue),
-		RightValue: int32(rightValue),
-	}
-
-	return addOperationNode, index, nil
-}
-
 // parseCaller takes a slice of tokens and an index as input parameters and
 // returns a CallerNode, an updated index, and an error if there is any issue
 // during parsing. It processes tokens to generate a CallerNode with its
@@ -384,6 +396,187 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	callerNode := &CallerNode{FunctionName: name, Parameters: parameters, isParameterOperation: isParameterOperation, AddOperationNode: addOperationNode}
 
 	return callerNode, index, nil
+}
+
+func parseAddOperation(tokens []Token, index int) (*AddOperationNode, int, error) {
+	// Ensure the next token is an identifier
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'identifier' at start %d", index)
+	}
+
+	// Parse the integer value
+	leftValue, err := strconv.Atoi(tokens[index].Value)
+	if err != nil {
+		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
+	}
+	index++
+
+	// Ensure the next token is an add sign
+	if IsNotAddToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'add sign' after 'identifier' at position %d", index)
+	}
+	index++
+	// Ensure the next token is an identifier
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'identifier' after 'add sign' at position %d", index)
+	}
+
+	// Parse the integer value
+	rightValue, err := strconv.Atoi(tokens[index].Value)
+	if err != nil {
+		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
+	}
+	index++
+
+	// Create a AddOperationNode with the parsed left and right values
+	addOperationNode := &AddOperationNode{
+		LeftValue:  int32(leftValue),
+		RightValue: int32(rightValue),
+	}
+
+	return addOperationNode, index, nil
+}
+
+func parseFor(tokens []Token, index int) (*ForNode, int, error) {
+
+	if IsNotForToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'for' at start %d", index)
+	}
+	index++
+
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected identifier after 'for' at position %d", index)
+	}
+
+	shortVariableAssigmentName := tokens[index].Value
+	index++
+
+	if IsNotShortVariableAssigmentToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected := after 'identifier' at position %d", index)
+	}
+	index++
+
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected identifier after ':=' at position %d", index)
+	}
+
+	// Parse the integer value
+	shortVariableAssigmentRightValue, err := strconv.Atoi(tokens[index].Value)
+	if err != nil {
+		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
+	}
+
+	index++
+
+	if IsNotSemicolonToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected ; after 'value' at position %d", index)
+	}
+
+	index++
+
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected identifier after ';' at position %d", index)
+	}
+
+	conditionLeftValue := tokens[index].Value
+	index++
+
+	if IsNotLessThanToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected < after 'idenfifier' at position %d", index)
+	}
+	operator := LessThanOperator{}
+	index++
+
+	// Parse the integer value
+	conditionRightValue, err := strconv.Atoi(tokens[index].Value)
+	if err != nil {
+		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
+	}
+
+	index++
+	if IsNotSemicolonToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected ; after 'value' at position %d", index)
+	}
+
+	index++
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected identifier after ';' at position %d", index)
+	}
+
+	postIdentifier := tokens[index].Value
+
+	index++
+	// Ensure the next token is an add sign
+	if IsNotAddToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'add sign' after 'identifier' at position %d", index)
+	}
+	index++
+
+	// Ensure the next token is an add sign
+	if IsNotAddToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'add sign' after 'add sign' at position %d", index)
+	}
+
+	index++
+
+	forNode := &ForNode{
+		Init: ShortVariableAssigmentNode{
+			Identifier: shortVariableAssigmentName,
+			Value:      int32(shortVariableAssigmentRightValue),
+		},
+		Condition: ConditionNode{
+			LeftValue:  conditionLeftValue,
+			Operator:   operator,
+			RightValue: int32(conditionRightValue),
+		},
+		Post: PostNode{
+			Identifier: postIdentifier,
+			Increment:  true,
+		},
+	}
+
+	// Ensure the next token is an open curly brace '{'
+	if IsNotOpenCurlyBracketToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected '{' after function parameters at position %d", index)
+	}
+	index++
+
+	// Parse the function body
+	body, newIndex, err := parseNodes(tokens[index:], 0, TokenForType)
+	if err != nil {
+		return nil, -1, err
+	}
+	index += newIndex
+
+	// Ensure the next token is a close curly brace '}'
+	if IsNotCloseCurlyBracketToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected '}' after function body at position %d", index)
+	}
+	index++
+
+	forNode.Body = body
+
+	return forNode, index, nil
+}
+
+// IsNotLessThanToken checks if the token at the given index is not a less than or if the index is out of bounds.
+func IsNotLessThanToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenLessThanType
+}
+
+// IsNotSemicolonToken checks if the token at the given index is not a semicolon or if the index is out of bounds.
+func IsNotSemicolonToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenSemicolonType
+}
+
+// IsNotShortVariableAssigmentToken checks if the token at the given index is not a short variable assigment or if the index is out of bounds.
+func IsNotShortVariableAssigmentToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenShortVariableAssignmentType
+}
+
+// IsNotForToken checks if the token at the given index is not a for or if the index is out of bounds.
+func IsNotForToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenForType
 }
 
 // IsOpenParenthesisToken checks if the token at the given index is an open parenthesis or if the index is out of bounds.

@@ -157,6 +157,11 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	for i := 0; i < len(nodes); i++ {
 		node := nodes[i]
 		switch n := node.(type) {
+		case *ForNode:
+			err := generateFor(&mainFunctionScope, mainFunc, mainBuilder, n)
+			if err != nil {
+				return "", err
+			}
 		case *AddOperationNode:
 			err := generateAdd(&mainFunctionScope, mainBuilder, n)
 			if err != nil {
@@ -388,6 +393,68 @@ func generateAdd(scope *Scope, functionBuilder llvm.Builder, addOperationNode *A
 	scope.PreviousVariable = Variable{
 		Value: &resultAlloca,
 	}
+
+	return nil
+}
+
+// generateFor is a function that generates LLVM IR code for an "for" statement.
+// The add statement adds two number values in the current scope.
+// This function handles the case where the value is an int32.
+//
+// scope:            A pointer to the current scope.
+// functionBuilder:  The LLVM builder associated with the current function.
+// forNode: The abstract syntax tree (AST) node representing the for.
+//
+// Returns an error if the value type of the AddOperationNode is not supported.
+func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder, forNode *ForNode) error {
+	// Check if the left value is of type int32
+	intLeftValue, ok := forNode.Init.Value.(int32)
+	if !ok {
+		// Return an error if the value type is not supported
+		return fmt.Errorf("invalid value type for init: %v", forNode.Init.Value)
+	}
+	// Define loop variables.
+	counterAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), forNode.Init.Identifier)
+	// Set the alignment of the allocated memory to 4 bytes
+	counterAlloca.SetAlignment(4)
+	// Create a constant int32 LLVM value from the left int32 value
+	leftValueConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intLeftValue), true)
+	// Store the constant int32 value in the allocated memory
+	functionBuilder.CreateStore(leftValueConstInt, counterAlloca)
+
+	// Add the new local variable to the current scope
+	scope.Variables[forNode.Init.Identifier] = Variable{
+		Value: &counterAlloca,
+	}
+
+	loopBlock := llvm.AddBasicBlock(function, "loop")
+	endBlock := llvm.AddBasicBlock(function, "end")
+
+	// Branch to loop condition from entry block.
+	functionBuilder.CreateBr(loopBlock)
+
+	functionBuilder.SetInsertPointAtEnd(loopBlock)
+
+	// todo generate all instructions
+	err := generateCaller(scope, functionBuilder, forNode.Body[0].(*CallerNode))
+	if err != nil {
+		return err
+	}
+
+	// Increment the counter
+	// todo use node description
+	counterVal := functionBuilder.CreateLoad(llvm.Int32Type(), counterAlloca, forNode.Init.Identifier+"Val")
+
+	// Convert the global pointer to an i32 value
+	// todo use increment value from node
+	updatedCounter := functionBuilder.CreateAdd(counterVal, llvm.ConstInt(llvm.Int32Type(), 1, false), "updatedCounter")
+	functionBuilder.CreateStore(updatedCounter, counterAlloca)
+	// todo use for limit value from node
+	cond := functionBuilder.CreateICmp(llvm.IntULE, updatedCounter, llvm.ConstInt(llvm.Int32Type(), 5, false), "loopCond")
+	functionBuilder.CreateCondBr(cond, loopBlock, endBlock)
+
+	// End block
+	functionBuilder.SetInsertPointAtEnd(endBlock)
 
 	return nil
 }

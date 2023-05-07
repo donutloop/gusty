@@ -14,17 +14,22 @@ type TokenRune rune
 
 // Constants for keyword and special character tokens.
 const (
-	TokenWhile             TokenValue = "while"
-	TokenLet               TokenValue = "let"
-	TokenInteger32         TokenValue = "i32"
-	TokenFunction          TokenValue = "function"
-	TokenOpenParenthesis   TokenRune  = '('
-	TokenCloseParenthesis  TokenRune  = ')'
-	TokenOpenCurlyBracket  TokenRune  = '{'
-	TokenCloseCurlyBracket TokenRune  = '}'
-	TokenComma             TokenRune  = ','
-	TokenEquals            TokenRune  = '='
-	TokenAdd               TokenRune  = '+'
+	TokenWhile                   TokenValue = "while"
+	TokenLet                     TokenValue = "let"
+	TokenInteger32               TokenValue = "i32"
+	TokenFunction                TokenValue = "function"
+	TokenOpenParenthesis         TokenRune  = '('
+	TokenCloseParenthesis        TokenRune  = ')'
+	TokenOpenCurlyBracket        TokenRune  = '{'
+	TokenCloseCurlyBracket       TokenRune  = '}'
+	TokenComma                   TokenRune  = ','
+	TokenEquals                  TokenRune  = '='
+	TokenAdd                     TokenRune  = '+'
+	TokenFor                     TokenValue = "for"
+	TokenShortVariableAssignment TokenValue = ":="
+	TokenSemicolon               TokenRune  = ';'
+	TokenColon                   TokenRune  = ':'
+	TokenLessThan                TokenRune  = '<'
 )
 
 // TokenType represents the type of a token.
@@ -43,6 +48,11 @@ const (
 	TokenEqualsType
 	TokenInteger32Type
 	TokenAddType
+	TokenForType
+	TokenShortVariableAssignmentType
+	TokenSemicolonType
+	TokenLessThanType
+	TokenColonType
 	TokenUnknown
 )
 
@@ -73,11 +83,22 @@ func (t Token) String() string {
 		return string(TokenInteger32)
 	case TokenAddType:
 		return string(TokenAdd)
+	case TokenForType:
+		return string(TokenFor)
+	case TokenShortVariableAssignmentType:
+		return string(TokenShortVariableAssignment)
+	case TokenSemicolonType:
+		return string(TokenSemicolon)
+	case TokenLessThanType:
+		return string(TokenLessThan)
+	case TokenColonType:
+		return string(TokenColon)
 	case TokenIdentifierType:
 		return fmt.Sprintf("identifier(%s)", t.Value)
 	default:
 		return fmt.Sprintf("unknown(%s)", t.Value)
 	}
+	return fmt.Sprintf("unknown(%s)", t.Value)
 }
 
 // isBracket checks if the given rune is a parenthesis.
@@ -95,6 +116,11 @@ func isComma(r TokenRune) bool {
 	return r == TokenComma
 }
 
+// isSemicolon checks if the given rune is a semicolon.
+func isSemicolon(r TokenRune) bool {
+	return r == TokenSemicolon
+}
+
 // isEqual checks if the given rune is an equals sign.
 func isEqual(r TokenRune) bool {
 	return r == TokenEquals
@@ -110,10 +136,11 @@ func Tokenize(input string) []Token {
 	tokens := make([]Token, 0)
 
 	var sb strings.Builder
+	var previousTokenRune TokenRune
 	for _, r := range input {
 
-		// Handle comma-separated tokens or tokens separated by add sign token
-		if isComma(TokenRune(r)) || isAdd(TokenRune(r)) {
+		// Handle comma-separated tokens or tokens separated by add sign token or tokens separated by semicolon
+		if isComma(TokenRune(r)) || isAdd(TokenRune(r)) || isSemicolon(TokenRune(r)) {
 			if sb.Len() > 0 {
 				word := TokenValue(sb.String())
 				sb.Reset()
@@ -130,9 +157,10 @@ func Tokenize(input string) []Token {
 			switch TokenRune(r) {
 			case TokenAdd:
 				tokens = append(tokens, Token{Type: TokenAddType})
+			case TokenSemicolon:
+				tokens = append(tokens, Token{Type: TokenSemicolonType})
 			}
-			continue
-		} else if isEqual(TokenRune(r)) {
+		} else if isEqual(TokenRune(r)) && previousTokenRune != TokenColon {
 			// Handle equal sign tokens
 			tokens = append(tokens, Token{Type: TokenEqualsType})
 		} else if unicode.IsSpace(r) {
@@ -142,6 +170,12 @@ func Tokenize(input string) []Token {
 				sb.Reset()
 
 				switch word {
+				case TokenValue(TokenLessThan):
+					tokens = append(tokens, Token{Type: TokenLessThanType})
+				case TokenShortVariableAssignment:
+					tokens = append(tokens, Token{Type: TokenShortVariableAssignmentType})
+				case TokenFor:
+					tokens = append(tokens, Token{Type: TokenForType})
 				case TokenWhile:
 					tokens = append(tokens, Token{Type: TokenWhileType})
 				case TokenLet:
@@ -204,7 +238,7 @@ func Tokenize(input string) []Token {
 			// Accumulate non-special characters into a word
 			sb.WriteRune(r)
 		}
-
+		previousTokenRune = TokenRune(r)
 	}
 
 	// Process the last word if any
