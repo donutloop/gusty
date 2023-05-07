@@ -5,6 +5,8 @@ build:
 	go build -v -tags=llvm15 ./...
 
 
+LLC ?= llc
+
 SOURCEDIR := ./integration/expected
 SOURCES := $(wildcard $(SOURCEDIR)/*.ll)
 OBJECTS := $(patsubst %.ll,%.o,$(SOURCES))
@@ -15,7 +17,7 @@ EXECUTABLES := $(patsubst %.ll,%,$(SOURCES))
 all: $(EXECUTABLES)
 
 $(SOURCEDIR)/%.o: $(SOURCEDIR)/%.ll
-	llc-15 -opaque-pointers -filetype=obj $< -o $@
+	$(LLC) -opaque-pointers -filetype=obj $< -o $@
 
 $(SOURCEDIR)/%: $(SOURCEDIR)/%.o
 	gcc -fsanitize=address -g -O1  $< -o $@

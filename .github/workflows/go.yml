@@ -35,3 +35,5 @@ jobs:
 
       - name: Test LLVM IR code
         run: make testllvmcode
+        env:
+          LLC: llc-15
