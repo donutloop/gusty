@@ -18,7 +18,7 @@ $(SOURCEDIR)/%.o: $(SOURCEDIR)/%.ll
 	llc -opaque-pointers -filetype=obj $< -o $@
 
 $(SOURCEDIR)/%: $(SOURCEDIR)/%.o
-	gcc $< -o $@
+	gcc -fsanitize=address -g -O1  $< -o $@
 
 buildllvmcode: $(EXECUTABLES)
 	@for executable in $(EXECUTABLES); do \

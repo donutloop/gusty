@@ -130,7 +130,7 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	module := llvm.NewModule("main")
 
-	mainType := llvm.FunctionType(llvm.VoidType(), []llvm.Type{}, false)
+	mainType := llvm.FunctionType(llvm.Int32Type(), []llvm.Type{}, false)
 	mainFunc := llvm.AddFunction(module, "main", mainType)
 
 	printfType := llvm.FunctionType(llvm.Int32Type(), []llvm.Type{llvm.PointerType(llvm.Int32Type(), 0)}, true)
@@ -232,7 +232,7 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 		}
 	}
 
-	mainBuilder.CreateRetVoid()
+	mainBuilder.CreateRet(llvm.ConstInt(llvm.Int32Type(), 0, false))
 
 	// Verify the module
 	if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
