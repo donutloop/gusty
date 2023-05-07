@@ -19,9 +19,12 @@ type LetNode struct {
 // IsNode is an empty method to satisfy the Node interface.
 func (n *LetNode) IsNode() {}
 
+// dataType represents the underlying data type of a value.
 type dataType int
 
+// Constants for different data types.
 const (
+	// Integer32Type represents the 32-bit integer data type.
 	Integer32Type dataType = iota
 )
 
@@ -81,12 +84,14 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 
 		switch token.Type {
 		case TokenIdentifierType:
-			callerNode, newIndex, err := parseCaller(tokens, index)
-			if err != nil {
-				return nil, -1, err
+			if IsOpenParenthesisToken(index+1, tokens) {
+				callerNode, newIndex, err := parseCaller(tokens, index)
+				if err != nil {
+					return nil, -1, err
+				}
+				index = newIndex
+				nodes = append(nodes, callerNode)
 			}
-			index = newIndex
-			nodes = append(nodes, callerNode)
 		case TokenCloseCurlyBracketType:
 			if tokenType == TokenFunctionType {
 				return nodes, index, nil
@@ -127,15 +132,14 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 // and body.
 func parseFunction(tokens []Token, index int) (Node, int, error) {
 	// Ensure there is a token following the 'function' keyword
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenIdentifierType {
+	index++
+	if IsNotIdentifierToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected identifier after 'function' at position %d", index)
 	}
-	index++
 	name := tokens[index].Value
-	index++
-
 	// Ensure the next token is an open bracket '('
-	if index >= len(tokens) || tokens[index].Type != TokenOpenParenthesisType {
+	index++
+	if IsNotOpenParenthesisToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected '(' after function name at position %d", index)
 	}
 	index++
@@ -143,11 +147,11 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	// Initialize parameters slice and parse function parameters
 	var parameters []*Parameter
 	for {
-		if index < len(tokens) && tokens[index].Type == TokenIdentifierType {
+		if IsIdentifierToken(index, tokens) {
 			var p = &Parameter{Identifier: tokens[index].Value}
 
 			index++
-			if index < len(tokens) && tokens[index].Type != TokenInteger32Type {
+			if IsInteger32Token(index, tokens) {
 				return nil, -1, fmt.Errorf("expected 'i32' after function parameter at position %d", index)
 			}
 			p.Type = Integer32Type
@@ -159,13 +163,13 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	}
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseParenthesisType {
+	if IsNotCloseParenthesisToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected ')' after function parameters at position %d", index)
 	}
 	index++
 
 	// Ensure the next token is an open curly brace '{'
-	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyBracketType {
+	if IsNotOpenCurlyBracketToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected '{' after function parameters at position %d", index)
 	}
 	index++
@@ -178,7 +182,7 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 	index += newIndex
 
 	// Ensure the next token is a close curly brace '}'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyBracketType {
+	if IsNotCloseCurlyBracketToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected '}' after function body at position %d", index)
 	}
 	index++
@@ -193,20 +197,21 @@ func parseFunction(tokens []Token, index int) (Node, int, error) {
 // condition and body.
 func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	// Ensure the next token is an open bracket '('
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenParenthesisType {
+	index++
+	if IsNotOpenParenthesisToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected '(' after 'while' at position %d", index)
 	}
 	condition := tokens[index+2].Value
-	index += 3
+	index += 2
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseParenthesisType {
+	if IsNotCloseParenthesisToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected ')' after while condition at position %d", index)
 	}
 	index++
 
 	// Ensure the next token is an open curly brace '{'
-	if index >= len(tokens) || tokens[index].Type != TokenOpenCurlyBracketType {
+	if IsNotOpenCurlyBracketToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected '{' after while condition at position %d", index)
 	}
 	index++
@@ -219,7 +224,7 @@ func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 	index += newIndex
 
 	// Ensure the next token is a close curly brace '}'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseCurlyBracketType {
+	if IsNotCloseCurlyBracketToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected '}' after while body at position %d", index)
 	}
 	index++
@@ -235,29 +240,31 @@ func parseWhile(tokens []Token, index int) (*WhileNode, int, error) {
 // identifier and value.
 func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 	// Ensure the next token is an identifier
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenIdentifierType {
+	index++
+	if IsNotIdentifierToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected identifier after 'let' at position %d", index)
 	}
+	name := tokens[index].Value
+	index++
 
 	// Ensure the next token is an equals sign '='
-	if index+2 >= len(tokens) || tokens[index+2].Type != TokenEqualsType {
+	if IsNotEqualToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected '=' after let at position %d", index)
 	}
+	index++
 
 	// Parse the integer value after the equals sign
-	intValue, err := strconv.Atoi(tokens[index+3].Value)
+	intValue, err := strconv.Atoi(tokens[index].Value)
 	if err != nil {
 		return nil, -1, fmt.Errorf("expected 'int' after equal condition at position %d", index)
 	}
+	index++
 
 	// Create a LetNode with the parsed identifier and value
 	letNode := &LetNode{
-		Identifier: tokens[index+1].Value,
+		Identifier: name,
 		Value:      int32(intValue),
 	}
-
-	// Update the index to skip the processed tokens
-	index += 4
 
 	return letNode, index, nil
 }
@@ -267,21 +274,22 @@ func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 // during parsing. It processes tokens to generate a CallerNode with its
 // function name and parameters.
 func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
-	// Ensure the next token is an open bracket '('
-	if index+1 >= len(tokens) || tokens[index+1].Type != TokenOpenParenthesisType {
-		return nil, -1, fmt.Errorf("expected '(' after caller at position %d", index)
-	}
-
 	// Retrieve the function name from the current token
 	name := tokens[index].Value
-	index += 2
+
+	// Ensure the next token is an open bracket '('
+	index++
+	if IsNotOpenParenthesisToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected '(' after caller at position %d", index)
+	}
+	index++
 
 	// Initialize parameters slice
 	var parameters []*Parameter
 
 	// Parse the function parameters
 	for {
-		if index < len(tokens) && tokens[index].Type == TokenIdentifierType {
+		if IsIdentifierToken(index, tokens) {
 
 			intValue, err := strconv.Atoi(tokens[index].Value)
 			if err == nil {
@@ -297,7 +305,7 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	}
 
 	// Ensure the next token is a close bracket ')'
-	if index >= len(tokens) || tokens[index].Type != TokenCloseParenthesisType {
+	if IsNotCloseParenthesisToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected ')' after parameters at position %d", index)
 	}
 	index++
@@ -306,4 +314,49 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	callerNode := &CallerNode{FunctionName: name, Parameters: parameters}
 
 	return callerNode, index, nil
+}
+
+// IsOpenParenthesisToken checks if the token at the given index is an open parenthesis or if the index is out of bounds.
+func IsOpenParenthesisToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type == TokenOpenParenthesisType
+}
+
+// IsNotOpenParenthesisToken checks if the token at the given index is not an open parenthesis or if the index is out of bounds.
+func IsNotOpenParenthesisToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenOpenParenthesisType
+}
+
+// IsNotCloseParenthesisToken checks if the token at the given index is not a close parenthesis or if the index is out of bounds.
+func IsNotCloseParenthesisToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenCloseParenthesisType
+}
+
+// IsNotOpenCurlyBracketToken checks if the token at the given index is not an open curly bracket or if the index is out of bounds.
+func IsNotOpenCurlyBracketToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenOpenCurlyBracketType
+}
+
+// IsNotCloseCurlyBracketToken checks if the token at the given index is not a close curly bracket or if the index is out of bounds.
+func IsNotCloseCurlyBracketToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenCloseCurlyBracketType
+}
+
+// IsIdentifierToken checks if the token at the given index is an identifier or if the index is out of bounds.
+func IsIdentifierToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type == TokenIdentifierType
+}
+
+// IsNotIdentifierToken checks if the token at the given index is not an identifier or if the index is out of bounds.
+func IsNotIdentifierToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenIdentifierType
+}
+
+// IsNotEqualToken checks if the token at the given index is not an equal sign or if the index is out of bounds.
+func IsNotEqualToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenEqualsType
+}
+
+// IsInteger32Token checks if the token at the given index is an integer32 or if the index is out of bounds.
+func IsInteger32Token(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenInteger32Type
 }
