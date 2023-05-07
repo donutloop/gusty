@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  test-on-linux-with-llvm-14:
+  test-on-linux-with-llvm-15:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
@@ -24,11 +24,20 @@ jobs:
         with:
          go-version: 1.20.x
 
+      - name: Set up GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: latest
+          platform: x64
+
       - name: Go mod download
         run: go mod download
 
       - name: Build
-        run: go build -v -tags=llvm15 ./...
+        run: make build
 
       - name: Test
-        run: go test -v -tags=llvm15 ./...
+        run: make test
+
+      - name: Test LLVM IR code
+        run: make testllvmcode
