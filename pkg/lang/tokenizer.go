@@ -24,6 +24,7 @@ const (
 	TokenCloseCurlyBracket TokenRune  = '}'
 	TokenComma             TokenRune  = ','
 	TokenEquals            TokenRune  = '='
+	TokenAdd               TokenRune  = '+'
 )
 
 // TokenType represents the type of a token.
@@ -41,6 +42,7 @@ const (
 	TokenIdentifierType
 	TokenEqualsType
 	TokenInteger32Type
+	TokenAddType
 	TokenUnknown
 )
 
@@ -69,6 +71,8 @@ func (t Token) String() string {
 		return string(TokenCloseCurlyBracket)
 	case TokenInteger32Type:
 		return string(TokenInteger32)
+	case TokenAddType:
+		return string(TokenAdd)
 	case TokenIdentifierType:
 		return fmt.Sprintf("identifier(%s)", t.Value)
 	default:
@@ -96,14 +100,20 @@ func isEqual(r TokenRune) bool {
 	return r == TokenEquals
 }
 
+// isAdd checks if the given rune is an add sign.
+func isAdd(r TokenRune) bool {
+	return r == TokenAdd
+}
+
 // Tokenize function converts the input string into a slice of tokens
 func Tokenize(input string) []Token {
 	tokens := make([]Token, 0)
 
 	var sb strings.Builder
 	for _, r := range input {
-		// Handle comma-separated tokens
-		if isComma(TokenRune(r)) {
+
+		// Handle comma-separated tokens or tokens separated by add sign token
+		if isComma(TokenRune(r)) || isAdd(TokenRune(r)) {
 			if sb.Len() > 0 {
 				word := TokenValue(sb.String())
 				sb.Reset()
@@ -114,18 +124,19 @@ func Tokenize(input string) []Token {
 				default:
 					tokens = append(tokens, Token{Type: TokenIdentifierType, Value: string(word)})
 				}
+
+			}
+
+			switch TokenRune(r) {
+			case TokenAdd:
+				tokens = append(tokens, Token{Type: TokenAddType})
 			}
 			continue
-		}
-
-		// Handle equal sign tokens
-		if isEqual(TokenRune(r)) {
+		} else if isEqual(TokenRune(r)) {
+			// Handle equal sign tokens
 			tokens = append(tokens, Token{Type: TokenEqualsType})
-			continue
-		}
-
-		// Handle whitespace-separated tokens
-		if unicode.IsSpace(r) {
+		} else if unicode.IsSpace(r) {
+			// Handle whitespace-separated tokens
 			if sb.Len() > 0 {
 				word := TokenValue(sb.String())
 				sb.Reset()

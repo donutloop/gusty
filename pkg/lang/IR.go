@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"tinygo.org/x/go-llvm"
 )
 
@@ -82,9 +83,10 @@ type Global struct {
 // It contains mappings of names to callers (functions or methods),
 // local variables, and function or method arguments.
 type Scope struct {
-	Callers   map[string]Caller
-	Variables map[string]Variable
-	Arguments map[string]Argument
+	Callers          map[string]Caller
+	Variables        map[string]Variable
+	Arguments        map[string]Argument
+	PreviousVariable Variable
 }
 
 // GlobalScope represents the global scope for the LLVM module.
@@ -152,8 +154,14 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	defer mainBuilder.Dispose()
 	mainBuilder.SetInsertPointAtEnd(entry)
 
-	for _, node := range nodes {
+	for i := 0; i < len(nodes); i++ {
+		node := nodes[i]
 		switch n := node.(type) {
+		case *AddOperationNode:
+			err := generateAdd(&mainFunctionScope, mainBuilder, n)
+			if err != nil {
+				return "", err
+			}
 		case *CallerNode:
 			err := generateCaller(&mainFunctionScope, mainBuilder, n)
 			if err != nil {
@@ -242,13 +250,24 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 // functionBuilder:  The LLVM builder associated with the current function.
 // callerNode:          The abstract syntax tree (AST) node representing the caller statement.
 func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *CallerNode) error {
+	if callerNode.isParameterOperation {
+		err := generateAdd(scope, functionBuilder, callerNode.AddOperationNode)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Special case for handling printf calls
 	if callerNode.FunctionName == printfIndentifier {
 		// Load the value of the parameter and create a GEP for the format string
 		format := functionBuilder.CreateInBoundsGEP(globalScope.Globals["format_string"].Value.Type(), *globalScope.Globals["format_string"].Value, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
 
-		if variable, ok := scope.Variables[callerNode.Parameters[0].Identifier]; ok {
+		if callerNode.isParameterOperation {
+			// Create the call instruction for printf with the format string and value as arguments
+			value := functionBuilder.CreateLoad(scope.PreviousVariable.Value.Type(), *scope.PreviousVariable.Value, "")
+			functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, value}, "")
+			scope.PreviousVariable.Value = nil
+		} else if variable, ok := scope.Variables[callerNode.Parameters[0].Identifier]; ok {
 			value := functionBuilder.CreateLoad(variable.Value.Type(), *variable.Value, callerNode.Parameters[0].Identifier+"Value")
 			// Create the call instruction for printf with the format string and value as arguments
 			functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, value}, "")
@@ -325,4 +344,54 @@ func generateLet(scope *Scope, functionBuilder llvm.Builder, letNode *LetNode) e
 		return fmt.Errorf("invalid value type for let node: %v", letNode)
 	}
 	return nil
+}
+
+// generateAdd is a function that generates LLVM IR code for an "add" statement.
+// The add statement adds two number values in the current scope.
+// This function handles the case where the value is an int32.
+//
+// scope:            A pointer to the current scope.
+// functionBuilder:  The LLVM builder associated with the current function.
+// AddOperationNode: The abstract syntax tree (AST) node representing the let statement.
+//
+// Returns an error if the value type of the AddOperationNode is not supported.
+func generateAdd(scope *Scope, functionBuilder llvm.Builder, addOperationNode *AddOperationNode) error {
+	// Check if the left value is of type int32
+	intLeftValue, ok := addOperationNode.LeftValue.(int32)
+	if !ok {
+		// Return an error if the value type is not supported
+		return fmt.Errorf("invalid value type for add operation node: %v", addOperationNode)
+	}
+
+	// Check if the right value is of type int32
+	intRightValue, ok := addOperationNode.RightValue.(int32)
+	if !ok {
+		// Return an error if the value type is not supported
+		return fmt.Errorf("invalid value type for operation node: %v", addOperationNode)
+	}
+
+	// Create a constant int32 LLVM value from the left int32 value
+	leftValueConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intLeftValue), true)
+	// Create a constant int32 LLVM value from the left int32 value
+	rightValueConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intRightValue), true)
+	// Create an add instruction to add left and right constant int32 values
+	v := functionBuilder.CreateAdd(leftValueConstInt, rightValueConstInt, "")
+
+	variableName := GenerateRandomIdentifier()
+	resultAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), variableName)
+	// Set the alignment of the allocated memory to 4 bytes
+	resultAlloca.SetAlignment(4)
+	// Store the constant int32 value in the allocated memory
+	functionBuilder.CreateStore(v, resultAlloca)
+
+	// Add the new local variable to the current scope
+	scope.PreviousVariable = Variable{
+		Value: &resultAlloca,
+	}
+
+	return nil
+}
+
+var GenerateRandomIdentifier = func() string {
+	return uuid.New().String()
 }

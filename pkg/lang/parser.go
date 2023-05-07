@@ -5,6 +5,15 @@ import (
 	"strconv"
 )
 
+// dataType represents the underlying data type of a value.
+type dataType int
+
+// Constants for different data types.
+const (
+	// Integer32Type represents the 32-bit integer data type.
+	Integer32Type dataType = iota
+)
+
 // Node is an interface representing nodes in the abstract syntax tree.
 type Node interface {
 	IsNode()
@@ -19,14 +28,14 @@ type LetNode struct {
 // IsNode is an empty method to satisfy the Node interface.
 func (n *LetNode) IsNode() {}
 
-// dataType represents the underlying data type of a value.
-type dataType int
+// AddOperationNode represents a add statement.
+type AddOperationNode struct {
+	LeftValue  any
+	RightValue any
+}
 
-// Constants for different data types.
-const (
-	// Integer32Type represents the 32-bit integer data type.
-	Integer32Type dataType = iota
-)
+// IsNode is an empty method to satisfy the Node interface.
+func (n *AddOperationNode) IsNode() {}
 
 // Parameter represents a parameter in a function or function call.
 type Parameter struct {
@@ -56,8 +65,10 @@ type FunctionNode struct {
 
 // CallerNode represents a function call.
 type CallerNode struct {
-	FunctionName string
-	Parameters   []*Parameter
+	FunctionName         string
+	Parameters           []*Parameter
+	isParameterOperation bool
+	AddOperationNode     *AddOperationNode
 }
 
 // IsNode is an empty method to satisfy the Node interface.
@@ -91,6 +102,13 @@ func parseNodes(tokens []Token, index int, tokenType TokenType) ([]Node, int, er
 				}
 				index = newIndex
 				nodes = append(nodes, callerNode)
+			} else if IsAddToken(index+1, tokens) {
+				addOperationNode, newIndex, err := parseAddOperation(tokens, index)
+				if err != nil {
+					return nil, -1, err
+				}
+				index = newIndex
+				nodes = append(nodes, addOperationNode)
 			}
 		case TokenCloseCurlyBracketType:
 			if tokenType == TokenFunctionType {
@@ -269,6 +287,45 @@ func parseLet(tokens []Token, index int) (*LetNode, int, error) {
 	return letNode, index, nil
 }
 
+func parseAddOperation(tokens []Token, index int) (*AddOperationNode, int, error) {
+	// Ensure the next token is an identifier
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'identifier' at start %d", index)
+	}
+
+	// Parse the integer value
+	leftValue, err := strconv.Atoi(tokens[index].Value)
+	if err != nil {
+		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
+	}
+	index++
+
+	// Ensure the next token is an add sign
+	if IsNotAddToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'add sign' after 'identifier' at position %d", index)
+	}
+	index++
+	// Ensure the next token is an identifier
+	if IsNotIdentifierToken(index, tokens) {
+		return nil, -1, fmt.Errorf("expected 'identifier' after 'add sign' at position %d", index)
+	}
+
+	// Parse the integer value
+	rightValue, err := strconv.Atoi(tokens[index].Value)
+	if err != nil {
+		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
+	}
+	index++
+
+	// Create a AddOperationNode with the parsed left and right values
+	addOperationNode := &AddOperationNode{
+		LeftValue:  int32(leftValue),
+		RightValue: int32(rightValue),
+	}
+
+	return addOperationNode, index, nil
+}
+
 // parseCaller takes a slice of tokens and an index as input parameters and
 // returns a CallerNode, an updated index, and an error if there is any issue
 // during parsing. It processes tokens to generate a CallerNode with its
@@ -288,20 +345,33 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	var parameters []*Parameter
 
 	// Parse the function parameters
-	for {
-		if IsIdentifierToken(index, tokens) {
+	var isParameterOperation bool
+	var addOperationNode *AddOperationNode
+	if IsNotAddToken(index+1, tokens) {
+		for {
+			if IsIdentifierToken(index, tokens) {
 
-			intValue, err := strconv.Atoi(tokens[index].Value)
-			if err == nil {
-				parameters = append(parameters, &Parameter{Value: int32(intValue), Type: Integer32Type, Identifier: tokens[index].Value})
+				intValue, err := strconv.Atoi(tokens[index].Value)
+				if err == nil {
+					parameters = append(parameters, &Parameter{Value: int32(intValue), Type: Integer32Type, Identifier: tokens[index].Value})
+				} else {
+					parameters = append(parameters, &Parameter{Value: tokens[index].Value, Identifier: tokens[index].Value})
+				}
+
+				index++
 			} else {
-				parameters = append(parameters, &Parameter{Value: tokens[index].Value, Identifier: tokens[index].Value})
+				break
 			}
-
-			index++
-		} else {
-			break
 		}
+	} else {
+		var err error
+		addOperationNode, _, err = parseAddOperation(tokens, index)
+		if err != nil {
+			return nil, -1, err
+		}
+
+		index += 3
+		isParameterOperation = true
 	}
 
 	// Ensure the next token is a close bracket ')'
@@ -311,7 +381,7 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	index++
 
 	// Create a CallerNode with the parsed function name and parameters
-	callerNode := &CallerNode{FunctionName: name, Parameters: parameters}
+	callerNode := &CallerNode{FunctionName: name, Parameters: parameters, isParameterOperation: isParameterOperation, AddOperationNode: addOperationNode}
 
 	return callerNode, index, nil
 }
@@ -359,4 +429,14 @@ func IsNotEqualToken(currentIndex int, tokens []Token) bool {
 // IsInteger32Token checks if the token at the given index is an integer32 or if the index is out of bounds.
 func IsInteger32Token(currentIndex int, tokens []Token) bool {
 	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenInteger32Type
+}
+
+// IsNotAddToken checks if the token at the given index is not an add sign or if the index is out of bounds.
+func IsNotAddToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type != TokenAddType
+}
+
+// IsAddToken checks if the token at the given index is an add sign or if the index is out of bounds.
+func IsAddToken(currentIndex int, tokens []Token) bool {
+	return currentIndex >= len(tokens) || tokens[currentIndex].Type == TokenAddType
 }

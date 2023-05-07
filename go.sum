@@ -1,2 +1,4 @@
+github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
+github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 tinygo.org/x/go-llvm v0.0.0-20230426222550-71df1cb8675c h1:DiOOEDH82NnDnQewJ4Y19avqEK+J/tjGU3uq59Sifug=
 tinygo.org/x/go-llvm v0.0.0-20230426222550-71df1cb8675c/go.mod h1:GFbusT2VTA4I+l4j80b17KFK+6whv69Wtny5U+T8RR0=
