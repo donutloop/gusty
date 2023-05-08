@@ -3,7 +3,6 @@ package integration
 import (
 	"bytes"
 	"github.com/donutloop/gusty/pkg/lang"
-	"log"
 	"os"
 	"testing"
 )
@@ -22,21 +21,7 @@ func TestFunctionWithLetAndCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedLlvmIR, err := os.ReadFile("./expected/program_1.ll")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	v := bytes.Compare(expectedLlvmIR, []byte(actualLvmIR))
-	if v != 0 {
-		t.Error("program code is not bad")
-	}
-
-	t.Log("Actual LLVM IR: ")
-	t.Log(actualLvmIR)
-
-	t.Log("Expected LLVM IR: ")
-	t.Log(string(expectedLlvmIR))
+	assert(t, []byte(actualLvmIR), "program_1")
 }
 
 func TestLet(t *testing.T) {
@@ -53,21 +38,7 @@ func TestLet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedLlvmIR, err := os.ReadFile("./expected/let.ll")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	v := bytes.Compare(expectedLlvmIR, []byte(actualLvmIR))
-	if v != 0 {
-		t.Error("program code is not bad")
-	}
-
-	t.Log("Actual LLVM IR: ")
-	t.Log(actualLvmIR)
-
-	t.Log("Expected LLVM IR: ")
-	t.Log(string(expectedLlvmIR))
+	assert(t, []byte(actualLvmIR), "let")
 }
 
 func TestAddTwoConst(t *testing.T) {
@@ -88,21 +59,7 @@ func TestAddTwoConst(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedLlvmIR, err := os.ReadFile("./expected/add.ll")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	v := bytes.Compare(expectedLlvmIR, []byte(actualLvmIR))
-	if v != 0 {
-		t.Error("program code is not bad")
-	}
-
-	t.Log("Actual LLVM IR: ")
-	t.Log(actualLvmIR)
-
-	t.Log("Expected LLVM IR: ")
-	t.Log(string(expectedLlvmIR))
+	assert(t, []byte(actualLvmIR), "add")
 }
 
 func TestFor(t *testing.T) {
@@ -119,18 +76,22 @@ func TestFor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedLlvmIR, err := os.ReadFile("./expected/for.ll")
+	assert(t, []byte(actualLvmIR), "for")
+}
+
+func assert(t *testing.T, actualLvmIR []byte, filename string) {
+	expectedLlvmIR, err := os.ReadFile("./expected/" + filename + ".ll")
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 
-	v := bytes.Compare(expectedLlvmIR, []byte(actualLvmIR))
+	v := bytes.Compare(expectedLlvmIR, actualLvmIR)
 	if v != 0 {
 		t.Error("program code is not bad")
 	}
 
 	t.Log("Actual LLVM IR: ")
-	t.Log(actualLvmIR)
+	t.Log(string(actualLvmIR))
 
 	t.Log("Expected LLVM IR: ")
 	t.Log(string(expectedLlvmIR))
