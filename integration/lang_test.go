@@ -9,36 +9,12 @@ import (
 
 func TestFunctionWithLetAndCaller(t *testing.T) {
 	input := `function add(a i32, b i32) { let donut = 43 printf(donut) printf(a) } add(1,2)`
-
-	tokens := lang.Tokenize(input)
-	nodes, err := lang.Parse(tokens)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	actualLvmIR, err := lang.GenerateLLVMIR(nodes)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert(t, []byte(actualLvmIR), "program_1")
+	assert(t, generate(t, input), "program_1")
 }
 
 func TestLet(t *testing.T) {
 	input := `let donutloop = 42`
-
-	tokens := lang.Tokenize(input)
-	nodes, err := lang.Parse(tokens)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	actualLvmIR, err := lang.GenerateLLVMIR(nodes)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert(t, []byte(actualLvmIR), "let")
+	assert(t, generate(t, input), "let")
 }
 
 func TestAddTwoConst(t *testing.T) {
@@ -47,24 +23,15 @@ func TestAddTwoConst(t *testing.T) {
 	}
 
 	input := `printf(42 + 42)`
-
-	tokens := lang.Tokenize(input)
-	nodes, err := lang.Parse(tokens)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	actualLvmIR, err := lang.GenerateLLVMIR(nodes)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert(t, []byte(actualLvmIR), "add")
+	assert(t, generate(t, input), "add")
 }
 
 func TestFor(t *testing.T) {
 	input := `for i := 0; i < 10; i++ { printf(i) }`
+	assert(t, generate(t, input), "for")
+}
 
+func generate(t *testing.T, input string) []byte {
 	tokens := lang.Tokenize(input)
 	nodes, err := lang.Parse(tokens)
 	if err != nil {
@@ -76,7 +43,7 @@ func TestFor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert(t, []byte(actualLvmIR), "for")
+	return []byte(actualLvmIR)
 }
 
 func assert(t *testing.T, actualLvmIR []byte, filename string) {
