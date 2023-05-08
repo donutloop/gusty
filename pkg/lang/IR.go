@@ -397,63 +397,102 @@ func generateAdd(scope *Scope, functionBuilder llvm.Builder, addOperationNode *A
 	return nil
 }
 
-// generateFor is a function that generates LLVM IR code for an "for" statement.
-// The add statement adds two number values in the current scope.
-// This function handles the case where the value is an int32.
+// generateFor is a function that generates LLVM IR code for a "for" loop in the form of "for i := init; i < limit; i++".
+// The function takes the initial value, limit, and body of the loop and generates the appropriate LLVM IR code.
 //
-// scope:            A pointer to the current scope.
+// scope:            A pointer to the current scope containing local variables and function calls.
+// function:         The LLVM function value representing the current function.
 // functionBuilder:  The LLVM builder associated with the current function.
-// forNode: The abstract syntax tree (AST) node representing the for.
+// forNode:          The abstract syntax tree (AST) node representing the for loop.
 //
-// Returns an error if the value type of the AddOperationNode is not supported.
+// Returns an error if the value type of the loop variables is not supported.
 func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder, forNode *ForNode) error {
-	// Check if the left value is of type int32
-	intLeftValue, ok := forNode.Init.Value.(int32)
+	// Check if the init value is of type int32
+	initValue, ok := forNode.Init.Value.(int32)
 	if !ok {
 		// Return an error if the value type is not supported
 		return fmt.Errorf("invalid value type for init: %v", forNode.Init.Value)
 	}
+
 	// Define loop variables.
-	counterAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), forNode.Init.Identifier)
+	// Allocate memory for the loop variable in the current function
+	initAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), "for_init_"+forNode.Init.Identifier)
 	// Set the alignment of the allocated memory to 4 bytes
-	counterAlloca.SetAlignment(4)
-	// Create a constant int32 LLVM value from the left int32 value
-	leftValueConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intLeftValue), true)
+	initAlloca.SetAlignment(4)
+	// Create a constant int32 LLVM value from the init value
+	initConst := llvm.ConstInt(llvm.Int32Type(), uint64(initValue), true)
 	// Store the constant int32 value in the allocated memory
-	functionBuilder.CreateStore(leftValueConstInt, counterAlloca)
+	functionBuilder.CreateStore(initConst, initAlloca)
 
 	// Add the new local variable to the current scope
 	scope.Variables[forNode.Init.Identifier] = Variable{
-		Value: &counterAlloca,
+		Value: &initAlloca,
 	}
 
+	// Create basic blocks for the loop and the end of the loop
 	loopBlock := llvm.AddBasicBlock(function, "loop")
 	endBlock := llvm.AddBasicBlock(function, "end")
 
-	// Branch to loop condition from entry block.
+	// Branch to loop condition from entry block
 	functionBuilder.CreateBr(loopBlock)
 
+	// Set the insertion point to the loop block
 	functionBuilder.SetInsertPointAtEnd(loopBlock)
 
-	// todo generate all instructions
-	err := generateCaller(scope, functionBuilder, forNode.Body[0].(*CallerNode))
-	if err != nil {
-		return err
+	// Generate all instructions in the loop body
+	for i := 0; i < len(forNode.Body); i++ {
+		node := forNode.Body[i]
+		switch n := node.(type) {
+		case *ForNode:
+			// todo to be implemented
+		case *AddOperationNode:
+			err := generateAdd(scope, functionBuilder, n)
+			if err != nil {
+				return err
+			}
+		case *CallerNode:
+			err := generateCaller(scope, functionBuilder, n)
+			if err != nil {
+				return err
+			}
+		case *WhileNode:
+			// todo to be implemented
+		}
 	}
 
-	// Increment the counter
-	// todo use node description
-	counterVal := functionBuilder.CreateLoad(llvm.Int32Type(), counterAlloca, forNode.Init.Identifier+"Val")
+	// Load the current value of the loop variable
+	initValueFromLoad := functionBuilder.CreateLoad(llvm.Int32Type(), initAlloca, "for_init_"+forNode.Condition.LeftValue+"_value")
 
-	// Convert the global pointer to an i32 value
-	// todo use increment value from node
-	updatedCounter := functionBuilder.CreateAdd(counterVal, llvm.ConstInt(llvm.Int32Type(), 1, false), "updatedCounter")
-	functionBuilder.CreateStore(updatedCounter, counterAlloca)
-	// todo use for limit value from node
-	cond := functionBuilder.CreateICmp(llvm.IntULE, updatedCounter, llvm.ConstInt(llvm.Int32Type(), 5, false), "loopCond")
+	// Update the loop variable by incrementing it
+	var postValue int32
+	if forNode.Post.Increment {
+		postValue = 1
+	}
+
+	updatedInit := functionBuilder.CreateAdd(initValueFromLoad, llvm.ConstInt(llvm.Int32Type(), uint64(postValue), false), "for_init_"+forNode.Condition.LeftValue+"_value_updated")
+
+	// Store the updated loop variable back into memory
+	functionBuilder.CreateStore(updatedInit, initAlloca)
+
+	// Determine the loop limit
+	var limit int32
+	if l, ok := forNode.Condition.RightValue.(int32); ok {
+		limit = l
+	}
+
+	// Determine the loop condition based on the comparison operator
+	var predicate llvm.IntPredicate
+	if _, ok := forNode.Condition.Operator.(LessThanOperator); ok {
+		predicate = llvm.IntULE
+	}
+
+	// Create the loop condition using the comparison operator and the loop limit
+	cond := functionBuilder.CreateICmp(predicate, updatedInit, llvm.ConstInt(llvm.Int32Type(), uint64(limit), false), "loopCond")
+
+	// Create a conditional branch to either the loop block or the end block
 	functionBuilder.CreateCondBr(cond, loopBlock, endBlock)
 
-	// End block
+	// Set the insertion point to the end block
 	functionBuilder.SetInsertPointAtEnd(endBlock)
 
 	return nil

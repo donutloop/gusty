@@ -398,30 +398,39 @@ func parseCaller(tokens []Token, index int) (*CallerNode, int, error) {
 	return callerNode, index, nil
 }
 
+// parseAddOperation is a function that parses an addition operation from a list of tokens.
+// The function expects two integer values separated by an add sign, e.g., "2 + 3".
+// It creates an AddOperationNode that represents the addition operation in the abstract syntax tree (AST).
+//
+// tokens: A list of tokens representing the input code.
+// index:  The current index in the list of tokens.
+//
+// Returns an AddOperationNode representing the addition operation, the updated index after parsing, and an error if any issues are encountered during parsing.
 func parseAddOperation(tokens []Token, index int) (*AddOperationNode, int, error) {
-	// Ensure the next token is an identifier
+	// Ensure the next token is an identifier (integer value)
 	if IsNotIdentifierToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected 'identifier' at start %d", index)
 	}
 
-	// Parse the integer value
+	// Parse the integer value for the left operand
 	leftValue, err := strconv.Atoi(tokens[index].Value)
 	if err != nil {
 		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
 	}
 	index++
 
-	// Ensure the next token is an add sign
+	// Ensure the next token is an add sign (+)
 	if IsNotAddToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected 'add sign' after 'identifier' at position %d", index)
 	}
 	index++
-	// Ensure the next token is an identifier
+
+	// Ensure the next token is an identifier (integer value) for the right operand
 	if IsNotIdentifierToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected 'identifier' after 'add sign' at position %d", index)
 	}
 
-	// Parse the integer value
+	// Parse the integer value for the right operand
 	rightValue, err := strconv.Atoi(tokens[index].Value)
 	if err != nil {
 		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
@@ -437,13 +446,22 @@ func parseAddOperation(tokens []Token, index int) (*AddOperationNode, int, error
 	return addOperationNode, index, nil
 }
 
+// parseFor is a function that parses a "for" loop from a list of tokens.
+// The function expects a specific format for the for loop, e.g., "for i := 0; i < 10; i++".
+// It creates a ForNode that represents the "for" loop in the abstract syntax tree (AST).
+//
+// tokens: A list of tokens representing the input code.
+// index:  The current index in the list of tokens.
+//
+// Returns a ForNode representing the "for" loop, the updated index after parsing, and an error if any issues are encountered during parsing.
 func parseFor(tokens []Token, index int) (*ForNode, int, error) {
-
+	// Ensure the next token is a 'for' keyword
 	if IsNotForToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected 'for' at start %d", index)
 	}
 	index++
 
+	// Parse the loop initialization statement (short variable assignment)
 	if IsNotIdentifierToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected identifier after 'for' at position %d", index)
 	}
@@ -460,7 +478,7 @@ func parseFor(tokens []Token, index int) (*ForNode, int, error) {
 		return nil, -1, fmt.Errorf("expected identifier after ':=' at position %d", index)
 	}
 
-	// Parse the integer value
+	// Parse the integer value for loop initialization
 	shortVariableAssigmentRightValue, err := strconv.Atoi(tokens[index].Value)
 	if err != nil {
 		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
@@ -468,12 +486,14 @@ func parseFor(tokens []Token, index int) (*ForNode, int, error) {
 
 	index++
 
+	// Ensure the next token is a semicolon ';'
 	if IsNotSemicolonToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected ; after 'value' at position %d", index)
 	}
 
 	index++
 
+	// Parse the loop condition statement
 	if IsNotIdentifierToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected identifier after ';' at position %d", index)
 	}
@@ -481,24 +501,29 @@ func parseFor(tokens []Token, index int) (*ForNode, int, error) {
 	conditionLeftValue := tokens[index].Value
 	index++
 
+	// Ensure the next token is a less than operator '<'
 	if IsNotLessThanToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected < after 'idenfifier' at position %d", index)
 	}
 	operator := LessThanOperator{}
 	index++
 
-	// Parse the integer value
+	// Parse the integer value for loop condition
 	conditionRightValue, err := strconv.Atoi(tokens[index].Value)
 	if err != nil {
 		return nil, -1, fmt.Errorf("expected 'int' as value at position %d", index)
 	}
 
 	index++
+
+	// Ensure the next token is a semicolon ';'
 	if IsNotSemicolonToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected ; after 'value' at position %d", index)
 	}
 
 	index++
+
+	// Parse the loop post statement (increment or decrement)
 	if IsNotIdentifierToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected identifier after ';' at position %d", index)
 	}
@@ -512,13 +537,14 @@ func parseFor(tokens []Token, index int) (*ForNode, int, error) {
 	}
 	index++
 
-	// Ensure the next token is an add sign
+	// Ensure the next token is an add sign '+'
 	if IsNotAddToken(index, tokens) {
 		return nil, -1, fmt.Errorf("expected 'add sign' after 'add sign' at position %d", index)
 	}
 
 	index++
 
+	// Create a ForNode with the parsed loop initialization, condition, and post statements
 	forNode := &ForNode{
 		Init: ShortVariableAssigmentNode{
 			Identifier: shortVariableAssigmentName,
@@ -541,7 +567,7 @@ func parseFor(tokens []Token, index int) (*ForNode, int, error) {
 	}
 	index++
 
-	// Parse the function body
+	// Parse the loop body, which is a sequence of statements enclosed in curly braces
 	body, newIndex, err := parseNodes(tokens[index:], 0, TokenForType)
 	if err != nil {
 		return nil, -1, err
@@ -554,8 +580,10 @@ func parseFor(tokens []Token, index int) (*ForNode, int, error) {
 	}
 	index++
 
+	// Set the parsed loop body to the ForNode
 	forNode.Body = body
 
+	// Return the parsed ForNode, updated index
 	return forNode, index, nil
 }
 
