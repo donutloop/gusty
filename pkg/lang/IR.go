@@ -444,13 +444,19 @@ func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder
 		node := forNode.Body[i]
 		switch n := node.(type) {
 		case *ForNode:
-			// todo to be implemented
+			// generate nested for loop
+			err := generateFor(scope, function, functionBuilder, n)
+			if err != nil {
+				return err
+			}
 		case *AddOperationNode:
+			// generate add operation
 			err := generateAdd(scope, functionBuilder, n)
 			if err != nil {
 				return err
 			}
 		case *CallerNode:
+			// generate function call
 			err := generateCaller(scope, functionBuilder, n)
 			if err != nil {
 				return err

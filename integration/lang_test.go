@@ -31,6 +31,11 @@ func TestFor(t *testing.T) {
 	assert(t, generate(t, input), "for")
 }
 
+func TestNestedFor(t *testing.T) {
+	input := `for i := 0; i < 2; i++ { for j := 0; j < 10; j++ { printf(j) } }`
+	assert(t, generate(t, input), "nested_for")
+}
+
 func generate(t *testing.T, input string) []byte {
 	tokens := lang.Tokenize(input)
 	nodes, err := lang.Parse(tokens)
