@@ -39,6 +39,26 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			last = rv
 		}
 		continue
+	case *MatchStmt:
+		sub, err := e.eval(s.Subject)
+		if err != nil {
+			return 0, err
+		}
+		for _, c := range s.Cases {
+			pv, err := e.eval(c.Pattern)
+			if err != nil {
+				return 0, err
+			}
+			if pv == sub {
+				rv, err := e.evalBody(c.Body)
+				if err != nil {
+					return 0, err
+				}
+				last = rv
+				break
+			}
+		}
+		continue
 	case *WhileStmt:
 		for {
 			cond, err := e.eval(s.Cond)

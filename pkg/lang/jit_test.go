@@ -51,3 +51,13 @@ func TestEvalForSum(t *testing.T) {
 		t.Fatalf("got %d, want 10", v)
 	}
 }
+
+func TestEvalMatch(t *testing.T) {
+	v, _, err := EvalExpr("x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+}
