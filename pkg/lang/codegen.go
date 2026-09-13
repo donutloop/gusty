@@ -7,33 +7,49 @@ import (
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 func GenerateIR(prog *Program) (string, error) {
-	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
-	var b strings.Builder
-	// printf declaration
+	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+	// pre-scan top-level for user function names
+	for _, st := range prog.Stmts {
+		if fd, ok := st.(*FuncDef); ok {
+			g.funcs[fd.Name] = true
+		}
+	}
 	g.decls = "declare i32 @printf(i8*, ...)\n"
-	if prog != nil {
-		for _, st := range prog.Stmts {
-			if err := g.stmt(&b, st); err != nil {
+	var b strings.Builder
+	// pre-scan top-level for user function names
+	// user function definitions become separate defines before main
+	for _, st := range prog.Stmts {
+		if fd, ok := st.(*FuncDef); ok {
+			if err := g.funcDef(&b, fd); err != nil {
 				return "", err
 			}
 		}
 	}
-	// emit globals then main function
+	b.WriteString("define i32 @main() {\nentry:\n")
+	for _, st := range prog.Stmts {
+		if _, ok := st.(*FuncDef); ok {
+			continue
+		}
+		if err := g.stmt(&b, st); err != nil {
+			return "", err
+		}
+	}
+	b.WriteString("  ret i32 0\n}\n")
+	// assemble output
 	var out strings.Builder
 	out.WriteString(g.globals.String())
 	out.WriteString(g.decls)
-	out.WriteString("define i32 @main() {\n")
-	out.WriteString("entry:\n")
 	out.WriteString(b.String())
-	out.WriteString("  ret i32 0\n}\n")
 	return out.String(), nil
 }
 
 type irGen struct {
 	globals strings.Builder
 	decls   string
-	sym     map[string]string // variable -> load temp
-	allocd  map[string]bool   // alloca emitted?
+	sym     map[string]string  // variable -> load temp
+	allocd  map[string]bool    // alloca emitted?
+	funcs   map[string]bool    // user-defined function names
+	params  map[string]string  // current function params: name -> register
 	fmtIdx  int
 	strIdx  int
 	tmp     int
@@ -79,6 +95,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *NoneLit:
 		return "0", nil
 	case *Name:
+		if reg, ok := g.params[n.Value]; ok {
+			return reg, nil
+		}
 		// Always load fresh from the alloca so the value dominates its use.
 		g.ldN++
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
@@ -156,6 +175,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	if n, ok := c.Fn.(*Name); ok {
 		fnName = n.Value
 	}
+	if g.funcs[fnName] {
+		args := []string{}
+		for _, a := range c.Args {
+			av, err := g.value(b, a)
+			if err != nil {
+				return "", err
+			}
+			args = append(args, "i32 "+av)
+		}
+		t := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(args, ", ")))
+		return t, nil
+	}
 	switch fnName {
 	case "print", "printf":
 		if len(c.Args) < 1 {
@@ -177,6 +209,31 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}
+}
+
+func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
+	g.params = map[string]string{}
+	b.WriteString(fmt.Sprintf("define i32 @%s(", fd.Name))
+	for i, p := range fd.Params {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(fmt.Sprintf("i32 %%p%d", i))
+		g.params[p.Name] = fmt.Sprintf("%%p%d", i)
+	}
+	b.WriteString(") {\nentry:\n")
+	for _, st := range fd.Body {
+		if err := g.stmt(b, st); err != nil {
+			return err
+		}
+	}
+	// trailing ret only if body didn't already end with one
+	if !strings.Contains(b.String(), "\n  ret ") {
+		b.WriteString("  ret i32 0\n")
+	}
+	b.WriteString("}\n\n")
+	g.params = map[string]string{}
+	return nil
 }
 
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
@@ -280,6 +337,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", itmp, n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
+	case *FuncDef:
+		if err := g.funcDef(b, n); err != nil {
+			return err
+		}
 	case *ReturnStmt:
 		v, err := g.value(b, n.Expr)
 		if err != nil {

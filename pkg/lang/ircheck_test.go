@@ -32,3 +32,11 @@ func TestIRWhileCompilesWithLLC(t *testing.T) {
 func TestIRForCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "for i in range(5):\n    print(i)")
 }
+
+func TestIRFuncCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "def double(x):\n    return x * 2\nprint(double(5))")
+}
+
+func TestIRFuncTwoParamsCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "def add(a, b):\n    return a + b\nprint(add(3, 4))")
+}
