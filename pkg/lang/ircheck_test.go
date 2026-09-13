@@ -40,3 +40,7 @@ func TestIRFuncCompilesWithLLC(t *testing.T) {
 func TestIRFuncTwoParamsCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "def add(a, b):\n    return a + b\nprint(add(3, 4))")
 }
+
+func TestIRIfCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)")
+}
