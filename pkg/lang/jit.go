@@ -20,7 +20,58 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 		case *FuncDef:
 			e.funcs[s.Name] = s
 			continue
-		case *AssignStmt:
+		case *IfStmt:
+		cond, err := e.eval(s.Cond)
+		if err != nil {
+			return 0, err
+		}
+		if cond != 0 {
+			rv, err := e.evalBody(s.Then)
+			if err != nil {
+				return 0, err
+			}
+			last = rv
+		} else if s.Else != nil {
+			rv, err := e.evalBody(s.Else)
+			if err != nil {
+				return 0, err
+			}
+			last = rv
+		}
+		continue
+	case *WhileStmt:
+		for {
+			cond, err := e.eval(s.Cond)
+			if err != nil {
+				return 0, err
+			}
+			if cond == 0 {
+				break
+			}
+			rv, err := e.evalBody(s.Body)
+			if err != nil {
+				return 0, err
+			}
+			last = rv
+		}
+		continue
+	case *ForStmt:
+		iterVal, err := e.eval(s.Iter)
+		if err != nil {
+			return 0, err
+		}
+		if n := s.Var; n != nil {
+			for i := int64(0); i < iterVal; i++ {
+				e.Vars[n.Value] = i
+				rv, err := e.evalBody(s.Body)
+				if err != nil {
+					return 0, err
+				}
+				last = rv
+			}
+		}
+		continue
+	case *AssignStmt:
 			v, err := e.eval(s.Value)
 			if err != nil {
 				return 0, err
@@ -217,7 +268,10 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return 0, nil
 		case "range":
-			return 0, nil
+			if len(n.Args) != 1 {
+				return 0, &EvalError{Msg: "range expects 1 argument"}
+			}
+			return e.eval(n.Args[0])
 		}
 	}
 	return 0, &EvalError{Msg: "unsupported call for eval"}
