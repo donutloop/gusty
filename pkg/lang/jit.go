@@ -4,10 +4,11 @@ package lang
 // It evaluates integer-typed expressions deterministically without needing
 // an LLVM JIT engine (the go-llvm fork is bindings-only, no ExecutionEngine).
 type Evaluator struct {
-	Vars map[string]int64
+	Vars  map[string]int64
+	funcs map[string]*FuncDef
 }
 
-func NewEvaluator() *Evaluator { return &Evaluator{Vars: map[string]int64{}} }
+func NewEvaluator() *Evaluator { return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}} }
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
 // the final expression statement (or last assignment). It returns an error on
@@ -16,6 +17,9 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 	var last int64
 	for _, st := range prog.Stmts {
 		switch s := st.(type) {
+		case *FuncDef:
+			e.funcs[s.Name] = s
+			continue
 		case *AssignStmt:
 			v, err := e.eval(s.Value)
 			if err != nil {
@@ -156,8 +160,52 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 	return 0, &EvalError{Msg: "unsupported operator " + n.Op}
 }
 
+func (e *Evaluator) evalBody(stmts []Stmt) (int64, error) {
+	var last int64
+	for _, st := range stmts {
+		switch s := st.(type) {
+		case *AssignStmt:
+			val, err := e.eval(s.Value)
+			if err != nil {
+				return 0, err
+			}
+			if n, ok := s.Target.(*Name); ok {
+				e.Vars[n.Value] = val
+			}
+			last = val
+		case *ExprStmt:
+			val, err := e.eval(s.Expr)
+			if err != nil {
+				return 0, err
+			}
+			last = val
+		case *ReturnStmt:
+			return e.eval(s.Expr)
+		}
+	}
+	return last, nil
+}
+
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	if name, ok := n.Fn.(*Name); ok {
+		if fd, ok2 := e.funcs[name.Value]; ok2 {
+			if len(fd.Params) != len(n.Args) {
+				return 0, &EvalError{Msg: "argument count mismatch for " + name.Value}
+			}
+			scope := map[string]int64{}
+			for i, p := range fd.Params {
+				av, err := e.eval(n.Args[i])
+				if err != nil {
+					return 0, err
+				}
+				scope[p.Name] = av
+			}
+			saved := e.Vars
+			e.Vars = scope
+			rv, err := e.evalBody(fd.Body)
+			e.Vars = saved
+			return rv, err
+		}
 		switch name.Value {
 		case "print":
 			for _, a := range n.Args {
