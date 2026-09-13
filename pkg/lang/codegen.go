@@ -280,6 +280,39 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
+	case *MatchStmt:
+		sub, err := g.value(b, n.Subject)
+		if err != nil {
+			return err
+		}
+		endL := g.newLabel("match.end")
+		for i, c := range n.Cases {
+			pat, err := g.value(b, c.Pattern)
+			if err != nil {
+				return err
+			}
+			bodyL := g.newLabel("match.case")
+			cmp := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pat))
+			var fallL string
+			if i < len(n.Cases)-1 {
+				fallL = g.newLabel("match.next")
+			} else {
+				fallL = endL
+			}
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cmp, bodyL, fallL))
+			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+			for _, s := range c.Body {
+				if err := g.stmt(b, s); err != nil {
+					return err
+				}
+			}
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+			if fallL != endL {
+				b.WriteString(fmt.Sprintf("%s:\n", fallL))
+			}
+		}
+		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *WhileStmt:
 		condL := g.newLabel("while.cond")
 		bodyL := g.newLabel("while.body")

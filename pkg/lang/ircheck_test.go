@@ -44,3 +44,7 @@ func TestIRFuncTwoParamsCompilesWithLLC(t *testing.T) {
 func TestIRIfCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)")
 }
+
+func TestIRMatchCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
+}
