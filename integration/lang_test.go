@@ -1,70 +1,131 @@
 package integration
 
 import (
-	"bytes"
-	"github.com/donutloop/gusty/pkg/lang"
-	"os"
+	"strings"
 	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
-func TestFunctionWithLetAndCaller(t *testing.T) {
-	input := `function add(a i32, b i32) { let donut = 43 printf(donut) printf(a) } add(1,2)`
-	assert(t, generate(t, input), "program_1")
-}
+// lit-style integration tests: real source through the full pipeline
+// (lex -> parse -> typecheck -> codegen), checking IR shape + eval output.
 
-func TestLet(t *testing.T) {
-	input := `let donutloop = 42`
-	assert(t, generate(t, input), "let")
-}
-
-func TestAddTwoConst(t *testing.T) {
-	lang.GenerateRandomIdentifier = func() string {
-		return "9b3c24fa-f1d5-4d41-9fd1-0637244ce4f3"
-	}
-
-	input := `printf(42 + 42)`
-	assert(t, generate(t, input), "add")
-}
-
-func TestFor(t *testing.T) {
-	input := `for i := 0; i < 10; i++ { printf(i) }`
-	assert(t, generate(t, input), "for")
-}
-
-func TestNestedFor(t *testing.T) {
-	input := `for i := 0; i < 2; i++ { for j := 0; j < 10; j++ { printf(j) } }`
-	assert(t, generate(t, input), "nested_for")
-}
-
-func generate(t *testing.T, input string) []byte {
-	tokens := lang.Tokenize(input)
-	nodes, err := lang.Parse(tokens)
+func TestEvalArithmetic(t *testing.T) {
+	v, diags, err := lang.EvalExpr("3 + 4 * 2")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("eval err: %v", err)
 	}
-
-	actualLvmIR, err := lang.GenerateLLVMIR(nodes)
-	if err != nil {
-		t.Fatal(err)
+	if len(diags) > 0 {
+		t.Fatalf("diags: %v", diags)
 	}
-
-	return []byte(actualLvmIR)
+	if v != 11 {
+		t.Fatalf("expected 11, got %d", v)
+	}
 }
 
-func assert(t *testing.T, actualLvmIR []byte, filename string) {
-	expectedLlvmIR, err := os.ReadFile("./expected/" + filename + ".ll")
+func TestEvalAssign(t *testing.T) {
+	v, diags, err := lang.EvalExpr("x = 5\nx + 1")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("eval err: %v", err)
 	}
-
-	v := bytes.Compare(expectedLlvmIR, actualLvmIR)
-	if v != 0 {
-		t.Error("program code is not bad")
+	if len(diags) > 0 {
+		t.Fatalf("diags: %v", diags)
 	}
+	if v != 6 {
+		t.Fatalf("expected 6, got %d", v)
+	}
+}
 
-	t.Log("Actual LLVM IR: ")
-	t.Log(string(actualLvmIR))
+func TestEvalComparisons(t *testing.T) {
+	v, _, err := lang.EvalExpr("1 < 2 and 3 == 3")
+	if err != nil {
+		t.Fatalf("eval err: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("expected 1, got %d", v)
+	}
+}
 
-	t.Log("Expected LLVM IR: ")
-	t.Log(string(expectedLlvmIR))
+func TestCompileIRContainsMainAndPrintf(t *testing.T) {
+	src := `print(40 + 2)`
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Fatalf("compile err: %v", err)
+	}
+	ir := res.IR
+	if !strings.Contains(ir, "define") {
+		t.Fatalf("IR missing function definitions:\n%s", ir)
+	}
+	if !strings.Contains(ir, "printf") {
+		t.Fatalf("IR missing printf:\n%s", ir)
+	}
+	if !strings.Contains(res.ASTJSON, "print") && !strings.Contains(res.ASTJSON, "Args") {
+		t.Fatalf("AST JSON missing call expr:\n%s", res.ASTJSON)
+	}
+}
+
+func TestCompileWhileLoop(t *testing.T) {
+	src := `i = 0
+while i < 3:
+    print(i)
+    i = i + 1`
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Fatalf("compile err: %v", err)
+	}
+	if !strings.Contains(res.IR, "while") && !strings.Contains(res.IR, "icmp") {
+		t.Fatalf("IR missing loop control:\n%s", res.IR)
+	}
+}
+
+func TestCompileForRange(t *testing.T) {
+	src := `for i in range(3):
+    print(i)`
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Fatalf("compile err: %v", err)
+	}
+	if !strings.Contains(res.IR, "for") && !strings.Contains(res.IR, "icmp") {
+		t.Fatalf("IR missing for-loop:\n%s", res.IR)
+	}
+}
+
+func TestLexIndentation(t *testing.T) {
+	src := "if x:\n    print(1)\nprint(2)"
+	toks, err := lang.Lex(src)
+	if err != nil {
+		t.Fatalf("lex err: %v", err)
+	}
+	foundIndent := false
+	foundDedent := false
+	for _, tok := range toks {
+		if tok.Kind == lang.TokIndent {
+			foundIndent = true
+		}
+		if tok.Kind == lang.TokDedent {
+			foundDedent = true
+		}
+	}
+	if !foundIndent {
+		t.Fatalf("expected INDENT token, got %v", toks)
+	}
+	if !foundDedent {
+		t.Fatalf("expected DEDENT token, got %v", toks)
+	}
+}
+
+func TestUndefinedNameDiagnostic(t *testing.T) {
+	_, diags, err := lang.EvalExpr("nope + 1")
+	if err != nil {
+		t.Fatalf("eval err: %v", err)
+	}
+	hasErr := false
+	for _, d := range diags {
+		if d.Level == lang.LevelError {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Fatalf("expected an error diagnostic, got %v", diags)
+	}
 }
