@@ -128,17 +128,11 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 
 	mainFunctionScope := newScope()
 
-	module := llvm.NewModule("main")
+	ctx := llvm.NewContext()
+	module := ctx.NewModule("main")
 
-	mainType := llvm.FunctionType(llvm.Int32Type(), []llvm.Type{}, false)
+	mainType := llvm.FunctionType(ctx.Int32Type(), []llvm.Type{}, false)
 	mainFunc := llvm.AddFunction(module, "main", mainType)
-
-	printfType := llvm.FunctionType(llvm.Int32Type(), []llvm.Type{llvm.PointerType(llvm.Int32Type(), 0)}, true)
-	printf := llvm.AddFunction(module, printfIndentifier, printfType)
-	globalScope.Callers[printfIndentifier] = Caller{
-		Value: &printf,
-		Type:  &printfType,
-	}
 
 	// Create format string
 	formatString := llvm.ConstString("%d\n", false)
@@ -148,9 +142,16 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 	globalScope.Globals["format_string"] = Global{
 		Value: &formatGlobal,
 	}
+	printfType := llvm.FunctionType(ctx.Int32Type(), []llvm.Type{llvm.PointerType(formatString.Type(), 0)}, true)
+	printf := llvm.AddFunction(module, printfIndentifier, printfType)
+	globalScope.Callers[printfIndentifier] = Caller{
+		Value: &printf,
+		Type:  &printfType,
+	}
+
 
 	entry := llvm.AddBasicBlock(mainFunc, "entry")
-	mainBuilder := llvm.NewBuilder()
+	mainBuilder := ctx.NewBuilder()
 	defer mainBuilder.Dispose()
 	mainBuilder.SetInsertPointAtEnd(entry)
 
@@ -158,22 +159,22 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 		node := nodes[i]
 		switch n := node.(type) {
 		case *ForNode:
-			err := generateFor(&mainFunctionScope, mainFunc, mainBuilder, n)
+			err := generateFor(ctx, &mainFunctionScope, mainFunc, mainBuilder, n)
 			if err != nil {
 				return "", err
 			}
 		case *AddOperationNode:
-			err := generateAdd(&mainFunctionScope, mainBuilder, n)
+			err := generateAdd(ctx, &mainFunctionScope, mainBuilder, n)
 			if err != nil {
 				return "", err
 			}
 		case *CallerNode:
-			err := generateCaller(&mainFunctionScope, mainBuilder, n)
+			err := generateCaller(ctx, &mainFunctionScope, mainBuilder, n)
 			if err != nil {
 				return "", err
 			}
 		case *LetNode:
-			err := generateLet(&mainFunctionScope, mainBuilder, n)
+			err := generateLet(ctx, &mainFunctionScope, mainBuilder, n)
 			if err != nil {
 				return "", err
 			}
@@ -185,11 +186,11 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 			var llvmParameters []llvm.Type
 			for _, parameter := range n.Parameters {
 				if parameter.Type == Integer32Type {
-					llvmParameters = append(llvmParameters, llvm.Int32Type())
+					llvmParameters = append(llvmParameters, ctx.Int32Type())
 				}
 			}
 
-			functionType := llvm.FunctionType(llvm.VoidType(), llvmParameters, false)
+			functionType := llvm.FunctionType(ctx.VoidType(), llvmParameters, false)
 			function := llvm.AddFunction(module, n.Name, functionType)
 			function.SetFunctionCallConv(llvm.CCallConv)
 
@@ -204,7 +205,7 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 				i++
 			}
 
-			currentFunctionBuilder := llvm.NewBuilder()
+			currentFunctionBuilder := ctx.NewBuilder()
 			defer currentFunctionBuilder.Dispose()
 
 			// Create a new basic block and set the builder's insert point
@@ -215,12 +216,12 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 			for _, bodyNode := range n.Body {
 				switch bodyNode := bodyNode.(type) {
 				case *LetNode:
-					err := generateLet(&currentFunctionScope, currentFunctionBuilder, bodyNode)
+					err := generateLet(ctx, &currentFunctionScope, currentFunctionBuilder, bodyNode)
 					if err != nil {
 						return "", err
 					}
 				case *CallerNode:
-					err := generateCaller(&currentFunctionScope, currentFunctionBuilder, bodyNode)
+					err := generateCaller(ctx, &currentFunctionScope, currentFunctionBuilder, bodyNode)
 					if err != nil {
 						return "", err
 					}
@@ -237,7 +238,7 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 		}
 	}
 
-	mainBuilder.CreateRet(llvm.ConstInt(llvm.Int32Type(), 0, false))
+	mainBuilder.CreateRet(llvm.ConstInt(ctx.Int32Type(), 0, false))
 
 	// Verify the module
 	if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
@@ -254,9 +255,9 @@ func GenerateLLVMIR(nodes []Node) (string, error) {
 // scope:            A pointer to the current scope.
 // functionBuilder:  The LLVM builder associated with the current function.
 // callerNode:          The abstract syntax tree (AST) node representing the caller statement.
-func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *CallerNode) error {
+func generateCaller(ctx llvm.Context, scope *Scope, functionBuilder llvm.Builder, callerNode *CallerNode) error {
 	if callerNode.isParameterOperation {
-		err := generateAdd(scope, functionBuilder, callerNode.AddOperationNode)
+		err := generateAdd(ctx, scope, functionBuilder, callerNode.AddOperationNode)
 		if err != nil {
 			return err
 		}
@@ -265,15 +266,15 @@ func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *Call
 	// Special case for handling printf calls
 	if callerNode.FunctionName == printfIndentifier {
 		// Load the value of the parameter and create a GEP for the format string
-		format := functionBuilder.CreateInBoundsGEP(globalScope.Globals["format_string"].Value.Type(), *globalScope.Globals["format_string"].Value, []llvm.Value{llvm.ConstInt(llvm.Int32Type(), 0, false), llvm.ConstInt(llvm.Int32Type(), 0, false)}, "format")
+		format := functionBuilder.CreateInBoundsGEP(globalScope.Globals["format_string"].Value.Type(), *globalScope.Globals["format_string"].Value, []llvm.Value{llvm.ConstInt(ctx.Int32Type(), 0, false), llvm.ConstInt(ctx.Int32Type(), 0, false)}, "format")
 
 		if callerNode.isParameterOperation {
 			// Create the call instruction for printf with the format string and value as arguments
-			value := functionBuilder.CreateLoad(scope.PreviousVariable.Value.Type(), *scope.PreviousVariable.Value, "")
+			value := functionBuilder.CreateLoad(ctx.Int32Type(), *scope.PreviousVariable.Value, "")
 			functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, value}, "")
 			scope.PreviousVariable.Value = nil
 		} else if variable, ok := scope.Variables[callerNode.Parameters[0].Identifier]; ok {
-			value := functionBuilder.CreateLoad(variable.Value.Type(), *variable.Value, callerNode.Parameters[0].Identifier+"Value")
+			value := functionBuilder.CreateLoad(ctx.Int32Type(), *variable.Value, callerNode.Parameters[0].Identifier+"Value")
 			// Create the call instruction for printf with the format string and value as arguments
 			functionBuilder.CreateCall(*globalScope.Callers[printfIndentifier].Type, *globalScope.Callers[printfIndentifier].Value, []llvm.Value{format, value}, "")
 		} else if argument, ok := scope.Arguments[callerNode.Parameters[0].Identifier]; ok {
@@ -308,7 +309,7 @@ func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *Call
 	var llvmParameterValues []llvm.Value
 	for _, parameter := range callerNode.Parameters {
 		if parameter.Type == Integer32Type {
-			llvmParameterValues = append(llvmParameterValues, llvm.ConstInt(llvm.Int32Type(), uint64(parameter.Value.(int32)), true))
+			llvmParameterValues = append(llvmParameterValues, llvm.ConstInt(ctx.Int32Type(), uint64(parameter.Value.(int32)), true))
 		}
 	}
 
@@ -329,15 +330,15 @@ func generateCaller(scope *Scope, functionBuilder llvm.Builder, callerNode *Call
 // letNode:          The abstract syntax tree (AST) node representing the let statement.
 //
 // Returns an error if the value type of the letNode is not supported.
-func generateLet(scope *Scope, functionBuilder llvm.Builder, letNode *LetNode) error {
+func generateLet(ctx llvm.Context, scope *Scope, functionBuilder llvm.Builder, letNode *LetNode) error {
 	// Check if the value is of type int32
 	if intValue, ok := letNode.Value.(int32); ok {
 		// Create an alloca instruction to allocate memory for the new local variable
-		letNodeAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), letNode.Identifier)
+		letNodeAlloca := functionBuilder.CreateAlloca(ctx.Int32Type(), letNode.Identifier)
 		// Set the alignment of the allocated memory to 4 bytes
 		letNodeAlloca.SetAlignment(4)
 		// Create a constant int32 LLVM value from the intValue
-		letNodeConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intValue), true)
+		letNodeConstInt := llvm.ConstInt(ctx.Int32Type(), uint64(intValue), true)
 		// Store the constant int32 value in the allocated memory
 		functionBuilder.CreateStore(letNodeConstInt, letNodeAlloca)
 		// Add the new local variable to the current scope
@@ -360,7 +361,7 @@ func generateLet(scope *Scope, functionBuilder llvm.Builder, letNode *LetNode) e
 // AddOperationNode: The abstract syntax tree (AST) node representing the let statement.
 //
 // Returns an error if the value type of the AddOperationNode is not supported.
-func generateAdd(scope *Scope, functionBuilder llvm.Builder, addOperationNode *AddOperationNode) error {
+func generateAdd(ctx llvm.Context, scope *Scope, functionBuilder llvm.Builder, addOperationNode *AddOperationNode) error {
 	// Check if the left value is of type int32
 	intLeftValue, ok := addOperationNode.LeftValue.(int32)
 	if !ok {
@@ -376,14 +377,14 @@ func generateAdd(scope *Scope, functionBuilder llvm.Builder, addOperationNode *A
 	}
 
 	// Create a constant int32 LLVM value from the left int32 value
-	leftValueConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intLeftValue), true)
+	leftValueConstInt := llvm.ConstInt(ctx.Int32Type(), uint64(intLeftValue), true)
 	// Create a constant int32 LLVM value from the left int32 value
-	rightValueConstInt := llvm.ConstInt(llvm.Int32Type(), uint64(intRightValue), true)
+	rightValueConstInt := llvm.ConstInt(ctx.Int32Type(), uint64(intRightValue), true)
 	// Create an add instruction to add left and right constant int32 values
 	v := functionBuilder.CreateAdd(leftValueConstInt, rightValueConstInt, "")
 
 	variableName := GenerateRandomIdentifier()
-	resultAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), variableName)
+	resultAlloca := functionBuilder.CreateAlloca(ctx.Int32Type(), variableName)
 	// Set the alignment of the allocated memory to 4 bytes
 	resultAlloca.SetAlignment(4)
 	// Store the constant int32 value in the allocated memory
@@ -406,7 +407,7 @@ func generateAdd(scope *Scope, functionBuilder llvm.Builder, addOperationNode *A
 // forNode:          The abstract syntax tree (AST) node representing the for loop.
 //
 // Returns an error if the value type of the loop variables is not supported.
-func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder, forNode *ForNode) error {
+func generateFor(ctx llvm.Context, scope *Scope, function llvm.Value, functionBuilder llvm.Builder, forNode *ForNode) error {
 	// Check if the init value is of type int32
 	initValue, ok := forNode.Init.Value.(int32)
 	if !ok {
@@ -416,11 +417,11 @@ func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder
 
 	// Define loop variables.
 	// Allocate memory for the loop variable in the current function
-	initAlloca := functionBuilder.CreateAlloca(llvm.Int32Type(), "for_init_"+forNode.Init.Identifier)
+	initAlloca := functionBuilder.CreateAlloca(ctx.Int32Type(), "for_init_"+forNode.Init.Identifier)
 	// Set the alignment of the allocated memory to 4 bytes
 	initAlloca.SetAlignment(4)
 	// Create a constant int32 LLVM value from the init value
-	initConst := llvm.ConstInt(llvm.Int32Type(), uint64(initValue), true)
+	initConst := llvm.ConstInt(ctx.Int32Type(), uint64(initValue), true)
 	// Store the constant int32 value in the allocated memory
 	functionBuilder.CreateStore(initConst, initAlloca)
 
@@ -445,19 +446,19 @@ func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder
 		switch n := node.(type) {
 		case *ForNode:
 			// generate nested for loop
-			err := generateFor(scope, function, functionBuilder, n)
+			err := generateFor(ctx, scope, function, functionBuilder, n)
 			if err != nil {
 				return err
 			}
 		case *AddOperationNode:
 			// generate add operation
-			err := generateAdd(scope, functionBuilder, n)
+			err := generateAdd(ctx, scope, functionBuilder, n)
 			if err != nil {
 				return err
 			}
 		case *CallerNode:
 			// generate function call
-			err := generateCaller(scope, functionBuilder, n)
+			err := generateCaller(ctx, scope, functionBuilder, n)
 			if err != nil {
 				return err
 			}
@@ -467,7 +468,7 @@ func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder
 	}
 
 	// Load the current value of the loop variable
-	initValueFromLoad := functionBuilder.CreateLoad(llvm.Int32Type(), initAlloca, "for_init_"+forNode.Condition.LeftValue+"_value")
+	initValueFromLoad := functionBuilder.CreateLoad(ctx.Int32Type(), initAlloca, "for_init_"+forNode.Condition.LeftValue+"_value")
 
 	// Update the loop variable by incrementing it
 	var postValue int32
@@ -475,7 +476,7 @@ func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder
 		postValue = 1
 	}
 
-	updatedInit := functionBuilder.CreateAdd(initValueFromLoad, llvm.ConstInt(llvm.Int32Type(), uint64(postValue), false), "for_init_"+forNode.Condition.LeftValue+"_value_updated")
+	updatedInit := functionBuilder.CreateAdd(initValueFromLoad, llvm.ConstInt(ctx.Int32Type(), uint64(postValue), false), "for_init_"+forNode.Condition.LeftValue+"_value_updated")
 
 	// Store the updated loop variable back into memory
 	functionBuilder.CreateStore(updatedInit, initAlloca)
@@ -493,7 +494,7 @@ func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder
 	}
 
 	// Create the loop condition using the comparison operator and the loop limit
-	cond := functionBuilder.CreateICmp(predicate, updatedInit, llvm.ConstInt(llvm.Int32Type(), uint64(limit), false), "loopCond")
+	cond := functionBuilder.CreateICmp(predicate, updatedInit, llvm.ConstInt(ctx.Int32Type(), uint64(limit), false), "loopCond")
 
 	// Create a conditional branch to either the loop block or the end block
 	functionBuilder.CreateCondBr(cond, loopBlock, endBlock)
@@ -507,3 +508,4 @@ func generateFor(scope *Scope, function llvm.Value, functionBuilder llvm.Builder
 var GenerateRandomIdentifier = func() string {
 	return uuid.New().String()
 }
+

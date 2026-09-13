@@ -18,8 +18,8 @@ end:                                              ; preds = %end2
   ret i32 0
 
 loop1:                                            ; preds = %loop1, %loop
-  %jValue = load ptr, ptr %for_init_j, align 8
-  %0 = call i32 (ptr, ...) @printf(ptr @format_string, ptr %jValue)
+  %jValue = load i32, ptr %for_init_j, align 4
+  %0 = call i32 (ptr, ...) @printf(ptr @format_string, i32 %jValue)
   %for_init_j_value = load i32, ptr %for_init_j, align 4
   %for_init_j_value_updated = add i32 %for_init_j_value, 1
   store i32 %for_init_j_value_updated, ptr %for_init_j, align 4
