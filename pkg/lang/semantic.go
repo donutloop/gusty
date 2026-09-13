@@ -37,11 +37,13 @@ type SemanticAnalyzer struct {
 	scope  *Scope
 	Diags  []Diagnostic
 	curFn  *FuncDef
+	funcs  map[string]*FuncDef
+	inFunc bool
 }
 
 // Analyze runs semantic analysis and type inference on prog.
 func Analyze(prog *Program) []Diagnostic {
-	an := &SemanticAnalyzer{scope: newScope(nil)}
+	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}}
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
@@ -158,6 +160,8 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 }
 
 func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
+	an.funcs[fd.Name] = fd
+	an.inFunc = true
 	old := an.scope
 	fscope := newScope(old)
 	// define the function itself in the outer scope
@@ -177,6 +181,7 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 	}
 	an.scope = old
 	an.curFn = nil
+	an.inFunc = false
 }
 
 // inferExpr returns the inferred type of an expression.
@@ -261,7 +266,9 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 			}
 			return TInt()
 		}
-		an.warnf(n.Span(), "arithmetic on non-numeric operands (%s, %s)", lt.Name(), rt.Name())
+		if !an.inFunc {
+			an.warnf(n.Span(), "arithmetic on non-numeric operands (%s, %s)", lt.Name(), rt.Name())
+		}
 		return TDyn()
 	case "==", "!=", "<", "<=", ">", ">=":
 		return TBool()
@@ -272,8 +279,43 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 	}
 }
 
+func (an *SemanticAnalyzer) inferReturn(fd *FuncDef, argTypes []*Type) *Type {
+	old := an.scope
+	fscope := newScope(an.scope)
+	for i, p := range fd.Params {
+		if i < len(argTypes) {
+			fscope.define(p.Name, argTypes[i])
+		} else {
+			fscope.define(p.Name, TDyn())
+		}
+	}
+	an.scope = fscope
+	var ret *Type
+	for _, st := range fd.Body {
+		an.analyzeStmt(st)
+		if rs, ok := st.(*ReturnStmt); ok {
+			ret = an.inferExpr(rs.Expr)
+		}
+	}
+	an.scope = old
+	if ret == nil {
+		return TVoid()
+	}
+	return ret
+}
+
 func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 	if name, ok := n.Fn.(*Name); ok {
+		if fd, ok2 := an.funcs[name.Value]; ok2 {
+			if len(fd.Params) != len(n.Args) {
+				an.errorf(n.Span(), "argument count mismatch for %s (got %d, want %d)", name.Value, len(n.Args), len(fd.Params))
+				return TDyn()
+			}
+			argTypes := make([]*Type, len(n.Args))
+			for i, a := range n.Args {
+				argTypes[i] = an.inferExpr(a)
+		}
+	}
 		switch name.Value {
 		case "range":
 			return TIter(TInt())
