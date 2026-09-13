@@ -1,0 +1,34 @@
+package lang
+
+import (
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+func llcCompiles(t *testing.T, src string) string {
+	t.Helper()
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("compile %q: %v", src, err)
+	}
+	cmd := exec.Command("llc-15", "-opaque-pointers", "-o", "/tmp/ircheck.o")
+	cmd.Stdin = strings.NewReader(res.IR)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("llc failed for %q: %v\n%s\nIR:\n%s", src, err, out, res.IR)
+	}
+	return res.IR
+}
+
+func TestIRCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "x = 3\nprint(x + 4 * 2)")
+}
+
+func TestIRWhileCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "i = 0\nwhile i < 3:\n    i = i + 1\nprint(i)")
+}
+
+func TestIRForCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "for i in range(5):\n    print(i)")
+}

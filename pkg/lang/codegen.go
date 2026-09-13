@@ -7,7 +7,7 @@ import (
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 func GenerateIR(prog *Program) (string, error) {
-	g := &irGen{fmtIdx: 0, strIdx: 0, tmp: 0}
+	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	var b strings.Builder
 	// printf declaration
 	g.decls = "declare i32 @printf(i8*, ...)\n"
@@ -32,24 +32,27 @@ func GenerateIR(prog *Program) (string, error) {
 type irGen struct {
 	globals strings.Builder
 	decls   string
+	sym     map[string]string // variable -> load temp
+	allocd  map[string]bool   // alloca emitted?
 	fmtIdx  int
 	strIdx  int
 	tmp     int
 	label   int
+	ldN     int
 }
 
 func (g *irGen) newTmp() string { g.tmp++; return fmt.Sprintf("%%t%d", g.tmp) }
 func (g *irGen) newLabel(s string) string { g.label++; return fmt.Sprintf("%s%d", s, g.label) }
 
-// fmtStr emits a global string constant for a printf format and returns its name.
-func (g *irGen) fmtStr(format string) string {
+// fmtStr emits a global string constant for a printf format; returns name and size.
+func (g *irGen) fmtStr(format string) (string, int) {
 	g.fmtIdx++
 	name := fmt.Sprintf("@.fmt%d", g.fmtIdx)
 	// escape for IR: % -> %% and \n stays literal in IR text
 	f := strings.ReplaceAll(format, "%", "%%")
 	f = strings.ReplaceAll(f, "\\", "\\\\")
 	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(f)+1, f))
-	return name
+	return name, len(f) + 1
 }
 
 // strConst emits a global for a string literal operand.
@@ -65,18 +68,22 @@ func (g *irGen) strConst(s string) string {
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	switch n := e.(type) {
 	case *IntLit:
-		return fmt.Sprintf("i32 %d", n.Value), nil
+		return fmt.Sprintf("%d", n.Value), nil
 	case *FloatLit:
-		return fmt.Sprintf("i32 %d", int64(n.Value)), nil
+		return fmt.Sprintf("%d", int64(n.Value)), nil
 	case *BoolLit:
 		if n.Value {
-			return "i32 1", nil
+			return "1", nil
 		}
-		return "i32 0", nil
+		return "0", nil
 	case *NoneLit:
-		return "i32 0", nil
+		return "0", nil
 	case *Name:
-		return "%" + n.Value, nil
+		// Always load fresh from the alloca so the value dominates its use.
+		g.ldN++
+		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
+		return ld, nil
 	case *BinOp:
 		l, err := g.value(b, n.L)
 		if err != nil {
@@ -113,9 +120,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return "", fmt.Errorf("codegen: unsupported operator %q", n.Op)
 		}
 		if strings.HasPrefix(op, "icmp") {
-			b.WriteString(fmt.Sprintf("  %s = %s i32 %s, i32 %s\n", t, op, l, r))
+			b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
 		} else {
-			b.WriteString(fmt.Sprintf("  %s = %s i32 %s, i32 %s\n", t, op, l, r))
+			b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
 		}
 		return t, nil
 	case *UnOp:
@@ -158,9 +165,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmtName := g.fmtStr("%d\n")
+		fmtName, size := g.fmtStr("%d\n")
 		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, 4, 4, fmtName, v))
+		b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 		return t, nil
 	case "range":
 		if len(c.Args) != 1 {
@@ -184,10 +191,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if err != nil {
 				return err
 			}
-			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+			if !g.allocd[nm.Value] {
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+				g.allocd[nm.Value] = true
+			}
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
-			// name the alloca pointer as %<name> via load
-			b.WriteString(fmt.Sprintf("  %%_%s.ld = load i32, i32* %%_%s\n", nm.Value, nm.Value))
 		} else {
 			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
 		}
@@ -235,6 +243,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ForStmt:
+		iter, err := g.value(b, n.Iter)
+		if err != nil {
+			return err
+		}
 		initL := g.newLabel("for.init")
 		condL := g.newLabel("for.cond")
 		bodyL := g.newLabel("for.body")
@@ -242,17 +254,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		endL := g.newLabel("for.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", initL))
 		b.WriteString(fmt.Sprintf("%s:\n", initL))
-		iter, err := g.value(b, n.Iter)
-		if err != nil {
-			return err
-		}
 		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
 		b.WriteString(fmt.Sprintf("  store i32 0, i32* %%_%s\n", n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
-		b.WriteString(fmt.Sprintf("  %%_%s.ld = load i32, i32* %%_%s\n", n.Var.Value, n.Var.Value))
+		g.ldN++
+		cld := fmt.Sprintf("%%_%s.ld%d", n.Var.Value, g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", cld, n.Var.Value))
 		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %%_%s.ld, i32 %s\n", t, n.Var.Value, iter))
+		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", t, cld, iter))
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", t, bodyL, endL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 		for _, s := range n.Body {
@@ -262,9 +272,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", incL))
 		b.WriteString(fmt.Sprintf("%s:\n", incL))
-		b.WriteString(fmt.Sprintf("  %%_%s.ld2 = load i32, i32* %%_%s\n", n.Var.Value, n.Var.Value))
-		b.WriteString(fmt.Sprintf("  %%_%s.inc = add i32 %%_%s.ld2, 1\n", n.Var.Value, n.Var.Value))
-		b.WriteString(fmt.Sprintf("  store i32 %%_%s.inc, i32* %%_%s\n", n.Var.Value, n.Var.Value))
+		g.ldN++
+		ild := fmt.Sprintf("%%_%s.ld%d", n.Var.Value, g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ild, n.Var.Value))
+		itmp := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = add i32 %s, 1\n", itmp, ild))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", itmp, n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ReturnStmt:
