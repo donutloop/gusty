@@ -570,7 +570,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				val = pn
 			} else {
 				val = g.newTmp()
-				fmt.Fprintf(b, "  %s = load i32, i32* @%s\n", val, c)
+				fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", val, c)
 			}
 			g.emitEnvStore(b, env, i, val)
 		}

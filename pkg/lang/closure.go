@@ -178,6 +178,10 @@ func collectStmtNames(node interface{}, out map[string]bool) {
 
 func collectLocals(node interface{}, out map[string]bool) {
 	switch n := node.(type) {
+	case []Stmt:
+		for _, s := range n {
+			collectLocals(s, out)
+		}
 	case *AssignStmt:
 		if nm, ok := n.Target.(*Name); ok {
 			out[nm.Value] = true

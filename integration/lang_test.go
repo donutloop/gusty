@@ -193,3 +193,34 @@ func TestExecKeywordOutOfOrder(t *testing.T) {
 func TestExecKeywordAndDefault(t *testing.T) {
 	assertOutput(t, "def f(a, b=5):\n    return a + b\nprint(f(b=100, a=2))", "102\n")
 }
+
+func TestExecClosureCapturesParam(t *testing.T) {
+	assertOutput(t,
+		"def make(x):\n    def inc():\n        return x + 1\n    return inc()\nprint(make(5))",
+		"6\n")
+}
+
+func TestExecClosureCapturesLocal(t *testing.T) {
+	assertOutput(t,
+		"def make():\n    n = 10\n    def get():\n        return n\n    return get()\nprint(make())",
+		"10\n")
+}
+
+func TestExecClosureOwnParamsAndCapture(t *testing.T) {
+	assertOutput(t,
+		"def make(x):\n    def add(y):\n        return x + y\n    return add(7)\nprint(make(5))",
+		"12\n")
+}
+
+func TestExecClosureCalledTwice(t *testing.T) {
+	assertOutput(t,
+		"def make(x):\n    def inc():\n        return x + 1\n    a = inc()\n    b = inc()\n    return a + b\nprint(make(5))",
+		"12\n")
+}
+
+func TestExecTwoClosures(t *testing.T) {
+	assertOutput(t,
+		"def make(x):\n    def add1():\n        return x + 1\n    def add2():\n        return x + 2\n    return add1() + add2()\nprint(make(5))",
+		"13\n")
+}
+
