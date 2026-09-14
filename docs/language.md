@@ -115,3 +115,9 @@ match x:
 
 - `print(x, ...)` — writes integer values to stdout via `printf`.
 - `range(n)` — iteration bound for `for` loops.
+
+## Generators & lists
+- `def g(): yield a; yield b` is a generator: calling `g()` runs the body and
+  returns a list of all yielded values.
+- `[1, 2, 3]` is a list literal.
+- `for x in g():` and `for x in [1,2,3]:` iterate the elements.

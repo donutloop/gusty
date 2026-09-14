@@ -115,6 +115,9 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		if it != nil && it.Kind == KindIterator {
 			elem = it.Elem
 		}
+		if elem == nil {
+			elem = TDyn()
+		}
 		an.scope = newScope(an.scope)
 		an.scope.define(s.Var.Value, elem)
 		an.loopDepth++

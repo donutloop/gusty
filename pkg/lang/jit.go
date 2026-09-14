@@ -9,16 +9,18 @@ type Evaluator struct {
 	heap     map[int64]*obj
 	nextID   int64
 	classIDs map[string]int64
+	yieldList int64 // list handle accumulating yields (0 = not in generator)
 }
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
 type obj struct {
-	kind  string           // "class" | "instance" | "method"
+	kind  string           // "class" | "instance" | "method" | "list"
 	class string           // class name (instance/method)
 	attrs map[string]int64 // instance attrs or class method-handle ids
 	fn    *FuncDef         // method body (kind=method)
 	mname string           // method name (kind=method)
 	recv  int64            // bound receiver id (0 = unbound)
+	elems []int64          // list elements (kind=list)
 }
 
 func (e *Evaluator) allocObj(kind string) int64 {
@@ -155,26 +157,76 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 		}
 		continue
 	case *ForStmt:
-		start, stop, err := e.rangeBounds(s.Iter)
-		if err != nil {
-			return 0, err
+		isRange := false
+		if c, ok := s.Iter.(*Call); ok {
+			if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" {
+				isRange = true
+			}
 		}
 		completed := true
 		if n := s.Var; n != nil {
-			for i := start; i < stop; i++ {
-				e.Vars[n.Value] = i
-				rv, err := e.evalBody(s.Body)
+			if !isRange {
+				itV, err := e.eval(s.Iter)
 				if err != nil {
-					if ls, ok := err.(*loopSignal); ok {
-						if ls.kind == "break" {
-							completed = false
-							break
-						}
-						continue
-					}
 					return 0, err
 				}
-				last = rv
+				if o, ok := e.heap[itV]; ok && o.kind == "list" {
+					for _, el := range o.elems {
+						e.Vars[n.Value] = el
+						rv, err := e.evalBody(s.Body)
+						if err != nil {
+							if ls, ok := err.(*loopSignal); ok {
+								if ls.kind == "break" {
+									completed = false
+									break
+								}
+								continue
+							}
+							return 0, err
+						}
+						last = rv
+					}
+				} else {
+					start, stop, err := e.rangeBounds(s.Iter)
+					if err != nil {
+						return 0, err
+					}
+					for i := start; i < stop; i++ {
+						e.Vars[n.Value] = i
+						rv, err := e.evalBody(s.Body)
+						if err != nil {
+							if ls, ok := err.(*loopSignal); ok {
+								if ls.kind == "break" {
+									completed = false
+									break
+								}
+								continue
+							}
+							return 0, err
+						}
+						last = rv
+					}
+				}
+			} else {
+				start, stop, err := e.rangeBounds(s.Iter)
+				if err != nil {
+					return 0, err
+				}
+				for i := start; i < stop; i++ {
+					e.Vars[n.Value] = i
+					rv, err := e.evalBody(s.Body)
+					if err != nil {
+						if ls, ok := err.(*loopSignal); ok {
+							if ls.kind == "break" {
+								completed = false
+								break
+							}
+							continue
+						}
+						return 0, err
+					}
+					last = rv
+				}
 			}
 		}
 		if completed {
@@ -218,6 +270,20 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 				return v, nil
 			}
+		case *YieldStmt:
+			v, err := e.eval(s.Expr)
+			if err != nil {
+				return 0, err
+			}
+			if e.yieldList != 0 {
+				if o, ok := e.heap[e.yieldList]; ok {
+					o.elems = append(o.elems, v)
+				}
+				last = v
+				continue
+			}
+			last = v
+			continue
 		case *RaiseStmt:
 			return 0, &EvalError{Msg: "raised"}
 		case *BreakStmt:
@@ -299,6 +365,17 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return 0, &EvalError{Msg: "attribute access on method"}
 	case *Call:
 		return e.evalCall(n)
+	case *ListLit:
+		h := e.allocObj("list")
+		o := e.heap[h]
+		for _, el := range n.Elems {
+			ev, err := e.eval(el)
+			if err != nil {
+				return 0, err
+			}
+			o.elems = append(o.elems, ev)
+		}
+		return h, nil
 	default:
 		return 0, &EvalError{Msg: "unsupported expression for eval"}
 	}
@@ -487,6 +564,18 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			saved := e.Vars
 			e.Vars = scope
+			if containsYield(fd.Body) {
+				genH := e.allocObj("list")
+				prev := e.yieldList
+				e.yieldList = genH
+				_, err := e.evalBody(fd.Body)
+				e.yieldList = prev
+				e.Vars = saved
+				if err != nil {
+					return 0, err
+				}
+				return genH, nil
+			}
 			rv, err := e.evalBody(fd.Body)
 			e.Vars = saved
 			return rv, err
@@ -534,4 +623,38 @@ func EvalExpr(src string) (int64, []Diagnostic, error) {
 	ev := NewEvaluator()
 	v, err := ev.EvalProgram(prog)
 	return v, diags, err
+}
+
+func containsYield(stmts []Stmt) bool {
+	for _, st := range stmts {
+		switch s := st.(type) {
+		case *YieldStmt:
+			return true
+		case *IfStmt:
+			if containsYield(s.Then) {
+				return true
+			}
+			for _, e := range s.Elifs {
+				if containsYield(e.Then) {
+					return true
+				}
+			}
+			if containsYield(s.Else) {
+				return true
+			}
+		case *WhileStmt:
+			if containsYield(s.Body) || containsYield(s.Else) {
+				return true
+			}
+		case *ForStmt:
+			if containsYield(s.Body) || containsYield(s.Else) {
+				return true
+			}
+		case *FuncDef:
+			if containsYield(s.Body) {
+				return true
+			}
+		}
+	}
+	return false
 }
