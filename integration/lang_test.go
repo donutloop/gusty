@@ -224,3 +224,13 @@ func TestExecTwoClosures(t *testing.T) {
 		"13\n")
 }
 
+
+func TestListIndexAndLen(t *testing.T) {
+	src := "print([1, 2, 3][1])\nprint(len([1, 2, 3]))"
+	assertOutput(t, src, "2\n3\n")
+}
+
+func TestListIndexLargeAndPrint(t *testing.T) {
+	src := "print([10, 20, 30, 40][3])"
+	assertOutput(t, src, "40\n")
+}

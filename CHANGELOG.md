@@ -4,6 +4,10 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(llvm)`: **inline list literals with constant indexing + len**
+  in the AOT codegen — `[1,2,3][1]` and `len([1,2,3])` lower to a
+  dedicated global struct with constant-GEP loads.
+
 - `feat(interp)`: **modules / imports** — `import mod` loads `mod.gy`,
   evaluates it, and binds `mod` as a module namespace; top-level variables and
   functions are accessed via `mod.name` and `mod.fn(args)`. A module can

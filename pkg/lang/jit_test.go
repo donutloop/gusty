@@ -491,3 +491,33 @@ func TestEvalImportMissingModule(t *testing.T) {
 		t.Fatalf("expected import error, got nil")
 	}
 }
+
+func TestEvalListIndex(t *testing.T) {
+	src := "lst = [10, 20, 30]\nlst[1]"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("index err: %v", err)
+	}
+	if v != 20 {
+		t.Fatalf("got %d, want 20", v)
+	}
+}
+
+func TestEvalListIndexOutOfRange(t *testing.T) {
+	src := "lst = [1, 2]\nlst[5]"
+	_, _, err := EvalExpr(src)
+	if err == nil {
+		t.Fatalf("expected out-of-range error")
+	}
+}
+
+func TestEvalDictIndex(t *testing.T) {
+	src := "d = {1: 100, 2: 200}\nd[2]"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("dict index err: %v", err)
+	}
+	if v != 200 {
+		t.Fatalf("got %d, want 200", v)
+	}
+}

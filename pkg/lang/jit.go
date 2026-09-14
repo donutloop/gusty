@@ -627,6 +627,42 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			o.elems = append(o.elems, ev)
 		}
 		return h, nil
+	case *Index:
+		objV, err := e.eval(n.Obj)
+		if err != nil {
+			return 0, err
+		}
+		idx, err := e.eval(n.Idx)
+		if err != nil {
+			return 0, err
+		}
+		o := e.heap[objV]
+		if o == nil {
+			return 0, &EvalError{Msg: "cannot index null"}
+		}
+		switch o.kind {
+		case "list":
+			if idx < 0 || idx >= int64(len(o.elems)) {
+				return 0, &EvalError{Msg: "index out of range"}
+			}
+			return o.elems[idx], nil
+		case "dict":
+			for i, k := range o.elems {
+				if k == idx {
+					return o.dvals[i], nil
+				}
+			}
+			return 0, &EvalError{Msg: "key not found"}
+		case "set":
+			for _, el := range o.elems {
+				if el == idx {
+					return el, nil
+				}
+			}
+			return 0, &EvalError{Msg: "not in set"}
+		default:
+			return 0, &EvalError{Msg: "cannot index this value"}
+		}
 	case *DictLit:
 		h := e.allocObj("dict")
 		o := e.heap[h]

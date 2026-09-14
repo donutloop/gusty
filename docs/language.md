@@ -32,6 +32,15 @@ stdout.
 
 ### Import / modules
 
+### Lists (LLVM codegen)
+
+The AOT LLVM path supports inline list literals with constant indexing and
+`len` on an inline list: `[1, 2, 3][1]` and `len([1, 2, 3])`. Each list
+literal is lowered to a dedicated global struct; indexing and `len` use
+constant GEP indices (this llc build accepts only constant GEP indices), so
+lists must be used inline (no assignment-to-variable indirection) in the
+codegen path.
+
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other

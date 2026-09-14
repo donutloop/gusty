@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 func GenerateIR(prog *Program) (string, error) {
 	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
@@ -75,7 +76,8 @@ type irGen struct {
 	envParam    string
 	decorated   map[string]bool
 	applyCalls  []string
-
+	listNames map[*ListLit]string
+	lstIdx int
 }
 
 type loopInfo struct {
@@ -107,6 +109,34 @@ func (g *irGen) strConst(s string) string {
 	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(esc)+1, esc))
 	return name
 }
+// emitList emits a dedicated global struct for an inline list literal
+// (dedup by AST node) and returns its global name. Elements must be ints.
+func (g *irGen) emitList(ln *ListLit) (string, error) {
+	if name, ok := g.listNames[ln]; ok {
+		return name, nil
+	}
+	if g.listNames == nil {
+		g.listNames = map[*ListLit]string{}
+	}
+	n := len(ln.Elems)
+	g.lstIdx++
+	name := fmt.Sprintf("@.lst%d", g.lstIdx)
+	g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [", name, n, n, n))
+	for i, el := range ln.Elems {
+		il, ok := el.(*IntLit)
+		if !ok {
+			return "", fmt.Errorf("list literal elements must be integers")
+		}
+		if i > 0 {
+			g.globals.WriteString(", ")
+		}
+		g.globals.WriteString(fmt.Sprintf("i32 %d", il.Value))
+	}
+	g.globals.WriteString("] }\n")
+	g.listNames[ln] = name
+	return name, nil
+}
+
 
 // value emits an IR expression returning an i32 value; returns the operand string.
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
@@ -193,6 +223,31 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *StrLit:
 		name := g.strConst(n.Value)
 		return name, nil
+	case *ListLit:
+		// inline list literal: emit a dedicated global struct and return its name.
+		name, err := g.emitList(n)
+		if err != nil {
+			return "", err
+		}
+		return name, nil
+	case *Index:
+		// list indexing: require an inline list literal with a constant index
+		// (this llc build accepts only constant GEP indices).
+		ln, ok := n.Obj.(*ListLit)
+		if !ok {
+			return "", fmt.Errorf("index requires an inline list literal")
+		}
+		il, ok := n.Idx.(*IntLit)
+		if !ok {
+			return "", fmt.Errorf("list index must be a constant")
+		}
+		name, err := g.emitList(ln)
+		if err != nil {
+			return "", err
+		}
+		v := g.newTmp()
+		b.WriteString(fmt.Sprintf("%s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, len(ln.Elems), len(ln.Elems), name, il.Value))
+		return v, nil
 	case *Call:
 		return g.call(b, n)
 	case *KeywordArg:
@@ -328,6 +383,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		t := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 		return t, nil
+	case "len":
+		// len(list) -> load the count field of an inline list literal's struct.
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("len expects one argument")
+		}
+		ln, ok := c.Args[0].(*ListLit)
+		if !ok {
+			return "", fmt.Errorf("len requires an inline list literal")
+		}
+		name, err := g.emitList(ln)
+		if err != nil {
+			return "", err
+		}
+		v := g.newTmp()
+		b.WriteString(fmt.Sprintf("%s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, len(ln.Elems), len(ln.Elems), name))
+		return v, nil
 	case "range":
 		for _, a := range c.Args {
 			if _, ok := a.(*KeywordArg); ok {
