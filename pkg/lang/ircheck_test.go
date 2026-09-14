@@ -53,3 +53,7 @@ func TestIRBreakContinueCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni")
 	llcCompiles(t, "s = 0\nfor i in range(5):\n    if i == 2:\n        continue\n    s = s + i\ns")
 }
+
+func TestIRRangeTwoArgCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "s = 0\nfor i in range(2, 5):\n    s = s + i\nprint(s)")
+}

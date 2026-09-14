@@ -63,8 +63,7 @@ for i in range(n):
 - `if`/`elif`/`else` branch on an integer condition (0 is false).
 - `while` loops while the condition is non-zero.
 - `for ... in range(n)` iterates `i` from `0` to `n-1`.
-- `for ... in range(a, b)` iterates `i` from `a` to `b-1` (interpreter path;
-  codegen currently accepts single-argument `range`).
+- `for ... in range(a, b)` iterates `i` from `a` to `b-1`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.
   Both are valid inside nested `if`/loop bodies. Using either outside a loop
   is a semantic error.

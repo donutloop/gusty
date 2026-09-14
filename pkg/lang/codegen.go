@@ -175,6 +175,30 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	}
 }
 
+// rangeBounds computes the loop start and stop operands for a for statement.
+// A `range(a, b)` iterable yields start=a and stop=b; anything else starts at 0
+// with stop being the single evaluated bound.
+func (g *irGen) rangeBounds(b *strings.Builder, iter Expr) (string, string, error) {
+	if c, ok := iter.(*Call); ok {
+		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" && len(c.Args) == 2 {
+			start, err := g.value(b, c.Args[0])
+			if err != nil {
+				return "", "", err
+			}
+			stop, err := g.value(b, c.Args[1])
+			if err != nil {
+				return "", "", err
+			}
+			return start, stop, nil
+		}
+	}
+	stop, err := g.value(b, iter)
+	if err != nil {
+		return "", "", err
+	}
+	return "0", stop, nil
+}
+
 // call emits a call; supports print/printf and range(n).
 func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	fnName := ""
@@ -341,7 +365,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ForStmt:
-		iter, err := g.value(b, n.Iter)
+		start, stop, err := g.rangeBounds(b, n.Iter)
 		if err != nil {
 			return err
 		}
@@ -353,14 +377,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", initL))
 		b.WriteString(fmt.Sprintf("%s:\n", initL))
 		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
-		b.WriteString(fmt.Sprintf("  store i32 0, i32* %%_%s\n", n.Var.Value))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", start, n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
 		g.ldN++
 		cld := fmt.Sprintf("%%_%s.ld%d", n.Var.Value, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", cld, n.Var.Value))
 		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", t, cld, iter))
+		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", t, cld, stop))
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", t, bodyL, endL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
