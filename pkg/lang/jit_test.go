@@ -219,3 +219,47 @@ func TestEvalKeywordAndDefault(t *testing.T) {
 		t.Fatalf("got %d, want 102", v)
 	}
 }
+
+func TestEvalDictLiteral(t *testing.T) {
+	// dict literal then iterate keys and sum via comprehension
+	v, _, err := EvalExpr("def f(d):\n    return len(d)\nf({1: 10, 2: 20})")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+}
+
+func TestEvalListComprehension(t *testing.T) {
+	v, _, err := EvalExpr("def g(ys):\n    s = 0\n    for y in ys:\n        s = s + y\n    return s\nv = [1, 2, 3]\ng([x * 2 for x in v])")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 12 {
+		t.Fatalf("got %d, want 12", v)
+	}
+}
+
+
+func TestEvalComprehensionAssignment(t *testing.T) {
+	// A comprehension assigned to a variable must bind its loop variable so
+	// the body/condition can reference it. Previously the semantic analyzer
+	// reported "undefined name x", short-circuiting evaluation to 0.
+	v, _, err := EvalExpr("c = [x * 2 for x in [1, 2, 3]]\nlen(c)")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 3 {
+		t.Fatalf("got %d, want 3", v)
+	}
+
+	// With a condition referencing the comprehension variable too.
+	v, _, err = EvalExpr("c = [x for x in [1, 2, 3, 4] if x % 2 == 0]\nlen(c)")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+}

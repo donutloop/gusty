@@ -992,6 +992,34 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 	if err := p.expectOp("}"); err != nil {
 		return nil, err
 	}
+	if p.peek().IsKeyword("for") {
+		p.next() // 'for'
+		v := p.peek()
+		if v.Kind != TokIdent {
+			return nil, p.errorf(v, "expected comprehension variable")
+		}
+		p.next()
+		vn := &Name{Value: v.Text, sp: v.Span}
+		if err := p.expectKeyword("in"); err != nil {
+			return nil, err
+		}
+		iter, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		var cond Expr
+		if p.peek().IsKeyword("if") {
+			p.next()
+			cond, err = p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+		}
+		if isDict {
+			return &Comp{Kind: CompDict, Keys: keys, Vals: vals, ForVar: vn, Iter: iter, Cond: cond, sp: t.Span}, nil
+		}
+		return &Comp{Kind: CompSet, Elems: elems, ForVar: vn, Iter: iter, Cond: cond, sp: t.Span}, nil
+	}
 	if isDict {
 		return &DictLit{Keys: keys, Vals: vals, sp: t.Span}, nil
 	}

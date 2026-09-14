@@ -441,24 +441,39 @@ func (an *SemanticAnalyzer) bindParams(params []*Param, n *Call) (map[int]*Type,
 }
 
 func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
-	an.inferExpr(n.Iter)
-	if n.Cond != nil {
-		an.inferExpr(n.Cond)
-	}
+	// infer the iterable's element type to bind the comprehension variable
+	it := an.inferExpr(n.Iter)
 	var elem *Type
-	if len(n.Elems) > 0 {
-		elem = an.inferExpr(n.Elems[0])
+	if it != nil && it.Kind == KindIterator {
+		elem = it.Elem
 	} else {
 		elem = TDyn()
 	}
+	// bind the comprehension variable in a fresh scope so the condition
+	// and body can reference it (e.g. `[x * 2 for x in xs]`).
+	old := an.scope
+	an.scope = newScope(old)
+	if n.ForVar != nil {
+		an.scope.define(n.ForVar.Value, elem)
+	}
+	if n.Cond != nil {
+		an.inferExpr(n.Cond)
+	}
+	var e *Type
+	if len(n.Elems) > 0 {
+		e = an.inferExpr(n.Elems[0])
+	} else {
+		e = elem
+	}
+	an.scope = old
 	switch n.Kind {
 	case CompList:
-		return TList(elem)
+		return TList(e)
 	case CompSet:
-		return TSet(elem)
+		return TSet(e)
 	case CompDict:
 		return TDict(TDyn(), TDyn())
 	default:
-		return TIter(elem)
+		return TIter(e)
 	}
 }

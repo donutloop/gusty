@@ -21,6 +21,7 @@ type obj struct {
 	mname string           // method name (kind=method)
 	recv  int64            // bound receiver id (0 = unbound)
 	elems []int64          // list elements (kind=list)
+	dvals []int64          // dict values parallel to elems keys (kind=dict)
 }
 
 func (e *Evaluator) allocObj(kind string) int64 {
@@ -170,7 +171,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				if err != nil {
 					return 0, err
 				}
-				if o, ok := e.heap[itV]; ok && o.kind == "list" {
+				if o, ok := e.heap[itV]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict") {
 					for _, el := range o.elems {
 						e.Vars[n.Value] = el
 						rv, err := e.evalBody(s.Body)
@@ -376,9 +377,121 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			o.elems = append(o.elems, ev)
 		}
 		return h, nil
+	case *DictLit:
+		h := e.allocObj("dict")
+		o := e.heap[h]
+		for i, k := range n.Keys {
+			kv, err := e.eval(k)
+			if err != nil {
+				return 0, err
+			}
+			vv, err := e.eval(n.Vals[i])
+			if err != nil {
+				return 0, err
+			}
+			o.elems = append(o.elems, kv)
+			o.dvals = append(o.dvals, vv)
+		}
+		return h, nil
+	case *SetLit:
+		h := e.allocObj("set")
+		o := e.heap[h]
+		for _, el := range n.Elems {
+			v, err := e.eval(el)
+			if err != nil {
+				return 0, err
+			}
+			found := false
+			for _, x := range o.elems {
+				if x == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				o.elems = append(o.elems, v)
+			}
+		}
+		return h, nil
+	case *Comp:
+		return e.evalComp(n)
 	default:
 		return 0, &EvalError{Msg: "unsupported expression for eval"}
 	}
+}
+
+func (e *Evaluator) evalComp(c *Comp) (int64, error) {
+	it, err := e.eval(c.Iter)
+	if err != nil {
+		return 0, err
+	}
+	o := e.heap[it]
+	if o == nil {
+		return 0, &EvalError{Msg: "comprehension over non-object"}
+	}
+	items := o.elems
+	if o.kind == "dict" {
+		items = o.elems
+	}
+	var rh int64
+	switch c.Kind {
+	case CompList:
+		rh = e.allocObj("list")
+	case CompSet:
+		rh = e.allocObj("set")
+	case CompDict:
+		rh = e.allocObj("dict")
+	default:
+		return 0, &EvalError{Msg: "unknown comprehension kind"}
+	}
+	ro := e.heap[rh]
+	for _, item := range items {
+		e.Vars[c.ForVar.Value] = item
+		if c.Cond != nil {
+			cv, err := e.eval(c.Cond)
+			if err != nil {
+				return 0, err
+			}
+			if cv == 0 {
+				continue
+			}
+		}
+		switch c.Kind {
+		case CompList:
+			v, err := e.eval(c.Elems[0])
+			if err != nil {
+				return 0, err
+			}
+			ro.elems = append(ro.elems, v)
+		case CompSet:
+			v, err := e.eval(c.Elems[0])
+			if err != nil {
+				return 0, err
+			}
+			dup := false
+			for _, x := range ro.elems {
+				if x == v {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				ro.elems = append(ro.elems, v)
+			}
+		case CompDict:
+			k, err := e.eval(c.Keys[0])
+			if err != nil {
+				return 0, err
+			}
+			v, err := e.eval(c.Vals[0])
+			if err != nil {
+				return 0, err
+			}
+			ro.elems = append(ro.elems, k)
+			ro.dvals = append(ro.dvals, v)
+		}
+	}
+	return rh, nil
 }
 
 func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
@@ -649,10 +762,10 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			if o, ok := e.heap[v]; ok && o.kind == "list" {
+			if o, ok := e.heap[v]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict") {
 				return int64(len(o.elems)), nil
 			}
-			return 0, &EvalError{Msg: "len expects a list"}
+			return 0, &EvalError{Msg: "len expects a list, set, or dict"}
 
 		case "range":
 			if len(n.Args) != 1 {
