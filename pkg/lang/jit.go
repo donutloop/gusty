@@ -99,6 +99,30 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 		}
 		continue
+	case *TryStmt:
+		_, bodyErr := e.evalBody(s.Body)
+		if bodyErr != nil {
+			caught := false
+			for _, ec := range s.Excepts {
+				if ec.Exn == nil || ec.Exn.Value == "Exception" {
+					_, err2 := e.evalBody(ec.Body)
+					if err2 != nil {
+						return 0, err2
+					}
+					caught = true
+					break
+				}
+			}
+			if !caught {
+				return 0, bodyErr
+			}
+		}
+		if len(s.Finally) > 0 {
+			_, err := e.evalBody(s.Finally)
+			if err != nil {
+				return 0, err
+			}
+		}
 	case *WhileStmt:
 		completed := true
 		for {

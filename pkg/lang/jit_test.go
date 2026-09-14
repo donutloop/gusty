@@ -156,3 +156,15 @@ func TestEvalClassAttrSet(t *testing.T) {
 		t.Fatalf("got %d, want 2", v)
 	}
 }
+
+func TestEvalTryExcept(t *testing.T) {
+	src := "x = 0\ntry:\n    x = 1 // 0\nexcept Exception:\n    x = 42\nx"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("try err: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("got %d, want 42", v)
+	}
+}
+
