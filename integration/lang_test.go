@@ -41,7 +41,12 @@ func compileAndRun(t *testing.T, src string) string {
 
 	// llc-20: verifies the module and lowers it to object code.
 	// Opaque pointers are the default in LLVM 20, so no -opaque-pointers flag.
-	out, err := exec.Command(llc, "-filetype=obj", irPath, "-o", objPath).CombinedOutput()
+	// -relocation-model=pic: llc otherwise defaults to the static relocation
+	// model, which emits 32-bit absolute relocations (e.g. R_X86_64_32) for the
+	// string constants in .rodata. The default PIE link (cc) rejects those with
+	// "relocation R_X86_64_32 against '.rodata.str1.1' can not be used when
+	// making a PIE object". PIC codegen uses RIP-relative references instead.
+	out, err := exec.Command(llc, "-filetype=obj", "-relocation-model=pic", irPath, "-o", objPath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("llc-20 rejected module for %q: %v\n%s\nIR:\n%s", src, err, out, res.IR)
 	}

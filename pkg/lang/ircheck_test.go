@@ -12,7 +12,10 @@ func llcCompiles(t *testing.T, src string) string {
 	if err != nil {
 		t.Fatalf("compile %q: %v", src, err)
 	}
-	cmd := exec.Command("llc-20", "-o", "/tmp/ircheck.o")
+	// -relocation-model=pic: llc otherwise defaults to the static relocation
+	// model, emitting R_X86_64_32 relocations for .rodata string constants that
+	// the default PIE link (cc) rejects. PIC codegen uses RIP-relative refs.
+	cmd := exec.Command("llc-20", "-relocation-model=pic", "-o", "/tmp/ircheck.o")
 	cmd.Stdin = strings.NewReader(res.IR)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

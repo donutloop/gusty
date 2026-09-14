@@ -40,6 +40,12 @@ func GenerateIR(prog *Program) (string, error) {
 	out.WriteString(g.globals.String())
 	out.WriteString(g.decls)
 	out.WriteString(b.String())
+	// PIC Level = 2 module flag: forces llc to emit position-independent code
+	// so string constants in .rodata are referenced PIC-safely. Without it llc
+	// defaults to the static relocation model, which emits 32-bit absolute
+	// relocations (e.g. R_X86_64_32) that the default PIE link (cc) rejects.
+	out.WriteString("!llvm.module.flags = !{!0}\n")
+	out.WriteString("!0 = !{i32 2, !\"PIC Level\", i32 2}\n")
 	return out.String(), nil
 }
 
