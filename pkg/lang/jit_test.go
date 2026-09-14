@@ -91,3 +91,14 @@ func TestEvalRangeTwoArg(t *testing.T) {
 		t.Fatalf("range(2,5) sum got %d, want 9", v)
 	}
 }
+
+func TestEvalMatchWildcard(t *testing.T) {
+	// match with _ wildcard catches unmatched value
+	v, _, err := EvalExpr("x = 42\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(42)\nx")
+	if err != nil {
+		t.Fatalf("match wildcard err: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("got %d, want 42", v)
+	}
+}

@@ -80,6 +80,7 @@ match x:
 ```
 
 - `match` selects a case whose pattern equals the subject (integer equality).
+- A `case _:` pattern is a wildcard and always matches.
 - The first matching case body runs; then control continues after the match.
 - Lowered to a chain of integer comparisons.
 

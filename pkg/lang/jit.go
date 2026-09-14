@@ -45,11 +45,15 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			return 0, err
 		}
 		for _, c := range s.Cases {
-			pv, err := e.eval(c.Pattern)
-			if err != nil {
-				return 0, err
+			matches := true
+			if pn, ok := c.Pattern.(*Name); !ok || pn.Value != "_" {
+				pv, err := e.eval(c.Pattern)
+				if err != nil {
+					return 0, err
+				}
+				matches = pv == sub
 			}
-			if pv == sub {
+			if matches {
 				rv, err := e.evalBody(c.Body)
 				if err != nil {
 					return 0, err
