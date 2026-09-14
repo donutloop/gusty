@@ -10,7 +10,8 @@ type Evaluator struct {
 	heap      map[int64]*obj
 	nextID    int64
 	classIDs  map[string]int64
-	yieldList int64 // list handle accumulating yields (0 = not in generator)
+	curRet    *Type       // return annotation of the function currently executing
+	yieldList int64       // list handle accumulating yields (0 = not in generator)
 }
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
@@ -41,6 +42,77 @@ func (e *Evaluator) allocClosure(fn *FuncDef, env map[string]int64) int64 {
 	return id
 }
 
+// typeOfVal maps a runtime value to its static type Kind for gradual typing
+// checks. Plain small int64s are ints/bools/none; heap ids are objects whose
+// kind string maps to a Type.
+func (e *Evaluator) typeOfVal(val int64) *Type {
+	if o, ok := e.heap[val]; ok {
+		switch o.kind {
+		case "float":
+			return TFlt()
+		case "str":
+			return TStr()
+		case "list":
+			return TList(TDyn())
+		case "dict":
+			return TDict(TDyn(), TDyn())
+		case "set":
+			return TSet(TDyn())
+		case "closure", "method", "class":
+			return TFunc(nil, TDyn())
+		default:
+			return TDyn()
+		}
+	}
+	return TInt()
+}
+
+// checkAnnot enforces a gradual type annotation on a runtime value. Dynamic
+// annotations accept anything; otherwise the value's runtime kind must be
+// assignable to the annotation.
+func (e *Evaluator) checkAnnot(name string, ty *Type, val int64) error {
+	if ty == nil || ty.Kind == KindDynamic {
+		return nil
+	}
+	rt := e.typeOfVal(val)
+	if rt.Kind == ty.Kind {
+		return nil
+	}
+	// bools are stored as plain ints 0/1; plain ints are compatible with both
+	// int and bool annotations (the interpreter cannot distinguish them).
+	if rt.Kind == KindInt && (ty.Kind == KindInt || ty.Kind == KindBool) {
+		return nil
+	}
+	return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got " + tyName(rt) + " for " + name}
+}
+
+func tyName(t *Type) string {
+	switch t.Kind {
+	case KindInt:
+		return "int"
+	case KindFloat:
+		return "float"
+	case KindBool:
+		return "bool"
+	case KindString:
+		return "str"
+	case KindNone:
+		return "none"
+	case KindList:
+		return "list"
+	case KindDict:
+		return "dict"
+	case KindSet:
+		return "set"
+	case KindFunc:
+		return "func"
+	case KindDynamic:
+		return "any"
+	default:
+		return "value"
+	}
+}
+
 // callFunc evaluates a function body with params bound into a scope seeded
 // from env (nil = empty scope). Nested defs inside the body become closures.
 func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64) (int64, error) {
@@ -50,17 +122,26 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 	}
 	// bind positional args, filling defaults for missing trailing params
 	for i, p := range fd.Params {
+		var av int64
 		if i < len(argVals) {
-			scope[p.Name] = argVals[i]
+			av = argVals[i]
 		} else if p.Default != nil {
 			dv, err := e.eval(p.Default)
 			if err != nil {
 				return 0, err
 			}
-			scope[p.Name] = dv
+			av = dv
 		}
+		if p.Annot != nil {
+			if err := e.checkAnnot(p.Name, p.Annot, av); err != nil {
+				return 0, err
+			}
+		}
+		scope[p.Name] = av
 	}
 	saved := e.Vars
+	prevRet := e.curRet
+	e.curRet = fd.ReturnAnno
 	if containsYield(fd.Body) {
 		genH := e.allocObj("list")
 		prev := e.yieldList
@@ -71,6 +152,7 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 		e.inCall = false
 		e.yieldList = prev
 		e.Vars = saved
+		e.curRet = prevRet
 		return genH, err
 	}
 	e.Vars = scope
@@ -78,6 +160,7 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 	rv, err := e.evalBody(fd.Body)
 	e.inCall = false
 	e.Vars = saved
+	e.curRet = prevRet
 	return rv, err
 }
 
@@ -360,6 +443,15 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
+			if s.Annot != nil {
+				name := ""
+				if n, ok := s.Target.(*Name); ok {
+					name = n.Value
+				}
+				if err := e.checkAnnot(name, s.Annot, v); err != nil {
+					return 0, err
+				}
+			}
 			if n, ok := s.Target.(*Name); ok {
 				e.Vars[n.Value] = v
 				last = v
@@ -386,6 +478,11 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				v, err := e.eval(s.Expr)
 				if err != nil {
 					return 0, err
+				}
+				if e.curRet != nil {
+					if err := e.checkAnnot("return", e.curRet, v); err != nil {
+						return 0, err
+					}
 				}
 				return v, nil
 			}
@@ -852,8 +949,15 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			saved := e.Vars
 			e.Vars = map[string]int64{}
 			for i, p := range fd.Params {
+				if p.Annot != nil {
+					if err := e.checkAnnot(p.Name, p.Annot, argVals[i]); err != nil {
+						return 0, err
+					}
+				}
 				e.Vars[p.Name] = argVals[i]
 			}
+			prevRet := e.curRet
+			e.curRet = fd.ReturnAnno
 			if containsYield(fd.Body) {
 				genH := e.allocObj("list")
 				prev := e.yieldList
@@ -863,6 +967,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				e.inCall = false
 				e.yieldList = prev
 				e.Vars = saved
+				e.curRet = prevRet
 				if err != nil {
 					return 0, err
 				}
@@ -872,6 +977,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			rv, err := e.evalBody(fd.Body)
 			e.inCall = false
 			e.Vars = saved
+			e.curRet = prevRet
 			return rv, err
 		}
 		switch name.Value {

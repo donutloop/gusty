@@ -104,3 +104,22 @@ func TestIRKeywordRejectedInBuiltin(t *testing.T) {
 	}
 	_ = res
 }
+func TestIRClosureCompilesWithLLC(t *testing.T) {
+	ir := llcCompiles(t, "def outer(x):\n    def inc():\n        return x + 1\n    y = inc()\n    return y\nprint(outer(5))")
+	if !strings.Contains(ir, "@inc_env") {
+		t.Fatalf("missing closure define in IR:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@inc_slot") {
+		t.Fatalf("missing closure env slot in IR:\n%s", ir)
+	}
+}
+
+func TestIRDecoratorCompilesWithLLC(t *testing.T) {
+	ir := llcCompiles(t, "def dec(g):\n    return g\n@dec\ndef f(x):\n    return x + 1\nprint(f(3))")
+	if !strings.Contains(ir, "@f_impl") {
+		t.Fatalf("missing decorated impl in IR:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@f_apply") {
+		t.Fatalf("missing decorator apply in IR:\n%s", ir)
+	}
+}

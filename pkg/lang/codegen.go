@@ -27,6 +27,9 @@ func GenerateIR(prog *Program) (string, error) {
 		}
 	}
 	b.WriteString("define i32 @main() {\nentry:\n")
+	for _, ap := range g.applyCalls {
+		fmt.Fprintf(&b, "  call void %s()\n", ap)
+	}
 	for _, st := range prog.Stmts {
 		if _, ok := st.(*FuncDef); ok {
 			continue
@@ -38,6 +41,7 @@ func GenerateIR(prog *Program) (string, error) {
 	b.WriteString("  ret i32 0\n}\n")
 	// assemble output
 	var out strings.Builder
+	g.emitEnvGlobals()
 	out.WriteString(g.globals.String())
 	out.WriteString(g.decls)
 	out.WriteString(b.String())
@@ -64,6 +68,14 @@ type irGen struct {
 	label   int
 	ldN     int
 	loopStack []loopInfo
+
+	closures    map[string]*closureInfo
+	envMode     bool
+	envCaptures map[string]int
+	envParam    string
+	decorated   map[string]bool
+	applyCalls  []string
+
 }
 
 type loopInfo struct {
@@ -81,7 +93,8 @@ func (g *irGen) fmtStr(format string) (string, int) {
 	// escape backslashes for the IR c"..." literal; % is literal in IR and
 	// must stay single so printf sees a real format directive (e.g. %d -> 42).
 	f := strings.ReplaceAll(format, "\\", "\\\\")
-	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(f)+1, f))
+	f = strings.ReplaceAll(f, "\n", "\\0A")
+	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(format)+1, f))
 	return name, len(f) + 1
 }
 
@@ -90,6 +103,7 @@ func (g *irGen) strConst(s string) string {
 	g.strIdx++
 	name := fmt.Sprintf("@.str%d", g.strIdx)
 	esc := strings.ReplaceAll(s, "\\", "\\\\")
+	esc = strings.ReplaceAll(esc, "\n", "\\0A")
 	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(esc)+1, esc))
 	return name
 }
@@ -114,6 +128,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		// Always load fresh from the alloca so the value dominates its use.
 		g.ldN++
+		if off, ok := g.envCaptures[n.Value]; ok && g.envMode {
+			return g.emitEnvLoad(b, g.envParam, off), nil
+		}
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
@@ -281,7 +298,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			vals[i] = "i32 " + dv
 		}
 		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+		if _, ok := g.closures[fnName]; ok {
+			env := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* @%s_slot\n", env, fnName))
+			callArgs := append([]string{"i32 " + env}, vals...)
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_env(%s)\n", t, fnName, strings.Join(callArgs, ", ")))
+		} else if g.decorated[fnName] {
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, fnName, strings.Join(vals, ", ")))
+		} else {
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+		}
 		return t, nil
 	}
 	switch fnName {
@@ -318,26 +344,45 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 }
 
 func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
+	g.closures = map[string]*closureInfo{}
+	g.envMode = false
+	g.envCaptures = nil
+	g.envParam = "%env"
+	g.decorated = map[string]bool{}
+	op := map[string]bool{}
+	for _, p := range fd.Params {
+		op[p.Name] = true
+	}
+	ol := map[string]bool{}
+	collectLocals(fd.Body, ol)
+	for _, nd := range nestedDefs(fd.Body) {
+		ci := closureInfoFor(nd, op, ol)
+		g.closures[ci.name] = ci
+		fmt.Fprintf(&g.globals, "@%s_slot = internal global i32 0\n", ci.name)
+		g.emitClosureDef(b, ci, nd)
+	}
+	if len(fd.Decorators) > 0 {
+		g.emitDecoratedFunc(b, fd)
+		return nil
+	}
 	g.params = map[string]string{}
-	b.WriteString(fmt.Sprintf("define i32 @%s(", fd.Name))
-	for i, p := range fd.Params {
+	fmt.Fprintf(b, "define i32 @%s(", fd.Name)
+	for i := range fd.Params {
 		if i > 0 {
-			b.WriteString(", ")
+			fmt.Fprintf(b, ", ")
 		}
-		b.WriteString(fmt.Sprintf("i32 %%p%d", i))
+		fmt.Fprintf(b, "i32 %%p%d", i)
+	}
+	fmt.Fprintf(b, ") {\n")
+	for i, p := range fd.Params {
 		g.params[p.Name] = fmt.Sprintf("%%p%d", i)
 	}
-	b.WriteString(") {\nentry:\n")
 	for _, st := range fd.Body {
 		if err := g.stmt(b, st); err != nil {
 			return err
 		}
 	}
-	// trailing ret only if body didn't already end with one
-	if !strings.Contains(b.String(), "\n  ret ") {
-		b.WriteString("  ret i32 0\n")
-	}
-	b.WriteString("}\n\n")
+	fmt.Fprintf(b, "  ret i32 0\n}\n")
 	g.params = map[string]string{}
 	return nil
 }
@@ -511,9 +556,25 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *FuncDef:
-		if err := g.funcDef(b, n); err != nil {
-			return err
+		ci := g.closures[n.Name]
+		if ci == nil {
+			if err := g.funcDef(b, n); err != nil {
+				return err
+			}
+			return nil
 		}
+		env := g.emitNewEnv(b)
+		for i, c := range ci.captured {
+			val := ""
+			if pn, ok := g.params[c]; ok {
+				val = pn
+			} else {
+				val = g.newTmp()
+				fmt.Fprintf(b, "  %s = load i32, i32* @%s\n", val, c)
+			}
+			g.emitEnvStore(b, env, i, val)
+		}
+		fmt.Fprintf(b, "  store i32 %s, i32* @%s_slot\n", env, n.Name)
 	case *ReturnStmt:
 		v, err := g.value(b, n.Expr)
 		if err != nil {

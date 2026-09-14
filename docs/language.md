@@ -53,6 +53,15 @@ def add(a, b):
   transformed) value bound to `f`. Decorators are implemented in the
   interpreter (REPL / `--eval` path).
 
+### Gradual typing
+
+Optional annotations appear on variables (`x: int = 1`), parameters
+(`def f(x: int)`), and returns (`def f() -> int`). Annotations are enforced
+at runtime in the interpreter: a value whose runtime kind is not assignable
+to its annotation is a `type mismatch` error. `any` (dynamic) accepts
+everything. Because the interpreter stores booleans as plain integers, `int`
+and `bool` annotations accept either kind.
+
 ### Control flow
 
 ```

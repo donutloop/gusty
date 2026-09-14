@@ -1,5 +1,6 @@
 package lang
 
+import "strings"
 import "testing"
 
 func TestEvalUserFunc(t *testing.T) {
@@ -329,5 +330,59 @@ func TestMultipleDecorators(t *testing.T) {
 	}
 	if v != 22 {
 		t.Fatalf("got %d, want 22", v)
+	}
+}
+
+func TestAnnotAssignOK(t *testing.T) {
+	// a matching annotation is accepted and the value flows through.
+	src := "x: int = 5\nx"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 5 {
+		t.Fatalf("got %d, want 5", v)
+	}
+}
+
+func TestAnnotAssignMismatch(t *testing.T) {
+	// a list value under an int annotation is a runtime type error.
+	src := "x: int = [1, 2]"
+	_, _, err := EvalExpr(src)
+	if err == nil {
+		t.Fatalf("expected a type mismatch error")
+	}
+	if !strings.Contains(err.Error(), "type mismatch") {
+		t.Fatalf("got %v, want type mismatch", err)
+	}
+}
+
+func TestAnnotDynAcceptsAnything(t *testing.T) {
+	// any (dynamic) annotation accepts a list under an int context.
+	src := "x: any = [1, 2]\nlen(x)"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+}
+
+func TestAnnotParamMismatch(t *testing.T) {
+	// an annotated parameter rejects a wrong-typed argument.
+	src := "def f(x: int):\n    return x\nf([1, 2])"
+	_, _, err := EvalExpr(src)
+	if err == nil || !strings.Contains(err.Error(), "type mismatch") {
+		t.Fatalf("got %v, want type mismatch", err)
+	}
+}
+
+func TestAnnotReturnMismatch(t *testing.T) {
+	// an annotated return rejects a wrong-typed returned value.
+	src := "def f() -> int:\n    return [1, 2]\nf()"
+	_, _, err := EvalExpr(src)
+	if err == nil || !strings.Contains(err.Error(), "type mismatch") {
+		t.Fatalf("got %v, want type mismatch", err)
 	}
 }
