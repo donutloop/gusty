@@ -12,17 +12,20 @@ type Evaluator struct {
 	classIDs  map[string]int64
 	curRet    *Type       // return annotation of the function currently executing
 	yieldList int64       // list handle accumulating yields (0 = not in generator)
+	curClass  string      // class name of the method currently executing (for super())
+	curSelf   int64       // receiver of the method currently executing (for super())
 }
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
 type obj struct {
-	kind  string           // "class" | "instance" | "method" | "list"
+	kind  string           // "class" | "instance" | "method" | "list" | "superproxy"
 	class string           // class name (instance/method)
 	attrs map[string]int64 // instance attrs or class method-handle ids
 	env   map[string]int64 // captured enclosing scope (kind=closure)
 	fn    *FuncDef         // method body (kind=method)
 	mname string           // method name (kind=method)
 	recv  int64            // bound receiver id (0 = unbound)
+	base  int64            // base class id (kind=class) for inheritance
 	elems []int64          // list elements (kind=list)
 	dvals []int64          // dict values parallel to elems keys (kind=dict)
 }
@@ -223,6 +226,13 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			classID := e.allocObj("class")
 			e.classIDs[s.Name] = classID
 			cls := e.heap[classID]
+			// inheritance: the first base (if any) becomes the base class;
+			// methods/attrs missing on the subclass resolve up the base chain.
+			if len(s.Bases) > 0 {
+				if baseID, ok := e.classIDs[s.Bases[0].Value]; ok {
+					cls.base = baseID
+				}
+			}
 			for _, m := range s.Body {
 				fd, ok := m.(*FuncDef)
 				if !ok {
@@ -566,14 +576,25 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if !ok {
 				return 0, &EvalError{Msg: "unknown class " + o.class}
 			}
-			if mID, ok := e.heap[classID].attrs[n.Name.Value]; ok {
+			// inheritance: fall back to the class and its bases.
+			if mID, ok := e.resolveMethod(classID, n.Name.Value); ok {
 				e.heap[mID].recv = objV
 				return mID, nil
 			}
 			return 0, &EvalError{Msg: "no attribute " + n.Name.Value}
 		}
 		if o.kind == "class" {
-			if mID, ok := o.attrs[n.Name.Value]; ok {
+			if mID, ok := e.resolveMethod(e.classIDFor(objV), n.Name.Value); ok {
+				return mID, nil
+			}
+			return 0, &EvalError{Msg: "no method " + n.Name.Value}
+		}
+		if o.kind == "superproxy" {
+			// super() proxy: resolve methods on the base class only, bound to
+			// the current instance (o.recv), so overridden methods can delegate.
+			baseID := o.base
+			if mID, ok := e.resolveMethod(baseID, n.Name.Value); ok {
+				e.heap[mID].recv = o.recv
 				return mID, nil
 			}
 			return 0, &EvalError{Msg: "no method " + n.Name.Value}
@@ -821,9 +842,38 @@ func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error)
 	old := e.Vars
 	e.Vars = scope
 	defer func() { e.Vars = old }()
-	e.inCall = true
-	defer func() { e.inCall = false }()
+	// set the current method context so super() can resolve the base class
+	// and bind the current instance.
+	prevClass, prevSelf := e.curClass, e.curSelf
+	e.curClass = mo.class
+	e.curSelf = self
+	defer func() { e.curClass, e.curSelf = prevClass, prevSelf }()
+
 	return e.evalBody(mo.fn.Body)
+}
+
+// resolveMethod finds a method named `name` on the class with id `classID`,
+// walking up the base-class chain (inheritance). It returns the method obj id.
+func (e *Evaluator) resolveMethod(classID int64, name string) (int64, bool) {
+	for c := e.heap[classID]; c != nil && c.kind == "class"; c = e.heap[c.base] {
+		if mID, ok := c.attrs[name]; ok {
+			return mID, true
+		}
+		if c.base == 0 {
+			break
+		}
+	}
+	return 0, false
+}
+
+// classIDFor returns the class heap-id whose obj value equals objV.
+func (e *Evaluator) classIDFor(objV int64) int64 {
+	for _, v := range e.classIDs {
+		if v == objV {
+			return v
+		}
+	}
+	return 0
 }
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
@@ -854,6 +904,30 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 		return 0, &EvalError{Msg: "not a callable attribute"}
 	}
 	if name, ok := n.Fn.(*Name); ok {
+		// super() returns a proxy bound to the current instance whose methods
+		// resolve on the base class of the currently-executing class.
+		if name.Value == "super" {
+			if len(n.Args) != 0 {
+				return 0, &EvalError{Msg: "super() takes no arguments"}
+			}
+			if e.curClass == "" {
+				return 0, &EvalError{Msg: "super() only valid inside a method"}
+			}
+			classID, ok := e.classIDs[e.curClass]
+			if !ok {
+				return 0, &EvalError{Msg: "unknown class " + e.curClass}
+			}
+			cls := e.heap[classID]
+			baseID := cls.base
+			if baseID == 0 {
+				return 0, &EvalError{Msg: "super() outside a subclass"}
+			}
+			spID := e.allocObj("superproxy")
+			sp := e.heap[spID]
+			sp.base = baseID
+			sp.recv = e.curSelf
+			return spID, nil
+		}
 		// class instantiation: Point(0,0)
 		if classID, ok := e.classIDs[name.Value]; ok {
 			instID := e.allocObj("instance")
@@ -867,8 +941,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 				argVals = append(argVals, av)
 			}
-			cls := e.heap[classID]
-			if initID, ok := cls.attrs["__init__"]; ok {
+			if initID, ok := e.resolveMethod(classID, "__init__"); ok {
 				mo := e.heap[initID]
 				mo.recv = instID
 				_, err := e.callMethod(mo, instID, argVals)

@@ -54,7 +54,8 @@ comparisons, and `print` (via `printf`) are all lowered to opaque-pointer IR.
 
 ## Interpreter-only language surface
 
-Classes, `try`/`except`, generators (`yield`), lists, `len`, **closures**
+Classes (with **inheritance** via `class Child(Base):` and `super()`, see
+`docs/language.md`), `try`/`except`, generators (`yield`), lists, `len`, **closures**
 (nested `def`s capturing the enclosing scope, e.g. `m = add(1); m(2)`),
 **decorators** (`@dec def f` -> `f = dec(f)` at def time), and **gradual
 runtime type checking** (annotations on variables, parameters, and returns

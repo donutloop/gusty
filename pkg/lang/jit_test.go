@@ -386,3 +386,63 @@ func TestAnnotReturnMismatch(t *testing.T) {
 		t.Fatalf("got %v, want type mismatch", err)
 	}
 }
+
+func TestEvalClassInheritanceMethodResolution(t *testing.T) {
+	// Child inherits a method defined only on Base.
+	src := "class Base:\n    def greet(self):\n        return 41\nclass Child(Base):\n    def hi(self):\n        return 1\nc = Child()\nc.greet()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("inherit err: %v", err)
+	}
+	if v != 41 {
+		t.Fatalf("got %d, want 41", v)
+	}
+}
+
+func TestEvalClassInheritanceOverride(t *testing.T) {
+	// A subclass overriding a base method uses the subclass's version.
+	src := "class Base:\n    def val(self):\n        return 1\nclass Child(Base):\n    def val(self):\n        return 2\nc = Child()\nc.val()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("override err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+}
+
+func TestEvalClassInheritanceInit(t *testing.T) {
+	// __init__ inherited from Base runs when instantiating Child.
+	src := "class Base:\n    def __init__(self):\n        self.n = 5\nclass Child(Base):\n    def get(self):\n        return self.n\nc = Child()\nc.get()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("init err: %v", err)
+	}
+	if v != 5 {
+		t.Fatalf("got %d, want 5", v)
+	}
+}
+
+func TestEvalClassSuperDelegation(t *testing.T) {
+	// super() lets an overridden method delegate to the base implementation.
+	src := "class Base:\n    def val(self):\n        return 10\nclass Child(Base):\n    def val(self):\n        return super().val() + 5\nc = Child()\nc.val()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("super err: %v", err)
+	}
+	if v != 15 {
+		t.Fatalf("got %d, want 15", v)
+	}
+}
+
+func TestEvalClassGrandChildResolution(t *testing.T) {
+	// method resolution walks the whole base chain (grandparent).
+	src := "class A:\n    def f(self):\n        return 7\nclass B(A):\n    def b(self):\n        return 1\nclass C(B):\n    def g(self):\n        return 1\nc = C()\nc.f()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("grandchild err: %v", err)
+	}
+	if v != 7 {
+		t.Fatalf("got %d, want 7", v)
+	}
+}

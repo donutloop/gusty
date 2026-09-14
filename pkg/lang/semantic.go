@@ -365,6 +365,8 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			return TVoid()
 		case "len":
 			return TInt()
+		case "super":
+			return TDyn()
 		}
 	}
 	ft := an.inferExpr(n.Fn)

@@ -4,6 +4,11 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **class inheritance** — `class Child(Base):` inherits
+  `Base`'s methods and `__init__`; instance/class method and attribute lookup
+  walks the whole base chain (multi-level). An overridden method can delegate
+  to the base implementation with `super()` (resolves methods on the base
+  class of the currently-executing class, bound to the current instance).
 - `feat(interp)`: **decorators** — `@dec` lines before a `def` apply at
   definition time (`@dec def f` -> `f = dec(f)`), bottom-up for multiple
   decorators. Parser accepts `@`, analysis infers decorator expressions, and

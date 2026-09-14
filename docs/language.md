@@ -86,7 +86,13 @@ for i in range(n):
 - Classes are supported: `class Name:` bodies contain methods (the first param
   is `self`), `Point(0,0)` instantiates (calling `__init__` if present),
   `obj.attr` reads/writes instance attributes, and `obj.method(args)` / `Cls.method(self, args)`
-  dispatch methods. Class support is implemented in the interpreter (REPL/--eval path).
+  dispatch methods.
+- **Inheritance**: `class Child(Base):` makes `Child` inherit `Base`'s methods
+  and `__init__`; method/attribute lookup on instances and classes walks the
+  whole base chain (multi-level). An overridden method can delegate to the base
+  implementation with `super()` (valid only inside a method; it resolves methods
+  on the base class of the currently-executing class, bound to the current
+  instance). Class support is implemented in the interpreter (REPL/--eval path).
 - `raise Exception` raises a runtime error; `try:`/`except Exception:`/`finally:` catch
   it (the catch-all `Exception` clause matches any raised or builtin error), and
   `finally:` always runs. `Exception` is a builtin exception type name.
