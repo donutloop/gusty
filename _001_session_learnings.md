@@ -62,3 +62,74 @@ Language surface is still the C-like curly-brace subset (`function`, `let`, `for
 `i32`, `printf`). The Python-like vision remains: indentation-based INDENT/DEDENT lexer,
 parser/AST, gradual typing, comprehensions, generators, classes/inheritance, decorators,
 exceptions, pattern matching, modules, stdlib.
+
+---
+
+# Session learnings: tiny Go (the gusty interpreter)
+
+This session I implemented `raise`/`try`/`except`/`finally`, generators (`yield`),
+list literals, `for`-over-lists, and `len(list)`. Here is what I learned about
+this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
+(`pkg/lang/semantic.go`).
+
+## Architecture (it's genuinely tiny)
+- The "compiler" is mostly an AST interpreter: `pkg/lang/parser.go` builds a
+  `Program` of `Stmt`/`Expr` AST nodes; `pkg/lang/semantic.go` is a type
+  checker; `pkg/lang/jit.go` is a tree-walking evaluator; `pkg/lang/codegen.go`
+  is the LLVM IR emitter (via TinyGo's `go-llvm` bindings).
+- There is no IR/bytecode in between — the interpreter evaluates ASTs directly.
+
+## The value model is unusual
+- The evaluator represents values as `int64` "handles" into a `heap map[int64]*obj`.
+  `obj` has `kind` ("class"/"instance"/"method") plus `attrs map[string]int64`.
+- Functions live in `e.funcs map[string]*FuncDef` — they are NOT first-class
+  values. This is the single biggest constraint: decorators and closures are hard
+  because there's no way to pass a `FuncDef` as a handle.
+- I added `kind:"list"` with `elems []int64` for the list/generator feature.
+
+## Generator implementation (eager, not lazy)
+- I implemented generators by detecting `containsYield(fd.Body)` at call time,
+  setting a `yieldList` accumulator handle on the Evaluator, and letting each
+  `YieldStmt` append its value. Calling the function returns the list handle.
+- Key bug: my first `case *YieldStmt` did `return v, nil` — but the dispatcher
+  loop treats a `return` as stopping the whole body, so only the FIRST yield was
+  collected. Fix: `last = v; continue` instead of returning.
+- This is eager (collect all yields), a faithful subset for pure generators.
+
+## The semantic analyzer's scope chain
+- `Scope.lookup` chains to parents; `an.scope.define(name, type)` always adds.
+- The `for` loop analyzer binds the loop variable into a NEW child scope, then
+  analyzes the body per-statement.
+- Critical gotcha: if `inferExpr(iter)` returns `nil` (unknown return type,
+  e.g. a generator call), `define(x, nil)` adds x with a nil type — and the
+  Name resolver treats "found but nil type" as **undefined name x**. I fixed it
+  by falling back to `TDyn()` when the iterable element type is nil.
+
+## Builtin dispatch duplication (a real smell)
+- Builtins like `range`/`print`/`len` are handled in TWO places: the evaluator's
+  `evalCall` switch (`case "print"`, `case "len"`) AND the semantic analyzer's
+  `inferCall` switch (`"print" -> TVoid()`, `"len" -> TInt()`). Adding a builtin
+  means touching both, and they can drift out of sync.
+- `print` returns `0, nil`; `range` is special-cased in `rangeBounds`. My `len`
+  returns `int64(len(o.elems))`.
+
+## `for` loop dispatch gotcha
+- The original `ForStmt` called `e.rangeBounds(s.Iter)` which internally evaluates
+  the iterable as a range call. When I rewrote it to `e.eval(s.Iter)` first to
+  detect lists, `range(a, b)` broke — the generic `eval` hits the builtin
+  `range` handler which errors on 2 args. Fix: special-case `range` calls before
+  generic evaluation.
+
+## Test hygiene
+- The package has no exported helpers (e.g. `heapOf`), so generator tests had to
+  go through `EvalExpr`/`parseProgram` + `NewEvaluator().EvalProgram` directly.
+- I wrote several throwaway `dbg*_test.go` files to trace bugs, then deleted them
+  before committing — the final feature tests live in `pkg/lang/gen_test.go`.
+
+## Process lessons
+- Each feature = parser/semantic/evaluator edit + docs/language.md + an ADR in
+  `docs/adr/` + tests, committed and pushed per feature.
+- The repo convention is one commit per feature with a `feat(lang):` message,
+  and an ADR explaining the decision, rationale, and rejected alternatives.
+- Always `go test -tags llvm ./pkg/...` before committing; the llvm build tag
+  is required (TinyGo's go-llvm bindings).
