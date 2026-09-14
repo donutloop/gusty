@@ -22,7 +22,7 @@ EXECUTABLES := $(patsubst %.ll,%,$(SOURCES))
 all: $(EXECUTABLES)
 
 $(SOURCEDIR)/%.o: $(SOURCEDIR)/%.ll
-	$(LLC) -filetype=obj $< -o $@
+	$(LLC) -filetype=obj -relocation-model=pic $< -o $@
 
 $(SOURCEDIR)/%: $(SOURCEDIR)/%.o
 	cc $< -o $@
