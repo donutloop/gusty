@@ -86,16 +86,20 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		}
 	case *IfStmt:
 		an.inferExpr(s.Cond)
-		old := an.scope
-		an.scope = newScope(old)
+		// if/elif/else bodies share the enclosing scope: assignments there
+		// flow outward (like Python), so do NOT create a child scope.
 		for _, b := range s.Then {
 			an.analyzeStmt(b)
 		}
-		an.scope = newScope(old)
+		for _, e := range s.Elifs {
+			an.inferExpr(e.Cond)
+			for _, b := range e.Then {
+				an.analyzeStmt(b)
+			}
+		}
 		for _, b := range s.Else {
 			an.analyzeStmt(b)
 		}
-		an.scope = old
 	case *WhileStmt:
 		an.inferExpr(s.Cond)
 		old := an.scope
@@ -118,7 +122,7 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		if elem == nil {
 			elem = TDyn()
 		}
-		an.scope = newScope(an.scope)
+		// loop var and body share the enclosing scope (runtime uses shared vars).
 		an.scope.define(s.Var.Value, elem)
 		an.loopDepth++
 		for _, b := range s.Body {
@@ -128,7 +132,7 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			an.analyzeStmt(b)
 		}
 		an.loopDepth--
-		an.scope = an.scope.Parent
+
 	case *FuncDef:
 		an.analyzeFunc(s)
 	case *ClassDef:
@@ -490,3 +494,4 @@ func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
 		return TIter(e)
 	}
 }
+

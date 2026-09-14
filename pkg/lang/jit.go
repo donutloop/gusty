@@ -282,17 +282,36 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
+			taken := false
 			if cond != 0 {
 				rv, err := e.evalBody(s.Then)
 				if err != nil {
 					return 0, err
 				}
 				last = rv
-			} else if s.Else != nil {
+				taken = true
+			} else {
+				for _, eif := range s.Elifs {
+					ec, err := e.eval(eif.Cond)
+					if err != nil {
+						return 0, err
+					}
+					if ec != 0 {
+						rv, err := e.evalBody(eif.Then)
+						if err != nil {
+							return 0, err
+						}
+						last = rv
+						taken = true
+						break
+					}
+				}
+			}
+			if !taken && s.Else != nil {
 				rv, err := e.evalBody(s.Else)
 				if err != nil {
 					return 0, err
-				}
+					}
 				last = rv
 			}
 			continue

@@ -484,9 +484,21 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return err
 		}
 		thenL := g.newLabel("if.then")
-		elseL := g.newLabel("if.else")
 		endL := g.newLabel("if.end")
-		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, thenL, elseL))
+		var elseL string
+		// build elif chain: each elif gets a cond label and a then label.
+		type el struct{ condL, thenL string; e *IfStmt }
+		els := []el{}
+		for _, e := range n.Elifs {
+			els = append(els, el{g.newLabel("if.elif"), g.newLabel("if.elif.then"), e})
+		}
+		elseL = g.newLabel("if.else")
+		// dispatch from top: cond -> then, else -> first elif cond (or else).
+		firstTarget := elseL
+		if len(els) > 0 {
+			firstTarget = els[0].condL
+		}
+		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, thenL, firstTarget))
 		b.WriteString(fmt.Sprintf("%s:\n", thenL))
 		for _, s := range n.Then {
 			if err := g.stmt(b, s); err != nil {
@@ -494,6 +506,26 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+		// elif branches
+		for i, e := range els {
+			b.WriteString(fmt.Sprintf("%s:\n", e.condL))
+			ec, err := g.value(b, e.e.Cond)
+			if err != nil {
+				return err
+			}
+			nextTarget := elseL
+			if i+1 < len(els) {
+				nextTarget = els[i+1].condL
+			}
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", ec, e.thenL, nextTarget))
+			b.WriteString(fmt.Sprintf("%s:\n", e.thenL))
+			for _, s := range e.e.Then {
+				if err := g.stmt(b, s); err != nil {
+					return err
+				}
+			}
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+		}
 		b.WriteString(fmt.Sprintf("%s:\n", elseL))
 		for _, s := range n.Else {
 			if err := g.stmt(b, s); err != nil {

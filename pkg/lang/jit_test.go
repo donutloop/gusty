@@ -34,6 +34,44 @@ func TestEvalIfElse(t *testing.T) {
 	}
 }
 
+func TestEvalElifChain(t *testing.T) {
+	// elif taken
+	v, _, err := EvalExpr("x = 3\nif x < 2:\n    y = 10\nelif x < 4:\n    y = 20\nelse:\n    y = 30\ny")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 20 {
+		t.Fatalf("got %d, want 20", v)
+	}
+	// elif false, else taken
+	v, _, err = EvalExpr("x = 9\nif x < 2:\n    y = 10\nelif x < 4:\n    y = 20\nelse:\n    y = 30\ny")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 30 {
+		t.Fatalf("got %d, want 30", v)
+	}
+}
+
+func TestEvalElifMultiple(t *testing.T) {
+	// second of three elifs taken
+	v, _, err := EvalExpr("x = 6\nif x < 2:\n    y = 10\nelif x < 5:\n    y = 20\nelif x < 8:\n    y = 30\nelse:\n    y = 40\ny")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 30 {
+		t.Fatalf("got %d, want 30", v)
+	}
+	// no elif, no else -> nothing taken
+	v, _, err = EvalExpr("x = 9\nif x < 2:\n    y = 10\nelif x < 5:\n    y = 20\ny = 99\ny")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 99 {
+		t.Fatalf("got %d, want 99", v)
+	}
+}
+
 func TestEvalWhileSum(t *testing.T) {
 	v, _, err := EvalExpr("i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\ns")
 	if err != nil {

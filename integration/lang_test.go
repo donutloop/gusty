@@ -89,6 +89,14 @@ func TestExecIfElse(t *testing.T) {
 	assertOutput(t, "x = 3\nif x < 2:\n    print(10)\nelse:\n    print(20)", "20\n")
 }
 
+func TestExecElifChain(t *testing.T) {
+	assertOutput(t, "x = 3\nif x < 2:\n    print(10)\nelif x < 4:\n    print(20)\nelse:\n    print(30)", "20\n")
+	assertOutput(t, "x = 9\nif x < 2:\n    print(10)\nelif x < 4:\n    print(20)\nelse:\n    print(30)", "30\n")
+	assertOutput(t, "x = 6\nif x < 2:\n    print(10)\nelif x < 5:\n    print(20)\nelif x < 8:\n    print(30)\nelse:\n    print(40)", "30\n")
+	// no elif/else taken
+	assertOutput(t, "x = 9\nif x < 2:\n    print(10)\nelif x < 5:\n    print(20)\nprint(99)", "99\n")
+}
+
 func TestExecWhileSum(t *testing.T) {
 	src := "s = 0\ni = 0\nwhile i < 5:\n    s = s + i\n    i = i + 1\nprint(s)"
 	assertOutput(t, src, "10\n")

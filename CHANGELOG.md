@@ -4,6 +4,14 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp+llvm)`: **`elif` chains** — the parser already built
+  `IfStmt.Elifs`, but neither the interpreter nor the LLVM codegen executed
+  them, and the semantic analyzer skipped elif bodies entirely (and scoped
+  if/else bodies to child scopes, hiding assignments from the enclosing
+  scope). Both backends now evaluate elif branches; the analyzer analyzes
+  elif bodies and analyzes if/while/for bodies in the enclosing scope so
+  assignments flow outward (matching the runtime's shared-vars model).
+
 - `feat(llvm)`: **inline list literals with constant indexing + len**
   in the AOT codegen — `[1,2,3][1]` and `len([1,2,3])` lower to a
   dedicated global struct with constant-GEP loads.
