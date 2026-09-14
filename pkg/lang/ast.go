@@ -271,3 +271,13 @@ type Generator struct {
 }
 func (n *Generator) Span() Span { return n.sp }
 func (n *Generator) exprNode()  {}
+
+type BreakStmt struct{ sp Span `json:"-"` }
+func (n *BreakStmt) Span() Span { return n.sp }
+func (n *BreakStmt) stmtNode()  {}
+func (n *BreakStmt) SetSpan(s Span) { n.sp = s }
+
+type ContinueStmt struct{ sp Span `json:"-"` }
+func (n *ContinueStmt) Span() Span { return n.sp }
+func (n *ContinueStmt) stmtNode()  {}
+func (n *ContinueStmt) SetSpan(s Span) { n.sp = s }

@@ -55,6 +55,12 @@ type irGen struct {
 	tmp     int
 	label   int
 	ldN     int
+	loopStack []loopInfo
+}
+
+type loopInfo struct {
+	breakLabel    string
+	continueLabel string
 }
 
 func (g *irGen) newTmp() string { g.tmp++; return fmt.Sprintf("%%t%d", g.tmp) }
@@ -325,11 +331,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, bodyL, endL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: condL})
 		for _, s := range n.Body {
 			if err := g.stmt(b, s); err != nil {
 				return err
 			}
 		}
+		g.loopStack = g.loopStack[:len(g.loopStack)-1]
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ForStmt:
@@ -355,11 +363,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", t, cld, iter))
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", t, bodyL, endL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 		for _, s := range n.Body {
 			if err := g.stmt(b, s); err != nil {
 				return err
 			}
 		}
+		g.loopStack = g.loopStack[:len(g.loopStack)-1]
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", incL))
 		b.WriteString(fmt.Sprintf("%s:\n", incL))
 		g.ldN++
@@ -380,6 +390,18 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return err
 		}
 		b.WriteString(fmt.Sprintf("  ret i32 %s\n", v))
+	case *BreakStmt:
+		if len(g.loopStack) == 0 {
+			return fmt.Errorf("codegen: break outside loop")
+		}
+		info := g.loopStack[len(g.loopStack)-1]
+		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.breakLabel))
+	case *ContinueStmt:
+		if len(g.loopStack) == 0 {
+			return fmt.Errorf("codegen: continue outside loop")
+		}
+		info := g.loopStack[len(g.loopStack)-1]
+		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.continueLabel))
 	default:
 		return fmt.Errorf("codegen: unsupported statement %T", st)
 	}

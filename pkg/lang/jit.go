@@ -70,6 +70,12 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 			rv, err := e.evalBody(s.Body)
 			if err != nil {
+				if ls, ok := err.(*loopSignal); ok {
+					if ls.kind == "break" {
+						break
+					}
+					continue
+				}
 				return 0, err
 			}
 			last = rv
@@ -85,6 +91,12 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				e.Vars[n.Value] = i
 				rv, err := e.evalBody(s.Body)
 				if err != nil {
+					if ls, ok := err.(*loopSignal); ok {
+						if ls.kind == "break" {
+							break
+						}
+						continue
+					}
 					return 0, err
 				}
 				last = rv
@@ -114,6 +126,10 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 				return v, nil
 			}
+		case *BreakStmt:
+			return 0, &loopSignal{kind: "break"}
+		case *ContinueStmt:
+			return 0, &loopSignal{kind: "continue"}
 		default:
 			return 0, &EvalError{Msg: "unsupported statement for eval"}
 		}
@@ -232,29 +248,7 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 }
 
 func (e *Evaluator) evalBody(stmts []Stmt) (int64, error) {
-	var last int64
-	for _, st := range stmts {
-		switch s := st.(type) {
-		case *AssignStmt:
-			val, err := e.eval(s.Value)
-			if err != nil {
-				return 0, err
-			}
-			if n, ok := s.Target.(*Name); ok {
-				e.Vars[n.Value] = val
-			}
-			last = val
-		case *ExprStmt:
-			val, err := e.eval(s.Expr)
-			if err != nil {
-				return 0, err
-			}
-			last = val
-		case *ReturnStmt:
-			return e.eval(s.Expr)
-		}
-	}
-	return last, nil
+	return e.EvalProgram(&Program{Stmts: stmts})
 }
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
@@ -301,6 +295,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 type EvalError struct{ Msg string }
 
 func (e *EvalError) Error() string { return "eval error: " + e.Msg }
+
+// loopSignal carries break/continue control out of a loop body.
+type loopSignal struct{ kind string }
+
+func (l *loopSignal) Error() string { return "loop signal: " + l.kind }
 
 // EvalExpr compiles src and evaluates it, returning the integer result and diagnostics.
 func EvalExpr(src string) (int64, []Diagnostic, error) {

@@ -59,4 +59,5 @@ var keywords = map[string]bool{
 	"class": true, "import": true, "match": true, "case": true, "try": true,
 	"except": true, "finally": true, "yield": true, "lambda": true,
 	"None": true, "True": true, "False": true, "not": true, "and": true, "or": true,
+	"break": true, "continue": true,
 }

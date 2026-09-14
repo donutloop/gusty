@@ -4,6 +4,10 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(lang)`: add `break` and `continue` loop control in the parser,
+  interpreter, and IR emitter (loop-label tracking; llc-clean). Loop bodies now
+  go through the full statement dispatcher, fixing nested `if`/control flow
+  inside `while`/`for` bodies.
 - `feat(codegen)`: emit `match` as a chain of integer comparisons with
   terminators on every basic block (llc-clean IR).
 - `feat(interp)`: evaluate `match` statements with literal patterns in the

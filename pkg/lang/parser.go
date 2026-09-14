@@ -127,6 +127,14 @@ func (p *parser) parseStmt() (Stmt, error) {
 	if t.IsKeyword("yield") {
 		return p.parseYield()
 	}
+	if t.IsKeyword("break") {
+		p.next()
+		return &BreakStmt{sp: t.Span}, nil
+	}
+	if t.IsKeyword("continue") {
+		p.next()
+		return &ContinueStmt{sp: t.Span}, nil
+	}
 	// expression / assignment
 	return p.parseExprOrAssign()
 }

@@ -48,3 +48,8 @@ func TestIRIfCompilesWithLLC(t *testing.T) {
 func TestIRMatchCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
 }
+
+func TestIRBreakContinueCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni")
+	llcCompiles(t, "s = 0\nfor i in range(5):\n    if i == 2:\n        continue\n    s = s + i\ns")
+}

@@ -61,3 +61,22 @@ func TestEvalMatch(t *testing.T) {
 		t.Fatalf("got %d, want 2", v)
 	}
 }
+
+func TestEvalBreakContinue(t *testing.T) {
+	// break out of while
+	v, _, err := EvalExpr("i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni")
+	if err != nil {
+		t.Fatalf("break err: %v", err)
+	}
+	if v != 3 {
+		t.Fatalf("break got %d, want 3", v)
+	}
+	// continue skips increment in for loop
+	v2, _, err := EvalExpr("s = 0\nfor i in range(5):\n    if i == 2:\n        continue\n    s = s + i\ns")
+	if err != nil {
+		t.Fatalf("continue err: %v", err)
+	}
+	if v2 != 8 { // 0+1+3+4 (skip 2)
+		t.Fatalf("continue got %d, want 8", v2)
+	}
+}
