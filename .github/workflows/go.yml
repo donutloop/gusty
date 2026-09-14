@@ -7,33 +7,36 @@ on:
     branches: [ "main" ]
 
 jobs:
-  test-on-linux-with-llvm-15:
+  test-on-ubuntu-with-llvm-20:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Install LLVM
+
+      - name: Install LLVM 20
         run: |
-          echo 'deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main' | sudo tee /etc/apt/sources.list.d/llvm.list
+          echo 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main' | sudo tee /etc/apt/sources.list.d/llvm.list
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           sudo apt-get update
-          sudo apt-get install --no-install-recommends llvm-15-dev
-      
+          sudo apt-get install -y --no-install-recommends llvm-20 llvm-20-dev
+
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-         go-version: 1.20.x
-
-      - name: Go mod download
-        run: go mod download
+          go-version: 1.20.x
 
       - name: Build
-        run: make build
+        run: go build -tags=llvm20 ./...
 
-      - name: Test
-        run: make test
+      - name: Unit tests
+        run: go test -tags=llvm20 ./pkg/...
 
-      - name: Test LLVM IR code
+      - name: Integration tests (execute generated code)
+        run: go test -tags=llvm20 ./integration/...
+        env:
+          LLC: llc-20
+
+      - name: Make integration flow (llc-20 + cc)
         run: make testllvmcode
         env:
-          LLC: llc-15
+          LLC: llc-20
