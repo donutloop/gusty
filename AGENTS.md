@@ -1,6 +1,15 @@
 # Agent Workflow
 
-This is the root-level prompt for the coding agent building **Pyre** (or whatever name is chosen), a Python-like programming language — familiar indentation-based syntax and dynamic-feeling ergonomics, compiled ahead-of-time through LLVM instead of interpreted. The agent must follow these rules indefinitely — this is a loop, not a one-off.
+This is the root-level prompt for the coding agent building **Pyre** (or whatever name is chosen), a Python-like programming language — familiar indentation-based syntax and dynamic-feeling ergonomics, compiled ahead-of-time through LLVM. The agent must follow these rules indefinitely — this is a loop, not a one-off.
+
+## Two execution paths — both are first-class
+
+The language has **two supported execution backends**, and they must stay in sync:
+
+- **Interpreter** (`pkg/lang/jit.go`, entry `EvalExpr`) — the REPL / `--eval` / `--verify` path. Fast feedback, rich diagnostics, and the place where the full language surface (closures, decorators, classes, generators/`yield`, exceptions, comprehensions) is implemented and tested first.
+- **LLVM AOT codegen** (`pkg/lang/codegen.go` + `pkg/lang/closure.go`, entry `Compile`) — the `--file` / `--emit-llvm` / link-and-run path. Textual IR verified by `llc`/`llvm-as`.
+
+Every feature must ship in **both** paths unless an ADR explicitly documents the interpreter-only or codegen-only limitation (e.g. arbitrary decorators and nested closures are currently interpreter-only AOT limits). When a feature is added, implement it in the interpreter first (fast, testable), then mirror it in the LLVM codegen and verify the emitted module. Keep `docs/language.md` accurate about which path supports each construct.
 
 This compiler toolchain is built for BOTH humans and agentic workflows. The interface must reflect that duality at every layer: humans get a friendly CLI/REPL that feels like `python`/`ipython` (help, discoverable commands, readable diagnostics), while agents and scripts get structured, predictable, self-describing access (machine-readable JSON diagnostics, a JSON schema for AST/IR, stable CLI flags, self-describing commands, and deterministic exit codes). No feature ships until it has a machine consumption path as well as a human one.
 
@@ -35,12 +44,13 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
    - lexer/parser/AST for syntax, including indentation handling where relevant.
    - semantic analysis / gradual type inference for semantics (respect optional type annotations; fall back to dynamic dispatch where untyped).
    - runtime support if the feature needs it (new boxed value kind, dispatch method, GC/refcount interaction).
-   - LLVM IR codegen (and any new optimization pass) for lowering.
+   - interpreter support in `pkg/lang/jit.go` (the REPL/`--eval` path) — implement the feature here first when it touches runtime semantics.
+   - LLVM IR codegen (and any new optimization pass) for lowering, mirroring the interpreter behavior.
    - `docs/help.go` (or equivalent) — one-line help per command/flag.
    - `verify/` — known-good verify case (source in, expected IR/output out).
    - docs — `docs/language.md`, `docs/operations.md`, `CHANGELOG.md`, `README.md`, an ADR if needed.
 3. **Machine path** — if the feature is language/interface, make sure it is discoverable via schema/help and consumable as JSON where it makes sense (agents must not need to scrape prose or parse raw LLVM IR text blindly).
-4. Add tests for the feature before committing: unit tests for the compiler pass, and a codegen/integration test that compiles and runs (or JIT-executes) real source.
+4. Add tests for the feature before committing: unit tests for the compiler pass, and a codegen/integration test that compiles and runs (or JIT-executes) real source. When the feature is supported in both paths, cover **both** the interpreter (`jit_test.go`, `EvalExpr`) and the LLVM codegen (`integration/`, `Compile` + `llc`).
 5. Run tests before committing: full test suite must pass, and every emitted module must pass LLVM's module verifier.
 6. Commit with a clear message (`feat(codegen): ...`, `feat(parser): ...`).
 7. Always push your commits: `git push origin HEAD`.
@@ -82,4 +92,4 @@ Every feature or change ships with BOTH:
 - **Unit tests** (in the package/module under change — e.g. parser tests, type-checker tests, codegen tests), and
 - **Integration tests** (`tests/integration/`) that compile real source through the full pipeline (lex → parse → typecheck → codegen → optimize → JIT-execute or link-and-run) and check both the output and that the emitted LLVM module verifies cleanly.
 
-Always add both — never a feature without unit + integration coverage.
+Always add both — never a feature without unit + integration coverage. For features present in both backends, add an interpreter integration/unit case (`EvalExpr`) and an LLVM codegen case (`Compile` → `llc`), and keep both green before commit.
