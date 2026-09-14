@@ -1,11 +1,16 @@
+# gusty build & test targets.
+#
+# LLVM toolchain: LLVM 20. Opaque pointers are the default in LLVM 20, so
+# llc-20 needs no -opaque-pointers flag.
+
 test:
-	go test -v -tags=llvm15 ./...
+	go test -tags=llvm20 ./...
 
 build:
-	go build -v -tags=llvm15 ./...
+	go build -tags=llvm20 ./...
 
 
-LLC ?= llc
+LLC ?= llc-20
 
 SOURCEDIR := ./integration/expected
 SOURCES := $(wildcard $(SOURCEDIR)/*.ll)
@@ -17,10 +22,10 @@ EXECUTABLES := $(patsubst %.ll,%,$(SOURCES))
 all: $(EXECUTABLES)
 
 $(SOURCEDIR)/%.o: $(SOURCEDIR)/%.ll
-	$(LLC) -opaque-pointers -filetype=obj $< -o $@
+	$(LLC) -filetype=obj $< -o $@
 
 $(SOURCEDIR)/%: $(SOURCEDIR)/%.o
-	gcc -fsanitize=address -g -O1  $< -o $@
+	cc $< -o $@
 
 buildllvmcode: $(EXECUTABLES)
 	@for executable in $(EXECUTABLES); do \

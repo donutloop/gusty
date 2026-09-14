@@ -70,9 +70,9 @@ func (g *irGen) newLabel(s string) string { g.label++; return fmt.Sprintf("%s%d"
 func (g *irGen) fmtStr(format string) (string, int) {
 	g.fmtIdx++
 	name := fmt.Sprintf("@.fmt%d", g.fmtIdx)
-	// escape for IR: % -> %% and \n stays literal in IR text
-	f := strings.ReplaceAll(format, "%", "%%")
-	f = strings.ReplaceAll(f, "\\", "\\\\")
+	// escape backslashes for the IR c"..." literal; % is literal in IR and
+	// must stay single so printf sees a real format directive (e.g. %d -> 42).
+	f := strings.ReplaceAll(format, "\\", "\\\\")
 	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(f)+1, f))
 	return name, len(f) + 1
 }

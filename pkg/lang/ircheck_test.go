@@ -12,7 +12,7 @@ func llcCompiles(t *testing.T, src string) string {
 	if err != nil {
 		t.Fatalf("compile %q: %v", src, err)
 	}
-	cmd := exec.Command("llc-15", "-opaque-pointers", "-o", "/tmp/ircheck.o")
+	cmd := exec.Command("llc-20", "-o", "/tmp/ircheck.o")
 	cmd.Stdin = strings.NewReader(res.IR)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
