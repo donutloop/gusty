@@ -226,6 +226,16 @@ type Call struct {
 func (n *Call) Span() Span { return n.sp }
 func (n *Call) exprNode()  {}
 
+// KeywordArg is a `name = value` argument inside a call: the function
+// parameter `name` is bound to the evaluated `value`.
+type KeywordArg struct {
+	Name  string `json:"name"`
+	Value Expr   `json:"value"`
+	sp    Span   `json:"-"`
+}
+func (n *KeywordArg) Span() Span { return n.sp }
+func (n *KeywordArg) exprNode()  {}
+
 type Index struct {
 	Obj Expr `json:"obj"`
 	Idx Expr `json:"index"`

@@ -177,3 +177,19 @@ func TestCompileProducesExecutable(t *testing.T) {
 		t.Fatalf("IR missing @main entry:\n%s", res.IR)
 	}
 }
+
+func TestExecDefaultArg(t *testing.T) {
+	assertOutput(t, "def f(a, b=10):\n    return a + b\nprint(f(5))", "15\n")
+}
+
+func TestExecKeywordArg(t *testing.T) {
+	assertOutput(t, "def f(a, b):\n    return a * b\nprint(f(a=3, b=4))", "12\n")
+}
+
+func TestExecKeywordOutOfOrder(t *testing.T) {
+	assertOutput(t, "def f(a, b):\n    return a - b\nprint(f(b=3, a=10))", "7\n")
+}
+
+func TestExecKeywordAndDefault(t *testing.T) {
+	assertOutput(t, "def f(a, b=5):\n    return a + b\nprint(f(b=100, a=2))", "102\n")
+}

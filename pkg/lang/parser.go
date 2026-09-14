@@ -739,6 +739,27 @@ func (p *parser) parseUnary() (Expr, error) {
 	return p.parsePostfix()
 }
 
+// parseArg parses a single call argument. It recognizes a `name = value`
+// keyword argument: an identifier immediately followed by a single `=`
+// (not `==`). Everything else is parsed as a plain positional expression.
+func (p *parser) parseArg() (Expr, error) {
+	t := p.peek()
+	if t.Kind == TokIdent {
+		nx := p.pos + 1
+		if nx < len(p.toks) && p.toks[nx].Kind == TokOp && p.toks[nx].Text == "=" {
+			name := t.Text
+			p.next() // ident
+			p.next() // '='
+			val, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			return &KeywordArg{Name: name, Value: val, sp: t.Span}, nil
+		}
+	}
+	return p.parseExpr()
+}
+
 func (p *parser) parsePostfix() (Expr, error) {
 	x, err := p.parseAtom()
 	if err != nil {
@@ -751,7 +772,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 			var args []Expr
 			if !p.peek().IsOp(")") {
 				for {
-					a, err := p.parseExpr()
+					a, err := p.parseArg()
 					if err != nil {
 						return nil, err
 					}

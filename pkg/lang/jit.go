@@ -551,19 +551,70 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	}
 	if name, ok := n.Fn.(*Name); ok {
 		if fd, ok2 := e.funcs[name.Value]; ok2 {
-			if len(fd.Params) != len(n.Args) {
-				return 0, &EvalError{Msg: "argument count mismatch for " + name.Value}
-			}
-			scope := map[string]int64{}
-			for i, p := range fd.Params {
-				av, err := e.eval(n.Args[i])
+			argVals := make([]int64, len(fd.Params))
+			argSet := make([]bool, len(fd.Params))
+			pos := 0
+			seenKw := false
+			for _, a := range n.Args {
+				if kw, ok := a.(*KeywordArg); ok {
+					seenKw = true
+					idx := -1
+					for i, p := range fd.Params {
+						if p.Name == kw.Name {
+							idx = i
+							break
+						}
+					}
+					if idx < 0 {
+						return 0, &EvalError{Msg: "unknown keyword argument " + kw.Name}
+					}
+					if argSet[idx] {
+						return 0, &EvalError{Msg: "multiple values for argument " + kw.Name}
+					}
+					v, err := e.eval(kw.Value)
+					if err != nil {
+						return 0, err
+					}
+					argVals[idx] = v
+					argSet[idx] = true
+					continue
+				}
+				if seenKw {
+					return 0, &EvalError{Msg: "positional argument after keyword argument"}
+				}
+				if pos >= len(fd.Params) {
+					return 0, &EvalError{Msg: "too many arguments"}
+				}
+				if argSet[pos] {
+					return 0, &EvalError{Msg: "multiple values for argument " + fd.Params[pos].Name}
+				}
+				v, err := e.eval(a)
 				if err != nil {
 					return 0, err
 				}
-				scope[p.Name] = av
+				argVals[pos] = v
+				argSet[pos] = true
+				pos++
+			}
+			for i, p := range fd.Params {
+				if argSet[i] {
+					continue
+				}
+				if p.Default == nil {
+					return 0, &EvalError{Msg: "missing argument " + p.Name}
+				}
+				dv, err := e.eval(p.Default)
+				if err != nil {
+					return 0, err
+				}
+				argVals[i] = dv
+				argSet[i] = true
 			}
 			saved := e.Vars
-			e.Vars = scope
+			e.Vars = map[string]int64{}
+			for i, p := range fd.Params {
+				e.Vars[p.Name] = argVals[i]
+			}
 			if containsYield(fd.Body) {
 				genH := e.allocObj("list")
 				prev := e.yieldList

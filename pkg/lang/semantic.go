@@ -351,15 +351,8 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			return TDyn()
 		}
 		if fd, ok2 := an.funcs[name.Value]; ok2 {
-			if len(fd.Params) != len(n.Args) {
-				an.errorf(n.Span(), "argument count mismatch for %s (got %d, want %d)", name.Value, len(n.Args), len(fd.Params))
-				return TDyn()
-			}
-			argTypes := make([]*Type, len(n.Args))
-			for i, a := range n.Args {
-				argTypes[i] = an.inferExpr(a)
+			return an.inferUserCall(fd, n)
 		}
-	}
 		switch name.Value {
 		case "range":
 			return TIter(TInt())
@@ -371,12 +364,80 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 	}
 	ft := an.inferExpr(n.Fn)
 	for _, a := range n.Args {
-		an.inferExpr(a)
+		an.inferArg(a)
 	}
 	if ft != nil && ft.Kind == KindFunc {
 		return ft.Ret
 	}
 	return TDyn()
+}
+
+// inferArg infers the type of a call argument, unwrapping keyword arguments.
+func (an *SemanticAnalyzer) inferArg(a Expr) *Type {
+	if kw, ok := a.(*KeywordArg); ok {
+		return an.inferExpr(kw.Value)
+	}
+	return an.inferExpr(a)
+}
+
+// inferUserCall infers the result type of a call to a user-defined function,
+// binding positional and keyword arguments to parameters and filling defaults.
+func (an *SemanticAnalyzer) inferUserCall(fd *FuncDef, n *Call) *Type {
+	provided, err := an.bindParams(fd.Params, n)
+	if err != nil {
+		an.errorf(n.Span(), "%s", err)
+	}
+	argTypes := make([]*Type, len(fd.Params))
+	for i, p := range fd.Params {
+		if t, ok := provided[i]; ok {
+			argTypes[i] = t
+		} else if p.Default != nil {
+			argTypes[i] = an.inferExpr(p.Default)
+		} else {
+			argTypes[i] = nil
+		}
+	}
+	return an.inferReturn(fd, argTypes)
+}
+
+// bindParams maps a call's positional + keyword arguments onto parameter
+// indices (by position or name). It reports arity and keyword-name errors.
+func (an *SemanticAnalyzer) bindParams(params []*Param, n *Call) (map[int]*Type, error) {
+	provided := map[int]*Type{}
+	pos := 0
+	seenKw := false
+	for _, a := range n.Args {
+		if kw, ok := a.(*KeywordArg); ok {
+			seenKw = true
+			found := -1
+			for i, p := range params {
+				if p.Name == kw.Name {
+					found = i
+					break
+				}
+			}
+			if found < 0 {
+				return provided, fmt.Errorf("unknown keyword argument %q", kw.Name)
+			}
+			if _, dup := provided[found]; dup {
+				return provided, fmt.Errorf("multiple values for argument %q", kw.Name)
+			}
+			provided[found] = an.inferArg(kw)
+			continue
+		}
+		if seenKw {
+			return provided, fmt.Errorf("positional argument after keyword argument")
+		}
+		if pos >= len(params) {
+			return provided, fmt.Errorf("too many arguments")
+		}
+		if _, dup := provided[pos]; dup {
+			return provided, fmt.Errorf("multiple values for argument %q", params[pos].Name)
+		}
+		provided[pos] = an.inferArg(a)
+		pos++
+	}
+	return provided, nil
 }
 
 func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {

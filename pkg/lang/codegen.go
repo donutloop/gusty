@@ -7,11 +7,12 @@ import (
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 func GenerateIR(prog *Program) (string, error) {
-	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
 			g.funcs[fd.Name] = true
+			g.fds[fd.Name] = fd
 		}
 	}
 	g.decls = "declare i32 @printf(i8*, ...)\n"
@@ -55,6 +56,7 @@ type irGen struct {
 	sym     map[string]string  // variable -> load temp
 	allocd  map[string]bool    // alloca emitted?
 	funcs   map[string]bool    // user-defined function names
+	fds     map[string]*FuncDef // function definitions by name (for call arg binding)
 	params  map[string]string  // current function params: name -> register
 	fmtIdx  int
 	strIdx  int
@@ -176,6 +178,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return name, nil
 	case *Call:
 		return g.call(b, n)
+	case *KeywordArg:
+		return g.value(b, n.Value)
 	default:
 		return "", fmt.Errorf("codegen: unsupported expression %T", e)
 	}
@@ -212,20 +216,81 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		fnName = n.Value
 	}
 	if g.funcs[fnName] {
-		args := []string{}
+		fd := g.fds[fnName]
+		if fd == nil {
+			return "", fmt.Errorf("codegen: unknown function %q", fnName)
+		}
+		n := len(fd.Params)
+		vals := make([]string, n)
+		provided := make([]bool, n)
+		pos := 0
+		seenKw := false
 		for _, a := range c.Args {
+			if kw, ok := a.(*KeywordArg); ok {
+				seenKw = true
+				idx := -1
+				for i, p := range fd.Params {
+					if p.Name == kw.Name {
+						idx = i
+						break
+					}
+				}
+				if idx < 0 {
+					return "", fmt.Errorf("codegen: unknown keyword argument %q for %s", kw.Name, fnName)
+				}
+				if provided[idx] {
+					return "", fmt.Errorf("codegen: multiple values for argument %q of %s", kw.Name, fnName)
+				}
+				av, err := g.value(b, kw.Value)
+				if err != nil {
+					return "", err
+				}
+				vals[idx] = "i32 " + av
+				provided[idx] = true
+				continue
+			}
+			if seenKw {
+				return "", fmt.Errorf("codegen: positional argument after keyword argument for %s", fnName)
+			}
+			if pos >= n {
+				return "", fmt.Errorf("codegen: too many arguments for %s", fnName)
+			}
+			if provided[pos] {
+				return "", fmt.Errorf("codegen: multiple values for argument %q of %s", fd.Params[pos].Name, fnName)
+			}
 			av, err := g.value(b, a)
 			if err != nil {
 				return "", err
 			}
-			args = append(args, "i32 "+av)
+			vals[pos] = "i32 " + av
+			provided[pos] = true
+			pos++
+		}
+		// fill defaults for params not supplied
+		for i := range fd.Params {
+			if provided[i] {
+				continue
+			}
+			if fd.Params[i].Default == nil {
+				return "", fmt.Errorf("codegen: missing argument %q for %s", fd.Params[i].Name, fnName)
+			}
+			dv, err := g.value(b, fd.Params[i].Default)
+			if err != nil {
+				return "", err
+			}
+			vals[i] = "i32 " + dv
 		}
 		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(args, ", ")))
+		b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
 		return t, nil
 	}
 	switch fnName {
 	case "print", "printf":
+		for _, a := range c.Args {
+			if _, ok := a.(*KeywordArg); ok {
+				return "", fmt.Errorf("codegen: %s does not accept keyword arguments", fnName)
+			}
+		}
 		if len(c.Args) < 1 {
 			return "", fmt.Errorf("codegen: print needs an argument")
 		}
@@ -238,6 +303,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 		return t, nil
 	case "range":
+		for _, a := range c.Args {
+			if _, ok := a.(*KeywordArg); ok {
+				return "", fmt.Errorf("codegen: range does not accept keyword arguments")
+			}
+		}
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("codegen: range needs one argument")
 		}

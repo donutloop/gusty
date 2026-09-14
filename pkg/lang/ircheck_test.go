@@ -72,3 +72,35 @@ func TestIRWhileElseCompilesWithLLC(t *testing.T) {
 func TestIRForElseBreakCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "s = 0\nfor i in range(3):\n    if i == 1:\n        break\n    s = s + i\nelse:\n    s = s + 100\nprint(s)")
 }
+
+func TestIRDefaultArgCompilesWithLLC(t *testing.T) {
+	ir := llcCompiles(t, "def f(a, b=10):\n    return a + b\nprint(f(5))")
+	// codegen must fill the default b=10 as the second call argument
+	if !strings.Contains(ir, "call i32 @f(i32 5, i32 10)") {
+		t.Fatalf("missing default-arg call in IR:\n%s", ir)
+	}
+}
+
+func TestIRKeywordArgCompilesWithLLC(t *testing.T) {
+	ir := llcCompiles(t, "def f(a, b):\n    return a * b\nprint(f(a=3, b=4))")
+	// keyword args must be emitted in parameter order a,b => 3,4
+	if !strings.Contains(ir, "call i32 @f(i32 3, i32 4)") {
+		t.Fatalf("missing keyword-arg call in IR:\n%s", ir)
+	}
+}
+
+func TestIRKeywordOutOfOrderCompilesWithLLC(t *testing.T) {
+	ir := llcCompiles(t, "def f(a, b):\n    return a - b\nprint(f(b=3, a=10))")
+	// out-of-order keyword args must be reordered to (a=10, b=3)
+	if !strings.Contains(ir, "call i32 @f(i32 10, i32 3)") {
+		t.Fatalf("missing reordered keyword call in IR:\n%s", ir)
+	}
+}
+
+func TestIRKeywordRejectedInBuiltin(t *testing.T) {
+	res, err := Compile("print(x=1)")
+	if err == nil {
+		t.Fatal("expected error for keyword arg to print")
+	}
+	_ = res
+}

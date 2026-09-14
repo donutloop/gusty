@@ -179,3 +179,43 @@ func TestEvalRaiseCaught(t *testing.T) {
 		t.Fatalf("got %d, want 42", v)
 	}
 }
+
+func TestEvalDefaultArg(t *testing.T) {
+	v, _, err := EvalExpr("def f(a, b=10):\n    return a + b\nf(5)")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 15 {
+		t.Fatalf("got %d, want 15", v)
+	}
+}
+
+func TestEvalKeywordArg(t *testing.T) {
+	v, _, err := EvalExpr("def f(a, b):\n    return a * b\nf(a=3, b=4)")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 12 {
+		t.Fatalf("got %d, want 12", v)
+	}
+}
+
+func TestEvalKeywordArgOutOfOrder(t *testing.T) {
+	v, _, err := EvalExpr("def f(a, b):\n    return a - b\nf(b=3, a=10)")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 7 {
+		t.Fatalf("got %d, want 7", v)
+	}
+}
+
+func TestEvalKeywordAndDefault(t *testing.T) {
+	v, _, err := EvalExpr("def f(a, b=5):\n    return a + b\nf(b=100, a=2)")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 102 {
+		t.Fatalf("got %d, want 102", v)
+	}
+}
