@@ -38,6 +38,7 @@ type SemanticAnalyzer struct {
 	Diags  []Diagnostic
 	curFn  *FuncDef
 	funcs   map[string]*FuncDef
+	exceptions map[string]bool
 	classes map[string]bool
 	inFunc bool
 	loopDepth int
@@ -45,7 +46,7 @@ type SemanticAnalyzer struct {
 
 // Analyze runs semantic analysis and type inference on prog.
 func Analyze(prog *Program) []Diagnostic {
-	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, classes: map[string]bool{}}
+	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, classes: map[string]bool{}, exceptions: map[string]bool{"Exception": true}}
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
@@ -76,6 +77,10 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *ExprStmt:
 		an.inferExpr(s.Expr)
 	case *ReturnStmt:
+		if s.Expr != nil {
+			an.inferExpr(s.Expr)
+		}
+	case *RaiseStmt:
 		if s.Expr != nil {
 			an.inferExpr(s.Expr)
 		}
@@ -228,6 +233,9 @@ func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 		t := an.scope.lookup(n.Value)
 		if t == nil {
 			if an.classes[n.Value] {
+				return TDyn()
+			}
+			if an.exceptions[n.Value] {
 				return TDyn()
 			}
 			an.errorf(n.Span(), "undefined name %q", n.Value)

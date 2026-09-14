@@ -43,6 +43,16 @@ type AssignStmt struct {
 	Annot  *Type `json:"annot,omitempty"`
 	sp     Span  `json:"-"`
 }
+
+
+type RaiseStmt struct {
+	Expr Expr
+	sp   Span
+}
+
+func (n *RaiseStmt) Span() Span { return n.sp }
+
+func (n *RaiseStmt) stmtNode() {}
 func (n *AssignStmt) Span() Span { return n.sp }
 func (n *AssignStmt) stmtNode()  {}
 

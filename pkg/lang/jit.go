@@ -218,6 +218,8 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 				return v, nil
 			}
+		case *RaiseStmt:
+			return 0, &EvalError{Msg: "raised"}
 		case *BreakStmt:
 			return 0, &loopSignal{kind: "break"}
 		case *ContinueStmt:

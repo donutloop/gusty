@@ -168,3 +168,14 @@ func TestEvalTryExcept(t *testing.T) {
 	}
 }
 
+
+func TestEvalRaiseCaught(t *testing.T) {
+	src := "x = 0\ntry:\n    raise Exception\n    x = 1\nexcept Exception:\n    x = 42\nx"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("raise-catch err: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("got %d, want 42", v)
+	}
+}

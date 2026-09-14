@@ -68,6 +68,9 @@ for i in range(n):
   is `self`), `Point(0,0)` instantiates (calling `__init__` if present),
   `obj.attr` reads/writes instance attributes, and `obj.method(args)` / `Cls.method(self, args)`
   dispatch methods. Class support is implemented in the interpreter (REPL/--eval path).
+- `raise Exception` raises a runtime error; `try:`/`except Exception:`/`finally:` catch
+  it (the catch-all `Exception` clause matches any raised or builtin error), and
+  `finally:` always runs. `Exception` is a builtin exception type name.
 - `try:` / `except Exception:` / `finally:` are supported: the try body runs; on a
   runtime error a matching except clause runs (catch-all `Exception` matches any);
   the `finally:` body always runs. Implemented in the interpreter path.

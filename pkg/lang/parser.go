@@ -121,6 +121,15 @@ func (p *parser) parseStmt() (Stmt, error) {
 	if t.IsKeyword("try") {
 		return p.parseTry()
 	}
+	if t.IsKeyword("raise") {
+		p.next()
+		var ex Expr
+		if !p.atNewline() && !p.atEOF() {
+			ex, _ = p.parseExpr()
+		}
+		p.skipNewlines()
+		return &RaiseStmt{Expr: ex}, nil
+	}
 	if t.IsKeyword("return") {
 		return p.parseReturn()
 	}
