@@ -590,6 +590,19 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				_ = v
 			}
 			return 0, nil
+		case "len":
+			if len(n.Args) != 1 {
+				return 0, &EvalError{Msg: "len expects 1 argument"}
+			}
+			v, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if o, ok := e.heap[v]; ok && o.kind == "list" {
+				return int64(len(o.elems)), nil
+			}
+			return 0, &EvalError{Msg: "len expects a list"}
+
 		case "range":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "range expects 1 argument"}

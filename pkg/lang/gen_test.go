@@ -23,3 +23,14 @@ func TestListLit(t *testing.T) {
 		t.Fatalf("got %d, want 6", v)
 	}
 }
+
+func TestLenList(t *testing.T) {
+	src := "a = [10, 20, 30]\nlen(a)"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 3 {
+		t.Fatalf("got %d, want 3", v)
+	}
+}

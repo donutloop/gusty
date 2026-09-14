@@ -121,3 +121,5 @@ match x:
   returns a list of all yielded values.
 - `[1, 2, 3]` is a list literal.
 - `for x in g():` and `for x in [1,2,3]:` iterate the elements.
+
+- `len(list)` returns the number of elements in a list.
