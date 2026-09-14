@@ -82,12 +82,12 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 		}
 		continue
 	case *ForStmt:
-		iterVal, err := e.eval(s.Iter)
+		start, stop, err := e.rangeBounds(s.Iter)
 		if err != nil {
 			return 0, err
 		}
 		if n := s.Var; n != nil {
-			for i := int64(0); i < iterVal; i++ {
+			for i := start; i < stop; i++ {
 				e.Vars[n.Value] = i
 				rv, err := e.evalBody(s.Body)
 				if err != nil {
@@ -102,7 +102,6 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				last = rv
 			}
 		}
-		continue
 	case *AssignStmt:
 			v, err := e.eval(s.Value)
 			if err != nil {
@@ -249,6 +248,27 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 
 func (e *Evaluator) evalBody(stmts []Stmt) (int64, error) {
 	return e.EvalProgram(&Program{Stmts: stmts})
+}
+
+func (e *Evaluator) rangeBounds(iter Expr) (int64, int64, error) {
+	if c, ok := iter.(*Call); ok {
+		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" && len(c.Args) == 2 {
+			start, err := e.eval(c.Args[0])
+			if err != nil {
+				return 0, 0, err
+			}
+			stop, err := e.eval(c.Args[1])
+			if err != nil {
+				return 0, 0, err
+			}
+			return start, stop, nil
+		}
+	}
+	stop, err := e.eval(iter)
+	if err != nil {
+		return 0, 0, err
+	}
+	return 0, stop, nil
 }
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {

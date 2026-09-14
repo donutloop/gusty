@@ -4,6 +4,7 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: `for i in range(a, b)` iterates `a`..`b-1` (interpreter).
 - `feat(semantic)`: reject `break`/`continue` outside a loop with a diagnostic;
   track loop depth through `while`/`for` bodies.
 - `feat(lang)`: add `break` and `continue` loop control in the parser,

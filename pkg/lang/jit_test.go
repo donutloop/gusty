@@ -80,3 +80,14 @@ func TestEvalBreakContinue(t *testing.T) {
 		t.Fatalf("continue got %d, want 8", v2)
 	}
 }
+
+func TestEvalRangeTwoArg(t *testing.T) {
+	// sum range(2, 5) = 2+3+4 = 9
+	v, _, err := EvalExpr("s = 0\nfor i in range(2, 5):\n    s = s + i\ns")
+	if err != nil {
+		t.Fatalf("range(a,b) err: %v", err)
+	}
+	if v != 9 {
+		t.Fatalf("range(2,5) sum got %d, want 9", v)
+	}
+}
