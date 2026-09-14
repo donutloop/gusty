@@ -39,6 +39,7 @@ type SemanticAnalyzer struct {
 	curFn  *FuncDef
 	funcs  map[string]*FuncDef
 	inFunc bool
+	loopDepth int
 }
 
 // Analyze runs semantic analysis and type inference on prog.
@@ -93,9 +94,11 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		an.inferExpr(s.Cond)
 		old := an.scope
 		an.scope = newScope(old)
+		an.loopDepth++
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
 		}
+		an.loopDepth--
 		an.scope = old
 	case *ForStmt:
 		it := an.inferExpr(s.Iter)
@@ -105,9 +108,11 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		}
 		an.scope = newScope(an.scope)
 		an.scope.define(s.Var.Value, elem)
+		an.loopDepth++
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
 		}
+		an.loopDepth--
 		an.scope = an.scope.Parent
 	case *FuncDef:
 		an.analyzeFunc(s)
@@ -119,6 +124,14 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		an.scope = an.scope.Parent
 	case *ImportStmt:
 		an.scope.define(s.Module, TDyn())
+	case *BreakStmt:
+		if an.loopDepth == 0 {
+			an.errorf(s.Span(), "break outside loop")
+		}
+	case *ContinueStmt:
+		if an.loopDepth == 0 {
+			an.errorf(s.Span(), "continue outside loop")
+		}
 	case *MatchStmt:
 		an.inferExpr(s.Subject)
 		for _, c := range s.Cases {

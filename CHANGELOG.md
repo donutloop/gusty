@@ -4,6 +4,8 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(semantic)`: reject `break`/`continue` outside a loop with a diagnostic;
+  track loop depth through `while`/`for` bodies.
 - `feat(lang)`: add `break` and `continue` loop control in the parser,
   interpreter, and IR emitter (loop-label tracking; llc-clean). Loop bodies now
   go through the full statement dispatcher, fixing nested `if`/control flow
