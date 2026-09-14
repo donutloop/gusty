@@ -98,6 +98,9 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
 		}
+		for _, b := range s.Else {
+			an.analyzeStmt(b)
+		}
 		an.loopDepth--
 		an.scope = old
 	case *ForStmt:
@@ -110,6 +113,9 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		an.scope.define(s.Var.Value, elem)
 		an.loopDepth++
 		for _, b := range s.Body {
+			an.analyzeStmt(b)
+		}
+		for _, b := range s.Else {
 			an.analyzeStmt(b)
 		}
 		an.loopDepth--

@@ -57,3 +57,15 @@ func TestIRBreakContinueCompilesWithLLC(t *testing.T) {
 func TestIRRangeTwoArgCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "s = 0\nfor i in range(2, 5):\n    s = s + i\nprint(s)")
 }
+
+func TestIRForElseCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "s = 0\nfor i in range(3):\n    s = s + i\nelse:\n    s = s + 100\nprint(s)")
+}
+
+func TestIRWhileElseCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\nprint(s)")
+}
+
+func TestIRForElseBreakCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "s = 0\nfor i in range(3):\n    if i == 1:\n        break\n    s = s + i\nelse:\n    s = s + 100\nprint(s)")
+}

@@ -59,6 +59,7 @@ func (n *IfStmt) stmtNode()  {}
 type WhileStmt struct {
 	Cond Expr   `json:"cond"`
 	Body []Stmt `json:"body"`
+	Else []Stmt `json:"else"`
 	sp   Span   `json:"-"`
 }
 func (n *WhileStmt) Span() Span { return n.sp }
@@ -68,6 +69,7 @@ type ForStmt struct {
 	Var  *Name  `json:"var"`
 	Iter Expr   `json:"iter"`
 	Body []Stmt `json:"body"`
+	Else []Stmt `json:"else"`
 	sp   Span   `json:"-"`
 }
 func (n *ForStmt) Span() Span { return n.sp }

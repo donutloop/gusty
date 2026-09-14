@@ -64,6 +64,8 @@ for i in range(n):
 - `while` loops while the condition is non-zero.
 - `for ... in range(n)` iterates `i` from `0` to `n-1`.
 - `for ... in range(a, b)` iterates `i` from `a` to `b-1`.
+- `while`/`for` loops accept an optional `else:` clause that runs on normal
+  completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.
   Both are valid inside nested `if`/loop bodies. Using either outside a loop
   is a semantic error.

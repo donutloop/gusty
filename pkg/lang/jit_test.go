@@ -102,3 +102,35 @@ func TestEvalMatchWildcard(t *testing.T) {
 		t.Fatalf("got %d, want 42", v)
 	}
 }
+
+func TestEvalForElse(t *testing.T) {
+	// for without break: else runs
+	v, _, err := EvalExpr("s = 0\nfor i in range(3):\n    s = s + i\nelse:\n    s = s + 100\ns")
+	if err != nil {
+		t.Fatalf("for-else err: %v", err)
+	}
+	if v != 103 { // 0+1+2 + 100
+		t.Fatalf("got %d, want 103", v)
+	}
+}
+
+func TestEvalForElseBreak(t *testing.T) {
+	// break skips else
+	v, _, err := EvalExpr("s = 0\nfor i in range(3):\n    if i == 1:\n        break\n    s = s + i\nelse:\n    s = s + 100\ns")
+	if err != nil {
+		t.Fatalf("for-else break err: %v", err)
+	}
+	if v != 0 { // else skipped; only i=0 added before break
+		t.Fatalf("got %d, want 0", v)
+	}
+}
+
+func TestEvalWhileElse(t *testing.T) {
+	v, _, err := EvalExpr("i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\ns")
+	if err != nil {
+		t.Fatalf("while-else err: %v", err)
+	}
+	if v != 13 { // 0+1+2 + 10
+		t.Fatalf("got %d, want 13", v)
+	}
+}

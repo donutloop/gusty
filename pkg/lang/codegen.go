@@ -346,6 +346,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	case *WhileStmt:
 		condL := g.newLabel("while.cond")
 		bodyL := g.newLabel("while.body")
+		elseL := g.newLabel("while.else")
 		endL := g.newLabel("while.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
@@ -353,7 +354,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if err != nil {
 			return err
 		}
-		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, bodyL, endL))
+		// normal completion (cond false) enters else if present; break skips else
+		normalL := endL
+		if len(n.Else) > 0 {
+			normalL = elseL
+		}
+		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, bodyL, normalL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: condL})
 		for _, s := range n.Body {
@@ -363,19 +369,29 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		g.loopStack = g.loopStack[:len(g.loopStack)-1]
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
+		if len(n.Else) > 0 {
+			b.WriteString(fmt.Sprintf("%s:\n", elseL))
+			for _, s := range n.Else {
+				if err := g.stmt(b, s); err != nil {
+					return err
+				}
+			}
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+		}
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ForStmt:
-		start, stop, err := g.rangeBounds(b, n.Iter)
-		if err != nil {
-			return err
-		}
 		initL := g.newLabel("for.init")
 		condL := g.newLabel("for.cond")
 		bodyL := g.newLabel("for.body")
 		incL := g.newLabel("for.inc")
+		elseL := g.newLabel("for.else")
 		endL := g.newLabel("for.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", initL))
 		b.WriteString(fmt.Sprintf("%s:\n", initL))
+		start, stop, err := g.rangeBounds(b, n.Iter)
+		if err != nil {
+			return err
+		}
 		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", start, n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
@@ -385,7 +401,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", cld, n.Var.Value))
 		t := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", t, cld, stop))
-		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", t, bodyL, endL))
+		// normal completion (i >= stop) enters else if present; break skips else
+		normalL := endL
+		if len(n.Else) > 0 {
+			normalL = elseL
+		}
+		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", t, bodyL, normalL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 		for _, s := range n.Body {
@@ -403,6 +424,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  %s = add i32 %s, 1\n", itmp, ild))
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", itmp, n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
+		if len(n.Else) > 0 {
+			b.WriteString(fmt.Sprintf("%s:\n", elseL))
+			for _, s := range n.Else {
+				if err := g.stmt(b, s); err != nil {
+					return err
+				}
+			}
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+		}
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *FuncDef:
 		if err := g.funcDef(b, n); err != nil {

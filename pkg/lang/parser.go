@@ -393,7 +393,11 @@ func (p *parser) parseWhile() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WhileStmt{Cond: cond, Body: body, sp: kw.Span}, nil
+	elseBody, err := p.parseLoopElse(kw.Span)
+	if err != nil {
+		return nil, err
+	}
+	return &WhileStmt{Cond: cond, Body: body, Else: elseBody, sp: kw.Span}, nil
 }
 
 func (p *parser) parseFor() (Stmt, error) {
@@ -418,7 +422,26 @@ func (p *parser) parseFor() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ForStmt{Var: varName, Iter: iter, Body: body, sp: kw.Span}, nil
+	elseBody, err := p.parseLoopElse(kw.Span)
+	if err != nil {
+		return nil, err
+	}
+	return &ForStmt{Var: varName, Iter: iter, Body: body, Else: elseBody, sp: kw.Span}, nil
+}
+
+// parseLoopElse parses an optional `else:` block following a while/for loop,
+// returning nil when no else clause is present.
+func (p *parser) parseLoopElse(kw Span) ([]Stmt, error) {
+	p.skipNewlines()
+	t := p.peek()
+	if !t.IsKeyword("else") {
+		return nil, nil
+	}
+	p.next()
+	if err := p.expectOp(":"); err != nil {
+		return nil, err
+	}
+	return p.parseBlock(t.Span)
 }
 
 func (p *parser) parseMatch() (Stmt, error) {

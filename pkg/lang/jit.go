@@ -64,6 +64,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 		}
 		continue
 	case *WhileStmt:
+		completed := true
 		for {
 			cond, err := e.eval(s.Cond)
 			if err != nil {
@@ -76,10 +77,18 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			if err != nil {
 				if ls, ok := err.(*loopSignal); ok {
 					if ls.kind == "break" {
+						completed = false
 						break
 					}
 					continue
 				}
+				return 0, err
+			}
+			last = rv
+		}
+		if completed {
+			rv, err := e.evalBody(s.Else)
+			if err != nil {
 				return 0, err
 			}
 			last = rv
@@ -90,6 +99,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
+		completed := true
 		if n := s.Var; n != nil {
 			for i := start; i < stop; i++ {
 				e.Vars[n.Value] = i
@@ -97,6 +107,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				if err != nil {
 					if ls, ok := err.(*loopSignal); ok {
 						if ls.kind == "break" {
+							completed = false
 							break
 						}
 						continue
@@ -105,6 +116,13 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 				last = rv
 			}
+		}
+		if completed {
+			rv, err := e.evalBody(s.Else)
+			if err != nil {
+				return 0, err
+			}
+			last = rv
 		}
 	case *AssignStmt:
 			v, err := e.eval(s.Value)
