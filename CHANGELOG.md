@@ -4,6 +4,10 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **closures** — a `def` nested in a function body captures the
+  enclosing scope, can be returned/stored/called (`m = add(1); m(2)`).
+  Semantic analysis treats calls to function-typed variables with unknown
+  return type as dynamic so assigned names aren't flagged undefined.
 - `feat(interp)`: `match` `case _:` wildcard always matches (interpreter).
 - `feat(lang)`: `for i in range(a, b)` iterates `a`..`b-1` end-to-end (interpreter + LLVM codegen, llc-clean).
 - `feat(semantic)`: reject `break`/`continue` outside a loop with a diagnostic;

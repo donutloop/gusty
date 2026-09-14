@@ -34,14 +34,14 @@ func (s *Scope) define(name string, t *Type) {
 
 // SemanticAnalyzer walks the AST, builds scopes, and infers types.
 type SemanticAnalyzer struct {
-	scope  *Scope
-	Diags  []Diagnostic
-	curFn  *FuncDef
-	funcs   map[string]*FuncDef
+	scope      *Scope
+	Diags      []Diagnostic
+	curFn      *FuncDef
+	funcs      map[string]*FuncDef
 	exceptions map[string]bool
-	classes map[string]bool
-	inFunc bool
-	loopDepth int
+	classes    map[string]bool
+	inFunc     bool
+	loopDepth  int
 }
 
 // Analyze runs semantic analysis and type inference on prog.
@@ -367,7 +367,13 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 		an.inferArg(a)
 	}
 	if ft != nil && ft.Kind == KindFunc {
-		return ft.Ret
+		// A callable value whose return type is unknown (e.g. an unannotated
+		// closure) is still callable; treat the result as dynamic so that
+		// names assigned from it are not reported as undefined.
+		if ft.Ret != nil {
+			return ft.Ret
+		}
+		return TDyn()
 	}
 	return TDyn()
 }

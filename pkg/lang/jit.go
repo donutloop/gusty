@@ -4,11 +4,12 @@ package lang
 // It evaluates integer-typed expressions deterministically without needing
 // an LLVM JIT engine (the go-llvm fork is bindings-only, no ExecutionEngine).
 type Evaluator struct {
-	Vars     map[string]int64
-	funcs    map[string]*FuncDef
-	heap     map[int64]*obj
-	nextID   int64
-	classIDs map[string]int64
+	Vars      map[string]int64
+	funcs     map[string]*FuncDef
+	inCall    bool // true while evaluating a function body (nested defs become closures)
+	heap      map[int64]*obj
+	nextID    int64
+	classIDs  map[string]int64
 	yieldList int64 // list handle accumulating yields (0 = not in generator)
 }
 
@@ -17,6 +18,7 @@ type obj struct {
 	kind  string           // "class" | "instance" | "method" | "list"
 	class string           // class name (instance/method)
 	attrs map[string]int64 // instance attrs or class method-handle ids
+	env   map[string]int64 // captured enclosing scope (kind=closure)
 	fn    *FuncDef         // method body (kind=method)
 	mname string           // method name (kind=method)
 	recv  int64            // bound receiver id (0 = unbound)
@@ -31,7 +33,70 @@ func (e *Evaluator) allocObj(kind string) int64 {
 	return id
 }
 
-func NewEvaluator() *Evaluator { return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}} }
+// allocClosure creates a closure value capturing the current scope.
+func (e *Evaluator) allocClosure(fn *FuncDef, env map[string]int64) int64 {
+	e.nextID++
+	id := e.nextID
+	e.heap[id] = &obj{kind: "closure", fn: fn, env: env, attrs: map[string]int64{}}
+	return id
+}
+
+// callFunc evaluates a function body with params bound into a scope seeded
+// from env (nil = empty scope). Nested defs inside the body become closures.
+func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64) (int64, error) {
+	scope := map[string]int64{}
+	for k, v := range env {
+		scope[k] = v
+	}
+	// bind positional args, filling defaults for missing trailing params
+	for i, p := range fd.Params {
+		if i < len(argVals) {
+			scope[p.Name] = argVals[i]
+		} else if p.Default != nil {
+			dv, err := e.eval(p.Default)
+			if err != nil {
+				return 0, err
+			}
+			scope[p.Name] = dv
+		}
+	}
+	saved := e.Vars
+	if containsYield(fd.Body) {
+		genH := e.allocObj("list")
+		prev := e.yieldList
+		e.yieldList = genH
+		e.Vars = scope
+		e.inCall = true
+		_, err := e.evalBody(fd.Body)
+		e.inCall = false
+		e.yieldList = prev
+		e.Vars = saved
+		return genH, err
+	}
+	e.Vars = scope
+	e.inCall = true
+	rv, err := e.evalBody(fd.Body)
+	e.inCall = false
+	e.Vars = saved
+	return rv, err
+}
+
+// callClosure invokes a closure value with its captured environment.
+func (e *Evaluator) callClosure(o *obj, n *Call) (int64, error) {
+	argVals := make([]int64, len(n.Args))
+	for i, a := range n.Args {
+		av, err := e.eval(a)
+		if err != nil {
+			return 0, err
+		}
+		argVals[i] = av
+	}
+	return e.callFunc(o.fn, argVals, o.env)
+}
+
+func NewEvaluator() *Evaluator {
+	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}}
+}
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
 // the final expression statement (or last assignment). It returns an error on
@@ -57,135 +122,162 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				cls.attrs[fd.Name] = methodID
 			}
 		case *FuncDef:
-			e.funcs[s.Name] = s
+			// Nested defs bind a closure capturing the current scope (inCall);
+			// top-level defs register by name for calls.
+			if e.inCall {
+				e.Vars[s.Name] = e.allocClosure(s, e.Vars)
+			} else {
+				e.funcs[s.Name] = s
+			}
 			continue
 		case *IfStmt:
-		cond, err := e.eval(s.Cond)
-		if err != nil {
-			return 0, err
-		}
-		if cond != 0 {
-			rv, err := e.evalBody(s.Then)
-			if err != nil {
-				return 0, err
-			}
-			last = rv
-		} else if s.Else != nil {
-			rv, err := e.evalBody(s.Else)
-			if err != nil {
-				return 0, err
-			}
-			last = rv
-		}
-		continue
-	case *MatchStmt:
-		sub, err := e.eval(s.Subject)
-		if err != nil {
-			return 0, err
-		}
-		for _, c := range s.Cases {
-			matches := true
-			if pn, ok := c.Pattern.(*Name); !ok || pn.Value != "_" {
-				pv, err := e.eval(c.Pattern)
-				if err != nil {
-					return 0, err
-				}
-				matches = pv == sub
-			}
-			if matches {
-				rv, err := e.evalBody(c.Body)
-				if err != nil {
-					return 0, err
-				}
-				last = rv
-				break
-			}
-		}
-		continue
-	case *TryStmt:
-		_, bodyErr := e.evalBody(s.Body)
-		if bodyErr != nil {
-			caught := false
-			for _, ec := range s.Excepts {
-				if ec.Exn == nil || ec.Exn.Value == "Exception" {
-					_, err2 := e.evalBody(ec.Body)
-					if err2 != nil {
-						return 0, err2
-					}
-					caught = true
-					break
-				}
-			}
-			if !caught {
-				return 0, bodyErr
-			}
-		}
-		if len(s.Finally) > 0 {
-			_, err := e.evalBody(s.Finally)
-			if err != nil {
-				return 0, err
-			}
-		}
-	case *WhileStmt:
-		completed := true
-		for {
 			cond, err := e.eval(s.Cond)
 			if err != nil {
 				return 0, err
 			}
-			if cond == 0 {
-				break
-			}
-			rv, err := e.evalBody(s.Body)
-			if err != nil {
-				if ls, ok := err.(*loopSignal); ok {
-					if ls.kind == "break" {
-						completed = false
-						break
-					}
-					continue
-				}
-				return 0, err
-			}
-			last = rv
-		}
-		if completed {
-			rv, err := e.evalBody(s.Else)
-			if err != nil {
-				return 0, err
-			}
-			last = rv
-		}
-		continue
-	case *ForStmt:
-		isRange := false
-		if c, ok := s.Iter.(*Call); ok {
-			if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" {
-				isRange = true
-			}
-		}
-		completed := true
-		if n := s.Var; n != nil {
-			if !isRange {
-				itV, err := e.eval(s.Iter)
+			if cond != 0 {
+				rv, err := e.evalBody(s.Then)
 				if err != nil {
 					return 0, err
 				}
-				if o, ok := e.heap[itV]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict") {
-					for _, el := range o.elems {
-						e.Vars[n.Value] = el
-						rv, err := e.evalBody(s.Body)
-						if err != nil {
-							if ls, ok := err.(*loopSignal); ok {
-								if ls.kind == "break" {
-									completed = false
-									break
+				last = rv
+			} else if s.Else != nil {
+				rv, err := e.evalBody(s.Else)
+				if err != nil {
+					return 0, err
+				}
+				last = rv
+			}
+			continue
+		case *MatchStmt:
+			sub, err := e.eval(s.Subject)
+			if err != nil {
+				return 0, err
+			}
+			for _, c := range s.Cases {
+				matches := true
+				if pn, ok := c.Pattern.(*Name); !ok || pn.Value != "_" {
+					pv, err := e.eval(c.Pattern)
+					if err != nil {
+						return 0, err
+					}
+					matches = pv == sub
+				}
+				if matches {
+					rv, err := e.evalBody(c.Body)
+					if err != nil {
+						return 0, err
+					}
+					last = rv
+					break
+				}
+			}
+			continue
+		case *TryStmt:
+			_, bodyErr := e.evalBody(s.Body)
+			if bodyErr != nil {
+				caught := false
+				for _, ec := range s.Excepts {
+					if ec.Exn == nil || ec.Exn.Value == "Exception" {
+						_, err2 := e.evalBody(ec.Body)
+						if err2 != nil {
+							return 0, err2
+						}
+						caught = true
+						break
+					}
+				}
+				if !caught {
+					return 0, bodyErr
+				}
+			}
+			if len(s.Finally) > 0 {
+				_, err := e.evalBody(s.Finally)
+				if err != nil {
+					return 0, err
+				}
+			}
+		case *WhileStmt:
+			completed := true
+			for {
+				cond, err := e.eval(s.Cond)
+				if err != nil {
+					return 0, err
+				}
+				if cond == 0 {
+					break
+				}
+				rv, err := e.evalBody(s.Body)
+				if err != nil {
+					if ls, ok := err.(*loopSignal); ok {
+						if ls.kind == "break" {
+							completed = false
+							break
+						}
+						continue
+					}
+					return 0, err
+				}
+				last = rv
+			}
+			if completed {
+				rv, err := e.evalBody(s.Else)
+				if err != nil {
+					return 0, err
+				}
+				last = rv
+			}
+			continue
+		case *ForStmt:
+			isRange := false
+			if c, ok := s.Iter.(*Call); ok {
+				if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" {
+					isRange = true
+				}
+			}
+			completed := true
+			if n := s.Var; n != nil {
+				if !isRange {
+					itV, err := e.eval(s.Iter)
+					if err != nil {
+						return 0, err
+					}
+					if o, ok := e.heap[itV]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict") {
+						for _, el := range o.elems {
+							e.Vars[n.Value] = el
+							rv, err := e.evalBody(s.Body)
+							if err != nil {
+								if ls, ok := err.(*loopSignal); ok {
+									if ls.kind == "break" {
+										completed = false
+										break
+									}
+									continue
 								}
-								continue
+								return 0, err
 							}
+							last = rv
+						}
+					} else {
+						start, stop, err := e.rangeBounds(s.Iter)
+						if err != nil {
 							return 0, err
 						}
-						last = rv
+						for i := start; i < stop; i++ {
+							e.Vars[n.Value] = i
+							rv, err := e.evalBody(s.Body)
+							if err != nil {
+								if ls, ok := err.(*loopSignal); ok {
+									if ls.kind == "break" {
+										completed = false
+										break
+									}
+									continue
+								}
+								return 0, err
+							}
+							last = rv
+						}
 					}
 				} else {
 					start, stop, err := e.rangeBounds(s.Iter)
@@ -208,36 +300,15 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 						last = rv
 					}
 				}
-			} else {
-				start, stop, err := e.rangeBounds(s.Iter)
+			}
+			if completed {
+				rv, err := e.evalBody(s.Else)
 				if err != nil {
 					return 0, err
 				}
-				for i := start; i < stop; i++ {
-					e.Vars[n.Value] = i
-					rv, err := e.evalBody(s.Body)
-					if err != nil {
-						if ls, ok := err.(*loopSignal); ok {
-							if ls.kind == "break" {
-								completed = false
-								break
-							}
-							continue
-						}
-						return 0, err
-					}
-					last = rv
-				}
+				last = rv
 			}
-		}
-		if completed {
-			rv, err := e.evalBody(s.Else)
-			if err != nil {
-				return 0, err
-			}
-			last = rv
-		}
-	case *AssignStmt:
+		case *AssignStmt:
 			v, err := e.eval(s.Value)
 			if err != nil {
 				return 0, err
@@ -606,6 +677,8 @@ func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error)
 	old := e.Vars
 	e.Vars = scope
 	defer func() { e.Vars = old }()
+	e.inCall = true
+	defer func() { e.inCall = false }()
 	return e.evalBody(mo.fn.Body)
 }
 
@@ -663,6 +736,12 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 		}
 	}
 	if name, ok := n.Fn.(*Name); ok {
+		// closure value in the current scope?
+		if cid, ok2 := e.Vars[name.Value]; ok2 {
+			if o := e.heap[cid]; o != nil && o.kind == "closure" {
+				return e.callClosure(o, n)
+			}
+		}
 		if fd, ok2 := e.funcs[name.Value]; ok2 {
 			argVals := make([]int64, len(fd.Params))
 			argSet := make([]bool, len(fd.Params))
@@ -732,7 +811,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				genH := e.allocObj("list")
 				prev := e.yieldList
 				e.yieldList = genH
+				e.inCall = true
 				_, err := e.evalBody(fd.Body)
+				e.inCall = false
 				e.yieldList = prev
 				e.Vars = saved
 				if err != nil {
@@ -740,7 +821,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 				return genH, nil
 			}
+			e.inCall = true
 			rv, err := e.evalBody(fd.Body)
+			e.inCall = false
 			e.Vars = saved
 			return rv, err
 		}

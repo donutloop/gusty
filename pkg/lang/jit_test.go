@@ -168,7 +168,6 @@ func TestEvalTryExcept(t *testing.T) {
 	}
 }
 
-
 func TestEvalRaiseCaught(t *testing.T) {
 	src := "x = 0\ntry:\n    raise Exception\n    x = 1\nexcept Exception:\n    x = 42\nx"
 	v, _, err := EvalExpr(src)
@@ -241,7 +240,6 @@ func TestEvalListComprehension(t *testing.T) {
 	}
 }
 
-
 func TestEvalComprehensionAssignment(t *testing.T) {
 	// A comprehension assigned to a variable must bind its loop variable so
 	// the body/condition can reference it. Previously the semantic analyzer
@@ -261,5 +259,39 @@ func TestEvalComprehensionAssignment(t *testing.T) {
 	}
 	if v != 2 {
 		t.Fatalf("got %d, want 2", v)
+	}
+}
+
+func TestClosureCapturesEnclosingScope(t *testing.T) {
+	src := "def make_adder(x):\n    def add(y):\n        return x + y\n    return add\nw = make_adder(5)\nw(3)"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 8 {
+		t.Fatalf("got %d, want 8", v)
+	}
+}
+
+func TestClosureNestedFunctionCall(t *testing.T) {
+	src := "def outer(a):\n    def inner(b):\n        return a * b\n    return inner\nf = outer(6)\nf(7)"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("got %d, want 42", v)
+	}
+}
+
+func TestClosureInClosure(t *testing.T) {
+	// a closure that itself returns a closure capturing both layers
+	src := "def add(x):\n    def mid(y):\n        def inner(z):\n            return x + y + z\n        return inner\n    return mid\nm = add(1)\nm2 = m(2)\nm2(3)"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 6 {
+		t.Fatalf("got %d, want 6", v)
 	}
 }

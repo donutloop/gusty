@@ -42,6 +42,10 @@ def add(a, b):
 - Calls are `name(arg, ...)`. Argument count is checked against the parameter
   list at semantic analysis; return type is inferred by binding parameter
   types to the call argument types and analyzing the body.
+- A `def` nested inside a function body is a **closure**: it captures the
+  enclosing scope at definition time and can be returned, stored in a
+  variable, and called later (`m = add(1); m(2)`). Closures are implemented in
+  the interpreter (REPL / `--eval` path).
 
 ### Control flow
 
