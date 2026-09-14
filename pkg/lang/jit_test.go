@@ -1,5 +1,6 @@
 package lang
 
+import "os"
 import "strings"
 import "testing"
 
@@ -444,5 +445,49 @@ func TestEvalClassGrandChildResolution(t *testing.T) {
 	}
 	if v != 7 {
 		t.Fatalf("got %d, want 7", v)
+	}
+}
+
+func TestEvalImportModuleFunction(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/mylib.gy", []byte("def double(x):\n    return x * 2\n"), 0o600)
+	old, _ := os.Getwd()
+	defer os.Chdir(old)
+	os.Chdir(dir)
+	src := "import mylib\nmylib.double(4)"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("import fn err: %v", err)
+	}
+	if v != 8 {
+		t.Fatalf("got %d, want 8", v)
+	}
+}
+
+func TestEvalImportModuleConst(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/constlib.gy", []byte("base = 21\n"), 0o600)
+	old, _ := os.Getwd()
+	defer os.Chdir(old)
+	os.Chdir(dir)
+	src := "import constlib\nconstlib.base + 1"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("import const err: %v", err)
+	}
+	if v != 22 {
+		t.Fatalf("got %d, want 22", v)
+	}
+}
+
+func TestEvalImportMissingModule(t *testing.T) {
+	dir := t.TempDir()
+	old, _ := os.Getwd()
+	defer os.Chdir(old)
+	os.Chdir(dir)
+	src := "import nope\nnope.x"
+	_, _, err := EvalExpr(src)
+	if err == nil {
+		t.Fatalf("expected import error, got nil")
 	}
 }

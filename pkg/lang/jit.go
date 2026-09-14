@@ -1,5 +1,7 @@
 package lang
 
+import "os"
+
 // Evaluator is a small AST interpreter used by --eval and the REPL.
 // It evaluates integer-typed expressions deterministically without needing
 // an LLVM JIT engine (the go-llvm fork is bindings-only, no ExecutionEngine).
@@ -245,6 +247,11 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				mo.fn = fd
 				cls.attrs[fd.Name] = methodID
 			}
+		case *ImportStmt:
+			if err := e.importModule(s.Module); err != nil {
+				return 0, err
+			}
+			continue
 		case *FuncDef:
 			// Nested defs bind a closure capturing the enclosing scope.
 			if len(s.Decorators) > 0 {
@@ -568,6 +575,13 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		if !ok {
 			return 0, &EvalError{Msg: "attribute access on non-object"}
 		}
+		if o.kind == "module" {
+			// mod.attr resolves a top-level name from the imported module.
+			if v, ok := o.attrs[n.Name.Value]; ok {
+				return v, nil
+			}
+			return 0, &EvalError{Msg: "no name " + n.Name.Value + " in module"}
+		}
 		if o.kind == "instance" {
 			if v, ok := o.attrs[n.Name.Value]; ok {
 				return v, nil
@@ -876,6 +890,51 @@ func (e *Evaluator) classIDFor(objV int64) int64 {
 	return 0
 }
 
+// importModule loads <mod>.gy, evaluates it in a fresh top-level scope, and
+// binds `mod` to a module obj whose attrs are the module's top-level names.
+func (e *Evaluator) importModule(mod string) error {
+	data, err := os.ReadFile(mod + ".gy")
+	if err != nil {
+		return &EvalError{Msg: "cannot import module " + mod}
+	}
+	prog, err := parseProgram(string(data))
+	if err != nil {
+		return err
+	}
+	if diags := Analyze(prog); anyErr(diags) {
+		return &EvalError{Msg: "module " + mod + " has analysis errors"}
+	}
+	// Evaluate in a fresh scope so the module's top-level names don't leak;
+	// obj ids come from e's shared heap, so the module obj stays valid.
+	savedVars := e.Vars
+	savedFuncs := e.funcs
+	e.Vars = map[string]int64{}
+	e.funcs = map[string]*FuncDef{}
+	_, err = e.EvalProgram(prog)
+	if err != nil {
+		e.Vars, e.funcs = savedVars, savedFuncs
+		return err
+	}
+	modID := e.allocObj("module")
+	m := e.heap[modID]
+	m.attrs = map[string]int64{}
+	for name, v := range e.Vars {
+		m.attrs[name] = v
+	}
+	// module functions live in e.funcs (not Vars); wrap each in a closure obj
+	// so `mod.fn(args)` resolves to a callable.
+	for name, fd := range e.funcs {
+		cID := e.allocObj("closure")
+		c := e.heap[cID]
+		c.fn = fd
+		c.env = map[string]int64{}
+		m.attrs[name] = cID
+	}
+	e.Vars, e.funcs = savedVars, savedFuncs
+	e.Vars[mod] = modID
+	return nil
+}
+
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	// method call: obj.method(args) — Fn is an Attr resolving to a method
 	if _, ok := n.Fn.(*Attr); ok {
@@ -885,6 +944,10 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			return 0, err
 		}
 		mo, ok := e.heap[mID]
+		if ok && mo.kind == "closure" {
+			// imported/module function call: mod.fn(args)
+			return e.callClosure(mo, n)
+		}
 		if ok && mo.kind == "method" {
 			argVals := []int64{}
 			for _, a := range n.Args {

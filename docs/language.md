@@ -30,6 +30,13 @@ rebind a variable in the current scope.
 Any expression on its own line. `print(...)` is a builtin call that writes to
 stdout.
 
+### Import / modules
+
+`import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
+namespace. Top-level variables and functions of the module are accessed as
+`mod.name` and called as `mod.fn(args)`. A module can itself `import` other
+modules. Imports are evaluated in the interpreter (REPL/--eval path).
+
 ### Functions
 
 ```

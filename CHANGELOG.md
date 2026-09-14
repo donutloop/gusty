@@ -4,6 +4,11 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **modules / imports** — `import mod` loads `mod.gy`,
+  evaluates it, and binds `mod` as a module namespace; top-level variables and
+  functions are accessed via `mod.name` and `mod.fn(args)`. A module can
+  import other modules. Parser/AST already had `ImportStmt`; the evaluator now
+  runs it.
 - `feat(interp)`: **class inheritance** — `class Child(Base):` inherits
   `Base`'s methods and `__init__`; instance/class method and attribute lookup
   walks the whole base chain (multi-level). An overridden method can delegate
