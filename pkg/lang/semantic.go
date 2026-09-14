@@ -195,6 +195,11 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 }
 
 func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
+	// Decorators are evaluated in the enclosing scope at def time:
+	// @dec def f -> f = dec(f). Infer each decorator expression for validity.
+	for _, dec := range fd.Decorators {
+		an.inferExpr(dec)
+	}
 	an.funcs[fd.Name] = fd
 	an.inFunc = true
 	old := an.scope

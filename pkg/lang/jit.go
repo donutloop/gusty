@@ -82,6 +82,37 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 }
 
 // callClosure invokes a closure value with its captured environment.
+
+// evalDecorator resolves a decorator expression to a callable value.
+// A bare Name may refer to a top-level function definition (a first-class
+// value not representable as an int64), or to a closure/other value.
+func (e *Evaluator) evalDecorator(dec Expr) (any, error) {
+	if n, ok := dec.(*Name); ok {
+		if fd, ok := e.funcs[n.Value]; ok {
+			return fd, nil
+		}
+		if v, ok := e.Vars[n.Value]; ok {
+			return v, nil
+		}
+	}
+	return e.eval(dec)
+}
+
+// callDecValue invokes a decorator value (top-level FuncDef or closure) with
+// the function value it decorates, returning the (possibly transformed) value.
+func (e *Evaluator) callDecValue(decVal any, arg int64) (int64, error) {
+	switch v := decVal.(type) {
+	case *FuncDef:
+		return e.callFunc(v, []int64{arg}, e.Vars)
+	case int64:
+		o := e.heap[v]
+		if o != nil && o.kind == "closure" {
+			return e.callFunc(o.fn, []int64{arg}, o.env)
+		}
+	}
+	return 0, &EvalError{Msg: "decorator is not callable"}
+}
+
 func (e *Evaluator) callClosure(o *obj, n *Call) (int64, error) {
 	argVals := make([]int64, len(n.Args))
 	for i, a := range n.Args {
@@ -122,8 +153,24 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				cls.attrs[fd.Name] = methodID
 			}
 		case *FuncDef:
-			// Nested defs bind a closure capturing the current scope (inCall);
-			// top-level defs register by name for calls.
+			// Nested defs bind a closure capturing the enclosing scope.
+			if len(s.Decorators) > 0 {
+				// @dec1 @dec2 def f -> f = dec2(dec1(f)). Build the base fn as a
+				// closure so it can be passed to decorators as an int64 id.
+				e.Vars[s.Name] = e.allocClosure(s, e.Vars)
+				for _, dec := range s.Decorators {
+					decVal, err := e.evalDecorator(dec)
+					if err != nil {
+						return 0, err
+					}
+					newFn, err := e.callDecValue(decVal, e.Vars[s.Name])
+					if err != nil {
+						return 0, err
+					}
+					e.Vars[s.Name] = newFn
+				}
+				continue
+			}
 			if e.inCall {
 				e.Vars[s.Name] = e.allocClosure(s, e.Vars)
 			} else {

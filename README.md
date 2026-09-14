@@ -41,8 +41,8 @@ print(i)                     # -> 3
 ```
 
 More features (classes, try/except, generators/yield, lists, `len`, `and`/`or`,
-`elif`, **closures**) are implemented in the interpreter (`EvalExpr`) but are
-not yet lowered by the AOT LLVM backend.
+`elif`, **closures**, **decorators**) are implemented in the interpreter
+(`EvalExpr`) but are not yet lowered by the AOT LLVM backend.
 
 ## Toolchain
 

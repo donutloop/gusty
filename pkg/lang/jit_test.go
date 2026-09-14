@@ -295,3 +295,39 @@ func TestClosureInClosure(t *testing.T) {
 		t.Fatalf("got %d, want 6", v)
 	}
 }
+
+func TestDecoratorAppliesToFunction(t *testing.T) {
+	// @dec def f -> f = dec(f); dec wraps the function value.
+	src := "def dec(g):\n    return g\n@dec\ndef f():\n    return 42\nf()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("got %d, want 42", v)
+	}
+}
+
+func TestDecoratorTransformsFunction(t *testing.T) {
+	// dec returns a new closure that adds 1 to the decorated function's result.
+	src := "def add1(g):\n    def wrap():\n        return g() + 1\n    return wrap\n@add1\ndef f():\n    return 40\nf()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 41 {
+		t.Fatalf("got %d, want 41", v)
+	}
+}
+
+func TestMultipleDecorators(t *testing.T) {
+	// decorators apply bottom-up: f = dec2(dec1(f)).
+	src := "def dec1(g):\n    def w():\n        return g() + 1\n    return w\ndef dec2(g):\n    def w():\n        return g() * 2\n    return w\n@dec1\n@dec2\ndef f():\n    return 10\nf()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 22 {
+		t.Fatalf("got %d, want 22", v)
+	}
+}

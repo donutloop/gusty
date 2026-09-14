@@ -97,6 +97,9 @@ func parseProgram(src string) (*Program, error) {
 // parseStmt parses a single statement and consumes its trailing NEWLINE(s).
 func (p *parser) parseStmt() (Stmt, error) {
 	t := p.peek()
+	if t.IsOp("@") {
+		return p.parseDecoratedDef()
+	}
 	if t.IsKeyword("def") {
 		return p.parseFuncDef()
 	}
@@ -233,6 +236,42 @@ func (p *parser) parseFuncDef() (Stmt, error) {
 	}
 	fd.Body = body
 	return fd, nil
+}
+
+// parseDecoratedDef parses one or more @decorator lines followed by a def.
+func (p *parser) parseDecoratedDef() (Stmt, error) {
+	var decs []Expr
+	for {
+		// current token is '@'
+		p.next() // '@'
+		ex, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		decs = append(decs, ex)
+		// decorator line ends with a NEWLINE
+		if !p.atNewline() {
+			return nil, p.errorf(p.peek(), "expected newline after decorator")
+		}
+		p.next() // consume NEWLINE
+		if p.peek().IsOp("@") {
+			continue
+		}
+		break
+	}
+	if !p.peek().IsKeyword("def") {
+		return nil, p.errorf(p.peek(), "expected def after decorators")
+	}
+	fd, err := p.parseFuncDef()
+	if err != nil {
+		return nil, err
+	}
+	f, ok := fd.(*FuncDef)
+	if !ok {
+		return nil, p.errorf(p.peek(), "expected function definition")
+	}
+	f.Decorators = decs
+	return f, nil
 }
 
 func (p *parser) parseParam() (*Param, error) {

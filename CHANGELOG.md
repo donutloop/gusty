@@ -4,6 +4,10 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **decorators** — `@dec` lines before a `def` apply at
+  definition time (`@dec def f` -> `f = dec(f)`), bottom-up for multiple
+  decorators. Parser accepts `@`, analysis infers decorator expressions, and
+  the evaluator applies them to the function value.
 - `feat(interp)`: **closures** — a `def` nested in a function body captures the
   enclosing scope, can be returned/stored/called (`m = add(1); m(2)`).
   Semantic analysis treats calls to function-typed variables with unknown

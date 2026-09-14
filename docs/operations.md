@@ -54,8 +54,9 @@ comparisons, and `print` (via `printf`) are all lowered to opaque-pointer IR.
 
 ## Interpreter-only language surface
 
-Classes, `try`/`except`, generators (`yield`), lists, `len`, and **closures**
-(nested `def`s capturing the enclosing scope, e.g. `m = add(1); m(2)`) are
-implemented in the interpreter used by `--eval` and the REPL; they are not yet
-lowered by the AOT LLVM backend. They are fully represented in the JSON AST
-dump (`--emit-ast`) with no schema change.
+Classes, `try`/`except`, generators (`yield`), lists, `len`, **closures**
+(nested `def`s capturing the enclosing scope, e.g. `m = add(1); m(2)`), and
+**decorators** (`@dec def f` -> `f = dec(f)` at def time) are implemented in
+the interpreter used by `--eval` and the REPL; they are not yet lowered by
+the AOT LLVM backend. They are fully represented in the JSON AST dump
+(`--emit-ast`) with no schema change.
