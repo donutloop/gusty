@@ -37,14 +37,15 @@ type SemanticAnalyzer struct {
 	scope  *Scope
 	Diags  []Diagnostic
 	curFn  *FuncDef
-	funcs  map[string]*FuncDef
+	funcs   map[string]*FuncDef
+	classes map[string]bool
 	inFunc bool
 	loopDepth int
 }
 
 // Analyze runs semantic analysis and type inference on prog.
 func Analyze(prog *Program) []Diagnostic {
-	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}}
+	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, classes: map[string]bool{}}
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
@@ -123,6 +124,7 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *FuncDef:
 		an.analyzeFunc(s)
 	case *ClassDef:
+		an.classes[s.Name] = true
 		an.scope = newScope(an.scope)
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
@@ -176,6 +178,12 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	if n, ok := as.Target.(*Name); ok {
 		an.scope.define(n.Value, valTy)
 	}
+	if a, ok := as.Target.(*Attr); ok {
+		an.inferExpr(a.Obj)
+	}
+	if a, ok := as.Target.(*Attr); ok {
+		an.inferExpr(a.Obj)
+	}
 }
 
 func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
@@ -219,6 +227,9 @@ func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 	case *Name:
 		t := an.scope.lookup(n.Value)
 		if t == nil {
+			if an.classes[n.Value] {
+				return TDyn()
+			}
 			an.errorf(n.Span(), "undefined name %q", n.Value)
 			return TDyn()
 		}
@@ -325,6 +336,9 @@ func (an *SemanticAnalyzer) inferReturn(fd *FuncDef, argTypes []*Type) *Type {
 
 func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 	if name, ok := n.Fn.(*Name); ok {
+		if an.classes[name.Value] {
+			return TDyn()
+		}
 		if fd, ok2 := an.funcs[name.Value]; ok2 {
 			if len(fd.Params) != len(n.Args) {
 				an.errorf(n.Span(), "argument count mismatch for %s (got %d, want %d)", name.Value, len(n.Args), len(fd.Params))

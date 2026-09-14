@@ -134,3 +134,25 @@ func TestEvalWhileElse(t *testing.T) {
 		t.Fatalf("got %d, want 13", v)
 	}
 }
+
+func TestEvalClassMethod(t *testing.T) {
+	src := "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n    def sum(self):\n        return self.x + self.y\np = Point(2, 3)\np.sum()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("class err: %v", err)
+	}
+	if v != 5 {
+		t.Fatalf("got %d, want 5", v)
+	}
+}
+
+func TestEvalClassAttrSet(t *testing.T) {
+	src := "class C:\n    def __init__(self):\n        self.n = 0\n    def bump(self):\n        self.n = self.n + 1\n        return self.n\nc = C()\nc.bump()\nc.bump()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("class err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+}

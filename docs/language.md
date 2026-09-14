@@ -64,6 +64,10 @@ for i in range(n):
 - `while` loops while the condition is non-zero.
 - `for ... in range(n)` iterates `i` from `0` to `n-1`.
 - `for ... in range(a, b)` iterates `i` from `a` to `b-1`.
+- Classes are supported: `class Name:` bodies contain methods (the first param
+  is `self`), `Point(0,0)` instantiates (calling `__init__` if present),
+  `obj.attr` reads/writes instance attributes, and `obj.method(args)` / `Cls.method(self, args)`
+  dispatch methods. Class support is implemented in the interpreter (REPL/--eval path).
 - `while`/`for` loops accept an optional `else:` clause that runs on normal
   completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.

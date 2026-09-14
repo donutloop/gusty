@@ -573,6 +573,17 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// attribute assignment: self.x = expr
+	if p.peek().IsOp("=") {
+		p.next()
+		val, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if a, ok := ex.(*Attr); ok {
+			return &AssignStmt{Target: a, Value: val}, nil
+		}
+	}
 	p.skipNewlines()
 	return &ExprStmt{Expr: ex, sp: ex.Span()}, nil
 }
