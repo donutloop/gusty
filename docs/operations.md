@@ -108,3 +108,9 @@ consumption: `gustyc --json --eval "min([3,1,2])"` returns `{"result":"1",...}`.
 Boxed heap handles are allocated from a high base (`1 << 20`) so they never
 collide with raw small integer literals stored in lists/dicts/vars. This keeps
 `Repr` from misinterpreting a raw int as an object handle.
+
+## String methods
+
+`upper()`, `lower()`, `strip()`, `split(sep?)` dispatch on boxed strings in
+`evalCall` before attr resolution. Machine consumption via `--json --eval
+'"heLLo".upper()'` returns `{"result":"HELLO",...}`.

@@ -229,3 +229,14 @@ Standard-library numeric builtins:
 
 `min`/`max` accept a list or set (or a single value); `abs` takes one number.
 Interpreter (REPL/`--eval`) path; the AOT codegen is integer-literal only.
+
+### string methods
+
+Boxed strings support Python-style methods:
+
+    "heLLo".upper()      # HELLO
+    "heLLo".lower()      # hello
+    "  hi  ".strip()     # hi
+    "a b c".split(" ")   # [a, b, c]
+
+`split` takes an optional separator (default space). Interpreter path only.

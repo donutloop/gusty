@@ -1096,6 +1096,55 @@ func (e *Evaluator) rangeBounds(iter Expr) (int64, int64, error) {
 }
 
 // callMethod invokes a method body with self bound as a local.
+// callStrMethod dispatches builtin string methods: s.upper(), s.lower(),
+// s.strip(), s.split(sep?). recv is the boxed string handle.
+func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, error) {
+	o := e.heap[recv]
+	s := o.sval
+	switch name {
+	case "upper":
+		if len(args) != 0 {
+			return 0, &EvalError{Msg: "upper() takes no arguments"}
+		}
+		return e.allocStr(strings.ToUpper(s)), nil
+	case "lower":
+		if len(args) != 0 {
+			return 0, &EvalError{Msg: "lower() takes no arguments"}
+		}
+		return e.allocStr(strings.ToLower(s)), nil
+	case "strip":
+		if len(args) != 0 {
+			return 0, &EvalError{Msg: "strip() takes no arguments"}
+		}
+		return e.allocStr(strings.TrimSpace(s)), nil
+	case "split":
+		sep := " "
+		if len(args) > 1 {
+			return 0, &EvalError{Msg: "split() takes at most 1 argument"}
+		}
+		if len(args) == 1 {
+			sepv, err := e.eval(args[0])
+			if err != nil {
+				return 0, err
+			}
+			so, ok := e.heap[sepv]
+			if !ok || so.kind != "str" {
+				return 0, &EvalError{Msg: "split separator must be a string"}
+			}
+			sep = so.sval
+		}
+		parts := strings.Split(s, sep)
+		// box the parts into a list of boxed strings
+		listID := e.allocObj("list")
+		lo := e.heap[listID]
+		for _, p := range parts {
+			lo.elems = append(lo.elems, e.allocStr(p))
+		}
+		return listID, nil
+	}
+	return 0, &EvalError{Msg: "no such string method " + name}
+}
+
 func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error) {
 	scope := map[string]int64{}
 	scope["self"] = self
@@ -1193,7 +1242,15 @@ func (e *Evaluator) importModule(mod string) error {
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	// method call: obj.method(args) — Fn is an Attr resolving to a method
-	if _, ok := n.Fn.(*Attr); ok {
+	if attr, ok := n.Fn.(*Attr); ok {
+		// string methods: s.upper() / lower() / strip() / split(sep?)
+		recv, err := e.eval(attr.Obj)
+		if err != nil {
+			return 0, err
+		}
+		if o, ok := e.heap[recv]; ok && o.kind == "str" {
+			return e.callStrMethod(recv, attr.Name.Value, n.Args)
+		}
 		// resolve the attribute/method reference via eval
 		mID, err := e.eval(n.Fn)
 		if err != nil {

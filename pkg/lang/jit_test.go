@@ -693,3 +693,31 @@ func TestEvalMinMaxAbs(t *testing.T) {
 		t.Fatalf("abs got %d, want 5", v)
 	}
 }
+
+func TestStrMethods(t *testing.T) {
+	ev := NewEvaluator()
+	prog, err := Parse(`"heLLo".upper()`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	v, err := ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("upper: %v", err)
+	}
+	if s := ev.Repr(v); s != "HELLO" {
+		t.Fatalf("upper repr %q", s)
+	}
+
+	ev = NewEvaluator()
+	prog, err = Parse(`"a b c".split(" ")`)
+	if err != nil {
+		t.Fatalf("parse split: %v", err)
+	}
+	v, err = ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("split: %v", err)
+	}
+	if s := ev.Repr(v); s != "[a, b, c]" {
+		t.Fatalf("split repr %q", s)
+	}
+}
