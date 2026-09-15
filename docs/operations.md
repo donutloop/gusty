@@ -98,10 +98,13 @@ The codegen folds integer-literal binary expressions at compile time:
 Folded ops: `+ - * / %` and comparisons `== < <= > >=`. Division/modulo by a
 literal zero is left to runtime. Verify with `gustyc --emit-llvm`.
 
-## Builtins: min / max / abs
+## Builtins: sum / min / max / abs (AOT codegen)
 
-`min([3,1,2])`, `max([3,1,2])`, `abs(-5)` are interpreter builtins. Machine
-consumption: `gustyc --json --eval "min([3,1,2])"` returns `{"result":"1",...}`.
+`sum([1,2,3])`, `min([3,1,2])`, `max([3,1,2])`, and `abs(-5)` are lowered in
+the LLVM AOT codegen path (previously interpreter-only). `sum`/`min`/`max`
+fold over an **inline list literal** (unrolled `add` / `icmp`+`select` chains
+over the list's global struct); `abs` accepts any integer expression and is
+constant-folded for literal arguments. Interpreter behavior is unchanged.
 
 ## Interpreter memory model
 

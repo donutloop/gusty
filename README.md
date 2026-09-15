@@ -44,7 +44,10 @@ pass                          # no-op statement
 
 More features (classes, try/except, generators/yield, lists, `len`, `and`/`or`,
 `elif`, **closures**, **decorators**) are implemented in the interpreter
-(`EvalExpr`) but are not yet lowered by the AOT LLVM backend.
+(`EvalExpr`); some are also lowered by the AOT LLVM backend. The AOT backend
+already lowers functions, control flow (`if`/`while`/`for`/`match`), `pass`,
+integer arithmetic, comparisons, `print`, inline list literals, `len`, and the
+numeric builtins `sum`/`min`/`max`/`abs`.
 
 ## Toolchain
 

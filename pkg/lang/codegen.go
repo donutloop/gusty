@@ -109,6 +109,16 @@ func (g *irGen) strConst(s string) string {
 	return name
 }
 
+// listElemLoad loads list element i from an inline list literal's global
+// struct with a constant GEP index (this llc build accepts only constant
+// GEP indices).
+func (g *irGen) listElemLoad(b *strings.Builder, ln *ListLit, name string, i int) string {
+	v := g.newTmp()
+	n := len(ln.Elems)
+	b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, i))
+	return v
+}
+
 // emitList emits a dedicated global struct for an inline list literal
 // (dedup by AST node) and returns its global name. Elements must be ints.
 func (g *irGen) emitList(ln *ListLit) (string, error) {
@@ -450,6 +460,81 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		v := g.newTmp()
 		b.WriteString(fmt.Sprintf("%s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, len(ln.Elems), len(ln.Elems), name))
 		return v, nil
+	case "sum":
+		// sum(list) -> sum the elements of an inline list literal (unrolled).
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("sum expects one argument")
+		}
+		ln, ok := c.Args[0].(*ListLit)
+		if !ok {
+			return "", fmt.Errorf("sum requires an inline list literal")
+		}
+		if len(ln.Elems) == 0 {
+			return "", fmt.Errorf("sum of an empty list")
+		}
+		name, err := g.emitList(ln)
+		if err != nil {
+			return "", err
+		}
+		acc := g.listElemLoad(b, ln, name, 0)
+		for i := 1; i < len(ln.Elems); i++ {
+			t := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", t, acc, g.listElemLoad(b, ln, name, i)))
+			acc = t
+		}
+		return acc, nil
+	case "min", "max":
+		// min/max(list) -> fold the elements of an inline list literal (unrolled).
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("%s expects one argument", fnName)
+		}
+		ln, ok := c.Args[0].(*ListLit)
+		if !ok {
+			return "", fmt.Errorf("%s requires an inline list literal", fnName)
+		}
+		if len(ln.Elems) == 0 {
+			return "", fmt.Errorf("%s of an empty list", fnName)
+		}
+		name, err := g.emitList(ln)
+		if err != nil {
+			return "", err
+		}
+		best := g.listElemLoad(b, ln, name, 0)
+		for i := 1; i < len(ln.Elems); i++ {
+			el := g.listElemLoad(b, ln, name, i)
+			cmp := g.newTmp()
+			op := "icmp sgt"
+			if fnName == "min" {
+				op = "icmp slt"
+			}
+			b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", cmp, op, el, best))
+			t := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, cmp, el, best))
+			best = t
+		}
+		return best, nil
+	case "abs":
+		// abs(x) -> x < 0 ? -x : x (constant-folded when x is a literal).
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("abs expects one argument")
+		}
+		if il, ok := c.Args[0].(*IntLit); ok {
+			if il.Value < 0 {
+				return fmt.Sprintf("%d", -il.Value), nil
+			}
+			return fmt.Sprintf("%d", il.Value), nil
+		}
+		v, err := g.value(b, c.Args[0])
+		if err != nil {
+			return "", err
+		}
+		neg := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = sub i32 0, %s\n", neg, v))
+		cmp := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", cmp, v))
+		t := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, cmp, neg, v))
+		return t, nil
 	case "range":
 		for _, a := range c.Args {
 			if _, ok := a.(*KeywordArg); ok {

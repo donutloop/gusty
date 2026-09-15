@@ -4,6 +4,14 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **`sum`/`min`/`max`/`abs` builtins in the LLVM AOT codegen** —
+  these numeric builtins now ship in **both** backends (interpreter + AOT),
+  not just the interpreter. `sum`/`min`/`max` fold over an inline list
+  literal's global struct (`add` / `icmp`+`select` chains, constant GEP only);
+  `abs` emits `select` and constant-folds literal arguments. Adds unit IR
+  checks (`TestIRSumMinMaxAbs`) and end-to-end exec tests
+  (`TestExecSumMinMaxAbs`). ADR 0020.
+
 - `feat(tools)`: **pi-loop CLI** — pi-loop now connects using **only** the
   embedded provider config (`local-vllm` @ `http://localhost:8000/v1`,
   `openai-completions`, apiKey `dummy`, model `deepseek-v4-flash`). It writes

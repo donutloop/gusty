@@ -136,3 +136,50 @@ func TestIRConstantFolding(t *testing.T) {
 		t.Fatalf("expected folded constant 3 in IR: %s", res.IR)
 	}
 }
+
+func TestIRSumMinMaxAbs(t *testing.T) {
+	// sum: unrolled adds over the inline list literal's global struct.
+	res, err := Compile("sum([1, 2, 3])")
+	if err != nil {
+		t.Fatalf("compile sum: %v", err)
+	}
+	if !strings.Contains(res.IR, "add i32") {
+		t.Fatalf("sum IR missing add:\n%s", res.IR)
+	}
+
+	// min: icmp slt + select fold.
+	res, err = Compile("min([3, 1, 2])")
+	if err != nil {
+		t.Fatalf("compile min: %v", err)
+	}
+	if !strings.Contains(res.IR, "icmp slt") || !strings.Contains(res.IR, "select i1") {
+		t.Fatalf("min IR missing icmp/select:\n%s", res.IR)
+	}
+
+	// max: icmp sgt + select fold.
+	res, err = Compile("max([3, 1, 2])")
+	if err != nil {
+		t.Fatalf("compile max: %v", err)
+	}
+	if !strings.Contains(res.IR, "icmp sgt") || !strings.Contains(res.IR, "select i1") {
+		t.Fatalf("max IR missing icmp/select:\n%s", res.IR)
+	}
+
+	// abs of a negative literal is constant-folded to the positive value.
+	res, err = Compile("abs(-5)")
+	if err != nil {
+		t.Fatalf("compile abs: %v", err)
+	}
+	if strings.Contains(res.IR, "icmp slt") || strings.Contains(res.IR, "select i1") {
+		t.Fatalf("abs(-5) should constant-fold, got:\n%s", res.IR)
+	}
+
+	// abs of a non-literal emits icmp slt + select.
+	res, err = Compile("x = 5\nabs(-x)")
+	if err != nil {
+		t.Fatalf("compile abs(-x): %v", err)
+	}
+	if !strings.Contains(res.IR, "icmp slt") || !strings.Contains(res.IR, "select i1") {
+		t.Fatalf("abs(-x) IR missing icmp/select:\n%s", res.IR)
+	}
+}

@@ -251,3 +251,16 @@ func TestListIndexLargeAndPrint(t *testing.T) {
 	src := "print([10, 20, 30, 40][3])"
 	assertOutput(t, src, "40\n")
 }
+
+func TestExecSumMinMaxAbs(t *testing.T) {
+	assertOutput(t, "print(sum([1, 2, 3]))", "6\n")
+	assertOutput(t, "print(sum([1, 2, 3, 4, 5]))", "15\n")
+	assertOutput(t, "print(min([3, 1, 2]))", "1\n")
+	assertOutput(t, "print(max([3, 1, 2]))", "3\n")
+	assertOutput(t, "print(min([9, 4, 7, 1, 5]))", "1\n")
+	assertOutput(t, "print(max([9, 4, 7, 1, 5]))", "9\n")
+	assertOutput(t, "print(abs(-5))", "5\n")
+	assertOutput(t, "print(abs(5))", "5\n")
+	// abs over a runtime value (function arg / negated name).
+	assertOutput(t, "x = 3\nprint(abs(-x))", "3\n")
+}

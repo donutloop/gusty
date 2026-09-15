@@ -228,7 +228,11 @@ Standard-library numeric builtins:
     abs(-5)          # 5
 
 `min`/`max` accept a list or set (or a single value); `abs` takes one number.
-Interpreter (REPL/`--eval`) path; the AOT codegen is integer-literal only.
+Implemented in both the interpreter (REPL/`--eval`) and the LLVM AOT codegen.
+In the AOT path `min`/`max`/`sum` fold over an **inline list literal** (unrolled
+`icmp`+`select` / `add` chains over the list's global struct), so the argument
+must be an inline list literal; `abs` accepts any integer expression and is
+constant-folded when its argument is a literal.
 
 ### string methods
 
@@ -265,4 +269,6 @@ Sums a list or set of numbers:
 
     sum([1, 2, 3])   # 6
 
-Interpreter path only.
+Implemented in both the interpreter and the LLVM AOT codegen. In the AOT path
+`sum` unrolls `add` chains over an inline list literal's global struct (the
+argument must be an inline list literal).
