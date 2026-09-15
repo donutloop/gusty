@@ -268,6 +268,14 @@ func TestIRTernaryLowersToSelect(t *testing.T) {
 	}
 }
 
+func TestIRMultiArgRangeComprehension(t *testing.T) {
+	// 2-arg and 3-arg range iterables in AOT comprehensions must compile.
+	llcCompiles(t, "print(sum([x for x in range(0, 5)]))")
+	llcCompiles(t, "print(sum([x for x in range(1, 5, 2)]))")
+	llcCompiles(t, "print(max([x for x in range(2, 10, 3)]))")
+	llcCompiles(t, "print(min([x for x in range(5, 0, -1)]))")
+}
+
 func TestIRAggregateOverComprehension(t *testing.T) {
 	// len/sum/min/max over a lowered comprehension must compile and verify.
 	llcCompiles(t, "print(len([x for x in range(5)]))")

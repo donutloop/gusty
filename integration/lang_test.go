@@ -271,6 +271,13 @@ func TestExecForListLiteral(t *testing.T) {
 	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\nprint(s)", "106\n")
 }
 
+func TestExecMultiArgRangeComprehensionAOT(t *testing.T) {
+	assertOutput(t, "print(sum([x for x in range(0, 5)]))\n", "10\n")
+	assertOutput(t, "print(sum([x for x in range(1, 5, 2)]))\n", "4\n")
+	assertOutput(t, "print(max([x for x in range(2, 10, 3)]))\n", "8\n")
+	assertOutput(t, "print(min([x for x in range(5, 0, -1)]))\n", "1\n")
+}
+
 func TestExecAggregateOverComprehensionAOT(t *testing.T) {
 	assertOutput(t, "print(len([x for x in range(5)]))\n", "5\n")
 	assertOutput(t, "print(sum([x for x in range(5)]))\n", "10\n")

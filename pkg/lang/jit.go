@@ -827,8 +827,24 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 		if err != nil {
 			return 0, &EvalError{Msg: "comprehension over non-object"}
 		}
-		for v := lo; v < hi; v++ {
-			items = append(items, v)
+		step := int64(1)
+		if r, ok := c.Iter.(*Call); ok && len(r.Args) == 3 {
+			step, err = e.eval(r.Args[2])
+			if err != nil {
+				return 0, err
+			}
+			if step == 0 {
+				return 0, &EvalError{Msg: "range step cannot be zero"}
+			}
+		}
+		if step > 0 {
+			for v := lo; v < hi; v += step {
+				items = append(items, v)
+			}
+		} else {
+			for v := lo; v > hi; v += step {
+				items = append(items, v)
+			}
 		}
 	}
 	if o != nil && o.kind == "dict" {
@@ -1087,7 +1103,7 @@ func (e *Evaluator) evalBody(stmts []Stmt) (int64, error) {
 
 func (e *Evaluator) rangeBounds(iter Expr) (int64, int64, error) {
 	if c, ok := iter.(*Call); ok {
-		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" && len(c.Args) == 2 {
+		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" && (len(c.Args) == 2 || len(c.Args) == 3) {
 			start, err := e.eval(c.Args[0])
 			if err != nil {
 				return 0, 0, err
@@ -1576,8 +1592,8 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return av, nil
 		case "range":
-			if len(n.Args) != 1 {
-				return 0, &EvalError{Msg: "range expects 1 argument"}
+			if len(n.Args) < 1 || len(n.Args) > 3 {
+				return 0, &EvalError{Msg: "range expects 1 to 3 arguments"}
 			}
 			return e.eval(n.Args[0])
 		}

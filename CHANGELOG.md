@@ -4,6 +4,15 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat`: **multi-argument range iterables in comprehensions** —
+  `range(start, stop)` and `range(start, stop, step)` as comprehension
+  iterables in both the interpreter and the LLVM AOT codegen. The AOT path
+  unrolls the comprehension body over the stepped range at compile time; the
+  interpreter's `rangeBounds` and `range` builtin accept 1-3 args with a step.
+  Adds IR checks (`TestIRMultiArgRangeComprehension`) and end-to-end exec tests
+  (`TestExecMultiArgRangeComprehensionAOT`). ADR 0028.
+
+
 - `feat(aot)`: **aggregate builtins over comprehensions** — `len`, `sum`,
   `min`, `max` now accept a lowered comprehension result in the LLVM AOT
   codegen. `len([...])` loads the stored count field; `sum`/`min`/`max` fold

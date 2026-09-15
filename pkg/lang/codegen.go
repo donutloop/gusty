@@ -713,18 +713,41 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 		}
 	} else if r, ok := c.Iter.(*Call); ok {
 		fn, isName := r.Fn.(*Name)
-		if !isName || fn.Value != "range" || len(r.Args) != 1 {
-			return "", fmt.Errorf("codegen: unsupported comprehension iterable")
+		if !isName || fn.Value != "range" || len(r.Args) < 1 || len(r.Args) > 3 {
+			return "", fmt.Errorf("codegen: comprehension iterable must be range(stop), range(start, stop) or range(start, stop, step)")
 		}
+		n := len(r.Args)
+		start := int64(0)
+		step := int64(1)
 		stop, ok := g.foldConstInt(r.Args[0])
-		if !ok || stop < 0 {
-			return "", fmt.Errorf("codegen: range bound must be a non-negative constant")
+		if !ok {
+			return "", fmt.Errorf("codegen: range bound must be a constant")
 		}
-		for v := int64(0); v < stop; v++ {
-			items = append(items, v)
+		if n >= 2 {
+			start = stop
+			stop, ok = g.foldConstInt(r.Args[1])
+			if !ok {
+				return "", fmt.Errorf("codegen: range stop must be a constant")
+			}
 		}
-	} else {
-		return "", fmt.Errorf("codegen: comprehension iterable must be an inline list literal or range(n)")
+		if n == 3 {
+			step, ok = g.foldConstInt(r.Args[2])
+			if !ok {
+				return "", fmt.Errorf("codegen: range step must be a constant")
+			}
+			if step == 0 {
+				return "", fmt.Errorf("codegen: range step cannot be zero")
+			}
+		}
+		if step > 0 {
+			for v := start; v < stop; v += step {
+				items = append(items, v)
+			}
+		} else {
+			for v := start; v > stop; v += step {
+				items = append(items, v)
+			}
+		}
 	}
 
 	// Unroll the body, binding the comprehension variable to each item.

@@ -74,6 +74,21 @@ indirection) in the codegen path; the interpreter evaluates comprehensions at
 runtime and is unchanged.
 
 
+### Multi-argument range iterables (comprehensions)
+
+List comprehensions over `range(start, stop)` and `range(start, stop, step)`
+are supported in both the interpreter and the LLVM AOT codegen. The iterable
+range accepts one, two, or three constant arguments:
+
+- `range(stop)` → `0..stop-1`
+- `range(start, stop)` → `start..stop-1`
+- `range(start, stop, step)` → `start, start+step, ...` with a positive or
+  negative step (a zero step is a compile error).
+
+In the AOT path the comprehension body unrolls over the stepped range at
+compile time, so e.g. `sum([x for x in range(1, 5, 2)])` folds to `1 + 3 = 4`
+with no runtime loop.
+
 ### Aggregates over comprehensions (LLVM codegen)
 
 The aggregate builtins `len`, `sum`, `min`, `max` accept a lowered
