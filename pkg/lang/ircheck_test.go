@@ -268,6 +268,24 @@ func TestIRTernaryLowersToSelect(t *testing.T) {
 	}
 }
 
+func TestIRAggregateOverComprehension(t *testing.T) {
+	// len/sum/min/max over a lowered comprehension must compile and verify.
+	llcCompiles(t, "print(len([x for x in range(5)]))")
+	llcCompiles(t, "print(sum([x for x in range(5)]))")
+	llcCompiles(t, "print(min([y * y for y in range(3)]))")
+	llcCompiles(t, "print(max([x * 2 for x in [1, 2, 3]]))")
+}
+
+func TestIRSumFoldsComprehension(t *testing.T) {
+	res, err := Compile("print(sum([x for x in range(5)]))")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	// sum over the folded comprehension 0..4 folds to constant 10.
+	if !strings.Contains(res.IR, "10") {
+		t.Fatalf("sum of a comprehension should fold to a constant, got:\n%s", res.IR)
+	}
+}
 func TestIRSumMinMaxAbs(t *testing.T) {
 	// sum: unrolled adds over the inline list literal's global struct.
 	res, err := Compile("sum([1, 2, 3])")

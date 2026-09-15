@@ -4,6 +4,15 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **aggregate builtins over comprehensions** — `len`, `sum`,
+  `min`, `max` now accept a lowered comprehension result in the LLVM AOT
+  codegen. `len([...])` loads the stored count field; `sum`/`min`/`max` fold
+  the folded comprehension elements (all constants) to a single constant at
+  codegen time. Adds IR checks (`TestIRAggregateOverComprehension`,
+  `TestIRSumFoldsComprehension`) and end-to-end exec tests
+  (`TestExecAggregateOverComprehensionAOT`). ADR 0027.
+
+
 - `feat`: **ternary conditional expressions** (`then if cond else otherwise`)
   in both the interpreter and the LLVM AOT codegen. The condition is an
   or-level expression; the `else` branch is a full expression, so nested

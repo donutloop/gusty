@@ -271,6 +271,14 @@ func TestExecForListLiteral(t *testing.T) {
 	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\nprint(s)", "106\n")
 }
 
+func TestExecAggregateOverComprehensionAOT(t *testing.T) {
+	assertOutput(t, "print(len([x for x in range(5)]))\n", "5\n")
+	assertOutput(t, "print(sum([x for x in range(5)]))\n", "10\n")
+	assertOutput(t, "print(min([y * y for y in range(3)]))\n", "0\n")
+	assertOutput(t, "print(max([x * 2 for x in [1, 2, 3]]))\n", "6\n")
+	assertOutput(t, "print(sum([x * x for x in range(4)]))\n", "14\n")
+}
+
 func TestExecTernaryAOT(t *testing.T) {
 	// constant-condition ternary folds to the taken branch.
 	assertOutput(t, "print(5 if 1 else 3)\n", "5\n")

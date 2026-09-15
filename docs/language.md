@@ -74,6 +74,18 @@ indirection) in the codegen path; the interpreter evaluates comprehensions at
 runtime and is unchanged.
 
 
+### Aggregates over comprehensions (LLVM codegen)
+
+The aggregate builtins `len`, `sum`, `min`, `max` accept a lowered
+comprehension result in addition to an inline list literal. Because a
+comprehension over a constant iterable unrolls to a `{i32 count, [n x i32]}`
+global struct with the same shape as a list literal:
+
+- `len([...])` loads the stored count field from the comprehension's global.
+- `sum([...])`, `min([...])`, `max([...])` fold the folded comprehension
+  elements (which are all constants) to a single constant at codegen time, so
+  e.g. `sum([x for x in range(5)])` folds to `10` with no runtime loop.
+
 ### Ternary conditional expressions
 
 `then if cond else otherwise` (Python-style ternary) is supported in both the

@@ -85,6 +85,9 @@ type irGen struct {
 	// compLen records the folded element count of each lowered comprehension,
 	// so indexing can bounds-check and emit the correct GEP shape.
 	compLen     map[*Comp]int
+	// compEls records the folded element constant of each lowered comprehension,
+	// so aggregate builtins (sum/min/max) can fold over the comprehension.
+	compEls     map[*Comp][]int64
 	// constBindings maps a comprehension variable name to its compile-time
 	// constant so comprehension bodies can be unrolled at codegen time.
 	constBindings map[string]int64
@@ -770,8 +773,12 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	if g.compLen == nil {
 		g.compLen = map[*Comp]int{}
 	}
+	if g.compEls == nil {
+		g.compEls = map[*Comp][]int64{}
+	}
 	g.compNames[c] = name
 	g.compLen[c] = len(results)
+	g.compEls[c] = results
 	return name, nil
 }
 
@@ -939,6 +946,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			v := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, name))
 			return v, nil
+		case *Comp:
+			// lowered comprehension result: same global shape as a list literal,
+			// so len loads the stored count field.
+			name, err := g.comp(b, lit)
+			if err != nil {
+				return "", err
+			}
+			n := g.compLen[lit]
+			v := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, name))
+			return v, nil
 		default:
 			return "", fmt.Errorf("len requires an inline list/dict/set literal")
 		}
@@ -946,6 +964,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// sum(list) -> sum the elements of an inline list literal (unrolled).
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("sum expects one argument")
+		}
+		// sum over a lowered comprehension: the elements are folded constants,
+		// so fold to a single constant at codegen time.
+		if comp, ok := c.Args[0].(*Comp); ok {
+			if _, err := g.comp(b, comp); err != nil {
+				return "", err
+			}
+			total := int64(0)
+			for _, e := range g.compEls[comp] {
+				total += e
+			}
+			return fmt.Sprintf("%d", total), nil
 		}
 		ln, ok := c.Args[0].(*ListLit)
 		if !ok {
@@ -969,6 +999,26 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// min/max(list) -> fold the elements of an inline list literal (unrolled).
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("%s expects one argument", fnName)
+		}
+		// min/max over a lowered comprehension: fold the constant elements.
+		if comp, ok := c.Args[0].(*Comp); ok {
+			if _, err := g.comp(b, comp); err != nil {
+				return "", err
+			}
+			els := g.compEls[comp]
+			if len(els) == 0 {
+				return "", fmt.Errorf("%s of an empty comprehension", fnName)
+			}
+			best := els[0]
+			for _, e := range els[1:] {
+				if fnName == "min" && e < best {
+					best = e
+				}
+				if fnName == "max" && e > best {
+					best = e
+				}
+			}
+			return fmt.Sprintf("%d", best), nil
 		}
 		ln, ok := c.Args[0].(*ListLit)
 		if !ok {
