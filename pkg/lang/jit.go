@@ -35,6 +35,7 @@ type obj struct {
 	elems []int64          // list elements (kind=list)
 	dvals []int64          // dict values parallel to elems keys (kind=dict)
 	sval  string           // string value (kind=str)
+	fval  float64          // float value (kind=float)
 }
 
 func (e *Evaluator) allocObj(kind string) int64 {
@@ -52,6 +53,22 @@ func (e *Evaluator) allocStr(val string) int64 {
 	return id
 }
 
+// allocFloat allocates a boxed float value and returns its heap handle.
+func (e *Evaluator) allocFloat(val float64) int64 {
+	id := e.allocObj("float")
+	e.heap[id].fval = val
+	return id
+}
+
+// floatOf returns the float value of a heap handle (kind=float), with a
+// boolean indicating whether the handle is a boxed float.
+func (e *Evaluator) floatOf(id int64) (float64, bool) {
+	if o, ok := e.heap[id]; ok && o.kind == "float" {
+		return o.fval, true
+	}
+	return 0, false
+}
+
 // strOf returns the string value of a heap handle, or "" if the handle is
 // not a boxed string.
 func (e *Evaluator) strOf(id int64) string {
@@ -67,6 +84,8 @@ func (e *Evaluator) Repr(id int64) string {
 		switch o.kind {
 		case "str":
 			return o.sval
+		case "float":
+			return fmt.Sprintf("%g", o.fval)
 		case "list":
 			parts := make([]string, 0, len(o.elems))
 			for _, el := range o.elems {
@@ -604,6 +623,8 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return n.Value, nil
 	case *StrLit:
 		return e.allocStr(n.Value), nil
+	case *FloatLit:
+		return e.allocFloat(n.Value), nil
 	case *BoolLit:
 		if n.Value {
 			return 1, nil
@@ -871,12 +892,38 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		if ro, ok := e.heap[r]; ok && ro.kind == "str" {
 			return 0, &EvalError{Msg: "cannot concatenate non-string and string"}
 		}
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			return e.allocFloat(lf + rf), nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			return e.allocFloat(float64(l) + rf), nil
+		}
 		return l + r, nil
 	case "-":
 		return l - r, nil
 	case "*":
 		return l * r, nil
 	case "/", "//":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			if rf == 0 {
+				return 0, &EvalError{Msg: "division by zero"}
+			}
+			return e.allocFloat(lf / rf), nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			if rf == 0 {
+				return 0, &EvalError{Msg: "division by zero"}
+			}
+			return e.allocFloat(float64(l) / rf), nil
+		}
 		if r == 0 {
 			return 0, &EvalError{Msg: "division by zero"}
 		}
@@ -887,6 +934,22 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return l % r, nil
 	case "==":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			if lf == rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			if float64(l) == rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
 		if l == r {
 			return 1, nil
 		}
@@ -897,21 +960,85 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return 0, nil
 	case "<":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			if lf < rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			if float64(l) < rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
 		if l < r {
 			return 1, nil
 		}
 		return 0, nil
 	case "<=":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			if lf <= rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			if float64(l) <= rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
 		if l <= r {
 			return 1, nil
 		}
 		return 0, nil
 	case ">":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			if lf > rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			if float64(l) > rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
 		if l > r {
 			return 1, nil
 		}
 		return 0, nil
 	case ">=":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			if lf >= rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			if float64(l) >= rf {
+				return 1, nil
+			}
+			return 0, nil
+		}
 		if l >= r {
 			return 1, nil
 		}

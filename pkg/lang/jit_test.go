@@ -613,3 +613,38 @@ func TestEvalStringLiteral(t *testing.T) {
 		t.Fatalf("len(str) got %d, want 5", v)
 	}
 }
+
+func TestEvalFloatLiteral(t *testing.T) {
+	// float literals evaluate to boxed floats
+	v, _, err := EvalExpr("x = 1.5\nx")
+	if err != nil {
+		t.Fatalf("float literal err: %v", err)
+	}
+	if v == 0 {
+		t.Fatalf("float literal returned 0, want a heap handle")
+	}
+	// float + int arithmetic
+	v, _, err = EvalExpr("x = 2.0 + 3\nx")
+	if err != nil {
+		t.Fatalf("float add err: %v", err)
+	}
+	if v == 0 {
+		t.Fatalf("float add returned 0, want a heap handle")
+	}
+	// float division
+	v, _, err = EvalExpr("x = 7.0 / 2.0\nx")
+	if err != nil {
+		t.Fatalf("float div err: %v", err)
+	}
+	if v == 0 {
+		t.Fatalf("float div returned 0, want a heap handle")
+	}
+	// float comparison returns int 1/0
+	v, _, err = EvalExpr("1.5 > 1\n1.5 < 1")
+	if err != nil {
+		t.Fatalf("float cmp err: %v", err)
+	}
+	if v != 0 {
+		t.Fatalf("1.5 < 1 got %d, want 0", v)
+	}
+}

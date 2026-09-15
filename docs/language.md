@@ -195,3 +195,15 @@ Example:
     print(s)          # hello
     print(len(s))     # 5
     print("a" + "b")  # ab
+
+## Floats
+
+Float literals (`1.5`, `2.0`) evaluate to boxed floats in the interpreter.
+
+Arithmetic with floats (or float + int) produces a float:
+`+`, `-`, `*`, `/`. Comparisons (`== < <= > >=`) work between floats and ints.
+`print` renders floats with `%g`.
+
+    print(1.5 + 1)   # 2.5
+    print(7.0 / 2.0) # 3.5
+    print(1.5 > 1)   # 1

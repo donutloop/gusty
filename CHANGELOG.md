@@ -4,6 +4,8 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **floats** — float literals evaluate to boxed floats; `+ - * /` between floats and ints produce floats; comparisons (`== < <= > >=`) support floats; `print`/`Repr` render with `%g`. Adds `allocFloat`/`floatOf` and a float interpreter test.
+
 - `feat(interp)`: **strings** — string literals evaluate to boxed strings in the interpreter; `+` concatenates, `len(s)` counts chars, `print(s)` writes output (previously `print` discarded it). Adds `Repr` rendering for values.
 
 - `feat(cli)`: **`gustyc` CLI/REPL** — new `cmd/gustyc` with `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`, `--target`, `--opt-level`, `--lang` (self-describing), `--version`, `--repl`, `--help`; stable exit codes (0 ok, 1 runtime, 2 parse); stateful REPL. Adds exported `lang.Parse`.
