@@ -1535,6 +1535,23 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 			}
 			return best, nil
+		case "sum":
+			if len(n.Args) != 1 {
+				return 0, &EvalError{Msg: "sum expects 1 argument"}
+			}
+			sv, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			so, ok := e.heap[sv]
+			if !ok || (so.kind != "list" && so.kind != "set") {
+				return 0, &EvalError{Msg: "sum expects a list or set"}
+			}
+			total := int64(0)
+			for _, el := range so.elems {
+				total += el
+			}
+			return total, nil
 		case "abs":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "abs expects 1 argument"}

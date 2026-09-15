@@ -751,3 +751,18 @@ func TestDictMethods(t *testing.T) {
 		t.Fatalf("values repr %q", s)
 	}
 }
+
+func TestSumBuiltin(t *testing.T) {
+	ev := NewEvaluator()
+	prog, err := Parse(`sum([1, 2, 3])`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	v, err := ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("sum: %v", err)
+	}
+	if v != 6 {
+		t.Fatalf("sum got %d", v)
+	}
+}

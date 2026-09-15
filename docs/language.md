@@ -258,3 +258,11 @@ Dicts support `keys()` and `values()` (insertion order, returned as lists):
     {"a": 1, "b": 2}.values()   # [1, 2]
 
 Interpreter path only.
+
+### sum
+
+Sums a list or set of numbers:
+
+    sum([1, 2, 3])   # 6
+
+Interpreter path only.

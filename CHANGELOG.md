@@ -4,6 +4,8 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **sum builtin** — `sum([1,2,3])` → 6 over a boxed list/set. Adds TestSumBuiltin.
+
 - `feat(interp)`: **dict keys/values methods** — `d.keys()` / `d.values()` return boxed lists in insertion order. Adds TestDictMethods.
 
 - `feat(interp)`: **list append method** — `xs.append(x)` mutates a boxed list in place and returns it. Adds TestListAppend.
