@@ -114,3 +114,10 @@ collide with raw small integer literals stored in lists/dicts/vars. This keeps
 `upper()`, `lower()`, `strip()`, `split(sep?)` dispatch on boxed strings in
 `evalCall` before attr resolution. Machine consumption via `--json --eval
 '"heLLo".upper()'` returns `{"result":"HELLO",...}`.
+
+## List methods
+
+`xs.append(x)` mutates a boxed list in place and returns it (REPL-friendly).
+Machine consumption via `--json --eval "xs = [1,2]
+xs.append(3)
+xs"`.

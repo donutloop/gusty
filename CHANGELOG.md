@@ -4,6 +4,8 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **list append method** — `xs.append(x)` mutates a boxed list in place and returns it. Adds TestListAppend.
+
 - `feat(interp)`: **string methods** — `upper()`, `lower()`, `strip()`, `split(sep?)` dispatch on boxed strings in `evalCall` (interpreter path). Adds TestStrMethods.
 
 - `feat(interp)`: **min / max / abs builtins** — standard-library numeric builtins (`min([3,1,2])` → 1, `max` → 3, `abs(-5)` → 5), registered in the semantic analyzer. Fixes a heap-handle collision: boxed ids now start at `1 << 20` so `Repr` of a raw small int never misformats an object handle (stack overflow on `min([3,1,2])`).

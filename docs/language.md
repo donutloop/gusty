@@ -240,3 +240,12 @@ Boxed strings support Python-style methods:
     "a b c".split(" ")   # [a, b, c]
 
 `split` takes an optional separator (default space). Interpreter path only.
+
+### list methods
+
+Lists support `append(x)` (in-place, returns the updated list):
+
+    xs = [1, 2]
+    xs.append(3)     # xs == [1, 2, 3]
+
+Interpreter path only.

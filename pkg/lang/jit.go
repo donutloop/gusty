@@ -1145,6 +1145,26 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 	return 0, &EvalError{Msg: "no such string method " + name}
 }
 
+// callListMethod dispatches builtin list methods: xs.append(x).
+// append mutates the list in place and returns the (updated) list handle,
+// so the REPL can show the resulting list.
+func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64, error) {
+	o := e.heap[recv]
+	switch name {
+	case "append":
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "append() takes exactly 1 argument"}
+		}
+		v, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		o.elems = append(o.elems, v)
+		return recv, nil
+	}
+	return 0, &EvalError{Msg: "no such list method " + name}
+}
+
 func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error) {
 	scope := map[string]int64{}
 	scope["self"] = self
@@ -1250,6 +1270,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 		}
 		if o, ok := e.heap[recv]; ok && o.kind == "str" {
 			return e.callStrMethod(recv, attr.Name.Value, n.Args)
+		}
+		if o, ok := e.heap[recv]; ok && o.kind == "list" {
+			return e.callListMethod(recv, attr.Name.Value, n.Args)
 		}
 		// resolve the attribute/method reference via eval
 		mID, err := e.eval(n.Fn)

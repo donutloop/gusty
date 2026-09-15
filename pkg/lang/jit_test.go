@@ -721,3 +721,18 @@ func TestStrMethods(t *testing.T) {
 		t.Fatalf("split repr %q", s)
 	}
 }
+
+func TestListAppend(t *testing.T) {
+	ev := NewEvaluator()
+	prog, err := Parse("xs = [1, 2]\nxs.append(3)\nxs")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	v, err := ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if s := ev.Repr(v); s != "[1, 2, 3]" {
+		t.Fatalf("append repr %q", s)
+	}
+}
