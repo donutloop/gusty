@@ -498,7 +498,11 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 						if err != nil {
 							return 0, err
 						}
-						for i := start; i < stop; i++ {
+						step, err := e.rangeStep(s.Iter)
+						if err != nil {
+							return 0, err
+						}
+						for i := start; (step > 0 && i < stop) || (step < 0 && i > stop); i += step {
 							e.Vars[n.Value] = i
 							rv, err := e.evalBody(s.Body)
 							if err != nil {
@@ -519,7 +523,11 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					if err != nil {
 						return 0, err
 					}
-					for i := start; i < stop; i++ {
+					step, err := e.rangeStep(s.Iter)
+					if err != nil {
+						return 0, err
+					}
+					for i := start; (step > 0 && i < stop) || (step < 0 && i > stop); i += step {
 						e.Vars[n.Value] = i
 						rv, err := e.evalBody(s.Body)
 						if err != nil {
@@ -1120,6 +1128,24 @@ func (e *Evaluator) rangeBounds(iter Expr) (int64, int64, error) {
 		return 0, 0, err
 	}
 	return 0, stop, nil
+}
+
+// rangeStep returns the iteration step for a `range(start, stop[, step])`
+// iterable: 1 when no step is given, or the constant third argument.
+func (e *Evaluator) rangeStep(iter Expr) (int64, error) {
+	if c, ok := iter.(*Call); ok {
+		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" && len(c.Args) == 3 {
+			step, err := e.eval(c.Args[2])
+			if err != nil {
+				return 0, err
+			}
+			if step == 0 {
+				return 0, &EvalError{Msg: "range step cannot be zero"}
+			}
+			return step, nil
+		}
+	}
+	return 1, nil
 }
 
 // callMethod invokes a method body with self bound as a local.

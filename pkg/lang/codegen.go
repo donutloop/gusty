@@ -808,25 +808,35 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 // rangeBounds computes the loop start and stop operands for a for statement.
 // A `range(a, b)` iterable yields start=a and stop=b; anything else starts at 0
 // with stop being the single evaluated bound.
-func (g *irGen) rangeBounds(b *strings.Builder, iter Expr) (string, string, error) {
-	if c, ok := iter.(*Call); ok {
-		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" && len(c.Args) == 2 {
-			start, err := g.value(b, c.Args[0])
+func (g *irGen) rangeBounds(b *strings.Builder, iter Expr) (string, string, string, error) {
+	if c, ok := iter.(*Call); ok && c.Fn != nil {
+		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" && (len(c.Args) == 2 || len(c.Args) == 3) {
+			lo, err := g.value(b, c.Args[0])
 			if err != nil {
-				return "", "", err
+				return "", "", "", err
 			}
-			stop, err := g.value(b, c.Args[1])
+			hi, err := g.value(b, c.Args[1])
 			if err != nil {
-				return "", "", err
+				return "", "", "", err
 			}
-			return start, stop, nil
+			step := "1"
+			if len(c.Args) == 3 {
+				step, err = g.value(b, c.Args[2])
+				if err != nil {
+					return "", "", "", err
+				}
+				if step == "0" {
+					return "", "", "", fmt.Errorf("range step cannot be zero")
+				}
+			}
+			return lo, hi, step, nil
 		}
 	}
-	stop, err := g.value(b, iter)
+	hi, err := g.value(b, iter)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return "0", stop, nil
+	return "0", hi, "1", nil
 }
 
 // call emits a call; supports print/printf and range(n).
@@ -1354,7 +1364,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		endL := g.newLabel("for.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", initL))
 		b.WriteString(fmt.Sprintf("%s:\n", initL))
-		start, stop, err := g.rangeBounds(b, n.Iter)
+		start, stop, step, err := g.rangeBounds(b, n.Iter)
 		if err != nil {
 			return err
 		}
@@ -1366,7 +1376,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		cld := fmt.Sprintf("%%_%s.ld%d", n.Var.Value, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", cld, n.Var.Value))
 		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", t, cld, stop))
+		cmpOp := "slt"
+		if strings.HasPrefix(step, "-") {
+			cmpOp = "sgt"
+		}
+		b.WriteString(fmt.Sprintf("  %s = icmp %s i32 %s, %s\n", t, cmpOp, cld, stop))
 		// normal completion (i >= stop) enters else if present; break skips else
 		normalL := endL
 		if len(n.Else) > 0 {
@@ -1387,7 +1401,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		ild := fmt.Sprintf("%%_%s.ld%d", n.Var.Value, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ild, n.Var.Value))
 		itmp := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = add i32 %s, 1\n", itmp, ild))
+		b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", itmp, ild, step))
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", itmp, n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		if len(n.Else) > 0 {

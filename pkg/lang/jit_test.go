@@ -132,6 +132,25 @@ func TestEvalRangeTwoArg(t *testing.T) {
 	}
 }
 
+func TestEvalForRangeStep(t *testing.T) {
+	// positive step range(1, 5, 2) = 1+3 = 4
+	v, _, err := EvalExpr("s = 0\nfor i in range(1, 5, 2):\n    s = s + i\ns")
+	if err != nil {
+		t.Fatalf("range step err: %v", err)
+	}
+	if v != 4 {
+		t.Fatalf("range(1,5,2) sum got %d, want 4", v)
+	}
+	// negative step range(5, 0, -1) = 5+4+3+2+1 = 15
+	v, _, err = EvalExpr("s = 0\nfor i in range(5, 0, -1):\n    s = s + i\ns")
+	if err != nil {
+		t.Fatalf("range neg step err: %v", err)
+	}
+	if v != 15 {
+		t.Fatalf("range(5,0,-1) sum got %d, want 15", v)
+	}
+}
+
 func TestEvalMatchWildcard(t *testing.T) {
 	// match with _ wildcard catches unmatched value
 	v, _, err := EvalExpr("x = 42\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(42)\nx")

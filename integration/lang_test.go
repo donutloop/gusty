@@ -112,6 +112,15 @@ func TestExecForRangeTwoArg(t *testing.T) {
 	assertOutput(t, src, "9\n")
 }
 
+func TestExecForRangeStep(t *testing.T) {
+	// positive step: range(1, 5, 2) => 1 + 3 = 4
+	src := "s = 0\nfor i in range(1, 5, 2):\n    s = s + i\nprint(s)"
+	assertOutput(t, src, "4\n")
+	// negative step: range(5, 0, -1) => 5+4+3+2+1 = 15
+	src = "s = 0\nfor i in range(5, 0, -1):\n    s = s + i\nprint(s)"
+	assertOutput(t, src, "15\n")
+}
+
 func TestExecNestedLoops(t *testing.T) {
 	src := "s = 0\nfor i in range(3):\n    for j in range(3):\n        s = s + i + j\nprint(s)"
 	// rows: (0+0)+(0+1)+(0+2)=3, (1+0)+(1+1)+(1+2)=6, (2+0)+(2+1)+(2+2)=9 => 18
