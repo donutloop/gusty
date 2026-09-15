@@ -97,3 +97,14 @@ The codegen folds integer-literal binary expressions at compile time:
 
 Folded ops: `+ - * / %` and comparisons `== < <= > >=`. Division/modulo by a
 literal zero is left to runtime. Verify with `gustyc --emit-llvm`.
+
+## Builtins: min / max / abs
+
+`min([3,1,2])`, `max([3,1,2])`, `abs(-5)` are interpreter builtins. Machine
+consumption: `gustyc --json --eval "min([3,1,2])"` returns `{"result":"1",...}`.
+
+## Interpreter memory model
+
+Boxed heap handles are allocated from a high base (`1 << 20`) so they never
+collide with raw small integer literals stored in lists/dicts/vars. This keeps
+`Repr` from misinterpreting a raw int as an object handle.

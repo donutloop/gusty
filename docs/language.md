@@ -218,3 +218,14 @@ optional filter (`if`), and collect the element expressions.
     d  = {k: k * 10 for k in range(2)}
 
 Comprehensions over a `range(...)` are supported in the interpreter.
+
+### min / max / abs
+
+Standard-library numeric builtins:
+
+    min([3, 1, 2])   # 1
+    max([3, 1, 2])   # 3
+    abs(-5)          # 5
+
+`min`/`max` accept a list or set (or a single value); `abs` takes one number.
+Interpreter (REPL/`--eval`) path; the AOT codegen is integer-literal only.

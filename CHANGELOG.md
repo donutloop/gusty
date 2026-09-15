@@ -4,6 +4,8 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **min / max / abs builtins** — standard-library numeric builtins (`min([3,1,2])` → 1, `max` → 3, `abs(-5)` → 5), registered in the semantic analyzer. Fixes a heap-handle collision: boxed ids now start at `1 << 20` so `Repr` of a raw small int never misformats an object handle (stack overflow on `min([3,1,2])`).
+
 - `feat(codegen)`: **constant folding** — integer-literal binary expressions (`+ - * / %` and comparisons) fold to constants at compile time (e.g. `x = 1 + 2` emits `i32 3`, no `add`). Adds TestIRConstantFolding.
 
 - `feat(cli)`: **`--json` agent output** — `gustyc --json` emits `{"result"/"ok"/"error"/"diagnostics", "exit"}` JSON for `--eval`/`--verify`, with stable exit codes. Adds a CLI JSON test.

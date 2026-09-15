@@ -667,3 +667,29 @@ func TestEvalComprehension(t *testing.T) {
 		t.Fatalf("filtered comp returned 0, want a heap handle")
 	}
 }
+
+func TestEvalMinMaxAbs(t *testing.T) {
+	// min/max over a list
+	v, _, err := EvalExpr("min([3, 1, 2])")
+	if err != nil {
+		t.Fatalf("min err: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("min got %d, want 1", v)
+	}
+	v, _, err = EvalExpr("max([3, 1, 2])")
+	if err != nil {
+		t.Fatalf("max err: %v", err)
+	}
+	if v != 3 {
+		t.Fatalf("max got %d, want 3", v)
+	}
+	// abs
+	v, _, err = EvalExpr("abs(-5)")
+	if err != nil {
+		t.Fatalf("abs err: %v", err)
+	}
+	if v != 5 {
+		t.Fatalf("abs got %d, want 5", v)
+	}
+}

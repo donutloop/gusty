@@ -50,6 +50,9 @@ func Analyze(prog *Program) []Diagnostic {
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
+	an.scope.define("min", TFunc([]*Type{TList(TInt())}, TInt()))
+	an.scope.define("max", TFunc([]*Type{TList(TInt())}, TInt()))
+	an.scope.define("abs", TFunc([]*Type{TInt()}, TInt()))
 	for _, st := range prog.Stmts {
 		an.analyzeStmt(st)
 	}

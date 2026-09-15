@@ -279,7 +279,11 @@ func (e *Evaluator) callClosure(o *obj, n *Call) (int64, error) {
 }
 
 func NewEvaluator() *Evaluator {
-	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}}
+	// Reserve a high handle base so boxed heap ids never collide with small
+	// integer literal values (which are stored raw in lists, dict keys, vars).
+	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
+	// a list at handle 1 whose elems contain the raw int 1).
+	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, nextID: 1 << 20}
 }
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
@@ -1396,6 +1400,45 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return 0, &EvalError{Msg: "len expects a list, set, dict, or string"}
 
+		case "min", "max":
+			if len(n.Args) != 1 {
+				return 0, &EvalError{Msg: "min/max expects 1 argument"}
+			}
+			lo, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			var vals []int64
+			if o, ok := e.heap[lo]; ok && (o.kind == "list" || o.kind == "set") {
+				vals = o.elems
+			} else {
+				vals = []int64{lo}
+			}
+			if len(vals) == 0 {
+				return 0, &EvalError{Msg: "min/max of empty collection"}
+			}
+			best := vals[0]
+			for _, v := range vals[1:] {
+				if name.Value == "min" && v < best {
+					best = v
+				}
+				if name.Value == "max" && v > best {
+					best = v
+				}
+			}
+			return best, nil
+		case "abs":
+			if len(n.Args) != 1 {
+				return 0, &EvalError{Msg: "abs expects 1 argument"}
+			}
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if av < 0 {
+				return -av, nil
+			}
+			return av, nil
 		case "range":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "range expects 1 argument"}
