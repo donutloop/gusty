@@ -559,3 +559,30 @@ func TestEvalDictIndex(t *testing.T) {
 		t.Fatalf("got %d, want 200", v)
 	}
 }
+
+func TestEvalPassStatement(t *testing.T) {
+	// pass inside a loop body is a no-op; iteration proceeds normally.
+	v, _, err := EvalExpr("x = 0\nfor i in range(3):\n    pass\n    x = x + i\nx")
+	if err != nil {
+		t.Fatalf("loop pass err: %v", err)
+	}
+	if v != 3 {
+		t.Fatalf("got %d, want 3", v)
+	}
+	// pass inside an if body: no branch taken, else still runs.
+	v, _, err = EvalExpr("x = 0\nif 0:\n    pass\nelse:\n    x = 1\nx")
+	if err != nil {
+		t.Fatalf("if pass err: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("got %d, want 1", v)
+	}
+	// bare pass statement at top level.
+	v, _, err = EvalExpr("pass\nx = 42\nx")
+	if err != nil {
+		t.Fatalf("bare pass err: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("got %d, want 42", v)
+	}
+}

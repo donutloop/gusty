@@ -542,6 +542,9 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			return 0, &loopSignal{kind: "break"}
 		case *ContinueStmt:
 			return 0, &loopSignal{kind: "continue"}
+		case *PassStmt:
+			// no-op statement
+			continue
 		default:
 			return 0, &EvalError{Msg: "unsupported statement for eval"}
 		}

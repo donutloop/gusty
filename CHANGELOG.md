@@ -4,6 +4,11 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp+llvm)`: **`pass` (no-op statement)** — `pass` parses as a
+  dedicated `PassStmt` (previously fell through to an undefined `Name`), is a
+  pure no-op in both the interpreter and the LLVM AOT codegen, and is a valid
+  placeholder in function/loop/branch bodies. Adds unit + integration tests.
+
 - `feat(interp+llvm)`: **`elif` chains** — the parser already built
   `IfStmt.Elifs`, but neither the interpreter nor the LLVM codegen executed
   them, and the semantic analyzer skipped elif bodies entirely (and scoped

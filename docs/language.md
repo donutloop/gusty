@@ -30,6 +30,22 @@ rebind a variable in the current scope.
 Any expression on its own line. `print(...)` is a builtin call that writes to
 stdout.
 
+### `pass` (no-op)
+
+`pass` is a no-op statement: it does nothing and execution continues with the
+next statement. Useful as a placeholder in function, loop, or branch bodies.
+
+```
+def wait():
+    pass
+
+for i in range(3):
+    pass
+    print(i)
+```
+
+Supported in both the interpreter and the LLVM AOT codegen path.
+
 ### Import / modules
 
 ### Lists (LLVM codegen)

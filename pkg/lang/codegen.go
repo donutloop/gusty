@@ -696,8 +696,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		info := g.loopStack[len(g.loopStack)-1]
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.continueLabel))
+		case *PassStmt:
+			// no-op statement: emit nothing
 	default:
 		return fmt.Errorf("codegen: unsupported statement %T", st)
 	}
 	return nil
 }
+

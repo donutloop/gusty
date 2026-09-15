@@ -49,8 +49,9 @@ JSON array of diagnostics:
 
 ## Emitted IR
 
-Functions, control flow (`if`/`while`/`for`/`match`), integer arithmetic,
-comparisons, and `print` (via `printf`) are all lowered to opaque-pointer IR.
+Functions, control flow (`if`/`while`/`for`/`match`), the `pass` no-op
+statement, integer arithmetic, comparisons, and `print` (via `printf`) are all
+lowered to opaque-pointer IR.
 
 ## Interpreter-only language surface
 

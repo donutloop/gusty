@@ -38,6 +38,8 @@ while i < 100:
     if i == 3:
         break
 print(i)                     # -> 3
+
+pass                          # no-op statement
 ```
 
 More features (classes, try/except, generators/yield, lists, `len`, `and`/`or`,

@@ -147,6 +147,10 @@ func (p *parser) parseStmt() (Stmt, error) {
 		p.next()
 		return &ContinueStmt{sp: t.Span}, nil
 	}
+	if t.IsKeyword("pass") {
+		p.next()
+		return &PassStmt{sp: t.Span}, nil
+	}
 	// expression / assignment
 	return p.parseExprOrAssign()
 }

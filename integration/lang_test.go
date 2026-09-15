@@ -149,6 +149,15 @@ func TestExecContinue(t *testing.T) {
 	assertOutput(t, src, "8\n")
 }
 
+func TestExecPassStatement(t *testing.T) {
+	// pass in a loop body is a no-op; the loop still sums 0..2.
+	assertOutput(t, "s = 0\nfor i in range(3):\n    pass\n    s = s + i\nprint(s)", "3\n")
+	// pass in an if body; else branch still executes.
+	assertOutput(t, "x = 0\nif 0:\n    pass\nelse:\n    x = 1\nprint(x)", "1\n")
+	// bare top-level pass.
+	assertOutput(t, "pass\nprint(42)", "42\n")
+}
+
 func TestExecMultiplePrints(t *testing.T) {
 	src := "print(1)\nprint(2)\nprint(3)"
 	assertOutput(t, src, "1\n2\n3\n")

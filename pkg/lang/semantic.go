@@ -152,6 +152,8 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		if an.loopDepth == 0 {
 			an.errorf(s.Span(), "continue outside loop")
 		}
+	case *PassStmt:
+		// no-op statement
 	case *MatchStmt:
 		an.inferExpr(s.Subject)
 		for _, c := range s.Cases {
