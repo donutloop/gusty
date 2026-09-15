@@ -1,0 +1,8 @@
+{
+  "name": "pi-loop",
+  "version": "1.0.0",
+  "description": "CLI that connects to a local pi agent via the pi SDK and drives the AGENTS.md loop: on each round completion it re-executes AGENTS.md and follows its loop strictly.",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "pi-loop": "pi-loop.mjs" }
+}

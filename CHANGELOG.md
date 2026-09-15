@@ -4,6 +4,13 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(tools)`: **pi-loop CLI** — `tools/pi-loop/pi-loop.mjs` connects to a
+  local pi agent via the pi SDK (`createAgentSession`) and drives the AGENTS.md
+  loop round by round. It persists `{round, lastCommit}` to
+  `.pi-loop-state.json` on any stop (SIGINT/error/target). On restart it resumes
+  at the next round if committed progress matches HEAD, or re-executes AGENTS.md
+  from round 1 if no progress exists.
+
 - `feat(interp)`: **sum builtin** — `sum([1,2,3])` → 6 over a boxed list/set. Adds TestSumBuiltin.
 
 - `feat(interp)`: **dict keys/values methods** — `d.keys()` / `d.values()` return boxed lists in insertion order. Adds TestDictMethods.
