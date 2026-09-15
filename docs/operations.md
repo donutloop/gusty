@@ -125,6 +125,16 @@ both paths now agree on for-over-list semantics. Machine consumption:
 for x in [1,2,3]: s = s + x
 print(s)'` emits the unrolled IR.
 
+## Dict & set literals (AOT codegen)
+
+Inline dict/set literals with constant-key indexing and `len` are lowered in
+the LLVM AOT path: `{1: 10, 2: 20}[1]`, `{1, 2, 3}[2]`, `len({1: 10, 2: 20})`.
+Each literal becomes a dedicated global struct (dicts: `{i32 count, [n x i32]
+keys, [n x i32] vals}`; sets: `{i32 count, [n x i32] elems}`). Constant-key
+lookup folds at compile time; literals must be used inline (no assignment-to-
+variable indirection), matching the list-literal limitation. Interpreter
+indexes dicts/sets at runtime and is unchanged.
+
 ## Interpreter memory model
 
 Boxed heap handles are allocated from a high base (`1 << 20`) so they never

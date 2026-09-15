@@ -130,6 +130,29 @@ func TestIRAndOrCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "print(9 // 2)")
 }
 
+func TestIRDictSetCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "print({1: 10, 2: 20}[1])\nprint(len({1: 10, 2: 20}))")
+	llcCompiles(t, "print({1, 2, 3}[2])\nprint(len({1, 2, 3}))")
+}
+
+func TestIRDictSetGlobals(t *testing.T) {
+	// dict/set literals lower to dedicated global structs with a count field.
+	res, err := Compile("print(len({1: 10, 2: 20}))")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "@.dict1 = private global {i32, [2 x i32], [2 x i32]}") {
+		t.Fatalf("missing dict global struct:\n%s", res.IR)
+	}
+	res, err = Compile("print(len({1, 2, 3}))")
+	if err != nil {
+		t.Fatalf("compile set: %v", err)
+	}
+	if !strings.Contains(res.IR, "@.set1 = private global {i32, [3 x i32]}") {
+		t.Fatalf("missing set global struct:\n%s", res.IR)
+	}
+}
+
 func TestIRConstantFolding(t *testing.T) {
 	res, err := Compile("x = 1 + 2")
 	if err != nil {

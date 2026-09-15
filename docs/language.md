@@ -61,6 +61,16 @@ codegen path.
 the AOT path by unrolling one body block per element (`break`/`continue` and
 the `else:` clause behave exactly like `range` loops).
 
+### Dicts & sets (LLVM codegen)
+
+The AOT path also lowers **inline dict and set literals** with constant-key
+indexing and `len`: `{1: 10, 2: 20}[1]`, `{1, 2, 3}[2]`, `len({1: 10, 2: 20})`.
+Each dict/set literal is emitted as a dedicated global struct (`{i32 count,
+[n x i32] keys, [n x i32] vals}` for dicts; `{i32 count, [n x i32] elems}`
+for sets). Constant-key lookup resolves at compile time; like lists, these
+literals must be used inline (no assignment-to-variable indirection) in the
+codegen path. The interpreter indexes dicts/sets at runtime and is unchanged.
+
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other

@@ -271,6 +271,21 @@ func TestExecForListLiteral(t *testing.T) {
 	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\nprint(s)", "106\n")
 }
 
+func TestExecDictSetLiterals(t *testing.T) {
+	// dict literal constant-key lookup folds at compile time.
+	assertOutput(t, "print({1: 10, 2: 20}[1])", "10\n")
+	assertOutput(t, "print({1: 10, 2: 20}[2])", "20\n")
+	// len over a dict literal.
+	assertOutput(t, "print(len({1: 10, 2: 20}))", "2\n")
+	// set literal constant membership lookup.
+	assertOutput(t, "print({1, 2, 3}[2])", "2\n")
+	assertOutput(t, "print({1, 2, 3}[3])", "3\n")
+	// len over a set literal.
+	assertOutput(t, "print(len({1, 2, 3}))", "3\n")
+	// combined expressions.
+	assertOutput(t, "print({5: 50, 6: 60}[6] + len({7, 8}))", "62\n")
+}
+
 func TestListIndexAndLen(t *testing.T) {
 	src := "print([1, 2, 3][1])\nprint(len([1, 2, 3]))"
 	assertOutput(t, src, "2\n3\n")

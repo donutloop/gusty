@@ -4,6 +4,17 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **inline dict/set literals with constant-key indexing + `len`
+  in the LLVM AOT codegen** — `{1: 10, 2: 20}[1]`, `{1, 2, 3}[2]`, and
+  `len({1: 10, 2: 20})` now lower to dedicated global structs (dicts:
+  `{i32 count, [n x i32] keys, [n x i32] vals}`; sets: `{i32 count, [n x i32]
+  elems}`). Constant-key lookup folds at compile time; literals must be used
+  inline (no assignment-to-variable indirection), matching the list-literal
+  limitation. Interpreter indexes dicts/sets at runtime and is unchanged.
+  Adds exec tests (`TestExecDictSetLiterals`), IR checks
+  (`TestIRDictSetGlobals`), and interpreter parity tests
+  (`TestEvalDictSetIndexLen`). ADR 0023.
+
 - `feat(aot)`: **boolean `and`/`or` operators + `//` floor division in the
   LLVM AOT codegen** — the parser/semantic/interpreter already supported
   `and`/`or` and `//`, but codegen rejected them as unsupported operators.

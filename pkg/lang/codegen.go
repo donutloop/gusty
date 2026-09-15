@@ -77,6 +77,10 @@ type irGen struct {
 	applyCalls  []string
 	listNames   map[*ListLit]string
 	lstIdx      int
+	dictNames   map[*DictLit]string
+	dictIdx     int
+	setNames    map[*SetLit]string
+	setIdx      int
 }
 
 type loopInfo struct {
@@ -119,6 +123,48 @@ func (g *irGen) listElemLoad(b *strings.Builder, ln *ListLit, name string, i int
 	return v
 }
 
+// dictLiteralKeys returns the integer keys of a dict literal, erroring if any
+// key is not a constant integer (the AOT path lowers only int-keyed dicts).
+func dictLiteralKeys(dl *DictLit) ([]int64, error) {
+	keys := make([]int64, len(dl.Keys))
+	for i, k := range dl.Keys {
+		il, ok := k.(*IntLit)
+		if !ok {
+			return nil, fmt.Errorf("dict literal keys must be constant integers")
+		}
+		keys[i] = il.Value
+	}
+	return keys, nil
+}
+
+// dictLiteralVals returns the integer values of a dict literal, erroring if
+// any value is not a constant integer.
+func dictLiteralVals(dl *DictLit) ([]int64, error) {
+	vals := make([]int64, len(dl.Vals))
+	for i, v := range dl.Vals {
+		il, ok := v.(*IntLit)
+		if !ok {
+			return nil, fmt.Errorf("dict literal values must be constant integers")
+		}
+		vals[i] = il.Value
+	}
+	return vals, nil
+}
+
+// setLiteralElems returns the integer elements of a set literal, erroring if
+// any element is not a constant integer.
+func setLiteralElems(sl *SetLit) ([]int64, error) {
+	elems := make([]int64, len(sl.Elems))
+	for i, el := range sl.Elems {
+		il, ok := el.(*IntLit)
+		if !ok {
+			return nil, fmt.Errorf("set literal elements must be constant integers")
+		}
+		elems[i] = il.Value
+	}
+	return elems, nil
+}
+
 // emitList emits a dedicated global struct for an inline list literal
 // (dedup by AST node) and returns its global name. Elements must be ints.
 func (g *irGen) emitList(ln *ListLit) (string, error) {
@@ -144,6 +190,70 @@ func (g *irGen) emitList(ln *ListLit) (string, error) {
 	}
 	g.globals.WriteString("] }\n")
 	g.listNames[ln] = name
+	return name, nil
+}
+
+// emitDict emits a dedicated global struct for an inline dict literal
+// (dedup by AST node) and returns its global name. Layout: {i32 count,
+// [n x i32] keys, [n x i32] vals}. Keys and values must be constant ints.
+func (g *irGen) emitDict(dl *DictLit) (string, error) {
+	if name, ok := g.dictNames[dl]; ok {
+		return name, nil
+	}
+	if g.dictNames == nil {
+		g.dictNames = map[*DictLit]string{}
+	}
+	keys, err := dictLiteralKeys(dl)
+	if err != nil {
+		return "", err
+	}
+	vals, err := dictLiteralVals(dl)
+	if err != nil {
+		return "", err
+	}
+	n := len(dl.Keys)
+	g.dictIdx++
+	name := fmt.Sprintf("@.dict%d", g.dictIdx)
+	var keysArr, valsArr strings.Builder
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			keysArr.WriteString(", ")
+			valsArr.WriteString(", ")
+		}
+		keysArr.WriteString(fmt.Sprintf("i32 %d", keys[i]))
+		valsArr.WriteString(fmt.Sprintf("i32 %d", vals[i]))
+	}
+	g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32], [%d x i32]} { i32 %d, [%d x i32] [%s], [%d x i32] [%s] }\n", name, n, n, n, n, keysArr.String(), n, valsArr.String()))
+	g.dictNames[dl] = name
+	return name, nil
+}
+
+// emitSet emits a dedicated global struct for an inline set literal
+// (dedup by AST node) and returns its global name. Layout matches a list:
+// {i32 count, [n x i32] elems}. Elements must be constant ints.
+func (g *irGen) emitSet(sl *SetLit) (string, error) {
+	if name, ok := g.setNames[sl]; ok {
+		return name, nil
+	}
+	if g.setNames == nil {
+		g.setNames = map[*SetLit]string{}
+	}
+	elems, err := setLiteralElems(sl)
+	if err != nil {
+		return "", err
+	}
+	n := len(sl.Elems)
+	g.setIdx++
+	name := fmt.Sprintf("@.set%d", g.setIdx)
+	var elemsArr strings.Builder
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			elemsArr.WriteString(", ")
+		}
+		elemsArr.WriteString(fmt.Sprintf("i32 %d", elems[i]))
+	}
+	g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, elemsArr.String()))
+	g.setNames[sl] = name
 	return name, nil
 }
 
@@ -318,24 +428,71 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return "", err
 		}
 		return name, nil
-	case *Index:
-		// list indexing: require an inline list literal with a constant index
-		// (this llc build accepts only constant GEP indices).
-		ln, ok := n.Obj.(*ListLit)
-		if !ok {
-			return "", fmt.Errorf("index requires an inline list literal")
-		}
-		il, ok := n.Idx.(*IntLit)
-		if !ok {
-			return "", fmt.Errorf("list index must be a constant")
-		}
-		name, err := g.emitList(ln)
+	case *DictLit:
+		name, err := g.emitDict(n)
 		if err != nil {
 			return "", err
 		}
-		v := g.newTmp()
-		b.WriteString(fmt.Sprintf("%s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, len(ln.Elems), len(ln.Elems), name, il.Value))
-		return v, nil
+		return name, nil
+	case *SetLit:
+		name, err := g.emitSet(n)
+		if err != nil {
+			return "", err
+		}
+		return name, nil
+	case *Index:
+		// list/dict/set indexing against an inline literal with a constant
+		// index/key (this llc build accepts only constant GEP indices).
+		// Constant keys/elements are resolved at compile time.
+		il, ok := n.Idx.(*IntLit)
+		if !ok {
+			return "", fmt.Errorf("index must be a constant")
+		}
+		key := il.Value
+		switch obj := n.Obj.(type) {
+		case *ListLit:
+			name, err := g.emitList(obj)
+			if err != nil {
+				return "", err
+			}
+			if key < 0 || key >= int64(len(obj.Elems)) {
+				return "", fmt.Errorf("list index out of range")
+			}
+			v := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, len(obj.Elems), len(obj.Elems), name, key))
+			return v, nil
+		case *DictLit:
+			// constant-key lookup: find the key in the literal and return its
+			// constant value at compile time.
+			keys, err := dictLiteralKeys(obj)
+			if err != nil {
+				return "", err
+			}
+			vals, err := dictLiteralVals(obj)
+			if err != nil {
+				return "", err
+			}
+			for i, k := range keys {
+				if k == key {
+					return fmt.Sprintf("%d", vals[i]), nil
+				}
+			}
+			return "", fmt.Errorf("dict key not found")
+		case *SetLit:
+			// constant membership lookup: return the element if present.
+			elems, err := setLiteralElems(obj)
+			if err != nil {
+				return "", err
+			}
+			for _, el := range elems {
+				if el == key {
+					return fmt.Sprintf("%d", key), nil
+				}
+			}
+			return "", fmt.Errorf("not in set")
+		default:
+			return "", fmt.Errorf("index requires an inline list/dict/set literal")
+		}
 	case *Call:
 		return g.call(b, n)
 	case *KeywordArg:
@@ -472,21 +629,42 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 		return t, nil
 	case "len":
-		// len(list) -> load the count field of an inline list literal's struct.
+		// len(list/dict/set) -> load the count field (i32 0) of the inline
+		// literal's global struct. Layouts share the count as the first field.
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("len expects one argument")
 		}
-		ln, ok := c.Args[0].(*ListLit)
-		if !ok {
-			return "", fmt.Errorf("len requires an inline list literal")
+		switch lit := c.Args[0].(type) {
+		case *ListLit:
+			name, err := g.emitList(lit)
+			if err != nil {
+				return "", err
+			}
+			n := len(lit.Elems)
+			v := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, name))
+			return v, nil
+		case *DictLit:
+			name, err := g.emitDict(lit)
+			if err != nil {
+				return "", err
+			}
+			n := len(lit.Keys)
+			v := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32], [%d x i32]}, {i32, [%d x i32], [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, n, n, name))
+			return v, nil
+		case *SetLit:
+			name, err := g.emitSet(lit)
+			if err != nil {
+				return "", err
+			}
+			n := len(lit.Elems)
+			v := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, name))
+			return v, nil
+		default:
+			return "", fmt.Errorf("len requires an inline list/dict/set literal")
 		}
-		name, err := g.emitList(ln)
-		if err != nil {
-			return "", err
-		}
-		v := g.newTmp()
-		b.WriteString(fmt.Sprintf("%s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, len(ln.Elems), len(ln.Elems), name))
-		return v, nil
 	case "sum":
 		// sum(list) -> sum the elements of an inline list literal (unrolled).
 		if len(c.Args) != 1 {

@@ -47,8 +47,9 @@ More features (classes, try/except, generators/yield, lists, `len`, `and`/`or`,
 (`EvalExpr`); some are also lowered by the AOT LLVM backend. The AOT backend
 already lowers functions, control flow (`if`/`while`/`for`/`match`), `pass`,
 integer arithmetic (`+ - * / // %`), comparisons, the boolean operators
-`and`/`or`, `print`, inline list literals, `len`, the numeric builtins
-`sum`/`min`/`max`/`abs`, and `for` loops over inline list literals
+`and`/`or`, `print`, inline list literals, `len`, inline dict/set literals
+with constant-key indexing (`{1: 10, 2: 20}[1]`, `{1, 2, 3}[2]`), the numeric
+builtins `sum`/`min`/`max`/`abs`, and `for` loops over inline list literals
 (`for x in [1, 2, 3]:`, unrolled per element).
 
 ## Toolchain

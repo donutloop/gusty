@@ -259,6 +259,47 @@ func TestEvalKeywordAndDefault(t *testing.T) {
 	}
 }
 
+func TestEvalDictSetIndexLen(t *testing.T) {
+	// dict constant-key lookup.
+	v, _, err := EvalExpr("{1: 10, 2: 20}[1]")
+	if err != nil {
+		t.Fatalf("dict index err: %v", err)
+	}
+	if v != 10 {
+		t.Fatalf("got %d, want 10", v)
+	}
+	v, _, err = EvalExpr("{1: 10, 2: 20}[2]")
+	if err != nil {
+		t.Fatalf("dict index err: %v", err)
+	}
+	if v != 20 {
+		t.Fatalf("got %d, want 20", v)
+	}
+	// len over dict and set.
+	v, _, err = EvalExpr("len({1: 10, 2: 20})")
+	if err != nil {
+		t.Fatalf("len dict err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+	v, _, err = EvalExpr("len({1, 2, 3})")
+	if err != nil {
+		t.Fatalf("len set err: %v", err)
+	}
+	if v != 3 {
+		t.Fatalf("got %d, want 3", v)
+	}
+	// set membership lookup returns the element.
+	v, _, err = EvalExpr("{1, 2, 3}[2]")
+	if err != nil {
+		t.Fatalf("set index err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("got %d, want 2", v)
+	}
+}
+
 func TestEvalDictLiteral(t *testing.T) {
 	// dict literal then iterate keys and sum via comprehension
 	v, _, err := EvalExpr("def f(d):\n    return len(d)\nf({1: 10, 2: 20})")
