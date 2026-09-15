@@ -61,6 +61,18 @@ codegen path.
 the AOT path by unrolling one body block per element (`break`/`continue` and
 the `else:` clause behave exactly like `range` loops).
 
+### List comprehensions (LLVM codegen)
+
+The AOT LLVM path lowers **list comprehensions** over a constant iterable
+(inline list literal or `range(n)`) into a dedicated global struct, unrolled
+and constant-folded at compile time. A constant `if` condition filters elements
+at compile time. The lowered result can be indexed inline exactly like a list
+literal: `[x * 2 for x in [1, 2, 3]][1]` folds to the elements `2, 4, 6` and
+emits a `getelementptr` + `load` at the constant key. Like list/dict/set
+literals, the comprehension must be used inline (no assignment-to-variable
+indirection) in the codegen path; the interpreter evaluates comprehensions at
+runtime and is unchanged.
+
 ### Dicts & sets (LLVM codegen)
 
 The AOT path also lowers **inline dict and set literals** with constant-key

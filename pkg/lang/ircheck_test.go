@@ -212,6 +212,42 @@ func TestIRForListUnrolls(t *testing.T) {
 	}
 }
 
+func TestIRComprehensionCompilesWithLLC(t *testing.T) {
+	// Inline list comprehension over a constant list literal, including
+	// indexing into the lowered comprehension result.
+	llcCompiles(t, "print([x * 2 for x in [1, 2, 3]][1])")
+	// Comprehension over range(n) with a constant condition.
+	llcCompiles(t, "print([y * y for y in range(4) if y > 1][0])")
+	// Chained use: fold and index in the same expression.
+	llcCompiles(t, "print([x * 2 for x in [1, 2, 3]][0] + [x * 2 for x in [1, 2, 3]][2])")
+}
+
+func TestIRComprehensionLowersToGlobalStruct(t *testing.T) {
+	res, err := Compile("print([x * 2 for x in [1, 2, 3]][1])")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !strings.Contains(res.IR, ".lst") {
+		t.Fatalf("comprehension should lower to a global struct, got:\n%s", res.IR)
+	}
+	// the folded elements 2, 4, 6 must appear as constant i32 initializers.
+	if !strings.Contains(res.IR, "i32 2") || !strings.Contains(res.IR, "i32 6") {
+		t.Fatalf("comprehension elements should be folded to constants:\n%s", res.IR)
+	}
+	// a comprehension with a condition must exclude filtered-out elements.
+	res2, err := Compile("print([y * y for y in range(4) if y > 1][0])")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	// y=0 and y=1 are filtered (0,1), so 4 and 9 must be present but 0/1 not.
+	if !strings.Contains(res2.IR, "i32 4") || !strings.Contains(res2.IR, "i32 9") {
+		t.Fatalf("condition should keep y>1 elements:\n%s", res2.IR)
+	}
+	if strings.Contains(res2.IR, "[2 x i32] [i32 0") || strings.Contains(res2.IR, "[2 x i32] [i32 1") {
+		t.Fatalf("condition should filter y<=1 elements:\n%s", res2.IR)
+	}
+}
+
 func TestIRSumMinMaxAbs(t *testing.T) {
 	// sum: unrolled adds over the inline list literal's global struct.
 	res, err := Compile("sum([1, 2, 3])")

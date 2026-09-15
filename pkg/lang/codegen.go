@@ -81,6 +81,13 @@ type irGen struct {
 	dictIdx     int
 	setNames    map[*SetLit]string
 	setIdx      int
+	compNames   map[*Comp]string
+	// compLen records the folded element count of each lowered comprehension,
+	// so indexing can bounds-check and emit the correct GEP shape.
+	compLen     map[*Comp]int
+	// constBindings maps a comprehension variable name to its compile-time
+	// constant so comprehension bodies can be unrolled at codegen time.
+	constBindings map[string]int64
 }
 
 type loopInfo struct {
@@ -297,6 +304,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *NoneLit:
 		return "0", nil
 	case *Name:
+		// Comprehension variable bound to a compile-time constant.
+		if v, ok := g.constBindings[n.Value]; ok {
+			return fmt.Sprintf("%d", v), nil
+		}
 		if reg, ok := g.params[n.Value]; ok {
 			return reg, nil
 		}
@@ -524,9 +535,25 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 			}
 			return "", fmt.Errorf("not in set")
+		case *Comp:
+			// indexing into a lowered comprehension result: same global struct
+			// shape as a list literal, so bounds-check and GEP+load by key.
+			name, err := g.comp(b, obj)
+			if err != nil {
+				return "", err
+			}
+			n := g.compLen[obj]
+			if key < 0 || key >= int64(n) {
+				return "", fmt.Errorf("list index out of range")
+			}
+			v := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, key))
+			return v, nil
 		default:
 			return "", fmt.Errorf("index requires an inline list/dict/set literal")
 		}
+	case *Comp:
+		return g.comp(b, n)
 	case *Call:
 		return g.call(b, n)
 	case *KeywordArg:
@@ -534,6 +561,198 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	default:
 		return "", fmt.Errorf("codegen: unsupported expression %T", e)
 	}
+}
+
+// foldConstInt evaluates e to a compile-time integer constant using the
+// current constBindings, or returns (0, false) when not compile-time-known.
+// It mirrors the interpreter's constant arithmetic so comprehension bodies can
+// be unrolled at codegen time without emitting IR.
+func (g *irGen) foldConstInt(e Expr) (int64, bool) {
+	switch n := e.(type) {
+	case *IntLit:
+		return n.Value, true
+	case *BoolLit:
+		if n.Value {
+			return 1, true
+		}
+		return 0, true
+	case *NoneLit:
+		return 0, true
+	case *Name:
+		if v, ok := g.constBindings[n.Value]; ok {
+			return v, true
+		}
+		return 0, false
+	case *BinOp:
+		lv, lok := g.foldConstInt(n.L)
+		rv, rok := g.foldConstInt(n.R)
+		if !lok || !rok {
+			return 0, false
+		}
+		switch n.Op {
+		case "+":
+			return lv + rv, true
+		case "-":
+			return lv - rv, true
+		case "*":
+			return lv * rv, true
+		case "/", "//":
+			if rv == 0 {
+				return 0, false
+			}
+			return lv / rv, true
+		case "%":
+			if rv == 0 {
+				return 0, false
+			}
+			return lv % rv, true
+		case "==":
+			if lv == rv {
+				return 1, true
+			}
+			return 0, true
+		case "!=":
+			if lv != rv {
+				return 1, true
+			}
+			return 0, true
+		case "<":
+			if lv < rv {
+				return 1, true
+			}
+			return 0, true
+		case "<=":
+			if lv <= rv {
+				return 1, true
+			}
+			return 0, true
+		case ">":
+			if lv > rv {
+				return 1, true
+			}
+			return 0, true
+		case ">=":
+			if lv >= rv {
+				return 1, true
+			}
+			return 0, true
+		case "and":
+			if lv != 0 && rv != 0 {
+				return 1, true
+			}
+			return 0, true
+		case "or":
+			if lv != 0 || rv != 0 {
+				return 1, true
+			}
+			return 0, true
+		}
+		return 0, false
+	case *UnOp:
+		xv, xok := g.foldConstInt(n.X)
+		if !xok {
+			return 0, false
+		}
+		switch n.Op {
+		case "-":
+			return -xv, true
+		case "not":
+			if xv == 0 {
+				return 1, true
+			}
+			return 0, true
+		}
+		return 0, false
+	default:
+		return 0, false
+	}
+}
+
+// comp lowers a list comprehension over a constant iterable (inline list
+// literal or range(n)) into a dedicated global struct, unrolled at compile
+// time. Returns the global's name.
+func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
+	if c.Kind != CompList || c.ForVar == nil || len(c.Elems) < 1 {
+		return "", fmt.Errorf("codegen: only list comprehensions are supported")
+	}
+	if name, ok := g.compNames[c]; ok {
+		return name, nil
+	}
+	// Determine the iteration items: an inline list literal or range(n).
+	var items []int64
+	if ll, ok := c.Iter.(*ListLit); ok {
+		for _, el := range ll.Elems {
+			v, ok := g.foldConstInt(el)
+			if !ok {
+				return "", fmt.Errorf("codegen: comprehension iterable must be constant integers")
+			}
+			items = append(items, v)
+		}
+	} else if r, ok := c.Iter.(*Call); ok {
+		fn, isName := r.Fn.(*Name)
+		if !isName || fn.Value != "range" || len(r.Args) != 1 {
+			return "", fmt.Errorf("codegen: unsupported comprehension iterable")
+		}
+		stop, ok := g.foldConstInt(r.Args[0])
+		if !ok || stop < 0 {
+			return "", fmt.Errorf("codegen: range bound must be a non-negative constant")
+		}
+		for v := int64(0); v < stop; v++ {
+			items = append(items, v)
+		}
+	} else {
+		return "", fmt.Errorf("codegen: comprehension iterable must be an inline list literal or range(n)")
+	}
+
+	// Unroll the body, binding the comprehension variable to each item.
+	if g.constBindings == nil {
+		g.constBindings = map[string]int64{}
+	}
+	results := make([]int64, 0, len(items))
+	for _, item := range items {
+		g.constBindings[c.ForVar.Value] = item
+		v, ok := g.foldConstInt(c.Elems[0])
+		if !ok {
+			delete(g.constBindings, c.ForVar.Value)
+			return "", fmt.Errorf("codegen: comprehension element must be constant")
+		}
+		if c.Cond != nil {
+			cv, ok := g.foldConstInt(c.Cond)
+			if !ok {
+				delete(g.constBindings, c.ForVar.Value)
+				return "", fmt.Errorf("codegen: comprehension condition must be constant")
+			}
+			if cv == 0 {
+				delete(g.constBindings, c.ForVar.Value)
+				continue
+			}
+		}
+		results = append(results, v)
+		delete(g.constBindings, c.ForVar.Value)
+	}
+	delete(g.constBindings, c.ForVar.Value)
+
+	// Emit a dedicated global struct holding the folded element values.
+	g.lstIdx++
+	name := fmt.Sprintf("@.lst%d", g.lstIdx)
+	var arr strings.Builder
+	for i, v := range results {
+		if i > 0 {
+			arr.WriteString(", ")
+		}
+		arr.WriteString(fmt.Sprintf("i32 %d", v))
+	}
+	n := len(results)
+	g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, arr.String()))
+	if g.compNames == nil {
+		g.compNames = map[*Comp]string{}
+	}
+	if g.compLen == nil {
+		g.compLen = map[*Comp]int{}
+	}
+	g.compNames[c] = name
+	g.compLen[c] = len(results)
+	return name, nil
 }
 
 // rangeBounds computes the loop start and stop operands for a for statement.

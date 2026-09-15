@@ -4,6 +4,18 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **list comprehensions in the LLVM AOT codegen** — list
+  comprehensions over a constant iterable (inline list literal or `range(n)`)
+  lower to a dedicated global struct, unrolled and constant-folded at compile
+  time. A constant `if` condition filters elements at compile time, and the
+  folded result can be indexed inline exactly like a list literal
+  (`[x * 2 for x in [1, 2, 3]][1]` → `getelementptr` + `load` at the constant
+  key). Like list/dict/set literals, comprehensions must be used inline (no
+  assignment-to-variable indirection) in the codegen path; the interpreter
+  evaluates comprehensions at runtime and is unchanged. Adds IR checks
+  (`TestIRComprehension*`) and exec tests (`TestExecListComprehensionAOT`).
+  ADR 0025.
+
 - `feat(aot)`: **string-constant concatenation + `len` in the LLVM AOT
   codegen** — `+` on two string literals folds to a single concatenated
   string constant, and `len` of a string-constant expression (including a

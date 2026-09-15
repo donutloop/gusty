@@ -271,6 +271,20 @@ func TestExecForListLiteral(t *testing.T) {
 	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\nprint(s)", "106\n")
 }
 
+func TestExecListComprehensionAOT(t *testing.T) {
+	// inline list comprehension over a constant list literal, folded at
+	// compile time and indexed directly.
+	assertOutput(t, "print([x * 2 for x in [1, 2, 3]][1])", "4\n")
+	// comprehension over range(n): 0..3 doubled => 0, 2, 4, 6.
+	assertOutput(t, "print([x * 2 for x in range(4)][3])", "6\n")
+	// comprehension with a condition filters at compile time.
+	// y in range(4) if y > 1 => 2, 3 => squares 4, 9.
+	assertOutput(t, "print([y * y for y in range(4) if y > 1][0])", "4\n")
+	assertOutput(t, "print([y * y for y in range(4) if y > 1][1])", "9\n")
+	// multiple fold/index uses combined in one expression.
+	assertOutput(t, "print([x * 2 for x in [1, 2, 3]][0] + [x * 2 for x in [1, 2, 3]][2])", "8\n")
+}
+
 func TestExecDictSetLiterals(t *testing.T) {
 	// dict literal constant-key lookup folds at compile time.
 	assertOutput(t, "print({1: 10, 2: 20}[1])", "10\n")
