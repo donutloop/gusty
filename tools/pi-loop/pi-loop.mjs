@@ -37,6 +37,98 @@ const DEFAULT_SDK = "/home/donutloop/.npm-global/lib/node_modules/@earendil-work
 const sdkPath = process.env.PI_SDK_PATH || DEFAULT_SDK;
 const { createAgentSession } = require(sdkPath);
 
+// The pi SDK persists every session entry to a JSONL log file under
+// <agentDir>/sessions/. We keep that file persistence AND mirror the exact
+// same output to the console, so operators see everything the session sees.
+const SDK_DIR = path.dirname(sdkPath);
+const { SessionManager, getDefaultSessionDir } = require(path.join(SDK_DIR, "core/session-manager.js"));
+
+function contentToString(content) {
+  if (content == null) return "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((c) => {
+        if (typeof c === "string") return c;
+        if (c && typeof c === "object") {
+          if (c.type === "text" || c.text) return String(c.text ?? "");
+          if (c.type === "image" || c.image) return "[image]";
+          try { return JSON.stringify(c); } catch { return "[object]"; }
+        }
+        return String(c);
+      })
+      .join("\n");
+  }
+  try { return JSON.stringify(content); } catch { return "[object]"; }
+}
+
+function formatMessage(m) {
+  const role = m?.role ?? "message";
+  const text = contentToString(m?.content).replace(/\n/g, "\n  ");
+  let extra = "";
+  if (m?.usage) extra = ` (usage: ${JSON.stringify(m.usage)})`;
+  return `[session] ${role}: ${text}${extra}`;
+}
+
+function formatEntry(type, value) {
+  if (value == null) return `[session] ${type}`;
+  try { return `[session] ${type}: ${JSON.stringify(value)}`; } catch { return `[session] ${type}`; }
+}
+
+/**
+ * Build a SessionManager that writes to the session log file exactly like the
+ * SDK default, but ALSO prints every entry to the console so the operator sees
+ * the same output the session sees.
+ */
+function createConsoleMirrorSessionManager(cwd, agentDir) {
+  const sm = SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
+  const orig = {
+    appendMessage: sm.appendMessage.bind(sm),
+    appendThinkingLevelChange: sm.appendThinkingLevelChange.bind(sm),
+    appendModelChange: sm.appendModelChange.bind(sm),
+    appendCompaction: sm.appendCompaction.bind(sm),
+    appendCustomEntry: sm.appendCustomEntry.bind(sm),
+    appendSessionInfo: sm.appendSessionInfo.bind(sm),
+    appendCustomMessageEntry: sm.appendCustomMessageEntry.bind(sm),
+    appendLabelChange: sm.appendLabelChange.bind(sm),
+  };
+
+  sm.appendMessage = (message) => {
+    console.log(formatMessage(message));
+    return orig.appendMessage(message);
+  };
+  sm.appendThinkingLevelChange = (level) => {
+    console.log(`[session] thinking_level_change: ${level}`);
+    return orig.appendThinkingLevelChange(level);
+  };
+  sm.appendModelChange = (provider, modelId) => {
+    console.log(`[session] model_change: ${provider}/${modelId}`);
+    return orig.appendModelChange(provider, modelId);
+  };
+  sm.appendCompaction = (summary) => {
+    console.log(`[session] compaction: ${contentToString(summary)}`);
+    return orig.appendCompaction(summary);
+  };
+  sm.appendCustomEntry = (customType, data) => {
+    console.log(formatEntry(customType, data));
+    return orig.appendCustomEntry(customType, data);
+  };
+  sm.appendSessionInfo = (name) => {
+    console.log(`[session] session_info: ${name}`);
+    return orig.appendSessionInfo(name);
+  };
+  sm.appendCustomMessageEntry = (customType, content, display, details) => {
+    console.log(`[session] ${customType}: ${contentToString(content)}${details ? ` ${JSON.stringify(details)}` : ""}`);
+    return orig.appendCustomMessageEntry(customType, content, display, details);
+  };
+  sm.appendLabelChange = (targetId, label) => {
+    console.log(`[session] label: ${targetId} -> ${label ?? "(cleared)"}`);
+    return orig.appendLabelChange(targetId, label);
+  };
+
+  return sm;
+}
+
 const args = process.argv.slice(2);
 const cwd = args.find(a => !a.startsWith("--")) || process.cwd();
 const roundsArg = args.find(a => a.startsWith("--rounds=")) ?? "Infinity";
@@ -121,11 +213,7 @@ async function verifyRound(round) {
 async function runRound(session, round, maxRounds) {
   const prompt = [
     `Round ${round} of ${maxRounds === Infinity ? "∞" : maxRounds}. `,
-    "Read AGENTS.md in this repo and follow its loop STRICTLY.",
-    "Pick the next feature from the mission list. Implement it across the stack:",
-    "1) code 2) machine/CLI path 3) unit tests 4) docs (language.md/operations.md/README) 5) CHANGELOG.md entry",
-    "6) run the test suite until green 7) one commit with a clear message 8) push.",
-    "Finish by reporting: the feature, the commit hash, and that it was pushed.",
+    "Read AGENTS.md in this repo and follow its instructions - follow the loop STRICTLY."
   ].join("\n");
 
   console.log(`\n=== pi-loop: round ${round} — prompting local pi agent ===`);
@@ -188,7 +276,9 @@ try {
     maxTokens: 131072,
     headers: {}
   };
-  const created = await createAgentSession({ cwd, agentDir, model });
+  // Mirror the session log to the console AND keep writing to the session file.
+  const sessionManager = createConsoleMirrorSessionManager(cwd, agentDir);
+  const created = await createAgentSession({ cwd, agentDir, model, sessionManager });
   session = created.session ?? created;
   console.log("pi-loop: connected to local pi agent session (" + agentDir + ")");
   session.subscribe((event) => {
