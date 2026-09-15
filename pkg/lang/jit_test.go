@@ -736,3 +736,18 @@ func TestListAppend(t *testing.T) {
 		t.Fatalf("append repr %q", s)
 	}
 }
+
+func TestDictMethods(t *testing.T) {
+	ev := NewEvaluator()
+	prog, err := Parse(`{"a": 1, "b": 2}.values()`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	v, err := ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("values: %v", err)
+	}
+	if s := ev.Repr(v); s != "[1, 2]" {
+		t.Fatalf("values repr %q", s)
+	}
+}

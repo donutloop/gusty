@@ -1165,6 +1165,31 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 	return 0, &EvalError{Msg: "no such list method " + name}
 }
 
+// callDictMethod dispatches builtin dict methods: d.keys() and d.values()
+// return boxed lists of the keys/values in insertion order.
+func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64, error) {
+	o := e.heap[recv]
+	switch name {
+	case "keys":
+		if len(args) != 0 {
+			return 0, &EvalError{Msg: "keys() takes no arguments"}
+		}
+		listID := e.allocObj("list")
+		lo := e.heap[listID]
+		lo.elems = append(lo.elems, o.elems...)
+		return listID, nil
+	case "values":
+		if len(args) != 0 {
+			return 0, &EvalError{Msg: "values() takes no arguments"}
+		}
+		listID := e.allocObj("list")
+		lo := e.heap[listID]
+		lo.elems = append(lo.elems, o.dvals...)
+		return listID, nil
+	}
+	return 0, &EvalError{Msg: "no such dict method " + name}
+}
+
 func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error) {
 	scope := map[string]int64{}
 	scope["self"] = self
@@ -1273,6 +1298,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 		}
 		if o, ok := e.heap[recv]; ok && o.kind == "list" {
 			return e.callListMethod(recv, attr.Name.Value, n.Args)
+		}
+		if o, ok := e.heap[recv]; ok && o.kind == "dict" {
+			return e.callDictMethod(recv, attr.Name.Value, n.Args)
 		}
 		// resolve the attribute/method reference via eval
 		mID, err := e.eval(n.Fn)

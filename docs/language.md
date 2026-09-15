@@ -249,3 +249,12 @@ Lists support `append(x)` (in-place, returns the updated list):
     xs.append(3)     # xs == [1, 2, 3]
 
 Interpreter path only.
+
+### dict methods
+
+Dicts support `keys()` and `values()` (insertion order, returned as lists):
+
+    {"a": 1, "b": 2}.keys()     # [a, b]
+    {"a": 1, "b": 2}.values()   # [1, 2]
+
+Interpreter path only.
