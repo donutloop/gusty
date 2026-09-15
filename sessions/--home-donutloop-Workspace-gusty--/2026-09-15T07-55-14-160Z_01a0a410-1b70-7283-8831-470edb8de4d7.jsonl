@@ -1,5 +1,0 @@
-{"type":"session","version":3,"id":"01a0a410-1b70-7283-8831-470edb8de4d7","timestamp":"2026-09-15T07:55:14.160Z","cwd":"/home/donutloop/Workspace/gusty"}
-{"type":"model_change","id":"29745948","parentId":null,"timestamp":"2026-09-15T07:55:14.162Z","provider":"local-vllm","modelId":"deepseek-v4-flash"}
-{"type":"thinking_level_change","id":"2b2a6a9e","parentId":"29745948","timestamp":"2026-09-15T07:55:14.162Z","thinkingLevel":"off"}
-{"type":"message","id":"aa2ba49e","parentId":"2b2a6a9e","timestamp":"2026-09-15T07:55:14.164Z","message":{"role":"user","content":[{"type":"text","text":"Say hello."}],"timestamp":1789458914164}}
-{"type":"message","id":"e8f69ec5","parentId":"aa2ba49e","timestamp":"2026-09-15T07:55:14.165Z","message":{"role":"assistant","content":[],"provider":"local-vllm","model":"deepseek-v4-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","errorMessage":"Cannot read properties of undefined (reading 'includes')","timestamp":1789458914165}}

@@ -1,5 +1,0 @@
-{"type":"session","version":3,"id":"01a0a537-3b48-7699-90f1-3244d851d414","timestamp":"2026-09-15T13:17:35.433Z","cwd":"/home/donutloop/Workspace/gusty"}
-{"type":"model_change","id":"c0accd40","parentId":null,"timestamp":"2026-09-15T13:17:35.435Z","provider":"local-vllm","modelId":"deepseek-v4-flash"}
-{"type":"thinking_level_change","id":"42bbd81c","parentId":"c0accd40","timestamp":"2026-09-15T13:17:35.435Z","thinkingLevel":"off"}
-{"type":"message","id":"c0fa2766","parentId":"42bbd81c","timestamp":"2026-09-15T13:17:35.436Z","message":{"role":"user","content":[{"type":"text","text":"Reply with the single word OK."}],"timestamp":1789478255436}}
-{"type":"message","id":"f1a9b722","parentId":"c0fa2766","timestamp":"2026-09-15T13:17:35.438Z","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"local-vllm","model":"deepseek-v4-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","errorMessage":"Unexpected token ';'","timestamp":1789478255438}}
