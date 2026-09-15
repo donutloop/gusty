@@ -90,3 +90,18 @@ integration/           end-to-end tests that compile AND execute generated code
 integration/expected/  .ll artifacts lowered by `make testllvmcode`
 .github/workflows/     CI: installs LLVM 20, runs unit + integration tests
 ```
+
+## CLI & REPL
+
+`gustyc` is the command-line interface and REPL:
+
+    gustyc --eval "x = 2 + 3\nx"
+    gustyc --verify "def f(x): return x * 2"
+    gustyc --emit-llvm "x = 1 + 2"
+    gustyc --emit-ast "x = 1"
+    gustyc --lang        # list supported language features
+    gustyc              # start the REPL (stateful)
+
+Flags: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`,
+`--target`, `--opt-level`, `--lang`, `--version`, `--repl`, `--help`.
+Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error.

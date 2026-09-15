@@ -76,3 +76,8 @@ func anyErr(diags []Diagnostic) bool {
 	}
 	return false
 }
+
+// Parse parses src into a Program AST without evaluating or compiling it.
+func Parse(src string) (*Program, error) {
+	return parseProgram(src)
+}

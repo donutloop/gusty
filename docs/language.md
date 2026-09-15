@@ -180,3 +180,18 @@ match x:
 - `for x in g():` and `for x in [1,2,3]:` iterate the elements.
 
 - `len(list)` returns the number of elements in a list.
+
+## Strings
+
+String literals (`"..."`) evaluate to boxed strings in the interpreter:
+
+- `+` concatenates strings: `"a" + "b"` → `"ab"`
+- `len(s)` returns the character count
+- `print(s)` writes the string to stdout
+
+Example:
+
+    s = "hello"
+    print(s)          # hello
+    print(len(s))     # 5
+    print("a" + "b")  # ab

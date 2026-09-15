@@ -66,3 +66,15 @@ are enforced with a `type mismatch` error; `any` accepts anything) are
 implemented in the interpreter used by `--eval` and the REPL; they are not
 yet lowered by the AOT LLVM backend. They are fully represented in the JSON
 AST dump (`--emit-ast`) with no schema change.
+
+## CLI / REPL
+
+`gustyc` (in `cmd/gustyc`) provides:
+
+- `--eval <src>` / `--file <path>`: evaluate and print the result
+- `--verify <src>`: parse + analyze, exit 1 on diagnostics
+- `--emit-llvm <src>` / `--emit-ast <src>`: machine-readable IR / AST JSON
+- `--lang`: self-describing feature list for agents
+- REPL (stateful) via `gustyc` (TTY) or `gustyc --repl`
+
+Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.

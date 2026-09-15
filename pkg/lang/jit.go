@@ -1,6 +1,10 @@
 package lang
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"strings"
+)
 
 // Evaluator is a small AST interpreter used by --eval and the REPL.
 // It evaluates integer-typed expressions deterministically without needing
@@ -12,10 +16,10 @@ type Evaluator struct {
 	heap      map[int64]*obj
 	nextID    int64
 	classIDs  map[string]int64
-	curRet    *Type       // return annotation of the function currently executing
-	yieldList int64       // list handle accumulating yields (0 = not in generator)
-	curClass  string      // class name of the method currently executing (for super())
-	curSelf   int64       // receiver of the method currently executing (for super())
+	curRet    *Type  // return annotation of the function currently executing
+	yieldList int64  // list handle accumulating yields (0 = not in generator)
+	curClass  string // class name of the method currently executing (for super())
+	curSelf   int64  // receiver of the method currently executing (for super())
 }
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
@@ -30,6 +34,7 @@ type obj struct {
 	base  int64            // base class id (kind=class) for inheritance
 	elems []int64          // list elements (kind=list)
 	dvals []int64          // dict values parallel to elems keys (kind=dict)
+	sval  string           // string value (kind=str)
 }
 
 func (e *Evaluator) allocObj(kind string) int64 {
@@ -40,6 +45,47 @@ func (e *Evaluator) allocObj(kind string) int64 {
 }
 
 // allocClosure creates a closure value capturing the current scope.
+// allocStr allocates a boxed string value and returns its heap handle.
+func (e *Evaluator) allocStr(val string) int64 {
+	id := e.allocObj("str")
+	e.heap[id].sval = val
+	return id
+}
+
+// strOf returns the string value of a heap handle, or "" if the handle is
+// not a boxed string.
+func (e *Evaluator) strOf(id int64) string {
+	if o, ok := e.heap[id]; ok && o.kind == "str" {
+		return o.sval
+	}
+	return ""
+}
+
+// Repr renders a heap handle (or plain int) to its printable representation.
+func (e *Evaluator) Repr(id int64) string {
+	if o, ok := e.heap[id]; ok {
+		switch o.kind {
+		case "str":
+			return o.sval
+		case "list":
+			parts := make([]string, 0, len(o.elems))
+			for _, el := range o.elems {
+				parts = append(parts, e.Repr(el))
+			}
+			return "[" + strings.Join(parts, ", ") + "]"
+		case "dict":
+			parts := make([]string, 0, len(o.elems))
+			for i, k := range o.elems {
+				parts = append(parts, fmt.Sprintf("%v: %s", k, e.Repr(o.dvals[i])))
+			}
+			return "{" + strings.Join(parts, ", ") + "}"
+		default:
+			return "<" + o.kind + ">"
+		}
+	}
+	return fmt.Sprintf("%d", id)
+}
+
 func (e *Evaluator) allocClosure(fn *FuncDef, env map[string]int64) int64 {
 	e.nextID++
 	id := e.nextID
@@ -311,7 +357,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				rv, err := e.evalBody(s.Else)
 				if err != nil {
 					return 0, err
-					}
+				}
 				last = rv
 			}
 			continue
@@ -556,6 +602,8 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 	switch n := x.(type) {
 	case *IntLit:
 		return n.Value, nil
+	case *StrLit:
+		return e.allocStr(n.Value), nil
 	case *BoolLit:
 		if n.Value {
 			return 1, nil
@@ -813,6 +861,16 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 	}
 	switch n.Op {
 	case "+":
+		if lo, ok := e.heap[l]; ok && lo.kind == "str" {
+			rs := e.strOf(r)
+			if rs == "" {
+				return 0, &EvalError{Msg: "cannot concatenate string and non-string"}
+			}
+			return e.allocStr(lo.sval + rs), nil
+		}
+		if ro, ok := e.heap[r]; ok && ro.kind == "str" {
+			return 0, &EvalError{Msg: "cannot concatenate non-string and string"}
+		}
 		return l + r, nil
 	case "-":
 		return l - r, nil
@@ -1181,7 +1239,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				if err != nil {
 					return 0, err
 				}
-				_ = v
+				fmt.Println(e.Repr(v))
 			}
 			return 0, nil
 		case "len":
@@ -1192,10 +1250,15 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			if o, ok := e.heap[v]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict") {
-				return int64(len(o.elems)), nil
+			if o, ok := e.heap[v]; ok {
+				switch o.kind {
+				case "list", "set", "dict":
+					return int64(len(o.elems)), nil
+				case "str":
+					return int64(len(o.sval)), nil
+				}
 			}
-			return 0, &EvalError{Msg: "len expects a list, set, or dict"}
+			return 0, &EvalError{Msg: "len expects a list, set, dict, or string"}
 
 		case "range":
 			if len(n.Args) != 1 {

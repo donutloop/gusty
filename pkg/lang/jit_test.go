@@ -586,3 +586,30 @@ func TestEvalPassStatement(t *testing.T) {
 		t.Fatalf("got %d, want 42", v)
 	}
 }
+
+func TestEvalStringLiteral(t *testing.T) {
+	// string literals evaluate to boxed strings (last stmt is an assignment)
+	v, _, err := EvalExpr("s = \"hello\"\ns")
+	if err != nil {
+		t.Fatalf("str literal err: %v", err)
+	}
+	if v == 0 {
+		t.Fatalf("str literal returned 0, want a heap handle")
+	}
+	// concatenation with +
+	v, _, err = EvalExpr("x = \"a\" + \"b\"\nx")
+	if err != nil {
+		t.Fatalf("concat err: %v", err)
+	}
+	if v == 0 {
+		t.Fatalf("concat returned 0, want a heap handle")
+	}
+	// len of a string
+	v, _, err = EvalExpr("len(\"hello\")")
+	if err != nil {
+		t.Fatalf("len str err: %v", err)
+	}
+	if v != 5 {
+		t.Fatalf("len(str) got %d, want 5", v)
+	}
+}

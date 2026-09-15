@@ -4,6 +4,10 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(interp)`: **strings** — string literals evaluate to boxed strings in the interpreter; `+` concatenates, `len(s)` counts chars, `print(s)` writes output (previously `print` discarded it). Adds `Repr` rendering for values.
+
+- `feat(cli)`: **`gustyc` CLI/REPL** — new `cmd/gustyc` with `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`, `--target`, `--opt-level`, `--lang` (self-describing), `--version`, `--repl`, `--help`; stable exit codes (0 ok, 1 runtime, 2 parse); stateful REPL. Adds exported `lang.Parse`.
+
 - `feat(interp+llvm)`: **`pass` (no-op statement)** — `pass` parses as a
   dedicated `PassStmt` (previously fell through to an undefined `Name`), is a
   pure no-op in both the interpreter and the LLVM AOT codegen, and is a valid
