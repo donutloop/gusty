@@ -743,6 +743,54 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 	case *ForStmt:
+		// `for x in [1, 2, 3]`: iterate an inline list literal's constant
+		// elements by unrolling one body block per element. `break` skips the
+		// `else`, `continue` advances to the next element; after the last
+		// element normal completion enters `else` if present (like Python).
+		if ll, ok := n.Iter.(*ListLit); ok {
+			endL := g.newLabel("for.end")
+			elseL := g.newLabel("for.else")
+			normalL := endL
+			if len(n.Else) > 0 {
+				normalL = elseL
+			}
+			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
+			var contL string
+			for _, el := range ll.Elems {
+				v, err := g.value(b, el)
+				if err != nil {
+					return err
+				}
+				bodyL := g.newLabel("for.list.body")
+				contL = g.newLabel("for.list.cont")
+				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, n.Var.Value))
+				b.WriteString(fmt.Sprintf("  br label %%%s\n", bodyL))
+				b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+				g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: contL})
+				for _, s := range n.Body {
+					if err := g.stmt(b, s); err != nil {
+						return err
+					}
+				}
+				g.loopStack = g.loopStack[:len(g.loopStack)-1]
+				b.WriteString(fmt.Sprintf("  br label %%%s\n", contL))
+				b.WriteString(fmt.Sprintf("%s:\n", contL))
+			}
+			// last cont block (continue on the final element) reaches normal
+			// completion, entering `else` when present.
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", normalL))
+			if len(n.Else) > 0 {
+				b.WriteString(fmt.Sprintf("%s:\n", elseL))
+				for _, s := range n.Else {
+					if err := g.stmt(b, s); err != nil {
+						return err
+					}
+				}
+				b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+			}
+			b.WriteString(fmt.Sprintf("%s:\n", endL))
+			return nil
+		}
 		initL := g.newLabel("for.init")
 		condL := g.newLabel("for.cond")
 		bodyL := g.newLabel("for.body")

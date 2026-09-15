@@ -57,6 +57,10 @@ constant GEP indices (this llc build accepts only constant GEP indices), so
 lists must be used inline (no assignment-to-variable indirection) in the
 codegen path.
 
+`for x in [1, 2, 3]:` iterates an inline list literal's constant elements in
+the AOT path by unrolling one body block per element (`break`/`continue` and
+the `else:` clause behave exactly like `range` loops).
+
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other
@@ -115,6 +119,9 @@ for i in range(n):
 - `while` loops while the condition is non-zero.
 - `for ... in range(n)` iterates `i` from `0` to `n-1`.
 - `for ... in range(a, b)` iterates `i` from `a` to `b-1`.
+- `for x in [1, 2, 3]:` iterates the elements of a list literal — in the
+  interpreter over a boxed list, and in the AOT codegen over an inline list
+  literal (unrolled per element).
 - Classes are supported: `class Name:` bodies contain methods (the first param
   is `self`), `Point(0,0)` instantiates (calling `__init__` if present),
   `obj.attr` reads/writes instance attributes, and `obj.method(args)` / `Cls.method(self, args)`

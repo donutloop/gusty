@@ -242,6 +242,20 @@ func TestExecTwoClosures(t *testing.T) {
 }
 
 
+func TestExecForListLiteral(t *testing.T) {
+	// for-over-list: sum the elements of an inline list literal.
+	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)", "6\n")
+	assertOutput(t, "s = 0\nfor x in [2, 4, 6]:\n    s = s + x\nprint(s)", "12\n")
+	// empty list literal iterates zero times.
+	assertOutput(t, "s = 0\nfor x in []:\n    s = s + x\nprint(s)", "0\n")
+	// continue skips to the next element.
+	assertOutput(t, "s = 0\nfor x in [1, 2, 3, 4]:\n    if x == 2:\n        continue\n    s = s + x\nprint(s)", "8\n")
+	// break stops and skips the else.
+	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        break\n    s = s + x\nelse:\n    s = s + 100\nprint(s)", "1\n")
+	// normal completion runs the else.
+	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\nprint(s)", "106\n")
+}
+
 func TestListIndexAndLen(t *testing.T) {
 	src := "print([1, 2, 3][1])\nprint(len([1, 2, 3]))"
 	assertOutput(t, src, "2\n3\n")

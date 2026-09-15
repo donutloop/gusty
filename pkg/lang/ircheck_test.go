@@ -137,6 +137,31 @@ func TestIRConstantFolding(t *testing.T) {
 	}
 }
 
+func TestIRForListCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)")
+	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        continue\n    s = s + x\nprint(s)")
+	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        break\n    s = s + x\nelse:\n    s = s + 100\nprint(s)")
+}
+
+func TestIRForListUnrolls(t *testing.T) {
+	// for-over-list unrolls one body block per constant element, so the IR
+	// must contain one for.list.body block per element.
+	res, err := Compile("s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	// count label definitions (each starts a line) rather than the total,
+	// which also counts the `br label %for.list.bodyN` branch targets.
+	if strings.Count(res.IR, "\nfor.list.body") != 3 {
+		t.Fatalf("expected 3 unrolled body blocks, got:\n%s", res.IR)
+	}
+	if !strings.Contains(res.IR, "store i32 1, i32* %_x") ||
+		!strings.Contains(res.IR, "store i32 2, i32* %_x") ||
+		!strings.Contains(res.IR, "store i32 3, i32* %_x") {
+		t.Fatalf("for-over-list should store each element into the loop var:\n%s", res.IR)
+	}
+}
+
 func TestIRSumMinMaxAbs(t *testing.T) {
 	// sum: unrolled adds over the inline list literal's global struct.
 	res, err := Compile("sum([1, 2, 3])")

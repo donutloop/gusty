@@ -4,6 +4,15 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **`for` loops over inline list literals in the LLVM AOT
+  codegen** — `for x in [1, 2, 3]:` now ships in **both** backends (previously
+  range-only in AOT). Lowered by unrolling one body block per constant element
+  (`break`/`continue` and the `else:` clause behave exactly like `range`
+  loops), mirroring the interpreter's boxed-list iteration. Adds IR checks
+  (`TestIRForListCompilesWithLLC` / `TestIRForListUnrolls`), interpreter unit
+  tests (`TestEvalForOverList`), and end-to-end exec tests
+  (`TestExecForListLiteral`). ADR 0021.
+
 - `feat(aot)`: **`sum`/`min`/`max`/`abs` builtins in the LLVM AOT codegen** —
   these numeric builtins now ship in **both** backends (interpreter + AOT),
   not just the interpreter. `sum`/`min`/`max` fold over an inline list

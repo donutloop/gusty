@@ -106,6 +106,17 @@ fold over an **inline list literal** (unrolled `add` / `icmp`+`select` chains
 over the list's global struct); `abs` accepts any integer expression and is
 constant-folded for literal arguments. Interpreter behavior is unchanged.
 
+## for-over-list (AOT codegen)
+
+`for x in [1, 2, 3]:` iterates an inline list literal's constant elements in
+the LLVM AOT path (previously range-only). It is lowered by **unrolling one
+body block per element** (`break`/`continue` and the `else:` clause behave
+exactly like `range` loops). Interpreter already iterated boxed lists/sets;
+both paths now agree on for-over-list semantics. Machine consumption:
+`gustyc --emit-llvm 's = 0
+for x in [1,2,3]: s = s + x
+print(s)'` emits the unrolled IR.
+
 ## Interpreter memory model
 
 Boxed heap handles are allocated from a high base (`1 << 20`) so they never

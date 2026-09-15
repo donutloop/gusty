@@ -280,6 +280,40 @@ func TestEvalListComprehension(t *testing.T) {
 	}
 }
 
+func TestEvalForOverList(t *testing.T) {
+	// for-over-list sums the elements of a boxed list.
+	v, _, err := EvalExpr("s = 0\nfor x in [1, 2, 3]:\n    s = s + x\ns")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 6 {
+		t.Fatalf("got %d, want 6", v)
+	}
+	// continue skips to the next element.
+	v, _, err = EvalExpr("s = 0\nfor x in [1, 2, 3, 4]:\n    if x == 2:\n        continue\n    s = s + x\ns")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 8 {
+		t.Fatalf("got %d, want 8", v)
+	}
+	// break stops; else runs only on normal completion.
+	v, _, err = EvalExpr("s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        break\n    s = s + x\nelse:\n    s = s + 100\ns")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("got %d, want 1", v)
+	}
+	v, _, err = EvalExpr("s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\ns")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 106 {
+		t.Fatalf("got %d, want 106", v)
+	}
+}
+
 func TestEvalComprehensionAssignment(t *testing.T) {
 	// A comprehension assigned to a variable must bind its loop variable so
 	// the body/condition can reference it. Previously the semantic analyzer
