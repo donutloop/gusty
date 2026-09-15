@@ -802,12 +802,21 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	o := e.heap[it]
-	if o == nil {
-		return 0, &EvalError{Msg: "comprehension over non-object"}
+	var items []int64
+	var o *obj
+	if h, ok := e.heap[it]; ok {
+		o = h
+		items = h.elems
+	} else {
+		lo, hi, err := e.rangeBounds(c.Iter)
+		if err != nil {
+			return 0, &EvalError{Msg: "comprehension over non-object"}
+		}
+		for v := lo; v < hi; v++ {
+			items = append(items, v)
+		}
 	}
-	items := o.elems
-	if o.kind == "dict" {
+	if o != nil && o.kind == "dict" {
 		items = o.elems
 	}
 	var rh int64

@@ -207,3 +207,14 @@ Arithmetic with floats (or float + int) produces a float:
     print(1.5 + 1)   # 2.5
     print(7.0 / 2.0) # 3.5
     print(1.5 > 1)   # 1
+
+## Comprehensions
+
+List comprehensions iterate a range or list, bind a loop variable, apply an
+optional filter (`if`), and collect the element expressions.
+
+    xs = [x * 2 for x in range(3)]   # [0, 2, 4]
+    zs = [y for y in [1, 2, 3] if y > 1]
+    d  = {k: k * 10 for k in range(2)}
+
+Comprehensions over a `range(...)` are supported in the interpreter.

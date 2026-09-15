@@ -648,3 +648,22 @@ func TestEvalFloatLiteral(t *testing.T) {
 		t.Fatalf("1.5 < 1 got %d, want 0", v)
 	}
 }
+
+func TestEvalComprehension(t *testing.T) {
+	// list comprehension over range
+	v, _, err := EvalExpr("xs = [x * 2 for x in range(3)]\nxs")
+	if err != nil {
+		t.Fatalf("list comp err: %v", err)
+	}
+	if v == 0 {
+		t.Fatalf("list comp returned 0, want a heap handle")
+	}
+	// comprehension over a list with a filter
+	v, _, err = EvalExpr("ys = [1, 2, 3]\nzs = [y for y in ys if y > 1]\nzs")
+	if err != nil {
+		t.Fatalf("filtered comp err: %v", err)
+	}
+	if v == 0 {
+		t.Fatalf("filtered comp returned 0, want a heap handle")
+	}
+}
