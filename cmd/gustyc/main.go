@@ -19,6 +19,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -44,6 +45,7 @@ func run() int {
 	emitASTF := fs.String("emit-ast", "", "print the AST as JSON for a source string")
 	target := fs.String("target", "", "target triple for codegen")
 	optLevel := fs.String("opt-level", "0", "optimization level")
+	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
@@ -67,7 +69,7 @@ func run() int {
 	}
 
 	if *verify != "" {
-		return verifySrc(*verify)
+		return verifySrc(*verify, *jsonOut)
 	}
 	if *emitLLVMF != "" {
 		return emitLLVM(*emitLLVMF, *target, *optLevel)
@@ -76,7 +78,7 @@ func run() int {
 		return emitAST(*emitASTF)
 	}
 	if *evalSrc != "" || *file != "" {
-		return evalSrcOrFile(*evalSrc, *file)
+		return evalSrcOrFile(*evalSrc, *file, *jsonOut)
 	}
 	usage(fs)
 	return exitUsage
@@ -93,7 +95,7 @@ func srcOrFile(src, file string) (string, error) {
 	return string(b), nil
 }
 
-func evalSrcOrFile(src, file string) int {
+func evalSrcOrFile(src, file string, jsonOut bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
@@ -106,26 +108,45 @@ func evalSrcOrFile(src, file string) int {
 	}
 	v, err := ev.EvalProgram(prog)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		if jsonOut {
+			fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitErr)
+		} else {
+			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		}
 		return exitErr
 	}
-	fmt.Println(ev.Repr(v))
+	if jsonOut {
+		fmt.Printf("{\"result\": %q, \"exit\": 0}\n", ev.Repr(v))
+	} else {
+		fmt.Println(ev.Repr(v))
+	}
 	return exitOK
 }
 
-func verifySrc(src string) int {
+func verifySrc(src string, jsonOut bool) int {
 	prog, err := lang.Parse(src)
 	if err != nil {
+		if jsonOut {
+			fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitUsage)
+		}
 		return reportParseErr(err)
 	}
 	diags := lang.Analyze(prog)
 	if len(diags) > 0 {
-		for _, d := range diags {
-			fmt.Fprintf(os.Stderr, "%v\n", d)
+		if jsonOut {
+			emitDiagnosticsJSON(diags, exitErr)
+		} else {
+			for _, d := range diags {
+				fmt.Fprintf(os.Stderr, "%v\n", d)
+			}
 		}
 		return exitErr
 	}
-	fmt.Println("ok")
+	if jsonOut {
+		fmt.Println(`{"ok": true, "exit": 0}`)
+	} else {
+		fmt.Println("ok")
+	}
 	return exitOK
 }
 
@@ -224,4 +245,14 @@ func replMode() int {
 		return exitErr
 	}
 	return exitOK
+}
+
+// emitDiagnosticsJSON prints diagnostics as a JSON array with the exit code.
+func emitDiagnosticsJSON(diags []lang.Diagnostic, exit int) {
+	b, err := json.Marshal(map[string]any{"diagnostics": diags, "exit": exit})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: json marshal: %v\n", err)
+		return
+	}
+	fmt.Println(string(b))
 }

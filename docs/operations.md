@@ -78,3 +78,13 @@ AST dump (`--emit-ast`) with no schema change.
 - REPL (stateful) via `gustyc` (TTY) or `gustyc --repl`
 
 Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
+
+## JSON output for agents
+
+`gustyc --json` emits machine-readable JSON on stdout:
+
+- `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "exit": 0}`
+- `--json --verify <src>` → `{"ok": true, "exit": 0}` or `{"diagnostics": [...], "exit": 1}`
+- parse/runtime errors → `{"error": "...", "exit": 2}` (exit 1 for runtime)
+
+Diagnostics serialize their `Msg`/`Span` fields for schema-driven tooling.

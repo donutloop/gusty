@@ -51,3 +51,10 @@ func TestCLIVerify(t *testing.T) {
 		t.Fatalf("verify got %q, want ok", got)
 	}
 }
+
+func TestCLIJSON(t *testing.T) {
+	got := cli(t, "--json", "--eval", "x = 1 + 2\nx")
+	if !strings.Contains(got, `"result": "3"`) {
+		t.Fatalf("json eval got %q", got)
+	}
+}
