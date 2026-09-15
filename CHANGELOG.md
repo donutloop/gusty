@@ -4,6 +4,15 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **string-constant concatenation + `len` in the LLVM AOT
+  codegen** — `+` on two string literals folds to a single concatenated
+  string constant, and `len` of a string-constant expression (including a
+  chain of `+`-concats) folds to its character count (`len("ab" + "cd")`
+  → 4). The semantic analyzer types `str + str` as `str` (no arithmetic
+  warning). Adds exec tests (`TestExecStringConstLen`), IR checks
+  (`TestIRStringConstLenFolds`), and interpreter parity tests
+  (`TestEvalStringConcatLen`). ADR 0024.
+
 - `feat(aot)`: **inline dict/set literals with constant-key indexing + `len`
   in the LLVM AOT codegen** — `{1: 10, 2: 20}[1]`, `{1, 2, 3}[2]`, and
   `len({1: 10, 2: 20})` now lower to dedicated global structs (dicts:

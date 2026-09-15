@@ -217,6 +217,11 @@ Example:
     print(len(s))     # 5
     print("a" + "b")  # ab
 
+The AOT LLVM codegen also lowers **string-constant concatenation and `len`**
+at compile time: `"a" + "b"` folds to a single string constant, and
+`len("hello")` / `len("ab" + "cd")` fold to their character counts (`5`, `4`).
+Semantically `+` on two strings is typed `str` (no arithmetic warning).
+
 ## Floats
 
 Float literals (`1.5`, `2.0`) evaluate to boxed floats in the interpreter.

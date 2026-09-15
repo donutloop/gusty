@@ -153,6 +153,27 @@ func TestIRDictSetGlobals(t *testing.T) {
 	}
 }
 
+func TestIRStringConstLenCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "print(len(\"hello\"))\nprint(len(\"ab\" + \"cd\"))")
+	llcCompiles(t, "print(len({1, 2, 3}))")
+}
+
+func TestIRStringConstLenFolds(t *testing.T) {
+	// len of a string literal and a string-concat fold to constants, so no
+	// getelementptr/load count is emitted for the string case.
+	res, err := Compile("print(len(\"ab\" + \"cd\"))")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "i32 4") {
+		t.Fatalf("len(\"ab\" + \"cd\") should fold to 4:\n%s", res.IR)
+	}
+	// the folded result must not emit a runtime count-field load.
+	if strings.Contains(res.IR, "load i32") {
+		t.Fatalf("len(string-concat) should constant-fold, got:\n%s", res.IR)
+	}
+}
+
 func TestIRConstantFolding(t *testing.T) {
 	res, err := Compile("x = 1 + 2")
 	if err != nil {

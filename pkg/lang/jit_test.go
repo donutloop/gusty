@@ -662,6 +662,25 @@ func TestEvalPassStatement(t *testing.T) {
 	}
 }
 
+func TestEvalStringConcatLen(t *testing.T) {
+	// len over a string concatenation counts the joined characters.
+	v, _, err := EvalExpr("len(\"ab\" + \"cd\")")
+	if err != nil {
+		t.Fatalf("concat len err: %v", err)
+	}
+	if v != 4 {
+		t.Fatalf("got %d, want 4", v)
+	}
+	// empty string.
+	v, _, err = EvalExpr("len(\"\")")
+	if err != nil {
+		t.Fatalf("empty len err: %v", err)
+	}
+	if v != 0 {
+		t.Fatalf("got %d, want 0", v)
+	}
+}
+
 func TestEvalStringLiteral(t *testing.T) {
 	// string literals evaluate to boxed strings (last stmt is an assignment)
 	v, _, err := EvalExpr("s = \"hello\"\ns")

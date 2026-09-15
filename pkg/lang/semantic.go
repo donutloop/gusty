@@ -321,6 +321,10 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 			}
 			return TInt()
 		}
+		// string concatenation: "a" + "b" -> str (both operands strings)
+		if n.Op == "+" && lt.Kind == KindString && rt.Kind == KindString {
+			return TStr()
+		}
 		if !an.inFunc {
 			an.warnf(n.Span(), "arithmetic on non-numeric operands (%s, %s)", lt.Name(), rt.Name())
 		}

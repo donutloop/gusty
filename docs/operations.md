@@ -135,6 +135,15 @@ lookup folds at compile time; literals must be used inline (no assignment-to-
 variable indirection), matching the list-literal limitation. Interpreter
 indexes dicts/sets at runtime and is unchanged.
 
+## String-constant concatenation + len (AOT codegen)
+
+String literals are lowered to global constants. `+` on two string literals
+folds to a single concatenated constant (e.g. `"a" + "b"` -> `@.strN` with
+`"ab"`), and `len` of a string-constant expression (including a chain of
+`+`-concats) folds to its character count: `print(len("hello"))` -> `5`,
+`print(len("ab" + "cd"))` -> `4`. The semantic analyzer types `str + str` as
+`str` (no arithmetic warning).
+
 ## Interpreter memory model
 
 Boxed heap handles are allocated from a high base (`1 << 20`) so they never

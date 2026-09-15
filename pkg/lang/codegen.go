@@ -165,6 +165,31 @@ func setLiteralElems(sl *SetLit) ([]int64, error) {
 	return elems, nil
 }
 
+// stringConst resolves a string literal or a chain of `+`-concatenated string
+// literals to its concrete value. Returns (s, true) when the expression is a
+// compile-time-known string constant.
+func stringConst(e Expr) (string, bool) {
+	if sl, ok := e.(*StrLit); ok {
+		return sl.Value, true
+	}
+	if b, ok := e.(*BinOp); ok && b.Op == "+" {
+		ls, lok := stringConst(b.L)
+		rs, rok := stringConst(b.R)
+		if lok && rok {
+			return ls + rs, true
+		}
+	}
+	return "", false
+}
+
+// stringConstLen is len() over a compile-time-known string constant.
+func stringConstLen(e Expr) (int, bool) {
+	if s, ok := stringConst(e); ok {
+		return len(s), true
+	}
+	return 0, false
+}
+
 // emitList emits a dedicated global struct for an inline list literal
 // (dedup by AST node) and returns its global name. Elements must be ints.
 func (g *irGen) emitList(ln *ListLit) (string, error) {
@@ -284,6 +309,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
 	case *BinOp:
+		// Constant string concatenation: fold "a" + "b" into a single string
+		// constant, mirroring the interpreter's str + str concat.
+		if n.Op == "+" {
+			if ls, lok := n.L.(*StrLit); lok {
+				if rs, rok := n.R.(*StrLit); rok {
+					return g.strConst(ls.Value + rs.Value), nil
+				}
+			}
+		}
 		l, err := g.value(b, n.L)
 		if err != nil {
 			return "", err
@@ -629,10 +663,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 		return t, nil
 	case "len":
-		// len(list/dict/set) -> load the count field (i32 0) of the inline
+		// len(string-constant) -> compile-time character count; otherwise
+		// len(list/dict/set) loads the count field (i32 0) of the inline
 		// literal's global struct. Layouts share the count as the first field.
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("len expects one argument")
+		}
+		if n, ok := stringConstLen(c.Args[0]); ok {
+			return fmt.Sprintf("%d", n), nil
 		}
 		switch lit := c.Args[0].(type) {
 		case *ListLit:

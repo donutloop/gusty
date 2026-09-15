@@ -286,6 +286,17 @@ func TestExecDictSetLiterals(t *testing.T) {
 	assertOutput(t, "print({5: 50, 6: 60}[6] + len({7, 8}))", "62\n")
 }
 
+func TestExecStringConstLen(t *testing.T) {
+	// len of a string literal folds to its character count.
+	assertOutput(t, "print(len(\"hello\"))", "5\n")
+	assertOutput(t, "print(len(\"\"))", "0\n")
+	// constant string concatenation folds to the joined string, then len.
+	assertOutput(t, "print(len(\"ab\" + \"cd\"))", "4\n")
+	assertOutput(t, "print(len(\"a\" + \"b\" + \"c\"))", "3\n")
+	// len still works on inline list/set/dict literals.
+	assertOutput(t, "print(len({1, 2, 3}))", "3\n")
+}
+
 func TestListIndexAndLen(t *testing.T) {
 	src := "print([1, 2, 3][1])\nprint(len([1, 2, 3]))"
 	assertOutput(t, src, "2\n3\n")
