@@ -53,13 +53,18 @@ const STATE_FILE = path.join(cwd, ".pi-loop-state.json");
 const PROVIDER_CFG = {
   providers: {
     "local-vllm": {
-      baseUrl: "http://localhost:8000/v1",
+      baseUrl: "http://localhost:8899/v1",
       api: "openai-completions",
       apiKey: "dummy"
     }
   },
   models: {
-    "deepseek-v4-flash": { provider: "local-vllm", name: "deepseek-v4-flash" }
+    "deepseek-v4-flash": {
+      provider: "local-vllm",
+      name: "deepseek-v4-flash",
+      baseUrl: "http://localhost:8899/v1",
+      api: "openai-completions"
+    }
   }
 };
 const MODEL = "deepseek-v4-flash";
@@ -124,7 +129,12 @@ async function runRound(session, round, maxRounds) {
   ].join("\n");
 
   console.log(`\n=== pi-loop: round ${round} — prompting local pi agent ===`);
-  await session.prompt(prompt);
+  try {
+    await session.prompt(prompt);
+  } catch (e) {
+    console.error(`\n=== pi-loop: prompt threw ===`);
+    console.error(e?.stack || e);
+  }
   console.log(`\n=== pi-loop: round ${round} agent turn complete ===`);
   const { clean, head } = await verifyRound(round);
   if (!clean) {
@@ -158,7 +168,26 @@ try {
   // <agentDir>/models.json using model.provider / model.id, so a minimal
   // object with provider+id+name is enough (apiKey "dummy" lives on the
   // provider config written to models.json).
-  const model = { provider: "local-vllm", id: MODEL, name: MODEL };
+  // The SDK does NOT auto-fill baseUrl/api from models.json for an inline
+  // model object — the openai-completions provider calls model.baseUrl.*
+  // (detectCompat) and uses model.baseUrl as the endpoint, so they MUST be
+  // present or every agent turn crashes with
+  // "Cannot read properties of undefined (reading 'includes')".
+  const providerCfg = PROVIDER_CFG.providers["local-vllm"];
+  const model = {
+    provider: "local-vllm",
+    id: MODEL,
+    name: MODEL,
+    baseUrl: providerCfg.baseUrl,
+    api: providerCfg.api,
+    reasoning: false,
+    thinkingLevelMap: {},
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 524288,
+    maxTokens: 131072,
+    headers: {}
+  };
   const created = await createAgentSession({ cwd, agentDir, model });
   session = created.session ?? created;
   console.log("pi-loop: connected to local pi agent session (" + agentDir + ")");
