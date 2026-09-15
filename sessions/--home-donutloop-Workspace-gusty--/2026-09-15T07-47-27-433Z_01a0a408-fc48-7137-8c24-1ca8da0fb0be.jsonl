@@ -1,0 +1,5 @@
+{"type":"session","version":3,"id":"01a0a408-fc48-7137-8c24-1ca8da0fb0be","timestamp":"2026-09-15T07:47:27.433Z","cwd":"/home/donutloop/Workspace/gusty"}
+{"type":"model_change","id":"4a847852","parentId":null,"timestamp":"2026-09-15T07:47:27.435Z","provider":"local-vllm","modelId":"deepseek-v4-flash"}
+{"type":"thinking_level_change","id":"9536f26f","parentId":"4a847852","timestamp":"2026-09-15T07:47:27.435Z","thinkingLevel":"off"}
+{"type":"message","id":"9ee36994","parentId":"9536f26f","timestamp":"2026-09-15T07:47:27.436Z","message":{"role":"user","content":[{"type":"text","text":"hello"}],"timestamp":1789458447436}}
+{"type":"message","id":"ba7d1dc2","parentId":"9ee36994","timestamp":"2026-09-15T07:47:27.437Z","message":{"role":"assistant","content":[],"provider":"local-vllm","model":"deepseek-v4-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","errorMessage":"Cannot read properties of undefined (reading 'includes')","timestamp":1789458447437}}
