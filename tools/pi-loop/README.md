@@ -34,11 +34,17 @@ In other words: *when a round completes, execute AGENTS.md and follow its loop;
 when pi-loop stops, restart where it left off — or re-run AGENTS.md if no
 progress exists yet.*
 
-## Auth
+## Provider config
 
-`pi-loop` connects to a local pi agent via the SDK; the SDK needs a model
-provider and API key. Export the provider key (`ANTHROPIC_API_KEY`, etc.) in
-your env, or set `PI_MODEL` to select a model.
+`pi-loop` connects using **only** the embedded provider config — a local
+OpenAI-compatible vLLM endpoint:
+
+```json
+{ "providers": { "local-vllm": { "baseUrl": "http://localhost:8000/v1", "api": "openai-completions", "apiKey": "dummy" } } }
+```
+
+On startup it writes/merges this into `<agentDir>/models.json` and creates the
+SDK session with `model: "deepseek-v4-flash"`.
 
 ## Requirements
 

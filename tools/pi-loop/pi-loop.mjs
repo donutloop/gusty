@@ -46,6 +46,36 @@ const forceReset = args.includes("--force-reset");
 const agentDir = process.env.PI_AGENT_DIR || cwd;
 
 const STATE_FILE = path.join(cwd, ".pi-loop-state.json");
+
+// pi-loop connects using ONLY this provider config (a local OpenAI-compatible
+// vLLM endpoint). The SDK's ModelRuntime reads <agentDir>/models.json; we
+// write/merge this provider + model there so createAgentSession resolves it.
+const PROVIDER_CFG = {
+  providers: {
+    "local-vllm": {
+      baseUrl: "http://localhost:8000/v1",
+      api: "openai-completions",
+      apiKey: "dummy"
+    }
+  },
+  models: {
+    "deepseek-v4-flash": { provider: "local-vllm", name: "deepseek-v4-flash" }
+  }
+};
+const MODEL = "deepseek-v4-flash";
+const MODELS_JSON = path.join(agentDir, "models.json");
+
+function bootstrapModelsJson() {
+  let existing = {};
+  try { existing = JSON.parse(fs.readFileSync(MODELS_JSON, "utf8")); } catch {}
+  existing.providers = Object.assign({}, existing.providers, PROVIDER_CFG.providers);
+  existing.models = Object.assign({}, existing.models, PROVIDER_CFG.models);
+  fs.writeFileSync(MODELS_JSON, JSON.stringify(existing, null, 2));
+  console.log("pi-loop: wrote provider config to " + MODELS_JSON + " (local-vllm -> deepseek-v4-flash)");
+}
+
+bootstrapModelsJson();
+
 const agentsMd = path.join(cwd, "AGENTS.md");
 const loopContract = fs.existsSync(agentsMd) ? fs.readFileSync(agentsMd, "utf8") : "";
 
@@ -123,9 +153,13 @@ if (!forceReset && state) {
 
 let session;
 try {
-  const sdkCfg = { cwd, agentDir };
-  if (process.env.PI_MODEL) sdkCfg.model = process.env.PI_MODEL;
-  const created = await createAgentSession(sdkCfg);
+  // createAgentSession expects a Model OBJECT (provider + id), not a bare id
+  // string. The SDK resolves the full model (auth/endpoint) from
+  // <agentDir>/models.json using model.provider / model.id, so a minimal
+  // object with provider+id+name is enough (apiKey "dummy" lives on the
+  // provider config written to models.json).
+  const model = { provider: "local-vllm", id: MODEL, name: MODEL };
+  const created = await createAgentSession({ cwd, agentDir, model });
   session = created.session ?? created;
   console.log("pi-loop: connected to local pi agent session (" + agentDir + ")");
   session.subscribe((event) => {

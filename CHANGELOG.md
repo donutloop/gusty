@@ -4,7 +4,11 @@ Single clean list of features, newest first.
 
 ## Current
 
-- `feat(tools)`: **pi-loop CLI** — `tools/pi-loop/pi-loop.mjs` connects to a
+- `feat(tools)`: **pi-loop CLI** — pi-loop now connects using **only** the
+  embedded provider config (`local-vllm` @ `http://localhost:8000/v1`,
+  `openai-completions`, apiKey `dummy`, model `deepseek-v4-flash`). It writes
+  the provider+model into `<agentDir>/models.json` on startup and passes
+  `model: "deepseek-v4-flash"` to `createAgentSession`. — `tools/pi-loop/pi-loop.mjs` connects to a
   local pi agent via the pi SDK (`createAgentSession`) and drives the AGENTS.md
   loop round by round. It persists `{round, lastCommit}` to
   `.pi-loop-state.json` on any stop (SIGINT/error/target). On restart it resumes
