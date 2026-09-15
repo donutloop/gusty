@@ -4,6 +4,15 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **boolean `and`/`or` operators + `//` floor division in the
+  LLVM AOT codegen** — the parser/semantic/interpreter already supported
+  `and`/`or` and `//`, but codegen rejected them as unsupported operators.
+  `and`/`or` now lower to i1 logic zero-extended to `i32` (evaluate-both-then-
+  combine, mirroring the interpreter) and `//` lowers to `sdiv`; literal
+  operands are constant-folded. Adds exec tests (`TestExecAndOrBool`), IR
+  checks (`TestIRAndOrCompilesWithLLC`), and interpreter parity tests
+  (`TestEvalAndOrFloorDiv`). ADR 0022.
+
 - `feat(aot)`: **`for` loops over inline list literals in the LLVM AOT
   codegen** — `for x in [1, 2, 3]:` now ships in **both** backends (previously
   range-only in AOT). Lowered by unrolling one body block per constant element

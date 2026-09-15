@@ -163,6 +163,21 @@ func TestExecMultiplePrints(t *testing.T) {
 	assertOutput(t, src, "1\n2\n3\n")
 }
 
+func TestExecAndOrBool(t *testing.T) {
+	// and/or evaluate both operands and return a boolean 0/1.
+	assertOutput(t, "print(1 and 0)", "0\n")
+	assertOutput(t, "print(1 and 2)", "1\n")
+	assertOutput(t, "print(1 or 0)", "1\n")
+	assertOutput(t, "print(0 or 0)", "0\n")
+	assertOutput(t, "print(0 or 7)", "1\n")
+	// and/or on runtime values.
+	assertOutput(t, "x = 1\ny = 0\nprint(x and y)\nprint(x or y)", "0\n1\n")
+	// floor division lowers to sdiv (mirrors the interpreter).
+	assertOutput(t, "print(9 // 2)", "4\n")
+	assertOutput(t, "print(20 // 5)", "4\n")
+	assertOutput(t, "print(9 // 2 + 1)", "5\n")
+}
+
 func TestExecComparison(t *testing.T) {
 	src := "x = 10\nif x > 5:\n    print(1)\nif x == 10:\n    print(2)\nif x < 5:\n    print(3)"
 	assertOutput(t, src, "1\n2\n")

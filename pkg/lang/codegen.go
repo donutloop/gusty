@@ -195,13 +195,23 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					res, folded = lv-rv, true
 				case "*":
 					res, folded = lv*rv, true
-				case "/":
+				case "/", "//":
 					if rv != 0 {
 						res, folded = lv/rv, true
 					}
 				case "%":
 					if rv != 0 {
 						res, folded = lv%rv, true
+					}
+				case "and":
+					folded = true
+					if lv != 0 && rv != 0 {
+						res = 1
+					}
+				case "or":
+					folded = true
+					if lv != 0 || rv != 0 {
+						res = 1
 					}
 				case "==":
 					folded = true
@@ -235,6 +245,23 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 		}
 		t := g.newTmp()
+		// `and`/`or` lower to boolean comparisons combined with i1 logic, then
+		// zero-extended back to an i32 0/1 — mirroring the interpreter (which
+		// evaluates both operands and returns a boolean).
+		if n.Op == "and" || n.Op == "or" {
+			lt := g.newTmp()
+			rt := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", lt, l))
+			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", rt, r))
+			if n.Op == "and" {
+				b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", t, lt, rt))
+			} else {
+				b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", t, lt, rt))
+			}
+			res := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, t))
+			return res, nil
+		}
 		var op string
 		switch n.Op {
 		case "+":
@@ -243,7 +270,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			op = "sub"
 		case "*":
 			op = "mul"
-		case "/":
+		case "/", "//":
 			op = "sdiv"
 		case "==":
 			op = "icmp eq"

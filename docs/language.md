@@ -164,7 +164,11 @@ match x:
 - Integer literals `1`, `2`, `-3`.
 - Float literals, bool literals (`true`/`false`), `none`, string literals.
 - `Name` reads a variable (fresh SSA load per read for dominance safety).
-- `BinOp` arithmetic (`+`, `-`, `*`, `/`) and comparisons (`<`, `==`, ...).
+- `BinOp` arithmetic (`+`, `-`, `*`, `/`, `//`) and comparisons (`<`, `==`, ...).
+- `and` / `or` are boolean operators: both operands are evaluated and the
+  result is a `0`/`1` integer (`and` is 1 iff both are non-zero, `or` is 1 iff
+  either is non-zero). Lowered in the AOT codegen to i1 logic zero-extended to
+  `i32`, mirroring the interpreter. `//` floor division lowers to `sdiv`.
 - `Call` to user functions or builtins (`print`, `range`).
 - Attribute access (`obj.attr`) and indexing are parsed for future features.
 

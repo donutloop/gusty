@@ -124,6 +124,12 @@ func TestIRDecoratorCompilesWithLLC(t *testing.T) {
 	}
 }
 
+func TestIRAndOrCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "print(1 and 0)\nprint(1 or 0)")
+	llcCompiles(t, "x = 1\ny = 0\nprint(x and y)\nprint(x or y)")
+	llcCompiles(t, "print(9 // 2)")
+}
+
 func TestIRConstantFolding(t *testing.T) {
 	res, err := Compile("x = 1 + 2")
 	if err != nil {

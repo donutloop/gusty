@@ -683,6 +683,39 @@ func TestEvalFloatLiteral(t *testing.T) {
 	}
 }
 
+func TestEvalAndOrFloorDiv(t *testing.T) {
+	// and/or return a boolean 0/1 (both operands evaluated).
+	v, _, err := EvalExpr("1 and 0")
+	if err != nil {
+		t.Fatalf("and err: %v", err)
+	}
+	if v != 0 {
+		t.Fatalf("1 and 0 got %d, want 0", v)
+	}
+	v, _, err = EvalExpr("1 and 2")
+	if err != nil {
+		t.Fatalf("and err: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("1 and 2 got %d, want 1", v)
+	}
+	v, _, err = EvalExpr("0 or 7")
+	if err != nil {
+		t.Fatalf("or err: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("0 or 7 got %d, want 1", v)
+	}
+	// floor division mirrors integer division in the interpreter.
+	v, _, err = EvalExpr("9 // 2")
+	if err != nil {
+		t.Fatalf("floor div err: %v", err)
+	}
+	if v != 4 {
+		t.Fatalf("9 // 2 got %d, want 4", v)
+	}
+}
+
 func TestEvalComprehension(t *testing.T) {
 	// list comprehension over range
 	v, _, err := EvalExpr("xs = [x * 2 for x in range(3)]\nxs")

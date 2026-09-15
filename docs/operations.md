@@ -95,8 +95,16 @@ The codegen folds integer-literal binary expressions at compile time:
 
     x = 1 + 2        # emits store i32 3 (no add instruction)
 
-Folded ops: `+ - * / %` and comparisons `== < <= > >=`. Division/modulo by a
-literal zero is left to runtime. Verify with `gustyc --emit-llvm`.
+Folded ops: `+ - * / // %`, boolean `and`/`or`, and comparisons `== < <= > >=`.
+Division/modulo by a literal zero is left to runtime. Verify with
+`gustyc --emit-llvm`.
+
+## Boolean `and` / `or` and floor division (AOT codegen)
+
+`and` / `or` lower to i1 boolean logic (`icmp ne` each operand, combine with
+`and`/`or i1`, `zext` to `i32` 0/1), mirroring the interpreter's evaluate-both-
+then-combine semantics. `//` floor division lowers to `sdiv`, also mirroring
+the interpreter. Literal operands are constant-folded.
 
 ## Builtins: sum / min / max / abs (AOT codegen)
 
