@@ -88,3 +88,12 @@ Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
 - parse/runtime errors → `{"error": "...", "exit": 2}` (exit 1 for runtime)
 
 Diagnostics serialize their `Msg`/`Span` fields for schema-driven tooling.
+
+## Optimization: constant folding
+
+The codegen folds integer-literal binary expressions at compile time:
+
+    x = 1 + 2        # emits store i32 3 (no add instruction)
+
+Folded ops: `+ - * / %` and comparisons `== < <= > >=`. Division/modulo by a
+literal zero is left to runtime. Verify with `gustyc --emit-llvm`.

@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 func GenerateIR(prog *Program) (string, error) {
 	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
@@ -56,18 +55,18 @@ func GenerateIR(prog *Program) (string, error) {
 }
 
 type irGen struct {
-	globals strings.Builder
-	decls   string
-	sym     map[string]string  // variable -> load temp
-	allocd  map[string]bool    // alloca emitted?
-	funcs   map[string]bool    // user-defined function names
-	fds     map[string]*FuncDef // function definitions by name (for call arg binding)
-	params  map[string]string  // current function params: name -> register
-	fmtIdx  int
-	strIdx  int
-	tmp     int
-	label   int
-	ldN     int
+	globals   strings.Builder
+	decls     string
+	sym       map[string]string   // variable -> load temp
+	allocd    map[string]bool     // alloca emitted?
+	funcs     map[string]bool     // user-defined function names
+	fds       map[string]*FuncDef // function definitions by name (for call arg binding)
+	params    map[string]string   // current function params: name -> register
+	fmtIdx    int
+	strIdx    int
+	tmp       int
+	label     int
+	ldN       int
 	loopStack []loopInfo
 
 	closures    map[string]*closureInfo
@@ -76,8 +75,8 @@ type irGen struct {
 	envParam    string
 	decorated   map[string]bool
 	applyCalls  []string
-	listNames map[*ListLit]string
-	lstIdx int
+	listNames   map[*ListLit]string
+	lstIdx      int
 }
 
 type loopInfo struct {
@@ -85,7 +84,7 @@ type loopInfo struct {
 	continueLabel string
 }
 
-func (g *irGen) newTmp() string { g.tmp++; return fmt.Sprintf("%%t%d", g.tmp) }
+func (g *irGen) newTmp() string           { g.tmp++; return fmt.Sprintf("%%t%d", g.tmp) }
 func (g *irGen) newLabel(s string) string { g.label++; return fmt.Sprintf("%s%d", s, g.label) }
 
 // fmtStr emits a global string constant for a printf format; returns name and size.
@@ -109,6 +108,7 @@ func (g *irGen) strConst(s string) string {
 	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(esc)+1, esc))
 	return name
 }
+
 // emitList emits a dedicated global struct for an inline list literal
 // (dedup by AST node) and returns its global name. Elements must be ints.
 func (g *irGen) emitList(ln *ListLit) (string, error) {
@@ -136,7 +136,6 @@ func (g *irGen) emitList(ln *ListLit) (string, error) {
 	g.listNames[ln] = name
 	return name, nil
 }
-
 
 // value emits an IR expression returning an i32 value; returns the operand string.
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
@@ -172,6 +171,58 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		r, err := g.value(b, n.R)
 		if err != nil {
 			return "", err
+		}
+		// Constant folding: fold integer literals at compile time.
+		if li, lok := n.L.(*IntLit); lok {
+			if ri, rok := n.R.(*IntLit); rok {
+				lv, rv := int64(li.Value), int64(ri.Value)
+				var res int64
+				folded := false
+				switch n.Op {
+				case "+":
+					res, folded = lv+rv, true
+				case "-":
+					res, folded = lv-rv, true
+				case "*":
+					res, folded = lv*rv, true
+				case "/":
+					if rv != 0 {
+						res, folded = lv/rv, true
+					}
+				case "%":
+					if rv != 0 {
+						res, folded = lv%rv, true
+					}
+				case "==":
+					folded = true
+					if lv == rv {
+						res = 1
+					}
+				case "<":
+					folded = true
+					if lv < rv {
+						res = 1
+					}
+				case "<=":
+					folded = true
+					if lv <= rv {
+						res = 1
+					}
+				case ">":
+					folded = true
+					if lv > rv {
+						res = 1
+					}
+				case ">=":
+					folded = true
+					if lv >= rv {
+						res = 1
+					}
+				}
+				if folded {
+					return fmt.Sprintf("%d", res), nil
+				}
+			}
 		}
 		t := g.newTmp()
 		var op string
@@ -487,7 +538,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		endL := g.newLabel("if.end")
 		var elseL string
 		// build elif chain: each elif gets a cond label and a then label.
-		type el struct{ condL, thenL string; e *IfStmt }
+		type el struct {
+			condL, thenL string
+			e            *IfStmt
+		}
 		els := []el{}
 		for _, e := range n.Elifs {
 			els = append(els, el{g.newLabel("if.elif"), g.newLabel("if.elif.then"), e})
@@ -696,11 +750,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		info := g.loopStack[len(g.loopStack)-1]
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.continueLabel))
-		case *PassStmt:
-			// no-op statement: emit nothing
+	case *PassStmt:
+		// no-op statement: emit nothing
 	default:
 		return fmt.Errorf("codegen: unsupported statement %T", st)
 	}
 	return nil
 }
-

@@ -123,3 +123,16 @@ func TestIRDecoratorCompilesWithLLC(t *testing.T) {
 		t.Fatalf("missing decorator apply in IR:\n%s", ir)
 	}
 }
+
+func TestIRConstantFolding(t *testing.T) {
+	res, err := Compile("x = 1 + 2")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if strings.Contains(res.IR, "add i32") {
+		t.Fatalf("expected folded constant, got: %s", res.IR)
+	}
+	if !strings.Contains(res.IR, "i32 3") {
+		t.Fatalf("expected folded constant 3 in IR: %s", res.IR)
+	}
+}
