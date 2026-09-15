@@ -271,6 +271,18 @@ func TestExecForListLiteral(t *testing.T) {
 	assertOutput(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\nprint(s)", "106\n")
 }
 
+func TestExecTernaryAOT(t *testing.T) {
+	// constant-condition ternary folds to the taken branch.
+	assertOutput(t, "print(5 if 1 else 3)\n", "5\n")
+	assertOutput(t, "print(10 if 0 else 42)\n", "42\n")
+	// runtime-comparison ternary lowers to a select.
+	assertOutput(t, "print(7 if 2 > 1 else 99)\n", "7\n")
+	// right-associative nested ternary.
+	assertOutput(t, "print(1 if 0 else 2 if 1 else 3)\n", "2\n")
+	// used inside a larger expression.
+	assertOutput(t, "print((5 if 1 else 6) + 1)\n", "6\n")
+}
+
 func TestExecListComprehensionAOT(t *testing.T) {
 	// inline list comprehension over a constant list literal, folded at
 	// compile time and indexed directly.

@@ -305,6 +305,15 @@ func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 		return TDyn()
 	case *Generator:
 		return TIter(TDyn())
+	case *CondExpr:
+		an.inferExpr(n.Cond)
+		thenTy := an.inferExpr(n.If)
+		elseTy := an.inferExpr(n.Else)
+		// the result is the branch type when both agree, else dynamic.
+		if thenTy.Same(elseTy) {
+			return thenTy
+		}
+		return TDyn()
 	default:
 		return TDyn()
 	}

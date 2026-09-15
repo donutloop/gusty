@@ -4,6 +4,18 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat`: **ternary conditional expressions** (`then if cond else otherwise`)
+  in both the interpreter and the LLVM AOT codegen. The condition is an
+  or-level expression; the `else` branch is a full expression, so nested
+  ternaries bind right. In the AOT path a constant condition folds to the taken
+  branch, and a runtime condition lowers to an LLVM `select i1 cond,
+  i32 then, i32 else` — allocation-free and block-free. The comprehension
+  iterable is parsed as an or-level expression so the comprehension's own `if`
+  filter is not mistaken for a ternary. Adds interpreter tests
+  (`TestEvalTernary`), IR checks (`TestIRTernary*`), and end-to-end exec tests
+  (`TestExecTernaryAOT`). ADR 0026.
+
+
 - `feat(aot)`: **list comprehensions in the LLVM AOT codegen** — list
   comprehensions over a constant iterable (inline list literal or `range(n)`)
   lower to a dedicated global struct, unrolled and constant-folded at compile

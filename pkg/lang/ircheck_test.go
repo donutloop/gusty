@@ -248,6 +248,26 @@ func TestIRComprehensionLowersToGlobalStruct(t *testing.T) {
 	}
 }
 
+func TestIRTernaryCompilesWithLLC(t *testing.T) {
+	// ternary with a constant condition folds to the taken branch.
+	llcCompiles(t, "print(5 if 1 else 3)")
+	llcCompiles(t, "print(10 if 0 else 42)")
+	// ternary with a runtime comparison lowers to a select.
+	llcCompiles(t, "print(7 if 2 > 1 else 99)")
+	// right-associative nested ternary.
+	llcCompiles(t, "print(1 if 0 else 2 if 1 else 3)")
+}
+
+func TestIRTernaryLowersToSelect(t *testing.T) {
+	res, err := Compile("print(7 if 2 > 1 else 99)")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "select i1") {
+		t.Fatalf("runtime ternary should lower to a select, got:\n%s", res.IR)
+	}
+}
+
 func TestIRSumMinMaxAbs(t *testing.T) {
 	// sum: unrolled adds over the inline list literal's global struct.
 	res, err := Compile("sum([1, 2, 3])")

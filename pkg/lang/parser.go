@@ -663,7 +663,33 @@ func (p *parser) parseTypeAnnot() (*Type, error) {
 // --- expression parsing (precedence climbing) ---
 
 func (p *parser) parseExpr() (Expr, error) {
-	return p.parseOr()
+	return p.parseTernary()
+}
+
+// parseTernary parses a ternary conditional expression `then if cond else
+// otherwise`. The condition is a plain or-level expression; the else branch is
+// a full expression (right-associative, so nested ternaries bind there).
+func (p *parser) parseTernary() (Expr, error) {
+	l, err := p.parseOr()
+	if err != nil {
+		return nil, err
+	}
+	if p.peek().IsKeyword("if") {
+		op := p.next()
+		cond, err := p.parseOr()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.expectKeyword("else"); err != nil {
+			return nil, err
+		}
+		r, err := p.parseTernary()
+		if err != nil {
+			return nil, err
+		}
+		return &CondExpr{If: l, Cond: cond, Else: r, sp: op.Span}, nil
+	}
+	return l, nil
 }
 
 func (p *parser) parseOr() (Expr, error) {
@@ -961,7 +987,9 @@ func (p *parser) parseListOrComp() (Expr, error) {
 		if err := p.expectKeyword("in"); err != nil {
 			return nil, err
 		}
-		iter, err := p.parseExpr()
+		// The iterable is an or-level expression (not a ternary): a ternary
+		// here would greedily consume the comprehension\x27s own `if` filter.
+		iter, err := p.parseOr()
 		if err != nil {
 			return nil, err
 		}

@@ -73,6 +73,18 @@ literals, the comprehension must be used inline (no assignment-to-variable
 indirection) in the codegen path; the interpreter evaluates comprehensions at
 runtime and is unchanged.
 
+
+### Ternary conditional expressions
+
+`then if cond else otherwise` (Python-style ternary) is supported in both the
+interpreter and the AOT codegen. The condition is an or-level expression; the
+`else` branch is a full expression, so nested ternaries bind right:
+`1 if 0 else 2 if 1 else 3` is `1 if 0 else (2 if 1 else 3)`.
+
+In the AOT path, a constant condition folds to the taken branch, and a runtime
+condition (a comparison, or `and`/`or`) lowers to an LLVM `select i1 cond,
+i32 then, i32 else`, so the ternary is allocation-free and needs no blocks.
+
 ### Dicts & sets (LLVM codegen)
 
 The AOT path also lowers **inline dict and set literals** with constant-key

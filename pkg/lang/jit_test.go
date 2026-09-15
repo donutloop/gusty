@@ -377,6 +377,27 @@ func TestEvalComprehensionAssignment(t *testing.T) {
 	}
 }
 
+func TestEvalTernary(t *testing.T) {
+	// ternary `then if cond else otherwise` picks the branch by truthiness.
+	for _, tc := range []struct{ src string; want int64 }{
+		{"5 if 1 else 3", 5},
+		{"10 if 0 else 42", 42},
+		{"7 if 2 > 1 else 99", 7},
+		// right-associative: the else branch is a full ternary.
+		{"1 if 0 else 2 if 1 else 3", 2},
+		// used inside a larger expression.
+		{"(5 if 1 else 6) + 1", 6},
+	} {
+		v, _, err := EvalExpr(tc.src + "\n")
+		if err != nil {
+			t.Fatalf("%s: err: %v", tc.src, err)
+		}
+		if v != tc.want {
+			t.Fatalf("%s: got %d, want %d", tc.src, v, tc.want)
+		}
+	}
+}
+
 func TestClosureCapturesEnclosingScope(t *testing.T) {
 	src := "def make_adder(x):\n    def add(y):\n        return x + y\n    return add\nw = make_adder(5)\nw(3)"
 	v, _, err := EvalExpr(src)

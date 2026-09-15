@@ -89,3 +89,23 @@ func (t *Type) Name() string {
 	}
 	return "any"
 }
+
+// Same reports whether two types are structurally identical.
+func (t *Type) Same(o *Type) bool {
+	if t == nil || o == nil {
+		return t == o
+	}
+	if t.Kind != o.Kind {
+		return false
+	}
+	switch t.Kind {
+	case KindList:
+		return t.Elem.Same(o.Elem)
+	case KindDict:
+		return t.Key.Same(o.Key) && t.Val.Same(o.Val)
+	case KindIterator:
+		return t.Elem.Same(o.Elem)
+	default:
+		return true
+	}
+}

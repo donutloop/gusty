@@ -722,6 +722,17 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			o.elems = append(o.elems, ev)
 		}
 		return h, nil
+	case *CondExpr:
+		// ternary `then if cond else otherwise`: choose the branch by truthiness.
+		cond, err := e.eval(n.Cond)
+		if err != nil {
+			return 0, err
+		}
+		if cond != 0 {
+			return e.eval(n.If)
+		}
+		return e.eval(n.Else)
+
 	case *Index:
 		objV, err := e.eval(n.Obj)
 		if err != nil {

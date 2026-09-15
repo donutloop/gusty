@@ -218,6 +218,16 @@ type UnOp struct {
 func (n *UnOp) Span() Span { return n.sp }
 func (n *UnOp) exprNode()  {}
 
+// CondExpr is a ternary conditional expression `then if cond else otherwise`.
+type CondExpr struct {
+	If   Expr `json:"if"`   // value when cond is truthy
+	Cond Expr `json:"cond"` // condition
+	Else Expr `json:"else"` // value when cond is falsy
+	sp   Span `json:"-"`
+}
+func (n *CondExpr) Span() Span { return n.sp }
+func (n *CondExpr) exprNode()  {}
+
 type Call struct {
 	Fn   Expr   `json:"fn"`
 	Args []Expr `json:"args"`

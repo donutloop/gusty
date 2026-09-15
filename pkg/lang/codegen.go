@@ -463,6 +463,26 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return "", fmt.Errorf("codegen: unsupported unary %q", n.Op)
 		}
 		return t, nil
+	case *CondExpr:
+		// ternary `then if cond else otherwise`: pick a branch by condition.
+		cond, err := g.value(b, n.Cond)
+		if err != nil {
+			return "", err
+		}
+		then, err := g.value(b, n.If)
+		if err != nil {
+			return "", err
+		}
+		els, err := g.value(b, n.Else)
+		if err != nil {
+			return "", err
+		}
+		// the condition is an i1 (comparison/and/or) or a bare constant that
+		// LLVM infers as i1 in the select context.
+		t := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, cond, then, els))
+		return t, nil
+
 	case *StrLit:
 		name := g.strConst(n.Value)
 		return name, nil
