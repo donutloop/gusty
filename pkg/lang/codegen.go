@@ -94,6 +94,9 @@ type irGen struct {
 	// strVals maps a variable name to its concrete string constant value,
 	// so `len(s)` and string concat can be resolved at codegen time.
 	strVals map[string]string
+	// dictVals maps a variable name to its concrete dict literal value,
+	// so `d[key]` on a dict variable can be resolved at codegen time.
+	dictVals map[string]*DictLit
 }
 
 type loopInfo struct {
@@ -320,6 +323,25 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		return "", false
 	}
 	return "", false
+}
+
+
+// dictIndex resolves a constant key against a DictLit at codegen time.
+func (g *irGen) dictIndex(dl *DictLit, key int64) (string, error) {
+	keys, err := dictLiteralKeys(dl)
+	if err != nil {
+		return "", err
+	}
+	vals, err := dictLiteralVals(dl)
+	if err != nil {
+		return "", err
+	}
+	for i, k := range keys {
+		if k == key {
+			return fmt.Sprintf("%d", vals[i]), nil
+		}
+	}
+	return "", fmt.Errorf("missing dict key %d", key)
 }
 
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
@@ -549,6 +571,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		key := il.Value
 		switch obj := n.Obj.(type) {
+	case *Name:
+		if g.dictVals != nil {
+			if dl, ok := g.dictVals[obj.Value]; ok {
+				return g.dictIndex(dl, key)
+			}
+		}
+		return "", fmt.Errorf("index of a non-literal variable")
+
 		case *ListLit:
 			// index into a list literal: evaluate the element directly.
 			return g.value(b, obj.Elems[key])
@@ -1229,6 +1259,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.strVals = map[string]string{}
 				}
 				g.strVals[nm.Value] = sv
+			}
+			// track dict literals assigned to variables for `d[key]`
+			if dl, ok := n.Value.(*DictLit); ok {
+				if g.dictVals == nil {
+					g.dictVals = map[string]*DictLit{}
+				}
+				g.dictVals[nm.Value] = dl
 			}
 			if !g.allocd[nm.Value] {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))

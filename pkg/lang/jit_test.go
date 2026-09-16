@@ -748,6 +748,17 @@ func TestEvalStringLiteral(t *testing.T) {
 	}
 }
 
+func TestEvalDictVariableIndex(t *testing.T) {
+	// d[key] on a dict variable resolves at codegen time.
+	v, _, err := EvalExpr("d = {1: 10, 2: 20}\nd[1]")
+	if err != nil {
+		t.Fatalf("d[1] err: %v", err)
+	}
+	if v != 10 {
+		t.Fatalf("d[1] got %d, want 10", v)
+	}
+}
+
 func TestEvalLenStringVariable(t *testing.T) {
 	// len(s) on a string variable resolves at codegen time.
 	v, _, err := EvalExpr("s = \"abc\"\nlen(s)")
