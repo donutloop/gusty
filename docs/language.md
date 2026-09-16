@@ -247,7 +247,8 @@ match x:
 - `print(x, ...)` — writes each argument to stdout on its own line via
   `printf`. Multi-argument `print` mirrors the interpreter: one `printf` per
   argument. String-literal arguments use a `%s\n` format (the interpreter
-  prints strings via `Repr`); integer arguments use `%d\n`.
+  prints strings via `Repr`); integer arguments use `%d\n`. Zero-argument
+  `print()` writes nothing (no `printf`), matching the interpreter's no-op.
 - `range(n)` — iteration bound for `for` loops.
 
 ## Generators & lists

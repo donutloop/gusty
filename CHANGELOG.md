@@ -4,6 +4,15 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **zero-argument `print()` in the LLVM AOT codegen** —
+  the interpreter's `print` with no arguments writes nothing (the arg loop is
+  empty), but the AOT codegen rejected `print()` with `print needs an
+  argument`. The codegen now accepts zero-argument `print()` and emits no
+  `printf` — a no-op that mirrors the interpreter exactly. Adds IR checks
+  (`TestIRZeroArgPrintCompilesWithLLC`), an interpreter stdout-capture unit
+  test, and exec tests (`TestExecMultiArgPrint` zero-arg cases). ADR 0033.
+
+
 - `feat(aot)`: **`case _:` wildcard in the LLVM AOT `match` statement** —
   the interpreter's `match` treats `case _:` as a wildcard that matches any
   subject, but the AOT codegen lowered `_` as a normal pattern — it compared

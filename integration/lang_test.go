@@ -83,6 +83,9 @@ func TestExecMultiArgPrint(t *testing.T) {
 	// string-literal arguments use a %s\n format, mirroring the interpreter's Repr.
 	assertOutput(t, "print(\"hi\")", "hi\n")
 	assertOutput(t, "print(1, \"hi\", 2)", "1\nhi\n2\n")
+	// zero-argument print() writes nothing, matching the interpreter.
+	assertOutput(t, "print()", "")
+	assertOutput(t, "x = 1\nprint(x)\nprint()\nprint(2)", "1\n2\n")
 }
 
 func TestExecPrintArithmetic(t *testing.T) {

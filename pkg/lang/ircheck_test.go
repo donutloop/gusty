@@ -218,6 +218,17 @@ func TestIRModuloCompilesWithLLC(t *testing.T) {
 	}
 }
 
+func TestIRZeroArgPrintCompilesWithLLC(t *testing.T) {
+	// zero-argument print() writes nothing: no printf calls.
+	res, err := Compile("print()")
+	if err != nil {
+		t.Fatalf("compile zero-arg print: %v", err)
+	}
+	if strings.Count(res.IR, "call i32 @printf") != 0 {
+		t.Fatalf("print() should emit no printf calls, got:\n%s", res.IR)
+	}
+}
+
 func TestIRMultiArgPrintCompilesWithLLC(t *testing.T) {
 	// multi-argument print emits one printf per argument (each on its own
 	// line), mirroring the interpreter's print.

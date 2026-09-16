@@ -968,6 +968,11 @@ func TestEvalMultiArgPrint(t *testing.T) {
 	if out != "1\nhi\n2\n" {
 		t.Fatalf("mixed print stdout %q, want 1\\nhi\\n2\\n", out)
 	}
+	// zero-argument print() writes nothing.
+	out = captureStdout(t, "print()")
+	if out != "" {
+		t.Fatalf("print() stdout %q, want empty", out)
+	}
 }
 
 // captureStdout runs src through EvalExpr and returns everything written to

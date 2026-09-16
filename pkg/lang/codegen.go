@@ -933,7 +933,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 		}
 		if len(c.Args) < 1 {
-			return "", fmt.Errorf("codegen: print needs an argument")
+			// zero-argument print() matches the interpreter: writes nothing.
+			return g.newTmp(), nil
 		}
 		// multi-argument print mirrors the interpreter: each argument is
 		// written to stdout on its own line, one printf per argument.
