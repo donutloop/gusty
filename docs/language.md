@@ -200,9 +200,14 @@ for i in range(n):
   implementation with `super()` (valid only inside a method; it resolves methods
   on the base class of the currently-executing class, bound to the current
   instance). Class support is implemented in the interpreter (REPL/--eval path).
-- `raise Exception` raises a runtime error; `try:`/`except Exception:`/`finally:` catch
-  it (the catch-all `Exception` clause matches any raised or builtin error), and
-  `finally:` always runs. `Exception` is a builtin exception type name.
+- `raise ValueError("msg")` raises a typed exception carrying a class name and an
+  optional message. Built-in exception classes: `Exception`, `ValueError`, `TypeError`,
+  `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`. A bare
+  `raise` raises `Exception`.
+- `except ValueError:` catches exactly the raised class; `except Exception:` (or a bare
+  `except:`) catches any exception. A raised exception that no clause matches propagates
+  to the caller as an `*EvalError` carrying the class name (`ExnType`) and message
+  (`ExnMsg`). `try:`/`except:`/`finally:` follow Python semantics.
 - `try:` / `except Exception:` / `finally:` are supported: the try body runs; on a
   runtime error a matching except clause runs (catch-all `Exception` matches any);
   the `finally:` body always runs. Implemented in the interpreter path.

@@ -62,6 +62,35 @@ func (e *Evaluator) allocFloat(val float64) int64 {
 	return id
 }
 
+// allocExn allocates an exception object of the given class with a message.
+// kind="exn", class=type name, sval=message.
+func (e *Evaluator) allocExn(exnType, msg string) int64 {
+	id := e.allocObj("exn")
+	o := e.heap[id]
+	o.class = exnType
+	o.sval = msg
+	return id
+}
+
+// exnInfo returns (type, message) of an exception object (kind="exn"),
+// or ("Exception", repr) for a non-exception value.
+func (e *Evaluator) exnInfo(id int64) (string, string) {
+	if o, ok := e.heap[id]; ok && o.kind == "exn" {
+		return o.class, o.sval
+	}
+	return "Exception", e.Repr(id)
+}
+
+// isExnClass reports whether name is a built-in exception constructor.
+func isExnClass(name string) bool {
+	switch name {
+	case "Exception", "ValueError", "TypeError", "KeyError", "IndexError",
+		"RuntimeError", "StopIteration", "ZeroDivisionError":
+		return true
+	}
+	return false
+}
+
 // floatOf returns the float value of a heap handle (kind=float), with a
 // boolean indicating whether the handle is a boxed float.
 func (e *Evaluator) floatOf(id int64) (float64, bool) {
@@ -415,7 +444,14 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			if bodyErr != nil {
 				caught := false
 				for _, ec := range s.Excepts {
-					if ec.Exn == nil || ec.Exn.Value == "Exception" {
+						// bare except, or except Exception, matches any exception;
+				// otherwise match the raised exception class name exactly.
+				matches := ec.Exn == nil || ec.Exn.Value == "Exception"
+				if ee, ok := bodyErr.(*EvalError); ok && ee.ExnType != "" {
+					matches = ec.Exn == nil || ec.Exn.Value == "Exception" ||
+						ec.Exn.Value == ee.ExnType
+				}
+				if matches {
 						_, err2 := e.evalBody(ec.Body)
 						if err2 != nil {
 							return 0, err2
@@ -616,7 +652,16 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			last = v
 			continue
 		case *RaiseStmt:
-			return 0, &EvalError{Msg: "raised"}
+			// raise Exception("msg") / raise ValueError("msg") etc.
+			if s.Expr == nil {
+				return 0, exnError("Exception", "raised")
+			}
+			v, err := e.eval(s.Expr)
+			if err != nil {
+				return 0, err
+			}
+			et, em := e.exnInfo(v)
+			return 0, exnError(et, em)
 		case *BreakStmt:
 			return 0, &loopSignal{kind: "break"}
 		case *ContinueStmt:
@@ -2133,6 +2178,20 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			e.curRet = prevRet
 			return rv, err
 		}
+		// built-in exception constructor: ValueError("msg") etc.
+		if isExnClass(name.Value) {
+			msg := ""
+			for _, arg := range n.Args {
+				av, err := e.eval(arg)
+				if err != nil {
+					return 0, err
+				}
+				if s, ok := e.heap[av]; ok && s.kind == "str" && msg == "" {
+					msg = s.sval
+				}
+			}
+			return e.allocExn(name.Value, msg), nil
+		}
 		switch name.Value {
 		case "print":
 			for _, a := range n.Args {
@@ -2256,10 +2315,21 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	return 0, &EvalError{Msg: "unsupported call for eval"}
 }
 
-// EvalError is a runtime eval error.
-type EvalError struct{ Msg string }
+// EvalError is a runtime eval error. When a raised exception is the cause,
+// ExnType carries the exception class name (e.g. "ValueError") and ExnMsg
+// its message; otherwise both are empty.
+type EvalError struct {
+	Msg     string
+	ExnType string
+	ExnMsg  string
+}
 
 func (e *EvalError) Error() string { return "eval error: " + e.Msg }
+
+// exnError builds an EvalError carrying a typed exception (type name + message).
+func exnError(exnType, msg string) *EvalError {
+	return &EvalError{Msg: msg, ExnType: exnType, ExnMsg: msg}
+}
 
 // loopSignal carries break/continue control out of a loop body.
 type loopSignal struct{ kind string }

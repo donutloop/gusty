@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(typed-exceptions)`: `raise ValueError("msg")` carries a class name + message;
+  `except ValueError:` matches the raised class exactly, `except Exception:`/bare
+  `except:` catch any. Unmatched exceptions propagate as `*EvalError{ExnType, ExnMsg}`.
+  Interpreter-only (AOT codegen has no exception handling yet). ADR 0080.
 - `feat(str-count-start-end)`: **`.count(sub[, start[, end]])`** counts
   non-overlapping occurrences of `sub` within `s[start:end]`, mirroring
   Python's `str.count(sub, start, end)` (interpreter path via

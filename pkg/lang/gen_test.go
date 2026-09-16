@@ -1016,3 +1016,39 @@ func TestGenDictGet(t *testing.T) {
 	}
 }
 
+
+func TestGenTypedExceptions(t *testing.T) {
+	evalErr := func(src string) error {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		ev := NewEvaluator()
+		_, err = ev.EvalProgram(prog)
+		return err
+	}
+	// raise ValueError caught by `except ValueError` -> no error.
+	if err := evalErr("try:\n    raise ValueError(\"bad\")\nexcept ValueError:\n    1"); err != nil {
+		t.Fatalf("except ValueError should catch, got err: %v", err)
+	}
+	// except Exception (or bare except) catches any exception.
+	if err := evalErr("try:\n    raise TypeError(\"t\")\nexcept Exception:\n    2"); err != nil {
+		t.Fatalf("except Exception should catch, got err: %v", err)
+	}
+	// unmatched specific type propagates, carrying the exception type + message.
+	err := evalErr("try:\n    raise ValueError(\"bad value\")\nexcept TypeError:\n    0")
+	if err == nil {
+		t.Fatalf("except TypeError should NOT catch ValueError, got nil err")
+	}
+	if ee, ok := err.(*EvalError); !ok || ee.ExnType != "ValueError" || ee.ExnMsg != "bad value" {
+		t.Fatalf("expected EvalError ValueError/bad value, got %v", err)
+	}
+	// a later matching clause catches.
+	if err := evalErr("try:\n    raise KeyError(\"k\")\nexcept ValueError:\n    0\nexcept KeyError:\n    3"); err != nil {
+		t.Fatalf("except KeyError should catch, got err: %v", err)
+	}
+	// exception constructor carries its message.
+	if err := evalErr("try:\n    raise ValueError(\"bad value\")\nexcept ValueError:\n    1"); err != nil {
+		t.Fatalf("raise ValueError msg should catch, got err: %v", err)
+	}
+}
