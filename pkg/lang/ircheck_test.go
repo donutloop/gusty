@@ -681,6 +681,14 @@ func TestIRStrTitleFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrSwapcaseFolds(t *testing.T) {
+	// `print(len("HeLLo".swapcase()))` folds swapcase to "hEllO" (len 5).
+	ir := llcCompiles(t, `print(len("HeLLo".swapcase()))`)
+	if !strings.Contains(ir, "i32 5") {
+		t.Fatalf("expected folded swapcase length 5 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)

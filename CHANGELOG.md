@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-swapcase)`: **`.swapcase()`** swaps the case of each rune in
+  **both** paths via a shared `swapcase` helper (`strings.Map` using
+  `unicode.IsUpper`), folded in `stringConst`/`stringVal` and the call
+  dispatch (`print(len("HeLLo".swapcase()))` emits `i32 5`). Adds
+  Eval/IR/integration tests. ADR 0060.
 - `feat(str-title)`: **`.title()`** capitalizes the first rune of each
   whitespace-separated word in **both** paths via a shared `title` helper
   (`strings.Map` tracking the previous rune), folded in `stringConst`/

@@ -494,6 +494,30 @@ func TestGenStrTitle(t *testing.T) {
 	}
 }
 
+func TestGenStrSwapcase(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"HeLLo".swapcase()`); got != "hEllO" {
+		t.Fatalf("swapcase: expected hEllO, got %q", got)
+	}
+	if got := evalStr(`"ABC".swapcase()`); got != "abc" {
+		t.Fatalf("swapcase upper: expected abc, got %q", got)
+	}
+	if got := evalStr(`"".swapcase()`); got != "" {
+		t.Fatalf("swapcase empty: expected empty, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

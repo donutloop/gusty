@@ -1196,6 +1196,16 @@ func title(s string) string {
 		return unicode.ToLower(r)
 	}, s)
 }
+
+// swapcase returns s with each rune case swapped.
+func swapcase(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsUpper(r) {
+			return unicode.ToLower(r)
+		}
+		return unicode.ToUpper(r)
+	}, s)
+}
 func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, error) {
 	o := e.heap[recv]
 	s := o.sval
@@ -1211,6 +1221,9 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 	case "title":
 		// s.title() -> capitalize the first rune of each whitespace-separated word.
 		return e.allocStr(title(s)), nil
+	case "swapcase":
+		// s.swapcase() -> swap each rune case.
+		return e.allocStr(swapcase(s)), nil
 	case "lower":
 		if len(args) != 0 {
 			return 0, &EvalError{Msg: "lower() takes no arguments"}

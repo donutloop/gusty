@@ -405,6 +405,11 @@ dispatch (`print(len("hello".capitalize()))` emits `i32 5`).
 previous rune), folded in `stringConst`/`stringVal` and the call dispatch
 (`print(len("hello world".title()))` emits `i32 11`).
 
+`.swapcase()` swaps the case of each rune in **both** paths via a shared
+`swapcase` helper (`strings.Map` using `unicode.IsUpper`), folded in
+`stringConst`/`stringVal` and the call dispatch
+(`print(len("HeLLo".swapcase()))` emits `i32 5`).
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
