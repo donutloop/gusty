@@ -25,6 +25,11 @@ Single clean list of features, newest first.
   when it is present, else unchanged (interpreter path via
   `strings.TrimPrefix`/`TrimSuffix`). `"hello".removeprefix("he")` is
   "llo". Adds an Eval unit test. ADR 0073.
+- : **** splits
+  from the right (interpreter path; with no , all splits — the
+  same parts as ). With , the left-most parts are joined
+  and the last  separators split. 
+  is "a-b-c". Adds an Eval unit test. ADR 0078.
 - `feat(str-rsplit)`: **`.rsplit(sep)`** splits the string on `sep` from
   the right (interpreter path; with no `maxsplit`, all splits — the same
   parts as `split`). `"a-b-c".rsplit("-")[2]` is "c". Adds an Eval

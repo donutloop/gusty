@@ -459,9 +459,10 @@ already at/over width is unchanged.
 "substring not found" when absent (interpreter path; like `find` but
 errors instead of returning -1).
 
-`.rsplit(sep)` splits the string on `sep` from the right (interpreter
-path; with no `maxsplit`, all splits — the same parts as `split`).
-`"a-b-c".rsplit("-")[2]` is "c".
+`.rsplit([sep[, maxsplit]])` splits the string on `sep` from the right
+(interpreter path; with no `maxsplit`, all splits — the same parts as
+`split`). With `maxsplit`, the left-most parts are joined and the last
+`maxsplit` separators split. `"a-b-c-d".rsplit("-", 1)[0]` is "a-b-c".
 
 `.removeprefix(prefix)` / `.removesuffix(suffix)` return the string without
 the prefix / suffix when it is present, else unchanged (interpreter path

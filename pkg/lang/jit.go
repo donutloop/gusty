@@ -1316,8 +1316,9 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 		}
 		return listID, nil
 	case "rsplit":
-		// s.rsplit(sep) -> list split on sep (from the right; all splits).
+		// s.rsplit([sep[, maxsplit]]) -> list split on sep from the right.
 		sep := " "
+		maxsplit := -1
 		if len(args) >= 1 && len(args) <= 2 {
 			sepv, err := e.eval(args[0])
 			if err != nil {
@@ -1328,11 +1329,26 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 				return 0, &EvalError{Msg: "rsplit() separator must be a string"}
 			}
 			sep = sepo.sval
+			if len(args) == 2 {
+				ms, err := e.eval(args[1])
+				if err != nil {
+					return 0, err
+				}
+				maxsplit = int(ms)
+			}
 		}
 		parts := strings.Split(s, sep)
+		var out []string
+		if maxsplit >= 0 && maxsplit < len(parts)-1 {
+			keep := len(parts) - maxsplit
+			out = append(out, strings.Join(parts[:keep], sep))
+			out = append(out, parts[keep:]...)
+		} else {
+			out = parts
+		}
 		listID := e.allocObj("list")
 		lo := e.heap[listID]
-		for _, part := range parts {
+		for _, part := range out {
 			lo.elems = append(lo.elems, e.allocStr(part))
 		}
 		return listID, nil

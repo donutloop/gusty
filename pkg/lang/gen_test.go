@@ -812,6 +812,27 @@ func TestGenStrRsplit(t *testing.T) {
 	}
 }
 
+func TestGenStrRsplitMaxsplit(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"a-b-c-d".rsplit("-", 1)[0]`); got != "a-b-c" {
+		t.Fatalf("rsplit maxsplit left: expected a-b-c, got %q", got)
+	}
+	if got := evalStr(`"a-b-c-d".rsplit("-", 1)[1]`); got != "d" {
+		t.Fatalf("rsplit maxsplit last: expected d, got %q", got)
+	}
+}
+
 func TestGenStrRemoveprefixSuffix(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)
