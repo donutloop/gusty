@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-isalnum)`: **`.isalnum()`** returns 1 if every rune is
+  alphanumeric (and the string is non-empty), else 0, in **both** paths:
+  the interpreter checks `unicode.IsLetter`/`unicode.IsDigit`; the codegen
+  folds it to `i32 1`/`i32 0` (`print("abc123".isalnum())` emits
+  `i32 1`). Adds Eval/IR/integration tests. ADR 0066.
 - `feat(str-partition)`: **`.partition(sep)`** returns a list
   `[head, sep, tail]` split at the first occurrence of `sep` (or
   `[s, "", ""]` when absent) in the interpreter path.

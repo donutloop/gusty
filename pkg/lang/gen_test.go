@@ -647,6 +647,30 @@ func TestGenStrPartition(t *testing.T) {
 	}
 }
 
+func TestGenStrIsalnum(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"abc123".isalnum()`); got != 1 {
+		t.Fatalf("isalnum alnum: expected 1, got %d", got)
+	}
+	if got := evalInt(`"abc!".isalnum()`); got != 0 {
+		t.Fatalf("isalnum punctuation: expected 0, got %d", got)
+	}
+	if got := evalInt(`"".isalnum()`); got != 0 {
+		t.Fatalf("isalnum empty: expected 0, got %d", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

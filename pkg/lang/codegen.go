@@ -1380,6 +1380,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					}
 				}
 				return fmt.Sprintf("%d", res), nil
+			case "isalnum":
+				res := 0
+				if v != "" {
+					all := true
+					for _, r := range v {
+						if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+							all = false
+							break
+						}
+					}
+					if all {
+						res = 1
+					}
+				}
+				return fmt.Sprintf("%d", res), nil
 			case "islower":
 				res := 0
 				hasCased := false

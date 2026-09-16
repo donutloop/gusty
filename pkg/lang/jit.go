@@ -1374,6 +1374,17 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, nil
 		}
 		return 1, nil
+	case "isalnum":
+		// s.isalnum() -> 1 if every rune is alphanumeric and s is non-empty.
+		if s == "" {
+			return 0, nil
+		}
+		for _, r := range s {
+			if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+				return 0, nil
+			}
+		}
+		return 1, nil
 	case "islower":
 		// s.islower() -> 1 if there is a cased rune and all cased runes are lowercase.
 		hasCased := false

@@ -512,6 +512,12 @@ func TestExecStrIslowerIsupper(t *testing.T) {
 	assertOutput(t, `print("ABC".isupper())`, "1\n")
 }
 
+func TestExecStrIsalnum(t *testing.T) {
+	// isalnum folds to 1 or 0
+	assertOutput(t, `print("abc123".isalnum())`, "1\n")
+	assertOutput(t, `print("abc!".isalnum())`, "0\n")
+}
+
 func TestExecStrStartswithEndswith(t *testing.T) {
 	// startswith/endswith fold to 1 or 0
 	assertOutput(t, `print("hello".startswith("he"))`, "1\n")
