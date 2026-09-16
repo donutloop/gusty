@@ -1264,6 +1264,31 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			lo.elems = append(lo.elems, e.allocStr(p))
 		}
 		return listID, nil
+	case "partition":
+		// s.partition(sep) -> list [head, sep, tail] at the first occurrence of sep.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "partition() takes exactly 1 argument"}
+		}
+		sepv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		sepo, ok := e.heap[sepv]
+		if !ok || sepo.kind != "str" {
+			return 0, &EvalError{Msg: "partition() argument must be a string"}
+		}
+		sep := sepo.sval
+		listID := e.allocObj("list")
+		lo := e.heap[listID]
+		idx := strings.Index(s, sep)
+		if idx < 0 {
+			lo.elems = append(lo.elems, e.allocStr(s), e.allocStr(""), e.allocStr(""))
+		} else {
+			head := s[:idx]
+			tail := s[idx+len(sep):]
+			lo.elems = append(lo.elems, e.allocStr(head), e.allocStr(sep), e.allocStr(tail))
+		}
+		return listID, nil
 	case "replace":
 		if len(args) != 2 {
 			return 0, &EvalError{Msg: "replace() takes exactly 2 arguments"}

@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-partition)`: **`.partition(sep)`** returns a list
+  `[head, sep, tail]` split at the first occurrence of `sep` (or
+  `[s, "", ""]` when absent) in the interpreter path.
+  `"a-b-c".partition("-")[0]` is "a". Adds an Eval unit test. ADR 0065.
 - `feat(str-islower-isupper)`: **`.islower()`** / **`.isupper()`** return
   1 if there is at least one cased rune and all cased runes are lowercase /
   uppercase, else 0, in **both** paths: the interpreter scans cased runes;

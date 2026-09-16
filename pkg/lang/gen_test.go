@@ -620,6 +620,33 @@ func TestGenStrIslowerIsupper(t *testing.T) {
 	}
 }
 
+func TestGenStrPartition(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"a-b-c".partition("-")[0]`); got != "a" {
+		t.Fatalf("partition head: expected a, got %q", got)
+	}
+	if got := evalStr(`"a-b-c".partition("-")[1]`); got != "-" {
+		t.Fatalf("partition sep: expected -, got %q", got)
+	}
+	if got := evalStr(`"a-b-c".partition("-")[2]`); got != "b-c" {
+		t.Fatalf("partition tail: expected b-c, got %q", got)
+	}
+	if got := evalStr(`"abc".partition("z")[0]`); got != "abc" {
+		t.Fatalf("partition not found head: expected abc, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

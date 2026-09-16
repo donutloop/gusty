@@ -429,6 +429,10 @@ and all cased runes are lowercase / uppercase, else 0, in **both** paths:
 the interpreter scans cased runes; the codegen folds to `i32 1`/`i32 0`
 (`print("abc".islower())` emits `i32 1`).
 
+`.partition(sep)` returns a list `[head, sep, tail]` split at the first
+occurrence of `sep` (or `[s, "", ""]` when absent) in the interpreter
+path. `"a-b-c".partition("-")[0]` is "a".
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
