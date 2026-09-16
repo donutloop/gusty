@@ -814,6 +814,21 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 	if v != 4 {
 		t.Fatalf("9 // 2 got %d, want 4", v)
 	}
+	// modulo.
+	v, _, err = EvalExpr("17 % 5")
+	if err != nil {
+		t.Fatalf("modulo err: %v", err)
+	}
+	if v != 2 {
+		t.Fatalf("17 %% 5 got %d, want 2", v)
+	}
+	v, _, err = EvalExpr("20 % 7")
+	if err != nil {
+		t.Fatalf("modulo err: %v", err)
+	}
+	if v != 6 {
+		t.Fatalf("20 %% 7 got %d, want 6", v)
+	}
 }
 
 func TestEvalComprehension(t *testing.T) {

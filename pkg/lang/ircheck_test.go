@@ -187,6 +187,25 @@ func TestIRConstantFolding(t *testing.T) {
 	}
 }
 
+func TestIRModuloCompilesWithLLC(t *testing.T) {
+	// constant modulo folds to a constant (17 % 5 = 2).
+	res, err := Compile("print(17 % 5)")
+	if err != nil {
+		t.Fatalf("compile constant %%%%: %v", err)
+	}
+	if !strings.Contains(res.IR, "i32 2") {
+		t.Fatalf("constant modulo should fold to 2, got:\n%s", res.IR)
+	}
+	// runtime modulo lowers to srem (mirrors the interpreter's %%).
+	res, err = Compile("x = 17\nprint(x % 5)")
+	if err != nil {
+		t.Fatalf("compile runtime %%%%: %v", err)
+	}
+	if !strings.Contains(res.IR, "srem i32") {
+		t.Fatalf("runtime modulo should lower to srem, got:\n%s", res.IR)
+	}
+}
+
 func TestIRForListCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)")
 	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        continue\n    s = s + x\nprint(s)")

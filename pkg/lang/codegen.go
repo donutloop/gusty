@@ -430,6 +430,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			op = "mul"
 		case "/", "//":
 			op = "sdiv"
+		case "%":
+			op = "srem"
 		case "==":
 			op = "icmp eq"
 		case "!=":

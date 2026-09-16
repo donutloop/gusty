@@ -84,6 +84,19 @@ func TestExecAssignAndRead(t *testing.T) {
 	assertOutput(t, "a = 2\nb = 40\nprint(a * b)", "80\n")
 }
 
+func TestExecModulo(t *testing.T) {
+	// constant modulo folds to a constant.
+	assertOutput(t, "print(17 % 5)", "2\n")
+	assertOutput(t, "print(20 % 7)", "6\n")
+	assertOutput(t, "print(42 % 4)", "2\n")
+	// runtime modulo over a variable lowers to srem.
+	assertOutput(t, "x = 17\nprint(x % 5)", "2\n")
+	assertOutput(t, "a = 20\nb = 7\nprint(a % b)", "6\n")
+	// modulo composes with other arithmetic in an expression.
+	assertOutput(t, "print(17 % 5 + 1)", "3\n")
+	assertOutput(t, "print(100 // 30 % 7)", "3\n")
+}
+
 func TestExecIfElse(t *testing.T) {
 	assertOutput(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)", "10\n")
 	assertOutput(t, "x = 3\nif x < 2:\n    print(10)\nelse:\n    print(20)", "20\n")

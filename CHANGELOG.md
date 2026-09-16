@@ -4,6 +4,15 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **`%` modulo operator in the LLVM AOT codegen** —
+  the interpreter already evaluated `%` (signed remainder), but the AOT
+  runtime path only folded it on constant operands and rejected it on runtime
+  operands (`unsupported operator "%"`). The codegen now lowers `%` to `srem`,
+  closing the interpreter-vs-AOT gap: `17 % 5` folds to `2` at compile time and
+  `x % 5` lowers to `srem i32` at runtime. Adds IR checks (`TestIRModuloCompilesWithLLC`),
+  interpreter unit tests, and end-to-end exec tests (`TestExecModulo`). ADR 0029.
+
+
 - `feat`: **multi-argument range iterables in comprehensions** —
   `range(start, stop)` and `range(start, stop, step)` as comprehension
   iterables in both the interpreter and the LLVM AOT codegen. The AOT path
