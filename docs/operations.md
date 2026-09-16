@@ -154,6 +154,9 @@ indexes dicts/sets at runtime and is unchanged.
 
 ## String-constant concatenation + len (AOT codegen)
 
+- `.split()` folds to the substring count (`len("a b c".split())` -> 3).
+
+
 - String indexing `"abc"[1]` returns the char code (98) in both paths;
   the codegen constant-folds `*StrLit` index via `stringVal`.
 

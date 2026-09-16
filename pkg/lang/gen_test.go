@@ -242,3 +242,22 @@ func TestGenStrIndex(t *testing.T) {
 		t.Fatalf("string index: expected 98, got %d", v)
 	}
 }
+
+func TestGenStrSplitLen(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	// len("a b c".split()) -> 3
+	if v := evalInt("len(\"a b c\".split())"); v != 3 {
+		t.Fatalf("split len: expected 3, got %d", v)
+	}
+}

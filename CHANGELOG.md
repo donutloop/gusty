@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-split)`: **`.split()` folds to substring count** — `dictMethodElems`
+  gains a `split` case (space-separated, matching the interpreter default), so
+  `len("a b c".split())` -> 3 folds in the AOT codegen. Adds Eval/IR/
+  integration tests. ADR 0048.
 - `feat(str-index)`: **string indexing** `"abc"[1]` -> 98 ('b') in **both**
   paths. The interpreter's Index gains a `str` kind returning the char code;
   the codegen's Index constant-folds `*StrLit` via `stringVal`. Adds

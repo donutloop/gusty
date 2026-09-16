@@ -57,7 +57,7 @@ literals
 ship in **both** the interpreter and the AOT codegen, lowered to a closure
 exactly like `def`. String methods `.upper()`, `.lower()`, `.strip()` on constant string
 literals constant-fold in the codegen (`len("AbC".upper())` -> 3). String indexing `"abc"[1]`
-returns the char code (98) in both paths. Dict `.keys()`/`.values()` on constant dict literals
+returns the char code (98) in both paths. `.split()` folds `len("a b c".split())` to 3. Dict `.keys()`/`.values()` on constant dict literals
 fold to lists, and list `.append()` on constant literals folds
 (`[1, 2, 3].append(4)` -> `[1, 2, 3, 4]`).
 fold to lists (`{1: 2, 3: 4}.keys()` -> `[1, 3]`), and `.items()`

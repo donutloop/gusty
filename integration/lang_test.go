@@ -455,3 +455,7 @@ func TestExecDictMinMaxMethods(t *testing.T) {
 func TestExecStrIndex(t *testing.T) {
 	assertOutput(t, `print("abc"[1])`, "98\n")
 }
+
+func TestExecStrSplitLen(t *testing.T) {
+	assertOutput(t, `print(len("a b c".split()))`, "3\n")
+}

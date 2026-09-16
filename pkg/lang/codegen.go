@@ -336,6 +336,26 @@ func (g *irGen) dictMethodElems(e Expr) ([]Expr, bool) {
 	if !ok {
 		return nil, false
 	}
+	if attr.Name.Value == "split" {
+		str, ok := g.stringVal(attr.Obj)
+		if !ok {
+			return nil, false
+		}
+		sep := " "
+		if len(c.Args) > 0 {
+			if s2, ok := g.stringVal(c.Args[0]); ok {
+				sep = s2
+			} else {
+				return nil, false
+			}
+		}
+		parts := strings.Split(str, sep)
+		elems := make([]Expr, len(parts))
+		for i, p := range parts {
+			elems[i] = &StrLit{Value: p}
+		}
+		return elems, true
+	}
 	if ll, ok := attr.Obj.(*ListLit); ok && attr.Name.Value == "append" {
 		if len(c.Args) != 1 {
 			return nil, false

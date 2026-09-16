@@ -613,3 +613,11 @@ func TestIRStrIndexFolds(t *testing.T) {
 		t.Fatalf("expected folded char code 98, got:\n%s", ir)
 	}
 }
+
+func TestIRStrSplitLenFolds(t *testing.T) {
+	// len("a b c".split()) folds to 3.
+	ir := llcCompiles(t, `print(len("a b c".split()))`)
+	if !strings.Contains(ir, "3") {
+		t.Fatalf("expected folded split count 3, got:\n%s", ir)
+	}
+}

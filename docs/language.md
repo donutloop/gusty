@@ -352,7 +352,8 @@ calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
 
 String indexing `"abc"[1]` returns the char code (98 for 'b') in both the
 interpreter and the AOT codegen (constant-folded).
-Boxed strings support Python-style methods:
+`.split()` (space-separated) folds to the substring count in the codegen
+(`len("a b c".split())` -> 3). Boxed strings support Python-style methods:
 
     "heLLo".upper()      # HELLO
     "heLLo".lower()      # hello
