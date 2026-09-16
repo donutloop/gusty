@@ -788,6 +788,30 @@ func TestGenStrMethodIndex(t *testing.T) {
 	}
 }
 
+func TestGenStrRsplit(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"a-b-c".rsplit("-")[0]`); got != "a" {
+		t.Fatalf("rsplit first: expected a, got %q", got)
+	}
+	if got := evalStr(`"a-b-c".rsplit("-")[1]`); got != "b" {
+		t.Fatalf("rsplit second: expected b, got %q", got)
+	}
+	if got := evalStr(`"a-b-c".rsplit("-")[2]`); got != "c" {
+		t.Fatalf("rsplit last: expected c, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

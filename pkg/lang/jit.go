@@ -1265,6 +1265,27 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			lo.elems = append(lo.elems, e.allocStr(p))
 		}
 		return listID, nil
+	case "rsplit":
+		// s.rsplit(sep) -> list split on sep (from the right; all splits).
+		sep := " "
+		if len(args) >= 1 && len(args) <= 2 {
+			sepv, err := e.eval(args[0])
+			if err != nil {
+				return 0, err
+			}
+			sepo, ok := e.heap[sepv]
+			if !ok || sepo.kind != "str" {
+				return 0, &EvalError{Msg: "rsplit() separator must be a string"}
+			}
+			sep = sepo.sval
+		}
+		parts := strings.Split(s, sep)
+		listID := e.allocObj("list")
+		lo := e.heap[listID]
+		for _, part := range parts {
+			lo.elems = append(lo.elems, e.allocStr(part))
+		}
+		return listID, nil
 	case "partition":
 		// s.partition(sep) -> list [head, sep, tail] at the first occurrence of sep.
 		if len(args) != 1 {

@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-rsplit)`: **`.rsplit(sep)`** splits the string on `sep` from
+  the right (interpreter path; with no `maxsplit`, all splits — the same
+  parts as `split`). `"a-b-c".rsplit("-")[2]` is "c". Adds an Eval
+  unit test. ADR 0072.
 - `feat(str-index)`: **`.index(sub)`** returns the index of the first
   occurrence of `sub`, raising "substring not found" when absent
   (interpreter path; like `find` but errors instead of returning -1).

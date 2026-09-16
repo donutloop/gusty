@@ -459,6 +459,10 @@ already at/over width is unchanged.
 "substring not found" when absent (interpreter path; like `find` but
 errors instead of returning -1).
 
+`.rsplit(sep)` splits the string on `sep` from the right (interpreter
+path; with no `maxsplit`, all splits — the same parts as `split`).
+`"a-b-c".rsplit("-")[2]` is "c".
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
