@@ -101,6 +101,11 @@ type irGen struct {
 	// dictVals maps a variable name to its concrete dict literal value,
 	// so `d[key]` on a dict variable can be resolved at codegen time.
 	dictVals map[string]*DictLit
+	// lambdaCounter numbers generated anonymous functions (lambda_0, ...).
+	lambdaCounter int
+	// lambdas maps a variable name bound to a lambda to its generated
+	// FuncDef name, so `f = lambda x: ...; f(3)` resolves in Call.
+	lambdas map[string]string
 }
 
 type loopInfo struct {
@@ -670,6 +675,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return g.call(b, n)
 	case *KeywordArg:
 		return g.value(b, n.Value)
+	case *Lambda:
+		// a lambda used as a value: register its anonymous FuncDef and
+		// return the generated name as a closure reference.
+		name, err := g.emitLambda(b, n)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s", name), nil
 	default:
 		return "", fmt.Errorf("codegen: unsupported expression %T", e)
 	}
@@ -1007,6 +1020,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	fnName := ""
 	if n, ok := c.Fn.(*Name); ok {
 		fnName = n.Value
+	} else if lam, ok := c.Fn.(*Lambda); ok {
+		// inline lambda callee: `(lambda x: expr)(args)`.
+		name, err := g.emitLambda(b, lam)
+		if err != nil {
+			return "", err
+		}
+		fnName = name
+	}
+	// `f(3)` where f was bound to a lambda: resolve to its FuncDef name.
+	if fnName != "" {
+		if lamName, ok := g.lambdas[fnName]; ok {
+			fnName = lamName
+		}
 	}
 	if g.funcs[fnName] {
 		fd := g.fds[fnName]
@@ -1321,6 +1347,32 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 }
 
+// emitLambda registers a lambda as a generated anonymous FuncDef and emits
+// its closure IR, returning the generated function name so Call can invoke it.
+func (g *irGen) emitLambda(b *strings.Builder, lam *Lambda) (string, error) {
+	name := fmt.Sprintf("lambda_%d", g.lambdaCounter)
+	g.lambdaCounter++
+	fd := &FuncDef{
+		Name:   name,
+		Params: lam.Params,
+		Body:   []Stmt{&ReturnStmt{Expr: lam.Body}},
+	}
+	// emit the lambda FuncDef at module level (globals), not the current
+	// statement builder, so the `define` is not nested inside main.
+	if err := g.funcDef(&g.globals, fd); err != nil {
+		return "", err
+	}
+	if g.funcs == nil {
+		g.funcs = map[string]bool{}
+	}
+	g.funcs[name] = true
+	if g.fds == nil {
+		g.fds = map[string]*FuncDef{}
+	}
+	g.fds[name] = fd
+	return name, nil
+}
+
 func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.closures = map[string]*closureInfo{}
 	g.envMode = false
@@ -1373,6 +1425,18 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 	case *AssignStmt:
 		if nm, ok := n.Target.(*Name); ok {
+			// `f = lambda ...` binds the generated lambda FuncDef to the variable.
+			if lam, ok := n.Value.(*Lambda); ok {
+				name, err := g.emitLambda(b, lam)
+				if err != nil {
+					return err
+				}
+				if g.lambdas == nil {
+					g.lambdas = map[string]string{}
+				}
+				g.lambdas[nm.Value] = name
+				return nil
+			}
 			v, err := g.value(b, n.Value)
 			if err != nil {
 				return err

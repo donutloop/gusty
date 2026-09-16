@@ -815,6 +815,15 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return h, nil
 	case *Comp:
 		return e.evalComp(n)
+	case *Lambda:
+		// lambda params: body => anonymous FuncDef + closure capturing env.
+		fd := &FuncDef{
+			Name:   "lambda",
+			Params: n.Params,
+			Body:   []Stmt{&ReturnStmt{Expr: n.Body}},
+		}
+		h := e.allocClosure(fd, e.Vars)
+		return h, nil
 	default:
 		return 0, &EvalError{Msg: "unsupported expression for eval"}
 	}
@@ -1340,6 +1349,18 @@ func (e *Evaluator) importModule(mod string) error {
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	// method call: obj.method(args) — Fn is an Attr resolving to a method
+	// inline lambda callee: `(lambda ...)(args)` evaluates to a closure.
+	if _, ok := n.Fn.(*Lambda); ok {
+		h, err := e.eval(n.Fn)
+		if err != nil {
+			return 0, err
+		}
+		mo, ok := e.heap[h]
+		if !ok || mo.kind != "closure" {
+			return 0, &EvalError{Msg: "lambda callee is not a closure"}
+		}
+		return e.callClosure(mo, n)
+	}
 	if attr, ok := n.Fn.(*Attr); ok {
 		// string methods: s.upper() / lower() / strip() / split(sep?)
 		recv, err := e.eval(attr.Obj)

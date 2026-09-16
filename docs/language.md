@@ -129,6 +129,13 @@ modules. Imports are evaluated in the interpreter (REPL/--eval path).
 
 ### Functions
 
+Lambda is an anonymous single-expression function: `lambda x: int: x + 1`.
+It can be called inline `(lambda x: int: x + 1)(5)` or bound to a name
+`f = lambda x: int: x * 2` and called `f(3)`. A lambda is lowered to a
+closure exactly like `def`, so the AOT codegen emits an anonymous FuncDef
+(`lambda_N`) at module level and a call to it.
+
+
 ```
 def add(a, b):
     return a + b

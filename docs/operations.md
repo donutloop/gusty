@@ -53,6 +53,16 @@ Functions, control flow (`if`/`while`/`for`/`match`), the `pass` no-op
 statement, integer arithmetic, comparisons, and `print` (via `printf`) are all
 lowered to opaque-pointer IR.
 
+## Lambda (both interpreter and AOT codegen)
+
+`lambda params: expr` is an anonymous single-expression function, lowered to
+a closure exactly like `def`:
+- inline call: `(lambda x: int: x + 1)(5)` -> 6
+- bound form: `f = lambda x: int: x * 2` then `f(3)` -> 6
+- the AOT codegen emits an anonymous FuncDef (`lambda_N`) at module level and
+  a call to it; the interpreter allocs a closure capturing the environment.
+- interpreter-only: `Attr` string/list/dict methods, classes, generators.
+
 ## Interpreter-only language surface
 
 Classes (with **inheritance** via `class Child(Base):` and `super()`, see

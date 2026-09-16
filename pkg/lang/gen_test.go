@@ -96,3 +96,27 @@ func TestGenMaxSetLiteral(t *testing.T) {
 		t.Fatalf("expected 3, got %d", v)
 	}
 }
+
+func TestGenLambdaInline(t *testing.T) {
+	// `(lambda x: int: x + 1)(5)` -> 6
+	if v, _, err := EvalExpr("(lambda x: int: x + 1)(5)"); err != nil {
+		t.Fatalf("inline lambda call: %v", err)
+	} else if v != 6 {
+		t.Fatalf("expected 6, got %d", v)
+	}
+	// multi-arg lambda: `(lambda x: int, y: int: x * y)(3, 4)` -> 12
+	if v, _, err := EvalExpr("(lambda x: int, y: int: x * y)(3, 4)"); err != nil {
+		t.Fatalf("multi-arg lambda call: %v", err)
+	} else if v != 12 {
+		t.Fatalf("expected 12, got %d", v)
+	}
+}
+
+func TestGenLambdaNamed(t *testing.T) {
+	// `f = lambda x: int: x * 2\nf(3)` -> 6
+	if v, _, err := EvalExpr("f = lambda x: int: x * 2\nf(3)"); err != nil {
+		t.Fatalf("named lambda: %v", err)
+	} else if v != 6 {
+		t.Fatalf("expected 6, got %d", v)
+	}
+}

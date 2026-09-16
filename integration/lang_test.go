@@ -416,3 +416,13 @@ func TestExecSumMinMaxAbs(t *testing.T) {
 	assertOutput(t, "a = 3\nb = 1\nprint([a, b][0])", "3\n")
 	assertOutput(t, "a = 3\nb = 1\nprint([a, b][1])", "1\n")
 }
+
+func TestExecLambdaInline(t *testing.T) {
+	// `(lambda x: int: x + 1)(5)` -> 6
+	assertOutput(t, "print((lambda x: int: x + 1)(5))", "6\n")
+}
+
+func TestExecLambdaNamed(t *testing.T) {
+	// `f = lambda x: int: x * 2; f(3)` -> 6
+	assertOutput(t, "f = lambda x: int: x * 2\nprint(f(3))", "6\n")
+}

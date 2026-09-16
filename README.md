@@ -52,7 +52,10 @@ concatenation + `len` (`"a" + "b"`, `len("ab" + "cd")`), inline dict/set
 literals with constant-key indexing (`{1: 10, 2: 20}[1]`, `{1, 2, 3}[2]`), the
 numeric builtins `sum`/`min`/`max`/`abs`, and `for` loops over inline list
 literals
-(`for x in [1, 2, 3]:`, unrolled per element).
+(`for x in [1, 2, 3]:`, unrolled per element). `lambda` anonymous functions
+(inline `(lambda x: int: x + 1)(5)` and bound `f = lambda x: int: x * 2; f(3)`)
+ship in **both** the interpreter and the AOT codegen, lowered to a closure
+exactly like `def`.
 
 ## Toolchain
 

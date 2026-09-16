@@ -3,6 +3,14 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(lambda)`: **`lambda` anonymous functions** in **both** the interpreter
+  and the AOT codegen. `(lambda x: int: x + 1)(5)` -> 6 and `f = lambda x: int:
+  x * 2; f(3)` -> 6. A lambda is lowered to a closure exactly like `def`: the
+  interpreter allocs a closure capturing the environment; the codegen emits an
+  anonymous FuncDef (`lambda_N`) at module level (globals builder) and a call
+  to it. Named lambdas resolve via a new `g.lambdas` map. Adds Eval tests
+  (`TestGenLambdaInline`/`Named`), IR tests (`TestIRLambda*`), and integration
+  tests (`TestExecLambda*`). ADR 0041.
 - `feat(codegen)`: **Comprehension indexing** — `d[key]` on a lowered **dict
   comprehension** now folds to the mapped constant value (keys recorded via a
   new `compKeys` map), erroring `key not found` when absent; `s[key]` on a
