@@ -1380,6 +1380,38 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					}
 				}
 				return fmt.Sprintf("%d", res), nil
+			case "islower":
+				res := 0
+				hasCased := false
+				allLower := true
+				for _, r := range v {
+					if unicode.IsLower(r) {
+						hasCased = true
+					} else if unicode.IsUpper(r) {
+						hasCased = true
+						allLower = false
+					}
+				}
+				if hasCased && allLower {
+					res = 1
+				}
+				return fmt.Sprintf("%d", res), nil
+			case "isupper":
+				res := 0
+				hasCased := false
+				allUpper := true
+				for _, r := range v {
+					if unicode.IsUpper(r) {
+						hasCased = true
+					} else if unicode.IsLower(r) {
+						hasCased = true
+						allUpper = false
+					}
+				}
+				if hasCased && allUpper {
+					res = 1
+				}
+				return fmt.Sprintf("%d", res), nil
 		case "startswith", "endswith":
 			// s.startswith(sub) / s.endswith(sub) -> 1 or 0.
 			if len(c.Args) != 1 {

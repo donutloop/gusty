@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-islower-isupper)`: **`.islower()`** / **`.isupper()`** return
+  1 if there is at least one cased rune and all cased runes are lowercase /
+  uppercase, else 0, in **both** paths: the interpreter scans cased runes;
+  the codegen folds to `i32 1`/`i32 0` (`print("abc".islower())` emits
+  `i32 1`). Adds Eval/IR/integration tests. ADR 0064.
 - `feat(str-isalpha)`: **`.isalpha()`** returns 1 if every rune is
   alphabetic (and the string is non-empty), else 0, in **both** paths: the
   interpreter checks `unicode.IsLetter`; the codegen folds it to

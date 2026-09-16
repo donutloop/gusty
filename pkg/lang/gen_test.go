@@ -590,6 +590,36 @@ func TestGenStrIsalpha(t *testing.T) {
 	}
 }
 
+func TestGenStrIslowerIsupper(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"abc".islower()`); got != 1 {
+		t.Fatalf("islower lower: expected 1, got %d", got)
+	}
+	if got := evalInt(`"Abc".islower()`); got != 0 {
+		t.Fatalf("islower mixed: expected 0, got %d", got)
+	}
+	if got := evalInt(`"ABC".isupper()`); got != 1 {
+		t.Fatalf("isupper upper: expected 1, got %d", got)
+	}
+	if got := evalInt(`"AbC".isupper()`); got != 0 {
+		t.Fatalf("isupper mixed: expected 0, got %d", got)
+	}
+	if got := evalInt(`"123".islower()`); got != 0 {
+		t.Fatalf("islower no cased: expected 0, got %d", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

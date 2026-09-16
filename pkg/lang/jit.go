@@ -1349,6 +1349,38 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, nil
 		}
 		return 1, nil
+	case "islower":
+		// s.islower() -> 1 if there is a cased rune and all cased runes are lowercase.
+		hasCased := false
+		allLower := true
+		for _, r := range s {
+			if unicode.IsLower(r) {
+				hasCased = true
+			} else if unicode.IsUpper(r) {
+				hasCased = true
+				allLower = false
+			}
+		}
+		if hasCased && allLower {
+			return 1, nil
+		}
+		return 0, nil
+	case "isupper":
+		// s.isupper() -> 1 if there is a cased rune and all cased runes are uppercase.
+		hasCased := false
+		allUpper := true
+		for _, r := range s {
+			if unicode.IsUpper(r) {
+				hasCased = true
+			} else if unicode.IsLower(r) {
+				hasCased = true
+				allUpper = false
+			}
+		}
+		if hasCased && allUpper {
+			return 1, nil
+		}
+		return 0, nil
 	case "join":
 		// s.join(list) -> join list element strings with separator s.
 		if len(args) != 1 {

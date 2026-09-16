@@ -705,6 +705,18 @@ func TestIRStrIsalphaFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrIslowerIsupperFolds(t *testing.T) {
+	// `print("abc".islower())` folds to i32 1, `print("ABC".isupper())` too.
+	ir := llcCompiles(t, `print("abc".islower())`)
+	if !strings.Contains(ir, "i32 1") {
+		t.Fatalf("expected folded islower 1 in IR, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print("ABC".isupper())`)
+	if !strings.Contains(ir, "i32 1") {
+		t.Fatalf("expected folded isupper 1 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)
