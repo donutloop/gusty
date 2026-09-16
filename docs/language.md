@@ -465,3 +465,7 @@ The `sorted(list)` builtin returns a new sorted list. `reversed(x)` returns a
 reversed copy of a list or string: `reversed([1, 2, 3])` -> `[3, 2, 1]`,
 `reversed("abc")` -> `"cba"`. `reversed` is interpreter-only (the AOT codegen
 constant-folds it only on literal list/string arguments); see ADR 0082.
+`enumerate(x)` returns a list of `[index, value]` pairs for each element of a
+list: `enumerate([10, 20, 30])` -> `[[0, 10], [1, 20], [2, 30]]`. It is
+interpreter-only (the AOT codegen folds builtins only on literal args; nested
+list construction is not yet lowered); see ADR 0083.

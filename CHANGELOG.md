@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(enumerate)`: `enumerate(x)` returns a list of `[index, value]` pairs
+  for each element of a list (`enumerate([10, 20, 30])` -> `[[0, 10], [1, 20],
+  [2, 30]]`). Interpreter-only; AOT codegen folds builtins only on literal
+  args (nested list construction not yet lowered). ADR 0083.
 - `feat(reversed)`: `reversed(x)` returns a reversed copy of a list or string
   (`reversed([1, 2, 3])` -> `[3, 2, 1]`, `reversed("abc")` -> `"cba"`).
   Ships in the interpreter and the AOT codegen (codegen folds on literal

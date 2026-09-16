@@ -2325,6 +2325,23 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 					}
 				}
 				return 0, &EvalError{Msg: "reversed expects a list or string"}
+	case "enumerate":
+		av, err := e.eval(n.Args[0])
+		if err != nil {
+			return 0, err
+		}
+		if o, ok := e.heap[av]; ok && o.kind == "list" {
+			id := e.allocObj("list")
+			lo := e.heap[id]
+			for i, el := range o.elems {
+				pair := e.allocObj("list")
+				po := e.heap[pair]
+				po.elems = append(po.elems, int64(i), el)
+				lo.elems = append(lo.elems, pair)
+			}
+			return id, nil
+		}
+		return 0, &EvalError{Msg: "enumerate expects a list"}
 case "sum":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "sum expects 1 argument"}

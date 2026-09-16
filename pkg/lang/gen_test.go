@@ -1123,3 +1123,39 @@ func TestGenReversed(t *testing.T) {
 		t.Fatalf("reversed string: got %q", got)
 	}
 }
+
+func TestGenEnumerate(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		ev := NewEvaluator()
+		rv, err := ev.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		o := ev.heap[rv]
+		if o.kind != "list" {
+			t.Fatalf("expected list, got kind %q", o.kind)
+		}
+		var parts []string
+		for _, el := range o.elems {
+			if p, ok := ev.heap[el]; ok && p.kind == "list" {
+				parts = append(parts, "[")
+				for _, e2 := range p.elems {
+					if s, ok := ev.heap[e2]; ok {
+						parts = append(parts, fmt.Sprintf("%v", s.fval))
+					} else {
+						parts = append(parts, fmt.Sprintf("%v", e2))
+					}
+				}
+				parts = append(parts, "]")
+			}
+		}
+		return strings.Join(parts, " ")
+	}
+	if got := evalStr("enumerate([10, 20, 30])"); got != "[ 0 10 ] [ 1 20 ] [ 2 30 ]" {
+		t.Fatalf("enumerate list: got %q", got)
+	}
+}
