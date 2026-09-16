@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-isalpha)`: **`.isalpha()`** returns 1 if every rune is
+  alphabetic (and the string is non-empty), else 0, in **both** paths: the
+  interpreter checks `unicode.IsLetter`; the codegen folds it to
+  `i32 1`/`i32 0` (`print("abc".isalpha())` emits `i32 1`). Adds
+  Eval/IR/integration tests. ADR 0063.
 - `feat(str-isdigit)`: **`.isdigit()`** returns 1 if every rune is a digit
   (and the string is non-empty), else 0, in **both** paths: the interpreter
   checks `unicode.IsDigit`; the codegen folds it to `i32 1`/`i32 0`

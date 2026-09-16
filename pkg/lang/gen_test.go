@@ -566,6 +566,30 @@ func TestGenStrIsdigit(t *testing.T) {
 	}
 }
 
+func TestGenStrIsalpha(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"abc".isalpha()`); got != 1 {
+		t.Fatalf("isalpha letters: expected 1, got %d", got)
+	}
+	if got := evalInt(`"ab1".isalpha()`); got != 0 {
+		t.Fatalf("isalpha mixed: expected 0, got %d", got)
+	}
+	if got := evalInt(`"".isalpha()`); got != 0 {
+		t.Fatalf("isalpha empty: expected 0, got %d", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

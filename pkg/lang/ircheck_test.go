@@ -697,6 +697,14 @@ func TestIRStrIsdigitFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrIsalphaFolds(t *testing.T) {
+	// `print("abc".isalpha())` folds to i32 1.
+	ir := llcCompiles(t, `print("abc".isalpha())`)
+	if !strings.Contains(ir, "i32 1") {
+		t.Fatalf("expected folded isalpha 1 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)

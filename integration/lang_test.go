@@ -499,6 +499,12 @@ func TestExecStrIsdigit(t *testing.T) {
 	assertOutput(t, `print("12a".isdigit())`, "0\n")
 }
 
+func TestExecStrIsalpha(t *testing.T) {
+	// isalpha folds to 1 or 0
+	assertOutput(t, `print("abc".isalpha())`, "1\n")
+	assertOutput(t, `print("ab1".isalpha())`, "0\n")
+}
+
 func TestExecStrStartswithEndswith(t *testing.T) {
 	// startswith/endswith fold to 1 or 0
 	assertOutput(t, `print("hello".startswith("he"))`, "1\n")

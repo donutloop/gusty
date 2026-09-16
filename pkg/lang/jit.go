@@ -1338,6 +1338,17 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, nil
 		}
 		return 1, nil
+	case "isalpha":
+		// s.isalpha() -> 1 if all runes are alphabetic, else 0.
+		for _, r := range s {
+			if !unicode.IsLetter(r) {
+				return 0, nil
+			}
+		}
+		if s == "" {
+			return 0, nil
+		}
+		return 1, nil
 	case "join":
 		// s.join(list) -> join list element strings with separator s.
 		if len(args) != 1 {

@@ -1364,6 +1364,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					}
 				}
 				return fmt.Sprintf("%d", res), nil
+			case "isalpha":
+				// s.isalpha() -> 1 if all runes are alphabetic, else 0.
+				res := 0
+				if v != "" {
+					all := true
+					for _, r := range v {
+						if !unicode.IsLetter(r) {
+							all = false
+							break
+						}
+					}
+					if all {
+						res = 1
+					}
+				}
+				return fmt.Sprintf("%d", res), nil
 		case "startswith", "endswith":
 			// s.startswith(sub) / s.endswith(sub) -> 1 or 0.
 			if len(c.Args) != 1 {
