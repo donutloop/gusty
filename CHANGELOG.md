@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(dict-get)`: **`.get(key[, default])`** returns the value for `key`,
+  or `default` when absent, mirroring Python's `dict.get`. Dict keys now
+  compare by string content (`dictKeyEq`), fixing dict indexing `d[key]`
+  which previously failed on unboxed string keys. Adds an Eval unit test.
+  ADR 0056.
 - `feat(str-join)`: **`.join(list)`** joins a list of string elements with
   the receiver as separator in **both** paths: the interpreter evaluates the
   list arg and applies `strings.Join`; the codegen folds the receiver and a

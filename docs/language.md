@@ -401,6 +401,11 @@ applies `strings.Join`; the codegen constant-folds the receiver and a
 constant list of string elements (`print("-".join(["a", "b", "c"]))`
 emits the global "a-b-c").
 
+Dict `.get(key[, default])` returns the value for `key`, or `default` if
+absent (default is 0 when omitted). Dict keys compare by string content, so
+`{"a": 1}.get("a", 9)` is 1 — this also fixed dict indexing `d[key]`,
+which previously failed because string keys were compared by boxed id.
+
 ### list methods
 
 Lists support `append(x)` (in-place, returns the updated list). On constant

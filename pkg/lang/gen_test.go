@@ -445,3 +445,28 @@ func TestGenStrJoin(t *testing.T) {
 		t.Fatalf("join empty sep: expected ab, got %q", got)
 	}
 }
+
+func TestGenDictGet(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`{"a": 1, "b": 2}.get("a", 9)`); got != 1 {
+		t.Fatalf("get existing: expected 1, got %d", got)
+	}
+	if got := evalInt(`{"a": 1}.get("b", 9)`); got != 9 {
+		t.Fatalf("get default: expected 9, got %d", got)
+	}
+	if got := evalInt(`{"a": 1}.get("b")`); got != 0 {
+		t.Fatalf("get no-default absent: expected 0, got %d", got)
+	}
+}
+

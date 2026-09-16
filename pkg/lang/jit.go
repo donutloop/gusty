@@ -763,7 +763,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			return o.elems[idx], nil
 		case "dict":
 			for i, k := range o.elems {
-				if k == idx {
+					if e.dictKeyEq(k, idx) {
 					return o.dvals[i], nil
 				}
 			}
@@ -1343,6 +1343,16 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 
 // callDictMethod dispatches builtin dict methods: d.keys() and d.values()
 // return boxed lists of the keys/values in insertion order.
+// dictKeyEq reports whether two dict keys compare equal by content.
+func (e *Evaluator) dictKeyEq(k, idx int64) bool {
+	ko, ok := e.heap[k]
+	if ok && ko.kind == "str" {
+		io, ok2 := e.heap[idx]
+		return ok2 && io.kind == "str" && ko.sval == io.sval
+	}
+	return k == idx
+}
+
 func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64, error) {
 	o := e.heap[recv]
 	switch name {
@@ -1375,6 +1385,28 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 		lo := e.heap[listID]
 		lo.elems = append(lo.elems, o.dvals...)
 		return listID, nil
+				case "get":
+					// d.get(key[, default]) -> value for key, or default if absent.
+					if len(args) != 1 && len(args) != 2 {
+						return 0, &EvalError{Msg: "get() takes 1 or 2 arguments"}
+					}
+					kv, err := e.eval(args[0])
+					if err != nil {
+						return 0, err
+					}
+					for i, k := range o.elems {
+						if e.dictKeyEq(k, kv) {
+							return o.dvals[i], nil
+						}
+					}
+					if len(args) == 2 {
+						dv, err := e.eval(args[1])
+						if err != nil {
+							return 0, err
+						}
+						return dv, nil
+					}
+					return 0, nil
 	}
 	return 0, &EvalError{Msg: "no such dict method " + name}
 }
