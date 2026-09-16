@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(list-count)`: **`.count(value)`** returns the number of
+  occurrences of `value` in a list (interpreter path; elements compare by
+  string content via `dictKeyEq`). `["a", "b", "a"].count("a")` is 2.
+  Adds an Eval unit test. ADR 0061.
 - `feat(str-swapcase)`: **`.swapcase()`** swaps the case of each rune in
   **both** paths via a shared `swapcase` helper (`strings.Map` using
   `unicode.IsUpper`), folded in `stringConst`/`stringVal` and the call

@@ -410,6 +410,10 @@ previous rune), folded in `stringConst`/`stringVal` and the call dispatch
 `stringConst`/`stringVal` and the call dispatch
 (`print(len("HeLLo".swapcase()))` emits `i32 5`).
 
+List `.count(value)` returns the number of occurrences of `value` in the
+list (interpreter path; elements compare by string content via
+`dictKeyEq`, matching dict keys). `["a", "b", "a"].count("a")` is 2.
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string

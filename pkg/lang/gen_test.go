@@ -518,6 +518,30 @@ func TestGenStrSwapcase(t *testing.T) {
 	}
 }
 
+func TestGenListCount(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`["a", "b", "a"].count("a")`); got != 2 {
+		t.Fatalf("count strings: expected 2, got %d", got)
+	}
+	if got := evalInt(`[1, 2, 1, 1].count(1)`); got != 3 {
+		t.Fatalf("count ints: expected 3, got %d", got)
+	}
+	if got := evalInt(`["a", "b"].count("z")`); got != 0 {
+		t.Fatalf("count absent: expected 0, got %d", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

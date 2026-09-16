@@ -1392,6 +1392,22 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 		}
 		o.elems = append(o.elems, v)
 		return recv, nil
+				case "count":
+					// l.count(value) -> number of occurrences of value in l.
+					if len(args) != 1 {
+						return 0, &EvalError{Msg: "count() takes exactly 1 argument"}
+					}
+					vv, err := e.eval(args[0])
+					if err != nil {
+						return 0, err
+					}
+					cnt := int64(0)
+					for _, el := range o.elems {
+						if e.dictKeyEq(el, vv) {
+							cnt++
+						}
+					}
+					return cnt, nil
 	}
 	return 0, &EvalError{Msg: "no such list method " + name}
 }
