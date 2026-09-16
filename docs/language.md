@@ -350,6 +350,8 @@ calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
 
 ### string methods
 
+String indexing `"abc"[1]` returns the char code (98 for 'b') in both the
+interpreter and the AOT codegen (constant-folded).
 Boxed strings support Python-style methods:
 
     "heLLo".upper()      # HELLO

@@ -734,6 +734,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			default:
 				return "", fmt.Errorf("unsupported comprehension kind %d", obj.Kind)
 			}
+		case *StrLit:
+			str, ok := g.stringVal(obj)
+			if !ok {
+				return "", fmt.Errorf("string index on non-constant string")
+			}
+			if key < 0 || key >= int64(len(str)) {
+				return "", fmt.Errorf("string index out of range")
+			}
+			return fmt.Sprintf("%d", str[key]), nil
 		default:
 			return "", fmt.Errorf("index requires an inline list/dict/set literal")
 		}

@@ -223,3 +223,22 @@ func TestGenDictMinMaxMethods(t *testing.T) {
 		t.Fatalf("min values: expected 2, got %d", v)
 	}
 }
+
+func TestGenStrIndex(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	// "abc"[1] -> 98 ('b')
+	if v := evalInt(`"abc"[1]`); v != 98 {
+		t.Fatalf("string index: expected 98, got %d", v)
+	}
+}

@@ -774,6 +774,11 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 				}
 			}
 			return 0, &EvalError{Msg: "not in set"}
+		case "str":
+			if idx < 0 || idx >= int64(len(o.sval)) {
+				return 0, &EvalError{Msg: "string index out of range"}
+			}
+			return int64(o.sval[idx]), nil
 		default:
 			return 0, &EvalError{Msg: "cannot index this value"}
 		}

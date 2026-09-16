@@ -154,6 +154,10 @@ indexes dicts/sets at runtime and is unchanged.
 
 ## String-constant concatenation + len (AOT codegen)
 
+- String indexing `"abc"[1]` returns the char code (98) in both paths;
+  the codegen constant-folds `*StrLit` index via `stringVal`.
+
+
 - String methods `.upper()`, `.lower()`, `.strip()` on constant string
   literals ship in **both** paths: the codegen constant-folds them via
   `stringConst`/`stringVal` Call-folding, so `len("AbC".upper())` -> 3.

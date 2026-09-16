@@ -451,3 +451,7 @@ func TestExecDictItemsLen(t *testing.T) {
 func TestExecDictMinMaxMethods(t *testing.T) {
 	assertOutput(t, `print(max({1: 2, 3: 4}.keys()))`, "3\n")
 }
+
+func TestExecStrIndex(t *testing.T) {
+	assertOutput(t, `print("abc"[1])`, "98\n")
+}

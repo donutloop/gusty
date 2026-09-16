@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-index)`: **string indexing** `"abc"[1]` -> 98 ('b') in **both**
+  paths. The interpreter's Index gains a `str` kind returning the char code;
+  the codegen's Index constant-folds `*StrLit` via `stringVal`. Adds
+  Eval/IR/integration tests. ADR 0047.
 - `feat(dict-minmax)`: **`min`/`max` now fold dict-method Call args** — the
   min/max elems resolution wires `dictMethodElems`, so
   `max({1: 2, 3: 4}.keys())` -> 3 and `min({1: 2, 3: 4}.values())` -> 2 in

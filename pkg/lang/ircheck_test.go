@@ -605,3 +605,11 @@ func TestIRDictMinMaxMethodsLowers(t *testing.T) {
 	}
 	llcCompiles(t, "print(min({1: 2, 3: 4}.values()))")
 }
+
+func TestIRStrIndexFolds(t *testing.T) {
+	// print("abc"[1]) folds to 98 ('b').
+	ir := llcCompiles(t, `print("abc"[1])`)
+	if !strings.Contains(ir, "98") {
+		t.Fatalf("expected folded char code 98, got:\n%s", ir)
+	}
+}
