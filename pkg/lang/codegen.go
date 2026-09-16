@@ -935,14 +935,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) < 1 {
 			return "", fmt.Errorf("codegen: print needs an argument")
 		}
-		v, err := g.value(b, c.Args[0])
-		if err != nil {
-			return "", err
-		}
 		fmtName, size := g.fmtStr("%d\n")
-		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
-		return t, nil
+		// multi-argument print mirrors the interpreter: each argument is
+		// written to stdout on its own line, one printf per argument.
+		var last string
+		for i, a := range c.Args {
+			v, err := g.value(b, a)
+			if err != nil {
+				return "", err
+			}
+			t := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
+			if i == len(c.Args)-1 {
+				last = t
+			}
+		}
+		return last, nil
 	case "len":
 		// len(string-constant) -> compile-time character count; otherwise
 		// len(list/dict/set) loads the count field (i32 0) of the inline

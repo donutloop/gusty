@@ -206,6 +206,25 @@ func TestIRModuloCompilesWithLLC(t *testing.T) {
 	}
 }
 
+func TestIRMultiArgPrintCompilesWithLLC(t *testing.T) {
+	// multi-argument print emits one printf per argument (each on its own
+	// line), mirroring the interpreter's print.
+	res, err := Compile("print(1, 2)")
+	if err != nil {
+		t.Fatalf("compile multi-arg print: %v", err)
+	}
+	if strings.Count(res.IR, "call i32 @printf") != 2 {
+		t.Fatalf("print(1, 2) should emit 2 printf calls, got:\n%s", res.IR)
+	}
+	res, err = Compile("x = 7\nprint(x, x + 1)")
+	if err != nil {
+		t.Fatalf("compile multi-arg print: %v", err)
+	}
+	if strings.Count(res.IR, "call i32 @printf") != 2 {
+		t.Fatalf("print(x, x+1) should emit 2 printf calls, got:\n%s", res.IR)
+	}
+}
+
 func TestIRForListCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nprint(s)")
 	llcCompiles(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        continue\n    s = s + x\nprint(s)")

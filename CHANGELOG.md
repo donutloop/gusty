@@ -4,6 +4,16 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **multi-argument `print` in the LLVM AOT codegen** —
+  the interpreter's `print` already wrote every argument to stdout (one per
+  line), but the AOT codegen silently dropped all but the first argument — it
+  emitted `printf` only for `Args[0]`. The codegen now emits one `printf("%d\n")`
+  per argument, so `print(1, 2, 3)` writes `1\n2\n3\n` in the AOT path exactly
+  like the interpreter. Adds IR checks (`TestIRMultiArgPrintCompilesWithLLC`),
+  an interpreter stdout-capture unit test (`TestEvalMultiArgPrint`), and
+  end-to-end exec tests (`TestExecMultiArgPrint`). ADR 0030.
+
+
 - `feat(aot)`: **`%` modulo operator in the LLVM AOT codegen** —
   the interpreter already evaluated `%` (signed remainder), but the AOT
   runtime path only folded it on constant operands and rejected it on runtime

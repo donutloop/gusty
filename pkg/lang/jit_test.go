@@ -948,3 +948,36 @@ func TestSumBuiltin(t *testing.T) {
 		t.Fatalf("sum got %d", v)
 	}
 }
+
+func TestEvalMultiArgPrint(t *testing.T) {
+	// multi-argument print writes each argument to stdout on its own line.
+	out := captureStdout(t, "print(1, 2)")
+	if out != "1\n2\n" {
+		t.Fatalf("print(1, 2) stdout %q, want 1\\n2\\n", out)
+	}
+	out = captureStdout(t, "x = 7\nprint(x, x + 1)")
+	if out != "7\n8\n" {
+		t.Fatalf("print(x, x+1) stdout %q, want 7\\n8\\n", out)
+	}
+}
+
+// captureStdout runs src through EvalExpr and returns everything written to
+// os.Stdout during evaluation.
+func captureStdout(t *testing.T, src string) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+	_, _, evalErr := EvalExpr(src)
+	os.Stdout = old
+	w.Close()
+	out := make([]byte, 4096)
+	n, _ := r.Read(out)
+	if evalErr != nil {
+		t.Fatalf("eval %q: %v", src, evalErr)
+	}
+	return string(out[:n])
+}

@@ -244,7 +244,9 @@ match x:
 
 ## Builtins
 
-- `print(x, ...)` — writes integer values to stdout via `printf`.
+- `print(x, ...)` — writes integer values to stdout via `printf`. Multi-argument
+  `print` mirrors the interpreter: each argument is written to stdout on its
+  own line, one `printf` per argument in the AOT codegen.
 - `range(n)` — iteration bound for `for` loops.
 
 ## Generators & lists

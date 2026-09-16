@@ -72,6 +72,16 @@ func assertOutput(t *testing.T, src, want string) {
 	}
 }
 
+func TestExecMultiArgPrint(t *testing.T) {
+	// multi-argument print mirrors the interpreter: each argument is written
+	// to stdout on its own line, one printf per argument.
+	assertOutput(t, "print(1, 2)", "1\n2\n")
+	assertOutput(t, "print(1, 2, 3)", "1\n2\n3\n")
+	// mixed literals and runtime variables.
+	assertOutput(t, "x = 7\nprint(x, x + 1)", "7\n8\n")
+	assertOutput(t, "print(1 + 2, 3 + 4)", "3\n7\n")
+}
+
 func TestExecPrintArithmetic(t *testing.T) {
 	assertOutput(t, "print(40 + 2)", "42\n")
 	assertOutput(t, "print(2 * 21)", "42\n")
