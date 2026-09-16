@@ -336,6 +336,13 @@ func (g *irGen) dictMethodElems(e Expr) ([]Expr, bool) {
 	if !ok {
 		return nil, false
 	}
+	if ll, ok := attr.Obj.(*ListLit); ok && attr.Name.Value == "append" {
+		if len(c.Args) != 1 {
+			return nil, false
+		}
+		elems := append(append([]Expr{}, ll.Elems...), c.Args[0])
+		return elems, true
+	}
 	dl, ok := attr.Obj.(*DictLit)
 	if !ok {
 		return nil, false
@@ -1094,6 +1101,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 	// constant-fold attr methods on constant receivers.
 	if attr, ok := c.Fn.(*Attr); ok {
+		// list method: `[1, 2, 3].append(4)` -> [1, 2, 3, 4].
+		if ll, ok := attr.Obj.(*ListLit); ok {
+			if attr.Name.Value == "append" {
+				if len(c.Args) != 1 {
+					return "", fmt.Errorf("append expects one argument")
+				}
+				elems := append(append([]Expr{}, ll.Elems...), c.Args[0])
+				return g.value(b, &ListLit{Elems: elems})
+			}
+			return "", fmt.Errorf("unsupported list method %s", attr.Name.Value)
+		}
 		// dict methods: `{1: 2, 3: 4}.keys()` -> [1, 3], `.values()` -> [2, 4].
 		if dl, ok := attr.Obj.(*DictLit); ok {
 			switch attr.Name.Value {

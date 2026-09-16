@@ -180,6 +180,10 @@ collide with raw small integer literals stored in lists/dicts/vars. This keeps
 ## List methods
 
 `xs.append(x)` mutates a boxed list in place and returns it (REPL-friendly).
+- On constant list literals the AOT codegen folds `[1, 2, 3].append(4)` to
+  `[1, 2, 3, 4]` (ADR 0044), so `len`/`sum` work; mutating a bound variable
+  stays interpreter-only.
+
 Machine consumption via `--json --eval "xs = [1,2]
 xs.append(3)
 xs"`.

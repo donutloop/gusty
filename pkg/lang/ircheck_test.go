@@ -580,3 +580,11 @@ func TestIRDictKeysValuesLowers(t *testing.T) {
 	}
 	llcCompiles(t, "print(sum({1: 2, 3: 4}.values()))")
 }
+
+func TestIRListAppendLowers(t *testing.T) {
+	// sum([1, 2, 3].append(4)) folds append to [1,2,3,4] and sums via IR.
+	ir := llcCompiles(t, "print(sum([1, 2, 3].append(4)))")
+	if !strings.Contains(ir, "add i32") {
+		t.Fatalf("expected IR sum folding, got:\n%s", ir)
+	}
+}

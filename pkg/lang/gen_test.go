@@ -164,3 +164,22 @@ func TestGenDictKeysValues(t *testing.T) {
 		t.Fatalf("values sum: expected 6, got %d", v)
 	}
 }
+
+func TestGenListAppend(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	// sum([1, 2, 3].append(4)) -> 1 + 2 + 3 + 4 = 10
+	if v := evalInt("sum([1, 2, 3].append(4))"); v != 10 {
+		t.Fatalf("append sum: expected 10, got %d", v)
+	}
+}

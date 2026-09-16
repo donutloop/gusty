@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(list-append)`: **`.append()` on constant list literals** constant-folds
+  in the AOT codegen: `[1, 2, 3].append(4)` lowers to `[1, 2, 3, 4]`, so
+  `len`/`sum` work. Adds a list-method branch in the `Attr` callee path and
+  extends `dictMethodElems` to fold append. Adds Eval/IR/integration tests.
+  ADR 0044.
 - `feat(dict-methods)`: **`.keys()` and `.values()`** on constant dict literals
   constant-fold in the AOT codegen: `{1: 2, 3: 4}.keys()` lowers to a list
   `[1, 3]` and `.values()` to `[2, 4]`, so `len(...)`/`sum(...)` fold. Adds a

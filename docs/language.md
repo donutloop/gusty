@@ -360,7 +360,9 @@ Boxed strings support Python-style methods:
 
 ### list methods
 
-Lists support `append(x)` (in-place, returns the updated list):
+Lists support `append(x)` (in-place, returns the updated list). On constant
+list literals the AOT codegen folds `[1, 2, 3].append(4)` to `[1, 2, 3, 4]`
+so `len`/`sum` work; mutating a bound variable stays interpreter-only.:
 
     xs = [1, 2]
     xs.append(3)     # xs == [1, 2, 3]
