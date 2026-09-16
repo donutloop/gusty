@@ -328,6 +328,29 @@ func TestIRComprehensionLowersToGlobalStruct(t *testing.T) {
 		t.Fatalf("condition should filter y<=1 elements:\n%s", res2.IR)
 	}
 }
+func TestIRSetComprehensionCompilesWithLLC(t *testing.T) {
+	// {x * x for x in [1, 2, 2]} dedups to {1, 4}.
+	llcCompiles(t, "print(len({x * x} for x in [1, 2, 2]))")
+}
+
+func TestIRSetComprehensionLowersToSetGlobal(t *testing.T) {
+	ir := llcCompiles(t, "print(len({x * x} for x in [1, 2, 3]))")
+	if !strings.Contains(ir, "@.set1 = private global {i32, [3 x i32]}") {
+		t.Fatalf("set comprehension should lower to a set global, got:\n%s", ir)
+	}
+}
+
+func TestIRDictComprehensionCompilesWithLLC(t *testing.T) {
+	// {x: x * 10 for x in [1, 2, 3]} builds a 3-entry dict.
+	llcCompiles(t, "print(len({x: x * 10} for x in [1, 2, 3]))")
+}
+
+func TestIRDictComprehensionLowersToDictGlobal(t *testing.T) {
+	ir := llcCompiles(t, "print(len({x: x * 10} for x in [1, 2]))")
+	if !strings.Contains(ir, "@.dict1 = private global {i32, [2 x i32], [2 x i32]}") {
+		t.Fatalf("dict comprehension should lower to a dict global, got:\n%s", ir)
+	}
+}
 
 func TestIRTernaryCompilesWithLLC(t *testing.T) {
 	// ternary with a constant condition folds to the taken branch.

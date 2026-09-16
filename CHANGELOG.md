@@ -3,6 +3,13 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(codegen)`: **Set and dict comprehensions** now lower to dedicated
+  `@.setN` / `@.dictN` globals in the AOT LLVM codegen (previously
+  interpreter-only). Set comprehensions deduplicate folded elements; dict
+  comprehensions fold key/value pairs into a `{i32, [n x i32], [n x i32]}`
+  global. Both support `len(...)` via the `compLen` map. Adds IR codegen tests
+  (`TestIRSetComprehension*`, `TestIRDictComprehension*`) and interpreter Eval
+  tests (`TestGenSetComprehensionLen`, `TestGenDictComprehensionLen`).
 
 - `feat(aot)`: **`len` and list-index over runtime-variable-element lists** —
   the AOT codegen's `emitList` required every list element to be an integer

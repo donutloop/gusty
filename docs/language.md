@@ -302,6 +302,13 @@ optional filter (`if`), and collect the element expressions.
 
 Comprehensions over a `range(...)` are supported in the interpreter.
 
+In the AOT LLVM codegen, **set comprehensions** (`{x * x} for x in [1, 2, 3]`)
+and **dict comprehensions** (`{x: x * 10} for x in [1, 2]`) are lowered to
+dedicated `@.setN` / `@.dictN` globals: set comprehensions unroll the iteration
+and deduplicate folded elements; dict comprehensions fold key/value pairs into
+the dict global. Both are usable with `len(...)` via the `compLen` map,
+mirroring the interpreter's semantics.
+
 ### min / max / abs
 
 Standard-library numeric builtins:

@@ -34,3 +34,21 @@ func TestLenList(t *testing.T) {
 		t.Fatalf("got %d, want 3", v)
 	}
 }
+
+func TestGenSetComprehensionLen(t *testing.T) {
+	// {x * x} for x in [1, 2, 2] dedups to {1, 4}.
+	if v, _, err := EvalExpr("len({x * x} for x in [1, 2, 2])"); err != nil {
+		t.Fatalf("set comprehension: %v", err)
+	} else if v != 2 {
+		t.Fatalf("expected len 2, got %d", v)
+	}
+}
+
+func TestGenDictComprehensionLen(t *testing.T) {
+	// {x: x * 10} for x in [1, 2] builds a 2-entry dict.
+	if v, _, err := EvalExpr("len({x: x * 10} for x in [1, 2])"); err != nil {
+		t.Fatalf("dict comprehension: %v", err)
+	} else if v != 2 {
+		t.Fatalf("expected len 2, got %d", v)
+	}
+}

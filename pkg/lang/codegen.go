@@ -84,10 +84,10 @@ type irGen struct {
 	compNames   map[*Comp]string
 	// compLen records the folded element count of each lowered comprehension,
 	// so indexing can bounds-check and emit the correct GEP shape.
-	compLen     map[*Comp]int
+	compLen map[*Comp]int
 	// compEls records the folded element constant of each lowered comprehension,
 	// so aggregate builtins (sum/min/max) can fold over the comprehension.
-	compEls     map[*Comp][]int64
+	compEls map[*Comp][]int64
 	// constBindings maps a comprehension variable name to its compile-time
 	// constant so comprehension bodies can be unrolled at codegen time.
 	constBindings map[string]int64
@@ -324,7 +324,6 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 	}
 	return "", false
 }
-
 
 // dictIndex resolves a constant key against a DictLit at codegen time.
 func (g *irGen) dictIndex(dl *DictLit, key int64) (string, error) {
@@ -571,13 +570,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		key := il.Value
 		switch obj := n.Obj.(type) {
-	case *Name:
-		if g.dictVals != nil {
-			if dl, ok := g.dictVals[obj.Value]; ok {
-				return g.dictIndex(dl, key)
+		case *Name:
+			if g.dictVals != nil {
+				if dl, ok := g.dictVals[obj.Value]; ok {
+					return g.dictIndex(dl, key)
+				}
 			}
-		}
-		return "", fmt.Errorf("index of a non-literal variable")
+			return "", fmt.Errorf("index of a non-literal variable")
 
 		case *ListLit:
 			// index into a list literal: evaluate the element directly.
@@ -748,13 +747,13 @@ func (g *irGen) foldConstInt(e Expr) (int64, bool) {
 // literal or range(n)) into a dedicated global struct, unrolled at compile
 // time. Returns the global's name.
 func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
-	if c.Kind != CompList || c.ForVar == nil || len(c.Elems) < 1 {
-		return "", fmt.Errorf("codegen: only list comprehensions are supported")
+	if c.ForVar == nil {
+		return "", fmt.Errorf("codegen: comprehension must bind a loop variable")
 	}
-	if name, ok := g.compNames[c]; ok {
-		return name, nil
+	if c.Kind != CompList && c.Kind != CompSet && c.Kind != CompDict {
+		return "", fmt.Errorf("codegen: unsupported comprehension kind %d", c.Kind)
 	}
-	// Determine the iteration items: an inline list literal or range(n).
+	// Determine the iteration items: an inline integer list literal or range(n).
 	var items []int64
 	if ll, ok := c.Iter.(*ListLit); ok {
 		for _, el := range ll.Elems {
@@ -765,31 +764,24 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 			items = append(items, v)
 		}
 	} else if r, ok := c.Iter.(*Call); ok {
-		fn, isName := r.Fn.(*Name)
-		if !isName || fn.Value != "range" || len(r.Args) < 1 || len(r.Args) > 3 {
-			return "", fmt.Errorf("codegen: comprehension iterable must be range(stop), range(start, stop) or range(start, stop, step)")
-		}
-		n := len(r.Args)
+		// range(stop), range(start, stop) or range(start, stop, step)
 		start := int64(0)
-		step := int64(1)
 		stop, ok := g.foldConstInt(r.Args[0])
 		if !ok {
 			return "", fmt.Errorf("codegen: range bound must be a constant")
 		}
-		if n >= 2 {
+		step := int64(1)
+		if len(r.Args) > 1 {
 			start = stop
 			stop, ok = g.foldConstInt(r.Args[1])
 			if !ok {
 				return "", fmt.Errorf("codegen: range stop must be a constant")
 			}
 		}
-		if n == 3 {
+		if len(r.Args) > 2 {
 			step, ok = g.foldConstInt(r.Args[2])
 			if !ok {
 				return "", fmt.Errorf("codegen: range step must be a constant")
-			}
-			if step == 0 {
-				return "", fmt.Errorf("codegen: range step cannot be zero")
 			}
 		}
 		if step > 0 {
@@ -801,48 +793,13 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 				items = append(items, v)
 			}
 		}
+	} else {
+		return "", fmt.Errorf("codegen: comprehension iterable must be an inline list literal or range()")
 	}
-
-	// Unroll the body, binding the comprehension variable to each item.
+	// Unroll the comprehension, binding the loop variable to each item.
 	if g.constBindings == nil {
 		g.constBindings = map[string]int64{}
 	}
-	results := make([]int64, 0, len(items))
-	for _, item := range items {
-		g.constBindings[c.ForVar.Value] = item
-		v, ok := g.foldConstInt(c.Elems[0])
-		if !ok {
-			delete(g.constBindings, c.ForVar.Value)
-			return "", fmt.Errorf("codegen: comprehension element must be constant")
-		}
-		if c.Cond != nil {
-			cv, ok := g.foldConstInt(c.Cond)
-			if !ok {
-				delete(g.constBindings, c.ForVar.Value)
-				return "", fmt.Errorf("codegen: comprehension condition must be constant")
-			}
-			if cv == 0 {
-				delete(g.constBindings, c.ForVar.Value)
-				continue
-			}
-		}
-		results = append(results, v)
-		delete(g.constBindings, c.ForVar.Value)
-	}
-	delete(g.constBindings, c.ForVar.Value)
-
-	// Emit a dedicated global struct holding the folded element values.
-	g.lstIdx++
-	name := fmt.Sprintf("@.lst%d", g.lstIdx)
-	var arr strings.Builder
-	for i, v := range results {
-		if i > 0 {
-			arr.WriteString(", ")
-		}
-		arr.WriteString(fmt.Sprintf("i32 %d", v))
-	}
-	n := len(results)
-	g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, arr.String()))
 	if g.compNames == nil {
 		g.compNames = map[*Comp]string{}
 	}
@@ -851,6 +808,116 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	}
 	if g.compEls == nil {
 		g.compEls = map[*Comp][]int64{}
+	}
+	var name string
+	var results []int64
+	switch c.Kind {
+	case CompList:
+		for _, item := range items {
+			g.constBindings[c.ForVar.Value] = item
+			v, ok := g.foldConstInt(c.Elems[0])
+			if !ok {
+				delete(g.constBindings, c.ForVar.Value)
+				return "", fmt.Errorf("codegen: comprehension element must be constant")
+			}
+			if c.Cond != nil {
+				cv, ok := g.foldConstInt(c.Cond)
+				if !ok {
+					delete(g.constBindings, c.ForVar.Value)
+					return "", fmt.Errorf("codegen: comprehension condition must be constant")
+				}
+				if cv == 0 {
+					delete(g.constBindings, c.ForVar.Value)
+					continue
+				}
+			}
+			results = append(results, v)
+			delete(g.constBindings, c.ForVar.Value)
+		}
+		g.lstIdx++
+		name = fmt.Sprintf("@.lst%d", g.lstIdx)
+		var parts []string
+		for _, v := range results {
+			parts = append(parts, fmt.Sprintf("i32 %d", v))
+		}
+		n := len(results)
+		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, strings.Join(parts, ", ")))
+	case CompSet:
+		seen := map[int64]bool{}
+		for _, item := range items {
+			g.constBindings[c.ForVar.Value] = item
+			v, ok := g.foldConstInt(c.Elems[0])
+			if !ok {
+				delete(g.constBindings, c.ForVar.Value)
+				return "", fmt.Errorf("codegen: comprehension element must be constant")
+			}
+			if c.Cond != nil {
+				cv, ok := g.foldConstInt(c.Cond)
+				if !ok {
+					delete(g.constBindings, c.ForVar.Value)
+					return "", fmt.Errorf("codegen: comprehension condition must be constant")
+				}
+				if cv == 0 {
+					delete(g.constBindings, c.ForVar.Value)
+					continue
+				}
+			}
+			if !seen[v] {
+				seen[v] = true
+				results = append(results, v)
+			}
+			delete(g.constBindings, c.ForVar.Value)
+		}
+		g.setIdx++
+		name = fmt.Sprintf("@.set%d", g.setIdx)
+		var parts []string
+		for _, v := range results {
+			parts = append(parts, fmt.Sprintf("i32 %d", v))
+		}
+		n := len(results)
+		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, strings.Join(parts, ", ")))
+	case CompDict:
+		var keys []int64
+		for _, item := range items {
+			g.constBindings[c.ForVar.Value] = item
+			k, ok := g.foldConstInt(c.Keys[0])
+			if !ok {
+				delete(g.constBindings, c.ForVar.Value)
+				return "", fmt.Errorf("codegen: comprehension key must be constant")
+			}
+			v, ok := g.foldConstInt(c.Vals[0])
+			if !ok {
+				delete(g.constBindings, c.ForVar.Value)
+				return "", fmt.Errorf("codegen: comprehension value must be constant")
+			}
+			if c.Cond != nil {
+				cv, ok := g.foldConstInt(c.Cond)
+				if !ok {
+					delete(g.constBindings, c.ForVar.Value)
+					return "", fmt.Errorf("codegen: comprehension condition must be constant")
+				}
+				if cv == 0 {
+					delete(g.constBindings, c.ForVar.Value)
+					continue
+				}
+			}
+			keys = append(keys, k)
+			results = append(results, v)
+			delete(g.constBindings, c.ForVar.Value)
+		}
+		g.dictIdx++
+		name = fmt.Sprintf("@.dict%d", g.dictIdx)
+		var kparts, vparts []string
+		for _, k := range keys {
+			kparts = append(kparts, fmt.Sprintf("i32 %d", k))
+		}
+		for _, v := range results {
+			vparts = append(vparts, fmt.Sprintf("i32 %d", v))
+		}
+		n := len(keys)
+		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32], [%d x i32]} { i32 %d, [%d x i32] [%s], [%d x i32] [%s] }\n", name, n, n, n, n, strings.Join(kparts, ", "), n, strings.Join(vparts, ", ")))
+	default:
+		return "", fmt.Errorf("codegen: unsupported comprehension kind %d", c.Kind)
 	}
 	g.compNames[c] = name
 	g.compLen[c] = len(results)
@@ -1027,17 +1094,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return fmt.Sprintf("%d", n), nil
 		}
 		switch lit := c.Args[0].(type) {
-	case *Name:
-		if g.strVals != nil {
-			if sv, ok := g.strVals[lit.Value]; ok {
-				return fmt.Sprintf("%d", len(sv)), nil
+		case *Name:
+			if g.strVals != nil {
+				if sv, ok := g.strVals[lit.Value]; ok {
+					return fmt.Sprintf("%d", len(sv)), nil
+				}
 			}
-		}
-		return "", fmt.Errorf("len of a non-string variable")
+			return "", fmt.Errorf("len of a non-string variable")
 
 		case *ListLit:
-		// len of a list literal is the element count; no element lowering needed.
-		return fmt.Sprintf("%d", len(lit.Elems)), nil
+			// len of a list literal is the element count; no element lowering needed.
+			return fmt.Sprintf("%d", len(lit.Elems)), nil
 		case *DictLit:
 			name, err := g.emitDict(lit)
 			if err != nil {
@@ -1343,7 +1410,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		for i, c := range n.Cases {
 			pat := sub
 			var err error
-				if name, ok := c.Pattern.(*Name); !ok || name.Value != "_" {
+			if name, ok := c.Pattern.(*Name); !ok || name.Value != "_" {
 				// `case _:` wildcard: pat == sub makes the icmp always true.
 				pat, err = g.value(b, c.Pattern)
 				if err != nil {
