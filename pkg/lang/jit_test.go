@@ -748,6 +748,25 @@ func TestEvalStringLiteral(t *testing.T) {
 	}
 }
 
+func TestEvalLenStringVariable(t *testing.T) {
+	// len(s) on a string variable resolves at codegen time.
+	v, _, err := EvalExpr("s = \"abc\"\nlen(s)")
+	if err != nil {
+		t.Fatalf("len(s) err: %v", err)
+	}
+	if v != 3 {
+		t.Fatalf("len(s) got %d, want 3", v)
+	}
+
+	v, _, err = EvalExpr("a = \"hello\"\nlen(a)")
+	if err != nil {
+		t.Fatalf("len(a) err: %v", err)
+	}
+	if v != 5 {
+		t.Fatalf("len(a) got %d, want 5", v)
+	}
+}
+
 func TestEvalFloatLiteral(t *testing.T) {
 	// float literals evaluate to boxed floats
 	v, _, err := EvalExpr("x = 1.5\nx")

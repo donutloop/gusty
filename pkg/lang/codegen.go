@@ -91,6 +91,9 @@ type irGen struct {
 	// constBindings maps a comprehension variable name to its compile-time
 	// constant so comprehension bodies can be unrolled at codegen time.
 	constBindings map[string]int64
+	// strVals maps a variable name to its concrete string constant value,
+	// so `len(s)` and string concat can be resolved at codegen time.
+	strVals map[string]string
 }
 
 type loopInfo struct {
@@ -293,6 +296,32 @@ func (g *irGen) emitSet(sl *SetLit) (string, error) {
 }
 
 // value emits an IR expression returning an i32 value; returns the operand string.
+
+// stringVal resolves an Expr to a concrete string constant, if any.
+func (g *irGen) stringVal(e Expr) (string, bool) {
+	switch n := e.(type) {
+	case *StrLit:
+		return n.Value, true
+	case *Name:
+		if g.strVals != nil {
+			if s, ok := g.strVals[n.Value]; ok {
+				return s, true
+			}
+		}
+		return "", false
+	case *BinOp:
+		if n.Op == "+" {
+			ls, lok := g.stringVal(n.L)
+			rs, rok := g.stringVal(n.R)
+			if lok && rok {
+				return ls + rs, true
+			}
+		}
+		return "", false
+	}
+	return "", false
+}
+
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	switch n := e.(type) {
 	case *IntLit:
@@ -968,6 +997,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return fmt.Sprintf("%d", n), nil
 		}
 		switch lit := c.Args[0].(type) {
+	case *Name:
+		if g.strVals != nil {
+			if sv, ok := g.strVals[lit.Value]; ok {
+				return fmt.Sprintf("%d", len(sv)), nil
+			}
+		}
+		return "", fmt.Errorf("len of a non-string variable")
+
 		case *ListLit:
 		// len of a list literal is the element count; no element lowering needed.
 		return fmt.Sprintf("%d", len(lit.Elems)), nil
@@ -1185,6 +1222,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			v, err := g.value(b, n.Value)
 			if err != nil {
 				return err
+			}
+			// track concrete string constant values for `len(s)` and string ops
+			if sv, ok := g.stringVal(n.Value); ok {
+				if g.strVals == nil {
+					g.strVals = map[string]string{}
+				}
+				g.strVals[nm.Value] = sv
 			}
 			if !g.allocd[nm.Value] {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
