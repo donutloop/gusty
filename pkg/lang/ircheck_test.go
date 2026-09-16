@@ -48,6 +48,18 @@ func TestIRIfCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)")
 }
 
+func TestIRMatchWildcardCompilesWithLLC(t *testing.T) {
+	// `case _:` wildcard lowers pat := sub, so the icmp is always true.
+	res, err := Compile("x = 5\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)")
+	if err != nil {
+		t.Fatalf("compile match wildcard: %v", err)
+	}
+	// the subject register is %_x.ld1; the wildcard compares it to itself.
+	if !strings.Contains(res.IR, "icmp eq i32 %_x.ld1, %_x.ld1") {
+		t.Fatalf("wildcard case should compare subject to itself, got:\n%s", res.IR)
+	}
+}
+
 func TestIRMatchCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
 }

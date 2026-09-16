@@ -4,6 +4,17 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **`case _:` wildcard in the LLVM AOT `match` statement** —
+  the interpreter's `match` treats `case _:` as a wildcard that matches any
+  subject, but the AOT codegen lowered `_` as a normal pattern — it compared
+  the subject to an undefined `_` global (wrong: `case _:` only matched when
+  the subject was 0). The codegen now detects a `*Name` pattern with value
+  `"_"` and lowers `pat := sub`, making the `icmp eq` compare the subject to
+  itself (always true) — an unconditional branch to the case body, exactly like
+  the interpreter. Adds IR checks (`TestIRMatchWildcardCompilesWithLLC`) and
+  exec tests (`TestExecMatchWildcard`). ADR 0032.
+
+
 - `feat(aot)`: **string-literal `print` arguments in the LLVM AOT codegen** —
   the interpreter's `print` prints strings via `Repr` (e.g. `print("hi")`
   writes `hi`), but the AOT codegen emitted `printf("%d\n", <str-ptr>)` —

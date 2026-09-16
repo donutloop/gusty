@@ -184,6 +184,15 @@ func TestExecContinue(t *testing.T) {
 	assertOutput(t, src, "8\n")
 }
 
+func TestExecMatchWildcard(t *testing.T) {
+	// `case _:` wildcard matches any subject (like the interpreter).
+	assertOutput(t, "x = 5\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)", "9\n")
+	// non-wildcard case still matches normally.
+	assertOutput(t, "x = 1\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)", "1\n")
+	// wildcard in the middle, subject does not match earlier cases.
+	assertOutput(t, "x = 7\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(9)\n    case 7:\n        print(7)", "9\n")
+}
+
 func TestExecPassStatement(t *testing.T) {
 	// pass in a loop body is a no-op; the loop still sums 0..2.
 	assertOutput(t, "s = 0\nfor i in range(3):\n    pass\n    s = s + i\nprint(s)", "3\n")

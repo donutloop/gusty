@@ -1268,9 +1268,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		endL := g.newLabel("match.end")
 		for i, c := range n.Cases {
-			pat, err := g.value(b, c.Pattern)
-			if err != nil {
-				return err
+			pat := sub
+			var err error
+				if name, ok := c.Pattern.(*Name); !ok || name.Value != "_" {
+				// `case _:` wildcard: pat == sub makes the icmp always true.
+				pat, err = g.value(b, c.Pattern)
+				if err != nil {
+					return err
+				}
 			}
 			bodyL := g.newLabel("match.case")
 			cmp := g.newTmp()
