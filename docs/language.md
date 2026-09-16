@@ -469,3 +469,7 @@ constant-folds it only on literal list/string arguments); see ADR 0082.
 list: `enumerate([10, 20, 30])` -> `[[0, 10], [1, 20], [2, 30]]`. It is
 interpreter-only (the AOT codegen folds builtins only on literal args; nested
 list construction is not yet lowered); see ADR 0083.
+`zip(x, y)` combines two lists into a list of `[a, b]` pairs, stopping at the
+shorter list: `zip([1, 2], [10, 20])` -> `[[1, 10], [2, 20]]`. It is
+interpreter-only (the AOT codegen folds builtins only on literal args; nested
+list construction is not yet lowered); see ADR 0084.

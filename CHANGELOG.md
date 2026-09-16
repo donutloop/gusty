@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(zip)`: `zip(x, y)` combines two lists into a list of `[a, b]` pairs,
+  stopping at the shorter list (`zip([1, 2], [10, 20])` -> `[[1, 10], [2, 20]]`).
+  Interpreter-only; AOT codegen folds builtins only on literal args (nested
+  list construction not yet lowered). ADR 0084.
 - `feat(enumerate)`: `enumerate(x)` returns a list of `[index, value]` pairs
   for each element of a list (`enumerate([10, 20, 30])` -> `[[0, 10], [1, 20],
   [2, 30]]`). Interpreter-only; AOT codegen folds builtins only on literal

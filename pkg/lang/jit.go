@@ -2342,6 +2342,36 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			return id, nil
 		}
 		return 0, &EvalError{Msg: "enumerate expects a list"}
+	case "zip":
+		if len(n.Args) != 2 {
+			return 0, &EvalError{Msg: "zip expects two lists"}
+		}
+		l1, err := e.eval(n.Args[0])
+		if err != nil {
+			return 0, err
+		}
+		l2, err := e.eval(n.Args[1])
+		if err != nil {
+			return 0, err
+		}
+		o1, ok1 := e.heap[l1]
+		o2, ok2 := e.heap[l2]
+		if !ok1 || o1.kind != "list" || !ok2 || o2.kind != "list" {
+			return 0, &EvalError{Msg: "zip expects two lists"}
+		}
+		n := len(o1.elems)
+		if len(o2.elems) < n {
+			n = len(o2.elems)
+		}
+		id := e.allocObj("list")
+		lo := e.heap[id]
+		for i := 0; i < n; i++ {
+			pair := e.allocObj("list")
+			po := e.heap[pair]
+			po.elems = append(po.elems, o1.elems[i], o2.elems[i])
+			lo.elems = append(lo.elems, pair)
+		}
+		return id, nil
 case "sum":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "sum expects 1 argument"}
