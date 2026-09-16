@@ -223,6 +223,26 @@ func TestIRMultiArgPrintCompilesWithLLC(t *testing.T) {
 	if strings.Count(res.IR, "call i32 @printf") != 2 {
 		t.Fatalf("print(x, x+1) should emit 2 printf calls, got:\n%s", res.IR)
 	}
+	// string-literal arguments use a %%s\n format (not %%d\n).
+	res, err = Compile("print(\"hi\")")
+	if err != nil {
+		t.Fatalf("compile string print: %v", err)
+	}
+	// the newline in the format global is emitted as \0A in IR.
+	if strings.Contains(res.IR, "%d\\0A") {
+		t.Fatalf("print(\"hi\") should use %%s format, got:\n%s", res.IR)
+	}
+	if !strings.Contains(res.IR, "%s\\0A") {
+		t.Fatalf("print(\"hi\") should use %%s format, got:\n%s", res.IR)
+	}
+	// mixed integer + string args: one %%d and one %%s format.
+	res, err = Compile("print(1, \"hi\")")
+	if err != nil {
+		t.Fatalf("compile mixed print: %v", err)
+	}
+	if !strings.Contains(res.IR, "%d\\0A") || !strings.Contains(res.IR, "%s\\0A") {
+		t.Fatalf("mixed print should emit %%d and %%s formats, got:\n%s", res.IR)
+	}
 }
 
 func TestIRForListCompilesWithLLC(t *testing.T) {

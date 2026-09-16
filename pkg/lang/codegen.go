@@ -935,11 +935,24 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) < 1 {
 			return "", fmt.Errorf("codegen: print needs an argument")
 		}
-		fmtName, size := g.fmtStr("%d\n")
 		// multi-argument print mirrors the interpreter: each argument is
 		// written to stdout on its own line, one printf per argument.
+		// String-literal arguments use a %s\n format (the interpreter prints
+		// strings via Repr); integer arguments use %d\n.
 		var last string
 		for i, a := range c.Args {
+			if _, isStr := a.(*StrLit); isStr {
+				fmtName, size := g.fmtStr("%s\n")
+				v, err := g.value(b, a)
+				if err != nil {
+					return "", err
+				}
+				t := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, v))
+				last = t
+				continue
+			}
+			fmtName, size := g.fmtStr("%d\n")
 			v, err := g.value(b, a)
 			if err != nil {
 				return "", err

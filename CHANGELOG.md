@@ -4,6 +4,18 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **string-literal `print` arguments in the LLVM AOT codegen** —
+  the interpreter's `print` prints strings via `Repr` (e.g. `print("hi")`
+  writes `hi`), but the AOT codegen emitted `printf("%d\n", <str-ptr>)` —
+  passing a string pointer to a `%d` format (wrong output). The codegen now
+  detects string-literal `print` arguments and emits `printf("%s\n", <str>)`
+  for them, keeping `%d\n` for integer args, so `print("hi")` writes `hi\n`
+  and `print(1, "hi", 2)` writes `1\nhi\n2\n` in the AOT path exactly like
+  the interpreter. Adds IR checks (`TestIRMultiArgPrintCompilesWithLLC`),
+  interpreter stdout-capture unit tests, and exec tests (`TestExecMultiArgPrint`).
+  ADR 0031.
+
+
 - `feat(aot)`: **multi-argument `print` in the LLVM AOT codegen** —
   the interpreter's `print` already wrote every argument to stdout (one per
   line), but the AOT codegen silently dropped all but the first argument — it

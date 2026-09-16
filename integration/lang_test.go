@@ -80,6 +80,9 @@ func TestExecMultiArgPrint(t *testing.T) {
 	// mixed literals and runtime variables.
 	assertOutput(t, "x = 7\nprint(x, x + 1)", "7\n8\n")
 	assertOutput(t, "print(1 + 2, 3 + 4)", "3\n7\n")
+	// string-literal arguments use a %s\n format, mirroring the interpreter's Repr.
+	assertOutput(t, "print(\"hi\")", "hi\n")
+	assertOutput(t, "print(1, \"hi\", 2)", "1\nhi\n2\n")
 }
 
 func TestExecPrintArithmetic(t *testing.T) {
