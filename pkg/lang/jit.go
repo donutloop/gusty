@@ -1282,27 +1282,37 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 		}
 		return e.allocStr(strings.TrimRightFunc(s, unicode.IsSpace)), nil
 	case "split":
+		// s.split([sep[, maxsplit]]) -> list split on sep, at most maxsplit separators.
 		sep := " "
-		if len(args) > 1 {
-			return 0, &EvalError{Msg: "split() takes at most 1 argument"}
-		}
-		if len(args) == 1 {
+		maxsplit := -1
+		if len(args) >= 1 && len(args) <= 2 {
 			sepv, err := e.eval(args[0])
 			if err != nil {
 				return 0, err
 			}
-			so, ok := e.heap[sepv]
-			if !ok || so.kind != "str" {
-				return 0, &EvalError{Msg: "split separator must be a string"}
+			sepo, ok := e.heap[sepv]
+			if !ok || sepo.kind != "str" {
+				return 0, &EvalError{Msg: "split() separator must be a string"}
 			}
-			sep = so.sval
+			sep = sepo.sval
+			if len(args) == 2 {
+				ms, err := e.eval(args[1])
+				if err != nil {
+					return 0, err
+				}
+				maxsplit = int(ms)
+			}
 		}
-		parts := strings.Split(s, sep)
-		// box the parts into a list of boxed strings
+		var parts []string
+		if maxsplit >= 0 {
+			parts = strings.SplitN(s, sep, maxsplit+1)
+		} else {
+			parts = strings.Split(s, sep)
+		}
 		listID := e.allocObj("list")
 		lo := e.heap[listID]
-		for _, p := range parts {
-			lo.elems = append(lo.elems, e.allocStr(p))
+		for _, part := range parts {
+			lo.elems = append(lo.elems, e.allocStr(part))
 		}
 		return listID, nil
 	case "rsplit":

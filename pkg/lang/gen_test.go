@@ -902,6 +902,30 @@ func TestGenStrLstripRstripChars(t *testing.T) {
 	}
 }
 
+func TestGenStrSplitMaxsplit(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"a-b-c-d".split("-", 1)[0]`); got != "a" {
+		t.Fatalf("split maxsplit first: expected a, got %q", got)
+	}
+	if got := evalStr(`"a-b-c-d".split("-", 1)[1]`); got != "b-c-d" {
+		t.Fatalf("split maxsplit rest: expected b-c-d, got %q", got)
+	}
+	if got := evalStr(`"a-b-c".split("-")[2]`); got != "c" {
+		t.Fatalf("split all: expected c, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

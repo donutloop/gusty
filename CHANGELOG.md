@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-split-maxsplit)`: **`.split([sep[, maxsplit]])`** splits on
+  `sep`, at most `maxsplit` separators (interpreter path; uses
+  `strings.SplitN` with `maxsplit+1` parts when `maxsplit` is given).
+  `"a-b-c-d".split("-", 1)[1]` is "b-c-d". Adds an Eval unit test.
+  ADR 0077.
 - `feat(str-lstrip-rstrip-chars)`: **`.lstrip([chars])`** /
   **`.rstrip([chars])`** trim leading / trailing whitespace, or the given
   `chars` when provided (interpreter path via `TrimLeftFunc`/`TrimRightFunc`

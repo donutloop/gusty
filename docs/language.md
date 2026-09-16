@@ -480,6 +480,11 @@ or the given `chars` when provided (interpreter path via
 `strings.TrimLeftFunc`/`TrimRightFunc` with `unicode.IsSpace`, or
 `strings.TrimLeft`/`TrimRight`). `"xxhi".lstrip("x")` is "hi".
 
+`.split([sep[, maxsplit]])` splits on `sep`, at most `maxsplit`
+separators (interpreter path; uses `strings.SplitN` with `maxsplit+1`
+parts when `maxsplit` is given). `"a-b-c-d".split("-", 1)[1]` is
+"b-c-d".
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
