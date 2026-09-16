@@ -2305,7 +2305,27 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				nl := e.heap[listID]
 				nl.elems = append(nl.elems, elems...)
 				return listID, nil
-		case "sum":
+					case "reversed":
+				av, err := e.eval(n.Args[0])
+				if err != nil {
+					return 0, err
+				}
+				if o, ok := e.heap[av]; ok {
+					switch o.kind {
+					case "list", "set":
+						id := e.allocObj("list")
+						lo := e.heap[id]
+						lo.elems = append(lo.elems, o.elems...)
+						for i, j := 0, len(lo.elems)-1; i < j; i, j = i+1, j-1 {
+							lo.elems[i], lo.elems[j] = lo.elems[j], lo.elems[i]
+						}
+						return id, nil
+					case "str":
+						return e.allocStr(reverseStr(o.sval)), nil
+					}
+				}
+				return 0, &EvalError{Msg: "reversed expects a list or string"}
+case "sum":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "sum expects 1 argument"}
 			}
@@ -2363,6 +2383,15 @@ type EvalError struct {
 }
 
 func (e *EvalError) Error() string { return "eval error: " + e.Msg }
+
+// reverseStr returns the reverse of s.
+func reverseStr(s string) string {
+	r := []rune(s)
+	for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {
+		r[i], r[j] = r[j], r[i]
+	}
+	return string(r)
+}
 
 // exnError builds an EvalError carrying a typed exception (type name + message).
 func exnError(exnType, msg string) *EvalError {

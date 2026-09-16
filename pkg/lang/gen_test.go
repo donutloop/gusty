@@ -1,5 +1,8 @@
 package lang
 
+import "fmt"
+import "strings"
+
 import "testing"
 
 func TestGenSum(t *testing.T) {
@@ -1081,5 +1084,42 @@ func TestGenGeneratorExpr(t *testing.T) {
 	// generator over a range-like list.
 	if got := evalList("(x * x for x in [1, 2, 3])"); len(got) != 3 || got[0] != 1 || got[1] != 4 || got[2] != 9 {
 		t.Fatalf("square generator: got %v", got)
+	}
+}
+
+func TestGenReversed(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		ev := NewEvaluator()
+		rv, err := ev.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		o := ev.heap[rv]
+		if o.kind == "str" {
+			return o.sval
+		}
+		if o.kind == "list" {
+			var parts []string
+			for _, el := range o.elems {
+				if s, ok := ev.heap[el]; ok {
+					parts = append(parts, fmt.Sprintf("%v", s.fval))
+				} else {
+					parts = append(parts, fmt.Sprintf("%v", el))
+				}
+			}
+			return "[" + strings.Join(parts, " ") + "]"
+		}
+		t.Fatalf("unexpected kind %q", o.kind)
+		return ""
+	}
+	if got := evalStr("reversed([1, 2, 3])"); got != "[3 2 1]" {
+		t.Fatalf("reversed list: got %q", got)
+	}
+	if got := evalStr("reversed(\"abc\")"); got != "cba" {
+		t.Fatalf("reversed string: got %q", got)
 	}
 }
