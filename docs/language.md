@@ -395,6 +395,11 @@ absent, in **both** paths: the interpreter applies `strings.LastIndex`; the
 codegen constant-folds it to an `i32` literal
 (`print("abcabc".rfind("bc"))` emits `i32 4`).
 
+`.capitalize()` uppercases the first rune and lowercases the rest in
+**both** paths via a shared `capitalize` helper: the interpreter calls it
+directly; the codegen folds it in `stringConst`/`stringVal` and the call
+dispatch (`print(len("hello".capitalize()))` emits `i32 5`).
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string

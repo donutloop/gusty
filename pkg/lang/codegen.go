@@ -214,6 +214,8 @@ func stringConst(e Expr) (string, bool) {
 				switch attr.Name.Value {
 				case "upper":
 					return strings.ToUpper(v), true
+				case "capitalize":
+					return capitalize(v), true
 				case "lower":
 					return strings.ToLower(v), true
 				case "strip":
@@ -458,6 +460,8 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			return "", false
 		}
 		switch attr.Name.Value {
+		case "capitalize":
+		return capitalize(v), true
 		case "upper":
 			return strings.ToUpper(v), true
 		case "lower":
@@ -1262,6 +1266,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		switch attr.Name.Value {
 		case "upper":
 			v = strings.ToUpper(v)
+			case "capitalize":
+				v = capitalize(v)
 		case "lower":
 			v = strings.ToLower(v)
 		case "strip":

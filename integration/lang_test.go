@@ -478,6 +478,11 @@ func TestExecStrRfind(t *testing.T) {
 	assertOutput(t, `print("hello".rfind("z"))`, "-1\n")
 }
 
+func TestExecStrCapitalize(t *testing.T) {
+	// capitalize folds to a string constant
+	assertOutput(t, `print("hello".capitalize())`, "Hello\n")
+}
+
 func TestExecStrStartswithEndswith(t *testing.T) {
 	// startswith/endswith fold to 1 or 0
 	assertOutput(t, `print("hello".startswith("he"))`, "1\n")

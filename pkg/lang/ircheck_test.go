@@ -665,6 +665,14 @@ func TestIRStrRfindFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrCapitalizeFolds(t *testing.T) {
+	// `print(len("hello".capitalize()))` folds capitalize to "Hello" (len 5).
+	ir := llcCompiles(t, `print(len("hello".capitalize()))`)
+	if !strings.Contains(ir, "i32 5") {
+		t.Fatalf("expected folded capitalize length 5 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)

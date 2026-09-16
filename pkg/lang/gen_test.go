@@ -446,6 +446,30 @@ func TestGenStrLstripRstrip(t *testing.T) {
 	}
 }
 
+func TestGenStrCapitalize(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"hello".capitalize()`); got != "Hello" {
+		t.Fatalf("capitalize: expected Hello, got %q", got)
+	}
+	if got := evalStr(`"hELLO".capitalize()`); got != "Hello" {
+		t.Fatalf("capitalize lower rest: expected Hello, got %q", got)
+	}
+	if got := evalStr(`"".capitalize()`); got != "" {
+		t.Fatalf("capitalize empty: expected empty, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

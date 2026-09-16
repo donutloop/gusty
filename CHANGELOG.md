@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-capitalize)`: **`.capitalize()`** uppercases the first rune and
+  lowercases the rest in **both** paths via a shared `capitalize` helper:
+  the interpreter calls it directly; the codegen folds it in
+  `stringConst`/`stringVal` and the call dispatch
+  (`print(len("hello".capitalize()))` emits `i32 5`). Adds Eval/IR/
+  integration tests. ADR 0058.
 - `feat(str-rfind)`: **`.rfind(sub)`** returns the index of the last
   occurrence of `sub` (or -1 if absent) in **both** paths: the interpreter
   applies `strings.LastIndex`; the codegen constant-folds it to an `i32`

@@ -1174,6 +1174,15 @@ func (e *Evaluator) rangeStep(iter Expr) (int64, error) {
 // callMethod invokes a method body with self bound as a local.
 // callStrMethod dispatches builtin string methods: s.upper(), s.lower(),
 // s.strip(), s.split(sep?). recv is the boxed string handle.
+
+// capitalize returns s with the first rune uppercased and the rest lowercased.
+func capitalize(s string) string {
+	if s == "" {
+		return ""
+	}
+	r := []rune(s)
+	return string(unicode.ToUpper(r[0])) + strings.ToLower(string(r[1:]))
+}
 func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, error) {
 	o := e.heap[recv]
 	s := o.sval
@@ -1183,6 +1192,9 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, &EvalError{Msg: "upper() takes no arguments"}
 		}
 		return e.allocStr(strings.ToUpper(s)), nil
+	case "capitalize":
+		// s.capitalize() -> first rune upper, rest lower.
+		return e.allocStr(capitalize(s)), nil
 	case "lower":
 		if len(args) != 0 {
 			return 0, &EvalError{Msg: "lower() takes no arguments"}
