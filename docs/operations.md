@@ -66,8 +66,9 @@ a closure exactly like `def`:
 ## Dict methods (both paths, constant receivers)
 
 `{1: 2, 3: 4}.keys()` and `.values()` on constant dict literals fold to
-lists in the AOT codegen (`len`/`sum` work); `.items()` (pairs) and
-non-constant receivers stay interpreter-only.
+lists in the AOT codegen (`len`/`sum` work); `.items()` now ships in both paths on constant dict literals
+(`len({1: 2, 3: 4}.items())` -> 2); non-constant receivers stay
+interpreter-only.
 
 ## Interpreter-only language surface
 

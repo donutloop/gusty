@@ -59,7 +59,8 @@ exactly like `def`. String methods `.upper()`, `.lower()`, `.strip()` on constan
 literals constant-fold in the codegen (`len("AbC".upper())` -> 3). Dict `.keys()`/`.values()` on constant dict literals
 fold to lists, and list `.append()` on constant literals folds
 (`[1, 2, 3].append(4)` -> `[1, 2, 3, 4]`).
-fold to lists (`{1: 2, 3: 4}.keys()` -> `[1, 3]`).
+fold to lists (`{1: 2, 3: 4}.keys()` -> `[1, 3]`), and `.items()`
+folds `len({1: 2, 3: 4}.items())` to 2.
 
 ## Toolchain
 

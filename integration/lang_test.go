@@ -443,3 +443,7 @@ func TestExecDictKeysValues(t *testing.T) {
 func TestExecListAppend(t *testing.T) {
 	assertOutput(t, `print(sum([1, 2, 3].append(4)))`, "10\n")
 }
+
+func TestExecDictItemsLen(t *testing.T) {
+	assertOutput(t, `print(len({1: 2, 3: 4}.items()))`, "2\n")
+}

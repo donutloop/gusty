@@ -183,3 +183,22 @@ func TestGenListAppend(t *testing.T) {
 		t.Fatalf("append sum: expected 10, got %d", v)
 	}
 }
+
+func TestGenDictItemsLen(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	// len({1: 2, 3: 4}.items()) -> 2 pairs
+	if v := evalInt("len({1: 2, 3: 4}.items())"); v != 2 {
+		t.Fatalf("items len: expected 2, got %d", v)
+	}
+}

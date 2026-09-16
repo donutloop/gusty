@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(dict-items)`: **`.items()` on constant dict literals** — the
+  interpreter now builds a list of `[key, value]` pairs, and the AOT codegen
+  folds `len({1: 2, 3: 4}.items())` to the pair count 2 (via `dictMethodElems`
+  returning keys). Adds Eval/IR/integration tests. ADR 0045.
 - `feat(list-append)`: **`.append()` on constant list literals** constant-folds
   in the AOT codegen: `[1, 2, 3].append(4)` lowers to `[1, 2, 3, 4]`, so
   `len`/`sum` work. Adds a list-method branch in the `Attr` callee path and

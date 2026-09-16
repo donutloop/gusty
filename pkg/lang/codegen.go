@@ -352,6 +352,9 @@ func (g *irGen) dictMethodElems(e Expr) ([]Expr, bool) {
 		return dl.Keys, true
 	case "values":
 		return dl.Vals, true
+	case "items":
+		// len({...}.items()) folds to the number of key/value pairs.
+		return dl.Keys, true
 	}
 	return nil, false
 }

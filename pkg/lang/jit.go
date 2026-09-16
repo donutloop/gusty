@@ -1232,6 +1232,19 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64, error) {
 	o := e.heap[recv]
 	switch name {
+	case "items":
+		if len(args) != 0 {
+			return 0, &EvalError{Msg: "items() takes no arguments"}
+		}
+		listID := e.allocObj("list")
+		lo := e.heap[listID]
+		for i, k := range o.elems {
+			pairID := e.allocObj("list")
+			p := e.heap[pairID]
+			p.elems = append(p.elems, k, o.dvals[i])
+			lo.elems = append(lo.elems, pairID)
+		}
+		return listID, nil
 	case "keys":
 		if len(args) != 0 {
 			return 0, &EvalError{Msg: "keys() takes no arguments"}

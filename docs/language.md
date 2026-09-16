@@ -369,7 +369,9 @@ so `len`/`sum` work; mutating a bound variable stays interpreter-only.:
 
 Constant dict literals: `.keys()` / `.values()` fold to lists in the AOT
 codegen (`{1: 2, 3: 4}.keys()` -> `[1, 3]`), so `len`/`sum` work. `.items()`
-(pairs) and non-constant receivers remain interpreter-only.
+now works in both paths on constant dict literals: the interpreter returns a
+list of `[key, value]` pairs, and `len({1: 2, 3: 4}.items())` folds to 2 in
+the codegen. Non-constant receivers remain interpreter-only.
 
 ### dict methods
 

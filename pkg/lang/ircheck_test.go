@@ -588,3 +588,11 @@ func TestIRListAppendLowers(t *testing.T) {
 		t.Fatalf("expected IR sum folding, got:\n%s", ir)
 	}
 }
+
+func TestIRDictItemsLenLowers(t *testing.T) {
+	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
+	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")
+	if !strings.Contains(ir, "2") {
+		t.Fatalf("expected folded pair count 2, got:\n%s", ir)
+	}
+}
