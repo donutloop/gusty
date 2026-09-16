@@ -571,3 +571,12 @@ func TestIRStrMethodPrintLowersString(t *testing.T) {
 		t.Fatalf("expected folded string ABC in IR, got:\n%s", ir)
 	}
 }
+
+func TestIRDictKeysValuesLowers(t *testing.T) {
+	// sum({1: 2, 3: 4}.keys()) folds keys to a list and sums to 4.
+	ir := llcCompiles(t, "print(sum({1: 2, 3: 4}.keys()))")
+	if !strings.Contains(ir, "4") {
+		t.Fatalf("expected folded sum 4, got:\n%s", ir)
+	}
+	llcCompiles(t, "print(sum({1: 2, 3: 4}.values()))")
+}

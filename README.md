@@ -56,7 +56,8 @@ literals
 (inline `(lambda x: int: x + 1)(5)` and bound `f = lambda x: int: x * 2; f(3)`)
 ship in **both** the interpreter and the AOT codegen, lowered to a closure
 exactly like `def`. String methods `.upper()`, `.lower()`, `.strip()` on constant string
-literals constant-fold in the codegen (`len("AbC".upper())` -> 3).
+literals constant-fold in the codegen (`len("AbC".upper())` -> 3). Dict `.keys()`/`.values()` on constant dict literals
+fold to lists (`{1: 2, 3: 4}.keys()` -> `[1, 3]`).
 
 ## Toolchain
 

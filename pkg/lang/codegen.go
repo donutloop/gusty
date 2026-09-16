@@ -327,6 +327,28 @@ func (g *irGen) emitSet(sl *SetLit) (string, error) {
 // value emits an IR expression returning an i32 value; returns the operand string.
 
 // stringVal resolves an Expr to a concrete string constant, if any.
+func (g *irGen) dictMethodElems(e Expr) ([]Expr, bool) {
+	c, ok := e.(*Call)
+	if !ok {
+		return nil, false
+	}
+	attr, ok := c.Fn.(*Attr)
+	if !ok {
+		return nil, false
+	}
+	dl, ok := attr.Obj.(*DictLit)
+	if !ok {
+		return nil, false
+	}
+	switch attr.Name.Value {
+	case "keys":
+		return dl.Keys, true
+	case "values":
+		return dl.Vals, true
+	}
+	return nil, false
+}
+
 func (g *irGen) stringVal(e Expr) (string, bool) {
 	switch n := e.(type) {
 	case *StrLit:
@@ -1070,8 +1092,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			fnName = lamName
 		}
 	}
-	// constant-fold string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
+	// constant-fold attr methods on constant receivers.
 	if attr, ok := c.Fn.(*Attr); ok {
+		// dict methods: `{1: 2, 3: 4}.keys()` -> [1, 3], `.values()` -> [2, 4].
+		if dl, ok := attr.Obj.(*DictLit); ok {
+			switch attr.Name.Value {
+			case "keys":
+				return g.value(b, &ListLit{Elems: dl.Keys})
+			case "values":
+				return g.value(b, &ListLit{Elems: dl.Vals})
+			default:
+				return "", fmt.Errorf("unsupported dict method %s", attr.Name.Value)
+			}
+		}
+		// string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
 		v, ok := g.stringVal(attr.Obj)
 		if !ok {
 			return "", fmt.Errorf("string method %s on non-constant string", attr.Name.Value)
@@ -1259,6 +1293,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			v := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, name))
 			return v, nil
+		case *Call:
+			if elems, ok := g.dictMethodElems(c.Args[0]); ok {
+				return fmt.Sprintf("%d", len(elems)), nil
+			}
+			return "", fmt.Errorf("len requires an inline list/dict/set literal")
 		default:
 			return "", fmt.Errorf("len requires an inline list/dict/set literal")
 		}
@@ -1280,6 +1319,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return fmt.Sprintf("%d", total), nil
 		}
 		var elems []Expr
+		if de, ok := g.dictMethodElems(c.Args[0]); ok {
+			elems = de
+		}
 		if ln, ok := c.Args[0].(*ListLit); ok {
 			elems = ln.Elems
 		} else if sl, ok := c.Args[0].(*SetLit); ok {

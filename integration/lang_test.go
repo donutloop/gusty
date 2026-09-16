@@ -435,3 +435,7 @@ func TestExecStrMethod(t *testing.T) {
 func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
+
+func TestExecDictKeysValues(t *testing.T) {
+	assertOutput(t, `print(sum({1: 2, 3: 4}.keys()))`, "4\n")
+}

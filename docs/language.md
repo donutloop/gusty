@@ -365,7 +365,9 @@ Lists support `append(x)` (in-place, returns the updated list):
     xs = [1, 2]
     xs.append(3)     # xs == [1, 2, 3]
 
-Interpreter path only.
+Constant dict literals: `.keys()` / `.values()` fold to lists in the AOT
+codegen (`{1: 2, 3: 4}.keys()` -> `[1, 3]`), so `len`/`sum` work. `.items()`
+(pairs) and non-constant receivers remain interpreter-only.
 
 ### dict methods
 

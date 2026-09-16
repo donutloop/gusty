@@ -141,3 +141,26 @@ func TestGenStrMethod(t *testing.T) {
 		t.Fatalf("expected AbC, got %q", got)
 	}
 }
+
+func TestGenDictKeysValues(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	// sum({1: 2, 3: 4}.keys()) -> 1 + 3 = 4
+	if v := evalInt("sum({1: 2, 3: 4}.keys())"); v != 4 {
+		t.Fatalf("keys sum: expected 4, got %d", v)
+	}
+	// sum({1: 2, 3: 4}.values()) -> 2 + 4 = 6
+	if v := evalInt("sum({1: 2, 3: 4}.values())"); v != 6 {
+		t.Fatalf("values sum: expected 6, got %d", v)
+	}
+}

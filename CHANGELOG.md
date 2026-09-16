@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(dict-methods)`: **`.keys()` and `.values()`** on constant dict literals
+  constant-fold in the AOT codegen: `{1: 2, 3: 4}.keys()` lowers to a list
+  `[1, 3]` and `.values()` to `[2, 4]`, so `len(...)`/`sum(...)` fold. Adds a
+  `dictMethodElems` helper used by `len` and `sum`, and a dict-method branch
+  in the `Attr` callee path. Adds Eval/IR/integration tests. ADR 0043.
 - `feat(print-string-methods)`: `print` now lowers any constant-foldable
   string arg via `g.stringVal(a)` (not just `*StrLit`), so
   `print("AbC".upper())` emits the folded string global. Resolves the print

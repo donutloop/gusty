@@ -63,6 +63,12 @@ a closure exactly like `def`:
   a call to it; the interpreter allocs a closure capturing the environment.
 - interpreter-only: `Attr` string/list/dict methods, classes, generators.
 
+## Dict methods (both paths, constant receivers)
+
+`{1: 2, 3: 4}.keys()` and `.values()` on constant dict literals fold to
+lists in the AOT codegen (`len`/`sum` work); `.items()` (pairs) and
+non-constant receivers stay interpreter-only.
+
 ## Interpreter-only language surface
 
 Classes (with **inheritance** via `class Child(Base):` and `super()`, see
