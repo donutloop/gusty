@@ -471,6 +471,10 @@ via `strings.TrimPrefix`/`TrimSuffix`). `"hello".removeprefix("he")` is
 `.expandtabs(tabsize)` replaces each tab with spaces to the next tab stop
 of size `tabsize` (interpreter path). A string with no tabs is unchanged.
 
+`.strip([chars])` trims whitespace, or the given `chars` when provided
+(interpreter path via `strings.TrimSpace`/`strings.Trim`).
+`"xxhi xx".strip("x")` is "hi ".
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string

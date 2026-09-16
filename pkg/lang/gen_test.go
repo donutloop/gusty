@@ -857,6 +857,27 @@ func TestGenStrExpandtabs(t *testing.T) {
 	}
 }
 
+func TestGenStrStripChars(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"xxhi xx".strip("x")`); got != "hi " {
+		t.Fatalf("strip chars: expected hi + space, got %q", got)
+	}
+	if got := evalStr(`"  hi  ".strip()`); got != "hi" {
+		t.Fatalf("strip whitespace: expected hi, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

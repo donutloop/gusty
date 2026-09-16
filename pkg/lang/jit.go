@@ -1231,8 +1231,20 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 		}
 		return e.allocStr(strings.ToLower(s)), nil
 	case "strip":
-		if len(args) != 0 {
-			return 0, &EvalError{Msg: "strip() takes no arguments"}
+		// s.strip([chars]) -> trim whitespace, or the given chars when provided.
+		if len(args) > 1 {
+			return 0, &EvalError{Msg: "strip() takes at most 1 argument"}
+		}
+		if len(args) == 1 {
+			cv, err := e.eval(args[0])
+			if err != nil {
+				return 0, err
+			}
+			co, ok := e.heap[cv]
+			if !ok || co.kind != "str" {
+				return 0, &EvalError{Msg: "strip() argument must be a string"}
+			}
+			return e.allocStr(strings.Trim(s, co.sval)), nil
 		}
 		return e.allocStr(strings.TrimSpace(s)), nil
 	case "lstrip":

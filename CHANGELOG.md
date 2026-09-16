@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-strip-chars)`: **`.strip([chars])`** trims whitespace, or the
+  given `chars` when provided (interpreter path via `strings.TrimSpace` /
+  `strings.Trim`). `"xxhi xx".strip("x")` is "hi ". Adds an Eval unit
+  test. ADR 0075.
 - `feat(str-expandtabs)`: **`.expandtabs(tabsize)`** replaces each tab
   with spaces to the next tab stop of size `tabsize` (interpreter path). A
   string with no tabs is unchanged. Adds an Eval unit test. ADR 0074.
