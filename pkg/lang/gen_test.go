@@ -671,6 +671,30 @@ func TestGenStrIsalnum(t *testing.T) {
 	}
 }
 
+func TestGenStrIsspace(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"   ".isspace()`); got != 1 {
+		t.Fatalf("isspace spaces: expected 1, got %d", got)
+	}
+	if got := evalInt(`" a ".isspace()`); got != 0 {
+		t.Fatalf("isspace mixed: expected 0, got %d", got)
+	}
+	if got := evalInt(`"".isspace()`); got != 0 {
+		t.Fatalf("isspace empty: expected 0, got %d", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

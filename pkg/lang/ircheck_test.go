@@ -725,6 +725,14 @@ func TestIRStrIsalnumFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrIsspaceFolds(t *testing.T) {
+	// `print("   ".isspace())` folds to i32 1.
+	ir := llcCompiles(t, `print("   ".isspace())`)
+	if !strings.Contains(ir, "i32 1") {
+		t.Fatalf("expected folded isspace 1 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)

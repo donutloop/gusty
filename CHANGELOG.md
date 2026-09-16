@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-isspace)`: **`.isspace()`** returns 1 if every rune is
+  whitespace (and the string is non-empty), else 0, in **both** paths: the
+  interpreter checks `unicode.IsSpace`; the codegen folds it to
+  `i32 1`/`i32 0` (`print("   ".isspace())` emits `i32 1`). Adds
+  Eval/IR/integration tests. ADR 0067.
 - `feat(str-isalnum)`: **`.isalnum()`** returns 1 if every rune is
   alphanumeric (and the string is non-empty), else 0, in **both** paths:
   the interpreter checks `unicode.IsLetter`/`unicode.IsDigit`; the codegen

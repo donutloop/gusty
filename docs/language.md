@@ -438,6 +438,11 @@ non-empty), else 0, in **both** paths: the interpreter checks
 `unicode.IsLetter`/`unicode.IsDigit`; the codegen folds it to
 `i32 1`/`i32 0` (`print("abc123".isalnum())` emits `i32 1`).
 
+`.isspace()` returns 1 if every rune is whitespace (and the string is
+non-empty), else 0, in **both** paths: the interpreter checks
+`unicode.IsSpace`; the codegen folds it to `i32 1`/`i32 0`
+(`print("   ".isspace())` emits `i32 1`).
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string

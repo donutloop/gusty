@@ -1385,6 +1385,17 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			}
 		}
 		return 1, nil
+	case "isspace":
+		// s.isspace() -> 1 if every rune is whitespace and s is non-empty.
+		if s == "" {
+			return 0, nil
+		}
+		for _, r := range s {
+			if !unicode.IsSpace(r) {
+				return 0, nil
+			}
+		}
+		return 1, nil
 	case "islower":
 		// s.islower() -> 1 if there is a cased rune and all cased runes are lowercase.
 		hasCased := false

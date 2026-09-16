@@ -518,6 +518,12 @@ func TestExecStrIsalnum(t *testing.T) {
 	assertOutput(t, `print("abc!".isalnum())`, "0\n")
 }
 
+func TestExecStrIsspace(t *testing.T) {
+	// isspace folds to 1 or 0
+	assertOutput(t, `print("   ".isspace())`, "1\n")
+	assertOutput(t, `print(" a ".isspace())`, "0\n")
+}
+
 func TestExecStrStartswithEndswith(t *testing.T) {
 	// startswith/endswith fold to 1 or 0
 	assertOutput(t, `print("hello".startswith("he"))`, "1\n")
