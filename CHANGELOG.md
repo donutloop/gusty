@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-removeprefix-suffix)`: **`.removeprefix(prefix)`** /
+  **`.removesuffix(suffix)`** return the string without the prefix / suffix
+  when it is present, else unchanged (interpreter path via
+  `strings.TrimPrefix`/`TrimSuffix`). `"hello".removeprefix("he")` is
+  "llo". Adds an Eval unit test. ADR 0073.
 - `feat(str-rsplit)`: **`.rsplit(sep)`** splits the string on `sep` from
   the right (interpreter path; with no `maxsplit`, all splits — the same
   parts as `split`). `"a-b-c".rsplit("-")[2]` is "c". Adds an Eval

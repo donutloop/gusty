@@ -1286,6 +1286,34 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			lo.elems = append(lo.elems, e.allocStr(part))
 		}
 		return listID, nil
+	case "removeprefix":
+		// s.removeprefix(prefix) -> s without the prefix if it is present.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "removeprefix() takes exactly 1 argument"}
+		}
+		pv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		po, ok := e.heap[pv]
+		if !ok || po.kind != "str" {
+			return 0, &EvalError{Msg: "removeprefix() argument must be a string"}
+		}
+		return e.allocStr(strings.TrimPrefix(s, po.sval)), nil
+	case "removesuffix":
+		// s.removesuffix(suffix) -> s without the suffix if it is present.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "removesuffix() takes exactly 1 argument"}
+		}
+		pv2, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		po2, ok := e.heap[pv2]
+		if !ok || po2.kind != "str" {
+			return 0, &EvalError{Msg: "removesuffix() argument must be a string"}
+		}
+		return e.allocStr(strings.TrimSuffix(s, po2.sval)), nil
 	case "partition":
 		// s.partition(sep) -> list [head, sep, tail] at the first occurrence of sep.
 		if len(args) != 1 {

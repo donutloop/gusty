@@ -812,6 +812,33 @@ func TestGenStrRsplit(t *testing.T) {
 	}
 }
 
+func TestGenStrRemoveprefixSuffix(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"hello".removeprefix("he")`); got != "llo" {
+		t.Fatalf("removeprefix: expected llo, got %q", got)
+	}
+	if got := evalStr(`"hello".removeprefix("x")`); got != "hello" {
+		t.Fatalf("removeprefix absent: expected hello, got %q", got)
+	}
+	if got := evalStr(`"hello".removesuffix("lo")`); got != "hel" {
+		t.Fatalf("removesuffix: expected hel, got %q", got)
+	}
+	if got := evalStr(`"hello".removesuffix("x")`); got != "hello" {
+		t.Fatalf("removesuffix absent: expected hello, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

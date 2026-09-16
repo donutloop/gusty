@@ -463,6 +463,11 @@ errors instead of returning -1).
 path; with no `maxsplit`, all splits — the same parts as `split`).
 `"a-b-c".rsplit("-")[2]` is "c".
 
+`.removeprefix(prefix)` / `.removesuffix(suffix)` return the string without
+the prefix / suffix when it is present, else unchanged (interpreter path
+via `strings.TrimPrefix`/`TrimSuffix`). `"hello".removeprefix("he")` is
+"llo".
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
