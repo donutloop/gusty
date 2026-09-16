@@ -204,6 +204,23 @@ func stringConst(e Expr) (string, bool) {
 			return ls + rs, true
 		}
 	}
+	if c, ok := e.(*Call); ok {
+		attr, ok := c.Fn.(*Attr)
+		if ok {
+			v, ok := stringConst(attr.Obj)
+			if ok {
+				switch attr.Name.Value {
+				case "upper":
+					return strings.ToUpper(v), true
+				case "lower":
+					return strings.ToLower(v), true
+				case "strip":
+					return strings.TrimSpace(v), true
+				}
+			}
+		}
+		return "", false
+	}
 	return "", false
 }
 
@@ -328,6 +345,25 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			if lok && rok {
 				return ls + rs, true
 			}
+		}
+		return "", false
+	case *Call:
+		// constant-fold string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
+		attr, ok := n.Fn.(*Attr)
+		if !ok {
+			return "", false
+		}
+		v, ok := g.stringVal(attr.Obj)
+		if !ok {
+			return "", false
+		}
+		switch attr.Name.Value {
+		case "upper":
+			return strings.ToUpper(v), true
+		case "lower":
+			return strings.ToLower(v), true
+		case "strip":
+			return strings.TrimSpace(v), true
 		}
 		return "", false
 	}
@@ -1034,6 +1070,25 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			fnName = lamName
 		}
 	}
+	// constant-fold string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
+	if attr, ok := c.Fn.(*Attr); ok {
+		v, ok := g.stringVal(attr.Obj)
+		if !ok {
+			return "", fmt.Errorf("string method %s on non-constant string", attr.Name.Value)
+		}
+		switch attr.Name.Value {
+		case "upper":
+			v = strings.ToUpper(v)
+		case "lower":
+			v = strings.ToLower(v)
+		case "strip":
+			v = strings.TrimSpace(v)
+		default:
+			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
+		}
+		return g.strConst(v), nil
+	}
+
 	if g.funcs[fnName] {
 		fd := g.fds[fnName]
 		if fd == nil {

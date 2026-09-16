@@ -548,3 +548,18 @@ func TestIRLambdaNamedCompilesWithLLC(t *testing.T) {
 		t.Fatalf("expected generated lambda FuncDef, got:\n%s", ir)
 	}
 }
+
+func TestIRStrMethodUpperLenFolds(t *testing.T) {
+	// `len("AbC".upper())` constant-folds upper to "ABC" and returns 3.
+	ir := llcCompiles(t, `print(len("AbC".upper()))`)
+	if !strings.Contains(ir, "3") {
+		t.Fatalf("expected folded length 3, got:\n%s", ir)
+	}
+}
+
+func TestIRStrMethodLowerStripFolds(t *testing.T) {
+	// `len(" AbC ".strip())` folds strip to "AbC" (len 3).
+	llcCompiles(t, `print(len(" AbC ".strip()))`)
+	// `len("ABC".lower())` folds lower to "abc" (len 3).
+	llcCompiles(t, `print(len("ABC".lower()))`)
+}

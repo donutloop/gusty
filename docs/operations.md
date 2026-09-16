@@ -147,6 +147,11 @@ indexes dicts/sets at runtime and is unchanged.
 
 ## String-constant concatenation + len (AOT codegen)
 
+- String methods `.upper()`, `.lower()`, `.strip()` on constant string
+  literals ship in **both** paths: the codegen constant-folds them via
+  `stringConst`/`stringVal` Call-folding, so `len("AbC".upper())` -> 3.
+
+
 String literals are lowered to global constants. `+` on two string literals
 folds to a single concatenated constant (e.g. `"a" + "b"` -> `@.strN` with
 `"ab"`), and `len` of a string-constant expression (including a chain of

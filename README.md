@@ -55,7 +55,8 @@ literals
 (`for x in [1, 2, 3]:`, unrolled per element). `lambda` anonymous functions
 (inline `(lambda x: int: x + 1)(5)` and bound `f = lambda x: int: x * 2; f(3)`)
 ship in **both** the interpreter and the AOT codegen, lowered to a closure
-exactly like `def`.
+exactly like `def`. String methods `.upper()`, `.lower()`, `.strip()` on constant string
+literals constant-fold in the codegen (`len("AbC".upper())` -> 3).
 
 ## Toolchain
 

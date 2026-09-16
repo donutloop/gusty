@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(string-methods)`: **constant-fold string methods** in the AOT codegen:
+  `.upper()`, `.lower()`, `.strip()` on constant string literals fold at
+  codegen time (package-level `stringConst` Call-folding + `irGen` `stringVal`
+  Call-folding), so `len("AbC".upper())` -> 3. Adds IR tests
+  (`TestIRStrMethod*`), interpreter Eval tests (`TestGenStrMethod`), and an
+  integration test (`TestExecStrMethod`). ADR 0042.
 - `feat(lambda)`: **`lambda` anonymous functions** in **both** the interpreter
   and the AOT codegen. `(lambda x: int: x + 1)(5)` -> 6 and `f = lambda x: int:
   x * 2; f(3)` -> 6. A lambda is lowered to a closure exactly like `def`: the

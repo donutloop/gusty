@@ -426,3 +426,8 @@ func TestExecLambdaNamed(t *testing.T) {
 	// `f = lambda x: int: x * 2; f(3)` -> 6
 	assertOutput(t, "f = lambda x: int: x * 2\nprint(f(3))", "6\n")
 }
+
+func TestExecStrMethod(t *testing.T) {
+	// `print(len("AbC".upper()))` -> 3 (constant-folded upper)
+	assertOutput(t, `print(len("AbC".upper()))`, "3\n")
+}

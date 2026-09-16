@@ -120,3 +120,24 @@ func TestGenLambdaNamed(t *testing.T) {
 		t.Fatalf("expected 6, got %d", v)
 	}
 }
+
+func TestGenStrMethod(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"AbC".upper()`); got != "ABC" {
+		t.Fatalf("expected ABC, got %q", got)
+	}
+	if got := evalStr(`" AbC ".strip()`); got != "AbC" {
+		t.Fatalf("expected AbC, got %q", got)
+	}
+}
