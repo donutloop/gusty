@@ -1183,6 +1183,19 @@ func capitalize(s string) string {
 	r := []rune(s)
 	return string(unicode.ToUpper(r[0])) + strings.ToLower(string(r[1:]))
 }
+
+// title returns s with the first rune of each whitespace-separated word uppercased.
+func title(s string) string {
+	prev := ' '
+	return strings.Map(func(r rune) rune {
+		if prev == ' ' {
+			prev = r
+			return unicode.ToUpper(r)
+		}
+		prev = r
+		return unicode.ToLower(r)
+	}, s)
+}
 func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, error) {
 	o := e.heap[recv]
 	s := o.sval
@@ -1195,6 +1208,9 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 	case "capitalize":
 		// s.capitalize() -> first rune upper, rest lower.
 		return e.allocStr(capitalize(s)), nil
+	case "title":
+		// s.title() -> capitalize the first rune of each whitespace-separated word.
+		return e.allocStr(title(s)), nil
 	case "lower":
 		if len(args) != 0 {
 			return 0, &EvalError{Msg: "lower() takes no arguments"}

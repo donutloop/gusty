@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-title)`: **`.title()`** capitalizes the first rune of each
+  whitespace-separated word in **both** paths via a shared `title` helper
+  (`strings.Map` tracking the previous rune), folded in `stringConst`/
+  `stringVal` and the call dispatch
+  (`print(len("hello world".title()))` emits `i32 11`). Adds Eval/IR/
+  integration tests. ADR 0059.
 - `feat(str-capitalize)`: **`.capitalize()`** uppercases the first rune and
   lowercases the rest in **both** paths via a shared `capitalize` helper:
   the interpreter calls it directly; the codegen folds it in

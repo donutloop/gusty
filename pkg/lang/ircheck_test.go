@@ -673,6 +673,14 @@ func TestIRStrCapitalizeFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrTitleFolds(t *testing.T) {
+	// `print(len("hello world".title()))` folds title to "Hello World" (len 11).
+	ir := llcCompiles(t, `print(len("hello world".title()))`)
+	if !strings.Contains(ir, "i32 11") {
+		t.Fatalf("expected folded title length 11 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)

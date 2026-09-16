@@ -400,6 +400,11 @@ codegen constant-folds it to an `i32` literal
 directly; the codegen folds it in `stringConst`/`stringVal` and the call
 dispatch (`print(len("hello".capitalize()))` emits `i32 5`).
 
+`.title()` capitalizes the first rune of each whitespace-separated word in
+**both** paths via a shared `title` helper (`strings.Map` tracking the
+previous rune), folded in `stringConst`/`stringVal` and the call dispatch
+(`print(len("hello world".title()))` emits `i32 11`).
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string

@@ -470,6 +470,30 @@ func TestGenStrCapitalize(t *testing.T) {
 	}
 }
 
+func TestGenStrTitle(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"hello world".title()`); got != "Hello World" {
+		t.Fatalf("title: expected Hello World, got %q", got)
+	}
+	if got := evalStr(`"aB cD".title()`); got != "Ab Cd" {
+		t.Fatalf("title mixed: expected Ab Cd, got %q", got)
+	}
+	if got := evalStr(`"".title()`); got != "" {
+		t.Fatalf("title empty: expected empty, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

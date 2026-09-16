@@ -483,6 +483,11 @@ func TestExecStrCapitalize(t *testing.T) {
 	assertOutput(t, `print("hello".capitalize())`, "Hello\n")
 }
 
+func TestExecStrTitle(t *testing.T) {
+	// title folds to a string constant
+	assertOutput(t, `print("hello world".title())`, "Hello World\n")
+}
+
 func TestExecStrStartswithEndswith(t *testing.T) {
 	// startswith/endswith fold to 1 or 0
 	assertOutput(t, `print("hello".startswith("he"))`, "1\n")
