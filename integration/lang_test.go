@@ -465,6 +465,13 @@ func TestExecStrReplace(t *testing.T) {
 	assertOutput(t, `print("aXbXc".replace("X", "-"))`, "a-b-c\n")
 }
 
+func TestExecStrFind(t *testing.T) {
+	// `print("abcabc".find("bc"))` -> 1 (constant-folded index)
+	assertOutput(t, `print("abcabc".find("bc"))`, "1\n")
+	// absent substring folds to -1
+	assertOutput(t, `print("hello".find("z"))`, "-1\n")
+}
+
 func TestExecStrEq(t *testing.T) {
 	assertOutput(t, `print("abc" == "abd")`, "0\n")
 }

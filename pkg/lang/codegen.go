@@ -1236,6 +1236,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("replace() new must be a constant string")
 			}
 			v = strings.ReplaceAll(v, oldv, newv)
+		case "find":
+			// s.find(sub) -> index of first occurrence of sub, or -1 if absent.
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("find() takes exactly 1 argument")
+			}
+			subv, ok := g.stringVal(c.Args[0])
+			if !ok {
+				return "", fmt.Errorf("find() argument must be a constant string")
+			}
+			return fmt.Sprintf("%d", strings.Index(v, subv)), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}

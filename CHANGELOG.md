@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-find)`: **`.find(sub)`** returns the index of the first
+  occurrence of `sub` (or -1 if absent) in **both** paths: the interpreter
+  applies `strings.Index`; the codegen constant-folds it to an `i32` literal
+  (`print("abcabc".find("bc"))` emits `i32 1`). Adds Eval/IR/integration
+  tests. ADR 0051.
 - `feat(str-replace)`: **`.replace(old, new)`** replaces every occurrence in
   **both** paths: the interpreter evaluates both args as strings and applies
   `strings.ReplaceAll`; the codegen constant-folds the receiver and both

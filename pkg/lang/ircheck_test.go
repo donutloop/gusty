@@ -647,3 +647,12 @@ func TestIRStrReplaceFolds(t *testing.T) {
 		t.Fatalf("expected folded replace result a-b-c in IR, got:\n%s", ir)
 	}
 }
+
+func TestIRStrFindFolds(t *testing.T) {
+	// `print("abcabc".find("bc"))` folds to the index 1, so the emitted IR
+	// contains the i32 constant 1.
+	ir := llcCompiles(t, `print("abcabc".find("bc"))`)
+	if !strings.Contains(ir, "i32 1") {
+		t.Fatalf("expected folded find result 1 in IR, got:\n%s", ir)
+	}
+}

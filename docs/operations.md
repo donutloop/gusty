@@ -170,6 +170,8 @@ indexes dicts/sets at runtime and is unchanged.
   constant-folds them via `stringConst`/`stringVal` Call-folding, so
   `len("AbC".upper())` -> 3 and `print("aXbXc".replace("X", "-"))`
   emits the folded global "a-b-c".
+- `.find(sub)` constant-folds to an `i32` literal (`print("abcabc".find("bc"))`
+  emits `i32 1`).
 
 
 String literals are lowered to global constants. `+` on two string literals

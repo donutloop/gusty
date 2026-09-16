@@ -375,6 +375,11 @@ interpreter evaluates both arguments as strings and applies
 both arguments are string constants (`print("aXbXc".replace("X", "-"))`
 emits the folded global "a-b-c").
 
+`.find(sub)` returns the index of the first occurrence of `sub`, or -1 if
+absent, in **both** paths: the interpreter applies `strings.Index`; the
+codegen constant-folds it to an `i32` literal when the receiver and argument
+are string constants (`print("abcabc".find("bc"))` emits `i32 1`).
+
 ### list methods
 
 Lists support `append(x)` (in-place, returns the updated list). On constant

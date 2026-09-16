@@ -1237,6 +1237,20 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, &EvalError{Msg: "replace() new must be a string"}
 		}
 		return e.allocStr(strings.ReplaceAll(s, oldo.sval, novo.sval)), nil
+	case "find":
+		// s.find(sub) -> index of first occurrence of sub, or -1 if absent.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "find() takes exactly 1 argument"}
+		}
+		subv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		subo, ok := e.heap[subv]
+		if !ok || subo.kind != "str" {
+			return 0, &EvalError{Msg: "find() argument must be a string"}
+		}
+		return int64(strings.Index(s, subo.sval)), nil
 	}
 	return 0, &EvalError{Msg: "no such string method " + name}
 }

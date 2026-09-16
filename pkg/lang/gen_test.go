@@ -322,3 +322,27 @@ func TestGenStrReplace(t *testing.T) {
 		t.Fatalf("replace: expected heLLo, got %q", got)
 	}
 }
+
+func TestGenStrFind(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"abcabc".find("bc")`); got != 1 {
+		t.Fatalf("find: expected 1, got %d", got)
+	}
+	if got := evalInt(`"hello".find("z")`); got != -1 {
+		t.Fatalf("find absent: expected -1, got %d", got)
+	}
+	if got := evalInt(`"hello".find("he")`); got != 0 {
+		t.Fatalf("find prefix: expected 0, got %d", got)
+	}
+}
