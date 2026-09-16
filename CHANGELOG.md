@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-index)`: **`.index(sub)`** returns the index of the first
+  occurrence of `sub`, raising "substring not found" when absent
+  (interpreter path; like `find` but errors instead of returning -1).
+  Adds an Eval unit test. ADR 0071.
 - `feat(str-ljust-rjust)`: **`.ljust(width)`** / **`.rjust(width)`** pad
   with spaces on the right / left to `width` in the interpreter path:
   `"ab".ljust(4)` is "ab  ", and a string already at/over width is

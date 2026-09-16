@@ -455,6 +455,10 @@ unchanged.
 `width` in the interpreter path: `"ab".ljust(4)` is "ab  ", and a string
 already at/over width is unchanged.
 
+`.index(sub)` returns the index of the first occurrence of `sub`, raising
+"substring not found" when absent (interpreter path; like `find` but
+errors instead of returning -1).
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
