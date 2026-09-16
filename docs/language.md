@@ -309,6 +309,16 @@ and deduplicate folded elements; dict comprehensions fold key/value pairs into
 the dict global. Both are usable with `len(...)` via the `compLen` map,
 mirroring the interpreter's semantics.
 
+Comprehension results are **indexable** exactly like their literal
+counterparts, resolved at codegen time:
+- `(d for ...)[key]` on a **dict comprehension** folds to the mapped constant
+  value (keys recorded via `compKeys`), erroring `key not found` when absent.
+- `(s for ...)[key]` on a **set comprehension** is a membership test returning
+  the element when present, erroring `not in set` otherwise.
+- `(l for ...)[i]` on a **list comprehension** is the positional GEP+load.
+This mirrors the interpreter's `Index` handling for dict lookup and set
+membership.
+
 ### min / max / abs
 
 Standard-library numeric builtins:

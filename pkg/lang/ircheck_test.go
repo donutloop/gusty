@@ -352,6 +352,44 @@ func TestIRDictComprehensionLowersToDictGlobal(t *testing.T) {
 	}
 }
 
+func TestIRDictComprehensionIndexCompilesWithLLC(t *testing.T) {
+	// d[key] on a lowered dict comprehension resolves the mapped value at
+	// codegen time (constant key lookup, not a positional GEP).
+	llcCompiles(t, "print(({x: x * 10} for x in [1, 2])[1])")
+	llcCompiles(t, "print(({x: x * 10} for x in [1, 2])[2])")
+}
+
+func TestIRDictComprehensionIndexMissingKeyErrors(t *testing.T) {
+	// d[3] with no matching key must fail at codegen, like a normal dict.
+	if _, err := Compile("print(({x: x * 10} for x in [1, 2])[3])"); err == nil {
+		t.Fatalf("expected key-not-found compile error")
+	}
+}
+
+
+func TestIRDictComprehensionIndexLowersToConstant(t *testing.T) {
+	// d[1] over {x: x * 10} for x in [1, 2] is resolved to the constant 10 at
+	// codegen time (no runtime GEP/lookup).
+	ir := llcCompiles(t, "print(({x: x * 10} for x in [1, 2])[1])")
+	if !strings.Contains(ir, "i32 10") {
+		t.Fatalf("dict comprehension index should fold to constant 10, got:\n%s", ir)
+	}
+}
+
+func TestIRSetComprehensionIndexCompilesWithLLC(t *testing.T) {
+	// s[key] on a lowered set comprehension is a membership test returning
+	// the element when present.
+	llcCompiles(t, "print(({x * x} for x in [1, 2])[1])")
+	llcCompiles(t, "print(({x * x} for x in [1, 2])[4])")
+}
+
+func TestIRSetComprehensionIndexMissingErrors(t *testing.T) {
+	// s[5] with no matching element must fail at codegen (membership test).
+	if _, err := Compile("print(({x * x} for x in [1, 2])[5])"); err == nil {
+		t.Fatalf("expected not-in-set compile error")
+	}
+}
+
 func TestIRTernaryCompilesWithLLC(t *testing.T) {
 	// ternary with a constant condition folds to the taken branch.
 	llcCompiles(t, "print(5 if 1 else 3)")

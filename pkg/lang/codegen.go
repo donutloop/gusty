@@ -88,6 +88,10 @@ type irGen struct {
 	// compEls records the folded element constant of each lowered comprehension,
 	// so aggregate builtins (sum/min/max) can fold over the comprehension.
 	compEls map[*Comp][]int64
+	// compKeys records the folded key constants of each lowered dict
+	// comprehension, so `d[key]` on a dict comprehension can be resolved at
+	// codegen time (set/list comprehensions have no separate keys).
+	compKeys map[*Comp][]int64
 	// constBindings maps a comprehension variable name to its compile-time
 	// constant so comprehension bodies can be unrolled at codegen time.
 	constBindings map[string]int64
@@ -611,19 +615,52 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 			return "", fmt.Errorf("not in set")
 		case *Comp:
-			// indexing into a lowered comprehension result: same global struct
-			// shape as a list literal, so bounds-check and GEP+load by key.
-			name, err := g.comp(b, obj)
-			if err != nil {
-				return "", err
+			// indexing into a lowered comprehension result. The struct shape
+			// depends on the comprehension kind:
+			//   - list: positional GEP+load into {i32, [n x i32]}.
+			//   - set:  membership test against the folded elements.
+			//   - dict: constant key lookup against the folded key/value pairs.
+			switch obj.Kind {
+			case CompList:
+				name, err := g.comp(b, obj)
+				if err != nil {
+					return "", err
+				}
+				n := g.compLen[obj]
+				if key < 0 || key >= int64(n) {
+					return "", fmt.Errorf("list index out of range")
+				}
+				v := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, key))
+				return v, nil
+			case CompSet:
+				// set membership: `s[key]` returns the element if present,
+				// otherwise errors (interpreter semantics). comp() populates
+				// compEls and emits the set global.
+				if _, err := g.comp(b, obj); err != nil {
+					return "", err
+				}
+				for _, el := range g.compEls[obj] {
+					if el == key {
+						return fmt.Sprintf("%d", key), nil
+					}
+				}
+				return "", fmt.Errorf("not in set")
+			case CompDict:
+				// dict lookup: `d[key]` returns the mapped value, else errors.
+				// comp() populates compKeys/compEls and emits the dict global.
+				if _, err := g.comp(b, obj); err != nil {
+					return "", err
+				}
+				for i, k := range g.compKeys[obj] {
+					if k == key {
+						return fmt.Sprintf("%d", g.compEls[obj][i]), nil
+					}
+				}
+				return "", fmt.Errorf("key not found")
+			default:
+				return "", fmt.Errorf("unsupported comprehension kind %d", obj.Kind)
 			}
-			n := g.compLen[obj]
-			if key < 0 || key >= int64(n) {
-				return "", fmt.Errorf("list index out of range")
-			}
-			v := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, key))
-			return v, nil
 		default:
 			return "", fmt.Errorf("index requires an inline list/dict/set literal")
 		}
@@ -809,6 +846,9 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	if g.compEls == nil {
 		g.compEls = map[*Comp][]int64{}
 	}
+	if g.compKeys == nil {
+		g.compKeys = map[*Comp][]int64{}
+	}
 	var name string
 	var results []int64
 	switch c.Kind {
@@ -916,6 +956,9 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 		}
 		n := len(keys)
 		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32], [%d x i32]} { i32 %d, [%d x i32] [%s], [%d x i32] [%s] }\n", name, n, n, n, n, strings.Join(kparts, ", "), n, strings.Join(vparts, ", ")))
+		// record the folded keys so `d[key]` on a dict comprehension can be
+		// resolved at codegen time.
+		g.compKeys[c] = keys
 	default:
 		return "", fmt.Errorf("codegen: unsupported comprehension kind %d", c.Kind)
 	}

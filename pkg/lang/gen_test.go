@@ -53,6 +53,32 @@ func TestGenDictComprehensionLen(t *testing.T) {
 	}
 }
 
+func TestGenDictComprehensionIndex(t *testing.T) {
+	// d[1] over {x: x * 10} for x in [1, 2] maps key 1 -> value 10.
+	if v, _, err := EvalExpr("({x: x * 10} for x in [1, 2])[1]"); err != nil {
+		t.Fatalf("dict comprehension index: %v", err)
+	} else if v != 10 {
+		t.Fatalf("expected 10, got %d", v)
+	}
+	// missing key errors like a normal dict lookup.
+	if _, _, err := EvalExpr("({x: x * 10} for x in [1, 2])[3]"); err == nil {
+		t.Fatalf("expected key-not-found error")
+	}
+}
+
+func TestGenSetComprehensionIndex(t *testing.T) {
+	// s[2] over {x * x} for x in [1, 2] returns the element when present.
+	if v, _, err := EvalExpr("({x * x} for x in [1, 2])[1]"); err != nil {
+		t.Fatalf("set comprehension index: %v", err)
+	} else if v != 1 {
+		t.Fatalf("expected 1, got %d", v)
+	}
+	// absent element errors.
+	if _, _, err := EvalExpr("({x * x} for x in [1, 2])[5]"); err == nil {
+		t.Fatalf("expected not-in-set error")
+	}
+}
+
 func TestGenMinSetLiteral(t *testing.T) {
 	// min over a set literal folds its elements.
 	if v, _, err := EvalExpr("min({1, 2, 3})"); err != nil {

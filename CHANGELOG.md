@@ -3,6 +3,16 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(codegen)`: **Comprehension indexing** — `d[key]` on a lowered **dict
+  comprehension** now folds to the mapped constant value (keys recorded via a
+  new `compKeys` map), erroring `key not found` when absent; `s[key]` on a
+  **set comprehension** is a membership test returning the element when
+  present, erroring `not in set` otherwise (interpreter semantics). Previously
+  the `Index` case treated every comprehension as a list-shaped struct and
+  GEP'd positionally, which was wrong for sets/dicts. Adds IR tests
+  (`TestIRDictComprehensionIndex*`, `TestIRSetComprehensionIndex*`) and
+  interpreter Eval tests (`TestGenDictComprehensionIndex`,
+  `TestGenSetComprehensionIndex`). ADR 0040.
 - `feat(codegen)`: **`sum`/`min`/`max` over set and dict literals** now fold
   elements/keys in the AOT LLVM codegen (previously only list literals and
   comprehension results were supported). Set literals fold `Elems`, dict
