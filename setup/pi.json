@@ -1,7 +1,7 @@
 {
   "providers": {
     "local-vllm": {
-      "baseUrl": "http://localhost:8899/v1",
+      "baseUrl": "http://localhost:8000/v1",
       "api": "openai-completions",
       "apiKey": "dummy",
       "compat": {

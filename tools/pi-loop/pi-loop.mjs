@@ -145,7 +145,7 @@ const STATE_FILE = path.join(cwd, ".pi-loop-state.json");
 const PROVIDER_CFG = {
   providers: {
     "local-vllm": {
-      baseUrl: "http://localhost:8899/v1",
+      baseUrl: "http://localhost:8000/v1",
       api: "openai-completions",
       apiKey: "dummy"
     }
@@ -154,7 +154,7 @@ const PROVIDER_CFG = {
     "deepseek-v4-flash": {
       provider: "local-vllm",
       name: "deepseek-v4-flash",
-      baseUrl: "http://localhost:8899/v1",
+      baseUrl: "http://localhost:8000/v1",
       api: "openai-completions"
     }
   }
