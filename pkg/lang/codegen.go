@@ -1154,19 +1154,26 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			return fmt.Sprintf("%d", total), nil
 		}
-		ln, ok := c.Args[0].(*ListLit)
-		if !ok {
-			return "", fmt.Errorf("sum requires an inline list literal")
+		var elems []Expr
+		if ln, ok := c.Args[0].(*ListLit); ok {
+			elems = ln.Elems
+		} else if sl, ok := c.Args[0].(*SetLit); ok {
+			elems = sl.Elems
+		} else if dl, ok := c.Args[0].(*DictLit); ok {
+			elems = dl.Keys
 		}
-		if len(ln.Elems) == 0 {
+		if elems == nil {
+			return "", fmt.Errorf("sum requires an inline list/set/dict literal")
+		}
+		if len(elems) == 0 {
 			return "", fmt.Errorf("sum of an empty list")
 		}
-		acc, err := g.value(b, ln.Elems[0])
+		acc, err := g.value(b, elems[0])
 		if err != nil {
 			return "", err
 		}
-		for i := 1; i < len(ln.Elems); i++ {
-			el, err := g.value(b, ln.Elems[i])
+		for i := 1; i < len(elems); i++ {
+			el, err := g.value(b, elems[i])
 			if err != nil {
 				return "", err
 			}
@@ -1200,19 +1207,26 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			return fmt.Sprintf("%d", best), nil
 		}
-		ln, ok := c.Args[0].(*ListLit)
-		if !ok {
-			return "", fmt.Errorf("%s requires an inline list literal", fnName)
+		var elems []Expr
+		if ln, ok := c.Args[0].(*ListLit); ok {
+			elems = ln.Elems
+		} else if sl, ok := c.Args[0].(*SetLit); ok {
+			elems = sl.Elems
+		} else if dl, ok := c.Args[0].(*DictLit); ok {
+			elems = dl.Keys
 		}
-		if len(ln.Elems) == 0 {
+		if elems == nil {
+			return "", fmt.Errorf("%s requires an inline list/set/dict literal", fnName)
+		}
+		if len(elems) == 0 {
 			return "", fmt.Errorf("%s of an empty list", fnName)
 		}
-		best, err := g.value(b, ln.Elems[0])
+		best, err := g.value(b, elems[0])
 		if err != nil {
 			return "", err
 		}
-		for i := 1; i < len(ln.Elems); i++ {
-			el, err := g.value(b, ln.Elems[i])
+		for i := 1; i < len(elems); i++ {
+			el, err := g.value(b, elems[i])
 			if err != nil {
 				return "", err
 			}

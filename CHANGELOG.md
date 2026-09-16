@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(codegen)`: **`sum`/`min`/`max` over set and dict literals** now fold
+  elements/keys in the AOT LLVM codegen (previously only list literals and
+  comprehension results were supported). Set literals fold `Elems`, dict
+  literals fold `Keys` (interpreter semantics). Adds IR tests
+  (`TestIRSumSetLiteral*`, `TestIRMinDictLiteral*`, `TestIRMaxSetLiteral*`)
+  and interpreter Eval tests (`TestGenMinSetLiteral`, `TestGenMaxSetLiteral`).
 - `feat(codegen)`: **Set and dict comprehensions** now lower to dedicated
   `@.setN` / `@.dictN` globals in the AOT LLVM codegen (previously
   interpreter-only). Set comprehensions deduplicate folded elements; dict

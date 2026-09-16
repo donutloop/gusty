@@ -481,3 +481,16 @@ func TestIRSumMinMaxAbs(t *testing.T) {
 		t.Fatalf("abs(-x) IR missing icmp/select:\n%s", res.IR)
 	}
 }
+
+func TestIRSumSetLiteralCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "print(sum({1, 2, 3}))")
+}
+
+func TestIRMinDictLiteralCompilesWithLLC(t *testing.T) {
+	// min over a dict literal folds over keys (interpreter semantics).
+	llcCompiles(t, "print(min({1: 10, 2: 20}))")
+}
+
+func TestIRMaxSetLiteralCompilesWithLLC(t *testing.T) {
+	llcCompiles(t, "print(max({1, 2, 3}))")
+}

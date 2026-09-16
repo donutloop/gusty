@@ -52,3 +52,21 @@ func TestGenDictComprehensionLen(t *testing.T) {
 		t.Fatalf("expected len 2, got %d", v)
 	}
 }
+
+func TestGenMinSetLiteral(t *testing.T) {
+	// min over a set literal folds its elements.
+	if v, _, err := EvalExpr("min({1, 2, 3})"); err != nil {
+		t.Fatalf("min set: %v", err)
+	} else if v != 1 {
+		t.Fatalf("expected 1, got %d", v)
+	}
+}
+
+func TestGenMaxSetLiteral(t *testing.T) {
+	// max over a set literal folds its elements.
+	if v, _, err := EvalExpr("max({1, 2, 3})"); err != nil {
+		t.Fatalf("max set: %v", err)
+	} else if v != 3 {
+		t.Fatalf("expected 3, got %d", v)
+	}
+}
