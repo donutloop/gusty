@@ -235,6 +235,23 @@ func stringConst(e Expr) (string, bool) {
 						return "", false
 					}
 					return strings.ReplaceAll(v, oldv, newv), true
+				case "join":
+					if len(c.Args) != 1 {
+						return "", false
+					}
+					ll, ok := c.Args[0].(*ListLit)
+					if !ok {
+						return "", false
+					}
+					parts := []string{}
+					for _, el := range ll.Elems {
+						sv, ok := stringConst(el)
+						if !ok {
+							return "", false
+						}
+						parts = append(parts, sv)
+					}
+					return strings.Join(parts, v), true
 				}
 			}
 		}
@@ -464,6 +481,23 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				return "", false
 			}
 			return strings.ReplaceAll(v, oldv, newv), true
+		case "join":
+			if len(n.Args) != 1 {
+				return "", false
+			}
+			ll, ok := n.Args[0].(*ListLit)
+			if !ok {
+				return "", false
+			}
+			parts := []string{}
+			for _, el := range ll.Elems {
+				sv, ok := g.stringVal(el)
+				if !ok {
+					return "", false
+				}
+				parts = append(parts, sv)
+			}
+			return strings.Join(parts, v), true
 		}
 		return "", false
 	}
@@ -1249,6 +1283,23 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("replace() new must be a constant string")
 			}
 			v = strings.ReplaceAll(v, oldv, newv)
+		case "join":
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("join() takes exactly 1 argument")
+			}
+			ll, ok := c.Args[0].(*ListLit)
+			if !ok {
+				return "", fmt.Errorf("join() argument must be a constant list")
+			}
+			parts := []string{}
+			for _, el := range ll.Elems {
+				sv, ok := g.stringVal(el)
+				if !ok {
+					return "", fmt.Errorf("join() list elements must be constant strings")
+				}
+				parts = append(parts, sv)
+			}
+			v = strings.Join(parts, v)
 		case "find":
 			// s.find(sub) -> index of first occurrence of sub, or -1 if absent.
 			if len(c.Args) != 1 {

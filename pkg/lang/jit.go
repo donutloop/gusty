@@ -1272,6 +1272,28 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, &EvalError{Msg: "count() argument must be a string"}
 		}
 		return int64(strings.Count(s, subo.sval)), nil
+	case "join":
+		// s.join(list) -> join list element strings with separator s.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "join() takes exactly 1 argument"}
+		}
+		lv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		lo, ok := e.heap[lv]
+		if !ok || lo.kind != "list" {
+			return 0, &EvalError{Msg: "join() argument must be a list"}
+		}
+		parts := []string{}
+		for _, el := range lo.elems {
+			so, ok := e.heap[el]
+			if !ok || so.kind != "str" {
+				return 0, &EvalError{Msg: "join() list elements must be strings"}
+			}
+			parts = append(parts, so.sval)
+		}
+		return e.allocStr(strings.Join(parts, s)), nil
 	case "startswith", "endswith":
 		// s.startswith(sub) / s.endswith(sub) -> 1 or 0.
 		if len(args) != 1 {

@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-join)`: **`.join(list)`** joins a list of string elements with
+  the receiver as separator in **both** paths: the interpreter evaluates the
+  list arg and applies `strings.Join`; the codegen folds the receiver and a
+  constant list of string elements (`print("-".join(["a", "b", "c"]))`
+  emits the global "a-b-c"). Adds Eval/IR/integration tests. ADR 0055.
 - `feat(str-lstrip-rstrip)`: **`.lstrip()`** / **`.rstrip()`** remove leading
   / trailing whitespace (any `unicode.IsSpace` rune) in **both** paths: the
   interpreter applies `TrimLeftFunc`/`TrimRightFunc`; the codegen

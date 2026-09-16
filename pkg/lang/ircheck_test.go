@@ -678,6 +678,15 @@ func TestIRStrCountFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrJoinFolds(t *testing.T) {
+	// `print(len("x".join(["a", "b" ])))` folds join to "axb" (len 3),
+	// so the emitted IR contains i32 3.
+	ir := llcCompiles(t, `print(len("x".join(["a", "b"])))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("expected folded join length 3 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrLstripRstripFolds(t *testing.T) {
 	// `print(len("  hi  ".lstrip()))` folds lstrip to "hi  " (len 4),
 	// so the emitted IR contains i32 4.

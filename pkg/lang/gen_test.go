@@ -421,3 +421,27 @@ func TestGenStrLstripRstrip(t *testing.T) {
 		t.Fatalf("lstrip none: expected hello, got %q", got)
 	}
 }
+
+func TestGenStrJoin(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"-".join(["a", "b", "c"])`); got != "a-b-c" {
+		t.Fatalf("join: expected a-b-c, got %q", got)
+	}
+	if got := evalStr(`",".join(["x", "y"])`); got != "x,y" {
+		t.Fatalf("join comma: expected x,y, got %q", got)
+	}
+	if got := evalStr(`"".join(["a", "b"])`); got != "ab" {
+		t.Fatalf("join empty sep: expected ab, got %q", got)
+	}
+}

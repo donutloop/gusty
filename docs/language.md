@@ -395,6 +395,12 @@ paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
 constant (`print(len("  hi  ".lstrip()))` emits `i32 4`).
 
+`.join(list)` joins a list of string elements with the receiver as
+separator in **both** paths: the interpreter evaluates the list arg and
+applies `strings.Join`; the codegen constant-folds the receiver and a
+constant list of string elements (`print("-".join(["a", "b", "c"]))`
+emits the global "a-b-c").
+
 ### list methods
 
 Lists support `append(x)` (in-place, returns the updated list). On constant

@@ -490,6 +490,12 @@ func TestExecStrLstripRstrip(t *testing.T) {
 	assertOutput(t, `print("  hi  ".rstrip())`, "  hi\n")
 }
 
+func TestExecStrJoin(t *testing.T) {
+	// join folds constant list element strings with the separator
+	assertOutput(t, `print("-".join(["a", "b", "c"]))`, "a-b-c\n")
+	assertOutput(t, `print("x".join(["a", "b"]))`, "axb\n")
+}
+
 func TestExecStrEq(t *testing.T) {
 	assertOutput(t, `print("abc" == "abd")`, "0\n")
 }

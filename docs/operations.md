@@ -178,6 +178,8 @@ indexes dicts/sets at runtime and is unchanged.
   (`print("ababab".count("ab"))` emits `i32 3`).
 - `.lstrip()` / `.rstrip()` constant-fold to a trimmed string constant
   (`print(len("  hi  ".lstrip()))` emits `i32 4`).
+- `.join(list)` constant-folds a constant list of string elements to a
+  string global (`print("-".join(["a", "b", "c"]))` emits "a-b-c").
 
 
 String literals are lowered to global constants. `+` on two string literals
