@@ -563,3 +563,11 @@ func TestIRStrMethodLowerStripFolds(t *testing.T) {
 	// `len("ABC".lower())` folds lower to "abc" (len 3).
 	llcCompiles(t, `print(len("ABC".lower()))`)
 }
+
+func TestIRStrMethodPrintLowersString(t *testing.T) {
+	// print("AbC".upper()) emits the folded string global (ABC).
+	ir := llcCompiles(t, `print("AbC".upper())`)
+	if !strings.Contains(ir, "ABC") {
+		t.Fatalf("expected folded string ABC in IR, got:\n%s", ir)
+	}
+}

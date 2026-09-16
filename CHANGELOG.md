@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(print-string-methods)`: `print` now lowers any constant-foldable
+  string arg via `g.stringVal(a)` (not just `*StrLit`), so
+  `print("AbC".upper())` emits the folded string global. Resolves the print
+  limitation in ADR 0042. Adds IR test `TestIRStrMethodPrintLowersString`
+  and integration test `TestExecStrMethodPrint`.
 - `feat(string-methods)`: **constant-fold string methods** in the AOT codegen:
   `.upper()`, `.lower()`, `.strip()` on constant string literals fold at
   codegen time (package-level `stringConst` Call-folding + `irGen` `stringVal`

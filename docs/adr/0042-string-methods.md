@@ -19,10 +19,9 @@ semantics, so `len("AbC".upper())` folds to 3 instead of erroring.
 - The `call()` builtin dispatch still constant-folds Attr string methods via
   `g.stringConst`-style folding for non-print contexts.
 
-## Scope / limitation
+## Scope / limitation (resolved)
 
-- `print(string-method-result)` is not yet lowered: `print` recognizes only
-  `*StrLit` args as strings, so a folded method-call arg is emitted as an int.
-  Integer contexts (`len`, concatenation, equality) are fully supported. The
-  interpreter prints method results natively; closing the print path is
-  deferred to a follow-up ADR.
+- `print(string-method-result)` is now lowered: `print` recognizes any
+  constant-foldable string arg via `g.stringVal(a)` (not just `*StrLit`), so
+  `print("AbC".upper())` emits the folded string global. Integer contexts
+  (`len`, concatenation, equality) and print are all supported.

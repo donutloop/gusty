@@ -431,3 +431,7 @@ func TestExecStrMethod(t *testing.T) {
 	// `print(len("AbC".upper()))` -> 3 (constant-folded upper)
 	assertOutput(t, `print(len("AbC".upper()))`, "3\n")
 }
+
+func TestExecStrMethodPrint(t *testing.T) {
+	assertOutput(t, `print("AbC".upper())`, "ABC\n")
+}

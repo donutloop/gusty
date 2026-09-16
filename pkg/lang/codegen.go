@@ -1184,7 +1184,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// strings via Repr); integer arguments use %d\n.
 		var last string
 		for i, a := range c.Args {
-			if _, isStr := a.(*StrLit); isStr {
+			// print a constant string: literals and folded string-method results.
+			if _, ok := g.stringVal(a); ok {
 				fmtName, size := g.fmtStr("%s\n")
 				v, err := g.value(b, a)
 				if err != nil {
