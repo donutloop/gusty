@@ -375,6 +375,25 @@ func TestIRSumFoldsComprehension(t *testing.T) {
 		t.Fatalf("sum of a comprehension should fold to a constant, got:\n%s", res.IR)
 	}
 }
+func TestIRRuntimeListAgg(t *testing.T) {
+	// min/max/sum over a list of runtime variables lowers each element via
+	// g.value directly (no emitList global), so runtime elements work.
+	progs := []string{
+		"a = 3\nb = 1\nprint(min([a, b]))",
+		"a = 3\nb = 1\nprint(max([a, b]))",
+		"a = 3\nb = 1\nprint(sum([a, b]))",
+	}
+	for _, p := range progs {
+		res, err := Compile(p)
+		if err != nil {
+			t.Fatalf("compile %q: %v", p, err)
+		}
+		if !strings.Contains(res.IR, "icmp") && !strings.Contains(res.IR, "add") {
+			t.Fatalf("%q: no element arithmetic emitted:\n%s", p, res.IR)
+		}
+	}
+}
+
 func TestIRSumMinMaxAbs(t *testing.T) {
 	// sum: unrolled adds over the inline list literal's global struct.
 	res, err := Compile("sum([1, 2, 3])")

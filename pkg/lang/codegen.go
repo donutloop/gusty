@@ -1041,14 +1041,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(ln.Elems) == 0 {
 			return "", fmt.Errorf("sum of an empty list")
 		}
-		name, err := g.emitList(ln)
+		acc, err := g.value(b, ln.Elems[0])
 		if err != nil {
 			return "", err
 		}
-		acc := g.listElemLoad(b, ln, name, 0)
 		for i := 1; i < len(ln.Elems); i++ {
+			el, err := g.value(b, ln.Elems[i])
+			if err != nil {
+				return "", err
+			}
 			t := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", t, acc, g.listElemLoad(b, ln, name, i)))
+			b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", t, acc, el))
 			acc = t
 		}
 		return acc, nil
@@ -1084,13 +1087,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(ln.Elems) == 0 {
 			return "", fmt.Errorf("%s of an empty list", fnName)
 		}
-		name, err := g.emitList(ln)
+		best, err := g.value(b, ln.Elems[0])
 		if err != nil {
 			return "", err
 		}
-		best := g.listElemLoad(b, ln, name, 0)
 		for i := 1; i < len(ln.Elems); i++ {
-			el := g.listElemLoad(b, ln, name, i)
+			el, err := g.value(b, ln.Elems[i])
+			if err != nil {
+				return "", err
+			}
 			cmp := g.newTmp()
 			op := "icmp sgt"
 			if fnName == "min" {

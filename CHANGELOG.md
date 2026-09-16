@@ -4,6 +4,16 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **`min`/`max`/`sum` over lists with runtime-variable elements** —
+  the interpreter folds `min`/`max`/`sum` over any list, but the AOT codegen
+  required every element to be an integer literal — `min([a, b])` failed with
+  `list literal elements must be integers`. The codegen now lowers each element
+  directly via `g.value` (an `icmp`+`select` chain for `min`/`max`, an `add`
+  chain for `sum`), so runtime-variable elements work exactly like literals.
+  Adds IR checks (`TestIRRuntimeListAgg`) and exec tests
+  (`TestExecSumMinMaxAbs` runtime-element cases). ADR 0034.
+
+
 - `feat(aot)`: **zero-argument `print()` in the LLVM AOT codegen** —
   the interpreter's `print` with no arguments writes nothing (the arg loop is
   empty), but the AOT codegen rejected `print()` with `print needs an

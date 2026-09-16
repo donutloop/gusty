@@ -406,4 +406,9 @@ func TestExecSumMinMaxAbs(t *testing.T) {
 	assertOutput(t, "print(abs(5))", "5\n")
 	// abs over a runtime value (function arg / negated name).
 	assertOutput(t, "x = 3\nprint(abs(-x))", "3\n")
+	// min/max/sum over lists containing runtime variables
+	assertOutput(t, "a = 3\nb = 1\nprint(min([a, b]))", "1\n")
+	assertOutput(t, "a = 3\nb = 1\nprint(max([a, b]))", "3\n")
+	assertOutput(t, "a = 3\nb = 1\nprint(sum([a, b]))", "4\n")
+	assertOutput(t, "a = 5\nb = 2\nprint(min([a, b, 1]))", "1\n")
 }
