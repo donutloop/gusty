@@ -394,6 +394,24 @@ func TestIRRuntimeListAgg(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeLenIndex(t *testing.T) {
+	// len of a runtime-element list literal returns the count directly; list
+	// index evaluates the indexed element via g.value directly.
+	progs := []string{
+		"a = 3\nb = 1\nprint(len([a, b]))",
+		"a = 3\nb = 1\nprint([a, b][0])",
+	}
+	for _, p := range progs {
+		res, err := Compile(p)
+		if err != nil {
+			t.Fatalf("compile %q: %v", p, err)
+		}
+		if strings.Count(res.IR, "@printf") == 0 {
+			t.Fatalf("%q: no printf emitted:\n%s", p, res.IR)
+		}
+	}
+}
+
 func TestIRSumMinMaxAbs(t *testing.T) {
 	// sum: unrolled adds over the inline list literal's global struct.
 	res, err := Compile("sum([1, 2, 3])")

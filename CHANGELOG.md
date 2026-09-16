@@ -4,6 +4,16 @@ Single clean list of features, newest first.
 
 ## Current
 
+- `feat(aot)`: **`len` and list-index over runtime-variable-element lists** —
+  the AOT codegen's `emitList` required every list element to be an integer
+  literal, so `len([a, b])` and `[a, b][0]` failed with `list literal elements
+  must be integers` even though the interpreter accepts them. `len([a, b])`
+  now returns the element count directly (no `emitList` global), and
+  `[a, b][i]` evaluates the indexed element via `g.value` directly. Adds IR
+  checks (`TestIRRuntimeLenIndex`) and exec tests (len + index runtime cases).
+  ADR 0035.
+
+
 - `feat(aot)`: **`min`/`max`/`sum` over lists with runtime-variable elements** —
   the interpreter folds `min`/`max`/`sum` over any list, but the AOT codegen
   required every element to be an integer literal — `min([a, b])` failed with

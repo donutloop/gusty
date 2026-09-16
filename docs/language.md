@@ -313,9 +313,12 @@ Standard-library numeric builtins:
 `min`/`max` accept a list or set (or a single value); `abs` takes one number.
 Implemented in both the interpreter (REPL/`--eval`) and the LLVM AOT codegen.
 In the AOT path `min`/`max`/`sum` fold over an **inline list literal** (unrolled
-`icmp`+`select` / `add` chains over the list's global struct), so the argument
-must be an inline list literal; `abs` accepts any integer expression and is
-constant-folded when its argument is a literal.
+`icmp`+`select` / `add` chains over the list's global struct). Each element is
+lowered via `g.value`, so runtime-variable elements (`min([a, b])`) work
+exactly like integer literals. `len([a, b])` returns the element count
+directly, and `[a, b][i]` evaluates the indexed element via `g.value` —
+runtime-variable elements also work in `len` and list index. `abs` accepts any
+integer expression and is constant-folded when its argument is a literal.
 
 ### string methods
 

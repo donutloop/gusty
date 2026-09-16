@@ -521,16 +521,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		key := il.Value
 		switch obj := n.Obj.(type) {
 		case *ListLit:
-			name, err := g.emitList(obj)
-			if err != nil {
-				return "", err
-			}
-			if key < 0 || key >= int64(len(obj.Elems)) {
-				return "", fmt.Errorf("list index out of range")
-			}
-			v := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, len(obj.Elems), len(obj.Elems), name, key))
-			return v, nil
+			// index into a list literal: evaluate the element directly.
+			return g.value(b, obj.Elems[key])
 		case *DictLit:
 			// constant-key lookup: find the key in the literal and return its
 			// constant value at compile time.
@@ -977,14 +969,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		switch lit := c.Args[0].(type) {
 		case *ListLit:
-			name, err := g.emitList(lit)
-			if err != nil {
-				return "", err
-			}
-			n := len(lit.Elems)
-			v := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, name))
-			return v, nil
+		// len of a list literal is the element count; no element lowering needed.
+		return fmt.Sprintf("%d", len(lit.Elems)), nil
 		case *DictLit:
 			name, err := g.emitDict(lit)
 			if err != nil {

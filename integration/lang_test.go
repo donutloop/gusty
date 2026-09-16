@@ -411,4 +411,8 @@ func TestExecSumMinMaxAbs(t *testing.T) {
 	assertOutput(t, "a = 3\nb = 1\nprint(max([a, b]))", "3\n")
 	assertOutput(t, "a = 3\nb = 1\nprint(sum([a, b]))", "4\n")
 	assertOutput(t, "a = 5\nb = 2\nprint(min([a, b, 1]))", "1\n")
+	// len and list-index over runtime-variable-element lists
+	assertOutput(t, "a = 3\nb = 1\nprint(len([a, b]))", "2\n")
+	assertOutput(t, "a = 3\nb = 1\nprint([a, b][0])", "3\n")
+	assertOutput(t, "a = 3\nb = 1\nprint([a, b][1])", "1\n")
 }
