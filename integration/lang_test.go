@@ -472,6 +472,12 @@ func TestExecStrFind(t *testing.T) {
 	assertOutput(t, `print("hello".find("z"))`, "-1\n")
 }
 
+func TestExecStrStartswithEndswith(t *testing.T) {
+	// startswith/endswith fold to 1 or 0
+	assertOutput(t, `print("hello".startswith("he"))`, "1\n")
+	assertOutput(t, `print("hello".endswith("he"))`, "0\n")
+}
+
 func TestExecStrEq(t *testing.T) {
 	assertOutput(t, `print("abc" == "abd")`, "0\n")
 }

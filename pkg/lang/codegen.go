@@ -1246,6 +1246,24 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("find() argument must be a constant string")
 			}
 			return fmt.Sprintf("%d", strings.Index(v, subv)), nil
+		case "startswith", "endswith":
+			// s.startswith(sub) / s.endswith(sub) -> 1 or 0.
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("%s() takes exactly 1 argument", attr.Name.Value)
+			}
+			subv, ok := g.stringVal(c.Args[0])
+			if !ok {
+				return "", fmt.Errorf("%s() argument must be a constant string", attr.Name.Value)
+			}
+			res := 0
+			if attr.Name.Value == "startswith" {
+				if strings.HasPrefix(v, subv) {
+					res = 1
+				}
+			} else if strings.HasSuffix(v, subv) {
+				res = 1
+			}
+			return fmt.Sprintf("%d", res), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}

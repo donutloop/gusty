@@ -380,6 +380,11 @@ absent, in **both** paths: the interpreter applies `strings.Index`; the
 codegen constant-folds it to an `i32` literal when the receiver and argument
 are string constants (`print("abcabc".find("bc"))` emits `i32 1`).
 
+`.startswith(sub)` and `.endswith(sub)` return 1 or 0 in **both** paths: the
+interpreter applies `strings.HasPrefix`/`strings.HasSuffix`; the codegen
+constant-folds them to `i32 1`/`i32 0` when the receiver and argument are
+string constants.
+
 ### list methods
 
 Lists support `append(x)` (in-place, returns the updated list). On constant

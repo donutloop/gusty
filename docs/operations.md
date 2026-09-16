@@ -172,6 +172,8 @@ indexes dicts/sets at runtime and is unchanged.
   emits the folded global "a-b-c".
 - `.find(sub)` constant-folds to an `i32` literal (`print("abcabc".find("bc"))`
   emits `i32 1`).
+- `.startswith(sub)` / `.endswith(sub)` constant-fold to `i32 1`/`i32 0`
+  (`print("hello".startswith("he"))` emits `i32 1`).
 
 
 String literals are lowered to global constants. `+` on two string literals

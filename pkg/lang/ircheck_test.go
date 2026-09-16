@@ -656,3 +656,15 @@ func TestIRStrFindFolds(t *testing.T) {
 		t.Fatalf("expected folded find result 1 in IR, got:\n%s", ir)
 	}
 }
+
+func TestIRStrStartswithEndswithFolds(t *testing.T) {
+	// startswith/endswith fold to i32 1 or 0.
+	ir := llcCompiles(t, `print("hello".startswith("he"))`)
+	if !strings.Contains(ir, "i32 1") {
+		t.Fatalf("expected folded startswith result 1 in IR, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print("hello".endswith("he"))`)
+	if !strings.Contains(ir, "i32 0") {
+		t.Fatalf("expected folded endswith result 0 in IR, got:\n%s", ir)
+	}
+}

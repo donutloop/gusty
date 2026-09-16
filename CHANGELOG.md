@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-startswith-endswith)`: **`.startswith(sub)`** / **`.endswith(sub)`**
+  return 1 or 0 in **both** paths: the interpreter applies
+  `strings.HasPrefix`/`strings.HasSuffix`; the codegen constant-folds them to
+  `i32 1`/`i32 0`. Adds Eval/IR/integration tests. ADR 0052.
 - `feat(str-find)`: **`.find(sub)`** returns the index of the first
   occurrence of `sub` (or -1 if absent) in **both** paths: the interpreter
   applies `strings.Index`; the codegen constant-folds it to an `i32` literal

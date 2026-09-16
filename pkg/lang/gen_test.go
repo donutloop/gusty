@@ -346,3 +346,30 @@ func TestGenStrFind(t *testing.T) {
 		t.Fatalf("find prefix: expected 0, got %d", got)
 	}
 }
+
+func TestGenStrStartswithEndswith(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"hello".startswith("he")`); got != 1 {
+		t.Fatalf("startswith true: expected 1, got %d", got)
+	}
+	if got := evalInt(`"hello".startswith("lo")`); got != 0 {
+		t.Fatalf("startswith false: expected 0, got %d", got)
+	}
+	if got := evalInt(`"hello".endswith("lo")`); got != 1 {
+		t.Fatalf("endswith true: expected 1, got %d", got)
+	}
+	if got := evalInt(`"hello".endswith("he")`); got != 0 {
+		t.Fatalf("endswith false: expected 0, got %d", got)
+	}
+}
