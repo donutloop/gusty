@@ -140,6 +140,16 @@ func (g *irGen) strConst(s string) string {
 	return name
 }
 
+// reversedExprs returns a copy of elems with the order reversed.
+func reversedExprs(elems []Expr) []Expr {
+	out := append([]Expr(nil), elems...)
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out
+}
+
+
 // listElemLoad loads list element i from an inline list literal's global
 // struct with a constant GEP index (this llc build accepts only constant
 // GEP indices).
@@ -1800,6 +1810,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("str on non-integer")
 		}
 		return g.strConst(fmt.Sprintf("%d", n)), nil
+	case "reversed":
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("reversed expects one argument")
+		}
+		if lit, ok := c.Args[0].(*ListLit); ok {
+			rev := &ListLit{Elems: reversedExprs(lit.Elems)}
+			return g.emitList(rev)
+		}
+		if lit, ok := c.Args[0].(*StrLit); ok {
+			return g.strConst(reverseStr(lit.Value)), nil
+		}
+		return "", fmt.Errorf("reversed: codegen folds only literal list/string args")
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}

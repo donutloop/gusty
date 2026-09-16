@@ -5,7 +5,8 @@ Single clean list of features, newest first.
 ## Current
 - `feat(reversed)`: `reversed(x)` returns a reversed copy of a list or string
   (`reversed([1, 2, 3])` -> `[3, 2, 1]`, `reversed("abc")` -> `"cba"`).
-  Interpreter-only; AOT codegen constant-folds only on literal args. ADR 0082.
+  Ships in the interpreter and the AOT codegen (codegen folds on literal
+  list/string args via reversedExprs/reverseStr). ADR 0082.
 - `feat(generator-exprs)`: `(elem for var in iter [if cond])` parses as a
   generator expression and evaluates (interpreter) to a list of yielded
   values. Consumable by `for x in gen:` / `list(gen)`. AOT codegen has no

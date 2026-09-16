@@ -561,3 +561,22 @@ func TestExecStrBuiltinPrint(t *testing.T) {
 	assertOutput(t, `print(str(42))`, "42\n")
 	assertOutput(t, `print("n=" + str(7))`, "n=7\n")
 }
+
+func TestReversedCodegen(t *testing.T) {
+	// reversed folds on a literal string in the AOT codegen.
+	ir, err := lang.Compile(`print(reversed("abc"))`)
+	if err != nil {
+		t.Fatalf("compile reversed string: %v", err)
+	}
+	if !strings.Contains(ir.IR, `cba`) {
+		t.Fatalf("expected reversed string constant, got ir=%s", ir)
+	}
+	// reversed folds on a literal list into a reversed list literal.
+	ir2, err2 := lang.Compile(`x = reversed([1, 2, 3])`)
+	if err2 != nil {
+		t.Fatalf("compile reversed list: %v", err2)
+	}
+	if !strings.Contains(ir2.IR, `3`) || !strings.Contains(ir2.IR, `1`) {
+		t.Fatalf("expected reversed list elements, got ir=%s", ir2)
+	}
+}

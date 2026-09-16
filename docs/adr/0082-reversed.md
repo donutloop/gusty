@@ -16,10 +16,11 @@ string: `reversed([1, 2, 3])` -> `[3, 2, 1]`, `reversed("abc")` -> `"cba"`.
 
 ## Scope
 
-- Interpreter only: the LLVM AOT codegen's builtins folding handles literal
-  list/string arguments for `sum`/`min`/`max`; `reversed` folding on a literal
-  arg is not yet lowered (documented limitation). A future ADR will cover
-  codegen `reversed` lowering.
+- Interpreter and AOT codegen. The codegen's builtins switch adds
+  `case "reversed":`, which folds on a literal list (`*ListLit`) into a
+  reversed `*ListLit` emitted via `emitList`, and on a literal string
+  (`*StrLit`) into `g.strConst(reverseStr(...))`. Non-literal arguments are
+  rejected at compile time (the codegen folds builtins only on literals).
 
 ## Alternatives Rejected
 
