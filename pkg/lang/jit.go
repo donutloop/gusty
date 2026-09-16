@@ -1012,6 +1012,14 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			}
 			return 0, nil
 		}
+		if lo, ok := e.heap[l]; ok && lo.kind == "str" {
+			if ro, ok := e.heap[r]; ok && ro.kind == "str" {
+				if lo.sval == ro.sval {
+					return 1, nil
+				}
+				return 0, nil
+			}
+		}
 		if l == r {
 			return 1, nil
 		}

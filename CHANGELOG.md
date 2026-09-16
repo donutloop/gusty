@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-eq)`: **string equality `==` / `!=`** folds in **both** paths. The
+  interpreter compares string contents (`sval`) instead of handles; the
+  codegen constant-folds via `stringVal` before the int comparison. Adds
+  Eval/IR/integration tests. ADR 0049.
 - `feat(str-split)`: **`.split()` folds to substring count** — `dictMethodElems`
   gains a `split` case (space-separated, matching the interpreter default), so
   `len("a b c".split())` -> 3 folds in the AOT codegen. Adds Eval/IR/

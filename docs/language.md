@@ -350,6 +350,8 @@ calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
 
 ### string methods
 
+String equality `==` / `!=` compares contents in both paths (`"abc" == "abc"`
+is 1, `"abc" == "abd"` is 0), constant-folded in the codegen.
 String indexing `"abc"[1]` returns the char code (98 for 'b') in both the
 interpreter and the AOT codegen (constant-folded).
 `.split()` (space-separated) folds to the substring count in the codegen

@@ -154,6 +154,10 @@ indexes dicts/sets at runtime and is unchanged.
 
 ## String-constant concatenation + len (AOT codegen)
 
+- String equality `==`/`!=` compares contents in both paths
+  (`"abc" == "abc"` -> 1), constant-folded in the codegen.
+
+
 - `.split()` folds to the substring count (`len("a b c".split())` -> 3).
 
 

@@ -488,6 +488,23 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return "", err
 		}
 		// Constant folding: fold integer literals at compile time.
+		// Constant-fold string equality/inequality: compare contents, not refs.
+		if n.Op == "==" || n.Op == "!=" {
+			ls, lok := g.stringVal(n.L)
+			if lok {
+				rs, rok := g.stringVal(n.R)
+				if rok {
+					res := 0
+					if ls == rs {
+						res = 1
+					}
+					if n.Op == "!=" {
+						res = 1 - res
+					}
+					return fmt.Sprintf("%d", res), nil
+				}
+			}
+		}
 		if li, lok := n.L.(*IntLit); lok {
 			if ri, rok := n.R.(*IntLit); rok {
 				lv, rv := int64(li.Value), int64(ri.Value)

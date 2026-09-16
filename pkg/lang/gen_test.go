@@ -261,3 +261,24 @@ func TestGenStrSplitLen(t *testing.T) {
 		t.Fatalf("split len: expected 3, got %d", v)
 	}
 }
+
+func TestGenStrEq(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if v := evalInt(`"abc" == "abc"`); v != 1 {
+		t.Fatalf("str eq: expected 1, got %d", v)
+	}
+	if v := evalInt(`"abc" == "abd"`); v != 0 {
+		t.Fatalf("str neq: expected 0, got %d", v)
+	}
+}
