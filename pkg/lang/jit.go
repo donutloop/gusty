@@ -1216,6 +1216,27 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			lo.elems = append(lo.elems, e.allocStr(p))
 		}
 		return listID, nil
+	case "replace":
+		if len(args) != 2 {
+			return 0, &EvalError{Msg: "replace() takes exactly 2 arguments"}
+		}
+		oldv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		newv, err := e.eval(args[1])
+		if err != nil {
+			return 0, err
+		}
+		oldo, ok := e.heap[oldv]
+		if !ok || oldo.kind != "str" {
+			return 0, &EvalError{Msg: "replace() old must be a string"}
+		}
+		novo, ok := e.heap[newv]
+		if !ok || novo.kind != "str" {
+			return 0, &EvalError{Msg: "replace() new must be a string"}
+		}
+		return e.allocStr(strings.ReplaceAll(s, oldo.sval, novo.sval)), nil
 	}
 	return 0, &EvalError{Msg: "no such string method " + name}
 }

@@ -460,6 +460,11 @@ func TestExecStrSplitLen(t *testing.T) {
 	assertOutput(t, `print(len("a b c".split()))`, "3\n")
 }
 
+func TestExecStrReplace(t *testing.T) {
+	// `print("aXbXc".replace("X", "-"))` -> a-b-c (constant-folded replace)
+	assertOutput(t, `print("aXbXc".replace("X", "-"))`, "a-b-c\n")
+}
+
 func TestExecStrEq(t *testing.T) {
 	assertOutput(t, `print("abc" == "abd")`, "0\n")
 }

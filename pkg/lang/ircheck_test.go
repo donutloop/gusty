@@ -638,3 +638,12 @@ func TestIRStrBuiltinFolds(t *testing.T) {
 		t.Fatalf("expected folded 2, got:\n%s", ir)
 	}
 }
+
+func TestIRStrReplaceFolds(t *testing.T) {
+	// `print("aXbXc".replace("X", "-"))` folds to a single string global
+	// "a-b-c", so the emitted IR contains that exact string constant.
+	ir := llcCompiles(t, `print("aXbXc".replace("X", "-"))`)
+	if !strings.Contains(ir, "a-b-c") {
+		t.Fatalf("expected folded replace result a-b-c in IR, got:\n%s", ir)
+	}
+}

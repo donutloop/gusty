@@ -301,3 +301,24 @@ func TestGenStrBuiltinLen(t *testing.T) {
 		t.Fatalf("str len: expected 2, got %d", v)
 	}
 }
+
+func TestGenStrReplace(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"aXbXc".replace("X", "-")`); got != "a-b-c" {
+		t.Fatalf("replace: expected a-b-c, got %q", got)
+	}
+	if got := evalStr(`"hello".replace("l", "L")`); got != "heLLo" {
+		t.Fatalf("replace: expected heLLo, got %q", got)
+	}
+}

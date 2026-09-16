@@ -165,9 +165,11 @@ indexes dicts/sets at runtime and is unchanged.
   the codegen constant-folds `*StrLit` index via `stringVal`.
 
 
-- String methods `.upper()`, `.lower()`, `.strip()` on constant string
-  literals ship in **both** paths: the codegen constant-folds them via
-  `stringConst`/`stringVal` Call-folding, so `len("AbC".upper())` -> 3.
+- String methods `.upper()`, `.lower()`, `.strip()`, `.replace(old, new)`
+  on constant string literals ship in **both** paths: the codegen
+  constant-folds them via `stringConst`/`stringVal` Call-folding, so
+  `len("AbC".upper())` -> 3 and `print("aXbXc".replace("X", "-"))`
+  emits the folded global "a-b-c".
 
 
 String literals are lowered to global constants. `+` on two string literals

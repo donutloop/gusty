@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-replace)`: **`.replace(old, new)`** replaces every occurrence in
+  **both** paths: the interpreter evaluates both args as strings and applies
+  `strings.ReplaceAll`; the codegen constant-folds the receiver and both
+  constant string args (`print("aXbXc".replace("X", "-"))` emits the folded
+  global "a-b-c"). Adds Eval/IR/integration tests. ADR 0050.
 - `feat(str-eq)`: **string equality `==` / `!=`** folds in **both** paths. The
   interpreter compares string contents (`sval`) instead of handles; the
   codegen constant-folds via `stringVal` before the int comparison. Adds

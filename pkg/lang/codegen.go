@@ -217,6 +217,19 @@ func stringConst(e Expr) (string, bool) {
 					return strings.ToLower(v), true
 				case "strip":
 					return strings.TrimSpace(v), true
+				case "replace":
+					if len(c.Args) != 2 {
+						return "", false
+					}
+					oldv, ok := stringConst(c.Args[0])
+					if !ok {
+						return "", false
+					}
+					newv, ok := stringConst(c.Args[1])
+					if !ok {
+						return "", false
+					}
+					return strings.ReplaceAll(v, oldv, newv), true
 				}
 			}
 		}
@@ -429,6 +442,19 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			return strings.ToLower(v), true
 		case "strip":
 			return strings.TrimSpace(v), true
+		case "replace":
+			if len(n.Args) != 2 {
+				return "", false
+			}
+			oldv, ok := g.stringVal(n.Args[0])
+			if !ok {
+				return "", false
+			}
+			newv, ok := g.stringVal(n.Args[1])
+			if !ok {
+				return "", false
+			}
+			return strings.ReplaceAll(v, oldv, newv), true
 		}
 		return "", false
 	}
@@ -1197,6 +1223,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			v = strings.ToLower(v)
 		case "strip":
 			v = strings.TrimSpace(v)
+		case "replace":
+			if len(c.Args) != 2 {
+				return "", fmt.Errorf("replace() takes exactly 2 arguments")
+			}
+			oldv, ok := g.stringVal(c.Args[0])
+			if !ok {
+				return "", fmt.Errorf("replace() old must be a constant string")
+			}
+			newv, ok := g.stringVal(c.Args[1])
+			if !ok {
+				return "", fmt.Errorf("replace() new must be a constant string")
+			}
+			v = strings.ReplaceAll(v, oldv, newv)
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}

@@ -366,8 +366,14 @@ interpreter and the AOT codegen (constant-folded).
     "heLLo".lower()      # hello
     "  hi  ".strip()     # hi
     "a b c".split(" ")   # [a, b, c]
+    "aXbXc".replace("X", "-")  # a-b-c
 
-`split` takes an optional separator (default space). Interpreter path only.
+`split` takes an optional separator (default space). `.replace(old, new)`
+replaces every occurrence of `old` with `new` in **both** paths: the
+interpreter evaluates both arguments as strings and applies
+`strings.ReplaceAll`; the codegen constant-folds it when the receiver and
+both arguments are string constants (`print("aXbXc".replace("X", "-"))`
+emits the folded global "a-b-c").
 
 ### list methods
 
