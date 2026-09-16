@@ -3,6 +3,9 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-expandtabs)`: **`.expandtabs(tabsize)`** replaces each tab
+  with spaces to the next tab stop of size `tabsize` (interpreter path). A
+  string with no tabs is unchanged. Adds an Eval unit test. ADR 0074.
 - `feat(str-removeprefix-suffix)`: **`.removeprefix(prefix)`** /
   **`.removesuffix(suffix)`** return the string without the prefix / suffix
   when it is present, else unchanged (interpreter path via

@@ -1314,6 +1314,32 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, &EvalError{Msg: "removesuffix() argument must be a string"}
 		}
 		return e.allocStr(strings.TrimSuffix(s, po2.sval)), nil
+	case "expandtabs":
+		// s.expandtabs(tabsize) -> replace each tab with spaces to the next tab stop.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "expandtabs() takes exactly 1 argument"}
+		}
+		tv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		tabsize := int(tv)
+		if tabsize < 1 {
+			return 0, &EvalError{Msg: "expandtabs() tabsize must be positive"}
+		}
+		col := 0
+		var b strings.Builder
+		for _, r := range s {
+			if r == '\t' {
+				spaces := tabsize - (col % tabsize)
+				b.WriteString(strings.Repeat(" ", spaces))
+				col += spaces
+			} else {
+				b.WriteRune(r)
+				col++
+			}
+		}
+		return e.allocStr(b.String()), nil
 	case "partition":
 		// s.partition(sep) -> list [head, sep, tail] at the first occurrence of sep.
 		if len(args) != 1 {

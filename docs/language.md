@@ -468,6 +468,9 @@ the prefix / suffix when it is present, else unchanged (interpreter path
 via `strings.TrimPrefix`/`TrimSuffix`). `"hello".removeprefix("he")` is
 "llo".
 
+`.expandtabs(tabsize)` replaces each tab with spaces to the next tab stop
+of size `tabsize` (interpreter path). A string with no tabs is unchanged.
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
