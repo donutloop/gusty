@@ -719,6 +719,30 @@ func TestGenSorted(t *testing.T) {
 	}
 }
 
+func TestGenStrZfill(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"42".zfill(5)`); got != "00042" {
+		t.Fatalf("zfill: expected 00042, got %q", got)
+	}
+	if got := evalStr(`"123".zfill(2)`); got != "123" {
+		t.Fatalf("zfill no pad: expected 123, got %q", got)
+	}
+	if got := evalStr(`"".zfill(3)`); got != "000" {
+		t.Fatalf("zfill empty: expected 000, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

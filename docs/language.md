@@ -447,6 +447,10 @@ The `sorted(list)` builtin returns a copy of the list with elements sorted
 (interpreter path; ints by value, strings by content via `lessVal`).
 `sorted([3, 1, 2])[0]` is 1.
 
+`.zfill(width)` pads with leading zeros to `width` in the interpreter
+path: `"42".zfill(5)` is "00042", and a string already at/over width is
+unchanged.
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string

@@ -1397,6 +1397,24 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			}
 		}
 		return 1, nil
+	case "zfill":
+		// s.zfill(width) -> pad with leading zeros to width.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "zfill() takes exactly 1 argument"}
+		}
+		wv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		width := int(wv)
+		if width < 0 {
+			return 0, &EvalError{Msg: "zfill() width must be non-negative"}
+		}
+		if len(s) >= width {
+			return e.allocStr(s), nil
+		}
+		pad := strings.Repeat("0", width-len(s))
+		return e.allocStr(pad + s), nil
 	case "islower":
 		// s.islower() -> 1 if there is a cased rune and all cased runes are lowercase.
 		hasCased := false

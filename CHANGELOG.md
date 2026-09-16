@@ -3,6 +3,9 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-zfill)`: **`.zfill(width)`** pads with leading zeros to `width`
+  in the interpreter path: `"42".zfill(5)` is "00042", and a string
+  already at/over width is unchanged. Adds an Eval unit test. ADR 0069.
 - `feat(sorted-builtin)`: **`sorted(list)`** returns a copy of the list
   with elements sorted (interpreter path; ints by value, strings by content
   via `lessVal`). `sorted([3, 1, 2])[0]` is 1. Adds an Eval unit test.
