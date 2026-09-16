@@ -542,6 +542,30 @@ func TestGenListCount(t *testing.T) {
 	}
 }
 
+func TestGenStrIsdigit(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"123".isdigit()`); got != 1 {
+		t.Fatalf("isdigit digits: expected 1, got %d", got)
+	}
+	if got := evalInt(`"12a".isdigit()`); got != 0 {
+		t.Fatalf("isdigit mixed: expected 0, got %d", got)
+	}
+	if got := evalInt(`"".isdigit()`); got != 0 {
+		t.Fatalf("isdigit empty: expected 0, got %d", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

@@ -493,6 +493,12 @@ func TestExecStrSwapcase(t *testing.T) {
 	assertOutput(t, `print("HeLLo".swapcase())`, "hEllO\n")
 }
 
+func TestExecStrIsdigit(t *testing.T) {
+	// isdigit folds to 1 or 0
+	assertOutput(t, `print("123".isdigit())`, "1\n")
+	assertOutput(t, `print("12a".isdigit())`, "0\n")
+}
+
 func TestExecStrStartswithEndswith(t *testing.T) {
 	// startswith/endswith fold to 1 or 0
 	assertOutput(t, `print("hello".startswith("he"))`, "1\n")

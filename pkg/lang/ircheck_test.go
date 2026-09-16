@@ -689,6 +689,14 @@ func TestIRStrSwapcaseFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrIsdigitFolds(t *testing.T) {
+	// `print("123".isdigit())` folds to i32 1.
+	ir := llcCompiles(t, `print("123".isdigit())`)
+	if !strings.Contains(ir, "i32 1") {
+		t.Fatalf("expected folded isdigit 1 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)

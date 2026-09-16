@@ -1348,6 +1348,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("count() argument must be a constant string")
 			}
 			return fmt.Sprintf("%d", strings.Count(v, subv)), nil
+			case "isdigit":
+				// s.isdigit() -> 1 if all runes are digits, else 0.
+				res := 0
+				if v != "" {
+					all := true
+					for _, r := range v {
+						if !unicode.IsDigit(r) {
+							all = false
+							break
+						}
+					}
+					if all {
+						res = 1
+					}
+				}
+				return fmt.Sprintf("%d", res), nil
 		case "startswith", "endswith":
 			// s.startswith(sub) / s.endswith(sub) -> 1 or 0.
 			if len(c.Args) != 1 {

@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-isdigit)`: **`.isdigit()`** returns 1 if every rune is a digit
+  (and the string is non-empty), else 0, in **both** paths: the interpreter
+  checks `unicode.IsDigit`; the codegen folds it to `i32 1`/`i32 0`
+  (`print("123".isdigit())` emits `i32 1`). Adds Eval/IR/integration
+  tests. ADR 0062.
 - `feat(list-count)`: **`.count(value)`** returns the number of
   occurrences of `value` in a list (interpreter path; elements compare by
   string content via `dictKeyEq`). `["a", "b", "a"].count("a")` is 2.
