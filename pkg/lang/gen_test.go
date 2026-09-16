@@ -878,6 +878,30 @@ func TestGenStrStripChars(t *testing.T) {
 	}
 }
 
+func TestGenStrLstripRstripChars(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"xxhi".lstrip("x")`); got != "hi" {
+		t.Fatalf("lstrip chars: expected hi, got %q", got)
+	}
+	if got := evalStr(`"hi xx".rstrip("x")`); got != "hi " {
+		t.Fatalf("rstrip chars: expected hi + space, got %q", got)
+	}
+	if got := evalStr(`"  hi".lstrip()`); got != "hi" {
+		t.Fatalf("lstrip whitespace: expected hi, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

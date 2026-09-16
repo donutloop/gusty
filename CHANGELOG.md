@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-lstrip-rstrip-chars)`: **`.lstrip([chars])`** /
+  **`.rstrip([chars])`** trim leading / trailing whitespace, or the given
+  `chars` when provided (interpreter path via `TrimLeftFunc`/`TrimRightFunc`
+  with `unicode.IsSpace`, or `TrimLeft`/`TrimRight`). `"xxhi".lstrip("x")`
+  is "hi". Adds an Eval unit test. ADR 0076.
 - `feat(str-strip-chars)`: **`.strip([chars])`** trims whitespace, or the
   given `chars` when provided (interpreter path via `strings.TrimSpace` /
   `strings.Trim`). `"xxhi xx".strip("x")` is "hi ". Adds an Eval unit

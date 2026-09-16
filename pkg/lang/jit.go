@@ -1248,10 +1248,38 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 		}
 		return e.allocStr(strings.TrimSpace(s)), nil
 	case "lstrip":
-		// s.lstrip() -> s with leading whitespace removed.
+		// s.lstrip([chars]) -> trim whitespace, or the given chars when provided.
+		if len(args) > 1 {
+			return 0, &EvalError{Msg: "lstrip() takes at most 1 argument"}
+		}
+		if len(args) == 1 {
+			cv, err := e.eval(args[0])
+			if err != nil {
+				return 0, err
+			}
+			co, ok := e.heap[cv]
+			if !ok || co.kind != "str" {
+				return 0, &EvalError{Msg: "lstrip() argument must be a string"}
+			}
+			return e.allocStr(strings.TrimLeft(s, co.sval)), nil
+		}
 		return e.allocStr(strings.TrimLeftFunc(s, unicode.IsSpace)), nil
 	case "rstrip":
-		// s.rstrip() -> s with trailing whitespace removed.
+		// s.rstrip([chars]) -> trim whitespace, or the given chars when provided.
+		if len(args) > 1 {
+			return 0, &EvalError{Msg: "rstrip() takes at most 1 argument"}
+		}
+		if len(args) == 1 {
+			cv, err := e.eval(args[0])
+			if err != nil {
+				return 0, err
+			}
+			co, ok := e.heap[cv]
+			if !ok || co.kind != "str" {
+				return 0, &EvalError{Msg: "rstrip() argument must be a string"}
+			}
+			return e.allocStr(strings.TrimRight(s, co.sval)), nil
+		}
 		return e.allocStr(strings.TrimRightFunc(s, unicode.IsSpace)), nil
 	case "split":
 		sep := " "
