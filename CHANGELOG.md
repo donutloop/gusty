@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-count)`: **`.count(sub)`** returns the number of non-overlapping
+  occurrences of `sub` in **both** paths: the interpreter applies
+  `strings.Count`; the codegen constant-folds it to an `i32` literal
+  (`print("ababab".count("ab"))` emits `i32 3`). Adds Eval/IR/integration
+  tests. ADR 0053.
 - `feat(str-startswith-endswith)`: **`.startswith(sub)`** / **`.endswith(sub)`**
   return 1 or 0 in **both** paths: the interpreter applies
   `strings.HasPrefix`/`strings.HasSuffix`; the codegen constant-folds them to

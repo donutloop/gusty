@@ -385,6 +385,11 @@ interpreter applies `strings.HasPrefix`/`strings.HasSuffix`; the codegen
 constant-folds them to `i32 1`/`i32 0` when the receiver and argument are
 string constants.
 
+`.count(sub)` returns the number of non-overlapping occurrences of `sub` in
+**both** paths: the interpreter applies `strings.Count`; the codegen
+constant-folds it to an `i32` literal when the receiver and argument are
+string constants (`print("ababab".count("ab"))` emits `i32 3`).
+
 ### list methods
 
 Lists support `append(x)` (in-place, returns the updated list). On constant

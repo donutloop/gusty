@@ -668,3 +668,12 @@ func TestIRStrStartswithEndswithFolds(t *testing.T) {
 		t.Fatalf("expected folded endswith result 0 in IR, got:\n%s", ir)
 	}
 }
+
+func TestIRStrCountFolds(t *testing.T) {
+	// `print("ababab".count("ab"))` folds to the count 3, so the emitted IR
+	// contains the i32 constant 3.
+	ir := llcCompiles(t, `print("ababab".count("ab"))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("expected folded count result 3 in IR, got:\n%s", ir)
+	}
+}

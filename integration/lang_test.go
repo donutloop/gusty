@@ -478,6 +478,12 @@ func TestExecStrStartswithEndswith(t *testing.T) {
 	assertOutput(t, `print("hello".endswith("he"))`, "0\n")
 }
 
+func TestExecStrCount(t *testing.T) {
+	// count folds to the occurrence count
+	assertOutput(t, `print("ababab".count("ab"))`, "3\n")
+	assertOutput(t, `print("hello".count("z"))`, "0\n")
+}
+
 func TestExecStrEq(t *testing.T) {
 	assertOutput(t, `print("abc" == "abd")`, "0\n")
 }

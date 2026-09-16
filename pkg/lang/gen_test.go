@@ -373,3 +373,27 @@ func TestGenStrStartswithEndswith(t *testing.T) {
 		t.Fatalf("endswith false: expected 0, got %d", got)
 	}
 }
+
+func TestGenStrCount(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"ababab".count("ab")`); got != 3 {
+		t.Fatalf("count: expected 3, got %d", got)
+	}
+	if got := evalInt(`"hello".count("z")`); got != 0 {
+		t.Fatalf("count absent: expected 0, got %d", got)
+	}
+	if got := evalInt(`"aaaa".count("aa")`); got != 2 {
+		t.Fatalf("count non-overlap: expected 2, got %d", got)
+	}
+}

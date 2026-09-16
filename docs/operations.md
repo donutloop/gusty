@@ -174,6 +174,8 @@ indexes dicts/sets at runtime and is unchanged.
   emits `i32 1`).
 - `.startswith(sub)` / `.endswith(sub)` constant-fold to `i32 1`/`i32 0`
   (`print("hello".startswith("he"))` emits `i32 1`).
+- `.count(sub)` constant-folds to an `i32` literal
+  (`print("ababab".count("ab"))` emits `i32 3`).
 
 
 String literals are lowered to global constants. `+` on two string literals
