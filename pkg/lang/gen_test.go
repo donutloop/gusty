@@ -347,6 +347,30 @@ func TestGenStrFind(t *testing.T) {
 	}
 }
 
+func TestGenStrRfind(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"abcabc".rfind("bc")`); got != 4 {
+		t.Fatalf("rfind: expected 4, got %d", got)
+	}
+	if got := evalInt(`"hello".rfind("z")`); got != -1 {
+		t.Fatalf("rfind absent: expected -1, got %d", got)
+	}
+	if got := evalInt(`"hello".rfind("he")`); got != 0 {
+		t.Fatalf("rfind prefix: expected 0, got %d", got)
+	}
+}
+
 func TestGenStrStartswithEndswith(t *testing.T) {
 	evalInt := func(src string) int64 {
 		prog, err := Parse(src)

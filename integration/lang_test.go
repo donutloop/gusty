@@ -472,6 +472,12 @@ func TestExecStrFind(t *testing.T) {
 	assertOutput(t, `print("hello".find("z"))`, "-1\n")
 }
 
+func TestExecStrRfind(t *testing.T) {
+	// rfind folds to the last occurrence index
+	assertOutput(t, `print("abcabc".rfind("bc"))`, "4\n")
+	assertOutput(t, `print("hello".rfind("z"))`, "-1\n")
+}
+
 func TestExecStrStartswithEndswith(t *testing.T) {
 	// startswith/endswith fold to 1 or 0
 	assertOutput(t, `print("hello".startswith("he"))`, "1\n")

@@ -1310,6 +1310,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("find() argument must be a constant string")
 			}
 			return fmt.Sprintf("%d", strings.Index(v, subv)), nil
+			case "rfind":
+				// s.rfind(sub) -> index of last occurrence of sub, or -1 if absent.
+				if len(c.Args) != 1 {
+					return "", fmt.Errorf("rfind() takes exactly 1 argument")
+				}
+				subv, ok := g.stringVal(c.Args[0])
+				if !ok {
+					return "", fmt.Errorf("rfind() argument must be a constant string")
+				}
+				return fmt.Sprintf("%d", strings.LastIndex(v, subv)), nil
 		case "count":
 			// s.count(sub) -> number of non-overlapping occurrences of sub.
 			if len(c.Args) != 1 {

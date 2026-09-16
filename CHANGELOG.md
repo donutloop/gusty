@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-rfind)`: **`.rfind(sub)`** returns the index of the last
+  occurrence of `sub` (or -1 if absent) in **both** paths: the interpreter
+  applies `strings.LastIndex`; the codegen constant-folds it to an `i32`
+  literal (`print("abcabc".rfind("bc"))` emits `i32 4`). Adds
+  Eval/IR/integration tests. ADR 0057.
 - `feat(dict-get)`: **`.get(key[, default])`** returns the value for `key`,
   or `default` when absent, mirroring Python's `dict.get`. Dict keys now
   compare by string content (`dictKeyEq`), fixing dict indexing `d[key]`

@@ -390,6 +390,11 @@ string constants.
 constant-folds it to an `i32` literal when the receiver and argument are
 string constants (`print("ababab".count("ab"))` emits `i32 3`).
 
+`.rfind(sub)` returns the index of the last occurrence of `sub`, or -1 if
+absent, in **both** paths: the interpreter applies `strings.LastIndex`; the
+codegen constant-folds it to an `i32` literal
+(`print("abcabc".rfind("bc"))` emits `i32 4`).
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string

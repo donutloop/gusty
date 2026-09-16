@@ -657,6 +657,14 @@ func TestIRStrFindFolds(t *testing.T) {
 	}
 }
 
+func TestIRStrRfindFolds(t *testing.T) {
+	// `print("abcabc".rfind("bc"))` folds to the last index 4.
+	ir := llcCompiles(t, `print("abcabc".rfind("bc"))`)
+	if !strings.Contains(ir, "i32 4") {
+		t.Fatalf("expected folded rfind result 4 in IR, got:\n%s", ir)
+	}
+}
+
 func TestIRStrStartswithEndswithFolds(t *testing.T) {
 	// startswith/endswith fold to i32 1 or 0.
 	ir := llcCompiles(t, `print("hello".startswith("he"))`)

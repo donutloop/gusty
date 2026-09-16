@@ -1258,6 +1258,20 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, &EvalError{Msg: "find() argument must be a string"}
 		}
 		return int64(strings.Index(s, subo.sval)), nil
+			case "rfind":
+				// s.rfind(sub) -> index of last occurrence of sub, or -1 if absent.
+				if len(args) != 1 {
+					return 0, &EvalError{Msg: "rfind() takes exactly 1 argument"}
+				}
+				subv, err := e.eval(args[0])
+				if err != nil {
+					return 0, err
+				}
+				subo, ok := e.heap[subv]
+				if !ok || subo.kind != "str" {
+					return 0, &EvalError{Msg: "rfind() argument must be a string"}
+				}
+				return int64(strings.LastIndex(s, subo.sval)), nil
 	case "count":
 		// s.count(sub) -> number of non-overlapping occurrences of sub.
 		if len(args) != 1 {
