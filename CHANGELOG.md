@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-count-start-end)`: **`.count(sub[, start[, end]])`** counts
+  non-overlapping occurrences of `sub` within `s[start:end]`, mirroring
+  Python's `str.count(sub, start, end)` (interpreter path via
+  `strings.Count` on the sliced substring, `start`/`end` clamped to
+  `[0, len(s)]`). `"ababab".count("ab", 2)` is 2. Adds an Eval unit
+  test. ADR 0079.
 - `feat(str-split-maxsplit)`: **`.split([sep[, maxsplit]])`** splits on
   `sep`, at most `maxsplit` separators (interpreter path; uses
   `strings.SplitN` with `maxsplit+1` parts when `maxsplit` is given).

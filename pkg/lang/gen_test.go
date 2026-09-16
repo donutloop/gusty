@@ -422,6 +422,27 @@ func TestGenStrCount(t *testing.T) {
 	}
 }
 
+func TestGenStrCountStartEnd(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`"ababab".count("ab", 2)`); got != 2 {
+		t.Fatalf("count start: expected 2, got %d", got)
+	}
+	if got := evalInt(`"ababab".count("ab", 2, 4)`); got != 1 {
+		t.Fatalf("count start end: expected 1, got %d", got)
+	}
+}
+
 func TestGenStrLstripRstrip(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

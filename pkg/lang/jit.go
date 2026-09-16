@@ -1499,9 +1499,9 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 				}
 				return int64(strings.LastIndex(s, subo.sval)), nil
 	case "count":
-		// s.count(sub) -> number of non-overlapping occurrences of sub.
-		if len(args) != 1 {
-			return 0, &EvalError{Msg: "count() takes exactly 1 argument"}
+		// s.count(sub[, start[, end]]) -> occurrences of sub within s[start:end].
+		if len(args) < 1 || len(args) > 3 {
+			return 0, &EvalError{Msg: "count() takes 1 to 3 arguments"}
 		}
 		subv, err := e.eval(args[0])
 		if err != nil {
@@ -1511,7 +1511,31 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 		if !ok || subo.kind != "str" {
 			return 0, &EvalError{Msg: "count() argument must be a string"}
 		}
-		return int64(strings.Count(s, subo.sval)), nil
+		lo, hi := 0, len(s)
+		if len(args) >= 2 {
+			start, err := e.eval(args[1])
+			if err != nil {
+				return 0, err
+			}
+			lo = int(start)
+		}
+		if len(args) == 3 {
+			endv, err := e.eval(args[2])
+			if err != nil {
+				return 0, err
+			}
+			hi = int(endv)
+		}
+		if lo < 0 {
+			lo = 0
+		}
+		if hi > len(s) {
+			hi = len(s)
+		}
+		if lo > hi {
+			lo = hi
+		}
+		return int64(strings.Count(s[lo:hi], subo.sval)), nil
 	case "isdigit":
 		// s.isdigit() -> 1 if all runes are digits, else 0.
 		for _, r := range s {

@@ -385,10 +385,13 @@ interpreter applies `strings.HasPrefix`/`strings.HasSuffix`; the codegen
 constant-folds them to `i32 1`/`i32 0` when the receiver and argument are
 string constants.
 
-`.count(sub)` returns the number of non-overlapping occurrences of `sub` in
-**both** paths: the interpreter applies `strings.Count`; the codegen
-constant-folds it to an `i32` literal when the receiver and argument are
-string constants (`print("ababab".count("ab"))` emits `i32 3`).
+`.count(sub[, start[, end]])` returns the number of non-overlapping
+occurrences of `sub` within `s[start:end]`, mirroring Python's
+`str.count(sub, start, end)`. The interpreter applies `strings.Count` on the
+sliced substring (`start`/`end` clamped to `[0, len(s)]`); the AOT codegen
+constant-folds only the one-argument form to an `i32` literal when the
+receiver and argument are string constants (`print("ababab".count("ab"))`
+emits `i32 3`).
 
 `.rfind(sub)` returns the index of the last occurrence of `sub`, or -1 if
 absent, in **both** paths: the interpreter applies `strings.LastIndex`; the
