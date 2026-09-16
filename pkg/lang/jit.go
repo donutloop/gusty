@@ -1415,6 +1415,42 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 		}
 		pad := strings.Repeat("0", width-len(s))
 		return e.allocStr(pad + s), nil
+	case "ljust":
+		// s.ljust(width) -> pad with spaces on the right to width.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "ljust() takes exactly 1 argument"}
+		}
+		wv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		width := int(wv)
+		if width < 0 {
+			return 0, &EvalError{Msg: "ljust() width must be non-negative"}
+		}
+		if len(s) >= width {
+			return e.allocStr(s), nil
+		}
+		pad := strings.Repeat(" ", width-len(s))
+		return e.allocStr(s + pad), nil
+	case "rjust":
+		// s.rjust(width) -> pad with spaces on the left to width.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "rjust() takes exactly 1 argument"}
+		}
+		wv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		width := int(wv)
+		if width < 0 {
+			return 0, &EvalError{Msg: "rjust() width must be non-negative"}
+		}
+		if len(s) >= width {
+			return e.allocStr(s), nil
+		}
+		pad := strings.Repeat(" ", width-len(s))
+		return e.allocStr(pad + s), nil
 	case "islower":
 		// s.islower() -> 1 if there is a cased rune and all cased runes are lowercase.
 		hasCased := false

@@ -743,6 +743,30 @@ func TestGenStrZfill(t *testing.T) {
 	}
 }
 
+func TestGenStrLjustRjust(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"ab".ljust(4)`); got != "ab  " {
+		t.Fatalf("ljust: expected ab  2sp, got %q", got)
+	}
+	if got := evalStr(`"ab".rjust(4)`); got != "  ab" {
+		t.Fatalf("rjust: expected  2sp ab, got %q", got)
+	}
+	if got := evalStr(`"abcd".ljust(2)`); got != "abcd" {
+		t.Fatalf("ljust no pad: expected abcd, got %q", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)

@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-ljust-rjust)`: **`.ljust(width)`** / **`.rjust(width)`** pad
+  with spaces on the right / left to `width` in the interpreter path:
+  `"ab".ljust(4)` is "ab  ", and a string already at/over width is
+  unchanged. Adds an Eval unit test. ADR 0070.
 - `feat(str-zfill)`: **`.zfill(width)`** pads with leading zeros to `width`
   in the interpreter path: `"42".zfill(5)` is "00042", and a string
   already at/over width is unchanged. Adds an Eval unit test. ADR 0069.

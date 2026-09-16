@@ -451,6 +451,10 @@ The `sorted(list)` builtin returns a copy of the list with elements sorted
 path: `"42".zfill(5)` is "00042", and a string already at/over width is
 unchanged.
 
+`.ljust(width)` / `.rjust(width)` pad with spaces on the right / left to
+`width` in the interpreter path: `"ab".ljust(4)` is "ab  ", and a string
+already at/over width is unchanged.
+
 `.lstrip()` and `.rstrip()` remove leading / trailing whitespace in **both**
 paths: the interpreter applies `strings.TrimLeftFunc`/`TrimRightFunc` with
 `unicode.IsSpace`; the codegen constant-folds them to a trimmed string
