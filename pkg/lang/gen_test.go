@@ -1052,3 +1052,34 @@ func TestGenTypedExceptions(t *testing.T) {
 		t.Fatalf("raise ValueError msg should catch, got err: %v", err)
 	}
 }
+
+func TestGenGeneratorExpr(t *testing.T) {
+	evalList := func(src string) []int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		ev := NewEvaluator()
+		rv, err := ev.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		o, ok := ev.heap[rv]
+		if !ok || o.kind != "list" {
+			t.Fatalf("expected list, got kind=%v", o.kind)
+		}
+		return o.elems
+	}
+	// generator expression maps each element.
+	if got := evalList("(x * 2 for x in [1, 2, 3])"); len(got) != 3 || got[0] != 2 || got[1] != 4 || got[2] != 6 {
+		t.Fatalf("map generator: got %v", got)
+	}
+	// generator expression with an if filter.
+	if got := evalList("(x for x in [1, 2, 3] if x > 1)"); len(got) != 2 || got[0] != 2 || got[1] != 3 {
+		t.Fatalf("filter generator: got %v", got)
+	}
+	// generator over a range-like list.
+	if got := evalList("(x * x for x in [1, 2, 3])"); len(got) != 3 || got[0] != 1 || got[1] != 4 || got[2] != 9 {
+		t.Fatalf("square generator: got %v", got)
+	}
+}

@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(generator-exprs)`: `(elem for var in iter [if cond])` parses as a
+  generator expression and evaluates (interpreter) to a list of yielded
+  values. Consumable by `for x in gen:` / `list(gen)`. AOT codegen has no
+  generator lowering yet. ADR 0081.
 - `feat(typed-exceptions)`: `raise ValueError("msg")` carries a class name + message;
   `except ValueError:` matches the raised class exactly, `except Exception:`/bare
   `except:` catch any. Unmatched exceptions propagate as `*EvalError{ExnType, ExnMsg}`.

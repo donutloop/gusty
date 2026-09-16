@@ -921,6 +921,17 @@ func (p *parser) parseAtom() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		// generator expression: `(elem for var in iter [if cond])`
+		if p.peek().IsKeyword("for") {
+			g, err := p.parseGeneratorTail(ex)
+			if err != nil {
+				return nil, err
+			}
+			if err := p.expectOp(")"); err != nil {
+				return nil, err
+			}
+			return g, nil
+		}
 		if err := p.expectOp(")"); err != nil {
 			return nil, err
 		}
@@ -959,6 +970,34 @@ func (p *parser) parseLambda() (Expr, error) {
 	}
 	lm.Body = body
 	return lm, nil
+}
+
+// parseGeneratorTail parses `for var in iter [if cond]` for a generator
+// expression `(elem for var in iter [if cond])`, returning a Generator.
+func (p *parser) parseGeneratorTail(elem Expr) (*Generator, error) {
+	if err := p.expectKeyword("for"); err != nil {
+		return nil, err
+	}
+	vt := p.next()
+	if vt.Kind != TokIdent {
+		return nil, fmt.Errorf("expected generator variable name")
+	}
+	if err := p.expectKeyword("in"); err != nil {
+		return nil, err
+	}
+	iter, err := p.parseOr()
+	if err != nil {
+		return nil, err
+	}
+	var cond Expr
+	if p.peek().IsKeyword("if") {
+		p.next()
+		cond, err = p.parseOr()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &Generator{Elems: []Expr{elem}, ForVar: &Name{Value: vt.Text}, Iter: iter, Cond: cond}, nil
 }
 
 func (p *parser) parseListOrComp() (Expr, error) {

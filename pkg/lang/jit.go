@@ -867,6 +867,8 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return h, nil
 	case *Comp:
 		return e.evalComp(n)
+	case *Generator:
+		return e.evalGen(n)
 	case *Lambda:
 		// lambda params: body => anonymous FuncDef + closure capturing env.
 		fd := &FuncDef{
@@ -978,6 +980,42 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 		}
 	}
 	return rh, nil
+}
+func (e *Evaluator) evalGen(g *Generator) (int64, error) {
+	itv, err := e.eval(g.Iter)
+	if err != nil {
+		return 0, err
+	}
+	var items []int64
+	if o, ok := e.heap[itv]; ok {
+		switch o.kind {
+		case "list", "str", "dict", "set":
+			items = o.elems
+		}
+	}
+	// generator expression evaluates eagerly to a list of yielded values.
+	id := e.allocObj("list")
+	lo := e.heap[id]
+	for _, it := range items {
+		e.Vars[g.ForVar.Value] = it
+		if g.Cond != nil {
+			cv, err := e.eval(g.Cond)
+			if err != nil {
+				return 0, err
+			}
+			if cv == 0 {
+				continue
+			}
+		}
+		for _, el := range g.Elems {
+			ev, err := e.eval(el)
+			if err != nil {
+				return 0, err
+			}
+			lo.elems = append(lo.elems, ev)
+		}
+	}
+	return id, nil
 }
 
 func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
