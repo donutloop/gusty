@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"unicode"
+	"sort"
 )
 
 // Evaluator is a small AST interpreter used by --eval and the REPL.
@@ -1525,6 +1526,16 @@ func (e *Evaluator) dictKeyEq(k, idx int64) bool {
 	return k == idx
 }
 
+// lessVal reports whether boxed value a is less than b (ints by value, strings by content).
+func (e *Evaluator) lessVal(a, b int64) bool {
+	ao, ok := e.heap[a]
+	if ok && ao.kind == "str" {
+		bo, ok2 := e.heap[b]
+		return ok2 && bo.kind == "str" && ao.sval < bo.sval
+	}
+	return a < b
+}
+
 func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64, error) {
 	o := e.heap[recv]
 	switch name {
@@ -1940,6 +1951,26 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 			}
 			return best, nil
+			case "sorted":
+				if len(n.Args) != 1 {
+					return 0, &EvalError{Msg: "sorted() takes exactly 1 argument"}
+				}
+				lv, err := e.eval(n.Args[0])
+				if err != nil {
+					return 0, err
+				}
+				lo, ok := e.heap[lv]
+				if !ok || lo.kind != "list" {
+					return 0, &EvalError{Msg: "sorted() argument must be a list"}
+				}
+				elems := append([]int64(nil), lo.elems...)
+				sort.Slice(elems, func(i, j int) bool {
+					return e.lessVal(elems[i], elems[j])
+				})
+				listID := e.allocObj("list")
+				nl := e.heap[listID]
+				nl.elems = append(nl.elems, elems...)
+				return listID, nil
 		case "sum":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "sum expects 1 argument"}

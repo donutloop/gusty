@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(sorted-builtin)`: **`sorted(list)`** returns a copy of the list
+  with elements sorted (interpreter path; ints by value, strings by content
+  via `lessVal`). `sorted([3, 1, 2])[0]` is 1. Adds an Eval unit test.
+  ADR 0068.
 - `feat(str-isspace)`: **`.isspace()`** returns 1 if every rune is
   whitespace (and the string is non-empty), else 0, in **both** paths: the
   interpreter checks `unicode.IsSpace`; the codegen folds it to

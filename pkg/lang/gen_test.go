@@ -695,6 +695,30 @@ func TestGenStrIsspace(t *testing.T) {
 	}
 }
 
+func TestGenSorted(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if got := evalInt(`sorted([3, 1, 2])[0]`); got != 1 {
+		t.Fatalf("sorted first: expected 1, got %d", got)
+	}
+	if got := evalInt(`sorted([3, 1, 2])[1]`); got != 2 {
+		t.Fatalf("sorted second: expected 2, got %d", got)
+	}
+	if got := evalInt(`sorted([3, 1, 2])[2]`); got != 3 {
+		t.Fatalf("sorted last: expected 3, got %d", got)
+	}
+}
+
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
 		prog, err := Parse(src)
