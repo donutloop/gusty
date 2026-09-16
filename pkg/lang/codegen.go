@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -219,6 +220,12 @@ func stringConst(e Expr) (string, bool) {
 				}
 			}
 		}
+		// str(int-literal) folds to its decimal string, so len(str(42)) -> 2.
+		if n, ok := c.Fn.(*Name); ok && n.Value == "str" && len(c.Args) == 1 {
+			if il, ok := c.Args[0].(*IntLit); ok {
+				return strconv.FormatInt(il.Value, 10), true
+			}
+		}
 		return "", false
 	}
 	return "", false
@@ -400,6 +407,12 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		}
 		return "", false
 	case *Call:
+		// str(int-literal) folds to its decimal string, e.g. print(str(42)).
+		if name, ok := n.Fn.(*Name); ok && name.Value == "str" && len(n.Args) == 1 {
+			if il, ok := n.Args[0].(*IntLit); ok {
+				return strconv.FormatInt(il.Value, 10), true
+			}
+		}
 		// constant-fold string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
 		attr, ok := n.Fn.(*Attr)
 		if !ok {
@@ -470,13 +483,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
 	case *BinOp:
-		// Constant string concatenation: fold "a" + "b" into a single string
-		// constant, mirroring the interpreter's str + str concat.
+		// Constant string concatenation: fold "a" + "b" (and foldable string
+		// calls like str(7)) into a single string global.
 		if n.Op == "+" {
-			if ls, lok := n.L.(*StrLit); lok {
-				if rs, rok := n.R.(*StrLit); rok {
-					return g.strConst(ls.Value + rs.Value), nil
-				}
+			ls, lok := g.stringVal(n.L)
+			rs, rok := g.stringVal(n.R)
+			if lok && rok {
+				return g.strConst(ls + rs), nil
 			}
 		}
 		l, err := g.value(b, n.L)
@@ -1510,6 +1523,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("codegen: range needs one argument")
 		}
 		return g.value(b, c.Args[0])
+	case "str":
+		// str(n) folds to the decimal string of an int literal.
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("str expects one argument")
+		}
+		v, err := g.value(b, c.Args[0])
+		if err != nil {
+			return "", err
+		}
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return "", fmt.Errorf("str on non-integer")
+		}
+		return g.strConst(fmt.Sprintf("%d", n)), nil
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}

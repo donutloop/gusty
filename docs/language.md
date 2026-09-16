@@ -253,10 +253,15 @@ match x:
 
 - `print(x, ...)` — writes each argument to stdout on its own line via
   `printf`. Multi-argument `print` mirrors the interpreter: one `printf` per
-  argument. String-literal arguments use a `%s\n` format (the interpreter
-  prints strings via `Repr`); integer arguments use `%d\n`. Zero-argument
-  `print()` writes nothing (no `printf`), matching the interpreter's no-op.
+  argument. String arguments (literals, folded string calls like `str(7)`,
+  and constant `+` concatenations) use a `%s\n` format; integer arguments
+  use `%d\n`. Zero-argument `print()` writes nothing (no `printf`), matching
+  the interpreter's no-op.
 - `range(n)` — iteration bound for `for` loops.
+- `str(x)` — converts a value to its string representation. In the
+  interpreter, `str(x)` boxes `repr(x)` as a string; in codegen, `str(int)`
+  folds to the decimal string constant, so `len(str(42))` → `2` and
+  `print(str(42))` prints `42` (and `"n=" + str(7)` folds to `"n=7"`).
 
 ## Generators & lists
 - `def g(): yield a; yield b` is a generator: calling `g()` runs the body and

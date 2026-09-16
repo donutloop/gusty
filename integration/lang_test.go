@@ -463,3 +463,13 @@ func TestExecStrSplitLen(t *testing.T) {
 func TestExecStrEq(t *testing.T) {
 	assertOutput(t, `print("abc" == "abd")`, "0\n")
 }
+
+func TestExecStrBuiltin(t *testing.T) {
+	assertOutput(t, `print(len(str(42)))`, "2\n")
+}
+
+func TestExecStrBuiltinPrint(t *testing.T) {
+	// print(str(42)) emits a folded string global via the %s format path.
+	assertOutput(t, `print(str(42))`, "42\n")
+	assertOutput(t, `print("n=" + str(7))`, "n=7\n")
+}

@@ -1669,6 +1669,15 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return 0, &EvalError{Msg: "range expects 1 to 3 arguments"}
 			}
 			return e.eval(n.Args[0])
+		case "str":
+			if len(n.Args) != 1 {
+				return 0, &EvalError{Msg: "str expects 1 argument"}
+			}
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			return e.allocStr(e.Repr(av)), nil
 		}
 	}
 	return 0, &EvalError{Msg: "unsupported call for eval"}

@@ -630,3 +630,11 @@ func TestIRStrEqFolds(t *testing.T) {
 	}
 	llcCompiles(t, `print("abc" == "abc")`)
 }
+
+func TestIRStrBuiltinFolds(t *testing.T) {
+	// len(str(42)) folds to 2.
+	ir := llcCompiles(t, `print(len(str(42)))`)
+	if !strings.Contains(ir, "2") {
+		t.Fatalf("expected folded 2, got:\n%s", ir)
+	}
+}
