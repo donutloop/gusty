@@ -596,3 +596,12 @@ func TestIRDictItemsLenLowers(t *testing.T) {
 		t.Fatalf("expected folded pair count 2, got:\n%s", ir)
 	}
 }
+
+func TestIRDictMinMaxMethodsLowers(t *testing.T) {
+	// max({1: 2, 3: 4}.keys()) -> 3, min({1: 2, 3: 4}.values()) -> 2.
+	ir := llcCompiles(t, "print(max({1: 2, 3: 4}.keys()))")
+	if !strings.Contains(ir, "3") {
+		t.Fatalf("expected max 3, got:\n%s", ir)
+	}
+	llcCompiles(t, "print(min({1: 2, 3: 4}.values()))")
+}

@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(dict-minmax)`: **`min`/`max` now fold dict-method Call args** — the
+  min/max elems resolution wires `dictMethodElems`, so
+  `max({1: 2, 3: 4}.keys())` -> 3 and `min({1: 2, 3: 4}.values())` -> 2 in
+  the AOT codegen. Adds Eval/IR/integration tests. ADR 0046.
 - `feat(dict-items)`: **`.items()` on constant dict literals** — the
   interpreter now builds a list of `[key, value]` pairs, and the AOT codegen
   folds `len({1: 2, 3: 4}.items())` to the pair count 2 (via `dictMethodElems`

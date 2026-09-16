@@ -60,7 +60,8 @@ literals constant-fold in the codegen (`len("AbC".upper())` -> 3). Dict `.keys()
 fold to lists, and list `.append()` on constant literals folds
 (`[1, 2, 3].append(4)` -> `[1, 2, 3, 4]`).
 fold to lists (`{1: 2, 3: 4}.keys()` -> `[1, 3]`), and `.items()`
-folds `len({1: 2, 3: 4}.items())` to 2.
+folds `len({1: 2, 3: 4}.items())` to 2. `min`/`max` also fold
+dict-method args (`max({1: 2, 3: 4}.keys())` -> 3).
 
 ## Toolchain
 

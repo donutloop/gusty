@@ -345,7 +345,8 @@ runtime-variable elements also work in `len` and list index. `abs` accepts any
 integer expression and is constant-folded when its argument is a literal.
 
 
-`sum`/`min`/`max` also fold **set literals** (`{1, 2, 3}`) and **dict literal keys** (`{1: 10, 3: 30}`) in the AOT codegen, extracting `SetLit.Elems` / `DictLit.Keys` into the same aggregate fold.
+`sum`/`min`/`max` also fold set literals, dict literal keys, and dict-method
+calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
 
 ### string methods
 

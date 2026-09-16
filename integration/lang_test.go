@@ -447,3 +447,7 @@ func TestExecListAppend(t *testing.T) {
 func TestExecDictItemsLen(t *testing.T) {
 	assertOutput(t, `print(len({1: 2, 3: 4}.items()))`, "2\n")
 }
+
+func TestExecDictMinMaxMethods(t *testing.T) {
+	assertOutput(t, `print(max({1: 2, 3: 4}.keys()))`, "3\n")
+}

@@ -1396,6 +1396,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return fmt.Sprintf("%d", best), nil
 		}
 		var elems []Expr
+		if de, ok := g.dictMethodElems(c.Args[0]); ok {
+			elems = de
+		}
 		if ln, ok := c.Args[0].(*ListLit); ok {
 			elems = ln.Elems
 		} else if sl, ok := c.Args[0].(*SetLit); ok {

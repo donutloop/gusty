@@ -202,3 +202,24 @@ func TestGenDictItemsLen(t *testing.T) {
 		t.Fatalf("items len: expected 2, got %d", v)
 	}
 }
+
+func TestGenDictMinMaxMethods(t *testing.T) {
+	evalInt := func(src string) int64 {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return v
+	}
+	if v := evalInt("max({1: 2, 3: 4}.keys())"); v != 3 {
+		t.Fatalf("max keys: expected 3, got %d", v)
+	}
+	if v := evalInt("min({1: 2, 3: 4}.values())"); v != 2 {
+		t.Fatalf("min values: expected 2, got %d", v)
+	}
+}
