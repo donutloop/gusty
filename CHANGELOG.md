@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(str-lstrip-rstrip)`: **`.lstrip()`** / **`.rstrip()`** remove leading
+  / trailing whitespace (any `unicode.IsSpace` rune) in **both** paths: the
+  interpreter applies `TrimLeftFunc`/`TrimRightFunc`; the codegen
+  constant-folds them to a trimmed string constant
+  (`print(len("  hi  ".lstrip()))` emits `i32 4`). Adds Eval/IR/integration
+  tests. ADR 0054.
 - `feat(str-count)`: **`.count(sub)`** returns the number of non-overlapping
   occurrences of `sub` in **both** paths: the interpreter applies
   `strings.Count`; the codegen constant-folds it to an `i32` literal

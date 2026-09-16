@@ -484,6 +484,12 @@ func TestExecStrCount(t *testing.T) {
 	assertOutput(t, `print("hello".count("z"))`, "0\n")
 }
 
+func TestExecStrLstripRstrip(t *testing.T) {
+	// lstrip/rstrip fold to trimmed string constants
+	assertOutput(t, `print("  hi  ".lstrip())`, "hi  \n")
+	assertOutput(t, `print("  hi  ".rstrip())`, "  hi\n")
+}
+
 func TestExecStrEq(t *testing.T) {
 	assertOutput(t, `print("abc" == "abd")`, "0\n")
 }

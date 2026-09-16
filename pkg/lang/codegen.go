@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
@@ -217,6 +218,10 @@ func stringConst(e Expr) (string, bool) {
 					return strings.ToLower(v), true
 				case "strip":
 					return strings.TrimSpace(v), true
+				case "lstrip":
+					return strings.TrimLeftFunc(v, unicode.IsSpace), true
+				case "rstrip":
+					return strings.TrimRightFunc(v, unicode.IsSpace), true
 				case "replace":
 					if len(c.Args) != 2 {
 						return "", false
@@ -442,6 +447,10 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			return strings.ToLower(v), true
 		case "strip":
 			return strings.TrimSpace(v), true
+		case "lstrip":
+			return strings.TrimLeftFunc(v, unicode.IsSpace), true
+		case "rstrip":
+			return strings.TrimRightFunc(v, unicode.IsSpace), true
 		case "replace":
 			if len(n.Args) != 2 {
 				return "", false
@@ -1223,6 +1232,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			v = strings.ToLower(v)
 		case "strip":
 			v = strings.TrimSpace(v)
+		case "lstrip":
+			v = strings.TrimLeftFunc(v, unicode.IsSpace)
+		case "rstrip":
+			v = strings.TrimRightFunc(v, unicode.IsSpace)
 		case "replace":
 			if len(c.Args) != 2 {
 				return "", fmt.Errorf("replace() takes exactly 2 arguments")

@@ -176,6 +176,8 @@ indexes dicts/sets at runtime and is unchanged.
   (`print("hello".startswith("he"))` emits `i32 1`).
 - `.count(sub)` constant-folds to an `i32` literal
   (`print("ababab".count("ab"))` emits `i32 3`).
+- `.lstrip()` / `.rstrip()` constant-fold to a trimmed string constant
+  (`print(len("  hi  ".lstrip()))` emits `i32 4`).
 
 
 String literals are lowered to global constants. `+` on two string literals

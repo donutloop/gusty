@@ -397,3 +397,27 @@ func TestGenStrCount(t *testing.T) {
 		t.Fatalf("count non-overlap: expected 2, got %d", got)
 	}
 }
+
+func TestGenStrLstripRstrip(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	if got := evalStr(`"  hi  ".lstrip()`); got != "hi  " {
+		t.Fatalf("lstrip: expected hi  , got %q", got)
+	}
+	if got := evalStr(`"  hi  ".rstrip()`); got != "  hi" {
+		t.Fatalf("rstrip: expected   hi, got %q", got)
+	}
+	if got := evalStr(`"hello".lstrip()`); got != "hello" {
+		t.Fatalf("lstrip none: expected hello, got %q", got)
+	}
+}

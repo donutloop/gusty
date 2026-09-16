@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 )
 
 // Evaluator is a small AST interpreter used by --eval and the REPL.
@@ -1192,6 +1193,12 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, &EvalError{Msg: "strip() takes no arguments"}
 		}
 		return e.allocStr(strings.TrimSpace(s)), nil
+	case "lstrip":
+		// s.lstrip() -> s with leading whitespace removed.
+		return e.allocStr(strings.TrimLeftFunc(s, unicode.IsSpace)), nil
+	case "rstrip":
+		// s.rstrip() -> s with trailing whitespace removed.
+		return e.allocStr(strings.TrimRightFunc(s, unicode.IsSpace)), nil
 	case "split":
 		sep := " "
 		if len(args) > 1 {

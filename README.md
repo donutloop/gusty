@@ -59,7 +59,7 @@ exactly like `def`. String methods `.upper()`, `.lower()`, `.strip()` on constan
 literals constant-fold in the codegen (`len("AbC".upper())` -> 3). `.replace(old, new)`
 replaces every occurrence in both paths; `.find(sub)` folds to the index or -1;
 `.startswith(sub)`/`.endswith(sub)` fold to 1 or 0; `.count(sub)` folds to the
-occurrence count. String indexing `"abc"[1]`
+occurrence count; `.lstrip()`/`.rstrip()` fold to trimmed strings. String indexing `"abc"[1]`
 returns the char code (98) in both paths. `.split()` folds `len("a b c".split())` to 3. String equality `==`/`!=` compares contents in both paths. Dict `.keys()`/`.values()` on constant dict literals
 fold to lists, and list `.append()` on constant literals folds
 (`[1, 2, 3].append(4)` -> `[1, 2, 3, 4]`).

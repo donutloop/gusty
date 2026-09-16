@@ -677,3 +677,17 @@ func TestIRStrCountFolds(t *testing.T) {
 		t.Fatalf("expected folded count result 3 in IR, got:\n%s", ir)
 	}
 }
+
+func TestIRStrLstripRstripFolds(t *testing.T) {
+	// `print(len("  hi  ".lstrip()))` folds lstrip to "hi  " (len 4),
+	// so the emitted IR contains i32 4.
+	ir := llcCompiles(t, `print(len("  hi  ".lstrip()))`)
+	if !strings.Contains(ir, "i32 4") {
+		t.Fatalf("expected folded lstrip length 4 in IR, got:\n%s", ir)
+	}
+	// `print(len("  hi  ".rstrip()))` folds rstrip to "  hi" (len 4).
+	ir = llcCompiles(t, `print(len("  hi  ".rstrip()))`)
+	if !strings.Contains(ir, "i32 4") {
+		t.Fatalf("expected folded rstrip length 4 in IR, got:\n%s", ir)
+	}
+}
