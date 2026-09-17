@@ -1025,6 +1025,8 @@ func TestIRListLenFolds(t *testing.T) {
 		{`print(len("a,b,c".rsplit(",")))`, "i32 3"},
 		{`print(len("".split(",")))`, "i32 1"},
 		{`print(len("abc".split(",")))`, "i32 1"},
+		{`print(len(reversed("abc")))`, "i32 3"},
+		{`print(len(reversed("hello")))`, "i32 5"},
 	}
 	for _, tc := range cases {
 		ir := llcCompiles(t, tc.src)

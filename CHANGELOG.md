@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(len-reversed-str)`: AOT codegen `len` now folds `len(reversed(s))`
+  over a constant string `s` to `len(s)` (reversal preserves length),
+  matching the interpreter. Extends `listLen` with a `reversed` string case.
+  Adds IR and end-to-end runtime checks. ADR 0108.
 - `feat(list-len-folds)`: AOT codegen `len` now folds over additional
   list-producing builtin calls: `len(enumerate([a, b, c]))` -> 3,
   `len(zip(a, b))` -> `min(len(a), len(b))`, `len(s.partition(sep))` -> 3,

@@ -333,6 +333,15 @@ func (g *irGen) listLen(a Expr) (int, bool) {
 		return 0, false
 	}
 	switch fn.Value {
+	case "reversed":
+		if len(c.Args) != 1 {
+			return 0, false
+		}
+		// reversed(s) preserves the length of a constant string s.
+		if s, ok := g.stringVal(c.Args[0]); ok {
+			return len(s), true
+		}
+		return 0, false
 	case "enumerate":
 		if len(c.Args) != 1 {
 			return 0, false
