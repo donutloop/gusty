@@ -969,6 +969,14 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "@llvm.fabs") && !strings.Contains(ir, "2.5e+00") {
 		t.Fatalf("abs(-2.5) should emit a float abs, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(min(2.5, 3.5))`)
+	if !strings.Contains(ir, "2.5e+00") {
+		t.Fatalf("min(2.5, 3.5) should emit 2.5e+00, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(max(2.5, 3.5))`)
+	if !strings.Contains(ir, "3.5e+00") {
+		t.Fatalf("max(2.5, 3.5) should emit 3.5e+00, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {

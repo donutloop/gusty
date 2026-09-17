@@ -840,9 +840,11 @@ func (g *irGen) isFloat(e Expr) bool {
 	case *Call:
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok {
-				if id.Value == "float" || id.Value == "abs" {
-					if len(n.Args) == 1 {
-						return g.isFloat(n.Args[0])
+				if id.Value == "float" || id.Value == "abs" || id.Value == "min" || id.Value == "max" {
+					for _, a := range n.Args {
+						if g.isFloat(a) {
+							return true
+						}
 					}
 				}
 			}
@@ -878,6 +880,31 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		return g.floatBinOp(b, n)
 	case *Call:
 		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && (id.Value == "min" || id.Value == "max") {
+				fvals := make([]float64, 0, len(n.Args))
+				for _, a := range n.Args {
+					fv, ok := g.floatEval(a)
+					if !ok {
+						return g.floatValue(b, a)
+					}
+					fvals = append(fvals, fv)
+				}
+				if len(fvals) == 0 {
+					return g.floatValue(b, n)
+				}
+				best := fvals[0]
+				for _, fv := range fvals[1:] {
+					if id.Value == "min" && fv < best {
+						best = fv
+					}
+					if id.Value == "max" && fv > best {
+						best = fv
+					}
+				}
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(best))
+				return t
+			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "abs" && len(n.Args) == 1 {
 				t := g.newTmp()
 				fmt.Fprintf(b, "  %s = call double @llvm.fabs.f64(double %s)\n", t, g.floatValue(b, n.Args[0]))
