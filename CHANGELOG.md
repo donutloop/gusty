@@ -1,5 +1,19 @@
 # CHANGELOG
 
+
+## [v0.10.0] - roadmap phase 0
+
+- **Version hygiene (roadmap Phase 0)**: reconcile the stale compiler version
+  constant (`pkg/lang/compile.go` said `0.1.0` while the changelog said
+  `v0.9.0`). Bumped to a **new version `0.10.0`** for the roadmap work; the
+  CLI prints `0.10.0`. The version lives in one place (`pkg/lang/compile.go`)
+  and is used by `cmd/gustyc`.
+- Added `roadmap.md` (LLVM-core component map, gaps, phased plan) and
+  `docs/roadmap.md` pointer.
+- Removed the unused vendored `go-llvm/` bindings and their `go.mod`/`go.sum`
+  deps; codegen remains a textual IR emitter verified by external `llc`/`cc`.
+
+
 ## [Unreleased] - 2026-09-17
 
 ### Added — CLI multi-file build

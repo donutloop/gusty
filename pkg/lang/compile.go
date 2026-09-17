@@ -3,7 +3,7 @@ package lang
 import "encoding/json"
 
 // Version is the compiler version string (semver).
-const Version = "0.1.0"
+const Version = "0.10.0"
 
 // CompileResult is the outcome of a compile: IR text, JSON AST dump, and diagnostics.
 type CompileResult struct {

@@ -62,11 +62,10 @@ runtime heap, GC, or dynamic dispatch in the AOT path** yet.
 
 ## Gaps → phased plan
 
-### Phase 0 — hygiene (small, no semantics change)
-- Reconcile the version: one constant (currently `compile.go` is stale).
-  The CLI should print `0.9.x`, matching `CHANGELOG.md`.
-- Move the stale `compile.go` version into a single source used by both the
-  CLI and tests.
+### Phase 0 — hygiene (small, no semantics change)  ✅ DONE
+- **Version reconciled (v0.10.0)**: the single version constant lives in
+  `pkg/lang/compile.go` and is printed by `cmd/gustyc`. `CHANGELOG.md` is
+  bumped and records this roadmap entry.
 
 ### Phase 1 — close the AOT/interpreter parity gaps (highest value)
 Order matters: each feature lands in the interpreter first, then the AOT
