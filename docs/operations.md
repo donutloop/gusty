@@ -26,7 +26,34 @@ deterministic textual emitter).
 | `--verify` | run `llvm::verifyModule` equivalent (llc compile) |
 | `--target <triple>` | target triple for codegen |
 | `--opt-level <n>` | optimization level |
+| `--build <out>` | compile the positional source files into a native binary at `<out>` |
 | `--version` | print version |
+
+
+## Building a binary from multiple files
+
+`gustyc --build <out> <file1> <file2> ...` compiles a **set of source files**
+into a single native executable. Pipeline:
+
+1. read + parse each file, merge the statement lists into one program
+2. semantic analysis over the merged program
+3. LLVM IR codegen + optimization
+4. `llc-20` verifies/lowers the module to an object file
+5. `cc` links it into the binary at `<out>`
+
+The produced binary is a real native executable: `./prog` runs the program
+(its `print` output goes to stdout).
+
+Structured machine-readable outcome (with `--json`):
+
+```json
+{"output": "prog", "ir": "...", "objects": ["..."], "commands": ["llc ...", "cc ..."], "diagnostics": []}
+```
+
+Compile/link errors return diagnostics and exit code 1; missing sources or no
+positional files are a usage error (exit 2). A semantic error in any source
+file aborts the build before any toolchain step runs.
+
 
 ## Diagnostics
 

@@ -46,6 +46,7 @@ func run() int {
 	emitASTF := fs.String("emit-ast", "", "print the AST as JSON for a source string")
 	target := fs.String("target", "", "target triple for codegen")
 	optLevel := fs.String("opt-level", "0", "optimization level")
+	buildOut := fs.String("build", "", "output binary path for a multi-file build (sources are the positional args)")
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
@@ -68,6 +69,37 @@ func run() int {
 	}
 	if *schemaCmd {
 		fmt.Println(lang.ASTIRSchema)
+		return exitOK
+	}
+
+	if *buildOut != "" {
+		buildFiles := fs.Args()
+		if len(buildFiles) == 0 {
+			fmt.Fprintf(os.Stderr, "gustyc: --build requires at least one source file\n")
+			usage(fs)
+			return exitUsage
+		}
+		res, err := lang.Build(buildFiles, *buildOut, atoi(*optLevel))
+		if err != nil {
+			if res != nil && len(res.Diagnostics) > 0 {
+				for _, d := range res.Diagnostics {
+					fmt.Fprintln(os.Stderr, d)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+			}
+			return exitErr
+		}
+		if *jsonOut {
+			b, jerr := json.Marshal(res)
+			if jerr != nil {
+				fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
+				return exitErr
+			}
+			fmt.Println(string(b))
+		} else {
+			fmt.Printf("built %s (%d source files, %d object file(s))\n", res.Output, len(buildFiles), len(res.Objects))
+		}
 		return exitOK
 	}
 	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *emitLLVMF == "" && *emitASTF == "" && isTTY()) {
@@ -202,6 +234,8 @@ Flags:
 `)
 	fs.PrintDefaults()
 	fmt.Printf(`
+Build: gustyc --build <out> <file1> <file2> ...  # compile sources into a native binary
+
 Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error.
 `)
 }

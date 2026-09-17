@@ -150,6 +150,7 @@ make testllvmcode  # lower ./integration/expected/*.ll with llc-20 + cc and run 
 ```
 gustyc --eval "x = 2 + 3\nx"            # evaluate source, print result
 gustyc --file prog.gy                   # compile & run a source file
+gustyc --build out a.gy b.gy            # compile a set of files into a native binary
 gustyc --verify "def f(x): return x * 2"  # static analysis only
 gustyc --emit-llvm "x = 1 + 2"          # print emitted LLVM IR
 gustyc --emit-ast "x = 1"               # print the AST as JSON

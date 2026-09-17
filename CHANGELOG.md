@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [Unreleased] - 2026-09-17
+
+### Added — CLI multi-file build
+
+- `gustyc --build <out> <file1> <file2> ...`: compile a set of source files
+  into a single native executable. Pipeline: parse + merge the sources into
+  one program, semantic analysis, LLVM IR codegen, `llc-20` lowers/verifies the
+  module to an object file, `cc` links it into the binary at `<out>`.
+- `--json --build` emits a machine-readable `BuildResult` (`output`, `ir`,
+  `objects`, `commands`, `diagnostics`).
+- `lang.Build(files, out, optLevel)` public API in `pkg/lang` for in-process
+  builds; unit tests (`build_test.go`) and whole-program CLI integration tests
+  (`integration/build_test.go`).
+
+
 All notable changes to gusty are documented here, newest first.
 This project adheres to [Semantic Versioning](https://semver.org) with
 pre-`1.0.0` releases (`v0.x.y`) while still in development.
