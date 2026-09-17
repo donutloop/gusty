@@ -479,6 +479,10 @@ width to a padded string global, mirroring the interpreter.
 `"s".zfill(w)` pads the receiver on the left with `0` to width `w` (no-op
 when `len(s) >= w`); the AOT codegen folds it over a constant receiver and
 constant width to a zero-padded string global, mirroring the interpreter.
+`"s".removeprefix(p)` strips the given prefix from the receiver and
+`"s".removesuffix(s)` strips the suffix (no-op when unmatched, mirroring
+`strings.TrimPrefix`/`TrimSuffix`); the AOT codegen folds both over a
+constant receiver and constant prefix/suffix to a string global.
 
 `.startswith(sub)` and `.endswith(sub)` return 1 or 0 in **both** paths: the
 interpreter applies `strings.HasPrefix`/`strings.HasSuffix`; the codegen

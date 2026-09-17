@@ -1505,6 +1505,23 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return g.strConst(v), nil
 			}
 			return g.strConst(strings.Repeat("0", pad) + v), nil
+		case "removeprefix", "removesuffix":
+			// removeprefix strips the given prefix from the receiver;
+			// removesuffix strips the suffix, mirroring strings.TrimPrefix/TrimSuffix.
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("%s expects one argument", attr.Name.Value)
+			}
+			sub, ok := g.stringVal(c.Args[0])
+			if !ok {
+				return "", fmt.Errorf("%s: codegen folds only a constant string arg", attr.Name.Value)
+			}
+			var res string
+			if attr.Name.Value == "removeprefix" {
+				res = strings.TrimPrefix(v, sub)
+			} else {
+				res = strings.TrimSuffix(v, sub)
+			}
+			return g.strConst(res), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}

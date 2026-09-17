@@ -127,3 +127,29 @@ func TestStdlibZfill(t *testing.T) {
 		t.Fatalf("zfill no-op: want abc, got %q", got)
 	}
 }
+
+func TestStdlibRemoveprefixSuffix(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	// removeprefix strips the prefix; removesuffix strips the suffix.
+	if got := evalStr(`"abcabc".removeprefix("abc")`); got != "abc" {
+		t.Fatalf("removeprefix: want abc, got %q", got)
+	}
+	if got := evalStr(`"abcabc".removesuffix("abc")`); got != "abc" {
+		t.Fatalf("removesuffix: want abc, got %q", got)
+	}
+	// No-match leaves the receiver unchanged.
+	if got := evalStr(`"abc".removeprefix("xyz")`); got != "abc" {
+		t.Fatalf("removeprefix no-op: want abc, got %q", got)
+	}
+}

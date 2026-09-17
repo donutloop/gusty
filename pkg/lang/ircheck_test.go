@@ -878,3 +878,20 @@ func TestIRZfillFolds(t *testing.T) {
 	// Exact width (len == w) is also a no-op.
 	llcCompiles(t, `"ab".zfill(2)`)
 }
+func TestIRRemoveprefixSuffixFolds(t *testing.T) {
+	// "s".removeprefix(p) strips the prefix -> string global.
+	ir := llcCompiles(t, `"abcabc".removeprefix("abc")`)
+	if !strings.Contains(ir, "abc") {
+		t.Fatalf("removeprefix should strip abc, got:\n%s", ir)
+	}
+
+	// "s".removesuffix(s) strips the suffix.
+	ir = llcCompiles(t, `"abcabc".removesuffix("abc")`)
+	if !strings.Contains(ir, "abc") {
+		t.Fatalf("removesuffix should strip abc, got:\n%s", ir)
+	}
+
+	// No-match leaves the receiver unchanged (mirror TrimPrefix/TrimSuffix).
+	llcCompiles(t, `"abc".removeprefix("xyz")`)
+	llcCompiles(t, `"abc".removesuffix("xyz")`)
+}

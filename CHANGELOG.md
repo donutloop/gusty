@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(removeprefix-suffix-codegen)`: AOT codegen folds the string methods
+  `"s".removeprefix(p)` / `"s".removesuffix(s)` over a constant receiver and
+  constant prefix/suffix to a string global (mirroring
+  strings.TrimPrefix/TrimSuffix, no-op when unmatched). Adds
+  TestIRRemoveprefixSuffixFolds IR verification and
+  TestStdlibRemoveprefixSuffix behavior checks. ADR 0103.
 - `feat(zfill-codegen)`: AOT codegen folds the string method `"s".zfill(w)`
   over a constant receiver and constant width to a zero-padded string global
   (left `0`-padding, no-op when `len(s) >= w`), mirroring the interpreter.
