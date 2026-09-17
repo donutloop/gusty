@@ -188,6 +188,10 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 
 func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	valTy := an.inferExpr(as.Value)
+	// Static gradual typing: report an annotation/inferred-type mismatch.
+	if as.Annot != nil && valTy != nil && valTy.Kind != KindDynamic && as.Annot.Kind != KindDynamic && valTy.Kind != as.Annot.Kind {
+		an.errorf(as.Span(), "type mismatch: expected %s, got %s", as.Annot.Name(), valTy.Name())
+	}
 	if as.Annot != nil {
 		// gradual typing: annotation overrides inferred type
 		valTy = as.Annot

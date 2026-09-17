@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(static-gradual-typing)`: `--verify` now statically checks assignment
+  annotations against inferred types: `x: int = "hello"` reports a "type
+  mismatch" diagnostic; the `any` annotation accepts anything. `EvalExpr`
+  returns a Go error for the first fatal diagnostic. ADR 0096.
 - `feat(dict-set-comps)`: dict/set comprehensions now accept `for` inside the
   braces: `{x: x*2 for x in [1,2,3]}` and `{x for x in [1,2]}` parse (previously
   "expected }"). Matches Python/list-comp syntax. ADR 0095.

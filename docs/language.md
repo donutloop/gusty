@@ -1,5 +1,12 @@
 # gusty language
 
+## Gradual typing
+
+`--verify` statically checks assignment annotations against the inferred type
+of the value: `x: int = "hello"` reports `type mismatch: expected int, got
+str`. The `any` annotation accepts any inferred type. Runtime enforcement
+(`checkAnnot`) still applies for computed values. See ADR 0096.
+
 ## Comprehensions
 
 List, dict, and set comprehensions are supported. Dict/set comprehensions use

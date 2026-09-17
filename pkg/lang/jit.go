@@ -2662,7 +2662,7 @@ func EvalExpr(src string) (int64, []Diagnostic, error) {
 	}
 	diags := Analyze(prog)
 	if anyErr(diags) {
-		return 0, diags, nil
+		return 0, diags, fmt.Errorf("verify: %s", diags[0].Msg)
 	}
 	ev := NewEvaluator()
 	v, err := ev.EvalProgram(prog)
