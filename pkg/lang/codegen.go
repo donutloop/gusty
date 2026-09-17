@@ -949,6 +949,48 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 	return t
 }
 
+
+// floatEval returns the float64 value of a float-literal expression, if foldable.
+func (g *irGen) floatEval(e Expr) (float64, bool) {
+	switch n := e.(type) {
+	case *FloatLit:
+		return n.Value, true
+	case *BinOp:
+		l, lok := g.floatEval(n.L)
+		r, rok := g.floatEval(n.R)
+		if !lok || !rok {
+			return 0, false
+		}
+		switch n.Op {
+		case "+":
+			return l + r, true
+		case "-":
+			return l - r, true
+		case "*":
+			return l * r, true
+		case "/":
+			if r == 0 {
+				return 0, false
+			}
+			return l / r, true
+		}
+		return 0, false
+	case *Call:
+		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
+				switch a := n.Args[0].(type) {
+				case *IntLit:
+					return float64(a.Value), true
+				case *StrLit:
+					if f, err := strconv.ParseFloat(a.Value, 64); err == nil {
+						return f, true
+					}
+				}
+			}
+		}
+	}
+	return 0, false
+}
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	switch n := e.(type) {
 	case *IntLit:
@@ -2434,6 +2476,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("str expects one argument")
 		}
+			if g.isFloat(c.Args[0]) {
+				if fv, ok := g.floatEval(c.Args[0]); ok {
+					return g.strConst(fmt.Sprintf("%g", fv)), nil
+				}
+			}
 		v, err := g.value(b, c.Args[0])
 		if err != nil {
 			return "", err
