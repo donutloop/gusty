@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(sorted-codegen)`: AOT codegen folds `sorted(list)` over an inline
+  list literal of integer literals to a sorted list global (ascending by
+  default, descending when `reverse=True` keyword or a truthy positional
+  second arg), mirroring the interpreter. Adds `constIntVal` literal-truthiness
+  helper and IR/behavior tests. ADR 0099.
 - `feat(sorted-reverse)`: `sorted(iter, reverse=True)` returns descending
   order (keyword or positional second arg). Previously keyword args to builtins
   errored "unsupported expression". ADR 0098.

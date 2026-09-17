@@ -539,7 +539,11 @@ non-empty), else 0, in **both** paths: the interpreter checks
 `unicode.IsSpace`; the codegen folds it to `i32 1`/`i32 0`
 (`print("   ".isspace())` emits `i32 1`).
 
-The `sorted(list)` builtin returns a new sorted list. `reversed(x)` returns a
+The `sorted(list)` builtin returns a new sorted list. `sorted(iter, reverse=True)`
+(or a truthy positional second arg) returns descending order; `reverse=False`
+keeps ascending order. In the AOT codegen, `sorted` folds an inline list
+literal of integer literals to a sorted list global (ascending by default,
+descending when the `reverse` flag is truthy), mirroring the interpreter. `reversed(x)` returns a
 reversed copy of a list or string: `reversed([1, 2, 3])` -> `[3, 2, 1]`,
 `reversed("abc")` -> `"cba"`. `reversed` is interpreter-only (the AOT codegen
 constant-folds it only on literal list/string arguments); see ADR 0082.

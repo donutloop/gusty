@@ -741,6 +741,21 @@ func TestGenSorted(t *testing.T) {
 	if got := evalInt(`sorted([3, 1, 2])[2]`); got != 3 {
 		t.Fatalf("sorted last: expected 3, got %d", got)
 	}
+	// sorted(iter, reverse=True) returns descending order (keyword arg).
+	if got := evalInt(`sorted([3, 1, 2], reverse=True)[0]`); got != 3 {
+		t.Fatalf("sorted reverse=True first: expected 3, got %d", got)
+	}
+	if got := evalInt(`sorted([3, 1, 2], reverse=True)[2]`); got != 1 {
+		t.Fatalf("sorted reverse=True last: expected 1, got %d", got)
+	}
+	// a truthy positional second arg also means descending.
+	if got := evalInt(`sorted([3, 1, 2], 1)[0]`); got != 3 {
+		t.Fatalf("sorted positional truthy first: expected 3, got %d", got)
+	}
+	// reverse=False keeps ascending order.
+	if got := evalInt(`sorted([3, 1, 2], reverse=False)[0]`); got != 1 {
+		t.Fatalf("sorted reverse=False first: expected 1, got %d", got)
+	}
 }
 
 func TestGenStrZfill(t *testing.T) {

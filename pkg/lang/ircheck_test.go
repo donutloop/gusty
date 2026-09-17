@@ -776,3 +776,34 @@ func TestIRStrLstripRstripFolds(t *testing.T) {
 		t.Fatalf("expected folded rstrip length 4 in IR, got:\n%s", ir)
 	}
 }
+
+func TestIRSortedFolds(t *testing.T) {
+	// sorted(list) folds to a sorted inline list literal global at codegen.
+	// A bare expression statement emits the folded list global (the codegen
+	// represents lists as constant integer-element globals).
+	ir := llcCompiles(t, `sorted([3, 1, 2])`)
+	if !strings.Contains(ir, "[i32 1, i32 2, i32 3]") {
+		t.Fatalf("sorted should fold to ascending [1,2,3] global, got:\n%s", ir)
+	}
+
+	// sorted(iter, reverse=True) folds to a descending list literal global.
+	ir = llcCompiles(t, `sorted([3, 1, 2], reverse=True)`)
+	if !strings.Contains(ir, "[i32 3, i32 2, i32 1]") {
+		t.Fatalf("sorted reverse=True should fold to descending [3,2,1], got:\n%s", ir)
+	}
+
+	// a truthy positional second arg also means descending.
+	ir = llcCompiles(t, `sorted([3, 1, 2], 1)`)
+	if !strings.Contains(ir, "[i32 3, i32 2, i32 1]") {
+		t.Fatalf("sorted positional truthy should fold to descending [3,2,1], got:\n%s", ir)
+	}
+
+	// reverse=False keeps ascending order.
+	ir = llcCompiles(t, `sorted([3, 1, 2], reverse=False)`)
+	if !strings.Contains(ir, "[i32 1, i32 2, i32 3]") {
+		t.Fatalf("sorted reverse=False should fold to ascending [1,2,3], got:\n%s", ir)
+	}
+
+	// sorted over an already-sorted list must still verify cleanly.
+	llcCompiles(t, `sorted([1, 2, 3])`)
+}

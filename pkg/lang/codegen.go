@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -1881,8 +1882,71 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return g.strConst(reverseStr(lit.Value)), nil
 		}
 		return "", fmt.Errorf("reversed: codegen folds only literal list/string args")
+	case "sorted":
+		// sorted(iter[, reverse=True]) folds to a sorted inline list literal.
+		// The AOT codegen represents lists as constant integer-element globals,
+		// so sorted folds only over an inline list literal of integer literals,
+		// mirroring the interpreter's ascending-by-value default and the
+		// descending reverse=True keyword / truthy positional second arg.
+		if len(c.Args) < 1 || len(c.Args) > 2 {
+			return "", fmt.Errorf("sorted expects 1 or 2 arguments")
+		}
+		ln, ok := c.Args[0].(*ListLit)
+		if !ok {
+			return "", fmt.Errorf("sorted: codegen folds only an inline list literal")
+		}
+		vals := make([]int64, len(ln.Elems))
+		for i, el := range ln.Elems {
+			il, ok := el.(*IntLit)
+			if !ok {
+				return "", fmt.Errorf("sorted: list elements must be integer literals")
+			}
+			vals[i] = il.Value
+		}
+		sort.Slice(vals, func(i, j int) bool { return vals[i] < vals[j] })
+		if len(c.Args) == 2 {
+			revExpr := c.Args[1]
+			if kw, ok := c.Args[1].(*KeywordArg); ok {
+				revExpr = kw.Value
+			}
+			rv, rerr := g.constIntVal(revExpr)
+			if rerr != nil {
+				return "", rerr
+			}
+			if rv != 0 {
+				for i, j := 0, len(vals)-1; i < j; i, j = i+1, j-1 {
+					vals[i], vals[j] = vals[j], vals[i]
+				}
+			}
+		}
+		elems := make([]Expr, len(vals))
+		for i, v := range vals {
+			elems[i] = &IntLit{Value: v}
+		}
+		return g.emitList(&ListLit{Elems: elems})
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
+	}
+}
+
+// constIntVal resolves a literal expression to a compile-time integer value
+// (IntLit, BoolLit, FloatLit truncation, NoneLit -> 0). Used by builtins that
+// fold keyword/positional truthiness (e.g. sorted's reverse=True) at codegen.
+func (g *irGen) constIntVal(e Expr) (int64, error) {
+	switch n := e.(type) {
+	case *IntLit:
+		return n.Value, nil
+	case *BoolLit:
+		if n.Value {
+			return 1, nil
+		}
+		return 0, nil
+	case *FloatLit:
+		return int64(n.Value), nil
+	case *NoneLit:
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("codegen: reverse flag must be a literal")
 	}
 }
 
