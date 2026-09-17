@@ -12,8 +12,7 @@ llc compile -> link/run, or JIT-execute in the REPL.
 
 The codegen pass emits deterministic, opaque-pointer LLVM IR text that
 compiles cleanly with `llc -opaque-pointers`. No native LLVM C-API call path is
-used for codegen (the go-llvm `CreateCall` path was abandoned for a
-deterministic textual emitter).
+used for codegen; the AOT backend emits textual IR verified by the external `llc`/`cc` toolchain.
 
 ## CLI flags (stable)
 

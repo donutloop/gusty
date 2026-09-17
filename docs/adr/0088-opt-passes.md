@@ -47,6 +47,6 @@ informational `; opt-level = 1` comment line.
 
 ## Alternatives rejected
 
-- Linking LLVM's pass manager (go-llvm) into the compiler: rejected — the
+- Linking a native LLVM C-API pass manager into the compiler: rejected — the
   compiler is pure Go; the external `llc`/`opt` binaries already apply full
   LLVM optimizations in the backend.

@@ -12,7 +12,7 @@ import (
 
 // Evaluator is a small AST interpreter used by --eval and the REPL.
 // It evaluates integer-typed expressions deterministically without needing
-// an LLVM JIT engine (the go-llvm fork is bindings-only, no ExecutionEngine).
+// an LLVM JIT engine (the AOT backend emits textual IR verified by `llc`).
 type Evaluator struct {
 	Vars      map[string]int64
 	funcs     map[string]*FuncDef
