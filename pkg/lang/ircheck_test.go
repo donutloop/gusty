@@ -953,6 +953,11 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "fadd double") {
 		t.Fatalf("float variable arithmetic should emit fadd, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(2.5 < 2.6)`)
+	if !strings.Contains(ir, "fcmp olt double") {
+		t.Fatalf("float comparison should emit fcmp, got:\n%s", ir)
+	}
+
 }
 func TestIRExpandtabsFolds(t *testing.T) {
 	// "s".expandtabs(w) folds to a string global. Source literals have no

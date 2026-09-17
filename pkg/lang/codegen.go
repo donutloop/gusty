@@ -979,6 +979,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
 	case *BinOp:
+			if g.isFloat(n.L) || g.isFloat(n.R) {
+				switch n.Op {
+				case "==", "!=", "<", "<=", ">", ">=":
+					return g.floatBinOp(b, n), nil
+				}
+			}
+
 		// Constant string concatenation: fold "a" + "b" (and foldable string
 		// calls like str(7)) into a single string global.
 		if n.Op == "+" {
