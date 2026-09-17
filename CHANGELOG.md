@@ -4,8 +4,9 @@ Single clean list of features, newest first.
 
 ## Current
 - `feat(for-str)`: `for x in "abc"` iterates over each character of a string,
-  binding x to a single-char string per rune. Interpreter-only; the AOT
-  codegen `for` loop unrolls literal lists and ranges but not literal strings.
+  binding x to a single-char string per rune. Ships in the interpreter and the
+  AOT codegen (the codegen pre-processes a literal-string iterable into a
+  synthetic list of single-char string literals and reuses the list unroll).
   ADR 0085.
 - `feat(zip)`: `zip(x, y)` combines two lists into a list of `[a, b]` pairs,
   stopping at the shorter list (`zip([1, 2], [10, 20])` -> `[[1, 10], [2, 20]]`).

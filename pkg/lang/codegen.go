@@ -2081,6 +2081,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// elements by unrolling one body block per element. `break` skips the
 		// `else`, `continue` advances to the next element; after the last
 		// element normal completion enters `else` if present (like Python).
+		// `for x in "str"`: unroll each rune as a single-char string literal.
+		if sl, ok := n.Iter.(*StrLit); ok {
+			var elems []Expr
+			for _, r := range sl.Value {
+				elems = append(elems, &StrLit{Value: string(r)})
+			}
+			n.Iter = &ListLit{Elems: elems}
+		}
 		if ll, ok := n.Iter.(*ListLit); ok {
 			endL := g.newLabel("for.end")
 			elseL := g.newLabel("for.else")

@@ -580,3 +580,14 @@ func TestReversedCodegen(t *testing.T) {
 		t.Fatalf("expected reversed list elements, got ir=%s", ir2)
 	}
 }
+
+func TestForStrCodegen(t *testing.T) {
+	ir, err := lang.Compile(`for x in "ab":
+    print(x)`)
+	if err != nil {
+		t.Fatalf("compile for-str: %v", err)
+	}
+	if !strings.Contains(ir.IR, "a") || !strings.Contains(ir.IR, "b") {
+		t.Fatalf("expected unrolled chars, got ir=%s", ir.IR)
+	}
+}

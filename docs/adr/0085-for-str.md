@@ -15,9 +15,10 @@ Allow `for x in "abc"` to iterate over each character of a string, binding
 
 ## Scope
 
-- Interpreter only: the LLVM AOT codegen's `for` loop unrolls literal lists
-  and `range` iterables but not literal strings (documented limitation). A
-  future ADR will cover codegen string-iteration lowering.
+- Interpreter and AOT codegen. The codegen's `ForStmt` case pre-processes a
+  `*StrLit` iterable by replacing it with a synthetic `*ListLit` of single-char
+  `*StrLit` elements, reusing the existing list unroll (ADR 0085 now ships
+  string iteration in both paths).
 
 ## Alternatives Rejected
 
