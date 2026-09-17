@@ -515,7 +515,24 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					if err != nil {
 						return 0, err
 					}
-					if o, ok := e.heap[itV]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict") {
+					if o, ok := e.heap[itV]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict" || o.kind == "str") {
+						if o.kind == "str" {
+							for _, r := range o.sval {
+								e.Vars[n.Value] = e.allocStr(string(r))
+								rv, err := e.evalBody(s.Body)
+								if err != nil {
+									if ls, ok := err.(*loopSignal); ok {
+										if ls.kind == "break" {
+											completed = false
+											break
+										}
+										continue
+									}
+									return 0, err
+								}
+								last = rv
+							}
+						} else {
 						for _, el := range o.elems {
 							e.Vars[n.Value] = el
 							rv, err := e.evalBody(s.Body)
@@ -531,6 +548,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							}
 							last = rv
 						}
+					}
 					} else {
 						start, stop, err := e.rangeBounds(s.Iter)
 						if err != nil {

@@ -473,3 +473,6 @@ list construction is not yet lowered); see ADR 0083.
 shorter list: `zip([1, 2], [10, 20])` -> `[[1, 10], [2, 20]]`. It is
 interpreter-only (the AOT codegen folds builtins only on literal args; nested
 list construction is not yet lowered); see ADR 0084.
+`for x in "abc"` iterates over each character of a string (yielding a
+single-char string per rune). It is interpreter-only (the AOT codegen's `for`
+loop unrolls literal lists and ranges, but not literal strings); see ADR 0085.

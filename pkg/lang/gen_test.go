@@ -1195,3 +1195,32 @@ func TestGenZip(t *testing.T) {
 		t.Fatalf("zip lists: got %q", got)
 	}
 }
+
+func TestGenForStr(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		ev := NewEvaluator()
+		rv, err := ev.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		o := ev.heap[rv]
+		if o.kind != "list" {
+			t.Fatalf("expected list, got kind %q", o.kind)
+		}
+		var parts []string
+		for _, el := range o.elems {
+			if s, ok := ev.heap[el]; ok && s.kind == "str" {
+				parts = append(parts, s.sval)
+			}
+		}
+		return strings.Join(parts, " ")
+	}
+	// for x in "abc" yields each char as a string.
+	if got := evalStr("r = []\nfor x in \"abc\":\n    r.append(x)\nr"); got != "a b c" {
+		t.Fatalf("for str: got %q", got)
+	}
+}
