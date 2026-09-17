@@ -316,6 +316,57 @@ func listCallElems(a Expr) ([]Expr, bool) {
 	return nil, false
 }
 
+// listArgLen returns the length of a list-producing expression, which may
+// itself be a nested list-producing builtin call (sorted/reversed/enumerate/
+// zip/partition/split/rsplit). It recursively unwraps calls to match the
+// interpreter's length semantics.
+func (g *irGen) listArgLen(a Expr) (int, bool) {
+	switch v := a.(type) {
+	case *ListLit:
+		return len(v.Elems), true
+	case *Call:
+		fn, ok := v.Fn.(*Name)
+		if !ok || len(v.Args) == 0 {
+			return 0, false
+		}
+		switch fn.Value {
+		case "sorted", "reversed":
+			return g.listArgLen(v.Args[0])
+		case "enumerate":
+			return g.listArgLen(v.Args[0])
+		case "zip":
+			if len(v.Args) != 2 {
+				return 0, false
+			}
+			a, ok1 := g.listArgLen(v.Args[0])
+			b, ok2 := g.listArgLen(v.Args[1])
+			if !ok1 || !ok2 {
+				return 0, false
+			}
+			if b < a {
+				return b, true
+			}
+			return a, true
+		case "partition":
+			if _, ok := g.stringVal(v.Args[0]); ok {
+				return 3, true
+			}
+			return 0, false
+		case "split", "rsplit":
+			if len(v.Args) != 2 {
+				return 0, false
+			}
+			s, ok1 := g.stringVal(v.Args[0])
+			sep, ok2 := g.stringVal(v.Args[1])
+			if !ok1 || !ok2 {
+				return 0, false
+			}
+			return strings.Count(s, sep) + 1, true
+		}
+	}
+	return 0, false
+}
+
 // listLen returns the length of a list-producing builtin call over literal
 // arguments, matching the interpreter semantics:
 //   enumerate(x)   -> len(x)         (x must be an inline list literal)
@@ -346,23 +397,14 @@ func (g *irGen) listLen(a Expr) (int, bool) {
 		if len(c.Args) != 1 {
 			return 0, false
 		}
-		if lit, ok := c.Args[0].(*ListLit); ok {
-			return len(lit.Elems), true
-		}
-		return 0, false
+		return g.listArgLen(c.Args[0])
 	case "zip":
 		if len(c.Args) != 2 {
 			return 0, false
 		}
-		a, b := 0, 0
-		if la, ok := c.Args[0].(*ListLit); ok {
-			a = len(la.Elems)
-		} else {
-			return 0, false
-		}
-		if lb, ok := c.Args[1].(*ListLit); ok {
-			b = len(lb.Elems)
-		} else {
+		a, ok1 := g.listArgLen(c.Args[0])
+		b, ok2 := g.listArgLen(c.Args[1])
+		if !ok1 || !ok2 {
 			return 0, false
 		}
 		if b < a {

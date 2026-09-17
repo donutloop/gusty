@@ -683,6 +683,8 @@ func TestListLenRun(t *testing.T) {
 		{`print(len("".split(",")))`, "1"},
 		{`print(len(reversed("abc")))`, "3"},
 		{`print(len(reversed("hello")))`, "5"},
+		{`print(len(enumerate(sorted([3, 1, 2]))))`, "3"},
+		{`print(len(zip(sorted([1, 2]), reversed([3, 4]))))`, "2"},
 	}
 	for _, tc := range cases {
 		got := compileAndRun(t, tc.src)

@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(nested-list-len)`: AOT codegen `len` now recursively unwraps nested
+  list-producing calls: `len(enumerate(sorted([3, 1, 2])))` -> 3 and
+  `len(zip(sorted([1, 2]), reversed([3, 4])))` -> 2, matching the
+  interpreter. Adds `listArgLen` recursion helper. Extends IR and
+  end-to-end runtime checks. ADR 0108.
 - `feat(len-reversed-str)`: AOT codegen `len` now folds `len(reversed(s))`
   over a constant string `s` to `len(s)` (reversal preserves length),
   matching the interpreter. Extends `listLen` with a `reversed` string case.
