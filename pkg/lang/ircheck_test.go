@@ -895,3 +895,18 @@ func TestIRRemoveprefixSuffixFolds(t *testing.T) {
 	llcCompiles(t, `"abc".removeprefix("xyz")`)
 	llcCompiles(t, `"abc".removesuffix("xyz")`)
 }
+
+func TestIRRoundFolds(t *testing.T) {
+	// round(x) folds a constant integer literal to itself (no floats in
+	// the AOT backend); consumed by print so the folded i32 lands in the IR.
+	ir := llcCompiles(t, `print(round(42))`)
+	if !strings.Contains(ir, "42") {
+		t.Fatalf("round(42) should fold to 42, got:\n%s", ir)
+	}
+
+	// round over a negative int literal also folds unchanged.
+	ir = llcCompiles(t, `print(round(-7))`)
+	if !strings.Contains(ir, "-7") {
+		t.Fatalf("round(-7) should fold to -7, got:\n%s", ir)
+	}
+}

@@ -2000,6 +2000,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("ord of empty string")
 		}
 		return fmt.Sprintf("%d", int64(sv[0])), nil
+	case "round":
+		// round(x) folds a constant integer literal to itself (mirroring the
+		// interpreter's int case; the AOT backend has no float representation).
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("round expects one argument")
+		}
+		rv, rerr := g.constIntVal(c.Args[0])
+		if rerr != nil {
+			return "", fmt.Errorf("round: codegen folds only a constant integer arg")
+		}
+		return fmt.Sprintf("%d", rv), nil
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}

@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(round-codegen)`: AOT codegen folds the scalar builtin `round(x)`
+  over a constant integer literal to itself (no-op: rounding an int returns
+  it unchanged), mirroring the interpreter's int case; the AOT backend has
+  no float representation. Adds TestIRRoundFolds IR verification. ADR 0104.
 - `feat(removeprefix-suffix-codegen)`: AOT codegen folds the string methods
   `"s".removeprefix(p)` / `"s".removesuffix(s)` over a constant receiver and
   constant prefix/suffix to a string global (mirroring
