@@ -23,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/donutloop/gusty/pkg/lang"
@@ -155,6 +156,15 @@ func verifySrc(src string, jsonOut bool) int {
 	return exitOK
 }
 
+
+func atoi(s string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 func emitLLVM(src, target, opt string) int {
 	res, err := lang.Compile(src)
 	if err != nil {
@@ -166,7 +176,7 @@ func emitLLVM(src, target, opt string) int {
 	if opt != "" && opt != "0" {
 		fmt.Printf("; opt-level = %s\n", opt)
 	}
-	fmt.Print(res.IR)
+	fmt.Print(lang.OptimizeIR(res.IR, atoi(opt)))
 	return exitOK
 }
 

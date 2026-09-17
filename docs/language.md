@@ -1,5 +1,16 @@
 # gusty language
 
+## Optimization (`--opt-level`)
+
+`--opt-level` runs compiler-level optimization passes over emitted LLVM IR.
+level 1 performs dead-global elimination (prunes `@.strN`/`@.lstN` globals
+never referenced by the body). Because `--emit-llvm` is a string flag that
+consumes the next argument as its value, pass `--opt-level` first:
+
+    gustyc --opt-level=1 --emit-llvm='"hi"'
+
+See ADR 0088.
+
 ## Agentic interface
 
 `gustyc --schema` prints a machine-readable JSON Schema (draft-07) describing

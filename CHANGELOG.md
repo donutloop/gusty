@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(opt-passes)`: make `--opt-level` real: `lang.OptimizeIR` runs a
+  pure-Go dead-global elimination pass over emitted IR (prunes `@.strN`/`@.lstN`
+  globals unused by the body) before `--emit-llvm` prints it. level 0 is
+  identity; level 1 prunes dead globals. ADR 0088.
 - `feat(ast-ir-schema)`: publish a machine-readable JSON Schema (draft-07)
   for the `--emit-ast` AST dump and the `--emit-llvm` IR text dump, exposed
   as `pkg/lang.ASTIRSchema` and printed by the new `gustyc --schema` flag.

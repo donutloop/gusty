@@ -74,3 +74,19 @@ func TestCLISchema(t *testing.T) {
 		t.Fatalf("schema has no definitions")
 	}
 }
+
+func TestCLIEmitLLVMOptLevel(t *testing.T) {
+	// --opt-level must come before --emit-llvm (emit-llvm is a string flag
+	// that consumes the next argument as its value).
+	ir0 := cli(t, "--opt-level=0", "--emit-llvm=\"hi\"")
+	ir1 := cli(t, "--opt-level=1", "--emit-llvm=\"hi\"")
+	// Level 1 runs the optimization pipeline: the dead string global @.strN
+	// (the literal's value is unused by the body) must be pruned.
+	if strings.Contains(ir1, "@.str") {
+		t.Fatalf("opt-level 1 failed to prune dead string global:\n%s", ir1)
+	}
+	if !strings.Contains(ir0, "define i32 @main()") {
+		t.Fatalf("emit-llvm produced no main():\n%s", ir0)
+	}
+}
+
