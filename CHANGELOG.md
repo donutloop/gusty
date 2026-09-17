@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(ljust-rjust-codegen)`: AOT codegen folds the string methods
+  `"s".ljust(w)` / `"s".rjust(w)` over a constant receiver and constant width
+  to a padded string global (right/left space-padding, no-op when
+  `len(s) >= w`), mirroring the interpreter. Added to the string-method
+  dispatch (method-call syntax). Adds TestIRLjustRjustFolds IR verification
+  and TestStdlibLjustRjust behavior checks. ADR 0101.
 - `feat(chr-ord-codegen)`: AOT codegen folds `chr(n)` (constant codepoint ->
   single-char string global via `string(rune(n))`) and `ord(s)` (constant
   string -> first-byte codepoint, mirroring the interpreter's `sval[0]`).

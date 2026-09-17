@@ -472,6 +472,10 @@ emits the folded global "a-b-c").
 absent, in **both** paths: the interpreter applies `strings.Index`; the
 codegen constant-folds it to an `i32` literal when the receiver and argument
 are string constants (`print("abcabc".find("bc"))` emits `i32 1`).
+`"s".ljust(w)` pads the receiver on the right with spaces to width `w`;
+`"s".rjust(w)` pads on the left; both are no-ops when `len(s) >= w`.
+In the AOT codegen, both fold over a constant string receiver and constant
+width to a padded string global, mirroring the interpreter.
 
 `.startswith(sub)` and `.endswith(sub)` return 1 or 0 in **both** paths: the
 interpreter applies `strings.HasPrefix`/`strings.HasSuffix`; the codegen

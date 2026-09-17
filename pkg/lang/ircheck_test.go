@@ -834,3 +834,30 @@ func TestIRChrOrdFolds(t *testing.T) {
 		t.Fatalf("ord(\"hello\") should fold to first byte 104, got:\n%s", ir)
 	}
 }
+
+func TestIRLjustRjustFolds(t *testing.T) {
+	// "s".ljust(w) pads on the right with spaces to width w -> string global.
+	ir := llcCompiles(t, `"ab".ljust(5)`)
+	if !strings.Contains(ir, "c\"ab   \\00\"") {
+		t.Fatalf("ljust(ab,5) should fold to a padded global, got:\n%s", ir)
+	}
+
+	// "s".rjust(w) pads on the left with spaces to width w.
+	ir = llcCompiles(t, `"ab".rjust(5)`)
+	if !strings.Contains(ir, "c\"   ab\\00\"") {
+		t.Fatalf("rjust(ab,5) should fold to a padded global, got:\n%s", ir)
+	}
+
+	// When len(s) >= w both are no-ops (mirror the interpreter).
+	ir = llcCompiles(t, `"abc".ljust(2)`)
+	if !strings.Contains(ir, "c\"abc\\00\"") {
+		t.Fatalf("ljust no-op should fold to c\"abc\\00\", got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `"abc".rjust(2)`)
+	if !strings.Contains(ir, "c\"abc\\00\"") {
+		t.Fatalf("rjust no-op should fold to c\"abc\\00\", got:\n%s", ir)
+	}
+
+	// Exact width (len == w) is also a no-op.
+	llcCompiles(t, `"ab".ljust(2)`)
+}

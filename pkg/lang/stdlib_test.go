@@ -75,3 +75,33 @@ func TestSortedReverse(t *testing.T) {
 		t.Fatalf("sorted reverse produced 0")
 	}
 }
+
+func TestStdlibLjustRjust(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	// ljust pads on the right with spaces to width; rjust pads on the left
+	// (method-call form: receiver is the string).
+	if got := evalStr(`"ab".ljust(5)`); got != "ab   " {
+		t.Fatalf("ljust: want %q, got %q", "ab   ", got)
+	}
+	if got := evalStr(`"ab".rjust(5)`); got != "   ab" {
+		t.Fatalf("rjust: want %q, got %q", "   ab", got)
+	}
+	// When len(s) >= w both are no-ops.
+	if got := evalStr(`"abc".ljust(2)`); got != "abc" {
+		t.Fatalf("ljust no-op: want abc, got %q", got)
+	}
+	if got := evalStr(`"abc".rjust(2)`); got != "abc" {
+		t.Fatalf("rjust no-op: want abc, got %q", got)
+	}
+}

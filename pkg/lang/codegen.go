@@ -1471,6 +1471,25 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				res = 1
 			}
 			return fmt.Sprintf("%d", res), nil
+		case "ljust", "rjust":
+			// ljust pads the receiver on the right with spaces to width w;
+			// rjust pads on the left (no-op when len(v) >= w).
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("%s expects one argument", attr.Name.Value)
+			}
+			wv, werr := g.constIntVal(c.Args[0])
+			if werr != nil {
+				return "", fmt.Errorf("%s: codegen folds only a constant width arg", attr.Name.Value)
+			}
+			pad := int(wv) - len(v)
+			if pad <= 0 {
+				return g.strConst(v), nil
+			}
+			spaces := strings.Repeat(" ", pad)
+			if attr.Name.Value == "ljust" {
+				return g.strConst(v + spaces), nil
+			}
+			return g.strConst(spaces + v), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}
