@@ -446,3 +446,240 @@ func TestCLIBuildAllFeatures(t *testing.T) {
 		t.Errorf("all-features output mismatch:\n got:\n%s\nwant:\n%s", got, allFeaturesWant)
 	}
 }
+
+// Large multi-file programs. Each file is big (many statements); the tests
+// drive the real gustyc binary end-to-end and assert the produced binary's
+// entire stdout against an exact expected constant.
+
+const largeMathLib = `def add(a, b):
+    return a + b
+def mul(a, b):
+    return a * b
+def scale(x, n):
+    return x * n
+`
+const largeMathCalc = `ac = 0
+for ic in range(1, 6):
+    ac = ac + ic
+bc = add(ac, mul(2, 3))
+print("calc", bc)
+print("scaled", scale(bc, 2))
+`
+const largeMathMain = `mc = 0
+for jc in range(0, 10, 2):
+    mc = mc + jc
+mc2 = mc + 10
+print("main", mc2)
+print("addcall", add(mc2, 5))
+print("mulcall", mul(mc2, 2))
+`
+const largeMathWant = `calc
+21
+scaled
+42
+main
+30
+addcall
+35
+mulcall
+60
+`
+
+const largeCtrlA = `acc = 0
+for i1 in range(1, 6):
+    acc = acc + i1
+print("acc", acc)
+acc2 = 0
+for i2 in range(0, 10, 2):
+    acc2 = acc2 + i2
+print("acc2", acc2)
+acc3 = 0
+for i3 in range(10, 0, -2):
+    acc3 = acc3 + i3
+print("acc3", acc3)
+`
+const largeCtrlB = `w1 = 0
+w2 = 0
+while w1 < 20:
+    w1 = w1 + 1
+    if w1 == 5:
+        continue
+    if w1 == 15:
+        break
+    w2 = w2 + w1
+print("while", w2)
+w3 = 0
+w4 = 0
+while w3 < 8:
+    w3 = w3 + 2
+    w4 = w4 + w3
+print("while2", w4)
+`
+const largeCtrlC = `def classify(n):
+    if n == 1:
+        return 1
+    elif n == 2:
+        return 2
+    elif n == 3:
+        return 3
+    else:
+        return 0
+print("cls", classify(2), classify(9), classify(3))
+tot = 0
+for j1 in range(3):
+    for j2 in range(3):
+        tot = tot + j2
+print("nested", tot)
+tot2 = 0
+for k1 in range(5):
+    tot2 = tot2 + k1
+    if k1 == 2:
+        continue
+    tot2 = tot2 + 1
+print("cont", tot2)
+`
+const largeCtrlWant = `acc
+15
+acc2
+20
+acc3
+30
+while
+100
+while2
+20
+cls
+2
+0
+3
+nested
+9
+cont
+14
+`
+
+const largeDataA = `da1 = 0
+for di in range(1, 6):
+    da1 = da1 + di
+print("dsum", da1)
+print("dmin", min([3, 1, 4, 1, 5]))
+print("dmax", max([3, 1, 4, 1, 5]))
+print("dlen", len([10, 20, 30]))
+print("didx", [7, 8, 9][1])
+`
+const largeDataB = `print("dkeys", len({1: 10, 2: 20, 3: 30}))
+print("dval", {1: 10, 2: 20}[2])
+print("slen", len({5, 6, 7}))
+print("sidx", {5, 6, 7}[6])
+db1 = 0
+for dj in range(1, 10, 2):
+    db1 = db1 + dj
+print("odd", db1)
+`
+const largeDataC = `def total(n):
+    t = 0
+    for tk in range(1, n):
+        t = t + tk
+    return t
+dc1 = total(7)
+print("fsum", dc1)
+dc2 = 0
+for dl in range(1, 10):
+    dc2 = dc2 + dl
+print("loop", dc2)
+dc3 = dc1 + dc2
+print("big", dc3)
+print("abs", abs(-42))
+print("conv", int("100"), float(2), str(7))
+`
+const largeDataWant = `dsum
+15
+dmin
+1
+dmax
+5
+dlen
+3
+didx
+8
+dkeys
+3
+dval
+20
+slen
+3
+sidx
+6
+odd
+25
+fsum
+21
+loop
+45
+big
+66
+abs
+42
+conv
+100
+2
+7
+`
+
+// buildWant runs `gustyc --build` over files, then runs the produced binary
+// and asserts its stdout equals want.
+func buildWant(t *testing.T, bin string, files []string, want string) {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "prog")
+	args := append([]string{"--build", out}, files...)
+	build := exec.Command(bin, args...)
+	if outb, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("gustyc --build: %v\n%s", err, outb)
+	}
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("run built binary: %v", err)
+	}
+	if string(got) != want {
+		t.Errorf("output mismatch:\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestCLIBuildLargeMath builds a large 3-file math program (functions defined
+// in one file, called from the others) and checks the binary's exact stdout.
+func TestCLIBuildLargeMath(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+	buildWant(t, bin, []string{
+		writeSrc(t, dir, "mathlib.gy", largeMathLib),
+		writeSrc(t, dir, "calc.gy", largeMathCalc),
+		writeSrc(t, dir, "main.gy", largeMathMain),
+	}, largeMathWant)
+}
+
+// TestCLIBuildLargeControl builds a large 3-file control-flow program (loops,
+// while, break/continue, if/elif/else, nested loops) and checks exact stdout.
+func TestCLIBuildLargeControl(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+	buildWant(t, bin, []string{
+		writeSrc(t, dir, "ctrl_a.gy", largeCtrlA),
+		writeSrc(t, dir, "ctrl_b.gy", largeCtrlB),
+		writeSrc(t, dir, "ctrl_c.gy", largeCtrlC),
+	}, largeCtrlWant)
+}
+
+// TestCLIBuildLargeData builds a large 3-file data program (list/dict/set
+// literals, builtins, functions, loops) and checks exact stdout.
+func TestCLIBuildLargeData(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+	buildWant(t, bin, []string{
+		writeSrc(t, dir, "data_a.gy", largeDataA),
+		writeSrc(t, dir, "data_b.gy", largeDataB),
+		writeSrc(t, dir, "data_c.gy", largeDataC),
+	}, largeDataWant)
+}
