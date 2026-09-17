@@ -71,9 +71,12 @@ runtime heap, GC, or dynamic dispatch in the AOT path** yet.
 Order matters: each feature lands in the interpreter first, then the AOT
 emitter, then docs + integration tests.
 
-1. **Floats in AOT** — today codegen truncates `FloatLit` to `int64`. Add a
-   real `double` value path: IR `fadd/fsub/fmul/fdiv/fcmp`, `fptosi` on
-   `print`, and a `%double`-typed local. Keep the interpreter authoritative.
+1. **Floats in AOT** — ~~today codegen truncates `FloatLit` to `int64`~~ **DONE**:
+   the codegen emits real `double` IR — float literals (`fadd double 0.0, <const>`),
+   `fadd/fsub/fmul/fdiv` arithmetic with `sitofp` int promotion, `%.17g` float print
+   (matches interpreter `%v`), `fcmp` float comparisons, and `double` allocas/stores
+   for float variables tracked via `floatVars`. `float()` folds int/string literals
+   to double constants.
 2. **Runtime heap + GC in AOT** — today lists/dicts/sets/strings are
    compile-time globals only. Introduce an object heap, boxed values, and a
    refcount/GC pass so AOT programs can mutate runtime collections. Mirror
