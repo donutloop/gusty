@@ -697,6 +697,17 @@ func TestListLenRun(t *testing.T) {
 }
 }
 
+func TestOverEmptyNestedListsRun(t *testing.T) {
+	got := compileAndRun(t, `print(sum(sorted([])))`)
+	if got != "0\n" {
+		t.Fatalf("sum(sorted([])) = %q, want 0", got)
+	}
+	got = compileAndRun(t, `print(all(sorted([])))`)
+	if got != "1\n" {
+		t.Fatalf("all(sorted([])) = %q, want 1", got)
+	}
+}
+
 func TestOverEmptyCollectionsRun(t *testing.T) {
 	got := compileAndRun(t, `print(sum([]))`)
 	if got != "0\n" {

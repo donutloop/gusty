@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(empty-nested-list)`: AOT codegen consumers (`len`/`sum`/`any`/`all`)
+  now fold over empty nested `sorted`/`reversed` calls: `sum(sorted([]))` ->
+  0, `len(sorted([]))` -> 0, `any(sorted([]))` -> 0, `all(sorted([]))` -> 1,
+  matching the interpreter. `listCallElems` promotes nil to a non-nil empty
+  slice. Adds IR and end-to-end runtime checks. ADR 0108.
 - `feat(empty-collection-sum)`: AOT codegen `sum` over empty inline
   list/set/dict literals now folds to 0 (`sum([])` -> 0, `sum({})` -> 0),
   matching the interpreter instead of erroring. Extends the `sum` consumer

@@ -310,6 +310,11 @@ func listCallElems(a Expr) ([]Expr, bool) {
 			return nil, false
 		}
 		if lit, ok := c.Args[0].(*ListLit); ok {
+			if lit.Elems == nil {
+				// Empty inline list: return a non-nil empty slice so
+				// consumers fold len/sum/any/all over it (e.g. sum(sorted([]))).
+				return []Expr{}, true
+			}
 			return lit.Elems, true
 		}
 		// Nested sorted/reversed calls preserve the element set; recurse to
