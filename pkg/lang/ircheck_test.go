@@ -965,6 +965,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "i32 3") {
 		t.Fatalf("int(3.7) should truncate to 3, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(abs(-2.5))`)
+	if !strings.Contains(ir, "@llvm.fabs") && !strings.Contains(ir, "2.5e+00") {
+		t.Fatalf("abs(-2.5) should emit a float abs, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {

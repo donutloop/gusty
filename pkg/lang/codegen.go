@@ -839,8 +839,12 @@ func (g *irGen) isFloat(e Expr) bool {
 		return false
 	case *Call:
 		if n.Fn != nil {
-			if id, ok := n.Fn.(*Name); ok && id.Value == "float" {
-				return true
+			if id, ok := n.Fn.(*Name); ok {
+				if id.Value == "float" || id.Value == "abs" {
+					if len(n.Args) == 1 {
+						return g.isFloat(n.Args[0])
+					}
+				}
 			}
 		}
 		return false
@@ -874,6 +878,11 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		return g.floatBinOp(b, n)
 	case *Call:
 		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && id.Value == "abs" && len(n.Args) == 1 {
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = call double @llvm.fabs.f64(double %s)\n", t, g.floatValue(b, n.Args[0]))
+				return t
+			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
 				arg := n.Args[0]
 				switch a := arg.(type) {
@@ -2444,6 +2453,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("abs expects one argument")
 		}
+			if g.isFloat(c.Args[0]) {
+				if fv, ok := g.floatEval(c.Args[0]); ok {
+					if fv < 0 {
+						fv = -fv
+					}
+					t := g.newTmp()
+					fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fv))
+					return t, nil
+				}
+			}
+
 		if il, ok := c.Args[0].(*IntLit); ok {
 			if il.Value < 0 {
 				return fmt.Sprintf("%d", -il.Value), nil
