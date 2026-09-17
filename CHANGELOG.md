@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(nested-sorted-reversed)`: AOT codegen `len`/`sum`/`min`/`max`/`any`/`all`
+  now fold over **nested** `sorted`/`reversed` calls by recursing to the
+  underlying inline list literal, e.g. `len(sorted(reversed([3, 1, 2])))` ->
+  3, `sum(...)` -> 6, `min(...)` -> 1 — matching the interpreter. Extends
+  `listCallElems` with recursion. Adds IR and end-to-end runtime checks.
+  ADR 0108.
 - `feat(nested-list-len)`: AOT codegen `len` now recursively unwraps nested
   list-producing calls: `len(enumerate(sorted([3, 1, 2])))` -> 3 and
   `len(zip(sorted([1, 2]), reversed([3, 4])))` -> 2, matching the

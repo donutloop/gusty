@@ -312,6 +312,11 @@ func listCallElems(a Expr) ([]Expr, bool) {
 		if lit, ok := c.Args[0].(*ListLit); ok {
 			return lit.Elems, true
 		}
+		// Nested sorted/reversed calls preserve the element set; recurse to
+		// the underlying inline list literal (e.g. sorted(reversed([...]))).
+		if elems, ok := listCallElems(c.Args[0]); ok {
+			return elems, true
+		}
 	}
 	return nil, false
 }

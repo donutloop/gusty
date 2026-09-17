@@ -1029,11 +1029,28 @@ func TestIRListLenFolds(t *testing.T) {
 		{`print(len(reversed("hello")))`, "i32 5"},
 		{`print(len(enumerate(sorted([3, 1, 2]))))`, "i32 3"},
 		{`print(len(zip(sorted([1, 2]), reversed([3, 4]))))`, "i32 2"},
-	}
+		{`print(len(sorted(reversed([3, 1, 2]))))`, "i32 3"},
+
+}
 	for _, tc := range cases {
 		ir := llcCompiles(t, tc.src)
 		if !strings.Contains(ir, tc.want) {
 			t.Fatalf("%s: want constant %s, got:\n%s", tc.src, tc.want, ir)
 		}
+	}
+}
+
+func TestIRNestedListCallConsumers(t *testing.T) {
+	ir := llcCompiles(t, `print(len(sorted(reversed([3, 1, 2]))))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("len(sorted(reversed([3,1,2]))) should fold to 3, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(sum(sorted(reversed([3, 1, 2]))))`)
+	if !strings.Contains(ir, "add i32 3, 1") {
+		t.Fatalf("sum(sorted(reversed([3,1,2]))) should add 3+1, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(any(sorted(reversed([0, 2, 3]))))`)
+	if !strings.Contains(ir, "zext i1") {
+		t.Fatalf("any(sorted(reversed([0,2,3]))) should zext, got:\n%s", ir)
 	}
 }

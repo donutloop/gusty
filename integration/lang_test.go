@@ -685,11 +685,27 @@ func TestListLenRun(t *testing.T) {
 		{`print(len(reversed("hello")))`, "5"},
 		{`print(len(enumerate(sorted([3, 1, 2]))))`, "3"},
 		{`print(len(zip(sorted([1, 2]), reversed([3, 4]))))`, "2"},
+		{`print(len(sorted(reversed([3, 1, 2]))))`, "3"},
+		{`print(sum(sorted(reversed([3, 1, 2]))))`, "6"},
+		{`print(min(sorted(reversed([3, 1, 2]))))`, "1"},
 	}
 	for _, tc := range cases {
 		got := compileAndRun(t, tc.src)
 		if got != tc.want+"\n" {
 			t.Fatalf("%s: got %q, want %s", tc.src, got, tc.want)
 		}
+}
+}
+
+func TestNestedListCallRun(t *testing.T) {
+	got := compileAndRun(t, `print(len(sorted(reversed([3, 1, 2]))))`)
+	if got != "3\n" {
+		t.Fatalf("len(sorted(reversed([3,1,2]))) = %q, want 3", got)
+	}
+	got = compileAndRun(t, `print(sum(sorted(reversed([3, 1, 2]))))`)
+	if got != "6\n" {
+		t.Fatalf("sum(sorted(reversed([3,1,2]))) = %q, want 6", got)
 	}
 }
+
+	
