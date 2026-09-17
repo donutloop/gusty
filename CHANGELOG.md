@@ -3,6 +3,9 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(dict-set-comps)`: dict/set comprehensions now accept `for` inside the
+  braces: `{x: x*2 for x in [1,2,3]}` and `{x for x in [1,2]}` parse (previously
+  "expected }"). Matches Python/list-comp syntax. ADR 0095.
 - `feat(json-type)`: `--eval --json` now emits a structured result with a
   dynamic `type` field (`{"result": "...", "type": "int", "exit": 0}`), from
   the evaluator's dynamic type inference via a new public `Evaluator.TypeOf`.

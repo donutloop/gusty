@@ -1120,6 +1120,35 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 			}
 		}
 	}
+	// Support `{... for x in iter}`: a comprehension 'for' inside the braces.
+	if p.peek().IsKeyword("for") {
+		p.next() // 'for'
+		v := p.next()
+		p.next() // 'in'
+		iter, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		vn := &Name{Value: v.Text, sp: v.Span}
+		var comp *Comp
+		if isDict {
+			comp = &Comp{Kind: CompDict, Keys: keys, Vals: vals, ForVar: vn, Iter: iter}
+		} else {
+			comp = &Comp{Kind: CompSet, Elems: elems, ForVar: vn, Iter: iter}
+		}
+		if p.peek().IsKeyword("if") {
+			p.next()
+			cond, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			comp.Cond = cond
+		}
+		if err := p.expectOp("}"); err != nil {
+			return nil, err
+		}
+		return comp, nil
+	}
 	if err := p.expectOp("}"); err != nil {
 		return nil, err
 	}

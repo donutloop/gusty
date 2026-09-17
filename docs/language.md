@@ -1,5 +1,11 @@
 # gusty language
 
+## Comprehensions
+
+List, dict, and set comprehensions are supported. Dict/set comprehensions use
+`for` inside the braces, Python-style: `{x: x*2 for x in [1,2,3]}` builds a
+dict, `{x for x in [1,2]}` a set. See ADR 0095.
+
 ## Pattern matching
 
 `match` supports list-destructuring patterns: `case [a, b]:` matches a list

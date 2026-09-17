@@ -57,3 +57,14 @@ func TestLambdaParams(t *testing.T) {
 		t.Fatalf("annotated lambda apply = %d, want 6", v)
 	}
 }
+
+func TestDictSetComprehensions(t *testing.T) {
+	// Regression: `{x: x*2 for x in ...}` and `{x for x in ...}` failed to parse
+	// ("expected }") — the 'for' inside braces was not accepted.
+	if v := evalStr(t, "d = {x: x * 2 for x in [1, 2, 3]}\nd"); v == 0 {
+		t.Fatalf("dict comprehension produced 0")
+	}
+	if v := evalStr(t, "s = {x for x in [1, 2]}\ns"); v == 0 {
+		t.Fatalf("set comprehension produced 0")
+	}
+}
