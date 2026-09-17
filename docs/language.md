@@ -450,6 +450,14 @@ integer expression and is constant-folded when its argument is a literal.
 
 
 `sum`/`min`/`max` also fold set literals, dict literal keys, and dict-method
+
+`len`/`sum`/`min`/`max`/`any`/`all` also consume a **list-returning builtin call** over an inline list literal. `sorted`/`reversed` preserve the element set (only reorder), so `len(sorted([3, 1, 2]))` -> 3, `sum(sorted([3, 1, 2]))` -> 6, `min(sorted([3, 1, 2]))` -> 1, and `max(reversed([3, 1, 2]))` -> 3 — all folding identically over the underlying elements. The AOT codegen unwraps the underlying list literal for these consumers, and `any`/`all` widen their boolean accumulator to i32 so results are printable.
+
+`len` also folds over further list-producing builtin calls:
+`len(enumerate([a, b, c]))` -> 3, `len(zip(a, b))` ->
+`min(len(a), len(b))`, `len(s.partition(sep))` -> 3, and
+`len(s.split(sep))` / `len(s.rsplit(sep))` -> occurrences(sep in s) + 1 —
+all matching the interpreter.
 calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
 
 ### string methods

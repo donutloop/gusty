@@ -291,6 +291,97 @@ func stringConstLen(e Expr) (int, bool) {
 	return 0, false
 }
 
+// listCallElems returns the underlying element list of a list-returning
+// builtin call over an inline list literal. sorted/reversed preserve the
+// element set (only reordering), so consumers like len/sum/min/max/any/all
+// fold identically over the original elements.
+func listCallElems(a Expr) ([]Expr, bool) {
+	c, ok := a.(*Call)
+	if !ok {
+		return nil, false
+	}
+	fn, ok := c.Fn.(*Name)
+	if !ok {
+		return nil, false
+	}
+	switch fn.Value {
+	case "sorted", "reversed":
+		if len(c.Args) == 0 {
+			return nil, false
+		}
+		if lit, ok := c.Args[0].(*ListLit); ok {
+			return lit.Elems, true
+		}
+	}
+	return nil, false
+}
+
+// listLen returns the length of a list-producing builtin call over literal
+// arguments, matching the interpreter semantics:
+//   enumerate(x)   -> len(x)         (x must be an inline list literal)
+//   zip(a, b)      -> min(len(a), len(b))
+//   partition(s)   -> 3              (always three parts)
+//   split(s, sep)  -> occurrences(sep in s) + 1
+//   rsplit(s, sep) -> occurrences(sep in s) + 1
+func (g *irGen) listLen(a Expr) (int, bool) {
+	c, ok := a.(*Call)
+	if !ok || len(c.Args) == 0 {
+		return 0, false
+	}
+	fn, ok := c.Fn.(*Name)
+	if !ok {
+		return 0, false
+	}
+	switch fn.Value {
+	case "enumerate":
+		if len(c.Args) != 1 {
+			return 0, false
+		}
+		if lit, ok := c.Args[0].(*ListLit); ok {
+			return len(lit.Elems), true
+		}
+		return 0, false
+	case "zip":
+		if len(c.Args) != 2 {
+			return 0, false
+		}
+		a, b := 0, 0
+		if la, ok := c.Args[0].(*ListLit); ok {
+			a = len(la.Elems)
+		} else {
+			return 0, false
+		}
+		if lb, ok := c.Args[1].(*ListLit); ok {
+			b = len(lb.Elems)
+		} else {
+			return 0, false
+		}
+		if b < a {
+			return b, true
+		}
+		return a, true
+	case "partition":
+		if len(c.Args) != 1 {
+			return 0, false
+		}
+		if _, ok := g.stringVal(c.Args[0]); ok {
+			return 3, true
+		}
+		return 0, false
+	case "split", "rsplit":
+		if len(c.Args) != 2 {
+			return 0, false
+		}
+		s, ok1 := g.stringVal(c.Args[0])
+		sep, ok2 := g.stringVal(c.Args[1])
+		if !ok1 || !ok2 {
+			return 0, false
+		}
+		return strings.Count(s, sep) + 1, true
+	}
+	return 0, false
+}
+
 // emitList emits a dedicated global struct for an inline list literal
 // (dedup by AST node) and returns its global name. Elements must be ints.
 func (g *irGen) emitList(ln *ListLit) (string, error) {
@@ -415,6 +506,37 @@ func (g *irGen) dictMethodElems(e Expr) ([]Expr, bool) {
 		}
 		return elems, true
 	}
+	if attr.Name.Value == "rsplit" {
+		s, ok := g.stringVal(attr.Obj)
+		if !ok {
+			return nil, false
+		}
+		sep := " "
+		if len(c.Args) == 1 {
+			sep, ok = g.stringVal(c.Args[0])
+			if !ok {
+				return nil, false
+			}
+		}
+		parts := strings.Split(s, sep)
+		var elems []Expr
+		for _, part := range parts {
+			elems = append(elems, &StrLit{Value: part})
+		}
+		return elems, true
+	}
+	if attr.Name.Value == "partition" {
+		// partition(s) always returns [head, sep, tail] (3 parts), so
+		// len(...) folds to 3. Return three dummy int elements to count.
+		if _, ok := g.stringVal(attr.Obj); !ok {
+			return nil, false
+		}
+		return []Expr{
+			&IntLit{Value: 0},
+			&IntLit{Value: 0},
+			&IntLit{Value: 0},
+		}, true
+	}
 	if ll, ok := attr.Obj.(*ListLit); ok && attr.Name.Value == "append" {
 		if len(c.Args) != 1 {
 			return nil, false
@@ -434,6 +556,14 @@ func (g *irGen) dictMethodElems(e Expr) ([]Expr, bool) {
 	case "items":
 		// len({...}.items()) folds to the number of key/value pairs.
 		return dl.Keys, true
+	case "partition":
+		// partition(s) always returns [head, sep, tail] (3 parts), so
+		// len(...) folds to 3. Return three dummy int elements to count.
+		return []Expr{
+			&IntLit{Value: 0},
+			&IntLit{Value: 0},
+			&IntLit{Value: 0},
+		}, true
 	}
 	return nil, false
 }
@@ -1768,6 +1898,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if elems, ok := g.dictMethodElems(c.Args[0]); ok {
 				return fmt.Sprintf("%d", len(elems)), nil
 			}
+			if elems, ok := listCallElems(c.Args[0]); ok {
+				return fmt.Sprintf("%d", len(elems)), nil
+			}
+			if n, ok := g.listLen(c.Args[0]); ok {
+				return fmt.Sprintf("%d", n), nil
+			}
 			return "", fmt.Errorf("len requires an inline list/dict/set literal")
 		default:
 			return "", fmt.Errorf("len requires an inline list/dict/set literal")
@@ -1781,6 +1917,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			elems = a.Elems
 		case *SetLit:
 			elems = a.Elems
+		case *Call:
+			if le, ok := listCallElems(a); ok {
+				elems = le
+			} else {
+				return "", fmt.Errorf("any/all need a list literal")
+			}
 		default:
 			return "", fmt.Errorf("any/all need a list literal")
 		}
@@ -1795,23 +1937,27 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", err
 		}
 		acc := g.newTmp()
-		b.WriteString(fmt.Sprintf("  icmp ne i32 %s, 0 -> %s\n", b0, acc))
+		b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", acc, b0))
 		for i := 1; i < len(elems); i++ {
 			el, err := g.value(b, elems[i])
 			if err != nil {
 				return "", err
 			}
 			bi := g.newTmp()
-			b.WriteString(fmt.Sprintf("  icmp ne i32 %s, 0 -> %s\n", el, bi))
+			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", bi, el))
 			op := "or"
 			if !anyMode {
 				op = "and"
 			}
 			a2 := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s i1 %s, %s -> %s\n", op, acc, bi, a2))
+			b.WriteString(fmt.Sprintf("  %s = %s i1 %s, %s\n", a2, op, acc, bi))
 			acc = a2
 		}
-		return acc, nil
+		// any/all yield an i1 accumulator; widen to i32 so callers (e.g. print)
+		// can consume it as an integer 0/1.
+		res := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, acc))
+		return res, nil
 		
 	case "sum":
 		// sum(list) -> sum the elements of an inline list literal (unrolled).
@@ -1833,6 +1979,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		var elems []Expr
 		if de, ok := g.dictMethodElems(c.Args[0]); ok {
 			elems = de
+		}
+		if le, ok := listCallElems(c.Args[0]); ok {
+			elems = le
 		}
 		if ln, ok := c.Args[0].(*ListLit); ok {
 			elems = ln.Elems
@@ -1889,6 +2038,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		var elems []Expr
 		if de, ok := g.dictMethodElems(c.Args[0]); ok {
 			elems = de
+		}
+		if le, ok := listCallElems(c.Args[0]); ok {
+			elems = le
 		}
 		if ln, ok := c.Args[0].(*ListLit); ok {
 			elems = ln.Elems

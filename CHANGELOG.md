@@ -3,6 +3,23 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(list-len-folds)`: AOT codegen `len` now folds over additional
+  list-producing builtin calls: `len(enumerate([a, b, c]))` -> 3,
+  `len(zip(a, b))` -> `min(len(a), len(b))`, `len(s.partition(sep))` -> 3,
+  and `len(s.split(sep))` / `len(s.rsplit(sep))` -> occurrences + 1 — all
+  matching the interpreter. Adds `TestIRListLenFolds` IR verification and
+  `TestListLenRun` end-to-end runtime checks. ADR 0108.
+- `feat(list-call-consumers)`: AOT codegen `len`/`sum`/`min`/`max`/`any`/`all`
+  now fold over a **list-returning builtin call** over an inline list literal.
+  `sorted`/`reversed` preserve the element set (only reorder), so
+  `len(sorted([3, 1, 2]))` -> 3, `sum(sorted([3, 1, 2]))` -> 6,
+  `min(sorted([3, 1, 2]))` -> 1, `max(reversed([3, 1, 2]))` -> 3 — matching
+  the interpreter. Also fixes a pre-existing `any`/`all` codegen bug that
+  emitted instructions in the `-> %t` dialect (invalid LLVM IR) and failed to
+  widen the boolean accumulator to i32; both are fixed so `any`/`all` results
+  are printable and llc-acceptable. Adds TestIRListCallConsumers IR
+  verification and TestListCallConsumersRun end-to-end runtime checks.
+  ADR 0108.
 - `feat(dict-get-codegen)`: AOT codegen folds the dict method `{k: v}.get(key,
   default)` over a constant dict + constant int/string key to the matching
   value or the default (not-found returns the default when given). Adds

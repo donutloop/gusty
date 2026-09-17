@@ -628,3 +628,64 @@ func TestAnyAllCodegenIR(t *testing.T) {
 		t.Fatalf("IR lacks icmp ne for any/all:\n%s", res.IR)
 	}
 }
+
+func TestListCallConsumersRun(t *testing.T) {
+	// len/sum/min/max/any/all fold over a list-returning builtin call
+	// (sorted/reversed) by unwrapping the underlying inline list literal;
+	// the element set is preserved, so results match the interpreter.
+	got := compileAndRun(t, `print(len(sorted([3, 1, 2])))`)
+	if got != "3\n" {
+		t.Fatalf("len(sorted([3,1,2])) = %q, want 3", got)
+	}
+	got = compileAndRun(t, `print(len(reversed([3, 1, 2])))`)
+	if got != "3\n" {
+		t.Fatalf("len(reversed([3,1,2])) = %q, want 3", got)
+	}
+	got = compileAndRun(t, `print(sum(sorted([3, 1, 2])))`)
+	if got != "6\n" {
+		t.Fatalf("sum(sorted([3,1,2])) = %q, want 6", got)
+	}
+	got = compileAndRun(t, `print(sum(reversed([3, 1, 2])))`)
+	if got != "6\n" {
+		t.Fatalf("sum(reversed([3,1,2])) = %q, want 6", got)
+	}
+	got = compileAndRun(t, `print(min(sorted([3, 1, 2])))`)
+	if got != "1\n" {
+		t.Fatalf("min(sorted([3,1,2])) = %q, want 1", got)
+	}
+	got = compileAndRun(t, `print(max(sorted([3, 1, 2])))`)
+	if got != "3\n" {
+		t.Fatalf("max(sorted([3,1,2])) = %q, want 3", got)
+	}
+	got = compileAndRun(t, `print(any(sorted([0, 2, 3])))`)
+	if got != "1\n" {
+		t.Fatalf("any(sorted([0,2,3])) = %q, want 1", got)
+	}
+	got = compileAndRun(t, `print(all(sorted([1, 2, 3])))`)
+	if got != "1\n" {
+		t.Fatalf("all(sorted([1,2,3])) = %q, want 1", got)
+	}
+	got = compileAndRun(t, `print(all(sorted([0, 1, 2])))`)
+	if got != "0\n" {
+		t.Fatalf("all(sorted([0,1,2])) = %q, want 0", got)
+	}
+}
+
+func TestListLenRun(t *testing.T) {
+	// len over list-producing builtin calls folds to the matching length.
+	cases := []struct{ src, want string }{
+		{`print(len(enumerate([1, 2, 3])))`, "3"},
+		{`print(len(zip([1, 2], [3, 4, 5])))`, "2"},
+		{`print(len(zip([1, 2, 3], [4])))`, "1"},
+		{`print(len("hello".partition("l")))`, "3"},
+		{`print(len("a,b,c".split(",")))`, "3"},
+		{`print(len("a,b,c".rsplit(",")))`, "3"},
+		{`print(len("".split(",")))`, "1"},
+	}
+	for _, tc := range cases {
+		got := compileAndRun(t, tc.src)
+		if got != tc.want+"\n" {
+			t.Fatalf("%s: got %q, want %s", tc.src, got, tc.want)
+		}
+	}
+}

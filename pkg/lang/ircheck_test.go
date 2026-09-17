@@ -964,3 +964,72 @@ func TestIRDictGetFolds(t *testing.T) {
 		t.Fatalf("get(2, 7) should fold to default 7, got:\n%s", ir)
 	}
 }
+
+
+func TestIRListCallConsumers(t *testing.T) {
+	// len/sum/min/max/any/all fold over a list-returning builtin call
+	// (sorted/reversed) by unwrapping the underlying inline list literal.
+	// The element set is preserved (only reordered), so the folds match the
+	// interpreter semantics. All cases must emit valid, llc-acceptable IR.
+
+	// len over sorted/reversed preserves element count (a literal constant).
+	ir := llcCompiles(t, `print(len(sorted([3, 1, 2])))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("len(sorted([3,1,2])) should fold to 3, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(len(reversed([3, 1, 2])))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("len(reversed([3,1,2])) should fold to 3, got:\n%s", ir)
+	}
+
+	// sum over sorted/reversed emits the add chain building 6.
+	ir = llcCompiles(t, `print(sum(sorted([3, 1, 2])))`)
+	if !strings.Contains(ir, "add i32 3, 1") {
+		t.Fatalf("sum(sorted([3,1,2])) should add 3+1, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(sum(reversed([3, 1, 2])))`)
+	if !strings.Contains(ir, "add i32 3, 1") {
+		t.Fatalf("sum(reversed([3,1,2])) should add 3+1, got:\n%s", ir)
+	}
+
+	// min/max over sorted/reversed select the underlying extrema.
+	ir = llcCompiles(t, `print(min(sorted([3, 1, 2])))`)
+	if !strings.Contains(ir, "icmp slt") {
+		t.Fatalf("min(sorted([3,1,2])) should compare, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(max(reversed([3, 1, 2])))`)
+	if !strings.Contains(ir, "icmp sgt") {
+		t.Fatalf("max(reversed([3,1,2])) should compare, got:\n%s", ir)
+	}
+
+	// any/all over sorted/reversed widen the boolean accumulator to i32.
+	ir = llcCompiles(t, `print(any(sorted([0, 2, 3])))`)
+	if !strings.Contains(ir, "zext i1") {
+		t.Fatalf("any(sorted([0,2,3])) should zext result to i32, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(all(sorted([1, 2, 3])))`)
+	if !strings.Contains(ir, "zext i1") {
+		t.Fatalf("all(sorted([1,2,3])) should zext result to i32, got:\n%s", ir)
+	}
+}
+
+func TestIRListLenFolds(t *testing.T) {
+	// len over list-producing builtin calls (enumerate/zip/partition/split/
+	// rsplit) folds to the matching literal length constant.
+	cases := []struct{ src, want string }{
+		{`print(len(enumerate([1, 2, 3])))`, "i32 3"},
+		{`print(len(zip([1, 2], [3, 4, 5])))`, "i32 2"},
+		{`print(len(zip([1, 2, 3], [4])))`, "i32 1"},
+		{`print(len("hello".partition("l")))`, "i32 3"},
+		{`print(len("a,b,c".split(",")))`, "i32 3"},
+		{`print(len("a,b,c".rsplit(",")))`, "i32 3"},
+		{`print(len("".split(",")))`, "i32 1"},
+		{`print(len("abc".split(",")))`, "i32 1"},
+	}
+	for _, tc := range cases {
+		ir := llcCompiles(t, tc.src)
+		if !strings.Contains(ir, tc.want) {
+			t.Fatalf("%s: want constant %s, got:\n%s", tc.src, tc.want, ir)
+		}
+	}
+}
