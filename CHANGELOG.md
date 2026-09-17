@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(stdlib-builtins)`: add `any`, `all`, `chr`, `ord`, `round`
+  standard-library builtins. `any(iter)`/`all(iter)` are boolean quantifiers
+  over a list; `chr(n)` builds the single-char string for codepoint n;
+  `ord(s)` returns the first char's codepoint; `round(x)` truncates floats.
+  ADR 0090.
 - `feat(memory-model)`: add an explicit mark-and-sweep GC primitive
   `ev.Collect()` to the evaluator: roots are the top-level env bindings; it
   marks reachable objects through list/dict/set elems, dict values, closure

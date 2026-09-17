@@ -2522,6 +2522,66 @@ case "sum":
 				return 0, &EvalError{Msg: "range expects 1 to 3 arguments"}
 			}
 			return e.eval(n.Args[0])
+			case "any", "all":
+				// any(iter) is 1 if any element is truthy; all(iter) is 1 if all are.
+				arg, err := e.eval(n.Args[0])
+				if err != nil {
+					return 0, err
+				}
+				if arg <= 0 {
+					return 0, &EvalError{Msg: "any/all need a list"}
+				}
+				o, ok := e.heap[arg]
+				if !ok || o.kind != "list" {
+					return 0, &EvalError{Msg: "any/all need a list"}
+				}
+				anyMode := name.Value == "any"
+				if anyMode {
+					for _, v := range o.elems {
+						if v != 0 {
+							return 1, nil
+						}
+					}
+					return 0, nil
+				}
+				for _, v := range o.elems {
+					if v == 0 {
+						return 0, nil
+					}
+				}
+				return 1, nil
+			case "chr":
+				// chr(n) returns the single-character string for codepoint n.
+				cn, err := e.eval(n.Args[0])
+				if err != nil {
+					return 0, err
+				}
+				return e.allocStr(string(rune(cn))), nil
+			case "ord":
+				// ord(s) returns the codepoint of the first character of s.
+				arg, err := e.eval(n.Args[0])
+				if err != nil {
+					return 0, err
+				}
+				o, ok := e.heap[arg]
+				if !ok {
+					return 0, &EvalError{Msg: "ord needs a string"}
+				}
+				if len(o.sval) == 0 {
+					return 0, &EvalError{Msg: "ord of empty string"}
+				}
+				return int64(o.sval[0]), nil
+			case "round":
+				// round(x) is the identity for ints; truncates floats.
+				x, err := e.eval(n.Args[0])
+				if err != nil {
+					return 0, err
+				}
+				if o, ok := e.heap[x]; ok && o.kind == "float" {
+					return int64(o.fval), nil
+				}
+				return x, nil
+
 		case "str":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "str expects 1 argument"}

@@ -1,5 +1,15 @@
 # gusty language
 
+## Standard library
+
+Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,
+`float`, `str`, `sum`, `abs`, `sorted`, `reversed`, `enumerate`, `any`,
+`all`, `chr`, `ord`, `round`, and the string methods `upper`/`lower`/
+`capitalize`/`title`/`swapcase`. `any(iter)` is 1 if any element is truthy;
+`all(iter)` is 1 if all are; `chr(n)` makes the single-char string for a
+codepoint; `ord(s)` reads the first char's codepoint; `round(x)` truncates
+floats. See ADR 0090.
+
 ## Memory model
 
 The evaluator boxes values on a heap (`map[int64]*obj`). Unreachable pure-data
