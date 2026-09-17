@@ -942,6 +942,18 @@ func TestIRFloatFolds(t *testing.T) {
 	}
 }
 
+
+func TestIRFloatArith(t *testing.T) {
+	ir := llcCompiles(t, `print(2.5 + 1.0)`)
+	if !strings.Contains(ir, "fadd double") {
+		t.Fatalf("2.5 + 1.0 should emit fadd, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `f = 1.5
+print(f + 1.0)`)
+	if !strings.Contains(ir, "fadd double") {
+		t.Fatalf("float variable arithmetic should emit fadd, got:\n%s", ir)
+	}
+}
 func TestIRExpandtabsFolds(t *testing.T) {
 	// "s".expandtabs(w) folds to a string global. Source literals have no
 	// escape sequences, so literal receivers contain no tabs -> no-op.

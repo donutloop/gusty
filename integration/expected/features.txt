@@ -8,7 +8,7 @@ arith
 -1
 5
 float
-3
+3.5
 str
 abc
 slen

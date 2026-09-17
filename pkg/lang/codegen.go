@@ -109,6 +109,8 @@ type irGen struct {
 	// lambdas maps a variable name bound to a lambda to its generated
 	// FuncDef name, so `f = lambda x: ...; f(3)` resolves in Call.
 	lambdas map[string]string
+	// floatVars tracks variables whose last assignment produced a double.
+	floatVars map[string]bool
 }
 
 type loopInfo struct {
@@ -800,6 +802,151 @@ func (g *irGen) dictIndex(dl *DictLit, key int64) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("missing dict key %d", key)
+}
+
+// floatConst formats a float constant as an LLVM double literal.
+func floatConst(v float64) string {
+	f := fmt.Sprintf("%g", v)
+	// LLVM double literals need a decimal point in the mantissa.
+	if i := strings.IndexAny(f, "eE"); i >= 0 {
+		if !strings.Contains(f[:i], ".") {
+			f = f[:i] + ".0" + f[i:]
+		}
+	} else {
+		if !strings.Contains(f, ".") {
+			f += ".0"
+		}
+		f += "e+00"
+	}
+	return f
+}
+
+// isFloat reports whether expression e produces a float (double) value.
+func (g *irGen) isFloat(e Expr) bool {
+	switch n := e.(type) {
+	case *FloatLit:
+		return true
+	case *BinOp:
+		switch n.Op {
+		case "+", "-", "*", "/":
+			return g.isFloat(n.L) || g.isFloat(n.R)
+		}
+		return false
+	case *Name:
+		if g.floatVars != nil {
+			return g.floatVars[n.Value]
+		}
+		return false
+	case *Call:
+		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && id.Value == "float" {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// valueText returns the i32 operand text for e, discarding any codegen error.
+func (g *irGen) valueText(b *strings.Builder, e Expr) string {
+	v, _ := g.value(b, e)
+	return v
+}
+
+// floatValue emits a double IR operand for a float-typed expression e.
+func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
+	switch n := e.(type) {
+	case *FloatLit:
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(n.Value))
+		return t
+	case *Name:
+		if g.floatVars != nil && g.floatVars[n.Value] {
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = load double, double* %%_%s\n", t, n.Value)
+			return t
+		}
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, n))
+		return t
+	case *BinOp:
+		return g.floatBinOp(b, n)
+	case *Call:
+		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
+				arg := n.Args[0]
+				switch a := arg.(type) {
+				case *IntLit:
+					t := g.newTmp()
+					fmt.Fprintf(b, "  %s = sitofp i32 %d to double\n", t, a.Value)
+					return t
+				case *StrLit:
+					if fv, err := strconv.ParseFloat(a.Value, 64); err == nil {
+						t := g.newTmp()
+						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fv))
+						return t
+					}
+				}
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, arg))
+				return t
+			}
+		}
+	}
+	t := g.newTmp()
+	fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, e))
+	return t
+}
+
+// floatBinOp emits float arithmetic/comparison for a float-typed BinOp.
+func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
+	l := g.floatValue(b, n.L)
+	r := g.floatValue(b, n.R)
+	t := g.newTmp()
+	switch n.Op {
+	case "+":
+		fmt.Fprintf(b, "  %s = fadd double %s, %s\n", t, l, r)
+	case "-":
+		fmt.Fprintf(b, "  %s = fsub double %s, %s\n", t, l, r)
+	case "*":
+		fmt.Fprintf(b, "  %s = fmul double %s, %s\n", t, l, r)
+	case "/":
+		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
+	case "==":
+		bt := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp oeq double %s, %s\n", bt, l, r)
+		fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", t, bt)
+		return t
+	case "!=":
+		bt := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp one double %s, %s\n", bt, l, r)
+		fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", t, bt)
+		return t
+	case "<":
+		bt := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp olt double %s, %s\n", bt, l, r)
+		fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", t, bt)
+		return t
+	case "<=":
+		bt := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp ole double %s, %s\n", bt, l, r)
+		fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", t, bt)
+		return t
+	case ">":
+		bt := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp ogt double %s, %s\n", bt, l, r)
+		fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", t, bt)
+		return t
+	case ">=":
+		bt := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp oge double %s, %s\n", bt, l, r)
+		fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", t, bt)
+		return t
+	default:
+		fmt.Fprintf(b, "  %s = fadd double %s, %s\n", t, l, r)
+	}
+	return t
 }
 
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
@@ -1970,13 +2117,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				last = t
 				continue
 			}
-			fmtName, size := g.fmtStr("%d\n")
-			v, err := g.value(b, a)
-			if err != nil {
-				return "", err
+			var t string
+			if g.isFloat(a) {
+				fmtName, size := g.fmtStr("%.17g\n")
+				fv := g.floatValue(b, a)
+				t = g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
+			} else {
+				fmtName, size := g.fmtStr("%d\n")
+				v, err := g.value(b, a)
+				if err != nil {
+					return "", err
+				}
+				t := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 			}
-			t := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 			if i == len(c.Args)-1 {
 				last = t
 			}
@@ -2546,7 +2701,23 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
 				g.allocd[nm.Value] = true
 			}
-			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+			if g.isFloat(n.Value) {
+				if !g.allocd[nm.Value] {
+					b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
+					g.allocd[nm.Value] = true
+				}
+				fv := g.floatValue(b, n.Value)
+				b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", fv, nm.Value))
+				if g.floatVars == nil {
+					g.floatVars = map[string]bool{}
+				}
+				g.floatVars[nm.Value] = true
+			} else {
+				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+				if g.floatVars != nil {
+					delete(g.floatVars, nm.Value)
+				}
+			}
 		} else {
 			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
 		}
