@@ -28,7 +28,7 @@ Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,
 `all`, `chr`, `ord`, `round`, and the string methods `upper`/`lower`/
 `capitalize`/`title`/`swapcase`. `any(iter)` is 1 if any element is truthy;
 `all(iter)` is 1 if all are; `chr(n)` makes the single-char string for a
-codepoint; `ord(s)` reads the first char's codepoint; `round(x)` truncates
+codepoint; `ord(s)` reads the first char's codepoint. In the AOT codegen, `chr(n)` folds a constant codepoint to a single-character string global and `ord(s)` folds a constant string to its first-byte codepoint (mirroring the interpreter's `sval[0]`), both as literal folds; `round(x)` truncates
 floats. See ADR 0090.
 
 ## Memory model

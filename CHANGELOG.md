@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(chr-ord-codegen)`: AOT codegen folds `chr(n)` (constant codepoint ->
+  single-char string global via `string(rune(n))`) and `ord(s)` (constant
+  string -> first-byte codepoint, mirroring the interpreter's `sval[0]`).
+  Adds TestIRChrOrdFolds IR verification. ADR 0100.
 - `feat(sorted-codegen)`: AOT codegen folds `sorted(list)` over an inline
   list literal of integer literals to a sorted list global (ascending by
   default, descending when `reverse=True` keyword or a truthy positional

@@ -807,3 +807,30 @@ func TestIRSortedFolds(t *testing.T) {
 	// sorted over an already-sorted list must still verify cleanly.
 	llcCompiles(t, `sorted([1, 2, 3])`)
 }
+
+func TestIRChrOrdFolds(t *testing.T) {
+	// chr(n) folds a constant codepoint to a single-character string global.
+	ir := llcCompiles(t, `chr(65)`)
+	if !strings.Contains(ir, `c"A\00"`) {
+		t.Fatalf("chr(65) should fold to a single-char string global c\"A\\00\", got:\n%s", ir)
+	}
+
+	// chr(97) folds to lowercase 'a'.
+	ir = llcCompiles(t, `chr(97)`)
+	if !strings.Contains(ir, `c"a\00"`) {
+		t.Fatalf("chr(97) should fold to c\"a\\00\", got:\n%s", ir)
+	}
+
+	// ord(s) folds a constant string to its first-byte codepoint; consumed
+	// by print so the folded i32 lands in the IR.
+	ir = llcCompiles(t, `print(ord("A"))`)
+	if !strings.Contains(ir, "65") {
+		t.Fatalf("ord(\"A\") should fold to 65, got:\n%s", ir)
+	}
+
+	// ord folds to the first byte codepoint (interpreter mirrors sval[0]).
+	ir = llcCompiles(t, `print(ord("hello"))`)
+	if !strings.Contains(ir, "104") {
+		t.Fatalf("ord(\"hello\") should fold to first byte 104, got:\n%s", ir)
+	}
+}

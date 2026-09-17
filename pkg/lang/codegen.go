@@ -1924,6 +1924,31 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			elems[i] = &IntLit{Value: v}
 		}
 		return g.emitList(&ListLit{Elems: elems})
+	case "chr":
+		// chr(n) folds a constant codepoint to a single-character string
+		// global, mirroring the interpreter's string(rune(n)).
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("chr expects one argument")
+		}
+		cn, cerr := g.constIntVal(c.Args[0])
+		if cerr != nil {
+			return "", fmt.Errorf("chr: codegen folds only a constant integer arg")
+		}
+		return g.strConst(string(rune(cn))), nil
+	case "ord":
+		// ord(s) folds a constant string to the codepoint of its first byte,
+		// mirroring the interpreter (int64(o.sval[0])).
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("ord expects one argument")
+		}
+		sv, ok := stringConst(c.Args[0])
+		if !ok {
+			return "", fmt.Errorf("ord: codegen folds only a constant string arg")
+		}
+		if len(sv) == 0 {
+			return "", fmt.Errorf("ord of empty string")
+		}
+		return fmt.Sprintf("%d", int64(sv[0])), nil
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}
