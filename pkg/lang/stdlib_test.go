@@ -68,3 +68,10 @@ func TestDictSetComprehensions(t *testing.T) {
 		t.Fatalf("set comprehension produced 0")
 	}
 }
+
+func TestSortedReverse(t *testing.T) {
+	// sorted(iter, reverse=True) returns descending order.
+	if v := evalStr(t, "x = sorted([3, 1, 2], reverse=True)\nx"); v == 0 {
+		t.Fatalf("sorted reverse produced 0")
+	}
+}

@@ -2398,7 +2398,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return best, nil
 			case "sorted":
-				if len(n.Args) != 1 {
+				if len(n.Args) < 1 || len(n.Args) > 2 {
 					return 0, &EvalError{Msg: "sorted() takes exactly 1 argument"}
 				}
 				lv, err := e.eval(n.Args[0])
@@ -2413,7 +2413,30 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				sort.Slice(elems, func(i, j int) bool {
 					return e.lessVal(elems[i], elems[j])
 				})
-				listID := e.allocObj("list")
+				// sorted(iter, reverse=True) returns descending order.
+			if len(n.Args) > 1 {
+				// Accept reverse=True (KeywordArg) or a positional truthy second arg.
+				var rev int64
+				if kw, ok := n.Args[1].(*KeywordArg); ok {
+					rv, err := e.eval(kw.Value)
+					if err != nil {
+						return 0, err
+					}
+					rev = rv
+				} else {
+					rv, err := e.eval(n.Args[1])
+					if err != nil {
+						return 0, err
+					}
+					rev = rv
+				}
+				if rev != 0 {
+					for i, j := 0, len(elems)-1; i < j; i, j = i+1, j-1 {
+						elems[i], elems[j] = elems[j], elems[i]
+					}
+				}
+			}
+			listID := e.allocObj("list")
 				nl := e.heap[listID]
 				nl.elems = append(nl.elems, elems...)
 				return listID, nil

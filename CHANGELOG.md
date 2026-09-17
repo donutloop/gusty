@@ -3,6 +3,9 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(sorted-reverse)`: `sorted(iter, reverse=True)` returns descending
+  order (keyword or positional second arg). Previously keyword args to builtins
+  errored "unsupported expression". ADR 0098.
 - `feat(codegen-any-all)`: AOT codegen lowers `any(iter)`/`all(iter)` for
   list-literal args: per-element `icmp ne i32 el, 0` + `or i1`/`and i1`
   accumulation (empty iterables: any=0, all=1). Previously "unsupported call".
