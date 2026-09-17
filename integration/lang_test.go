@@ -605,3 +605,16 @@ func TestForStrCodegen(t *testing.T) {
 		t.Fatalf("expected unrolled chars, got ir=%s", ir.IR)
 	}
 }
+
+func TestDecoratorCodegenZeroParam(t *testing.T) {
+	// Regression: a decorated 0-param function previously panicked with a
+	// negative strings.Repeat count in the closure IR emission.
+	src := "def twice(f):\n    return f\n@twice\ndef h():\n    return 1\nprint(h())\n"
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Fatalf("compile decorated 0-param: %v", err)
+	}
+	if !strings.Contains(res.IR, "define i32 @main()") {
+		t.Fatalf("IR lost main():\n%s", res.IR)
+	}
+}

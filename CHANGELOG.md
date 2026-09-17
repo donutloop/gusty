@@ -3,6 +3,9 @@
 Single clean list of features, newest first.
 
 ## Current
+- `fix(decorator-codegen)`: fix a panic in closure IR emission for decorated
+  0-param functions (`strings.Repeat` negative count). `repeatParamTypes(n)`
+  returns "" for n<=1 instead of "i32, " repeated n-1. ADR 0092.
 - `feat(match-destructure)`: extend `match` with list-destructuring patterns:
   `case [a, b]:` matches a list subject element-wise, binding Name pattern
   elems to the subject's elements (e.g. `match x: case [a,b]: a+b` unpacks).

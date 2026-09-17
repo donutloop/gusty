@@ -265,13 +265,22 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) {
 	}
 	fmt.Fprintf(b, "  ret i32 0\n}\n")
 	// @f_ptr global fnptr initialized to @f_impl
-	fmt.Fprintf(&g.globals, "@%s_ptr = internal global i32(%s)* @%s_impl\n", fd.Name, strings.Repeat("i32, ", n-1), fd.Name)
+	fmt.Fprintf(&g.globals, "@%s_ptr = internal global i32(%s)* @%s_impl\n", fd.Name, repeatParamTypes(n), fd.Name)
 	// @f_apply() applies the decorator at program start (identity AOT form:
 // the decorated function pointer is the impl; composing arbitrary decorators
 // needs fnptr-typed code and is documented as an AOT limit).
 	fmt.Fprintf(b, "define internal void @%s_apply() {\n", fd.Name)
-	fmt.Fprintf(b, "  store i32(%s)* @%s_impl, i32(%s)* @%s_ptr\n", strings.Repeat("i32, ", n-1), fd.Name, strings.Repeat("i32, ", n-1), fd.Name)
+	fmt.Fprintf(b, "  store i32(%s)* @%s_impl, i32(%s)* @%s_ptr\n", repeatParamTypes(n), fd.Name, repeatParamTypes(n), fd.Name)
 	fmt.Fprintf(b, "  ret void\n}\n")
 	g.applyCalls = append(g.applyCalls, "@"+fd.Name+"_apply")
 	g.decorated[fd.Name] = true
+}
+
+// repeatParamTypes returns the i32 param type list for an n-param function
+// signature ("i32, " repeated n-1 times); empty for 0/1 params (no negative repeat).
+func repeatParamTypes(n int) string {
+	if n <= 1 {
+		return ""
+	}
+	return strings.Repeat("i32, ", n-1)
 }
