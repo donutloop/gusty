@@ -488,7 +488,29 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 			for _, c := range s.Cases {
 				matches := true
-				if pn, ok := c.Pattern.(*Name); !ok || pn.Value != "_" {
+				// List-destructuring pattern: match sub element-wise and bind Name
+				// elems to sub's elements (e.g. case [a, b]:).
+				if lp, ok := c.Pattern.(*ListLit); ok {
+					o, ok := e.heap[sub]
+					if !ok || o.kind != "list" || len(o.elems) != len(lp.Elems) {
+						matches = false
+					} else {
+						for i, pe := range lp.Elems {
+							if n, ok2 := pe.(*Name); ok2 && n.Value != "_" {
+								e.Vars[n.Value] = o.elems[i]
+								continue
+							}
+							pev, err := e.eval(pe)
+							if err != nil {
+								return 0, err
+							}
+							if pev != o.elems[i] {
+								matches = false
+								break
+							}
+						}
+					}
+				} else if pn, ok := c.Pattern.(*Name); !ok || pn.Value != "_" {
 					pv, err := e.eval(c.Pattern)
 					if err != nil {
 						return 0, err

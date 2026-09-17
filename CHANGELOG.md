@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(match-destructure)`: extend `match` with list-destructuring patterns:
+  `case [a, b]:` matches a list subject element-wise, binding Name pattern
+  elems to the subject's elements (e.g. `match x: case [a,b]: a+b` unpacks).
+  Mismatched arity/kind falls through. ADR 0091.
 - `feat(stdlib-builtins)`: add `any`, `all`, `chr`, `ord`, `round`
   standard-library builtins. `any(iter)`/`all(iter)` are boolean quantifiers
   over a list; `chr(n)` builds the single-char string for codepoint n;

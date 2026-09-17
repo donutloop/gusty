@@ -1,5 +1,13 @@
 # gusty language
 
+## Pattern matching
+
+`match` supports list-destructuring patterns: `case [a, b]:` matches a list
+subject element-wise, binding Name pattern elems to the subject's elements
+(e.g. `match x: case [a, b]: a + b` unpacks to 30 for `x = [10, 20]`). A
+non-Name element is compared element-wise; mismatched arity/kind falls through
+to later cases. See ADR 0091.
+
 ## Standard library
 
 Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,
