@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(ast-ir-schema)`: publish a machine-readable JSON Schema (draft-07)
+  for the `--emit-ast` AST dump and the `--emit-llvm` IR text dump, exposed
+  as `pkg/lang.ASTIRSchema` and printed by the new `gustyc --schema` flag.
+  Self-describing agentic contract: agents validate AST dumps against it.
+  ADR 0087.
 - `feat(int-float)`: `int(x)` converts a value to an integer (`int("42")` -> 42,
   `int(3.9)` -> 3 via float truncation); `float(x)` converts to a float
   (`float("2.5")` -> 2.5, `float(3)` -> 3.0). `int` ships in both backends: the

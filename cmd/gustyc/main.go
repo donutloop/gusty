@@ -47,6 +47,7 @@ func run() int {
 	optLevel := fs.String("opt-level", "0", "optimization level")
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
+	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
 	help := fs.Bool("help", false, "show usage")
@@ -62,6 +63,10 @@ func run() int {
 	}
 	if *langCmd {
 		listLang()
+		return exitOK
+	}
+	if *schemaCmd {
+		fmt.Println(lang.ASTIRSchema)
 		return exitOK
 	}
 	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *emitLLVMF == "" && *emitASTF == "" && isTTY()) {

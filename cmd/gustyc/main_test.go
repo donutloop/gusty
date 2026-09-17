@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os/exec"
 	"strings"
 	"testing"
@@ -56,5 +57,20 @@ func TestCLIJSON(t *testing.T) {
 	got := cli(t, "--json", "--eval", "x = 1 + 2\nx")
 	if !strings.Contains(got, `"result": "3"`) {
 		t.Fatalf("json eval got %q", got)
+	}
+}
+
+func TestCLISchema(t *testing.T) {
+	got := cli(t, "--schema")
+	// The schema must be valid, self-describing JSON (draft-07).
+	var v map[string]any
+	if err := json.Unmarshal([]byte(got), &v); err != nil {
+		t.Fatalf("--schema output is not valid JSON: %v", err)
+	}
+	if v["$schema"] != "http://json-schema.org/draft-07/schema#" {
+		t.Fatalf("schema $schema = %v", v["$schema"])
+	}
+	if _, ok := v["definitions"]; !ok {
+		t.Fatalf("schema has no definitions")
 	}
 }

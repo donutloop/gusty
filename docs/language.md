@@ -1,4 +1,22 @@
-# gusty language surface
+# gusty language
+
+## Agentic interface
+
+`gustyc --schema` prints a machine-readable JSON Schema (draft-07) describing
+the structured outputs: the `--emit-ast` AST dump (`{"stmts": [...]}`,
+per-node required fields) and the `--emit-llvm` IR text dump
+(`definitions.irDump`, `text/plain`). Agents can validate AST dumps against
+it without reading the compiler source; see `docs/agentic/ast-ir-schema.md`
+and ADR 0087.
+
+## Agentic interface
+
+ prints a machine-readable JSON Schema (draft-07) describing
+the structured outputs: the  AST dump (,
+per-node required fields) and the  IR text dump
+(, ). Agents can validate AST dumps against
+it without reading the compiler source; see 
+and ADR 0087. surface
 
 Single source of truth for gusty's syntax and semantics. This document tracks
 the language as it grows; each feature commit updates it.
