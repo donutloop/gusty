@@ -42,6 +42,13 @@ See ADR 0088.
 
 ## Agentic interface
 
+`--eval --json` emits a structured, typed result:
+`{"result": "<repr>", "type": "<dynamic-type>", "exit": 0}` where `type` is the
+evaluator's inferred dynamic type (`int`/`float`/`str`/`list`/`dict`/`set`/
+`closure`). See ADR 0094.
+
+
+
 `gustyc --schema` prints a machine-readable JSON Schema (draft-07) describing
 the structured outputs: the `--emit-ast` AST dump (`{"stmts": [...]}`,
 per-node required fields) and the `--emit-llvm` IR text dump

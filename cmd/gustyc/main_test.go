@@ -90,3 +90,22 @@ func TestCLIEmitLLVMOptLevel(t *testing.T) {
 	}
 }
 
+
+func TestCLIJSONType(t *testing.T) {
+	// --json --eval emits a structured result with a dynamic type field.
+	out := cli(t, "--json", "--eval=x = 42\nx")
+	var doc struct {
+		Result string `json:"result"`
+		Type   string `json:"type"`
+		Exit   int    `json:"exit"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("json parse: %v\n%s", err, out)
+	}
+	if doc.Type != "int" {
+		t.Fatalf("type = %q, want int", doc.Type)
+	}
+	if doc.Exit != 0 {
+		t.Fatalf("exit = %d, want 0", doc.Exit)
+	}
+}

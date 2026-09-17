@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(json-type)`: `--eval --json` now emits a structured result with a
+  dynamic `type` field (`{"result": "...", "type": "int", "exit": 0}`), from
+  the evaluator's dynamic type inference via a new public `Evaluator.TypeOf`.
+  Agentic self-describing JSON. ADR 0094.
 - `fix(lambda-params)`: fix lambda parameter parsing. `lambda x: body`
   previously errored ("unknown type annotation x") because parseParam() treated
   the `:` body separator as a `: type` annotation. Lambda params are now plain

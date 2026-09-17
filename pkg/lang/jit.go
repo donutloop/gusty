@@ -148,6 +148,12 @@ func (e *Evaluator) allocClosure(fn *FuncDef, env map[string]int64) int64 {
 // typeOfVal maps a runtime value to its static type Kind for gradual typing
 // checks. Plain small int64s are ints/bools/none; heap ids are objects whose
 // kind string maps to a Type.
+// TypeOf reports the dynamic type name of a heap value id for the
+// machine-readable --json interface (e.g. "int", "float", "str", "list").
+func (e *Evaluator) TypeOf(v int64) string {
+	return e.typeOfVal(v).Name()
+}
+
 func (e *Evaluator) typeOfVal(val int64) *Type {
 	if o, ok := e.heap[val]; ok {
 		switch o.kind {

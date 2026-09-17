@@ -122,7 +122,7 @@ func evalSrcOrFile(src, file string, jsonOut bool) int {
 		return exitErr
 	}
 	if jsonOut {
-		fmt.Printf("{\"result\": %q, \"exit\": 0}\n", ev.Repr(v))
+		fmt.Printf("{\"result\": %q, \"type\": %q, \"exit\": 0}\n", ev.Repr(v), ev.TypeOf(v))
 	} else {
 		fmt.Println(ev.Repr(v))
 	}
