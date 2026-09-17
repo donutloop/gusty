@@ -957,6 +957,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "fcmp olt double") {
 		t.Fatalf("float comparison should emit fcmp, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(-2.5)`)
+	if !strings.Contains(ir, "-2.5e+00") {
+		t.Fatalf("print(-2.5) should emit a negative double literal, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
