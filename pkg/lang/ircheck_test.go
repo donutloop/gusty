@@ -924,3 +924,17 @@ func TestIRIndexFolds(t *testing.T) {
 		t.Fatalf("index not-found should fold to -1, got:\n%s", ir)
 	}
 }
+
+func TestIRFloatFolds(t *testing.T) {
+	// float(int) folds to the int (AOT represents floats as truncated ints).
+	ir := llcCompiles(t, `print(float(42))`)
+	if !strings.Contains(ir, " 42") && !strings.Contains(ir, "42 ") {
+		t.Fatalf("float(42) should fold to 42, got:\n%s", ir)
+	}
+
+	// float(str) parses the string to a float then truncates.
+	ir = llcCompiles(t, `print(float("42.5"))`)
+	if !strings.Contains(ir, " 42") && !strings.Contains(ir, "42 ") {
+		t.Fatalf("float(\"42.5\") should truncate to 42, got:\n%s", ir)
+	}
+}

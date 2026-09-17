@@ -30,6 +30,9 @@ Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,
 `all(iter)` is 1 if all are; `chr(n)` makes the single-char string for a
 codepoint; `ord(s)` reads the first char's codepoint. In the AOT codegen, `chr(n)` folds a constant codepoint to a single-character string global and `ord(s)` folds a constant string to its first-byte codepoint (mirroring the interpreter's `sval[0]`), both as literal folds; `round(x)` truncates
 `round(x)` folds a constant integer literal to itself in the AOT codegen
+`float(x)` folds a constant int to itself and a constant string to its parsed
+then-truncated float value in the AOT codegen (the backend represents floats
+as truncated ints, mirroring value()'s FloatLit handling).
 (no-op: rounding an int returns it unchanged), mirroring the interpreter's
 int case; the AOT backend has no float representation.
 floats. See ADR 0090.

@@ -2023,6 +2023,25 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("round: codegen folds only a constant integer arg")
 		}
 		return fmt.Sprintf("%d", rv), nil
+	case "float":
+		// float(x) converts x to a float. The AOT backend represents floats
+		// as truncated ints (value() truncates FloatLit to int64), so
+		// float(int) folds to itself and float(str) parses the string to a
+		// float then truncates, mirroring the interpreter's allocFloat.
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("float expects one argument")
+		}
+		if il, ok := c.Args[0].(*IntLit); ok {
+			return fmt.Sprintf("%d", il.Value), nil
+		}
+		if sv, ok := stringConst(c.Args[0]); ok {
+			f, err := strconv.ParseFloat(sv, 64)
+			if err != nil {
+				return "", fmt.Errorf("float: cannot parse %q", sv)
+			}
+			return fmt.Sprintf("%d", int64(f)), nil
+		}
+		return "", fmt.Errorf("float: codegen folds only a constant int/string arg")
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}

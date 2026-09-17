@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(float-codegen)`: AOT codegen folds the scalar builtin `float(x)` over
+  a constant int (to itself) or constant string (parse then truncate) to an
+  i32 constant — the backend represents floats as truncated ints, mirroring
+  value()'s FloatLit handling. Adds TestIRFloatFolds IR verification.
+  ADR 0106.
 - `feat(index-codegen)`: AOT codegen folds the string method `"s".index(sub)`
   to the byte index of `sub` via strings.Index (interpreter raises on
   not-found; codegen folds to -1, no error channel). Adds TestIRIndexFolds
