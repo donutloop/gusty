@@ -981,6 +981,14 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "frem double") {
 		t.Fatalf("float modulo should emit frem, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(10.0 / 4.0)`)
+	if !strings.Contains(ir, "fdiv double") {
+		t.Fatalf("float division should emit fdiv, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(5.0 - 2.5)`)
+	if !strings.Contains(ir, "fsub double") {
+		t.Fatalf("float subtraction should emit fsub, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
