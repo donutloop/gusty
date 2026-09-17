@@ -476,6 +476,9 @@ are string constants (`print("abcabc".find("bc"))` emits `i32 1`).
 `"s".rjust(w)` pads on the left; both are no-ops when `len(s) >= w`.
 In the AOT codegen, both fold over a constant string receiver and constant
 width to a padded string global, mirroring the interpreter.
+`"s".zfill(w)` pads the receiver on the left with `0` to width `w` (no-op
+when `len(s) >= w`); the AOT codegen folds it over a constant receiver and
+constant width to a zero-padded string global, mirroring the interpreter.
 
 `.startswith(sub)` and `.endswith(sub)` return 1 or 0 in **both** paths: the
 interpreter applies `strings.HasPrefix`/`strings.HasSuffix`; the codegen

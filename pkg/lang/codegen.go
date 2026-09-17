@@ -1490,6 +1490,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return g.strConst(v + spaces), nil
 			}
 			return g.strConst(spaces + v), nil
+		case "zfill":
+			// zfill pads the receiver on the left with '0' to width w
+			// (no-op when len(v) >= w), mirroring the interpreter.
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("zfill expects one argument")
+			}
+			wv, werr := g.constIntVal(c.Args[0])
+			if werr != nil {
+				return "", fmt.Errorf("zfill: codegen folds only a constant width arg")
+			}
+			pad := int(wv) - len(v)
+			if pad <= 0 {
+				return g.strConst(v), nil
+			}
+			return g.strConst(strings.Repeat("0", pad) + v), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}

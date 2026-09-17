@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(zfill-codegen)`: AOT codegen folds the string method `"s".zfill(w)`
+  over a constant receiver and constant width to a zero-padded string global
+  (left `0`-padding, no-op when `len(s) >= w`), mirroring the interpreter.
+  Adds TestIRZfillFolds IR verification and TestStdlibZfill behavior checks.
+  ADR 0102.
 - `feat(ljust-rjust-codegen)`: AOT codegen folds the string methods
   `"s".ljust(w)` / `"s".rjust(w)` over a constant receiver and constant width
   to a padded string global (right/left space-padding, no-op when

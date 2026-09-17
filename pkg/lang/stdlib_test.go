@@ -105,3 +105,25 @@ func TestStdlibLjustRjust(t *testing.T) {
 		t.Fatalf("rjust no-op: want abc, got %q", got)
 	}
 }
+func TestStdlibZfill(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	// zfill pads on the left with '0' to width (method-call form).
+	if got := evalStr(`"ab".zfill(5)`); got != "000ab" {
+		t.Fatalf("zfill: want %q, got %q", "000ab", got)
+	}
+	// When len(s) >= w it is a no-op.
+	if got := evalStr(`"abc".zfill(2)`); got != "abc" {
+		t.Fatalf("zfill no-op: want abc, got %q", got)
+	}
+}

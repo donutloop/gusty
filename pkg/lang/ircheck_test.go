@@ -861,3 +861,20 @@ func TestIRLjustRjustFolds(t *testing.T) {
 	// Exact width (len == w) is also a no-op.
 	llcCompiles(t, `"ab".ljust(2)`)
 }
+func TestIRZfillFolds(t *testing.T) {
+	// "s".zfill(w) pads on the left with '0' to width w -> string global.
+	ir := llcCompiles(t, `"ab".zfill(5)`)
+	// IR global is c"000ab" + nul terminator: assert on the padded content.
+	if !strings.Contains(ir, "000ab") {
+		t.Fatalf("zfill(ab,5) should fold to a 000ab global, got:\n%s", ir)
+	}
+
+	// When len(s) >= w it is a no-op (mirror the interpreter).
+	ir = llcCompiles(t, `"abc".zfill(2)`)
+	if !strings.Contains(ir, "abc") {
+		t.Fatalf("zfill no-op should keep abc, got:\n%s", ir)
+	}
+
+	// Exact width (len == w) is also a no-op.
+	llcCompiles(t, `"ab".zfill(2)`)
+}
