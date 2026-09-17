@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(expandtabs-codegen)`: AOT codegen folds the string method
+  `"s".expandtabs(w)` over a constant receiver + width to a string global
+  (tab-to-tab-stop space expansion, running-column algorithm; source
+  literals have no escape sequences so literal receivers are tab-free
+  no-ops). Adds TestIRExpandtabsFolds IR verification and
+  TestStdlibExpandtabs behavior checks. ADR 0107.
 - `feat(float-codegen)`: AOT codegen folds the scalar builtin `float(x)` over
   a constant int (to itself) or constant string (parse then truncate) to an
   i32 constant — the backend represents floats as truncated ints, mirroring

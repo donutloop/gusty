@@ -161,3 +161,26 @@ func TestStdlibIndex(t *testing.T) {
 		t.Fatalf("index(bc): want 1, got %v", got)
 	}
 }
+func TestStdlibExpandtabs(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		e := NewEvaluator()
+		v, err := e.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return e.Repr(v)
+	}
+	// The interpreter can construct a tab via chr(9): expandtabs replaces it
+	// with the spaces to the next tab stop at width 4.
+	if got := evalStr(`(chr(9) + "b").expandtabs(4)`); got != "    b" {
+		t.Fatalf("expandtabs: want %q, got %q", "    b", got)
+	}
+	// No-tab is a no-op.
+	if got := evalStr(`"abc".expandtabs(4)`); got != "abc" {
+		t.Fatalf("expandtabs no-tab: want abc, got %q", got)
+	}
+}

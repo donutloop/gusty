@@ -483,6 +483,10 @@ are string constants (`print("abcabc".find("bc"))` emits `i32 1`).
 In the AOT codegen, both fold over a constant string receiver and constant
 width to a padded string global, mirroring the interpreter.
 `"s".index(sub)` folds to the byte index of `sub` in the receiver
+`"s".expandtabs(w)` folds to a string global: each tab is replaced with the
+spaces to the next tab stop at width `w` (running-column algorithm). Source
+string literals have no escape sequences, so literal receivers contain no
+tabs (no-op); the interpreter can build tabs via `chr(9)`.
 (`strings.Index`); the interpreter raises on not-found, but the AOT codegen
 has no error channel, so it folds to `-1` on not-found (like `find`).
 `"s".zfill(w)` pads the receiver on the left with `0` to width `w` (no-op

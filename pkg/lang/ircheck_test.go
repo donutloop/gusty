@@ -938,3 +938,15 @@ func TestIRFloatFolds(t *testing.T) {
 		t.Fatalf("float(\"42.5\") should truncate to 42, got:\n%s", ir)
 	}
 }
+
+func TestIRExpandtabsFolds(t *testing.T) {
+	// "s".expandtabs(w) folds to a string global. Source literals have no
+	// escape sequences, so literal receivers contain no tabs -> no-op.
+	ir := llcCompiles(t, `"abc".expandtabs(4)`)
+	if !strings.Contains(ir, "abc") {
+		t.Fatalf("expandtabs no-tab should keep abc, got:\n%s", ir)
+	}
+
+	// verify cleanly for a positive width.
+	llcCompiles(t, `"a  b".expandtabs(4)`)
+}

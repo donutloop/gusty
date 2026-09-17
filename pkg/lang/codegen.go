@@ -1534,6 +1534,35 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("index: codegen folds only a constant string arg")
 			}
 			return fmt.Sprintf("%d", int64(strings.Index(v, sub))), nil
+		case "expandtabs":
+			// expandtabs replaces each tab with the spaces up to the next tab
+			// stop at width w, tracking the running column, mirroring the
+			// interpreter's tab-stop algorithm. Source string literals have no
+			// escape sequences, so literal receivers contain no tabs (no-op).
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("expandtabs expects one argument")
+			}
+			wv, werr := g.constIntVal(c.Args[0])
+			if werr != nil {
+				return "", fmt.Errorf("expandtabs: codegen folds only a constant width arg")
+			}
+			w := int(wv)
+			if w <= 0 {
+				return "", fmt.Errorf("expandtabs width must be positive")
+			}
+			var b strings.Builder
+			col := 0
+			for _, r := range v {
+				if r == '\t' {
+					n := w - (col % w)
+					b.WriteString(strings.Repeat(" ", n))
+					col += n
+				} else {
+					b.WriteRune(r)
+					col++
+				}
+			}
+			return g.strConst(b.String()), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}
