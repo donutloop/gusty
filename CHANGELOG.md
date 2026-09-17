@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(dict-get-codegen)`: AOT codegen folds the dict method `{k: v}.get(key,
+  default)` over a constant dict + constant int/string key to the matching
+  value or the default (not-found returns the default when given). Adds
+  TestIRDictGetFolds IR verification. ADR 0108.
 - `feat(expandtabs-codegen)`: AOT codegen folds the string method
   `"s".expandtabs(w)` over a constant receiver + width to a string global
   (tab-to-tab-stop space expansion, running-column algorithm; source

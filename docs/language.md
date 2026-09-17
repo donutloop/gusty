@@ -484,6 +484,9 @@ In the AOT codegen, both fold over a constant string receiver and constant
 width to a padded string global, mirroring the interpreter.
 `"s".index(sub)` folds to the byte index of `sub` in the receiver
 `"s".expandtabs(w)` folds to a string global: each tab is replaced with the
+`{k: v}.get(key, default)` folds to the matching value or the default in the
+AOT codegen: an int/string key looks up the constant dict's key/value pairs
+(not-found returns the default when given).
 spaces to the next tab stop at width `w` (running-column algorithm). Source
 string literals have no escape sequences, so literal receivers contain no
 tabs (no-op); the interpreter can build tabs via `chr(9)`.

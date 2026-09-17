@@ -950,3 +950,17 @@ func TestIRExpandtabsFolds(t *testing.T) {
 	// verify cleanly for a positive width.
 	llcCompiles(t, `"a  b".expandtabs(4)`)
 }
+
+func TestIRDictGetFolds(t *testing.T) {
+	// {k: v}.get(key) returns the value for the key.
+	ir := llcCompiles(t, `print({1: 42}.get(1))`)
+	if !strings.Contains(ir, " 42") && !strings.Contains(ir, "42 ") {
+		t.Fatalf("get(1) should fold to 42, got:\n%s", ir)
+	}
+
+	// Not-found returns the default.
+	ir = llcCompiles(t, `print({1: 42}.get(2, 7))`)
+	if !strings.Contains(ir, " 7") && !strings.Contains(ir, "7 ") {
+		t.Fatalf("get(2, 7) should fold to default 7, got:\n%s", ir)
+	}
+}

@@ -1273,6 +1273,31 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return g.value(b, &ListLit{Elems: dl.Keys})
 			case "values":
 				return g.value(b, &ListLit{Elems: dl.Vals})
+			case "get":
+				// dict.get(key, default) returns the value for key or the default.
+				if len(c.Args) < 1 || len(c.Args) > 2 {
+					return "", fmt.Errorf("get expects 1 or 2 arguments")
+				}
+				// int key lookup
+				if kv, kerr := g.constIntVal(c.Args[0]); kerr == nil {
+					for i, k := range dl.Keys {
+						if il, ok := k.(*IntLit); ok && il.Value == kv {
+							return g.value(b, dl.Vals[i])
+						}
+					}
+				} else if sv, ok := stringConst(c.Args[0]); ok {
+					// string key lookup
+					for i, k := range dl.Keys {
+						if sl, ok := k.(*StrLit); ok && sl.Value == sv {
+							return g.value(b, dl.Vals[i])
+						}
+					}
+				}
+				// not found: return the default value, if given
+				if len(c.Args) == 2 {
+					return g.value(b, c.Args[1])
+				}
+				return "", fmt.Errorf("get: key not found and no default")
 			default:
 				return "", fmt.Errorf("unsupported dict method %s", attr.Name.Value)
 			}
