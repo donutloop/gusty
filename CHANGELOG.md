@@ -3,6 +3,11 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(empty-collection-sum)`: AOT codegen `sum` over empty inline
+  list/set/dict literals now folds to 0 (`sum([])` -> 0, `sum({})` -> 0),
+  matching the interpreter instead of erroring. Extends the `sum` consumer
+  with empty-receiver handling. Adds IR and end-to-end runtime checks.
+  ADR 0108.
 - `feat(nested-sorted-reversed)`: AOT codegen `len`/`sum`/`min`/`max`/`any`/`all`
   now fold over **nested** `sorted`/`reversed` calls by recursing to the
   underlying inline list literal, e.g. `len(sorted(reversed([3, 1, 2])))` ->

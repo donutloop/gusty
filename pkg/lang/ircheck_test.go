@@ -1040,6 +1040,17 @@ func TestIRListLenFolds(t *testing.T) {
 	}
 }
 
+func TestIROverEmptyCollections(t *testing.T) {
+	ir := llcCompiles(t, `print(sum([]))`)
+	if !strings.Contains(ir, "i32 0") {
+		t.Fatalf("sum([]) should fold to 0, got:\n%s", ir)
+	}
+	ir = llcCompiles(t, `print(sum({}))`)
+	if !strings.Contains(ir, "i32 0") {
+		t.Fatalf("sum({}) should fold to 0, got:\n%s", ir)
+	}
+}
+
 func TestIRNestedListCallConsumers(t *testing.T) {
 	ir := llcCompiles(t, `print(len(sorted(reversed([3, 1, 2]))))`)
 	if !strings.Contains(ir, "i32 3") {

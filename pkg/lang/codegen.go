@@ -2047,10 +2047,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			elems = dl.Keys
 		}
 		if elems == nil {
-			return "", fmt.Errorf("sum requires an inline list/set/dict literal")
+			// Empty inline list/set/dict literals are valid (sum([]) -> 0),
+			// so promote a nil slice to an empty one for those receivers.
+			switch c.Args[0].(type) {
+			case *ListLit, *SetLit, *DictLit:
+				elems = []Expr{}
+			default:
+				return "", fmt.Errorf("sum requires an inline list/set/dict literal")
+			}
 		}
 		if len(elems) == 0 {
-			return "", fmt.Errorf("sum of an empty list")
+			// sum([]) folds to 0, matching the interpreter.
+			return "0", nil
 		}
 		acc, err := g.value(b, elems[0])
 		if err != nil {
