@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(codegen-any-all)`: AOT codegen lowers `any(iter)`/`all(iter)` for
+  list-literal args: per-element `icmp ne i32 el, 0` + `or i1`/`and i1`
+  accumulation (empty iterables: any=0, all=1). Previously "unsupported call".
+  ADR 0097.
 - `feat(static-gradual-typing)`: `--verify` now statically checks assignment
   annotations against inferred types: `x: int = "hello"` reports a "type
   mismatch" diagnostic; the `any` annotation accepts anything. `EvalExpr`

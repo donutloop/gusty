@@ -1654,6 +1654,47 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		default:
 			return "", fmt.Errorf("len requires an inline list/dict/set literal")
 		}
+	case "any", "all":
+		// any(iter) is 1 if any element is nonzero; all(iter) is 1 if all are.
+		anyMode := fnName == "any"
+		var elems []Expr
+		switch a := c.Args[0].(type) {
+		case *ListLit:
+			elems = a.Elems
+		case *SetLit:
+			elems = a.Elems
+		default:
+			return "", fmt.Errorf("any/all need a list literal")
+		}
+		if len(elems) == 0 {
+			if anyMode {
+				return "0", nil
+			}
+			return "1", nil
+		}
+		b0, err := g.value(b, elems[0])
+		if err != nil {
+			return "", err
+		}
+		acc := g.newTmp()
+		b.WriteString(fmt.Sprintf("  icmp ne i32 %s, 0 -> %s\n", b0, acc))
+		for i := 1; i < len(elems); i++ {
+			el, err := g.value(b, elems[i])
+			if err != nil {
+				return "", err
+			}
+			bi := g.newTmp()
+			b.WriteString(fmt.Sprintf("  icmp ne i32 %s, 0 -> %s\n", el, bi))
+			op := "or"
+			if !anyMode {
+				op = "and"
+			}
+			a2 := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s i1 %s, %s -> %s\n", op, acc, bi, a2))
+			acc = a2
+		}
+		return acc, nil
+		
 	case "sum":
 		// sum(list) -> sum the elements of an inline list literal (unrolled).
 		if len(c.Args) != 1 {

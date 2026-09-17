@@ -618,3 +618,13 @@ func TestDecoratorCodegenZeroParam(t *testing.T) {
 		t.Fatalf("IR lost main():\n%s", res.IR)
 	}
 }
+
+func TestAnyAllCodegenIR(t *testing.T) {
+	res, err := lang.Compile("print(any([0, 0, 1]))\nprint(all([1, 1, 1]))\n")
+	if err != nil {
+		t.Fatalf("compile any/all: %v", err)
+	}
+	if !strings.Contains(res.IR, "icmp ne i32") {
+		t.Fatalf("IR lacks icmp ne for any/all:\n%s", res.IR)
+	}
+}
