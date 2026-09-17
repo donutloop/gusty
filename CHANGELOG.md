@@ -1,645 +1,98 @@
 # CHANGELOG
 
-Single clean list of features, newest first.
+All notable changes to gusty are documented here, newest first.
+This project adheres to [Semantic Versioning](https://semver.org) with
+pre-`1.0.0` releases (`v0.x.y`) while still in development.
 
-## Current
-- `feat(empty-nested-list)`: AOT codegen consumers (`len`/`sum`/`any`/`all`)
-  now fold over empty nested `sorted`/`reversed` calls: `sum(sorted([]))` ->
-  0, `len(sorted([]))` -> 0, `any(sorted([]))` -> 0, `all(sorted([]))` -> 1,
-  matching the interpreter. `listCallElems` promotes nil to a non-nil empty
-  slice. Adds IR and end-to-end runtime checks. ADR 0108.
-- `feat(empty-collection-sum)`: AOT codegen `sum` over empty inline
-  list/set/dict literals now folds to 0 (`sum([])` -> 0, `sum({})` -> 0),
-  matching the interpreter instead of erroring. Extends the `sum` consumer
-  with empty-receiver handling. Adds IR and end-to-end runtime checks.
-  ADR 0108.
-- `feat(nested-sorted-reversed)`: AOT codegen `len`/`sum`/`min`/`max`/`any`/`all`
-  now fold over **nested** `sorted`/`reversed` calls by recursing to the
-  underlying inline list literal, e.g. `len(sorted(reversed([3, 1, 2])))` ->
-  3, `sum(...)` -> 6, `min(...)` -> 1 — matching the interpreter. Extends
-  `listCallElems` with recursion. Adds IR and end-to-end runtime checks.
-  ADR 0108.
-- `feat(nested-list-len)`: AOT codegen `len` now recursively unwraps nested
-  list-producing calls: `len(enumerate(sorted([3, 1, 2])))` -> 3 and
-  `len(zip(sorted([1, 2]), reversed([3, 4])))` -> 2, matching the
-  interpreter. Adds `listArgLen` recursion helper. Extends IR and
-  end-to-end runtime checks. ADR 0108.
-- `feat(len-reversed-str)`: AOT codegen `len` now folds `len(reversed(s))`
-  over a constant string `s` to `len(s)` (reversal preserves length),
-  matching the interpreter. Extends `listLen` with a `reversed` string case.
-  Adds IR and end-to-end runtime checks. ADR 0108.
-- `feat(list-len-folds)`: AOT codegen `len` now folds over additional
-  list-producing builtin calls: `len(enumerate([a, b, c]))` -> 3,
-  `len(zip(a, b))` -> `min(len(a), len(b))`, `len(s.partition(sep))` -> 3,
-  and `len(s.split(sep))` / `len(s.rsplit(sep))` -> occurrences + 1 — all
-  matching the interpreter. Adds `TestIRListLenFolds` IR verification and
-  `TestListLenRun` end-to-end runtime checks. ADR 0108.
-- `feat(list-call-consumers)`: AOT codegen `len`/`sum`/`min`/`max`/`any`/`all`
-  now fold over a **list-returning builtin call** over an inline list literal.
-  `sorted`/`reversed` preserve the element set (only reorder), so
-  `len(sorted([3, 1, 2]))` -> 3, `sum(sorted([3, 1, 2]))` -> 6,
-  `min(sorted([3, 1, 2]))` -> 1, `max(reversed([3, 1, 2]))` -> 3 — matching
-  the interpreter. Also fixes a pre-existing `any`/`all` codegen bug that
-  emitted instructions in the `-> %t` dialect (invalid LLVM IR) and failed to
-  widen the boolean accumulator to i32; both are fixed so `any`/`all` results
-  are printable and llc-acceptable. Adds TestIRListCallConsumers IR
-  verification and TestListCallConsumersRun end-to-end runtime checks.
-  ADR 0108.
-- `feat(dict-get-codegen)`: AOT codegen folds the dict method `{k: v}.get(key,
-  default)` over a constant dict + constant int/string key to the matching
-  value or the default (not-found returns the default when given). Adds
-  TestIRDictGetFolds IR verification. ADR 0108.
-- `feat(expandtabs-codegen)`: AOT codegen folds the string method
-  `"s".expandtabs(w)` over a constant receiver + width to a string global
-  (tab-to-tab-stop space expansion, running-column algorithm; source
-  literals have no escape sequences so literal receivers are tab-free
-  no-ops). Adds TestIRExpandtabsFolds IR verification and
-  TestStdlibExpandtabs behavior checks. ADR 0107.
-- `feat(float-codegen)`: AOT codegen folds the scalar builtin `float(x)` over
-  a constant int (to itself) or constant string (parse then truncate) to an
-  i32 constant — the backend represents floats as truncated ints, mirroring
-  value()'s FloatLit handling. Adds TestIRFloatFolds IR verification.
-  ADR 0106.
-- `feat(index-codegen)`: AOT codegen folds the string method `"s".index(sub)`
-  to the byte index of `sub` via strings.Index (interpreter raises on
-  not-found; codegen folds to -1, no error channel). Adds TestIRIndexFolds
-  IR verification and TestStdlibIndex behavior checks. ADR 0105.
-- `feat(round-codegen)`: AOT codegen folds the scalar builtin `round(x)`
-  over a constant integer literal to itself (no-op: rounding an int returns
-  it unchanged), mirroring the interpreter's int case; the AOT backend has
-  no float representation. Adds TestIRRoundFolds IR verification. ADR 0104.
-- `feat(removeprefix-suffix-codegen)`: AOT codegen folds the string methods
-  `"s".removeprefix(p)` / `"s".removesuffix(s)` over a constant receiver and
-  constant prefix/suffix to a string global (mirroring
-  strings.TrimPrefix/TrimSuffix, no-op when unmatched). Adds
-  TestIRRemoveprefixSuffixFolds IR verification and
-  TestStdlibRemoveprefixSuffix behavior checks. ADR 0103.
-- `feat(zfill-codegen)`: AOT codegen folds the string method `"s".zfill(w)`
-  over a constant receiver and constant width to a zero-padded string global
-  (left `0`-padding, no-op when `len(s) >= w`), mirroring the interpreter.
-  Adds TestIRZfillFolds IR verification and TestStdlibZfill behavior checks.
-  ADR 0102.
-- `feat(ljust-rjust-codegen)`: AOT codegen folds the string methods
-  `"s".ljust(w)` / `"s".rjust(w)` over a constant receiver and constant width
-  to a padded string global (right/left space-padding, no-op when
-  `len(s) >= w`), mirroring the interpreter. Added to the string-method
-  dispatch (method-call syntax). Adds TestIRLjustRjustFolds IR verification
-  and TestStdlibLjustRjust behavior checks. ADR 0101.
-- `feat(chr-ord-codegen)`: AOT codegen folds `chr(n)` (constant codepoint ->
-  single-char string global via `string(rune(n))`) and `ord(s)` (constant
-  string -> first-byte codepoint, mirroring the interpreter's `sval[0]`).
-  Adds TestIRChrOrdFolds IR verification. ADR 0100.
-- `feat(sorted-codegen)`: AOT codegen folds `sorted(list)` over an inline
-  list literal of integer literals to a sorted list global (ascending by
-  default, descending when `reverse=True` keyword or a truthy positional
-  second arg), mirroring the interpreter. Adds `constIntVal` literal-truthiness
-  helper and IR/behavior tests. ADR 0099.
-- `feat(sorted-reverse)`: `sorted(iter, reverse=True)` returns descending
-  order (keyword or positional second arg). Previously keyword args to builtins
-  errored "unsupported expression". ADR 0098.
-- `feat(codegen-any-all)`: AOT codegen lowers `any(iter)`/`all(iter)` for
-  list-literal args: per-element `icmp ne i32 el, 0` + `or i1`/`and i1`
-  accumulation (empty iterables: any=0, all=1). Previously "unsupported call".
-  ADR 0097.
-- `feat(static-gradual-typing)`: `--verify` now statically checks assignment
-  annotations against inferred types: `x: int = "hello"` reports a "type
-  mismatch" diagnostic; the `any` annotation accepts anything. `EvalExpr`
-  returns a Go error for the first fatal diagnostic. ADR 0096.
-- `feat(dict-set-comps)`: dict/set comprehensions now accept `for` inside the
-  braces: `{x: x*2 for x in [1,2,3]}` and `{x for x in [1,2]}` parse (previously
-  "expected }"). Matches Python/list-comp syntax. ADR 0095.
-- `feat(json-type)`: `--eval --json` now emits a structured result with a
-  dynamic `type` field (`{"result": "...", "type": "int", "exit": 0}`), from
-  the evaluator's dynamic type inference via a new public `Evaluator.TypeOf`.
-  Agentic self-describing JSON. ADR 0094.
-- `fix(lambda-params)`: fix lambda parameter parsing. `lambda x: body`
-  previously errored ("unknown type annotation x") because parseParam() treated
-  the `:` body separator as a `: type` annotation. Lambda params are now plain
-  names with a lookahead: `:` is an annotation only if the next token is a
-  known type (int/float/bool/str/any); otherwise it is the body separator.
-  Supports `lambda x: body` and `lambda x: int: body`. ADR 0093.
-- `fix(decorator-codegen)`: fix a panic in closure IR emission for decorated
-  0-param functions (`strings.Repeat` negative count). `repeatParamTypes(n)`
-  returns "" for n<=1 instead of "i32, " repeated n-1. ADR 0092.
-- `feat(match-destructure)`: extend `match` with list-destructuring patterns:
-  `case [a, b]:` matches a list subject element-wise, binding Name pattern
-  elems to the subject's elements (e.g. `match x: case [a,b]: a+b` unpacks).
-  Mismatched arity/kind falls through. ADR 0091.
-- `feat(stdlib-builtins)`: add `any`, `all`, `chr`, `ord`, `round`
-  standard-library builtins. `any(iter)`/`all(iter)` are boolean quantifiers
-  over a list; `chr(n)` builds the single-char string for codepoint n;
-  `ord(s)` returns the first char's codepoint; `round(x)` truncates floats.
-  ADR 0090.
-- `feat(memory-model)`: add an explicit mark-and-sweep GC primitive
-  `ev.Collect()` to the evaluator: roots are the top-level env bindings; it
-  marks reachable objects through list/dict/set elems, dict values, closure
-  envs, and attr tables; it sweeps unreachable pure-data objects
-  (list/dict/set/str/int/float). Conservative: class/method/closure/import
-  objects are never freed. Explicit end-of-program API avoids freeing live
-  generator/closure temporaries during evaluation. ADR 0089.
-- `feat(opt-passes)`: make `--opt-level` real: `lang.OptimizeIR` runs a
-  pure-Go dead-global elimination pass over emitted IR (prunes `@.strN`/`@.lstN`
-  globals unused by the body) before `--emit-llvm` prints it. level 0 is
-  identity; level 1 prunes dead globals. ADR 0088.
-- `feat(ast-ir-schema)`: publish a machine-readable JSON Schema (draft-07)
-  for the `--emit-ast` AST dump and the `--emit-llvm` IR text dump, exposed
-  as `pkg/lang.ASTIRSchema` and printed by the new `gustyc --schema` flag.
-  Self-describing agentic contract: agents validate AST dumps against it.
-  ADR 0087.
-- `feat(int-float)`: `int(x)` converts a value to an integer (`int("42")` -> 42,
-  `int(3.9)` -> 3 via float truncation); `float(x)` converts to a float
-  (`float("2.5")` -> 2.5, `float(3)` -> 3.0). `int` ships in both backends: the
-  AOT codegen folds `int` on literal int/string args to a compile-time constant.
-  `float` is interpreter-only (the AOT codegen has no float representation).
-  ADR 0086.
-- `feat(for-str)`: `for x in "abc"` iterates over each character of a string,
-  binding x to a single-char string per rune. Ships in the interpreter and the
-  AOT codegen (the codegen pre-processes a literal-string iterable into a
-  synthetic list of single-char string literals and reuses the list unroll).
-  ADR 0085.
-- `feat(zip)`: `zip(x, y)` combines two lists into a list of `[a, b]` pairs,
-  stopping at the shorter list (`zip([1, 2], [10, 20])` -> `[[1, 10], [2, 20]]`).
-  Interpreter-only; AOT codegen folds builtins only on literal args (nested
-  list construction not yet lowered). ADR 0084.
-- `feat(enumerate)`: `enumerate(x)` returns a list of `[index, value]` pairs
-  for each element of a list (`enumerate([10, 20, 30])` -> `[[0, 10], [1, 20],
-  [2, 30]]`). Interpreter-only; AOT codegen folds builtins only on literal
-  args (nested list construction not yet lowered). ADR 0083.
-- `feat(reversed)`: `reversed(x)` returns a reversed copy of a list or string
-  (`reversed([1, 2, 3])` -> `[3, 2, 1]`, `reversed("abc")` -> `"cba"`).
-  Ships in the interpreter and the AOT codegen (codegen folds on literal
-  list/string args via reversedExprs/reverseStr). ADR 0082.
-- `feat(generator-exprs)`: `(elem for var in iter [if cond])` parses as a
-  generator expression and evaluates (interpreter) to a list of yielded
-  values. Consumable by `for x in gen:` / `list(gen)`. AOT codegen has no
-  generator lowering yet. ADR 0081.
-- `feat(typed-exceptions)`: `raise ValueError("msg")` carries a class name + message;
-  `except ValueError:` matches the raised class exactly, `except Exception:`/bare
-  `except:` catch any. Unmatched exceptions propagate as `*EvalError{ExnType, ExnMsg}`.
-  Interpreter-only (AOT codegen has no exception handling yet). ADR 0080.
-- `feat(str-count-start-end)`: **`.count(sub[, start[, end]])`** counts
-  non-overlapping occurrences of `sub` within `s[start:end]`, mirroring
-  Python's `str.count(sub, start, end)` (interpreter path via
-  `strings.Count` on the sliced substring, `start`/`end` clamped to
-  `[0, len(s)]`). `"ababab".count("ab", 2)` is 2. Adds an Eval unit
-  test. ADR 0079.
-- `feat(str-split-maxsplit)`: **`.split([sep[, maxsplit]])`** splits on
-  `sep`, at most `maxsplit` separators (interpreter path; uses
-  `strings.SplitN` with `maxsplit+1` parts when `maxsplit` is given).
-  `"a-b-c-d".split("-", 1)[1]` is "b-c-d". Adds an Eval unit test.
-  ADR 0077.
-- `feat(str-lstrip-rstrip-chars)`: **`.lstrip([chars])`** /
-  **`.rstrip([chars])`** trim leading / trailing whitespace, or the given
-  `chars` when provided (interpreter path via `TrimLeftFunc`/`TrimRightFunc`
-  with `unicode.IsSpace`, or `TrimLeft`/`TrimRight`). `"xxhi".lstrip("x")`
-  is "hi". Adds an Eval unit test. ADR 0076.
-- `feat(str-strip-chars)`: **`.strip([chars])`** trims whitespace, or the
-  given `chars` when provided (interpreter path via `strings.TrimSpace` /
-  `strings.Trim`). `"xxhi xx".strip("x")` is "hi ". Adds an Eval unit
-  test. ADR 0075.
-- `feat(str-expandtabs)`: **`.expandtabs(tabsize)`** replaces each tab
-  with spaces to the next tab stop of size `tabsize` (interpreter path). A
-  string with no tabs is unchanged. Adds an Eval unit test. ADR 0074.
-- `feat(str-removeprefix-suffix)`: **`.removeprefix(prefix)`** /
-  **`.removesuffix(suffix)`** return the string without the prefix / suffix
-  when it is present, else unchanged (interpreter path via
-  `strings.TrimPrefix`/`TrimSuffix`). `"hello".removeprefix("he")` is
-  "llo". Adds an Eval unit test. ADR 0073.
-- : **** splits
-  from the right (interpreter path; with no , all splits — the
-  same parts as ). With , the left-most parts are joined
-  and the last  separators split. 
-  is "a-b-c". Adds an Eval unit test. ADR 0078.
-- `feat(str-rsplit)`: **`.rsplit(sep)`** splits the string on `sep` from
-  the right (interpreter path; with no `maxsplit`, all splits — the same
-  parts as `split`). `"a-b-c".rsplit("-")[2]` is "c". Adds an Eval
-  unit test. ADR 0072.
-- `feat(str-index)`: **`.index(sub)`** returns the index of the first
-  occurrence of `sub`, raising "substring not found" when absent
-  (interpreter path; like `find` but errors instead of returning -1).
-  Adds an Eval unit test. ADR 0071.
-- `feat(str-ljust-rjust)`: **`.ljust(width)`** / **`.rjust(width)`** pad
-  with spaces on the right / left to `width` in the interpreter path:
-  `"ab".ljust(4)` is "ab  ", and a string already at/over width is
-  unchanged. Adds an Eval unit test. ADR 0070.
-- `feat(str-zfill)`: **`.zfill(width)`** pads with leading zeros to `width`
-  in the interpreter path: `"42".zfill(5)` is "00042", and a string
-  already at/over width is unchanged. Adds an Eval unit test. ADR 0069.
-- `feat(sorted-builtin)`: **`sorted(list)`** returns a copy of the list
-  with elements sorted (interpreter path; ints by value, strings by content
-  via `lessVal`). `sorted([3, 1, 2])[0]` is 1. Adds an Eval unit test.
-  ADR 0068.
-- `feat(str-isspace)`: **`.isspace()`** returns 1 if every rune is
-  whitespace (and the string is non-empty), else 0, in **both** paths: the
-  interpreter checks `unicode.IsSpace`; the codegen folds it to
-  `i32 1`/`i32 0` (`print("   ".isspace())` emits `i32 1`). Adds
-  Eval/IR/integration tests. ADR 0067.
-- `feat(str-isalnum)`: **`.isalnum()`** returns 1 if every rune is
-  alphanumeric (and the string is non-empty), else 0, in **both** paths:
-  the interpreter checks `unicode.IsLetter`/`unicode.IsDigit`; the codegen
-  folds it to `i32 1`/`i32 0` (`print("abc123".isalnum())` emits
-  `i32 1`). Adds Eval/IR/integration tests. ADR 0066.
-- `feat(str-partition)`: **`.partition(sep)`** returns a list
-  `[head, sep, tail]` split at the first occurrence of `sep` (or
-  `[s, "", ""]` when absent) in the interpreter path.
-  `"a-b-c".partition("-")[0]` is "a". Adds an Eval unit test. ADR 0065.
-- `feat(str-islower-isupper)`: **`.islower()`** / **`.isupper()`** return
-  1 if there is at least one cased rune and all cased runes are lowercase /
-  uppercase, else 0, in **both** paths: the interpreter scans cased runes;
-  the codegen folds to `i32 1`/`i32 0` (`print("abc".islower())` emits
-  `i32 1`). Adds Eval/IR/integration tests. ADR 0064.
-- `feat(str-isalpha)`: **`.isalpha()`** returns 1 if every rune is
-  alphabetic (and the string is non-empty), else 0, in **both** paths: the
-  interpreter checks `unicode.IsLetter`; the codegen folds it to
-  `i32 1`/`i32 0` (`print("abc".isalpha())` emits `i32 1`). Adds
-  Eval/IR/integration tests. ADR 0063.
-- `feat(str-isdigit)`: **`.isdigit()`** returns 1 if every rune is a digit
-  (and the string is non-empty), else 0, in **both** paths: the interpreter
-  checks `unicode.IsDigit`; the codegen folds it to `i32 1`/`i32 0`
-  (`print("123".isdigit())` emits `i32 1`). Adds Eval/IR/integration
-  tests. ADR 0062.
-- `feat(list-count)`: **`.count(value)`** returns the number of
-  occurrences of `value` in a list (interpreter path; elements compare by
-  string content via `dictKeyEq`). `["a", "b", "a"].count("a")` is 2.
-  Adds an Eval unit test. ADR 0061.
-- `feat(str-swapcase)`: **`.swapcase()`** swaps the case of each rune in
-  **both** paths via a shared `swapcase` helper (`strings.Map` using
-  `unicode.IsUpper`), folded in `stringConst`/`stringVal` and the call
-  dispatch (`print(len("HeLLo".swapcase()))` emits `i32 5`). Adds
-  Eval/IR/integration tests. ADR 0060.
-- `feat(str-title)`: **`.title()`** capitalizes the first rune of each
-  whitespace-separated word in **both** paths via a shared `title` helper
-  (`strings.Map` tracking the previous rune), folded in `stringConst`/
-  `stringVal` and the call dispatch
-  (`print(len("hello world".title()))` emits `i32 11`). Adds Eval/IR/
-  integration tests. ADR 0059.
-- `feat(str-capitalize)`: **`.capitalize()`** uppercases the first rune and
-  lowercases the rest in **both** paths via a shared `capitalize` helper:
-  the interpreter calls it directly; the codegen folds it in
-  `stringConst`/`stringVal` and the call dispatch
-  (`print(len("hello".capitalize()))` emits `i32 5`). Adds Eval/IR/
-  integration tests. ADR 0058.
-- `feat(str-rfind)`: **`.rfind(sub)`** returns the index of the last
-  occurrence of `sub` (or -1 if absent) in **both** paths: the interpreter
-  applies `strings.LastIndex`; the codegen constant-folds it to an `i32`
-  literal (`print("abcabc".rfind("bc"))` emits `i32 4`). Adds
-  Eval/IR/integration tests. ADR 0057.
-- `feat(dict-get)`: **`.get(key[, default])`** returns the value for `key`,
-  or `default` when absent, mirroring Python's `dict.get`. Dict keys now
-  compare by string content (`dictKeyEq`), fixing dict indexing `d[key]`
-  which previously failed on unboxed string keys. Adds an Eval unit test.
-  ADR 0056.
-- `feat(str-join)`: **`.join(list)`** joins a list of string elements with
-  the receiver as separator in **both** paths: the interpreter evaluates the
-  list arg and applies `strings.Join`; the codegen folds the receiver and a
-  constant list of string elements (`print("-".join(["a", "b", "c"]))`
-  emits the global "a-b-c"). Adds Eval/IR/integration tests. ADR 0055.
-- `feat(str-lstrip-rstrip)`: **`.lstrip()`** / **`.rstrip()`** remove leading
-  / trailing whitespace (any `unicode.IsSpace` rune) in **both** paths: the
-  interpreter applies `TrimLeftFunc`/`TrimRightFunc`; the codegen
-  constant-folds them to a trimmed string constant
-  (`print(len("  hi  ".lstrip()))` emits `i32 4`). Adds Eval/IR/integration
-  tests. ADR 0054.
-- `feat(str-count)`: **`.count(sub)`** returns the number of non-overlapping
-  occurrences of `sub` in **both** paths: the interpreter applies
-  `strings.Count`; the codegen constant-folds it to an `i32` literal
-  (`print("ababab".count("ab"))` emits `i32 3`). Adds Eval/IR/integration
-  tests. ADR 0053.
-- `feat(str-startswith-endswith)`: **`.startswith(sub)`** / **`.endswith(sub)`**
-  return 1 or 0 in **both** paths: the interpreter applies
-  `strings.HasPrefix`/`strings.HasSuffix`; the codegen constant-folds them to
-  `i32 1`/`i32 0`. Adds Eval/IR/integration tests. ADR 0052.
-- `feat(str-find)`: **`.find(sub)`** returns the index of the first
-  occurrence of `sub` (or -1 if absent) in **both** paths: the interpreter
-  applies `strings.Index`; the codegen constant-folds it to an `i32` literal
-  (`print("abcabc".find("bc"))` emits `i32 1`). Adds Eval/IR/integration
-  tests. ADR 0051.
-- `feat(str-replace)`: **`.replace(old, new)`** replaces every occurrence in
-  **both** paths: the interpreter evaluates both args as strings and applies
-  `strings.ReplaceAll`; the codegen constant-folds the receiver and both
-  constant string args (`print("aXbXc".replace("X", "-"))` emits the folded
-  global "a-b-c"). Adds Eval/IR/integration tests. ADR 0050.
-- `feat(str-eq)`: **string equality `==` / `!=`** folds in **both** paths. The
-  interpreter compares string contents (`sval`) instead of handles; the
-  codegen constant-folds via `stringVal` before the int comparison. Adds
-  Eval/IR/integration tests. ADR 0049.
-- `feat(str-split)`: **`.split()` folds to substring count** — `dictMethodElems`
-  gains a `split` case (space-separated, matching the interpreter default), so
-  `len("a b c".split())` -> 3 folds in the AOT codegen. Adds Eval/IR/
-  integration tests. ADR 0048.
-- `feat(str-index)`: **string indexing** `"abc"[1]` -> 98 ('b') in **both**
-  paths. The interpreter's Index gains a `str` kind returning the char code;
-  the codegen's Index constant-folds `*StrLit` via `stringVal`. Adds
-  Eval/IR/integration tests. ADR 0047.
-- `feat(dict-minmax)`: **`min`/`max` now fold dict-method Call args** — the
-  min/max elems resolution wires `dictMethodElems`, so
-  `max({1: 2, 3: 4}.keys())` -> 3 and `min({1: 2, 3: 4}.values())` -> 2 in
-  the AOT codegen. Adds Eval/IR/integration tests. ADR 0046.
-- `feat(dict-items)`: **`.items()` on constant dict literals** — the
-  interpreter now builds a list of `[key, value]` pairs, and the AOT codegen
-  folds `len({1: 2, 3: 4}.items())` to the pair count 2 (via `dictMethodElems`
-  returning keys). Adds Eval/IR/integration tests. ADR 0045.
-- `feat(list-append)`: **`.append()` on constant list literals** constant-folds
-  in the AOT codegen: `[1, 2, 3].append(4)` lowers to `[1, 2, 3, 4]`, so
-  `len`/`sum` work. Adds a list-method branch in the `Attr` callee path and
-  extends `dictMethodElems` to fold append. Adds Eval/IR/integration tests.
-  ADR 0044.
-- `feat(dict-methods)`: **`.keys()` and `.values()`** on constant dict literals
-  constant-fold in the AOT codegen: `{1: 2, 3: 4}.keys()` lowers to a list
-  `[1, 3]` and `.values()` to `[2, 4]`, so `len(...)`/`sum(...)` fold. Adds a
-  `dictMethodElems` helper used by `len` and `sum`, and a dict-method branch
-  in the `Attr` callee path. Adds Eval/IR/integration tests. ADR 0043.
-- `feat(print-string-methods)`: `print` now lowers any constant-foldable
-  string arg via `g.stringVal(a)` (not just `*StrLit`), so
-  `print("AbC".upper())` emits the folded string global. Resolves the print
-  limitation in ADR 0042. Adds IR test `TestIRStrMethodPrintLowersString`
-  and integration test `TestExecStrMethodPrint`.
-- `feat(string-methods)`: **constant-fold string methods** in the AOT codegen:
-  `.upper()`, `.lower()`, `.strip()` on constant string literals fold at
-  codegen time (package-level `stringConst` Call-folding + `irGen` `stringVal`
-  Call-folding), so `len("AbC".upper())` -> 3. Adds IR tests
-  (`TestIRStrMethod*`), interpreter Eval tests (`TestGenStrMethod`), and an
-  integration test (`TestExecStrMethod`). ADR 0042.
-- `feat(lambda)`: **`lambda` anonymous functions** in **both** the interpreter
-  and the AOT codegen. `(lambda x: int: x + 1)(5)` -> 6 and `f = lambda x: int:
-  x * 2; f(3)` -> 6. A lambda is lowered to a closure exactly like `def`: the
-  interpreter allocs a closure capturing the environment; the codegen emits an
-  anonymous FuncDef (`lambda_N`) at module level (globals builder) and a call
-  to it. Named lambdas resolve via a new `g.lambdas` map. Adds Eval tests
-  (`TestGenLambdaInline`/`Named`), IR tests (`TestIRLambda*`), and integration
-  tests (`TestExecLambda*`). ADR 0041.
-- `feat(codegen)`: **Comprehension indexing** — `d[key]` on a lowered **dict
-  comprehension** now folds to the mapped constant value (keys recorded via a
-  new `compKeys` map), erroring `key not found` when absent; `s[key]` on a
-  **set comprehension** is a membership test returning the element when
-  present, erroring `not in set` otherwise (interpreter semantics). Previously
-  the `Index` case treated every comprehension as a list-shaped struct and
-  GEP'd positionally, which was wrong for sets/dicts. Adds IR tests
-  (`TestIRDictComprehensionIndex*`, `TestIRSetComprehensionIndex*`) and
-  interpreter Eval tests (`TestGenDictComprehensionIndex`,
-  `TestGenSetComprehensionIndex`). ADR 0040.
-- `feat(codegen)`: **`sum`/`min`/`max` over set and dict literals** now fold
-  elements/keys in the AOT LLVM codegen (previously only list literals and
-  comprehension results were supported). Set literals fold `Elems`, dict
-  literals fold `Keys` (interpreter semantics). Adds IR tests
-  (`TestIRSumSetLiteral*`, `TestIRMinDictLiteral*`, `TestIRMaxSetLiteral*`)
-  and interpreter Eval tests (`TestGenMinSetLiteral`, `TestGenMaxSetLiteral`).
-- `feat(codegen)`: **Set and dict comprehensions** now lower to dedicated
-  `@.setN` / `@.dictN` globals in the AOT LLVM codegen (previously
-  interpreter-only). Set comprehensions deduplicate folded elements; dict
-  comprehensions fold key/value pairs into a `{i32, [n x i32], [n x i32]}`
-  global. Both support `len(...)` via the `compLen` map. Adds IR codegen tests
-  (`TestIRSetComprehension*`, `TestIRDictComprehension*`) and interpreter Eval
-  tests (`TestGenSetComprehensionLen`, `TestGenDictComprehensionLen`).
+## [v0.9.0] - 2026-09-17
 
-- `feat(aot)`: **`len` and list-index over runtime-variable-element lists** —
-  the AOT codegen's `emitList` required every list element to be an integer
-  literal, so `len([a, b])` and `[a, b][0]` failed with `list literal elements
-  must be integers` even though the interpreter accepts them. `len([a, b])`
-  now returns the element count directly (no `emitList` global), and
-  `[a, b][i]` evaluates the indexed element via `g.value` directly. Adds IR
-  checks (`TestIRRuntimeLenIndex`) and exec tests (len + index runtime cases).
-  ADR 0035.
+The v0.9.0 release gathers every feature added since v0.8.2 into a single
+milestone: a full Python-flavored language surface, an LLVM 20 AOT backend
+that mirrors the interpreter, and a machine-readable CLI for agents.
 
+### Added — language surface
 
-- `feat(aot)`: **`min`/`max`/`sum` over lists with runtime-variable elements** —
-  the interpreter folds `min`/`max`/`sum` over any list, but the AOT codegen
-  required every element to be an integer literal — `min([a, b])` failed with
-  `list literal elements must be integers`. The codegen now lowers each element
-  directly via `g.value` (an `icmp`+`select` chain for `min`/`max`, an `add`
-  chain for `sum`), so runtime-variable elements work exactly like literals.
-  Adds IR checks (`TestIRRuntimeListAgg`) and exec tests
-  (`TestExecSumMinMaxAbs` runtime-element cases). ADR 0034.
+- Indentation-aware lexer: `INDENT` / `DEDENT` tokens drive block nesting;
+  `#` comments run to end of line.
+- Functions: `def` with parameters, default and keyword arguments, and
+  inferred return types.
+- Anonymous functions: `lambda x: int: x + 1`, lowered to a closure exactly
+  like `def` in both backends.
+- Control flow: `if` / `elif` / `else`, `while`, `for ... in range(n)`,
+  `range(a, b)`, `range(a, b, step)`, and `for x in [...]`; optional loop
+  `else:` clauses; `break` / `continue`; `pass`.
+- Pattern matching: `match` with integer equality, `_` wildcard cases, and
+  list-destructuring patterns (`case [a, b]:`).
+- Data structures: inline `list` / `dict` / `set` literals, indexing, and
+  list / dict / set comprehensions.
+- Generators: `def g(): yield a; yield b` collects the yielded values.
+- Exceptions: `try` / `except` / `finally` with typed built-in exception
+  classes (`Exception`, `ValueError`, `TypeError`, `KeyError`, `IndexError`,
+  `RuntimeError`, `StopIteration`, `ZeroDivisionError`) and `raise`.
+- Classes & inheritance: `class Name:` with `self` methods, instance
+  attributes, `__init__`, multi-level `class Child(Base):` inheritance, and
+  `super()` delegation.
+- Decorators: `@dec def f:` applies `f = dec(f)` at definition time.
+- Modules: `import mod` loads `mod.gy` and binds `mod` as a namespace.
+- Gradual typing: optional type annotations on variables, parameters, and
+  returns, statically checked by `--verify`; `any` is the dynamic escape
+  hatch; untyped code falls back to dynamic dispatch.
 
+### Added — standard library
 
-- `feat(aot)`: **zero-argument `print()` in the LLVM AOT codegen** —
-  the interpreter's `print` with no arguments writes nothing (the arg loop is
-  empty), but the AOT codegen rejected `print()` with `print needs an
-  argument`. The codegen now accepts zero-argument `print()` and emits no
-  `printf` — a no-op that mirrors the interpreter exactly. Adds IR checks
-  (`TestIRZeroArgPrintCompilesWithLLC`), an interpreter stdout-capture unit
-  test, and exec tests (`TestExecMultiArgPrint` zero-arg cases). ADR 0033.
+- Core builtins: `len`, `print`, `range`, `sum`, `min`, `max`, `abs`,
+  `sorted` (with `reverse`), `reversed`, `enumerate`, `zip`, `any`, `all`,
+  `chr`, `ord`, `round`, and `int` / `float` / `str` conversions.
+- String methods: `upper`, `lower`, `strip`, `replace`, `find`, `rfind`,
+  `index`, `count`, `split`, `rsplit`, `join`, `partition`, `capitalize`,
+  `title`, `swapcase`, `ljust`, `rjust`, `zfill`, `expandtabs`,
+  `removeprefix`, `removesuffix`, `isdigit`, `isalpha`, `isalnum`,
+  `isspace`, `islower`, `isupper`.
+- Dict methods: `keys`, `values`, `items`, `get`.
+- List methods: `append`, `count`.
 
+### Added — LLVM 20 AOT codegen
 
-- `feat(aot)`: **`case _:` wildcard in the LLVM AOT `match` statement** —
-  the interpreter's `match` treats `case _:` as a wildcard that matches any
-  subject, but the AOT codegen lowered `_` as a normal pattern — it compared
-  the subject to an undefined `_` global (wrong: `case _:` only matched when
-  the subject was 0). The codegen now detects a `*Name` pattern with value
-  `"_"` and lowers `pat := sub`, making the `icmp eq` compare the subject to
-  itself (always true) — an unconditional branch to the case body, exactly like
-  the interpreter. Adds IR checks (`TestIRMatchWildcardCompilesWithLLC`) and
-  exec tests (`TestExecMatchWildcard`). ADR 0032.
+- `codegen.go` + `closure.go` emit deterministic, opaque-pointer LLVM IR
+  (LLVM 20 needs no `-opaque-pointers` flag) verified by `llc` and lowered to
+  a native executable.
+- The AOT backend lowers functions, `lambda` closures, control flow,
+  arithmetic, comparisons, boolean `and` / `or`, `print`, list/dict/set
+  literals, comprehensions, `len`, numeric builtins, and a wide range of
+  constant-folding string/dict operations
+  (e.g. `len("AbC".upper())` → `3`, `len("a b c".split())` → `3`,
+  `{1: 2, 3: 4}.keys()` → `[1, 3]`).
 
+### Added — CLI, REPL & agent interface
 
-- `feat(aot)`: **string-literal `print` arguments in the LLVM AOT codegen** —
-  the interpreter's `print` prints strings via `Repr` (e.g. `print("hi")`
-  writes `hi`), but the AOT codegen emitted `printf("%d\n", <str-ptr>)` —
-  passing a string pointer to a `%d` format (wrong output). The codegen now
-  detects string-literal `print` arguments and emits `printf("%s\n", <str>)`
-  for them, keeping `%d\n` for integer args, so `print("hi")` writes `hi\n`
-  and `print(1, "hi", 2)` writes `1\nhi\n2\n` in the AOT path exactly like
-  the interpreter. Adds IR checks (`TestIRMultiArgPrintCompilesWithLLC`),
-  interpreter stdout-capture unit tests, and exec tests (`TestExecMultiArgPrint`).
-  ADR 0031.
+- `gustyc` CLI: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`,
+  `--target`, `--opt-level`, `--lang`, `--json`, `--schema`, `--version`,
+  `--repl`, `--help`; plus a stateful REPL.
+- Machine-readable output for agents: `--json` results/diagnostics,
+  `--emit-ast` JSON AST dumps, `--emit-llvm` IR text dumps, and a `--schema`
+  draft-07 JSON Schema describing the AST/IR dump shapes.
+- Diagnostics carry source spans and messages
+  (`{"span": {"line": 1, "col": 5}, "msg": "...", "severity": "error"}`).
+- Deterministic exit codes: `0` ok, `1` runtime/eval error, `2` parse/usage
+  error.
+- Optimization: `--opt-level` runs compiler passes such as dead-global
+  elimination over the emitted IR.
 
+### Added — toolchain & tests
 
-- `feat(aot)`: **multi-argument `print` in the LLVM AOT codegen** —
-  the interpreter's `print` already wrote every argument to stdout (one per
-  line), but the AOT codegen silently dropped all but the first argument — it
-  emitted `printf` only for `Args[0]`. The codegen now emits one `printf("%d\n")`
-  per argument, so `print(1, 2, 3)` writes `1\n2\n3\n` in the AOT path exactly
-  like the interpreter. Adds IR checks (`TestIRMultiArgPrintCompilesWithLLC`),
-  an interpreter stdout-capture unit test (`TestEvalMultiArgPrint`), and
-  end-to-end exec tests (`TestExecMultiArgPrint`). ADR 0030.
+- Two execution backends kept in sync: the interpreter (`pkg/lang/jit.go`)
+  and the LLVM AOT codegen (`pkg/lang/codegen.go` + `closure.go`).
+- Integration suite drives the real pipeline — `source → codegen (IR) →
+  llc-20` (module verification + object) `→ cc link → run` — and asserts the
+  native binary's stdout matches the expected output.
+- CI workflow installs LLVM 20 and runs the unit + integration suites.
 
+## [v0.8.2] - 2023-05-08
 
-- `feat(aot)`: **`%` modulo operator in the LLVM AOT codegen** —
-  the interpreter already evaluated `%` (signed remainder), but the AOT
-  runtime path only folded it on constant operands and rejected it on runtime
-  operands (`unsupported operator "%"`). The codegen now lowers `%` to `srem`,
-  closing the interpreter-vs-AOT gap: `17 % 5` folds to `2` at compile time and
-  `x % 5` lowers to `srem i32` at runtime. Adds IR checks (`TestIRModuloCompilesWithLLC`),
-  interpreter unit tests, and end-to-end exec tests (`TestExecModulo`). ADR 0029.
+- Base release of gusty with the indentation-based lexer, parser, semantic
+  analysis, and LLVM codegen pipeline.
+- CLI and integration-test scaffolding.
 
-
-- `feat`: **multi-argument range iterables in comprehensions** —
-  `range(start, stop)` and `range(start, stop, step)` as comprehension
-  iterables in both the interpreter and the LLVM AOT codegen. The AOT path
-  unrolls the comprehension body over the stepped range at compile time; the
-  interpreter's `rangeBounds` and `range` builtin accept 1-3 args with a step.
-  Adds IR checks (`TestIRMultiArgRangeComprehension`) and end-to-end exec tests
-  (`TestExecMultiArgRangeComprehensionAOT`). ADR 0028.
-
-
-- `feat(aot)`: **aggregate builtins over comprehensions** — `len`, `sum`,
-  `min`, `max` now accept a lowered comprehension result in the LLVM AOT
-  codegen. `len([...])` loads the stored count field; `sum`/`min`/`max` fold
-  the folded comprehension elements (all constants) to a single constant at
-  codegen time. Adds IR checks (`TestIRAggregateOverComprehension`,
-  `TestIRSumFoldsComprehension`) and end-to-end exec tests
-  (`TestExecAggregateOverComprehensionAOT`). ADR 0027.
-
-
-- `feat`: **ternary conditional expressions** (`then if cond else otherwise`)
-  in both the interpreter and the LLVM AOT codegen. The condition is an
-  or-level expression; the `else` branch is a full expression, so nested
-  ternaries bind right. In the AOT path a constant condition folds to the taken
-  branch, and a runtime condition lowers to an LLVM `select i1 cond,
-  i32 then, i32 else` — allocation-free and block-free. The comprehension
-  iterable is parsed as an or-level expression so the comprehension's own `if`
-  filter is not mistaken for a ternary. Adds interpreter tests
-  (`TestEvalTernary`), IR checks (`TestIRTernary*`), and end-to-end exec tests
-  (`TestExecTernaryAOT`). ADR 0026.
-
-
-- `feat(aot)`: **list comprehensions in the LLVM AOT codegen** — list
-  comprehensions over a constant iterable (inline list literal or `range(n)`)
-  lower to a dedicated global struct, unrolled and constant-folded at compile
-  time. A constant `if` condition filters elements at compile time, and the
-  folded result can be indexed inline exactly like a list literal
-  (`[x * 2 for x in [1, 2, 3]][1]` → `getelementptr` + `load` at the constant
-  key). Like list/dict/set literals, comprehensions must be used inline (no
-  assignment-to-variable indirection) in the codegen path; the interpreter
-  evaluates comprehensions at runtime and is unchanged. Adds IR checks
-  (`TestIRComprehension*`) and exec tests (`TestExecListComprehensionAOT`).
-  ADR 0025.
-
-- `feat(aot)`: **string-constant concatenation + `len` in the LLVM AOT
-  codegen** — `+` on two string literals folds to a single concatenated
-  string constant, and `len` of a string-constant expression (including a
-  chain of `+`-concats) folds to its character count (`len("ab" + "cd")`
-  → 4). The semantic analyzer types `str + str` as `str` (no arithmetic
-  warning). Adds exec tests (`TestExecStringConstLen`), IR checks
-  (`TestIRStringConstLenFolds`), and interpreter parity tests
-  (`TestEvalStringConcatLen`). ADR 0024.
-
-- `feat(aot)`: **inline dict/set literals with constant-key indexing + `len`
-  in the LLVM AOT codegen** — `{1: 10, 2: 20}[1]`, `{1, 2, 3}[2]`, and
-  `len({1: 10, 2: 20})` now lower to dedicated global structs (dicts:
-  `{i32 count, [n x i32] keys, [n x i32] vals}`; sets: `{i32 count, [n x i32]
-  elems}`). Constant-key lookup folds at compile time; literals must be used
-  inline (no assignment-to-variable indirection), matching the list-literal
-  limitation. Interpreter indexes dicts/sets at runtime and is unchanged.
-  Adds exec tests (`TestExecDictSetLiterals`), IR checks
-  (`TestIRDictSetGlobals`), and interpreter parity tests
-  (`TestEvalDictSetIndexLen`). ADR 0023.
-
-- `feat(aot)`: **boolean `and`/`or` operators + `//` floor division in the
-  LLVM AOT codegen** — the parser/semantic/interpreter already supported
-  `and`/`or` and `//`, but codegen rejected them as unsupported operators.
-  `and`/`or` now lower to i1 logic zero-extended to `i32` (evaluate-both-then-
-  combine, mirroring the interpreter) and `//` lowers to `sdiv`; literal
-  operands are constant-folded. Adds exec tests (`TestExecAndOrBool`), IR
-  checks (`TestIRAndOrCompilesWithLLC`), and interpreter parity tests
-  (`TestEvalAndOrFloorDiv`). ADR 0022.
-
-- `feat(aot)`: **`for` loops over inline list literals in the LLVM AOT
-  codegen** — `for x in [1, 2, 3]:` now ships in **both** backends (previously
-  range-only in AOT). Lowered by unrolling one body block per constant element
-  (`break`/`continue` and the `else:` clause behave exactly like `range`
-  loops), mirroring the interpreter's boxed-list iteration. Adds IR checks
-  (`TestIRForListCompilesWithLLC` / `TestIRForListUnrolls`), interpreter unit
-  tests (`TestEvalForOverList`), and end-to-end exec tests
-  (`TestExecForListLiteral`). ADR 0021.
-
-- `feat(aot)`: **`sum`/`min`/`max`/`abs` builtins in the LLVM AOT codegen** —
-  these numeric builtins now ship in **both** backends (interpreter + AOT),
-  not just the interpreter. `sum`/`min`/`max` fold over an inline list
-  literal's global struct (`add` / `icmp`+`select` chains, constant GEP only);
-  `abs` emits `select` and constant-folds literal arguments. Adds unit IR
-  checks (`TestIRSumMinMaxAbs`) and end-to-end exec tests
-  (`TestExecSumMinMaxAbs`). ADR 0020.
-
-- `feat(tools)`: **pi-loop CLI** — pi-loop now connects using **only** the
-  embedded provider config (`local-vllm` @ `http://localhost:8000/v1`,
-  `openai-completions`, apiKey `dummy`, model `deepseek-v4-flash`). It writes
-  the provider+model into `<agentDir>/models.json` on startup and passes
-  `model: "deepseek-v4-flash"` to `createAgentSession`. — `tools/pi-loop/pi-loop.mjs` connects to a
-  local pi agent via the pi SDK (`createAgentSession`) and drives the AGENTS.md
-  loop round by round. It persists `{round, lastCommit}` to
-  `.pi-loop-state.json` on any stop (SIGINT/error/target). On restart it resumes
-  at the next round if committed progress matches HEAD, or re-executes AGENTS.md
-  from round 1 if no progress exists.
-
-- `feat(interp)`: **sum builtin** — `sum([1,2,3])` → 6 over a boxed list/set. Adds TestSumBuiltin.
-
-- `feat(interp)`: **dict keys/values methods** — `d.keys()` / `d.values()` return boxed lists in insertion order. Adds TestDictMethods.
-
-- `feat(interp)`: **list append method** — `xs.append(x)` mutates a boxed list in place and returns it. Adds TestListAppend.
-
-- `feat(interp)`: **string methods** — `upper()`, `lower()`, `strip()`, `split(sep?)` dispatch on boxed strings in `evalCall` (interpreter path). Adds TestStrMethods.
-
-- `feat(interp)`: **min / max / abs builtins** — standard-library numeric builtins (`min([3,1,2])` → 1, `max` → 3, `abs(-5)` → 5), registered in the semantic analyzer. Fixes a heap-handle collision: boxed ids now start at `1 << 20` so `Repr` of a raw small int never misformats an object handle (stack overflow on `min([3,1,2])`).
-
-- `feat(codegen)`: **constant folding** — integer-literal binary expressions (`+ - * / %` and comparisons) fold to constants at compile time (e.g. `x = 1 + 2` emits `i32 3`, no `add`). Adds TestIRConstantFolding.
-
-- `feat(cli)`: **`--json` agent output** — `gustyc --json` emits `{"result"/"ok"/"error"/"diagnostics", "exit"}` JSON for `--eval`/`--verify`, with stable exit codes. Adds a CLI JSON test.
-
-- `feat(interp)`: **comprehensions over range** — `[... for x in range(n)]` now evaluates (previously only list iteration worked); guards `o` nil so range dict/list comps don't panic. Adds a comprehension interpreter test.
-
-- `feat(interp)`: **floats** — float literals evaluate to boxed floats; `+ - * /` between floats and ints produce floats; comparisons (`== < <= > >=`) support floats; `print`/`Repr` render with `%g`. Adds `allocFloat`/`floatOf` and a float interpreter test.
-
-- `feat(interp)`: **strings** — string literals evaluate to boxed strings in the interpreter; `+` concatenates, `len(s)` counts chars, `print(s)` writes output (previously `print` discarded it). Adds `Repr` rendering for values.
-
-- `feat(cli)`: **`gustyc` CLI/REPL** — new `cmd/gustyc` with `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`, `--target`, `--opt-level`, `--lang` (self-describing), `--version`, `--repl`, `--help`; stable exit codes (0 ok, 1 runtime, 2 parse); stateful REPL. Adds exported `lang.Parse`.
-
-- `feat(interp+llvm)`: **`pass` (no-op statement)** — `pass` parses as a
-  dedicated `PassStmt` (previously fell through to an undefined `Name`), is a
-  pure no-op in both the interpreter and the LLVM AOT codegen, and is a valid
-  placeholder in function/loop/branch bodies. Adds unit + integration tests.
-
-- `feat(interp+llvm)`: **`elif` chains** — the parser already built
-  `IfStmt.Elifs`, but neither the interpreter nor the LLVM codegen executed
-  them, and the semantic analyzer skipped elif bodies entirely (and scoped
-  if/else bodies to child scopes, hiding assignments from the enclosing
-  scope). Both backends now evaluate elif branches; the analyzer analyzes
-  elif bodies and analyzes if/while/for bodies in the enclosing scope so
-  assignments flow outward (matching the runtime's shared-vars model).
-
-- `feat(llvm)`: **inline list literals with constant indexing + len**
-  in the AOT codegen — `[1,2,3][1]` and `len([1,2,3])` lower to a
-  dedicated global struct with constant-GEP loads.
-
-- `feat(interp)`: **modules / imports** — `import mod` loads `mod.gy`,
-  evaluates it, and binds `mod` as a module namespace; top-level variables and
-  functions are accessed via `mod.name` and `mod.fn(args)`. A module can
-  import other modules. Parser/AST already had `ImportStmt`; the evaluator now
-  runs it.
-- `feat(interp)`: **class inheritance** — `class Child(Base):` inherits
-  `Base`'s methods and `__init__`; instance/class method and attribute lookup
-  walks the whole base chain (multi-level). An overridden method can delegate
-  to the base implementation with `super()` (resolves methods on the base
-  class of the currently-executing class, bound to the current instance).
-- `feat(interp)`: **decorators** — `@dec` lines before a `def` apply at
-  definition time (`@dec def f` -> `f = dec(f)`), bottom-up for multiple
-  decorators. Parser accepts `@`, analysis infers decorator expressions, and
-  the evaluator applies them to the function value.
-- `feat(interp)`: **closures** — a `def` nested in a function body captures the
-  enclosing scope, can be returned/stored/called (`m = add(1); m(2)`).
-  Semantic analysis treats calls to function-typed variables with unknown
-  return type as dynamic so assigned names aren't flagged undefined.
-- `feat(interp)`: `match` `case _:` wildcard always matches (interpreter).
-- `feat(lang)`: `for i in range(a, b)` iterates `a`..`b-1` end-to-end (interpreter + LLVM codegen, llc-clean).
-- `feat(semantic)`: reject `break`/`continue` outside a loop with a diagnostic;
-  track loop depth through `while`/`for` bodies.
-- `feat(lang)`: add `break` and `continue` loop control in the parser,
-  interpreter, and IR emitter (loop-label tracking; llc-clean). Loop bodies now
-  go through the full statement dispatcher, fixing nested `if`/control flow
-  inside `while`/`for` bodies.
-- `feat(codegen)`: emit `match` as a chain of integer comparisons with
-  terminators on every basic block (llc-clean IR).
-- `feat(interp)`: evaluate `match` statements with literal patterns in the
-  interpreter.
-- `feat(interp)`: evaluate `if`/`elif`/`else`, `while`, and `for ... in
-  range(n)` in the interpreter.
-- `feat(interp)`: register and call user-defined functions in the
-  interpreter; bind params in a fresh scope and return via `evalBody`.
-- `feat(semantic)`: infer user function signatures by binding call argument
-  types to parameters and analyzing the body; check argument counts.
-- `feat(semantic)`: indentation-aware lexer producing `INDENT`/`DEDENT`.
-- `feat(codegen)`: deterministic textual LLVM IR emitter (opaque pointers)
-  replacing the crashing go-llvm `CreateCall` path; verified by `llc
-  -opaque-pointers`.
-- `feat(lang)`: Python-like indentation-based language with functions, control
-  flow, match, print, and range.
+[Unreleased]: https://github.com/donutloop/gusty/compare/v0.9.0...HEAD
+[v0.9.0]: https://github.com/donutloop/gusty/compare/v0.8.2...v0.9.0
+[v0.8.2]: https://github.com/donutloop/gusty/releases/tag/v0.8.2
