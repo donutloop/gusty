@@ -14,6 +14,15 @@
   builds; unit tests (`build_test.go`) and whole-program CLI integration tests
   (`integration/build_test.go`).
 
+### Fixed — string-constant array sizes in LLVM codegen
+
+- `fmtStr` returned the escaped IR length (`len(f)+1`) for the printf format
+  GEP while emitting a `[len(format)+1 x i8]` global, producing a mismatched
+  GEP (`[6 x i8]` over a `[4 x i8]` constant). It now returns the decoded byte
+  count `len(format)+1` so the GEP matches the emitted array.
+- `strConst` sized the emitted string global with the escaped length
+  (`len(esc)+1`); it now uses the decoded raw length `len(s)+1`.
+
 
 All notable changes to gusty are documented here, newest first.
 This project adheres to [Semantic Versioning](https://semver.org) with

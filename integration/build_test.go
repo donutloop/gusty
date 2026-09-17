@@ -683,3 +683,37 @@ func TestCLIBuildLargeData(t *testing.T) {
 		writeSrc(t, dir, "data_c.gy", largeDataC),
 	}, largeDataWant)
 }
+
+// expectedIRWant is the exact LLVM IR `gustyc --emit-llvm` must emit for the
+// source `print(40 + 2)`: constant-folding folds `40 + 2` to `42` at codegen,
+// so the call site carries the immediate. Compared byte-for-byte.
+const expectedIRWant = `@.fmt1 = private unnamed_addr constant [4 x i8] c"%d\0A\00"
+@env_store = internal global [4096 x i32] zeroinitializer
+@env_count = internal global i32 0
+declare i32 @printf(i8*, ...)
+define i32 @main() {
+entry:
+  %t1 = call i32 @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.fmt1, i32 0, i32 0), i32 42)
+  ret i32 0
+}
+!llvm.module.flags = !{!0}
+!0 = !{i32 2, !"PIC Level", i32 2}
+`
+
+
+// TestCLIEmitsExpectedIR drives the whole gustyc program's `--emit-llvm` path
+// and asserts the emitted LLVM IR matches the expected code byte-for-byte.
+func TestCLIEmitsExpectedIR(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	cmd := exec.Command(bin, "--emit-llvm", "print(40 + 2)")
+	got, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("gustyc --emit-llvm: %v", err)
+	}
+	if string(got) != expectedIRWant {
+		t.Errorf("emitted IR mismatch:\n got:\n%s\nwant:\n%s", got, expectedIRWant)
+	}
+}

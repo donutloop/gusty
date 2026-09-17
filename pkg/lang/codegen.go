@@ -127,8 +127,11 @@ func (g *irGen) fmtStr(format string) (string, int) {
 	// must stay single so printf sees a real format directive (e.g. %d -> 42).
 	f := strings.ReplaceAll(format, "\\", "\\\\")
 	f = strings.ReplaceAll(f, "\n", "\\0A")
+	// The array size must be the decoded byte count of the emitted constant:
+	// each IR \\0A escape decodes to a single newline byte, so the raw
+	// (unescaped) format length plus one trailing null is correct.
 	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(format)+1, f))
-	return name, len(f) + 1
+	return name, len(format) + 1
 }
 
 // strConst emits a global for a string literal operand.
@@ -137,7 +140,9 @@ func (g *irGen) strConst(s string) string {
 	name := fmt.Sprintf("@.str%d", g.strIdx)
 	esc := strings.ReplaceAll(s, "\\", "\\\\")
 	esc = strings.ReplaceAll(esc, "\n", "\\0A")
-	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(esc)+1, esc))
+	// Array size is the decoded byte count: the raw string length (newlines
+	// and backslashes are single bytes) plus one trailing null.
+	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(s)+1, esc))
 	return name
 }
 
