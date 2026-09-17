@@ -2049,6 +2049,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		} else if sl, ok := c.Args[0].(*SetLit); ok {
 			elems = sl.Elems
 		} else if dl, ok := c.Args[0].(*DictLit); ok {
+			if len(dl.Keys) > 0 {
+				// The interpreter rejects non-empty dict literals for sum.
+				return "", fmt.Errorf("sum expects a list or set")
+			}
 			elems = dl.Keys
 		}
 		if elems == nil {
@@ -2116,6 +2120,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		} else if sl, ok := c.Args[0].(*SetLit); ok {
 			elems = sl.Elems
 		} else if dl, ok := c.Args[0].(*DictLit); ok {
+			if len(dl.Keys) > 0 {
+				// The interpreter rejects non-empty dict literals for min/max.
+				return "", fmt.Errorf("%s expects a list or set", fnName)
+			}
 			elems = dl.Keys
 		}
 		if elems == nil {

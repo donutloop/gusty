@@ -708,6 +708,24 @@ func TestOverEmptyNestedListsRun(t *testing.T) {
 	}
 }
 
+func TestRejectNonEmptyDicts(t *testing.T) {
+	// The interpreter rejects non-list/set collections for sum/min/max/any/all;
+	// the codegen must match by rejecting non-empty dict literals too.
+	for _, src := range []string{
+		`print(sum({1: 2}))`,
+		`print(min({1: 2}))`,
+		`print(max({1: 2}))`,
+	} {
+		res, err := lang.Compile(src)
+		if err == nil {
+			t.Fatalf("Compile(%q) should error, got:\n%s", src, res.IR)
+		}
+		if !strings.Contains(err.Error(), "expects a list or set") {
+			t.Fatalf("Compile(%q) error = %v, want 'expects a list or set'", src, err)
+		}
+	}
+}
+
 func TestOverEmptyCollectionsRun(t *testing.T) {
 	got := compileAndRun(t, `print(sum([]))`)
 	if got != "0\n" {

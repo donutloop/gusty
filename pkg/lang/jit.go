@@ -2379,6 +2379,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return 0, err
 			}
 			var vals []int64
+			if o, ok := e.heap[lo]; ok && o.kind == "dict" {
+				// The interpreter rejects dict literals for min/max (matching
+				// codegen); scalars are treated as single-element collections.
+				return 0, &EvalError{Msg: "min/max expects a list or set"}
+			}
 			if o, ok := e.heap[lo]; ok && (o.kind == "list" || o.kind == "set") {
 				vals = o.elems
 			} else {

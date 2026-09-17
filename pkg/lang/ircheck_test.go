@@ -524,9 +524,12 @@ func TestIRSumSetLiteralCompilesWithLLC(t *testing.T) {
 	llcCompiles(t, "print(sum({1, 2, 3}))")
 }
 
-func TestIRMinDictLiteralCompilesWithLLC(t *testing.T) {
-	// min over a dict literal folds over keys (interpreter semantics).
-	llcCompiles(t, "print(min({1: 10, 2: 20}))")
+func TestIRMinDictLiteralRejectedWithLLC(t *testing.T) {
+	// min/max over a non-empty dict literal is rejected, matching the
+	// interpreter (which rejects non-list/set collections for min/max).
+	if _, err := Compile("print(min({1: 10, 2: 20}))"); err == nil {
+		t.Fatalf("min over a dict should be rejected")
+	}
 }
 
 func TestIRMaxSetLiteralCompilesWithLLC(t *testing.T) {
