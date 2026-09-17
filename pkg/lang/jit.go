@@ -322,6 +322,70 @@ func NewEvaluator() *Evaluator {
 // EvalProgram evaluates prog's top-level statements and returns the value of
 // the final expression statement (or last assignment). It returns an error on
 // unsupported constructs.
+
+// collect implements a mark-and-sweep memory model pass. Roots are the
+// top-level environment bindings (e.Vars). It marks every heap object
+// reachable through containers (list/dict/set) and closure environments,
+// then sweeps unreachable objects. It runs before each top-level statement:
+// values from the prior statement that were bound into Vars are marked and
+// kept; values that were only temporaries are freed.
+func (e *Evaluator) Collect() {
+	if len(e.heap) == 0 {
+		return
+	}
+	marked := map[int64]bool{}
+	var mark func(id int64)
+	mark = func(id int64) {
+		if id <= 0 || marked[id] {
+			return
+		}
+		o, ok := e.heap[id]
+		if !ok {
+			return
+		}
+		marked[id] = true
+		switch o.kind {
+		case "list", "set":
+			for _, v := range o.elems {
+				mark(v)
+			}
+		case "dict":
+			for _, k := range o.elems {
+				mark(k)
+			}
+			for _, v := range o.dvals {
+				mark(v)
+			}
+		case "closure":
+			for _, v := range o.env {
+				mark(v)
+			}
+		}
+		// class/object/import/method kinds store ids in attrs (methods, fields).
+		for _, v := range o.attrs {
+			mark(v)
+		}
+		for _, v := range o.env {
+			mark(v)
+		}
+	}
+	for _, id := range e.Vars {
+		mark(id)
+	}
+	for id, o := range e.heap {
+		// Conservative sweep: only pure-data objects are collected. Class,
+		// method, closure, import, and module objects may hold references
+		// outside this heap (e.g. class method tables), so they are never
+		// freed here.
+		switch o.kind {
+		case "list", "dict", "set", "str", "int", "float":
+			if !marked[id] {
+				delete(e.heap, id)
+			}
+		}
+	}
+}
+
 func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 	var last int64
 	for _, st := range prog.Stmts {

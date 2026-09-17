@@ -3,6 +3,13 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(memory-model)`: add an explicit mark-and-sweep GC primitive
+  `ev.Collect()` to the evaluator: roots are the top-level env bindings; it
+  marks reachable objects through list/dict/set elems, dict values, closure
+  envs, and attr tables; it sweeps unreachable pure-data objects
+  (list/dict/set/str/int/float). Conservative: class/method/closure/import
+  objects are never freed. Explicit end-of-program API avoids freeing live
+  generator/closure temporaries during evaluation. ADR 0089.
 - `feat(opt-passes)`: make `--opt-level` real: `lang.OptimizeIR` runs a
   pure-Go dead-global elimination pass over emitted IR (prunes `@.strN`/`@.lstN`
   globals unused by the body) before `--emit-llvm` prints it. level 0 is
