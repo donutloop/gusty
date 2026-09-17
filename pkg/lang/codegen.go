@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -2651,6 +2652,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("round expects one argument")
 		}
+			if g.isFloat(c.Args[0]) {
+				if fv, ok := g.floatEval(c.Args[0]); ok {
+					return fmt.Sprintf("%d", int64(math.Round(fv))), nil
+				}
+			}
+
 		rv, rerr := g.constIntVal(c.Args[0])
 		if rerr != nil {
 			return "", fmt.Errorf("round: codegen folds only a constant integer arg")

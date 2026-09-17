@@ -989,6 +989,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "fsub double") {
 		t.Fatalf("float subtraction should emit fsub, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(round(2.5))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("round(2.5) should round to 3, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
