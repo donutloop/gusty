@@ -111,6 +111,20 @@ func TestCLIEmitLLVMIndexCallElems(t *testing.T) {
 	}
 }
 
+func TestCLIEmitLLVMScalarMinMax(t *testing.T) {
+	// min/max accept a single scalar value (treated as a one-element
+	// collection); the emitted IR must contain the scalar itself.
+	for _, tc := range []struct{ src, want string }{
+		{`print(min(5))`, "i32 5"},
+		{`print(max(7))`, "i32 7"},
+	} {
+		out := cli(t, "--emit-llvm", tc.src)
+		if !strings.Contains(out, tc.want) {
+			t.Fatalf("emit-llvm %q: missing %q in IR:\n%s", tc.src, tc.want, out)
+		}
+	}
+}
+
 func TestCLIJSONType(t *testing.T) {
 	// --json --eval emits a structured result with a dynamic type field.
 	out := cli(t, "--json", "--eval=x = 42\nx")

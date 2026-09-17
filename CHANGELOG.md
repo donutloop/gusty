@@ -68,6 +68,9 @@ that mirrors the interpreter, and a machine-readable CLI for agents.
   element constant, matching the interpreter (see ADR 0109). `partition()`
   and `items()` stay compile-time errors (unrepresentable nested/string
   parts in the integer-element list model).
+- The AOT codegen accepts a single scalar argument to `min`/`max`,
+  treating it as a one-element collection: `min(5)` -> 5, `max(7)` -> 7
+  (see ADR 0110).
 
 ### Added — CLI, REPL & agent interface
 

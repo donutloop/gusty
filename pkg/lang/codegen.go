@@ -2161,6 +2161,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("%s expects one argument", fnName)
 		}
+		// min/max accept a single scalar value (treated as a one-element
+		// collection): min(5) -> 5, max(7) -> 7, matching the interpreter.
+		if il, ok := c.Args[0].(*IntLit); ok {
+			return fmt.Sprintf("%d", il.Value), nil
+		}
 		// min/max over a lowered comprehension: fold the constant elements.
 		if comp, ok := c.Args[0].(*Comp); ok {
 			if _, err := g.comp(b, comp); err != nil {

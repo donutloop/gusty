@@ -439,6 +439,8 @@ Standard-library numeric builtins:
     abs(-5)          # 5
 
 `min`/`max` accept a list or set (or a single value); `abs` takes one number.
+- The AOT codegen treats a single scalar argument to `min`/`max` as a
+  one-element collection: `min(5)` -> 5, `max(7)` -> 7 (see ADR 0110).
 Implemented in both the interpreter (REPL/`--eval`) and the LLVM AOT codegen.
 In the AOT path `min`/`max`/`sum` fold over an **inline list literal** (unrolled
 `icmp`+`select` / `add` chains over the list's global struct). Each element is
