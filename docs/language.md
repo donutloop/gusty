@@ -476,3 +476,8 @@ list construction is not yet lowered); see ADR 0084.
 `for x in "abc"` iterates over each character of a string (yielding a
 single-char string per rune). It is interpreter-only (the AOT codegen's `for`
 loop unrolls literal lists and ranges, but not literal strings); see ADR 0085.
+`int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
+(float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
+`float(3)` -> 3.0. `int` ships in both backends: the AOT codegen folds `int` on
+literal int/string args to a compile-time constant. `float` is
+interpreter-only (the AOT codegen has no float representation); see ADR 0086.

@@ -581,6 +581,20 @@ func TestReversedCodegen(t *testing.T) {
 	}
 }
 
+func TestIntCodegen(t *testing.T) {
+	// int(str) folds to the parsed decimal constant in the AOT codegen.
+	assertOutput(t, `print(int("42"))`, "42\n")
+	// int(int) is the identity.
+	assertOutput(t, `print(int(7))`, "7\n")
+	ir, err := lang.Compile(`print(int("42"))`)
+	if err != nil {
+		t.Fatalf("compile int: %v", err)
+	}
+	if !strings.Contains(ir.IR, `42`) {
+		t.Fatalf("expected folded int constant, got ir=%s", ir.IR)
+	}
+}
+
 func TestForStrCodegen(t *testing.T) {
 	ir, err := lang.Compile(`for x in "ab":
     print(x)`)

@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(int-float)`: `int(x)` converts a value to an integer (`int("42")` -> 42,
+  `int(3.9)` -> 3 via float truncation); `float(x)` converts to a float
+  (`float("2.5")` -> 2.5, `float(3)` -> 3.0). `int` ships in both backends: the
+  AOT codegen folds `int` on literal int/string args to a compile-time constant.
+  `float` is interpreter-only (the AOT codegen has no float representation).
+  ADR 0086.
 - `feat(for-str)`: `for x in "abc"` iterates over each character of a string,
   binding x to a single-char string per rune. Ships in the interpreter and the
   AOT codegen (the codegen pre-processes a literal-string iterable into a

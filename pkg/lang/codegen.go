@@ -1810,6 +1810,24 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("str on non-integer")
 		}
 		return g.strConst(fmt.Sprintf("%d", n)), nil
+	case "int":
+		// int(x) folds to a constant on literal args: int(str) parses the
+		// decimal string, int(int) is the identity. float() stays
+		// interpreter-only: the AOT codegen has no float representation.
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("int expects one argument")
+		}
+		if il, ok := c.Args[0].(*IntLit); ok {
+			return fmt.Sprintf("%d", il.Value), nil
+		}
+		if sl, ok := c.Args[0].(*StrLit); ok {
+			n, err := strconv.ParseInt(sl.Value, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("int on non-integer string")
+			}
+			return fmt.Sprintf("%d", n), nil
+		}
+		return "", fmt.Errorf("int: codegen folds only literal int/string args")
 	case "reversed":
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("reversed expects one argument")

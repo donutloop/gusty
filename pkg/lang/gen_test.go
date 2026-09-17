@@ -1224,3 +1224,31 @@ func TestGenForStr(t *testing.T) {
 		t.Fatalf("for str: got %q", got)
 	}
 }
+
+func TestGenIntFloat(t *testing.T) {
+	evalStr := func(src string) string {
+		prog, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		ev := NewEvaluator()
+		rv, err := ev.EvalProgram(prog)
+		if err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		return fmt.Sprintf("%v", rv)
+	}
+	if got := evalStr("int(\"42\")"); got != "42" {
+		t.Fatalf("int string: got %q", got)
+	}
+	if got := evalStr("int(3.9)"); got != "3" {
+		t.Fatalf("int float: got %q", got)
+	}
+	// float("2.5") returns a heap float object; check its fval.
+	prog, _ := Parse("float(\"2.5\")")
+	ev := NewEvaluator()
+	rv, _ := ev.EvalProgram(prog)
+	if o, ok := ev.heap[rv]; !ok || o.kind != "float" || o.fval != 2.5 {
+		t.Fatalf("float string: got id %v kind=%v", rv, o.kind)
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode"
 	"sort"
+	"strconv"
+
 )
 
 // Evaluator is a small AST interpreter used by --eval and the REPL.
@@ -2419,6 +2421,38 @@ case "sum":
 				return -av, nil
 			}
 			return av, nil
+		case "int":
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if o, ok := e.heap[av]; ok && o.kind == "float" {
+				return int64(o.fval), nil
+			}
+			if o, ok := e.heap[av]; ok && o.kind == "str" {
+				f, err := strconv.ParseFloat(o.sval, 64)
+				if err != nil {
+					return 0, &EvalError{Msg: "int: cannot parse string"}
+				}
+				return int64(f), nil
+			}
+			return av, nil
+		case "float":
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if o, ok := e.heap[av]; ok && o.kind == "str" {
+				f, err := strconv.ParseFloat(o.sval, 64)
+				if err != nil {
+					return 0, &EvalError{Msg: "float: cannot parse string"}
+				}
+				return e.allocFloat(f), nil
+			}
+			if o, ok := e.heap[av]; ok && o.kind == "float" {
+				return av, nil
+			}
+			return e.allocFloat(float64(av)), nil
 		case "range":
 			if len(n.Args) < 1 || len(n.Args) > 3 {
 				return 0, &EvalError{Msg: "range expects 1 to 3 arguments"}
