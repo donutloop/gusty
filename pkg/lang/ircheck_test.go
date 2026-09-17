@@ -961,6 +961,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "-2.5e+00") {
 		t.Fatalf("print(-2.5) should emit a negative double literal, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(int(3.7))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("int(3.7) should truncate to 3, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {

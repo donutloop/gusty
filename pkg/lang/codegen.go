@@ -2497,6 +2497,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("int expects one argument")
 		}
+			if g.isFloat(c.Args[0]) {
+				if fv, ok := g.floatEval(c.Args[0]); ok {
+					return strconv.FormatInt(int64(fv), 10), nil
+				}
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = fptosi double %s to i32\n", t, g.floatValue(b, c.Args[0]))
+				return t, nil
+			}
+
 		if il, ok := c.Args[0].(*IntLit); ok {
 			return fmt.Sprintf("%d", il.Value), nil
 		}
