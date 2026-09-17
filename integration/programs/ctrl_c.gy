@@ -1,0 +1,22 @@
+def classify(n):
+    if n == 1:
+        return 1
+    elif n == 2:
+        return 2
+    elif n == 3:
+        return 3
+    else:
+        return 0
+print("cls", classify(2), classify(9), classify(3))
+tot = 0
+for j1 in range(3):
+    for j2 in range(3):
+        tot = tot + j2
+print("nested", tot)
+tot2 = 0
+for k1 in range(5):
+    tot2 = tot2 + k1
+    if k1 == 2:
+        continue
+    tot2 = tot2 + 1
+print("cont", tot2)

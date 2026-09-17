@@ -1,0 +1,8 @@
+da1 = 0
+for di in range(1, 6):
+    da1 = da1 + di
+print("dsum", da1)
+print("dmin", min([3, 1, 4, 1, 5]))
+print("dmax", max([3, 1, 4, 1, 5]))
+print("dlen", len([10, 20, 30]))
+print("didx", [7, 8, 9][1])

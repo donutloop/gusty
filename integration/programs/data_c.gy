@@ -1,0 +1,15 @@
+def total(n):
+    t = 0
+    for tk in range(1, n):
+        t = t + tk
+    return t
+dc1 = total(7)
+print("fsum", dc1)
+dc2 = 0
+for dl in range(1, 10):
+    dc2 = dc2 + dl
+print("loop", dc2)
+dc3 = dc1 + dc2
+print("big", dc3)
+print("abs", abs(-42))
+print("conv", int("100"), float(2), str(7))

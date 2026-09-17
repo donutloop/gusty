@@ -1,0 +1,37 @@
+def add(a, b):
+    return a + b
+def kw(a, b):
+    return a - b
+print("func", add(2, 3))
+print("kw", kw(a=9, b=4))
+g = lambda a: a * a
+print("lambda", g(7))
+print("len", len([1, 2, 3]))
+print("idx", [1, 2, 3][1])
+print("sum", sum([1, 2, 3]))
+print("minmax", min([1, 2, 3]), max([1, 2, 3]))
+print("dict", len({1: 10, 2: 20}), {1: 10, 2: 20}[1])
+print("set", len({1, 2, 3}), {1, 2, 3}[2])
+wi = 0
+wt = 0
+while wi < 10:
+    wi = wi + 1
+    if wi == 3:
+        continue
+    if wi == 7:
+        break
+    wt = wt + wi
+print("while", wt)
+xf = 3
+if xf == 1:
+    print("if", "one")
+elif xf == 2:
+    print("if", "two")
+else:
+    print("if", "many")
+stp = 0
+for si in range(0, 10, 2):
+    stp = stp + si
+print("step", stp)
+print("abs", abs(-5))
+print("conv", int("42"), float(1), str(42))

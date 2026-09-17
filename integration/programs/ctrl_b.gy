@@ -1,0 +1,16 @@
+w1 = 0
+w2 = 0
+while w1 < 20:
+    w1 = w1 + 1
+    if w1 == 5:
+        continue
+    if w1 == 15:
+        break
+    w2 = w2 + w1
+print("while", w2)
+w3 = 0
+w4 = 0
+while w3 < 8:
+    w3 = w3 + 2
+    w4 = w4 + w3
+print("while2", w4)

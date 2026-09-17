@@ -1,0 +1,6 @@
+ac = 0
+for ic in range(1, 6):
+    ac = ac + ic
+bc = add(ac, mul(2, 3))
+print("calc", bc)
+print("scaled", scale(bc, 2))

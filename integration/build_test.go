@@ -31,6 +31,29 @@ func writeSrc(t *testing.T, dir, name, src string) string {
 	return p
 }
 
+// readProgram returns the contents of a gusty source program checked in under
+// integration/programs/, so whole-program test sources live on disk rather
+// than being hard-coded inline in each test.
+func readProgram(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("programs", name))
+	if err != nil {
+		t.Fatalf("read program %s: %v", name, err)
+	}
+	return string(b)
+}
+
+// readWant returns the exact expected stdout for a whole-program test, checked
+// in under integration/expected/.
+func readWant(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("expected", name))
+	if err != nil {
+		t.Fatalf("read expected %s: %v", name, err)
+	}
+	return string(b)
+}
+
 // TestCLIBuildWholeProgram drives the real `gustyc --build <out> <files...>`
 // command end-to-end (the whole program): CLI arg parsing -> read/merge sources
 // -> semantic analysis -> LLVM codegen -> llc (module verification) -> cc
@@ -52,8 +75,8 @@ func TestCLIBuildWholeProgram(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	a := writeSrc(t, dir, "a.gy", "def double(x):\n    return x * 2\n")
-	b := writeSrc(t, dir, "b.gy", "s = 0\nfor i in range(1, 4):\n    s = s + i\nprint(s + double(5))\n")
+	a := writeSrc(t, dir, "a.gy", readProgram(t, "whole_a.gy"))
+	b := writeSrc(t, dir, "b.gy", readProgram(t, "whole_b.gy"))
 	out := filepath.Join(dir, "prog")
 
 	// --build <out> with the sources as positional args.
@@ -72,7 +95,7 @@ func TestCLIBuildWholeProgram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built binary: %v", err)
 	}
-	if string(got) != "16\n" {
+	if string(got) != readWant(t, "whole.txt") {
 		t.Errorf("built binary output = %q, want 16 (sum 1..3 + double(5))", got)
 	}
 
@@ -101,7 +124,7 @@ func TestCLIBuildDiagnostics(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	bad := writeSrc(t, dir, "bad.gy", "x = nope + 1\nprint(x)\n")
+	bad := writeSrc(t, dir, "bad.gy", readProgram(t, "bad.gy"))
 	out := filepath.Join(dir, "prog")
 
 	build := exec.Command(bin, "--build", out, bad)
@@ -134,7 +157,7 @@ func TestCLIBuildSingleFile(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	src := writeSrc(t, dir, "s.gy", "x = 0\nfor i in range(3):\n    x = x + i\nprint(x)\n")
+	src := writeSrc(t, dir, "s.gy", readProgram(t, "single.gy"))
 	out := filepath.Join(dir, "prog")
 
 	build := exec.Command(bin, "--build", out, src)
@@ -146,7 +169,7 @@ func TestCLIBuildSingleFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built binary: %v", err)
 	}
-	if string(got) != "3\n" {
+	if string(got) != readWant(t, "single.txt") {
 		t.Errorf("output = %q, want 3 (0+1+2)", got)
 	}
 }
@@ -158,7 +181,7 @@ func TestCLIBuildOptLevel(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	src := writeSrc(t, dir, "s.gy", "def sq(x):\n    return x * x\nprint(sq(7))\n")
+	src := writeSrc(t, dir, "s.gy", readProgram(t, "sq.gy"))
 	out := filepath.Join(dir, "prog")
 
 	build := exec.Command(bin, "--opt-level", "2", "--build", out, src)
@@ -170,7 +193,7 @@ func TestCLIBuildOptLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built binary: %v", err)
 	}
-	if string(got) != "49\n" {
+	if string(got) != readWant(t, "sq.txt") {
 		t.Errorf("output = %q, want 49", got)
 	}
 }
@@ -202,8 +225,8 @@ func TestCLIBuildExitCodes(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	src := writeSrc(t, dir, "s.gy", "print(1)\n")
-	bad := writeSrc(t, dir, "bad.gy", "x = nope + 1\nprint(x)\n")
+	src := writeSrc(t, dir, "s.gy", readProgram(t, "print1.gy"))
+	bad := writeSrc(t, dir, "bad.gy", readProgram(t, "bad.gy"))
 	okOut := filepath.Join(dir, "ok")
 	badOut := filepath.Join(dir, "bad")
 
@@ -233,8 +256,8 @@ func TestCLIBuildDuplicateFunction(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	a := writeSrc(t, dir, "a.gy", "def f():\n    return 1\n")
-	b := writeSrc(t, dir, "b.gy", "def f():\n    return 2\nprint(f())\n")
+	a := writeSrc(t, dir, "a.gy", readProgram(t, "dup_a.gy"))
+	b := writeSrc(t, dir, "b.gy", readProgram(t, "dup_b.gy"))
 	out := filepath.Join(dir, "prog")
 
 	build := exec.Command(bin, "--build", out, a, b)
@@ -253,7 +276,7 @@ func TestCLIBuildJSONDiagnostics(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	bad := writeSrc(t, dir, "bad.gy", "x = nope + 1\nprint(x)\n")
+	bad := writeSrc(t, dir, "bad.gy", readProgram(t, "bad.gy"))
 	out := filepath.Join(dir, "prog")
 
 	build := exec.Command(bin, "--json", "--build", out, bad)
@@ -285,8 +308,8 @@ func TestCLIBuildRebuildOverwrite(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	a := writeSrc(t, dir, "a.gy", "def double(x):\n    return x * 2\n")
-	b := writeSrc(t, dir, "b.gy", "print(double(21))\n")
+	a := writeSrc(t, dir, "a.gy", readProgram(t, "rebuild_a.gy"))
+	b := writeSrc(t, dir, "b.gy", readProgram(t, "rebuild_b.gy"))
 	out := filepath.Join(dir, "prog")
 
 	for i := 0; i < 2; i++ {
@@ -299,127 +322,10 @@ func TestCLIBuildRebuildOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run rebuilt binary: %v", err)
 	}
-	if string(got) != "42\n" {
+	if string(got) != readWant(t, "rebuild.txt") {
 		t.Errorf("output = %q, want 42", got)
 	}
 }
-
-// allFeaturesSrcA and allFeaturesSrcB are a two-file program exercising every
-// construct the AOT/build path supports: arithmetic (+,-,*,/,//,%), floats,
-// strings (concat/len/index/upper/lower), functions, keyword args, lambdas,
-// list/dict/set literals, len/sum/min/max/abs/int/float/str builtins,
-// for-range (+step), while, break/continue, and if/elif/else. Each variable
-// name is unique across the merged program (codegen names SSA regs by var).
-const allFeaturesSrcA = `sumx = 0
-for ia in range(5):
-    sumx = sumx + ia
-print("sum", sumx)
-print("arith", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)
-fval = 2.5 + 1.0
-print("float", fval) # codegen truncates float literals to int
-print("str", "a" + "b" + "c")
-print("slen", len("hello"))
-print("sidx", "abc"[1])
-print("sup", "abc".upper())
-print("slow", "ABC".lower())
-`
-
-const allFeaturesSrcB = `def add(a, b):
-    return a + b
-def kw(a, b):
-    return a - b
-print("func", add(2, 3))
-print("kw", kw(a=9, b=4))
-g = lambda a: a * a
-print("lambda", g(7))
-print("len", len([1, 2, 3]))
-print("idx", [1, 2, 3][1])
-print("sum", sum([1, 2, 3]))
-print("minmax", min([1, 2, 3]), max([1, 2, 3]))
-print("dict", len({1: 10, 2: 20}), {1: 10, 2: 20}[1])
-print("set", len({1, 2, 3}), {1, 2, 3}[2])
-wi = 0
-wt = 0
-while wi < 10:
-    wi = wi + 1
-    if wi == 3:
-        continue
-    if wi == 7:
-        break
-    wt = wt + wi
-print("while", wt)
-xf = 3
-if xf == 1:
-    print("if", "one")
-elif xf == 2:
-    print("if", "two")
-else:
-    print("if", "many")
-stp = 0
-for si in range(0, 10, 2):
-    stp = stp + si
-print("step", stp)
-print("abs", abs(-5))
-print("conv", int("42"), float(1), str(42))
-`
-
-// allFeaturesWant is the exact stdout the built binary must produce. Each
-// print argument lands on its own line (gusty print emits one value per line).
-const allFeaturesWant = `sum
-10
-arith
-3
-1
-5
-6
--1
-5
-float
-3
-str
-abc
-slen
-5
-sidx
-98
-sup
-ABC
-slow
-abc
-func
-5
-kw
-5
-lambda
-49
-len
-3
-idx
-2
-sum
-6
-minmax
-1
-3
-dict
-2
-10
-set
-3
-2
-while
-18
-if
-many
-step
-20
-abs
-5
-conv
-42
-1
-42
-`
 
 // TestCLIBuildAllFeatures drives the whole gustyc program against a large
 // two-file source covering every AOT-supported language feature, then runs the
@@ -429,8 +335,8 @@ func TestCLIBuildAllFeatures(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	a := writeSrc(t, dir, "features_a.gy", allFeaturesSrcA)
-	b := writeSrc(t, dir, "features_b.gy", allFeaturesSrcB)
+	a := writeSrc(t, dir, "features_a.gy", readProgram(t, "features_a.gy"))
+	b := writeSrc(t, dir, "features_b.gy", readProgram(t, "features_b.gy"))
 	out := filepath.Join(dir, "prog")
 
 	build := exec.Command(bin, "--build", out, a, b)
@@ -442,189 +348,14 @@ func TestCLIBuildAllFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run all-features binary: %v", err)
 	}
-	if string(got) != allFeaturesWant {
-		t.Errorf("all-features output mismatch:\n got:\n%s\nwant:\n%s", got, allFeaturesWant)
+	if string(got) != readWant(t, "features.txt") {
+		t.Errorf("all-features output mismatch:\n got:\n%s\nwant:\n%s", got, readWant(t, "features.txt"))
 	}
 }
 
 // Large multi-file programs. Each file is big (many statements); the tests
 // drive the real gustyc binary end-to-end and assert the produced binary's
 // entire stdout against an exact expected constant.
-
-const largeMathLib = `def add(a, b):
-    return a + b
-def mul(a, b):
-    return a * b
-def scale(x, n):
-    return x * n
-`
-const largeMathCalc = `ac = 0
-for ic in range(1, 6):
-    ac = ac + ic
-bc = add(ac, mul(2, 3))
-print("calc", bc)
-print("scaled", scale(bc, 2))
-`
-const largeMathMain = `mc = 0
-for jc in range(0, 10, 2):
-    mc = mc + jc
-mc2 = mc + 10
-print("main", mc2)
-print("addcall", add(mc2, 5))
-print("mulcall", mul(mc2, 2))
-`
-const largeMathWant = `calc
-21
-scaled
-42
-main
-30
-addcall
-35
-mulcall
-60
-`
-
-const largeCtrlA = `acc = 0
-for i1 in range(1, 6):
-    acc = acc + i1
-print("acc", acc)
-acc2 = 0
-for i2 in range(0, 10, 2):
-    acc2 = acc2 + i2
-print("acc2", acc2)
-acc3 = 0
-for i3 in range(10, 0, -2):
-    acc3 = acc3 + i3
-print("acc3", acc3)
-`
-const largeCtrlB = `w1 = 0
-w2 = 0
-while w1 < 20:
-    w1 = w1 + 1
-    if w1 == 5:
-        continue
-    if w1 == 15:
-        break
-    w2 = w2 + w1
-print("while", w2)
-w3 = 0
-w4 = 0
-while w3 < 8:
-    w3 = w3 + 2
-    w4 = w4 + w3
-print("while2", w4)
-`
-const largeCtrlC = `def classify(n):
-    if n == 1:
-        return 1
-    elif n == 2:
-        return 2
-    elif n == 3:
-        return 3
-    else:
-        return 0
-print("cls", classify(2), classify(9), classify(3))
-tot = 0
-for j1 in range(3):
-    for j2 in range(3):
-        tot = tot + j2
-print("nested", tot)
-tot2 = 0
-for k1 in range(5):
-    tot2 = tot2 + k1
-    if k1 == 2:
-        continue
-    tot2 = tot2 + 1
-print("cont", tot2)
-`
-const largeCtrlWant = `acc
-15
-acc2
-20
-acc3
-30
-while
-100
-while2
-20
-cls
-2
-0
-3
-nested
-9
-cont
-14
-`
-
-const largeDataA = `da1 = 0
-for di in range(1, 6):
-    da1 = da1 + di
-print("dsum", da1)
-print("dmin", min([3, 1, 4, 1, 5]))
-print("dmax", max([3, 1, 4, 1, 5]))
-print("dlen", len([10, 20, 30]))
-print("didx", [7, 8, 9][1])
-`
-const largeDataB = `print("dkeys", len({1: 10, 2: 20, 3: 30}))
-print("dval", {1: 10, 2: 20}[2])
-print("slen", len({5, 6, 7}))
-print("sidx", {5, 6, 7}[6])
-db1 = 0
-for dj in range(1, 10, 2):
-    db1 = db1 + dj
-print("odd", db1)
-`
-const largeDataC = `def total(n):
-    t = 0
-    for tk in range(1, n):
-        t = t + tk
-    return t
-dc1 = total(7)
-print("fsum", dc1)
-dc2 = 0
-for dl in range(1, 10):
-    dc2 = dc2 + dl
-print("loop", dc2)
-dc3 = dc1 + dc2
-print("big", dc3)
-print("abs", abs(-42))
-print("conv", int("100"), float(2), str(7))
-`
-const largeDataWant = `dsum
-15
-dmin
-1
-dmax
-5
-dlen
-3
-didx
-8
-dkeys
-3
-dval
-20
-slen
-3
-sidx
-6
-odd
-25
-fsum
-21
-loop
-45
-big
-66
-abs
-42
-conv
-100
-2
-7
-`
 
 // buildWant runs `gustyc --build` over files, then runs the produced binary
 // and asserts its stdout equals want.
@@ -652,10 +383,10 @@ func TestCLIBuildLargeMath(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 	buildWant(t, bin, []string{
-		writeSrc(t, dir, "mathlib.gy", largeMathLib),
-		writeSrc(t, dir, "calc.gy", largeMathCalc),
-		writeSrc(t, dir, "main.gy", largeMathMain),
-	}, largeMathWant)
+		writeSrc(t, dir, "mathlib.gy", readProgram(t, "math_lib.gy")),
+		writeSrc(t, dir, "calc.gy", readProgram(t, "math_calc.gy")),
+		writeSrc(t, dir, "main.gy", readProgram(t, "math_main.gy")),
+	}, readWant(t, "math.txt"))
 }
 
 // TestCLIBuildLargeControl builds a large 3-file control-flow program (loops,
@@ -665,10 +396,10 @@ func TestCLIBuildLargeControl(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 	buildWant(t, bin, []string{
-		writeSrc(t, dir, "ctrl_a.gy", largeCtrlA),
-		writeSrc(t, dir, "ctrl_b.gy", largeCtrlB),
-		writeSrc(t, dir, "ctrl_c.gy", largeCtrlC),
-	}, largeCtrlWant)
+		writeSrc(t, dir, "ctrl_a.gy", readProgram(t, "ctrl_a.gy")),
+		writeSrc(t, dir, "ctrl_b.gy", readProgram(t, "ctrl_b.gy")),
+		writeSrc(t, dir, "ctrl_c.gy", readProgram(t, "ctrl_c.gy")),
+	}, readWant(t, "ctrl.txt"))
 }
 
 // TestCLIBuildLargeData builds a large 3-file data program (list/dict/set
@@ -678,28 +409,11 @@ func TestCLIBuildLargeData(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 	buildWant(t, bin, []string{
-		writeSrc(t, dir, "data_a.gy", largeDataA),
-		writeSrc(t, dir, "data_b.gy", largeDataB),
-		writeSrc(t, dir, "data_c.gy", largeDataC),
-	}, largeDataWant)
+		writeSrc(t, dir, "data_a.gy", readProgram(t, "data_a.gy")),
+		writeSrc(t, dir, "data_b.gy", readProgram(t, "data_b.gy")),
+		writeSrc(t, dir, "data_c.gy", readProgram(t, "data_c.gy")),
+	}, readWant(t, "data.txt"))
 }
-
-// expectedIRWant is the exact LLVM IR `gustyc --emit-llvm` must emit for the
-// source `print(40 + 2)`: constant-folding folds `40 + 2` to `42` at codegen,
-// so the call site carries the immediate. Compared byte-for-byte.
-const expectedIRWant = `@.fmt1 = private unnamed_addr constant [4 x i8] c"%d\0A\00"
-@env_store = internal global [4096 x i32] zeroinitializer
-@env_count = internal global i32 0
-declare i32 @printf(i8*, ...)
-define i32 @main() {
-entry:
-  %t1 = call i32 @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.fmt1, i32 0, i32 0), i32 42)
-  ret i32 0
-}
-!llvm.module.flags = !{!0}
-!0 = !{i32 2, !"PIC Level", i32 2}
-`
-
 
 // TestCLIEmitsExpectedIR drives the whole gustyc program's `--emit-llvm` path
 // and asserts the emitted LLVM IR matches the expected code byte-for-byte.
@@ -708,12 +422,12 @@ func TestCLIEmitsExpectedIR(t *testing.T) {
 	bin := filepath.Join(dir, "gustyc")
 	buildCLI(t, bin)
 
-	cmd := exec.Command(bin, "--emit-llvm", "print(40 + 2)")
+	cmd := exec.Command(bin, "--emit-llvm", readProgram(t, "ir.gy"))
 	got, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("gustyc --emit-llvm: %v", err)
 	}
-	if string(got) != expectedIRWant {
-		t.Errorf("emitted IR mismatch:\n got:\n%s\nwant:\n%s", got, expectedIRWant)
+	if string(got) != readWant(t, "ir.ll") {
+		t.Errorf("emitted IR mismatch:\n got:\n%s\nwant:\n%s", got, readWant(t, "ir.ll"))
 	}
 }

@@ -1,0 +1,8 @@
+print("dkeys", len({1: 10, 2: 20, 3: 30}))
+print("dval", {1: 10, 2: 20}[2])
+print("slen", len({5, 6, 7}))
+print("sidx", {5, 6, 7}[6])
+db1 = 0
+for dj in range(1, 10, 2):
+    db1 = db1 + dj
+print("odd", db1)

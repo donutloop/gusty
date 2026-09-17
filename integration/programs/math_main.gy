@@ -1,0 +1,7 @@
+mc = 0
+for jc in range(0, 10, 2):
+    mc = mc + jc
+mc2 = mc + 10
+print("main", mc2)
+print("addcall", add(mc2, 5))
+print("mulcall", mul(mc2, 2))

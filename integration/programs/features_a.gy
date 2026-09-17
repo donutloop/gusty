@@ -1,0 +1,12 @@
+sumx = 0
+for ia in range(5):
+    sumx = sumx + ia
+print("sum", sumx)
+print("arith", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)
+fval = 2.5 + 1.0
+print("float", fval) # codegen truncates float literals to int
+print("str", "a" + "b" + "c")
+print("slen", len("hello"))
+print("sidx", "abc"[1])
+print("sup", "abc".upper())
+print("slow", "ABC".lower())
