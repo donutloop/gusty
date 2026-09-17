@@ -303,3 +303,146 @@ func TestCLIBuildRebuildOverwrite(t *testing.T) {
 		t.Errorf("output = %q, want 42", got)
 	}
 }
+
+// allFeaturesSrcA and allFeaturesSrcB are a two-file program exercising every
+// construct the AOT/build path supports: arithmetic (+,-,*,/,//,%), floats,
+// strings (concat/len/index/upper/lower), functions, keyword args, lambdas,
+// list/dict/set literals, len/sum/min/max/abs/int/float/str builtins,
+// for-range (+step), while, break/continue, and if/elif/else. Each variable
+// name is unique across the merged program (codegen names SSA regs by var).
+const allFeaturesSrcA = `sumx = 0
+for ia in range(5):
+    sumx = sumx + ia
+print("sum", sumx)
+print("arith", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)
+fval = 2.5 + 1.0
+print("float", fval) # codegen truncates float literals to int
+print("str", "a" + "b" + "c")
+print("slen", len("hello"))
+print("sidx", "abc"[1])
+print("sup", "abc".upper())
+print("slow", "ABC".lower())
+`
+
+const allFeaturesSrcB = `def add(a, b):
+    return a + b
+def kw(a, b):
+    return a - b
+print("func", add(2, 3))
+print("kw", kw(a=9, b=4))
+g = lambda a: a * a
+print("lambda", g(7))
+print("len", len([1, 2, 3]))
+print("idx", [1, 2, 3][1])
+print("sum", sum([1, 2, 3]))
+print("minmax", min([1, 2, 3]), max([1, 2, 3]))
+print("dict", len({1: 10, 2: 20}), {1: 10, 2: 20}[1])
+print("set", len({1, 2, 3}), {1, 2, 3}[2])
+wi = 0
+wt = 0
+while wi < 10:
+    wi = wi + 1
+    if wi == 3:
+        continue
+    if wi == 7:
+        break
+    wt = wt + wi
+print("while", wt)
+xf = 3
+if xf == 1:
+    print("if", "one")
+elif xf == 2:
+    print("if", "two")
+else:
+    print("if", "many")
+stp = 0
+for si in range(0, 10, 2):
+    stp = stp + si
+print("step", stp)
+print("abs", abs(-5))
+print("conv", int("42"), float(1), str(42))
+`
+
+// allFeaturesWant is the exact stdout the built binary must produce. Each
+// print argument lands on its own line (gusty print emits one value per line).
+const allFeaturesWant = `sum
+10
+arith
+3
+1
+5
+6
+-1
+5
+float
+3
+str
+abc
+slen
+5
+sidx
+98
+sup
+ABC
+slow
+abc
+func
+5
+kw
+5
+lambda
+49
+len
+3
+idx
+2
+sum
+6
+minmax
+1
+3
+dict
+2
+10
+set
+3
+2
+while
+18
+if
+many
+step
+20
+abs
+5
+conv
+42
+1
+42
+`
+
+// TestCLIBuildAllFeatures drives the whole gustyc program against a large
+// two-file source covering every AOT-supported language feature, then runs the
+// produced native binary and asserts its entire stdout byte-for-byte.
+func TestCLIBuildAllFeatures(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	a := writeSrc(t, dir, "features_a.gy", allFeaturesSrcA)
+	b := writeSrc(t, dir, "features_b.gy", allFeaturesSrcB)
+	out := filepath.Join(dir, "prog")
+
+	build := exec.Command(bin, "--build", out, a, b)
+	if outb, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("gustyc --build (all features): %v\n%s", err, outb)
+	}
+
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("run all-features binary: %v", err)
+	}
+	if string(got) != allFeaturesWant {
+		t.Errorf("all-features output mismatch:\n got:\n%s\nwant:\n%s", got, allFeaturesWant)
+	}
+}
