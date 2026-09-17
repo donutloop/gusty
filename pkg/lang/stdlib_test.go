@@ -45,3 +45,15 @@ func TestStdlibRound(t *testing.T) {
 		t.Fatalf("round(7) = %d, want 7", v)
 	}
 }
+
+func TestLambdaParams(t *testing.T) {
+	// Regression: `lambda x: ...` previously failed to parse (the ':' body
+	// separator was misread as a type annotation).
+	if v := evalStr(t, "f = lambda x: x + 1\nf(2)"); v != 3 {
+		t.Fatalf("lambda apply = %d, want 3", v)
+	}
+	// Annotated lambda params still parse: `lambda x: int: x * 2`.
+	if v := evalStr(t, "f = lambda x: int: x * 2\nf(3)"); v != 6 {
+		t.Fatalf("annotated lambda apply = %d, want 6", v)
+	}
+}

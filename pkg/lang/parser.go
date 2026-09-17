@@ -641,6 +641,14 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 }
 
 // parseTypeAnnot parses a type annotation token (int/float/bool/str/any).
+func isTypeName(s string) bool {
+	switch s {
+	case "int", "float", "bool", "str", "any":
+		return true
+	}
+	return false
+}
+
 func (p *parser) parseTypeAnnot() (*Type, error) {
 	t := p.peek()
 	p.next()
@@ -949,9 +957,22 @@ func (p *parser) parseLambda() (Expr, error) {
 	lm := &Lambda{sp: t.Span}
 	if p.peek().Kind == TokIdent {
 		for {
-			param, err := p.parseParam()
-			if err != nil {
-				return nil, err
+			// Lambda params are plain names: parseParam() would greedily treat the
+			// ':' body separator as a type annotation (e.g. lambda x: x + 1).
+			tok := p.next()
+			if tok.Kind != TokIdent {
+				return nil, p.errorf(tok, "lambda param must be a name")
+			}
+			param := &Param{Name: tok.Text}
+			// Optional `: type` annotation, but only when the token after ':' is a
+			// known type keyword; otherwise ':' is the lambda body separator.
+			if p.peek().IsOp(":") && isTypeName(p.toks[p.pos+1].Text) {
+				p.next() // consume ':'
+				ty, err := p.parseTypeAnnot()
+				if err != nil {
+					return nil, err
+				}
+				param.Annot = ty
 			}
 			lm.Params = append(lm.Params, param)
 			if p.peek().IsOp(",") {

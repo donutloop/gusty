@@ -3,6 +3,12 @@
 Single clean list of features, newest first.
 
 ## Current
+- `fix(lambda-params)`: fix lambda parameter parsing. `lambda x: body`
+  previously errored ("unknown type annotation x") because parseParam() treated
+  the `:` body separator as a `: type` annotation. Lambda params are now plain
+  names with a lookahead: `:` is an annotation only if the next token is a
+  known type (int/float/bool/str/any); otherwise it is the body separator.
+  Supports `lambda x: body` and `lambda x: int: body`. ADR 0093.
 - `fix(decorator-codegen)`: fix a panic in closure IR emission for decorated
   0-param functions (`strings.Repeat` negative count). `repeatParamTypes(n)`
   returns "" for n<=1 instead of "i32, " repeated n-1. ADR 0092.
