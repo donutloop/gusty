@@ -1522,6 +1522,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				res = strings.TrimSuffix(v, sub)
 			}
 			return g.strConst(res), nil
+		case "index":
+			// "s".index(sub) returns the byte index of sub (strings.Index).
+			// The interpreter raises on not-found; the AOT codegen has no error
+			// channel, so it folds to -1 on not-found (like find).
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("index expects one argument")
+			}
+			sub, ok := g.stringVal(c.Args[0])
+			if !ok {
+				return "", fmt.Errorf("index: codegen folds only a constant string arg")
+			}
+			return fmt.Sprintf("%d", int64(strings.Index(v, sub))), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}

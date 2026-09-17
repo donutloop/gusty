@@ -3,6 +3,10 @@
 Single clean list of features, newest first.
 
 ## Current
+- `feat(index-codegen)`: AOT codegen folds the string method `"s".index(sub)`
+  to the byte index of `sub` via strings.Index (interpreter raises on
+  not-found; codegen folds to -1, no error channel). Adds TestIRIndexFolds
+  IR verification and TestStdlibIndex behavior checks. ADR 0105.
 - `feat(round-codegen)`: AOT codegen folds the scalar builtin `round(x)`
   over a constant integer literal to itself (no-op: rounding an int returns
   it unchanged), mirroring the interpreter's int case; the AOT backend has

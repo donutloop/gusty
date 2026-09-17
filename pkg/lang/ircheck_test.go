@@ -910,3 +910,17 @@ func TestIRRoundFolds(t *testing.T) {
 		t.Fatalf("round(-7) should fold to -7, got:\n%s", ir)
 	}
 }
+
+func TestIRIndexFolds(t *testing.T) {
+	// "s".index(sub) folds to the byte index of sub (strings.Index).
+	ir := llcCompiles(t, `print("abcabc".index("bc"))`)
+	if !strings.Contains(ir, " 1") && !strings.Contains(ir, "1 ") {
+		t.Fatalf("index(bc) should fold to 1, got:\n%s", ir)
+	}
+
+	// Not-found folds to -1 (codegen has no error channel, like find).
+	ir = llcCompiles(t, `print("abc".index("xyz"))`)
+	if !strings.Contains(ir, "-1") {
+		t.Fatalf("index not-found should fold to -1, got:\n%s", ir)
+	}
+}

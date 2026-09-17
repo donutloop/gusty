@@ -153,3 +153,11 @@ func TestStdlibRemoveprefixSuffix(t *testing.T) {
 		t.Fatalf("removeprefix no-op: want abc, got %q", got)
 	}
 }
+
+func TestStdlibIndex(t *testing.T) {
+	// index returns the byte index of the substring (package-level evalStr
+	// returns the boxed int value for an int result).
+	if got := evalStr(t, `"abcabc".index("bc")`); got != int64(1) {
+		t.Fatalf("index(bc): want 1, got %v", got)
+	}
+}

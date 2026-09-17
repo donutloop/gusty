@@ -479,6 +479,9 @@ are string constants (`print("abcabc".find("bc"))` emits `i32 1`).
 `"s".rjust(w)` pads on the left; both are no-ops when `len(s) >= w`.
 In the AOT codegen, both fold over a constant string receiver and constant
 width to a padded string global, mirroring the interpreter.
+`"s".index(sub)` folds to the byte index of `sub` in the receiver
+(`strings.Index`); the interpreter raises on not-found, but the AOT codegen
+has no error channel, so it folds to `-1` on not-found (like `find`).
 `"s".zfill(w)` pads the receiver on the left with `0` to width `w` (no-op
 when `len(s) >= w`); the AOT codegen folds it over a constant receiver and
 constant width to a zero-padded string global, mirroring the interpreter.
