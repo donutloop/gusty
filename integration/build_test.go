@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +36,17 @@ func writeSrc(t *testing.T, dir, name, src string) string {
 // -> semantic analysis -> LLVM codegen -> llc (module verification) -> cc
 // (link) -> a runnable native binary. It then executes that binary and checks
 // its stdout, exactly as a user would.
+
+// exitCode extracts the child process exit code from an exec error.
+func exitCode(t *testing.T, err error) int {
+	t.Helper()
+	var ee *exec.ExitError
+	if ok := errors.As(err, &ee); !ok {
+		t.Fatalf("expected exec.ExitError, got %v", err)
+	}
+	return ee.ExitCode()
+}
+
 func TestCLIBuildWholeProgram(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")
@@ -111,5 +124,182 @@ func TestCLIBuildRequiresSource(t *testing.T) {
 	build := exec.Command(bin, "--build", filepath.Join(dir, "prog"))
 	if err := build.Run(); err == nil {
 		t.Fatalf("gustyc --build with no sources should exit non-zero")
+	}
+}
+
+// TestCLIBuildSingleFile verifies the build command works with exactly one
+// source file, not just a multi-file merge.
+func TestCLIBuildSingleFile(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	src := writeSrc(t, dir, "s.gy", "x = 0\nfor i in range(3):\n    x = x + i\nprint(x)\n")
+	out := filepath.Join(dir, "prog")
+
+	build := exec.Command(bin, "--build", out, src)
+	if outb, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("gustyc --build: %v\n%s", err, outb)
+	}
+
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("run built binary: %v", err)
+	}
+	if string(got) != "3\n" {
+		t.Errorf("output = %q, want 3 (0+1+2)", got)
+	}
+}
+
+// TestCLIBuildOptLevel verifies --opt-level is honored end-to-end: the CLI
+// passes it through to Build, and the produced binary still runs correctly.
+func TestCLIBuildOptLevel(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	src := writeSrc(t, dir, "s.gy", "def sq(x):\n    return x * x\nprint(sq(7))\n")
+	out := filepath.Join(dir, "prog")
+
+	build := exec.Command(bin, "--opt-level", "2", "--build", out, src)
+	if outb, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("gustyc --opt-level 2 --build: %v\n%s", err, outb)
+	}
+
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("run built binary: %v", err)
+	}
+	if string(got) != "49\n" {
+		t.Errorf("output = %q, want 49", got)
+	}
+}
+
+// TestCLIBuildMissingFile verifies a nonexistent source file fails with a
+// non-zero exit and an error mentioning the missing path, without producing a
+// binary.
+func TestCLIBuildMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	out := filepath.Join(dir, "prog")
+	missing := filepath.Join(dir, "nope.gy")
+	build := exec.Command(bin, "--build", out, missing)
+	outb, err := build.CombinedOutput()
+	if err == nil {
+		t.Fatalf("gustyc --build should fail for missing source; got success\n%s", outb)
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Errorf("no binary should be produced")
+	}
+}
+
+// TestCLIBuildExitCodes asserts the whole CLI's exit-code contract: 0 on
+// success, 1 on compile/link error, 2 on usage error.
+func TestCLIBuildExitCodes(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	src := writeSrc(t, dir, "s.gy", "print(1)\n")
+	bad := writeSrc(t, dir, "bad.gy", "x = nope + 1\nprint(x)\n")
+	okOut := filepath.Join(dir, "ok")
+	badOut := filepath.Join(dir, "bad")
+
+	// success -> 0
+	if err := exec.Command(bin, "--build", okOut, src).Run(); err != nil {
+		t.Fatalf("success build should exit 0: %v", err)
+	}
+	// compile error -> 1
+	if err := exec.Command(bin, "--build", badOut, bad).Run(); err == nil {
+		t.Fatalf("compile-error build should exit non-zero")
+	} else if code := exitCode(t, err); code != 1 {
+		t.Errorf("compile error exit = %d, want 1", code)
+	}
+	// usage error (no sources) -> 2
+	if err := exec.Command(bin, "--build", filepath.Join(dir, "u")).Run(); err == nil {
+		t.Fatalf("no-sources build should exit non-zero")
+	} else if code := exitCode(t, err); code != 2 {
+		t.Errorf("usage error exit = %d, want 2", code)
+	}
+}
+
+// TestCLIBuildDuplicateFunction verifies that two files defining the same
+// top-level function produce a build error (duplicate symbol) rather than a
+// silently broken binary.
+func TestCLIBuildDuplicateFunction(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	a := writeSrc(t, dir, "a.gy", "def f():\n    return 1\n")
+	b := writeSrc(t, dir, "b.gy", "def f():\n    return 2\nprint(f())\n")
+	out := filepath.Join(dir, "prog")
+
+	build := exec.Command(bin, "--build", out, a, b)
+	if outb, err := build.CombinedOutput(); err == nil {
+		t.Fatalf("duplicate def across files should fail; got success\n%s", outb)
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Errorf("no binary should be produced on duplicate symbol")
+	}
+}
+
+// TestCLIBuildJSONDiagnostics verifies that on a compile error, --json emits a
+// parseable BuildResult carrying the diagnostics, and stderr carries the error.
+func TestCLIBuildJSONDiagnostics(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	bad := writeSrc(t, dir, "bad.gy", "x = nope + 1\nprint(x)\n")
+	out := filepath.Join(dir, "prog")
+
+	build := exec.Command(bin, "--json", "--build", out, bad)
+	var stderr bytes.Buffer
+	build.Stderr = &stderr
+	outb, err := build.Output() // stdout carries the JSON BuildResult
+	if err == nil {
+		t.Fatalf("build should fail on undefined name; got success\n%s", outb)
+	}
+	var res map[string]any
+	if jerr := json.Unmarshal(outb, &res); jerr != nil {
+		t.Fatalf("json diagnostics not parseable: %v\n%s", jerr, outb)
+	}
+	if stderr.Len() == 0 {
+		t.Errorf("expected human error on stderr, got none")
+	}
+	if _, ok := res["diagnostics"]; !ok {
+		t.Errorf("diagnostics key missing in JSON result: %v", res)
+	}
+	if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+		t.Errorf("no binary should be produced on error")
+	}
+}
+
+// TestCLIBuildRebuildOverwrite verifies building a second time to the same
+// output path succeeds and the binary still runs.
+func TestCLIBuildRebuildOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	a := writeSrc(t, dir, "a.gy", "def double(x):\n    return x * 2\n")
+	b := writeSrc(t, dir, "b.gy", "print(double(21))\n")
+	out := filepath.Join(dir, "prog")
+
+	for i := 0; i < 2; i++ {
+		build := exec.Command(bin, "--build", out, a, b)
+		if outb, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build #%d: %v\n%s", i+1, err, outb)
+		}
+	}
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("run rebuilt binary: %v", err)
+	}
+	if string(got) != "42\n" {
+		t.Errorf("output = %q, want 42", got)
 	}
 }

@@ -81,6 +81,14 @@ func run() int {
 		}
 		res, err := lang.Build(buildFiles, *buildOut, atoi(*optLevel))
 		if err != nil {
+			// machine mode: still emit the (partial) BuildResult carrying
+			// diagnostics on stdout, plus a human error on stderr.
+			if *jsonOut && res != nil {
+				b, jerr := json.Marshal(res)
+				if jerr == nil {
+					fmt.Println(string(b))
+				}
+			}
 			if res != nil && len(res.Diagnostics) > 0 {
 				for _, d := range res.Diagnostics {
 					fmt.Fprintln(os.Stderr, d)
