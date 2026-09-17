@@ -977,6 +977,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "3.5e+00") {
 		t.Fatalf("max(2.5, 3.5) should emit 3.5e+00, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(7.5 % 2.0)`)
+	if !strings.Contains(ir, "frem double") {
+		t.Fatalf("float modulo should emit frem, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {

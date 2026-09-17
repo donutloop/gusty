@@ -828,7 +828,7 @@ func (g *irGen) isFloat(e Expr) bool {
 		return true
 	case *BinOp:
 		switch n.Op {
-		case "+", "-", "*", "/":
+		case "+", "-", "*", "/", "%":
 			return g.isFloat(n.L) || g.isFloat(n.R)
 		}
 		return false
@@ -949,6 +949,8 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 		fmt.Fprintf(b, "  %s = fmul double %s, %s\n", t, l, r)
 	case "/":
 		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
+	case "%":
+		fmt.Fprintf(b, "  %s = frem double %s, %s\n", t, l, r)
 	case "==":
 		bt := g.newTmp()
 		fmt.Fprintf(b, "  %s = fcmp oeq double %s, %s\n", bt, l, r)
