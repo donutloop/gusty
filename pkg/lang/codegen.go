@@ -629,6 +629,67 @@ func (g *irGen) dictMethodElems(e Expr) ([]Expr, bool) {
 	return nil, false
 }
 
+func (g *irGen) isPartitionCall(c *Call) bool {
+	if attr, ok := c.Fn.(*Attr); ok && attr.Name.Value == "partition" {
+		return true
+	}
+	return false
+}
+
+func reverseVals(v []int64) {
+	for i, j := 0, len(v)-1; i < j; i, j = i+1, j-1 {
+		v[i], v[j] = v[j], v[i]
+	}
+}
+
+func (g *irGen) indexListElems(c *Call) ([]Expr, bool) {
+	// Method calls returning list elements: keys(), values(), split().
+	// partition() returns only dummy length elems (see dictMethodElems),
+	// so it is excluded here to avoid silently wrong results.
+	if elems, ok := g.dictMethodElems(c); ok {
+		if g.isPartitionCall(c) {
+			return nil, false
+		}
+		return elems, true
+	}
+	// Builtin calls returning list elements: sorted(list), reversed(list).
+	if fn, ok := c.Fn.(*Name); ok && (fn.Value == "sorted" || fn.Value == "reversed") {
+		if lit, ok := c.Args[0].(*ListLit); ok {
+			vals := make([]int64, len(lit.Elems))
+			for i, el := range lit.Elems {
+				il, ok := el.(*IntLit)
+				if !ok {
+					return nil, false
+				}
+				vals[i] = il.Value
+			}
+			if fn.Value == "sorted" {
+				sort.Slice(vals, func(i, j int) bool { return vals[i] < vals[j] })
+				// honor sorted(list, reverse=True)
+				if len(c.Args) > 1 {
+					if kw, ok := c.Args[1].(*KeywordArg); ok && kw.Name == "reverse" {
+						if b, ok := kw.Value.(*BoolLit); ok && b.Value {
+							reverseVals(vals)
+						}
+					}
+				}
+			} else {
+				rev := make([]int64, len(vals))
+				for i, v := range vals {
+					rev[len(vals)-1-i] = v
+				}
+				vals = rev
+			}
+			elems := make([]Expr, len(vals))
+			for i, v := range vals {
+				elems[i] = &IntLit{Value: v}
+			}
+			return elems, true
+		}
+	}
+	return nil, false
+}
+
 func (g *irGen) stringVal(e Expr) (string, bool) {
 	switch n := e.(type) {
 	case *StrLit:
@@ -1076,13 +1137,25 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				return "", fmt.Errorf("string index out of range")
 			}
 			return fmt.Sprintf("%d", str[key]), nil
+		case *Call:
+			// Element access into list-producing call expressions: keys(),
+			// values(), sorted(...), reversed(...), split(...). partition()
+			// returns only dummy length elems (see dictMethodElems), so it
+			// is excluded here to avoid silently wrong results.
+			if elems, ok2 := g.indexListElems(obj); ok2 {
+				if key < 0 || int(key) >= len(elems) {
+					return "", fmt.Errorf("list index out of range")
+				}
+				return g.value(b, elems[key])
+			}
+			return "", fmt.Errorf("index requires an inline list/dict/set literal")
 		default:
 			return "", fmt.Errorf("index requires an inline list/dict/set literal")
 		}
 	case *Comp:
 		return g.comp(b, n)
-	case *Call:
-		return g.call(b, n)
+		case *Call:
+			return g.call(b, n)
 	case *KeywordArg:
 		return g.value(b, n.Value)
 	case *Lambda:

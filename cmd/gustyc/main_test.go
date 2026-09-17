@@ -91,6 +91,26 @@ func TestCLIEmitLLVMOptLevel(t *testing.T) {
 }
 
 
+func TestCLIEmitLLVMIndexCallElems(t *testing.T) {
+	// Element access into list-producing call expressions in the AOT codegen:
+	// keys(), values(), sorted(...), reversed(...), split(...). The emitted IR
+	// must contain the exact element constant selected by the literal index.
+	cases := []struct{ src, want string }{
+		{`print({1: 10, 2: 20}.keys()[0])`, "i32 1"},
+		{`print({1: 10, 2: 20}.values()[1])`, "i32 20"},
+		{`print(sorted([3, 1, 2])[1])`, "i32 2"},
+		{`print(sorted([3, 1, 2], reverse=True)[0])`, "i32 3"},
+		{`print(reversed([1, 2, 3])[0])`, "i32 3"},
+		{`print("a b c".split()[2])`, "@.str"},
+	}
+	for _, tc := range cases {
+		out := cli(t, "--emit-llvm", tc.src)
+		if !strings.Contains(out, tc.want) {
+			t.Fatalf("emit-llvm %q: missing %q in IR:\n%s", tc.src, tc.want, out)
+		}
+	}
+}
+
 func TestCLIJSONType(t *testing.T) {
 	// --json --eval emits a structured result with a dynamic type field.
 	out := cli(t, "--json", "--eval=x = 42\nx")

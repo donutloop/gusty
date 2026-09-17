@@ -459,6 +459,13 @@ integer expression and is constant-folded when its argument is a literal.
 `len(s.split(sep))` / `len(s.rsplit(sep))` -> occurrences(sep in s) + 1 —
 all matching the interpreter.
 calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
+- The AOT codegen folds constant-index element access into list-producing
+  call expressions: `keys()`, `values()`, `sorted(...)` (including
+  `reverse=True`), `reversed(...)` and `split(sep)` emit the exact selected
+  element constant (e.g. `{1: 10, 2: 20}.keys()[0]` -> 1,
+  `sorted([3, 1, 2])[1]` -> 2). `partition()` and `items()` remain
+  compile-time errors (their parts are unrepresentable nested/string
+  elements in the integer-element list model).
 
 ### string methods
 

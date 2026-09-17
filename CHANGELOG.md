@@ -62,6 +62,12 @@ that mirrors the interpreter, and a machine-readable CLI for agents.
   constant-folding string/dict operations
   (e.g. `len("AbC".upper())` → `3`, `len("a b c".split())` → `3`,
   `{1: 2, 3: 4}.keys()` → `[1, 3]`).
+- The AOT codegen folds constant-index element access into list-producing
+  call expressions: `keys()`, `values()`, `sorted(...)` (including
+  `reverse=True`), `reversed(...)` and `split(sep)` emit the exact selected
+  element constant, matching the interpreter (see ADR 0109). `partition()`
+  and `items()` stay compile-time errors (unrepresentable nested/string
+  parts in the integer-element list model).
 
 ### Added — CLI, REPL & agent interface
 
