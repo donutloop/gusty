@@ -436,6 +436,11 @@ func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
 
+func TestExecRound(t *testing.T) {
+	// round(float) rounds half-away-from-zero in both interpreter and AOT.
+	assertOutput(t, "print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))", "3\n4\n2\n-3\n")
+}
+
 func TestExecFloatFloorModNeg(t *testing.T) {
 	// Float `//` floor division, `%` remainder, and unary `-` on float
 	// variables must match the interpreter's float64-payload semantics

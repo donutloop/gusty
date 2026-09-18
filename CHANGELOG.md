@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [v0.10.4] - round() float parity
+
+- Interpreter `round(float)` now uses math.Round (half-away-from-zero), matching
+  the AOT codegen constant-folded math.Round. Previously it truncated toward
+  zero (round(2.5) gave 2 instead of 3).
+- Tests: TestEvalRound, TestExecRound.
+
 ## [v0.10.3] - float floor/mod/neg parity
 
 - **Float `//` floor division, `%` remainder, unary `-`** (interpreter + AOT):

@@ -2683,7 +2683,7 @@ case "sum":
 					return 0, err
 				}
 				if o, ok := e.heap[x]; ok && o.kind == "float" {
-					return int64(o.fval), nil
+					return int64(math.Round(o.fval)), nil
 				}
 				return x, nil
 

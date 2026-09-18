@@ -1085,3 +1085,38 @@ func TestEvalFloatFloorModNeg(t *testing.T) {
 		}
 	}
 }
+
+func TestEvalRound(t *testing.T) {
+	// round(float) must round half-away-from-zero (math.Round), matching the
+	// AOT codegen's constant-folded math.Round — not truncate toward zero.
+	prog, err := Parse("print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	ev := NewEvaluator()
+	if _, err := ev.EvalProgram(prog); err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	want := []int64{3, 4, 2, -3}
+	// round returns an unboxed int64 handle stored in the last expr's var? No:
+	// EvalProgram returns the last print's result; instead re-eval each round.
+	// Simpler: round is a builtin returning an int64; assert via evalExpr.
+	names := []string{"r1", "r2", "r3", "r4"}
+	_ = names
+	_ = want
+	// Direct: parse+eval each round expression through the builtin path.
+	for i, src := range []string{"round(2.5)", "round(3.9)", "round(2.4)", "round(-2.5)"} {
+		p, err := Parse("x = " + src + "\nprint(x)")
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		ev := NewEvaluator()
+		if _, err := ev.EvalProgram(p); err != nil {
+			t.Fatalf("eval %s: %v", src, err)
+		}
+		v := ev.Vars["x"]
+		if v != want[i] {
+			t.Fatalf("%s got %v, want %v", src, v, want[i])
+		}
+	}
+}
