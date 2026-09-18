@@ -1053,6 +1053,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "fcmp oeq double") {
 		t.Fatalf("float equality should emit fcmp oeq, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(2.5 != 2.5)`)
+	if !strings.Contains(ir, "fcmp one double") {
+		t.Fatalf("float inequality should emit fcmp one, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
