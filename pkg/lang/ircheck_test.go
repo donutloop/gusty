@@ -1318,3 +1318,21 @@ func TestIRImportNestedModules(t *testing.T) {
 	}
 	llcCompiles(t, "import config\nprint(config.x + 1)")
 }
+
+func TestIRImportStringGlobals(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+
+	res, err := Compile("import msg\nprint(msg.msg)")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	ir := res.IR
+	if !strings.Contains(ir, "hello!") {
+		t.Fatalf("module string concat not folded:\n%s", ir)
+	}
+	_ = res
+}

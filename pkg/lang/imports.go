@@ -126,6 +126,12 @@ func foldConst(e Expr, globals map[string]Expr, reg map[string]map[string]Expr) 
 }
 
 func foldBin(op string, l, r Expr) (Expr, error) {
+	// string concatenation: "a" + "b" -> "ab"
+	ls, lsok := l.(*StrLit)
+	rs, rsok := r.(*StrLit)
+	if op == "+" && lsok && rsok {
+		return &StrLit{Value: ls.Value + rs.Value}, nil
+	}
 	li, lok := l.(*IntLit)
 	ri, rok := r.(*IntLit)
 	if lok && rok {

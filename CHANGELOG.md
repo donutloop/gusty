@@ -1,3 +1,9 @@
+## [v0.10.14] - import mod: string globals & concat in AOT data imports
+- AOT data imports now constant-fold **string** module globals and
+  **string concatenation** (`"a" + "b"` -> `"ab"`) in module global
+  expressions, so layered string constants (e.g. `greet = "hello"`,
+  `msg = greet + "!"`) compile to folded constants.
+
 ## [v0.10.13] - import mod: nested imports in AOT (data imports)
 - AOT `import mod` now supports **nested imports**: a module that itself
   `import other` compiles by recursively constant-folding the nested module's
