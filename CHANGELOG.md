@@ -1,6 +1,11 @@
 # CHANGELOG
 
 
+## [v0.10.9] - int(float var) / float(int var) AOT parity
+
+- Locks AOT binary conversion parity: int(3.9) truncates to 3, int(-3.9)
+  to -3, float(2) widens to 2.0. Adds TestExecIntFloatConv.
+
 ## [v0.10.8] - negative float floor/mod/neg AOT verification
 
 - Locks AOT binary parity for negative floats: -3.5//2.0 == -2 (llvm.floor),
