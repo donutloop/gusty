@@ -400,6 +400,10 @@ Arithmetic with floats (or float + int) produces a float:
 `+`, `-`, `*`, `/`. Comparisons (`== < <= > >=`) work between floats and ints.
 `print` renders floats with `%g`.
 
+The interpreter applies `-`/`*` to the float64 payload of boxed floats
+(not the raw heap handles), so `a = 1.5; b = 2.0` gives `a-b == -0.5`,
+`a*b == 3.0`, `b-a == 0.5` — matching the AOT codegen's `fsub`/`fmul` IR.
+
     print(1.5 + 1)   # 2.5
     print(7.0 / 2.0) # 3.5
     print(1.5 > 1)   # 1

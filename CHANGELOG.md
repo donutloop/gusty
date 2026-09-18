@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## [v0.10.2] - interpreter float sub/mul parity
+
+- **Float `-` and `*` arithmetic** (roadmap floats gap): the interpreter now
+  operates on the float64 payload of boxed floats instead of multiplying or
+  subtracting the raw heap handles (small ints). `a = 1.5; b = 2.0` now gives
+  `a-b == -0.5`, `b-a == 0.5`, `a*b == 3.0`, `b*a == 3.0`, `a+1 == 2.5`,
+  `2*a == 3.0` — matching the AOT codegen (`--emit-llvm` already emitted
+  `fsub`/`fmul`).
+- Interpreter test `TestEvalFloatSubMul` asserts exact float payloads via
+  `floatOf`.
+
 ## [v0.10.1] - float str() print parity
 
 - **`print(str(float-const))` AOT parity** (roadmap gap): `str(3.5)` now

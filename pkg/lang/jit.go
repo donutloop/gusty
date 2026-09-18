@@ -1163,8 +1163,28 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return l + r, nil
 	case "-":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			return e.allocFloat(lf - rf), nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			return e.allocFloat(float64(l) - rf), nil
+		}
 		return l - r, nil
 	case "*":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			return e.allocFloat(lf * rf), nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			return e.allocFloat(float64(l) * rf), nil
+		}
 		return l * r, nil
 	case "/", "//":
 		if lf, ok := e.floatOf(l); ok {

@@ -1,6 +1,7 @@
 package lang
 
 import "os"
+import "math"
 import "strings"
 import "testing"
 
@@ -398,7 +399,10 @@ func TestEvalComprehensionAssignment(t *testing.T) {
 
 func TestEvalTernary(t *testing.T) {
 	// ternary `then if cond else otherwise` picks the branch by truthiness.
-	for _, tc := range []struct{ src string; want int64 }{
+	for _, tc := range []struct {
+		src  string
+		want int64
+	}{
 		{"5 if 1 else 3", 5},
 		{"10 if 0 else 42", 42},
 		{"7 if 2 > 1 else 99", 7},
@@ -1024,4 +1028,35 @@ func captureStdout(t *testing.T, src string) string {
 		t.Fatalf("eval %q: %v", src, evalErr)
 	}
 	return string(out[:n])
+}
+
+func TestEvalFloatSubMul(t *testing.T) {
+	// Float `-` and `*` on float variables must operate on the float64
+	// payload, not the raw heap handles (which are small ints). Regression:
+	// a*b previously multiplied the boxed handles and produced garbage.
+	prog, err := Parse("a = 1.5\nb = 2.0\nc = a - b\nd = a * b\ne = b - a\nf = b * a\ng = a + 1\nh = 2 * a\nc + d + e + f + g + h")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	ev := NewEvaluator()
+	v, err := ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	// Each op result is a boxed float; extract and check the payloads.
+	var results []float64
+	for _, k := range []string{"c", "d", "e", "f", "g", "h"} {
+		f, ok := ev.floatOf(ev.Vars[k])
+		if !ok {
+			t.Fatalf("%s is not a float", k)
+		}
+		results = append(results, f)
+	}
+	want := []float64{-0.5, 3.0, 0.5, 3.0, 2.5, 3.0}
+	for i, w := range want {
+		if math.Abs(results[i]-w) > 1e-9 {
+			t.Fatalf("op %d got %v, want %v", i, results[i], w)
+		}
+	}
+	_ = v
 }
