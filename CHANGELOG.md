@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## [v0.10.10] - print(chr(const)) valid %s printf
+
+- print(chr(65)) previously fed the chr string-global array as i32 to a
+  %d printf (llc: global variable reference must have pointer type).
+  stringVal now recognizes chr(IntLit) as a string, so print emits a %s
+  printf with the chr global pointer. Adds TestIRPrintChrConst and
+  TestExecPrintChrConst.
+
 ## [v0.10.9] - int(float var) / float(int var) AOT parity
 
 - Locks AOT binary conversion parity: int(3.9) truncates to 3, int(-3.9)

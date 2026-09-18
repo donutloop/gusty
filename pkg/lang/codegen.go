@@ -731,6 +731,11 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				return fmt.Sprintf("%g", fv), true
 			}
 		}
+		if name, ok := n.Fn.(*Name); ok && name.Value == "chr" {
+			if il, ok := n.Args[0].(*IntLit); ok {
+				return string(rune(il.Value)), true
+			}
+		}
 		// constant-fold string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
 		attr, ok := n.Fn.(*Attr)
 		if !ok {

@@ -436,6 +436,10 @@ func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
 
+func TestExecPrintChrConst(t *testing.T) {
+	assertOutput(t, "print(chr(65))\nprint(chr(66))", "A\nB\n")
+}
+
 func TestExecIntFloatConv(t *testing.T) {
 	// int(float var) truncates toward zero, float(int var) widens: AOT parity.
 	assertOutput(t, "a = 3.9\nb = -3.9\nc = 2\nd = 1\nprint(int(a))\nprint(int(b))\nprint(float(c))", "3\n-3\n2\n")

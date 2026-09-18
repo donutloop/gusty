@@ -1245,3 +1245,13 @@ func TestIRRoundIntVar(t *testing.T) {
 		t.Fatalf("round(int var) produced no printf:\n%s", ir)
 	}
 }
+
+func TestIRPrintChrConst(t *testing.T) {
+	// print(chr(65)) must emit a %s printf fed the chr string-global pointer,
+	// not a %d printf fed the array (llc: global variable reference must have
+	// pointer type). llcCompiles aborts if the module fails to verify.
+	ir := llcCompiles(t, "print(chr(65))")
+	if !strings.Contains(ir, "%s\\0A") && !strings.Contains(ir, "%s\\n") {
+		t.Fatalf("print(chr(65)) should emit a %%s printf, got:\n%s", ir)
+	}
+}
