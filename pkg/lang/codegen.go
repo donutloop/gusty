@@ -883,28 +883,45 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok && (id.Value == "min" || id.Value == "max") {
 				fvals := make([]float64, 0, len(n.Args))
+				allFold := true
 				for _, a := range n.Args {
 					fv, ok := g.floatEval(a)
 					if !ok {
-						return g.floatValue(b, a)
+						allFold = false
+						break
 					}
 					fvals = append(fvals, fv)
 				}
-				if len(fvals) == 0 {
-					return g.floatValue(b, n)
-				}
-				best := fvals[0]
-				for _, fv := range fvals[1:] {
-					if id.Value == "min" && fv < best {
-						best = fv
+				if allFold {
+					if len(fvals) == 0 {
+						return g.floatValue(b, n)
 					}
-					if id.Value == "max" && fv > best {
-						best = fv
+					best := fvals[0]
+					for _, fv := range fvals[1:] {
+						if id.Value == "min" && fv < best {
+							best = fv
+						}
+						if id.Value == "max" && fv > best {
+							best = fv
+						}
 					}
+					t := g.newTmp()
+					fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(best))
+					return t
 				}
-				t := g.newTmp()
-				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(best))
-				return t
+				if len(n.Args) == 2 {
+					aop := g.floatValue(b, n.Args[0])
+					bop := g.floatValue(b, n.Args[1])
+					t := g.newTmp()
+					c := g.newTmp()
+					if id.Value == "min" {
+						fmt.Fprintf(b, "  %s = fcmp olt double %s, %s\n", c, aop, bop)
+					} else {
+						fmt.Fprintf(b, "  %s = fcmp ogt double %s, %s\n", c, aop, bop)
+					}
+					fmt.Fprintf(b, "  %s = select i1 %s, double %s, double %s\n", t, c, aop, bop)
+					return t
+				}
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "abs" && len(n.Args) == 1 {
 				t := g.newTmp()

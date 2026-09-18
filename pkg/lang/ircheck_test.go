@@ -1017,6 +1017,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "i32 97") {
 		t.Fatalf("ord(a) should emit 97, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, "f = 2.5\ng = 3.5\nprint(min(f, g))")
+	if !strings.Contains(ir, "select i1") {
+		t.Fatalf("min(float vars) should emit a select, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
