@@ -2586,6 +2586,12 @@ case "sum":
 			if err != nil {
 				return 0, err
 			}
+			if o, ok := e.heap[av]; ok && o.kind == "float" {
+				if o.fval < 0 {
+					return e.allocFloat(-o.fval), nil
+				}
+				return av, nil
+			}
 			if av < 0 {
 				return -av, nil
 			}
@@ -2619,6 +2625,9 @@ case "sum":
 				return e.allocFloat(f), nil
 			}
 			if o, ok := e.heap[av]; ok && o.kind == "float" {
+				if o.fval < 0 {
+					return e.allocFloat(-o.fval), nil
+				}
 				return av, nil
 			}
 			return e.allocFloat(float64(av)), nil

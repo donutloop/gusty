@@ -1120,3 +1120,26 @@ func TestEvalRound(t *testing.T) {
 		}
 	}
 }
+
+func TestEvalAbsFloat(t *testing.T) {
+	// abs(float) must negate a negative float64 payload, not return the boxed
+	// heap handle unchanged.
+	prog, err := Parse("a = -3.5\nb = 3.5\nc = abs(a)\nd = abs(b)\ne = abs(-1.5 * 2.0)\nc + d + e")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	ev := NewEvaluator()
+	if _, err := ev.EvalProgram(prog); err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	want := []float64{3.5, 3.5, 3.0}
+	for i, k := range []string{"c", "d", "e"} {
+		f, ok := ev.floatOf(ev.Vars[k])
+		if !ok {
+			t.Fatalf("%s is not a float", k)
+		}
+		if math.Abs(f-want[i]) > 1e-9 {
+			t.Fatalf("%s got %v, want %v", k, f, want[i])
+		}
+	}
+}

@@ -436,6 +436,10 @@ func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
 
+func TestExecAbsFloat(t *testing.T) {
+	assertOutput(t, "a = -3.5\nb = -2.0\nprint(abs(a))\nprint(abs(b))", "3.5\n2\n")
+}
+
 func TestExecRoundIntVar(t *testing.T) {
 	assertOutput(t, "a = 3\nb = -3\nprint(round(a))\nprint(round(b))", "3\n-3\n")
 }

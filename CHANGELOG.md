@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [v0.10.7] - abs(float) interpreter parity
+
+- Interpreter abs() now negates a negative float64 payload instead of
+  returning the boxed heap handle unchanged (abs(-3.5) gave -3.5, now 3.5).
+  AOT already emitted llvm.fabs.
+- Tests: TestEvalAbsFloat, TestExecAbsFloat.
+
 ## [v0.10.6] - round(int variable) AOT parity
 
 - AOT round() now passes an int variable through (identity) instead of
