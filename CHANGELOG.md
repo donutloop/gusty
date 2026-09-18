@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [v0.10.5] - round(float var) AOT parity
+
+- AOT round() now supports float variables: emits llvm.round.f64 + fptosi
+  (round-half-away), matching interpreter math.Round. Previously round()
+  errored with "folds only a constant integer arg" for a float variable.
+- Tests: TestIRRoundFloatVar, TestExecRoundVar.
+
 ## [v0.10.4] - round() float parity
 
 - Interpreter `round(float)` now uses math.Round (half-away-from-zero), matching

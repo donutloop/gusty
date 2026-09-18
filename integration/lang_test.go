@@ -436,6 +436,11 @@ func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
 
+func TestExecRoundVar(t *testing.T) {
+	// round(float variable) must round half-away in the AOT binary.
+	assertOutput(t, "a = 2.5\nb = -2.5\nprint(round(a))\nprint(round(b))", "3\n-3\n")
+}
+
 func TestExecRound(t *testing.T) {
 	// round(float) rounds half-away-from-zero in both interpreter and AOT.
 	assertOutput(t, "print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))", "3\n4\n2\n-3\n")

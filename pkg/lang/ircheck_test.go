@@ -1227,3 +1227,12 @@ func TestIRFloatFloorModNeg(t *testing.T) {
 		}
 	}
 }
+
+func TestIRRoundFloatVar(t *testing.T) {
+	// round(float variable) must emit llvm.round.f64 + fptosi (half-away),
+	// not error with "folds only a constant integer arg".
+	ir := llcCompiles(t, "a = 2.5\nb = -2.5\nprint(round(a))\nprint(round(b))")
+	if !strings.Contains(ir, "llvm.round.f64") || !strings.Contains(ir, "fptosi double") {
+		t.Fatalf("round(float var) missing llvm.round/fptosi:\n%s", ir)
+	}
+}

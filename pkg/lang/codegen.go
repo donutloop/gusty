@@ -2797,6 +2797,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if fv, ok := g.floatEval(c.Args[0]); ok {
 					return fmt.Sprintf("%d", int64(math.Round(fv))), nil
 				}
+			fx := g.floatValue(b, c.Args[0])
+			rt := g.newTmp()
+			fmt.Fprintf(b, "  %s = call double @llvm.round.f64(double %s)\n", rt, fx)
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = fptosi double %s to i32\n", t, rt)
+			return t, nil
 			}
 
 		rv, rerr := g.constIntVal(c.Args[0])
