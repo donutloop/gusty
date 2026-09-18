@@ -841,7 +841,10 @@ func (g *irGen) isFloat(e Expr) bool {
 	case *Call:
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok {
-				if id.Value == "float" || id.Value == "abs" || id.Value == "min" || id.Value == "max" {
+				if id.Value == "float" {
+					return true
+				}
+				if id.Value == "abs" || id.Value == "min" || id.Value == "max" {
 					for _, a := range n.Args {
 						if g.isFloat(a) {
 							return true

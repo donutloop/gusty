@@ -1025,6 +1025,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "select i1") {
 		t.Fatalf("max(float vars) should emit a select, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(float("3.5"))`)
+	if !strings.Contains(ir, "3.5e+00") {
+		t.Fatalf("float(string) should parse to 3.5e+00, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
