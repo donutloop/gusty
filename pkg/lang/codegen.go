@@ -719,10 +719,16 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		}
 		return "", false
 	case *Call:
-		// str(int-literal) folds to its decimal string, e.g. print(str(42)).
+		// str(int-literal) folds to its decimal string, e.g. print(str(42));
+		// str(float-constant) folds to its %g decimal string (matches the
+		// interpreter's Repr), so print(str(3.5)) emits a valid %s printf
+		// with the string-global pointer rather than a %d printf fed an i8*.
 		if name, ok := n.Fn.(*Name); ok && name.Value == "str" && len(n.Args) == 1 {
 			if il, ok := n.Args[0].(*IntLit); ok {
 				return strconv.FormatInt(il.Value, 10), true
+			}
+			if fv, ok := g.floatEval(n.Args[0]); ok {
+				return fmt.Sprintf("%g", fv), true
 			}
 		}
 		// constant-fold string methods: `"AbC".upper()`, `.lower()`, `.strip()`.

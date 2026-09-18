@@ -436,6 +436,16 @@ func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
 
+func TestExecPrintStrFloat(t *testing.T) {
+	// str(float-constant) folds to its %g decimal string; print must emit a
+	// %s printf with the string-global pointer (valid IR), not a %d printf fed
+	// an i8*. Matches the interpreter's str()/Repr for floats.
+	assertOutput(t, `print(str(3.5))`, "3.5\n")
+	assertOutput(t, `print(str(2))`, "2\n")
+	assertOutput(t, `print(str(1.0 + 2.0))`, "3\n")
+	assertOutput(t, `print(1, str(3.5), 2)`, "1\n3.5\n2\n")
+}
+
 func TestExecDictKeysValues(t *testing.T) {
 	assertOutput(t, `print(sum({1: 2, 3: 4}.keys()))`, "4\n")
 }

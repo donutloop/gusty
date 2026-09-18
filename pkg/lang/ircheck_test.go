@@ -642,6 +642,20 @@ func TestIRStrBuiltinFolds(t *testing.T) {
 	}
 }
 
+func TestIRPrintStrFloatIsValid(t *testing.T) {
+	// print(str(3.5)) must fold the float to its %g decimal string and emit a
+	// %s printf fed the string-global pointer — not a %d printf fed an i8*
+	// (which llc rejects with "global variable reference must have pointer
+	// type"). llcCompiles aborts if the module fails to verify.
+	ir := llcCompiles(t, `print(str(3.5))`)
+	// The emitted format constant is c"%s\0A\00" (newline as \0A escape).
+	if !strings.Contains(ir, `%s\0A`) && !strings.Contains(ir, `%s\n`) {
+		t.Fatalf("print(str(3.5)) should emit a %%s printf, got:\n%s", ir)
+	}
+	llcCompiles(t, `print(str(1.0 + 2.0))`) // foldable float expression
+	llcCompiles(t, `print(1, str(3.5), 2)`) // mixed multi-arg print
+}
+
 func TestIRStrReplaceFolds(t *testing.T) {
 	// `print("aXbXc".replace("X", "-"))` folds to a single string global
 	// "a-b-c", so the emitted IR contains that exact string constant.

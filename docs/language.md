@@ -359,8 +359,10 @@ match x:
 - `range(n)` — iteration bound for `for` loops.
 - `str(x)` — converts a value to its string representation. In the
   interpreter, `str(x)` boxes `repr(x)` as a string; in codegen, `str(int)`
-  folds to the decimal string constant, so `len(str(42))` → `2` and
-  `print(str(42))` prints `42` (and `"n=" + str(7)` folds to `"n=7"`).
+  folds to the decimal string constant and `str(float-constant)` folds to its
+  `%g` decimal string (matching the interpreter's `repr`), so `print(str(3.5))`
+  emits a valid `%s` printf with the string-global pointer rather than a `%d`
+  printf fed an `i8*`. `len(str(...))` also folds.
 
 ## Generators & lists
 - `def g(): yield a; yield b` is a generator: calling `g()` runs the body and

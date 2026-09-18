@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## [v0.10.1] - float str() print parity
+
+- **`print(str(float-const))` AOT parity** (roadmap gap): `str(3.5)` now
+  folds to its `%g` decimal string constant (matching the interpreter's
+  `repr`), so `print(str(3.5))`, `print(str(1.0 + 2.0))`, and mixed
+  `print(1, str(3.5), 2)` emit a valid `%s` printf fed the string-global
+  pointer. Previously the print path fell through to the `%d` branch and fed
+  an `i8*` to printf, which `llc-20` rejected with "global variable reference
+  must have pointer type".
+- Unit tests (`TestIRPrintStrFloatIsValid`) and integration tests
+  (`TestExecPrintStrFloat`) lock in the fix.
+
 ## [v0.10.0] - roadmap phase 0
 
 - **Version hygiene (roadmap Phase 0)**: reconcile the stale compiler version
