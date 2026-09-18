@@ -874,7 +874,7 @@ func (g *irGen) isFloat(e Expr) bool {
 						}
 					}
 				}
-				if id.Value == "sqrt" {
+				if id.Value == "sqrt" || id.Value == "floor" || id.Value == "ceil" {
 					return true
 				}
 				if id.Value == "sum" {
@@ -1021,6 +1021,16 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				fx := g.floatValue(b, n.Args[0])
 				rt := g.newTmp()
 				fmt.Fprintf(b, "  %s = call double @llvm.sqrt.f64(double %s)\n", rt, fx)
+				return rt
+			}
+			if id, ok := n.Fn.(*Name); ok && (id.Value == "floor" || id.Value == "ceil") {
+				fx := g.floatValue(b, n.Args[0])
+				rt := g.newTmp()
+				if id.Value == "floor" {
+					fmt.Fprintf(b, "  %s = call double @llvm.floor.f64(double %s)\n", rt, fx)
+				} else {
+					fmt.Fprintf(b, "  %s = call double @llvm.ceil.f64(double %s)\n", rt, fx)
+				}
 				return rt
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
@@ -2678,6 +2688,28 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		fx := g.floatValue(b, c.Args[0])
 		rt := g.newTmp()
 		fmt.Fprintf(b, "  %s = call double @llvm.sqrt.f64(double %s)\n", rt, fx)
+		return rt, nil
+	case "floor":
+		// floor returns the largest double <= the float value of its argument.
+		if fv, ok := g.floatEval(c.Args[0]); ok {
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(math.Floor(fv)))
+			return t, nil
+		}
+		fx := g.floatValue(b, c.Args[0])
+		rt := g.newTmp()
+		fmt.Fprintf(b, "  %s = call double @llvm.floor.f64(double %s)\n", rt, fx)
+		return rt, nil
+	case "ceil":
+		// ceil returns the smallest double >= the float value of its argument.
+		if fv, ok := g.floatEval(c.Args[0]); ok {
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(math.Ceil(fv)))
+			return t, nil
+		}
+		fx := g.floatValue(b, c.Args[0])
+		rt := g.newTmp()
+		fmt.Fprintf(b, "  %s = call double @llvm.ceil.f64(double %s)\n", rt, fx)
 		return rt, nil
 	case "range":
 		for _, a := range c.Args {

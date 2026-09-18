@@ -817,3 +817,10 @@ func TestExecSqrt(t *testing.T) {
 	assertOutput(t, "print(sqrt(9.0))\nprint(sqrt(9))\nprint(sqrt(2.0))", "3\n3\n1.4142135623730951\n")
 	assertOutput(t, "x = 16.0\nprint(sqrt(x))\nprint(sqrt(0.0))", "4\n0\n")
 }
+
+func TestExecFloorCeil(t *testing.T) {
+	// Standard-library floor/ceil builtins: llvm.floor.f64 / llvm.ceil.f64
+	// with float promotion and constant folding.
+	assertOutput(t, "print(floor(2.7))\nprint(floor(-2.7))\nprint(ceil(2.2))\nprint(ceil(-2.2))", "2\n-3\n3\n-2\n")
+	assertOutput(t, "print(floor(7))\nprint(ceil(7))", "7\n7\n")
+}
