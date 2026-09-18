@@ -1,3 +1,9 @@
+## [v0.10.30] - arithmetic on indexed imported dict globals
+- `cfg.d[k] + cfg.d[j]` where `cfg.d` is an imported dict module global now
+  folds to the sum in the AOT (Index resolves `*Attr` to folded dicts and
+  BinOp folds the resulting literals), with an interpreter-vs-AOT parity
+  unit test (TestIRImportDictArithInterpVsAOT).
+
 ## [v0.10.29] - len of imported dict module globals
 - `len(cfg.d)` where `cfg.d` is an imported dict module global now returns
   the folded dict's entry count in the AOT `len` builtin (an `*Attr`
