@@ -38,18 +38,23 @@ func deadGlobalElim(ir string) string {
 	for sc.Scan() {
 		line := sc.Text()
 		trim := strings.TrimSpace(line)
-		// A global definition starts with `@.name = ...`. Everything after the
-		// first non-global, non-blank line is the function body.
+		// A global definition starts with `@.name = ...`. The body starts at
+		// the first function definition (`define`). Internal globals
+		// (`@exn_flag`, `@env_store`, ...) and `declare` lines precede the
+		// body and must not be mistaken for it.
 		if !seenBody {
 			if m := globalDefRe.FindStringSubmatch(trim); m != nil {
 				defs[m[1]] = true
-				// the definition itself references its own name — count it but
-				// the name appears once on its own definition line.
-				uses[m[1]]++
+				// count every reference in this definition line (its own name
+				// plus any other globals it embeds, e.g. @.lst1 holding @.str0)
+				for _, u := range globalUseRe.FindAllString(line, -1) {
+					uses[u]++
+				}
 				lines = append(lines, line)
 				continue
 			}
-			if trim != "" && !strings.HasPrefix(trim, ";") {
+			// the body starts at the first function definition (`define`)
+			if strings.HasPrefix(trim, "define ") {
 				seenBody = true
 			}
 		}
