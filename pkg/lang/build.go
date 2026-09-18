@@ -78,7 +78,7 @@ func Build(files []string, out string, optLevel int) (*BuildResult, error) {
 			fmt.Errorf("build: llc: %v\n%s", err, outLL)
 	}
 
-	ccCmdline := []string{objPath, "-o", out}
+	ccCmdline := []string{objPath, "-o", out, "-lm"}
 	if outCC, err := exec.Command(ccCmd, ccCmdline...).CombinedOutput(); err != nil {
 		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}},
 			fmt.Errorf("build: cc: %v\n%s", err, outCC)
