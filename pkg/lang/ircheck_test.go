@@ -1493,3 +1493,25 @@ func TestIRImportSortedList(t *testing.T) {
 		t.Fatalf("AOT did not fold sorted(cfg.l):\n%s", res.IR)
 	}
 }
+
+func TestIRImportDictIndexInterpVsAOT(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10}\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	v, _, err := EvalExpr("import cfg\ncfg.d[1]")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	res, err := Compile("import cfg\nprint(cfg.d[1])")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "10") {
+		t.Fatalf("AOT did not fold cfg.d[1]=10:\n%s", res.IR)
+	}
+	if v != 10 {
+		t.Fatalf("interp cfg.d[1]=%d, want 10", v)
+	}
+}

@@ -1478,6 +1478,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 								return g.value(b, lst.Elems[key])
 							}
 						}
+						if dct, ok4 := lit.(*DictLit); ok4 {
+							ks, err := dictLiteralKeys(dct)
+							if err != nil {
+								return "", err
+							}
+							vs, err := dictLiteralVals(dct)
+							if err != nil {
+								return "", err
+							}
+							for i := range ks {
+								if ks[i] == key {
+									return fmt.Sprintf("%d", vs[i]), nil
+								}
+							}
+						}
 					}
 				}
 			}

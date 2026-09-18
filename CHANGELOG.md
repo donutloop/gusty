@@ -1,3 +1,9 @@
+## [v0.10.26] - indexing imported dict module globals
+- `cfg.d[k]` where `cfg.d` is an imported dict module global now indexes
+  into the folded dict in the AOT `Index` path (an `*Attr` expression
+  resolves against the imports registry to a folded `DictLit`, comparing
+  integer keys).
+
 ## [v0.10.25] - sorted of imported list module globals
 - `sorted(cfg.l)` where `cfg.l` is an imported list module global now folds
   the sorted list in the AOT `sorted` builtin (an `*Attr` expression
