@@ -158,7 +158,6 @@ func reversedExprs(elems []Expr) []Expr {
 	return out
 }
 
-
 // listElemLoad loads list element i from an inline list literal's global
 // struct with a constant GEP index (this llc build accepts only constant
 // GEP indices).
@@ -387,11 +386,12 @@ func (g *irGen) listArgLen(a Expr) (int, bool) {
 
 // listLen returns the length of a list-producing builtin call over literal
 // arguments, matching the interpreter semantics:
-//   enumerate(x)   -> len(x)         (x must be an inline list literal)
-//   zip(a, b)      -> min(len(a), len(b))
-//   partition(s)   -> 3              (always three parts)
-//   split(s, sep)  -> occurrences(sep in s) + 1
-//   rsplit(s, sep) -> occurrences(sep in s) + 1
+//
+//	enumerate(x)   -> len(x)         (x must be an inline list literal)
+//	zip(a, b)      -> min(len(a), len(b))
+//	partition(s)   -> 3              (always three parts)
+//	split(s, sep)  -> occurrences(sep in s) + 1
+//	rsplit(s, sep) -> occurrences(sep in s) + 1
 func (g *irGen) listLen(a Expr) (int, bool) {
 	c, ok := a.(*Call)
 	if !ok || len(c.Args) == 0 {
@@ -747,11 +747,11 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		}
 		switch attr.Name.Value {
 		case "swapcase":
-		return swapcase(v), true
+			return swapcase(v), true
 		case "title":
-		return title(v), true
+			return title(v), true
 		case "capitalize":
-		return capitalize(v), true
+			return capitalize(v), true
 		case "upper":
 			return strings.ToUpper(v), true
 		case "lower":
@@ -873,6 +873,9 @@ func (g *irGen) isFloat(e Expr) bool {
 							return true
 						}
 					}
+				}
+				if id.Value == "sqrt" {
+					return true
 				}
 				if id.Value == "sum" {
 					for _, a := range n.Args {
@@ -1014,6 +1017,12 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				fmt.Fprintf(b, "  %s = call double @llvm.fabs.f64(double %s)\n", t, g.floatValue(b, n.Args[0]))
 				return t
 			}
+			if id, ok := n.Fn.(*Name); ok && id.Value == "sqrt" {
+				fx := g.floatValue(b, n.Args[0])
+				rt := g.newTmp()
+				fmt.Fprintf(b, "  %s = call double @llvm.sqrt.f64(double %s)\n", rt, fx)
+				return rt
+			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
 				arg := n.Args[0]
 				if g.isFloat(arg) {
@@ -1099,7 +1108,6 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 	return t
 }
 
-
 // floatEval returns the float64 value of a float-literal expression, if foldable.
 func (g *irGen) floatEval(e Expr) (float64, bool) {
 	switch n := e.(type) {
@@ -1182,12 +1190,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
 	case *BinOp:
-			if g.isFloat(n.L) || g.isFloat(n.R) {
-				switch n.Op {
-				case "==", "!=", "<", "<=", ">", ">=":
-					return g.floatBinOp(b, n), nil
-				}
+		if g.isFloat(n.L) || g.isFloat(n.R) {
+			switch n.Op {
+			case "==", "!=", "<", "<=", ">", ">=":
+				return g.floatBinOp(b, n), nil
 			}
+		}
 
 		// Constant string concatenation: fold "a" + "b" (and foldable string
 		// calls like str(7)) into a single string global.
@@ -1358,7 +1366,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return t, nil
 	case *CondExpr:
 		// ternary `then if cond else otherwise`: pick a branch by condition.
-			cond := g.truthyValue(b, n.Cond)
+		cond := g.truthyValue(b, n.Cond)
 		then, err := g.value(b, n.If)
 		if err != nil {
 			return "", err
@@ -1518,8 +1526,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 	case *Comp:
 		return g.comp(b, n)
-		case *Call:
-			return g.call(b, n)
+	case *Call:
+		return g.call(b, n)
 	case *KeywordArg:
 		return g.value(b, n.Value)
 	case *Lambda:
@@ -1938,12 +1946,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		switch attr.Name.Value {
 		case "upper":
 			v = strings.ToUpper(v)
-			case "capitalize":
-				v = capitalize(v)
-			case "title":
-				v = title(v)
-			case "swapcase":
-				v = swapcase(v)
+		case "capitalize":
+			v = capitalize(v)
+		case "title":
+			v = title(v)
+		case "swapcase":
+			v = swapcase(v)
 		case "lower":
 			v = strings.ToLower(v)
 		case "strip":
@@ -1992,16 +2000,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("find() argument must be a constant string")
 			}
 			return fmt.Sprintf("%d", strings.Index(v, subv)), nil
-			case "rfind":
-				// s.rfind(sub) -> index of last occurrence of sub, or -1 if absent.
-				if len(c.Args) != 1 {
-					return "", fmt.Errorf("rfind() takes exactly 1 argument")
-				}
-				subv, ok := g.stringVal(c.Args[0])
-				if !ok {
-					return "", fmt.Errorf("rfind() argument must be a constant string")
-				}
-				return fmt.Sprintf("%d", strings.LastIndex(v, subv)), nil
+		case "rfind":
+			// s.rfind(sub) -> index of last occurrence of sub, or -1 if absent.
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("rfind() takes exactly 1 argument")
+			}
+			subv, ok := g.stringVal(c.Args[0])
+			if !ok {
+				return "", fmt.Errorf("rfind() argument must be a constant string")
+			}
+			return fmt.Sprintf("%d", strings.LastIndex(v, subv)), nil
 		case "count":
 			// s.count(sub) -> number of non-overlapping occurrences of sub.
 			if len(c.Args) != 1 {
@@ -2012,100 +2020,100 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("count() argument must be a constant string")
 			}
 			return fmt.Sprintf("%d", strings.Count(v, subv)), nil
-			case "isdigit":
-				// s.isdigit() -> 1 if all runes are digits, else 0.
-				res := 0
-				if v != "" {
-					all := true
-					for _, r := range v {
-						if !unicode.IsDigit(r) {
-							all = false
-							break
-						}
-					}
-					if all {
-						res = 1
-					}
-				}
-				return fmt.Sprintf("%d", res), nil
-			case "isalpha":
-				// s.isalpha() -> 1 if all runes are alphabetic, else 0.
-				res := 0
-				if v != "" {
-					all := true
-					for _, r := range v {
-						if !unicode.IsLetter(r) {
-							all = false
-							break
-						}
-					}
-					if all {
-						res = 1
-					}
-				}
-				return fmt.Sprintf("%d", res), nil
-			case "isalnum":
-				res := 0
-				if v != "" {
-					all := true
-					for _, r := range v {
-						if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-							all = false
-							break
-						}
-					}
-					if all {
-						res = 1
-					}
-				}
-				return fmt.Sprintf("%d", res), nil
-			case "isspace":
-				res := 0
-				if v != "" {
-					all := true
-					for _, r := range v {
-						if !unicode.IsSpace(r) {
-							all = false
-							break
-						}
-					}
-					if all {
-						res = 1
-					}
-				}
-				return fmt.Sprintf("%d", res), nil
-			case "islower":
-				res := 0
-				hasCased := false
-				allLower := true
+		case "isdigit":
+			// s.isdigit() -> 1 if all runes are digits, else 0.
+			res := 0
+			if v != "" {
+				all := true
 				for _, r := range v {
-					if unicode.IsLower(r) {
-						hasCased = true
-					} else if unicode.IsUpper(r) {
-						hasCased = true
-						allLower = false
+					if !unicode.IsDigit(r) {
+						all = false
+						break
 					}
 				}
-				if hasCased && allLower {
+				if all {
 					res = 1
 				}
-				return fmt.Sprintf("%d", res), nil
-			case "isupper":
-				res := 0
-				hasCased := false
-				allUpper := true
+			}
+			return fmt.Sprintf("%d", res), nil
+		case "isalpha":
+			// s.isalpha() -> 1 if all runes are alphabetic, else 0.
+			res := 0
+			if v != "" {
+				all := true
 				for _, r := range v {
-					if unicode.IsUpper(r) {
-						hasCased = true
-					} else if unicode.IsLower(r) {
-						hasCased = true
-						allUpper = false
+					if !unicode.IsLetter(r) {
+						all = false
+						break
 					}
 				}
-				if hasCased && allUpper {
+				if all {
 					res = 1
 				}
-				return fmt.Sprintf("%d", res), nil
+			}
+			return fmt.Sprintf("%d", res), nil
+		case "isalnum":
+			res := 0
+			if v != "" {
+				all := true
+				for _, r := range v {
+					if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+						all = false
+						break
+					}
+				}
+				if all {
+					res = 1
+				}
+			}
+			return fmt.Sprintf("%d", res), nil
+		case "isspace":
+			res := 0
+			if v != "" {
+				all := true
+				for _, r := range v {
+					if !unicode.IsSpace(r) {
+						all = false
+						break
+					}
+				}
+				if all {
+					res = 1
+				}
+			}
+			return fmt.Sprintf("%d", res), nil
+		case "islower":
+			res := 0
+			hasCased := false
+			allLower := true
+			for _, r := range v {
+				if unicode.IsLower(r) {
+					hasCased = true
+				} else if unicode.IsUpper(r) {
+					hasCased = true
+					allLower = false
+				}
+			}
+			if hasCased && allLower {
+				res = 1
+			}
+			return fmt.Sprintf("%d", res), nil
+		case "isupper":
+			res := 0
+			hasCased := false
+			allUpper := true
+			for _, r := range v {
+				if unicode.IsUpper(r) {
+					hasCased = true
+				} else if unicode.IsLower(r) {
+					hasCased = true
+					allUpper = false
+				}
+			}
+			if hasCased && allUpper {
+				res = 1
+			}
+			return fmt.Sprintf("%d", res), nil
 		case "startswith", "endswith":
 			// s.startswith(sub) / s.endswith(sub) -> 1 or 0.
 			if len(c.Args) != 1 {
@@ -2334,7 +2342,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fmtName, size := g.fmtStr("%.17g\n")
 				fv := g.floatValue(b, a)
 				t = g.newTmp()
-							b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
+				b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
 			} else {
 				fmtName, size := g.fmtStr("%d\n")
 				v, err := g.value(b, a)
@@ -2342,7 +2350,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", err
 				}
 				t := g.newTmp()
-							b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
+				b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 			}
 			if i == len(c.Args)-1 {
 				last = t
@@ -2464,7 +2472,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		res := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, acc))
 		return res, nil
-		
+
 	case "sum":
 		// sum(list) -> sum the elements of an inline list literal (unrolled).
 		if len(c.Args) != 1 {
@@ -2514,27 +2522,27 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// sum([]) folds to 0, matching the interpreter.
 			return "0", nil
 		}
-			anyFloat := false
-			fvals := make([]float64, 0, len(elems))
-			for _, elem := range elems {
-				if g.isFloat(elem) {
-					anyFloat = true
-				}
-				if fv, ok := g.floatEval(elem); ok {
-					fvals = append(fvals, fv)
-				}
+		anyFloat := false
+		fvals := make([]float64, 0, len(elems))
+		for _, elem := range elems {
+			if g.isFloat(elem) {
+				anyFloat = true
 			}
-			if anyFloat {
-				if len(fvals) == len(elems) {
-					total := 0.0
-					for _, fv := range fvals {
-						total += fv
-					}
-					t := g.newTmp()
-					fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(total))
-					return t, nil
-				}
+			if fv, ok := g.floatEval(elem); ok {
+				fvals = append(fvals, fv)
 			}
+		}
+		if anyFloat {
+			if len(fvals) == len(elems) {
+				total := 0.0
+				for _, fv := range fvals {
+					total += fv
+				}
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(total))
+				return t, nil
+			}
+		}
 
 		acc, err := g.value(b, elems[0])
 		if err != nil {
@@ -2629,16 +2637,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("abs expects one argument")
 		}
-			if g.isFloat(c.Args[0]) {
-				if fv, ok := g.floatEval(c.Args[0]); ok {
-					if fv < 0 {
-						fv = -fv
-					}
-					t := g.newTmp()
-					fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fv))
-					return t, nil
+		if g.isFloat(c.Args[0]) {
+			if fv, ok := g.floatEval(c.Args[0]); ok {
+				if fv < 0 {
+					fv = -fv
 				}
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fv))
+				return t, nil
 			}
+		}
 
 		if il, ok := c.Args[0].(*IntLit); ok {
 			if il.Value < 0 {
@@ -2657,6 +2665,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		t := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, cmp, neg, v))
 		return t, nil
+	case "sqrt":
+		// sqrt promotes its argument to float and returns the square root.
+		if fv, ok := g.floatEval(c.Args[0]); ok {
+			if fv < 0 {
+				return "", fmt.Errorf("sqrt: cannot take square root of a negative number")
+			}
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(math.Sqrt(fv)))
+			return t, nil
+		}
+		fx := g.floatValue(b, c.Args[0])
+		rt := g.newTmp()
+		fmt.Fprintf(b, "  %s = call double @llvm.sqrt.f64(double %s)\n", rt, fx)
+		return rt, nil
 	case "range":
 		for _, a := range c.Args {
 			if _, ok := a.(*KeywordArg); ok {
@@ -2672,11 +2694,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("str expects one argument")
 		}
-			if g.isFloat(c.Args[0]) {
-				if fv, ok := g.floatEval(c.Args[0]); ok {
-					return g.strConst(fmt.Sprintf("%g", fv)), nil
-				}
+		if g.isFloat(c.Args[0]) {
+			if fv, ok := g.floatEval(c.Args[0]); ok {
+				return g.strConst(fmt.Sprintf("%g", fv)), nil
 			}
+		}
 		v, err := g.value(b, c.Args[0])
 		if err != nil {
 			return "", err
@@ -2693,14 +2715,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("int expects one argument")
 		}
-			if g.isFloat(c.Args[0]) {
-				if fv, ok := g.floatEval(c.Args[0]); ok {
-					return strconv.FormatInt(int64(fv), 10), nil
-				}
-				t := g.newTmp()
-				fmt.Fprintf(b, "  %s = fptosi double %s to i32\n", t, g.floatValue(b, c.Args[0]))
-				return t, nil
+		if g.isFloat(c.Args[0]) {
+			if fv, ok := g.floatEval(c.Args[0]); ok {
+				return strconv.FormatInt(int64(fv), 10), nil
 			}
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = fptosi double %s to i32\n", t, g.floatValue(b, c.Args[0]))
+			return t, nil
+		}
 
 		if il, ok := c.Args[0].(*IntLit); ok {
 			return fmt.Sprintf("%d", il.Value), nil
@@ -2798,17 +2820,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("round expects one argument")
 		}
-			if g.isFloat(c.Args[0]) {
-				if fv, ok := g.floatEval(c.Args[0]); ok {
-					return fmt.Sprintf("%d", int64(math.Round(fv))), nil
-				}
+		if g.isFloat(c.Args[0]) {
+			if fv, ok := g.floatEval(c.Args[0]); ok {
+				return fmt.Sprintf("%d", int64(math.Round(fv))), nil
+			}
 			fx := g.floatValue(b, c.Args[0])
 			rt := g.newTmp()
 			fmt.Fprintf(b, "  %s = call double @llvm.round.f64(double %s)\n", rt, fx)
 			t := g.newTmp()
 			fmt.Fprintf(b, "  %s = fptosi double %s to i32\n", t, rt)
 			return t, nil
-			}
+		}
 
 		rv, rerr := g.constIntVal(c.Args[0])
 		if rerr != nil {
@@ -3000,7 +3022,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
 		}
 	case *IfStmt:
-			cond := g.truthyValue(b, n.Cond)
+		cond := g.truthyValue(b, n.Cond)
 		thenL := g.newLabel("if.then")
 		endL := g.newLabel("if.end")
 		var elseL string
@@ -3100,7 +3122,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		endL := g.newLabel("while.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
-			cond := g.truthyValue(b, n.Cond)
+		cond := g.truthyValue(b, n.Cond)
 		// normal completion (cond false) enters else if present; break skips else
 		normalL := endL
 		if len(n.Else) > 0 {

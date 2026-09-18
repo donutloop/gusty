@@ -810,3 +810,10 @@ func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
 	assertOutput(t, "print(abs(-3.5))\nprint(abs(-2.0))", "3.5\n2\n")
 	assertOutput(t, "print(round(2.5))\nprint(round(-2.5))", "3\n-3\n")
 }
+
+func TestExecSqrt(t *testing.T) {
+	// Standard-library sqrt builtin: promotes int/float args to float and
+	// emits llvm.sqrt.f64; constant args are folded at compile time.
+	assertOutput(t, "print(sqrt(9.0))\nprint(sqrt(9))\nprint(sqrt(2.0))", "3\n3\n1.4142135623730951\n")
+	assertOutput(t, "x = 16.0\nprint(sqrt(x))\nprint(sqrt(0.0))", "4\n0\n")
+}
