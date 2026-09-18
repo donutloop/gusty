@@ -20,6 +20,8 @@ func GenerateIR(prog *Program) (string, error) {
 		}
 	}
 	g.decls = "declare i32 @printf(i8*, ...)\n"
+	g.globals.WriteString("@exn_flag = internal global i32 0\n")
+	g.globals.WriteString("@exn_code = internal global i32 0\n")
 	var b strings.Builder
 	// pre-scan top-level for user function names
 	// user function definitions become separate defines before main
@@ -31,6 +33,8 @@ func GenerateIR(prog *Program) (string, error) {
 		}
 	}
 	b.WriteString("define i32 @main() {\nentry:\n")
+	g.handlerStack = nil
+	g.funcRaiseExit = "main.raiseexit"
 	for _, ap := range g.applyCalls {
 		fmt.Fprintf(&b, "  call void %s()\n", ap)
 	}
@@ -42,6 +46,8 @@ func GenerateIR(prog *Program) (string, error) {
 			return "", err
 		}
 	}
+	b.WriteString("  ret i32 0\n")
+	b.WriteString("main.raiseexit:\n")
 	b.WriteString("  ret i32 0\n}\n")
 	// assemble output
 	var out strings.Builder
@@ -111,7 +117,9 @@ type irGen struct {
 	// FuncDef name, so `f = lambda x: ...; f(3)` resolves in Call.
 	lambdas map[string]string
 	// floatVars tracks variables whose last assignment produced a double.
-	floatVars map[string]bool
+	floatVars     map[string]bool
+	handlerStack  []string
+	funcRaiseExit string
 }
 
 type loopInfo struct {
@@ -2311,10 +2319,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = load i32, i32* @%s_slot\n", env, fnName))
 			callArgs := append([]string{"i32 " + env}, vals...)
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_env(%s)\n", t, fnName, strings.Join(callArgs, ", ")))
+			g.checkExn(b)
 		} else if g.decorated[fnName] {
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, fnName, strings.Join(vals, ", ")))
+			g.checkExn(b)
 		} else {
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+			g.checkExn(b)
 		}
 		return t, nil
 	}
@@ -2947,7 +2958,121 @@ func (g *irGen) emitLambda(b *strings.Builder, lam *Lambda) (string, error) {
 	return name, nil
 }
 
+func exnCode(name string) int {
+	switch name {
+	case "ValueError":
+		return 1
+	case "TypeError":
+		return 2
+	case "KeyError":
+		return 3
+	case "IndexError":
+		return 4
+	case "RuntimeError":
+		return 5
+	case "StopIteration":
+		return 6
+	case "ZeroDivisionError":
+		return 7
+	default:
+		return 0
+	}
+}
+
+// raiseStmt compiles `raise Exception("msg")` / `raise ValueError("msg")`.
+func (g *irGen) raiseStmt(b *strings.Builder, rs *RaiseStmt) error {
+	code := 0
+	if c, ok := rs.Expr.(*Call); ok {
+		if n, ok2 := c.Fn.(*Name); ok2 {
+			code = exnCode(n.Value)
+		}
+	}
+	b.WriteString("  store i32 1, i32* @exn_flag\n")
+	b.WriteString(fmt.Sprintf("  store i32 %d, i32* @exn_code\n", code))
+	if len(g.handlerStack) > 0 {
+		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
+	} else {
+		b.WriteString("  br label %" + g.funcRaiseExit + "\n")
+	}
+	return nil
+}
+
+// checkExn emits a check of @exn_flag after a user-function call.
+func (g *irGen) checkExn(b *strings.Builder) {
+	f := g.newTmp()
+	c := g.newTmp()
+	cont := g.newLabel("exn.cont")
+	b.WriteString("  " + f + " = load i32, i32* @exn_flag\n")
+	b.WriteString("  " + c + " = icmp eq i32 " + f + ", 1\n")
+	target := g.funcRaiseExit
+	if len(g.handlerStack) > 0 {
+		target = g.handlerStack[len(g.handlerStack)-1]
+	}
+	b.WriteString("  br i1 " + c + ", label %" + target + ", label %" + cont + "\n")
+	b.WriteString(cont + ":\n")
+}
+
+// tryStmt compiles a try/except/finally statement.
+func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
+	handler := g.newLabel("try.handler")
+	finally := g.newLabel("try.finally")
+	after := g.newLabel("try.after")
+	g.handlerStack = append(g.handlerStack, handler)
+	for _, st := range ts.Body {
+		if err := g.stmt(b, st); err != nil {
+			return err
+		}
+	}
+	g.handlerStack = g.handlerStack[:len(g.handlerStack)-1]
+	f := g.newTmp()
+	c := g.newTmp()
+	b.WriteString("  " + f + " = load i32, i32* @exn_flag\n")
+	b.WriteString("  " + c + " = icmp eq i32 " + f + ", 1\n")
+	b.WriteString("  br i1 " + c + ", label %" + handler + ", label %" + finally + "\n")
+	b.WriteString(handler + ":\n")
+	b.WriteString("  store i32 0, i32* @exn_flag\n")
+	if len(ts.Excepts) > 0 {
+		ec := ts.Excepts[0]
+		specific := false
+		specCode := 0
+		if ec.Exn != nil && ec.Exn.Value != "Exception" {
+			specific = true
+			specCode = exnCode(ec.Exn.Value)
+		}
+		cbody := g.newLabel("try.body")
+		if specific {
+			code := g.newTmp()
+			m := g.newTmp()
+			b.WriteString("  " + code + " = load i32, i32* @exn_code\n")
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", m, code, specCode))
+			b.WriteString("  br i1 " + m + ", label %" + cbody + ", label %" + finally + "\n")
+			b.WriteString(cbody + ":\n")
+		}
+		for _, st := range ec.Body {
+			if err := g.stmt(b, st); err != nil {
+				return err
+			}
+		}
+		b.WriteString("  br label %" + finally + "\n")
+	} else {
+		b.WriteString("  br label %" + finally + "\n")
+	}
+	b.WriteString(finally + ":\n")
+	for _, st := range ts.Finally {
+		if err := g.stmt(b, st); err != nil {
+			return err
+		}
+	}
+	b.WriteString("  br label %" + after + "\n")
+	b.WriteString(after + ":\n")
+	return nil
+}
+
 func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
+	prevRaise := g.funcRaiseExit
+	prevHandlers := g.handlerStack
+	g.handlerStack = nil
+	g.funcRaiseExit = fd.Name + ".raiseexit"
 	g.closures = map[string]*closureInfo{}
 	g.envMode = false
 	g.envCaptures = nil
@@ -2986,13 +3111,21 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 			return err
 		}
 	}
+	fmt.Fprintf(b, "  ret i32 0\n")
+	fmt.Fprintf(b, "%s:\n", g.funcRaiseExit)
 	fmt.Fprintf(b, "  ret i32 0\n}\n")
+	g.funcRaiseExit = prevRaise
+	g.handlerStack = prevHandlers
 	g.params = map[string]string{}
 	return nil
 }
 
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	switch n := st.(type) {
+	case *TryStmt:
+		return g.tryStmt(b, n)
+	case *RaiseStmt:
+		return g.raiseStmt(b, n)
 	case *ExprStmt:
 		if _, err := g.value(b, n.Expr); err != nil {
 			return err

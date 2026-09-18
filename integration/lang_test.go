@@ -2,8 +2,9 @@
 // compiler actually emits, rather than only inspecting the IR text.
 //
 // Flow: source -> lex/parse -> semantic -> codegen (textual LLVM IR)
-//   -> llc-20 (LLVM 20 module verification + object code)
-//   -> cc (link) -> run the native binary -> compare captured stdout.
+//
+//	-> llc-20 (LLVM 20 module verification + object code)
+//	-> cc (link) -> run the native binary -> compare captured stdout.
 //
 // Running llc-20 on the emitted IR is the module-verification step: a module
 // that does not verify aborts here with the verifier output in the failure.
@@ -302,7 +303,6 @@ func TestExecTwoClosures(t *testing.T) {
 		"def make(x):\n    def add1():\n        return x + 1\n    def add2():\n        return x + 2\n    return add1() + add2()\nprint(make(5))",
 		"13\n")
 }
-
 
 func TestExecForListLiteral(t *testing.T) {
 	// for-over-list: sum the elements of an inline list literal.
@@ -745,7 +745,7 @@ func TestListLenRun(t *testing.T) {
 		if got != tc.want+"\n" {
 			t.Fatalf("%s: got %q, want %s", tc.src, got, tc.want)
 		}
-}
+	}
 }
 
 func TestOverEmptyNestedListsRun(t *testing.T) {
@@ -799,8 +799,6 @@ func TestNestedListCallRun(t *testing.T) {
 	}
 }
 
-	
-
 func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
 	// Lock float floor-division (`//`), frem modulo (`%`), abs, and round
 	// semantics across negative operands, exact multiples, and half-values —
@@ -823,4 +821,34 @@ func TestExecFloorCeil(t *testing.T) {
 	// with float promotion and constant folding.
 	assertOutput(t, "print(floor(2.7))\nprint(floor(-2.7))\nprint(ceil(2.2))\nprint(ceil(-2.2))", "2\n-3\n3\n-2\n")
 	assertOutput(t, "print(floor(7))\nprint(ceil(7))", "7\n7\n")
+}
+
+func TestExecTryExcept(t *testing.T) {
+	assertOutput(t, `try:
+    print(1)
+    raise ValueError("boom")
+    print(2)
+except:
+    print("caught")
+print("done")`, "1\ncaught\ndone\n")
+	assertOutput(t, `try:
+    print(1)
+finally:
+    print("finally")
+print("done")`, "1\nfinally\ndone\n")
+	assertOutput(t, `try:
+    raise ValueError("boom")
+except ValueError:
+    print("value")
+except:
+    print("other")
+print("done")`, "value\ndone\n")
+	assertOutput(t, `def f():
+    raise ValueError("x")
+    print(1)
+try:
+    f()
+except:
+    print("caught")
+print("done")`, "caught\ndone\n")
 }
