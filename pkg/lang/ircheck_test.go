@@ -1033,6 +1033,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "4.0e+00") {
 		t.Fatalf("sum(float list) should fold to 4.0e+00, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(2.5 + 3)`)
+	if !strings.Contains(ir, "sitofp") {
+		t.Fatalf("int+float should promote the int via sitofp, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
