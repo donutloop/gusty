@@ -1,3 +1,10 @@
+## [v0.10.11] - try/except/finally/raise in the AOT/LLVM backend
+- Compile try/except/finally and raise statements to LLVM IR (ADR 0111).
+- Add @exn_flag/@exn_code globals and a raise-exit label per function so
+  exceptions propagate across user-function calls to the nearest except handler.
+- Add integration tests (TestExecTryExcept) covering bare except, finally,
+  specific except matching, and cross-function raise propagation.
+
 # CHANGELOG
 
 

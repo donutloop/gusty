@@ -304,7 +304,7 @@ for i in range(n):
   (`ExnMsg`). `try:`/`except:`/`finally:` follow Python semantics.
 - `try:` / `except Exception:` / `finally:` are supported: the try body runs; on a
   runtime error a matching except clause runs (catch-all `Exception` matches any);
-  the `finally:` body always runs. Implemented in the interpreter path.
+  the `finally:` body always runs. Implemented in both the interpreter and the AOT/LLVM backend.
 - `while`/`for` loops accept an optional `else:` clause that runs on normal
   completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.
