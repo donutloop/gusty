@@ -1,6 +1,12 @@
 # CHANGELOG
 
 
+## [v0.10.8] - negative float floor/mod/neg AOT verification
+
+- Locks AOT binary parity for negative floats: -3.5//2.0 == -2 (llvm.floor),
+  -3.5%%2.0 == -1.5 (frem), abs(-3.5) == 3.5 (fabs), round(-3.5) == -4
+  (llvm.round). Interpreter already matched; adds TestExecFloatFloorModNegNeg.
+
 ## [v0.10.7] - abs(float) interpreter parity
 
 - Interpreter abs() now negates a negative float64 payload instead of

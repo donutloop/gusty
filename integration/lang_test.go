@@ -436,6 +436,12 @@ func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
 }
 
+func TestExecFloatFloorModNegNeg(t *testing.T) {
+	// Negative float floor/mod/neg must match in the AOT binary:
+	// -3.5//2.0 == -2, -3.5%%2.0 == -1.5, abs(-3.5) == 3.5, round(-3.5) == -4.
+	assertOutput(t, "a = -3.5\nb = 2.0\nprint(a // b)\nprint(a % b)\nprint(abs(a))\nprint(round(a))", "-2\n-1.5\n3.5\n-4\n")
+}
+
 func TestExecAbsFloat(t *testing.T) {
 	assertOutput(t, "a = -3.5\nb = -2.0\nprint(abs(a))\nprint(abs(b))", "3.5\n2\n")
 }
