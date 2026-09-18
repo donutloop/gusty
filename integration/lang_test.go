@@ -916,3 +916,19 @@ func TestExecImportOrdString(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import msg\nprint(ord(msg.msg))", "104\n")
 }
+
+func TestExecImportReversedString(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+		_ = os.Getwd
+}

@@ -1,3 +1,9 @@
+## [v0.10.19] - reversed of imported string module globals
+- `reversed(mod.str)` where `mod.str` is an imported string module global now
+  folds to the reversed string in the AOT `reversed` builtin (an `*Attr`
+  expression resolves against the imports registry before the generic
+  string-reversal path).
+
 ## [v0.10.18] - interpreter-vs-AOT comparison tests for import string globals
 - Adds TestIRImportStringInterpVsAOT: runs `import msg; len(msg.msg)` through
   the interpreter (EvalExpr) and the AOT compiler, asserting both fold to the

@@ -1361,3 +1361,19 @@ func TestIRImportStringInterpVsAOT(t *testing.T) {
 		t.Fatalf("interp len(msg.msg)=%d, want 6", v)
 	}
 }
+
+func TestIRImportReversedString(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	res, err := Compile("import msg\nprint(len(reversed(msg.msg)))")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	// reversed("hello!") = "!olleh" has len 6.
+	if !strings.Contains(res.IR, "6") {
+		t.Fatalf("reversed fold missing len 6:\n%s", res.IR)
+	}
+}

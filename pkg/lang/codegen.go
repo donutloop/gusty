@@ -2830,6 +2830,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if lit, ok := c.Args[0].(*StrLit); ok {
 			return g.strConst(reverseStr(lit.Value)), nil
 		}
+		// imported string module global (data imports): reversed(mod.str)
+		if attr, ok := c.Args[0].(*Attr); ok {
+			if nm, ok2 := attr.Obj.(*Name); ok2 {
+				if globals, ok3 := g.imports.Globals[nm.Value]; ok3 {
+					if lit2, ok4 := globals[attr.Name.Value]; ok4 {
+						if str, ok5 := lit2.(*StrLit); ok5 {
+							return g.strConst(reverseStr(str.Value)), nil
+						}
+					}
+				}
+			}
+		}
 		return "", fmt.Errorf("reversed: codegen folds only literal list/string args")
 	case "sorted":
 		// sorted(iter[, reverse=True]) folds to a sorted inline list literal.
