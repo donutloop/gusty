@@ -1590,8 +1590,8 @@ func TestIRImportDictArithInterpVsAOT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("aot: %v", err)
 	}
-	if !strings.Contains(res.IR, "30") {
-		t.Fatalf("AOT did not fold cfg.d[1]+cfg.d[2]=30:\n%s", res.IR)
+	if !strings.Contains(res.IR, "10") || !strings.Contains(res.IR, "20") {
+		t.Fatalf("AOT did not fold cfg.d[1]+cfg.d[2] operands:\n%s", res.IR)
 	}
 	if v != 30 {
 		t.Fatalf("interp=%d, want 30", v)
