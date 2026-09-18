@@ -800,3 +800,13 @@ func TestNestedListCallRun(t *testing.T) {
 }
 
 	
+
+func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
+	// Lock float floor-division (`//`), frem modulo (`%`), abs, and round
+	// semantics across negative operands, exact multiples, and half-values —
+	// the AOT codegen emits fdiv+floor, frem, llvm.fabs, and llvm.round.
+	assertOutput(t, "print(8.0 // 2.0)\nprint(-8.0 // 3.0)\nprint(-5.0 // 2.0)", "4\n-3\n-3\n")
+	assertOutput(t, "print(5.0 % 2.0)\nprint(-5.0 % 2.0)\nprint(5.0 % -2.0)", "1\n-1\n1\n")
+	assertOutput(t, "print(abs(-3.5))\nprint(abs(-2.0))", "3.5\n2\n")
+	assertOutput(t, "print(round(2.5))\nprint(round(-2.5))", "3\n-3\n")
+}
