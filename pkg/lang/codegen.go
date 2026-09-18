@@ -918,6 +918,33 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				}
 			}
 			if id, ok := n.Fn.(*Name); ok && (id.Value == "min" || id.Value == "max") {
+				if lst, ok := n.Args[0].(*ListLit); ok {
+					elems := lst.Elems
+					fe := make([]float64, 0, len(elems))
+					okAll := true
+					for _, elem := range elems {
+						fv, ok2 := g.floatEval(elem)
+						if !ok2 {
+							okAll = false
+							break
+						}
+						fe = append(fe, fv)
+					}
+					if okAll && len(fe) > 0 {
+						bestf := fe[0]
+						for _, fv := range fe[1:] {
+							if id.Value == "min" && fv < bestf {
+								bestf = fv
+							}
+							if id.Value == "max" && fv > bestf {
+								bestf = fv
+							}
+						}
+						t := g.newTmp()
+						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(bestf))
+						return t
+					}
+				}
 				fvals := make([]float64, 0, len(n.Args))
 				allFold := true
 				for _, a := range n.Args {

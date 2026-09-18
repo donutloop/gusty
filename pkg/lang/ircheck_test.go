@@ -1041,6 +1041,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "i32 3") {
 		t.Fatalf("len(string) should fold to 3, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(max([1.5, 2.5]))`)
+	if !strings.Contains(ir, "2.5e+00") {
+		t.Fatalf("max(float list) should fold to 2.5e+00, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
