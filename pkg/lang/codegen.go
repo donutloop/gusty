@@ -2343,7 +2343,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", err
 				}
 				t := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, v))
+				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, v))
 				last = t
 				continue
 			}
@@ -2352,7 +2352,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fmtName, size := g.fmtStr("%.17g\n")
 				fv := g.floatValue(b, a)
 				t = g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
+				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
 			} else {
 				fmtName, size := g.fmtStr("%d\n")
 				v, err := g.value(b, a)
@@ -2360,7 +2360,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", err
 				}
 				t := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
+				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 			}
 			if i == len(c.Args)-1 {
 				last = t

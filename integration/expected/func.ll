@@ -10,6 +10,6 @@ entry:
 define i32 @main() {
 entry:
   %t2 = call i32 @double(i32 5)
-  %t3 = call i32 @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.fmt1, i32 0, i32 0), i32 %t2)
+  %t3 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.fmt1, i32 0, i32 0), i32 %t2)
   ret i32 0
 }

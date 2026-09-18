@@ -27,6 +27,6 @@ for.inc4:
   br label %for.cond2
 for.end6:
   %_s.ld5 = load i32, i32* %_s
-  %t4 = call i32 @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.fmt1, i32 0, i32 0), i32 %_s.ld5)
+  %t4 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.fmt1, i32 0, i32 0), i32 %_s.ld5)
   ret i32 0
 }
