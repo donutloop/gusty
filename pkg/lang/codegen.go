@@ -2870,6 +2870,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						if str, ok5 := lit2.(*StrLit); ok5 {
 							return g.strConst(reverseStr(str.Value)), nil
 						}
+						if lst, ok5 := lit2.(*ListLit); ok5 {
+							return g.emitList(&ListLit{Elems: reversedExprs(lst.Elems)})
+						}
 					}
 				}
 			}

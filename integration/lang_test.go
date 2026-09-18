@@ -983,3 +983,4 @@ func TestExecImportDictIndex(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import cfg\nprint(cfg.d[1])", "10\n")
 }
+

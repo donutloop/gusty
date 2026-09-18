@@ -1515,3 +1515,19 @@ func TestIRImportDictIndexInterpVsAOT(t *testing.T) {
 		t.Fatalf("interp cfg.d[1]=%d, want 10", v)
 	}
 }
+
+func TestIRImportReversedList(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	res, err := Compile("import cfg\nx = reversed(cfg.l)")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	// reversed([1,2,3]) = [3,2,1] should appear with element 3 and count 3.
+	if !strings.Contains(res.IR, "3") {
+		t.Fatalf("AOT did not fold reversed(cfg.l):\n%s", res.IR)
+	}
+}

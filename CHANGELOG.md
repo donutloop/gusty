@@ -1,3 +1,8 @@
+## [v0.10.27] - reversed of imported list module globals
+- `reversed(cfg.l)` where `cfg.l` is an imported list module global now
+  folds the reversed list in the AOT `reversed` builtin (an `*Attr`
+  expression resolves against the imports registry to a folded `ListLit`).
+
 ## [v0.10.26] - indexing imported dict module globals
 - `cfg.d[k]` where `cfg.d` is an imported dict module global now indexes
   into the folded dict in the AOT `Index` path (an `*Attr` expression
