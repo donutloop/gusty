@@ -1478,3 +1478,18 @@ func TestIRImportLenListInterpVsAOT(t *testing.T) {
 		t.Fatalf("interp len(cfg.l)=%d, want 3", v)
 	}
 }
+
+func TestIRImportSortedList(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("l = [3, 1, 2]\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	res, err := Compile("import cfg\nx = sorted(cfg.l)")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "1") || !strings.Contains(res.IR, "2") {
+		t.Fatalf("AOT did not fold sorted(cfg.l):\n%s", res.IR)
+	}
+}

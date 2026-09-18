@@ -1,3 +1,8 @@
+## [v0.10.25] - sorted of imported list module globals
+- `sorted(cfg.l)` where `cfg.l` is an imported list module global now folds
+  the sorted list in the AOT `sorted` builtin (an `*Attr` expression
+  resolves against the imports registry to a folded `ListLit`).
+
 ## [v0.10.24] - len of imported list module globals
 - `len(cfg.l)` where `cfg.l` is an imported list module global now returns
   the folded list's length in the AOT `len` builtin (an `*Attr` expression

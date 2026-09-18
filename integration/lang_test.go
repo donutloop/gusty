@@ -966,3 +966,4 @@ func TestExecImportLenList(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import cfg\nprint(len(cfg.l))", "3\n")
 }
+

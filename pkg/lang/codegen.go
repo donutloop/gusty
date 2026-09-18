@@ -2871,6 +2871,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		ln, ok := c.Args[0].(*ListLit)
 		if !ok {
+			// imported module list global (data imports): sorted(mod.list)
+			if attr, ok2 := c.Args[0].(*Attr); ok2 {
+				if nm, ok3 := attr.Obj.(*Name); ok3 {
+					if globals, ok4 := g.imports.Globals[nm.Value]; ok4 {
+						if lit, ok5 := globals[attr.Name.Value]; ok5 {
+							if lst, ok6 := lit.(*ListLit); ok6 {
+								ln, ok = lst, true
+							}
+						}
+					}
+				}
+			}
+		}
+		if !ok {
 			return "", fmt.Errorf("sorted: codegen folds only an inline list literal")
 		}
 		vals := make([]int64, len(ln.Elems))
