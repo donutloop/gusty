@@ -1,3 +1,8 @@
+## [v0.10.23] - dict module globals in AOT data imports
+- AOT data imports now constant-fold **dict** module globals: `foldConst`
+  accepts a `DictLit` whose keys and values fold recursively, so `mod.d`
+  reads compile to folded dicts (e.g. `d = {1: 10}`).
+
 ## [v0.10.22] - indexing imported list module globals
 - `cfg.l[i]` where `cfg.l` is an imported list module global now indexes into
   the folded list in the AOT `Index` path (an `*Attr` expression resolves

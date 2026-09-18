@@ -1441,3 +1441,18 @@ func TestIRImportListIndexInterpVsAOT(t *testing.T) {
 		t.Fatalf("interp cfg.l[0]=%d, want 1", v)
 	}
 }
+
+func TestIRImportDictGlobals(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10}\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	res, err := Compile("import cfg\nx = cfg.d")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "1") {
+		t.Fatalf("module dict not folded:\n%s", res.IR)
+	}
+}
