@@ -1,3 +1,9 @@
+## [v0.10.18] - interpreter-vs-AOT comparison tests for import string globals
+- Adds TestIRImportStringInterpVsAOT: runs `import msg; len(msg.msg)` through
+  the interpreter (EvalExpr) and the AOT compiler, asserting both fold to the
+  same value (len("hello!") == 6), covering the string module-global data
+  import path end-to-end.
+
 ## [v0.10.17] - ord of imported string module globals
 - `ord(mod.str)` where `mod.str` is an imported string module global now
   returns the folded string's first byte value in the AOT `ord` builtin

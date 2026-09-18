@@ -1336,3 +1336,28 @@ func TestIRImportStringGlobals(t *testing.T) {
 	}
 	_ = res
 }
+
+func TestIRImportStringInterpVsAOT(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+
+	// interpreter
+	v, _, err := EvalExpr("import msg\nlen(msg.msg)")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	// AOT
+	res, err := Compile("import msg\nprint(len(msg.msg))")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "6") {
+		t.Fatalf("AOT did not fold len(msg.msg)=6:\n%s", res.IR)
+	}
+	if v != 6 {
+		t.Fatalf("interp len(msg.msg)=%d, want 6", v)
+	}
+}
