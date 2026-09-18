@@ -1009,6 +1009,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "2.5e+00") {
 		t.Fatalf("float(float var) should be identity, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, "f = -2.5\nprint(abs(f))")
+	if !strings.Contains(ir, "@llvm.fabs") && !strings.Contains(ir, "2.5e+00") {
+		t.Fatalf("abs(float var) should emit fabs or the float abs, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
