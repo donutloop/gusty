@@ -913,6 +913,9 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
 				arg := n.Args[0]
+				if g.isFloat(arg) {
+					return g.floatValue(b, arg)
+				}
 				switch a := arg.(type) {
 				case *IntLit:
 					t := g.newTmp()

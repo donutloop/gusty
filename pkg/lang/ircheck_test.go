@@ -1005,6 +1005,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "fmul double") {
 		t.Fatalf("float multiplication should emit fmul, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, "f = 2.5\nprint(float(f))")
+	if !strings.Contains(ir, "2.5e+00") {
+		t.Fatalf("float(float var) should be identity, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
