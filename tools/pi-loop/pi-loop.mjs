@@ -186,6 +186,10 @@ function git(argsArr) {
   });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function loadState() {
   try {
     return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
@@ -296,6 +300,13 @@ try {
     saveState(state);
     console.log(`pi-loop: round ${round} completed; executing AGENTS.md loop for next round...`);
     round += 1;
+    // Wait a minute after each completed loop before starting the next round.
+    // Configurable via PI_LOOP_DELAY_SECONDS (default 60).
+    const delaySeconds = parseInt(process.env.PI_LOOP_DELAY_SECONDS ?? "60", 10) || 0;
+    if (delaySeconds > 0) {
+      console.log(`pi-loop: waiting ${delaySeconds}s before round ${round}...`);
+      await sleep(delaySeconds * 1000);
+    }
   }
   session.dispose();
   console.log("pi-loop: finished rounds=" + (round - 1));
