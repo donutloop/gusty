@@ -884,3 +884,19 @@ func TestExecImportStringGlobals(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import msg\nprint(msg.msg)", "hello!\n")
 }
+
+func TestExecImportLenString(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	assertOutput(t, "import msg\nprint(len(msg.msg))", "6\n")
+}

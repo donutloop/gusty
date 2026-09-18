@@ -2417,6 +2417,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if n, ok := stringConstLen(c.Args[0]); ok {
 			return fmt.Sprintf("%d", n), nil
 		}
+		// imported string module global (data imports): len(mod.str)
+		if attr, ok := c.Args[0].(*Attr); ok {
+			if nm, ok2 := attr.Obj.(*Name); ok2 {
+				if globals, ok3 := g.imports.Globals[nm.Value]; ok3 {
+					if lit, ok4 := globals[attr.Name.Value]; ok4 {
+						if str, ok5 := lit.(*StrLit); ok5 {
+							return fmt.Sprintf("%d", len(str.Value)), nil
+						}
+					}
+				}
+			}
+		}
 		switch lit := c.Args[0].(type) {
 		case *Name:
 			if g.strVals != nil {

@@ -1,3 +1,9 @@
+## [v0.10.16] - len of imported string module globals
+- `len(mod.str)` where `mod.str` is an imported string module global now
+  returns the folded string's length in the AOT `len` builtin (an `*Attr`
+  expression resolves against the imports registry before the generic
+  string-length path).
+
 ## [v0.10.15] - print of imported string module globals
 - `print(mod.str)` where `mod.str` is an imported string module global now
   emits `printf("%s", i8*)` and outputs the string. `stringVal` resolves an
