@@ -1,3 +1,8 @@
+## [v0.10.17] - ord of imported string module globals
+- `ord(mod.str)` where `mod.str` is an imported string module global now
+  returns the folded string's first byte value in the AOT `ord` builtin
+  (an `*Attr` expression resolves against the imports registry).
+
 ## [v0.10.16] - len of imported string module globals
 - `len(mod.str)` where `mod.str` is an imported string module global now
   returns the folded string's length in the AOT `len` builtin (an `*Attr`

@@ -2892,6 +2892,23 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		sv, ok := stringConst(c.Args[0])
 		if !ok {
+			// imported string module global (data imports): ord(mod.str)
+			if attr, ok2 := c.Args[0].(*Attr); ok2 {
+				if nm, ok3 := attr.Obj.(*Name); ok3 {
+					if globals, ok4 := g.imports.Globals[nm.Value]; ok4 {
+						if lit, ok5 := globals[attr.Name.Value]; ok5 {
+							if str, ok6 := lit.(*StrLit); ok6 {
+								if str.Value == "" {
+									return "", fmt.Errorf("codegen: ord of empty string")
+								}
+								return fmt.Sprintf("%d", int(str.Value[0])), nil
+							}
+						}
+					}
+				}
+			}
+		}
+		if !ok {
 			return "", fmt.Errorf("ord: codegen folds only a constant string arg")
 		}
 		if len(sv) == 0 {
