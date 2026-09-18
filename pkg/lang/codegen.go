@@ -838,6 +838,13 @@ func (g *irGen) isFloat(e Expr) bool {
 			return g.floatVars[n.Value]
 		}
 		return false
+	case *ListLit:
+		for _, e := range n.Elems {
+			if g.isFloat(e) {
+				return true
+			}
+		}
+		return false
 	case *Call:
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok {
@@ -845,6 +852,13 @@ func (g *irGen) isFloat(e Expr) bool {
 					return true
 				}
 				if id.Value == "abs" || id.Value == "min" || id.Value == "max" {
+					for _, a := range n.Args {
+						if g.isFloat(a) {
+							return true
+						}
+					}
+				}
+				if id.Value == "sum" {
 					for _, a := range n.Args {
 						if g.isFloat(a) {
 							return true
@@ -884,6 +898,25 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		return g.floatBinOp(b, n)
 	case *Call:
 		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && id.Value == "sum" && len(n.Args) >= 1 {
+				if lst, ok := n.Args[0].(*ListLit); ok {
+					total := 0.0
+					okAll := true
+					for _, elem := range lst.Elems {
+						fv, ok2 := g.floatEval(elem)
+						if !ok2 {
+							okAll = false
+							break
+						}
+						total += fv
+					}
+					if okAll {
+						t := g.newTmp()
+						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(total))
+						return t
+					}
+				}
+			}
 			if id, ok := n.Fn.(*Name); ok && (id.Value == "min" || id.Value == "max") {
 				fvals := make([]float64, 0, len(n.Args))
 				allFold := true
@@ -2421,6 +2454,28 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// sum([]) folds to 0, matching the interpreter.
 			return "0", nil
 		}
+			anyFloat := false
+			fvals := make([]float64, 0, len(elems))
+			for _, elem := range elems {
+				if g.isFloat(elem) {
+					anyFloat = true
+				}
+				if fv, ok := g.floatEval(elem); ok {
+					fvals = append(fvals, fv)
+				}
+			}
+			if anyFloat {
+				if len(fvals) == len(elems) {
+					total := 0.0
+					for _, fv := range fvals {
+						total += fv
+					}
+					t := g.newTmp()
+					fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(total))
+					return t, nil
+				}
+			}
+
 		acc, err := g.value(b, elems[0])
 		if err != nil {
 			return "", err

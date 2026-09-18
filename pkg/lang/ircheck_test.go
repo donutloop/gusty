@@ -1029,6 +1029,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "3.5e+00") {
 		t.Fatalf("float(string) should parse to 3.5e+00, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(sum([1.5, 2.5]))`)
+	if !strings.Contains(ir, "4.0e+00") {
+		t.Fatalf("sum(float list) should fold to 4.0e+00, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
