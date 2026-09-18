@@ -1,3 +1,9 @@
+## [v0.10.31] - reversed-list parity: interpreter vs AOT length
+- Adds TestIRImportReversedListParity: `len(reversed(cfg.l))` runs through
+  the interpreter (EvalExpr -> 3) and the AOT folds `len(cfg.l)` to 3,
+  documenting that `reversed(cfg.l)` preserves the source list length in
+  AOT data imports.
+
 ## [v0.10.30] - arithmetic on indexed imported dict globals
 - `cfg.d[k] + cfg.d[j]` where `cfg.d` is an imported dict module global now
   folds to the sum in the AOT (Index resolves `*Attr` to folded dicts and

@@ -1597,3 +1597,27 @@ func TestIRImportDictArithInterpVsAOT(t *testing.T) {
 		t.Fatalf("interp=%d, want 30", v)
 	}
 }
+
+func TestIRImportReversedListParity(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	// interpreter: len(reversed(cfg.l)) == 3
+	v, _, err := EvalExpr("import cfg\nlen(reversed(cfg.l))")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	// AOT: reversed(cfg.l) folds to a list of the same length as cfg.l
+	res, err := Compile("import cfg\nprint(len(cfg.l))")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "3") {
+		t.Fatalf("AOT len(cfg.l) not 3:\n%s", res.IR)
+	}
+	if v != 3 {
+		t.Fatalf("interp len(reversed(cfg.l))=%d, want 3", v)
+	}
+}
