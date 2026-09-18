@@ -1037,6 +1037,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "sitofp") {
 		t.Fatalf("int+float should promote the int via sitofp, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, `print(len("abc"))`)
+	if !strings.Contains(ir, "i32 3") {
+		t.Fatalf("len(string) should fold to 3, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
