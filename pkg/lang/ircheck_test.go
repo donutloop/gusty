@@ -1377,3 +1377,28 @@ func TestIRImportReversedString(t *testing.T) {
 		t.Fatalf("reversed fold missing len 6:\n%s", res.IR)
 	}
 }
+
+func TestIRImportReversedInterpVsAOT(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/msg.gy", []byte("greet = \"hello\"\nmsg = greet + \"!\"\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+
+	// interpreter
+	v, _, err := EvalExpr("import msg\nlen(reversed(msg.msg))")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	// AOT
+	res, err := Compile("import msg\nprint(len(reversed(msg.msg)))")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "6") {
+		t.Fatalf("AOT did not fold len(reversed(msg.msg))=6:\n%s", res.IR)
+	}
+	if v != 6 {
+		t.Fatalf("interp len(reversed(msg.msg))=%d, want 6", v)
+	}
+}

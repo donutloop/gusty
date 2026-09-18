@@ -1,3 +1,8 @@
+## [v0.10.20] - interpreter-vs-AOT parity for reversed import strings
+- Adds TestIRImportReversedInterpVsAOT: `import msg; len(reversed(msg.msg))`
+  runs through the interpreter (EvalExpr -> 6) and through the AOT compiler
+  (IR folds len(reversed("hello!")) to 6), asserting both agree.
+
 ## [v0.10.19] - reversed of imported string module globals
 - `reversed(mod.str)` where `mod.str` is an imported string module global now
   folds to the reversed string in the AOT `reversed` builtin (an `*Attr`
