@@ -366,7 +366,6 @@ func TestIRDictComprehensionIndexMissingKeyErrors(t *testing.T) {
 	}
 }
 
-
 func TestIRDictComprehensionIndexLowersToConstant(t *testing.T) {
 	// d[1] over {x: x * 10} for x in [1, 2] is resolved to the constant 10 at
 	// codegen time (no runtime GEP/lookup).
@@ -956,7 +955,6 @@ func TestIRFloatFolds(t *testing.T) {
 	}
 }
 
-
 func TestIRFloatArith(t *testing.T) {
 	ir := llcCompiles(t, `print(2.5 + 1.0)`)
 	if !strings.Contains(ir, "fadd double") {
@@ -1107,7 +1105,6 @@ func TestIRDictGetFolds(t *testing.T) {
 	}
 }
 
-
 func TestIRListCallConsumers(t *testing.T) {
 	// len/sum/min/max/any/all fold over a list-returning builtin call
 	// (sorted/reversed) by unwrapping the underlying inline list literal.
@@ -1172,8 +1169,7 @@ func TestIRListLenFolds(t *testing.T) {
 		{`print(len(enumerate(sorted([3, 1, 2]))))`, "i32 3"},
 		{`print(len(zip(sorted([1, 2]), reversed([3, 4]))))`, "i32 2"},
 		{`print(len(sorted(reversed([3, 1, 2]))))`, "i32 3"},
-
-}
+	}
 	for _, tc := range cases {
 		ir := llcCompiles(t, tc.src)
 		if !strings.Contains(ir, tc.want) {
@@ -1216,5 +1212,18 @@ func TestIRNestedListCallConsumers(t *testing.T) {
 	ir = llcCompiles(t, `print(any(sorted(reversed([0, 2, 3]))))`)
 	if !strings.Contains(ir, "zext i1") {
 		t.Fatalf("any(sorted(reversed([0,2,3]))) should zext, got:\n%s", ir)
+	}
+}
+
+func TestIRFloatFloorModNeg(t *testing.T) {
+	// Float `//` floor division must emit fdiv + llvm.floor.f64, float `%`
+	// must emit frem, and unary minus on a float var must emit fsub double
+	// 0.0 — not integer sdiv/srem/sub on the double bit pattern.
+	// llcCompiles aborts if the module fails to verify (type mismatch).
+	ir := llcCompiles(t, "a = 5.5\nb = 2.0\nprint(a // b)\nprint(-a)\nprint(a % b)")
+	for _, want := range []string{"llvm.floor.f64", "frem double", "fsub double 0.0"} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("IR missing %q:\n%s", want, ir)
+		}
 	}
 }

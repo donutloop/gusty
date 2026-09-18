@@ -52,7 +52,7 @@ func compileAndRun(t *testing.T, src string) string {
 	}
 
 	// link the object into a native executable.
-	if out, err := exec.Command("cc", objPath, "-o", binPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command("cc", objPath, "-lm", "-o", binPath).CombinedOutput(); err != nil {
 		t.Fatalf("link failed for %q: %v\n%s", src, err, out)
 	}
 
@@ -434,6 +434,14 @@ func TestExecStrMethod(t *testing.T) {
 
 func TestExecStrMethodPrint(t *testing.T) {
 	assertOutput(t, `print("AbC".upper())`, "ABC\n")
+}
+
+func TestExecFloatFloorModNeg(t *testing.T) {
+	// Float `//` floor division, `%` remainder, and unary `-` on float
+	// variables must match the interpreter's float64-payload semantics
+	// (and the AOT codegen emits llvm.floor/frem/fsub for them).
+	assertOutput(t, "a = 5.5\nb = 2.0\nprint(a // b)\nprint(-a)\nprint(a % b)", "2\n-5.5\n1.5\n")
+	assertOutput(t, "print(7.0 // 2)\nprint(5.5 % 2.0)\nprint(-2.5)", "3\n1.5\n-2.5\n")
 }
 
 func TestExecPrintStrFloat(t *testing.T) {

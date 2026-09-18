@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"unicode"
@@ -820,6 +821,9 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		}
 		switch n.Op {
 		case "-":
+			if fv, ok := e.floatOf(v); ok {
+				return e.allocFloat(-fv), nil
+			}
 			return -v, nil
 		case "not":
 			if v == 0 {
@@ -1187,6 +1191,7 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return l * r, nil
 	case "/", "//":
+		floor := n.Op == "//"
 		if lf, ok := e.floatOf(l); ok {
 			rf, rfok := e.floatOf(r)
 			if !rfok {
@@ -1195,19 +1200,43 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			if rf == 0 {
 				return 0, &EvalError{Msg: "division by zero"}
 			}
-			return e.allocFloat(lf / rf), nil
+			q := lf / rf
+			if floor {
+				q = math.Floor(q)
+			}
+			return e.allocFloat(q), nil
 		}
 		if rf, ok := e.floatOf(r); ok {
 			if rf == 0 {
 				return 0, &EvalError{Msg: "division by zero"}
 			}
-			return e.allocFloat(float64(l) / rf), nil
+			q := float64(l) / rf
+			if floor {
+				q = math.Floor(q)
+			}
+			return e.allocFloat(q), nil
 		}
 		if r == 0 {
 			return 0, &EvalError{Msg: "division by zero"}
 		}
 		return l / r, nil
 	case "%":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			if rf == 0 {
+				return 0, &EvalError{Msg: "division by zero"}
+			}
+			return e.allocFloat(math.Mod(lf, rf)), nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			if rf == 0 {
+				return 0, &EvalError{Msg: "division by zero"}
+			}
+			return e.allocFloat(math.Mod(float64(l), rf)), nil
+		}
 		if r == 0 {
 			return 0, &EvalError{Msg: "division by zero"}
 		}

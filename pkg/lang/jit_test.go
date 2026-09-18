@@ -1060,3 +1060,28 @@ func TestEvalFloatSubMul(t *testing.T) {
 	}
 	_ = v
 }
+
+func TestEvalFloatFloorModNeg(t *testing.T) {
+	// Float `//` floor division, `%` remainder, and unary `-` must operate on
+	// the float64 payload (not raw heap handles). 5.5//2.0 == 2, 5.5%2.0 == 1.5,
+	// -5.5 == -5.5, 7.0//2 == 3.
+	prog, err := Parse("a = 5.5\nb = 2.0\nc = a // b\nd = a % b\ne = -a\nf = 7.0 // 2\nc + d + e + f")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	ev := NewEvaluator()
+	if _, err := ev.EvalProgram(prog); err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	names := []string{"c", "d", "e", "f"}
+	want := []float64{2.0, 1.5, -5.5, 3.0}
+	for i, k := range names {
+		f, ok := ev.floatOf(ev.Vars[k])
+		if !ok {
+			t.Fatalf("%s is not a float", k)
+		}
+		if math.Abs(f-want[i]) > 1e-9 {
+			t.Fatalf("%s got %v, want %v", k, f, want[i])
+		}
+	}
+}

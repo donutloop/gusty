@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## [v0.10.3] - float floor/mod/neg parity
+
+- **Float `//` floor division, `%` remainder, unary `-`** (interpreter + AOT):
+  interpreter now floors `//` (`math.Floor`), uses `math.Mod` for `%`, and
+  negates the float64 payload for `-`. AOT emits `llvm.floor.f64` for `//`,
+  `frem` for `%`, and `fsub double 0.0` for unary `-` on floats, with
+  `isFloat`/`floatValue` extended to recognize `//`, `%`, and negation.
+- **AOT float-variable alloca** fixed: float vars are now `alloca double`
+  (previously `alloca i32` while storing doubles — latent type bug).
+- Integration tests link with `-lm` (frem needs libm).
+- Tests: `TestEvalFloatFloorModNeg`, `TestIRFloatFloorModNeg`,
+  `TestExecFloatFloorModNeg`.
+
 ## [v0.10.2] - interpreter float sub/mul parity
 
 - **Float `-` and `*` arithmetic** (roadmap floats gap): the interpreter now

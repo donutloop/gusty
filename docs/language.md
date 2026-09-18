@@ -403,6 +403,9 @@ Arithmetic with floats (or float + int) produces a float:
 The interpreter applies `-`/`*` to the float64 payload of boxed floats
 (not the raw heap handles), so `a = 1.5; b = 2.0` gives `a-b == -0.5`,
 `a*b == 3.0`, `b-a == 0.5` — matching the AOT codegen's `fsub`/`fmul` IR.
+Float `//` floors the quotient (`5.5 // 2.0 == 2.0`), `%` uses `math.Mod`/`frem`,
+and unary `-` negates the payload (`-a == -5.5`), matching the AOT `llvm.floor.f64`
+and `fsub double 0.0` paths.
 
     print(1.5 + 1)   # 2.5
     print(7.0 / 2.0) # 3.5

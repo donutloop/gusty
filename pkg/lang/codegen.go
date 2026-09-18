@@ -833,9 +833,14 @@ func (g *irGen) isFloat(e Expr) bool {
 	switch n := e.(type) {
 	case *FloatLit:
 		return true
+	case *UnOp:
+		if n.Op == "-" {
+			return g.isFloat(n.X)
+		}
+		return false
 	case *BinOp:
 		switch n.Op {
-		case "+", "-", "*", "/", "%":
+		case "+", "-", "*", "/", "%", "//":
 			return g.isFloat(n.L) || g.isFloat(n.R)
 		}
 		return false
@@ -900,6 +905,13 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		t := g.newTmp()
 		fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, n))
 		return t
+	case *UnOp:
+		if n.Op == "-" {
+			fx := g.floatValue(b, n.X)
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = fsub double 0.0, %s\n", t, fx)
+			return t
+		}
 	case *BinOp:
 		return g.floatBinOp(b, n)
 	case *Call:
@@ -1037,6 +1049,11 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 		fmt.Fprintf(b, "  %s = fsub double %s, %s\n", t, l, r)
 	case "*":
 		fmt.Fprintf(b, "  %s = fmul double %s, %s\n", t, l, r)
+	case "//":
+		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
+		q := g.newTmp()
+		fmt.Fprintf(b, "  %s = call double @llvm.floor.f64(double %s)\n", q, t)
+		return q
 	case "/":
 		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
 	case "%":
@@ -1322,6 +1339,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		t := g.newTmp()
 		switch n.Op {
 		case "-":
+			if g.isFloat(n.X) {
+				fx := g.floatValue(b, n.X)
+				b.WriteString(fmt.Sprintf("  %s = fsub double 0.0, %s\n", t, fx))
+				break
+			}
 			b.WriteString(fmt.Sprintf("  %s = sub i32 0, %s\n", t, x))
 		case "not":
 			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", t, x))
@@ -2936,7 +2958,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.dictVals[nm.Value] = dl
 			}
 			if !g.allocd[nm.Value] {
-				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
 				g.allocd[nm.Value] = true
 			}
 			if g.isFloat(n.Value) {
