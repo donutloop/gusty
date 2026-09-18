@@ -1,3 +1,10 @@
+## [v0.10.15] - print of imported string module globals
+- `print(mod.str)` where `mod.str` is an imported string module global now
+  emits `printf("%s", i8*)` and outputs the string. `stringVal` resolves an
+  `*Attr` expression against the AOT imports registry (folded module
+  globals), so folded string constants print correctly (previously they fell
+  into the integer `%d` path and produced invalid IR).
+
 ## [v0.10.14] - import mod: string globals & concat in AOT data imports
 - AOT data imports now constant-fold **string** module globals and
   **string concatenation** (`"a" + "b"` -> `"ab"`) in module global

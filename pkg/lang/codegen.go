@@ -713,6 +713,18 @@ func (g *irGen) indexListElems(c *Call) ([]Expr, bool) {
 
 func (g *irGen) stringVal(e Expr) (string, bool) {
 	switch n := e.(type) {
+	case *Attr:
+		// imported module global folded to a string (data imports)
+		if nm, ok := e.(*Attr).Obj.(*Name); ok {
+			if globals, ok := g.imports.Globals[nm.Value]; ok {
+				if lit, ok := globals[e.(*Attr).Name.Value]; ok {
+					if str, ok := lit.(*StrLit); ok {
+						return str.Value, true
+					}
+				}
+			}
+		}
+		return "", false
 	case *StrLit:
 		return n.Value, true
 	case *Name:
