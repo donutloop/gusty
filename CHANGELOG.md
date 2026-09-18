@@ -1,3 +1,8 @@
+## [v0.10.29] - len of imported dict module globals
+- `len(cfg.d)` where `cfg.d` is an imported dict module global now returns
+  the folded dict's entry count in the AOT `len` builtin (an `*Attr`
+  expression resolves against the imports registry to a folded `DictLit`).
+
 ## [v0.10.28] - arithmetic on indexed imported list globals
 - `cfg.l[i] + cfg.l[j]` where `cfg.l` is an imported list module global now
   folds to the sum in the AOT (Index resolves `*Attr` to folded lists, and

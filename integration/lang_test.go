@@ -1000,3 +1000,20 @@ func TestExecImportListArith(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import cfg\nprint(cfg.l[0] + cfg.l[1])", "3\n")
 }
+
+
+func TestExecImportLenDict(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	assertOutput(t, "import cfg\nprint(len(cfg.d))", "2\n")
+}

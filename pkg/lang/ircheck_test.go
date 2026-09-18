@@ -1553,3 +1553,25 @@ func TestIRImportListArithInterpVsAOT(t *testing.T) {
 		t.Fatalf("interp=%d, want 3", v)
 	}
 }
+
+func TestIRImportLenDictInterpVsAOT(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10, 2: 20}\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	v, _, err := EvalExpr("import cfg\nlen(cfg.d)")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	res, err := Compile("import cfg\nprint(len(cfg.d))")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "2") {
+		t.Fatalf("AOT did not fold len(cfg.d)=2:\n%s", res.IR)
+	}
+	if v != 2 {
+		t.Fatalf("interp len(cfg.d)=%d, want 2", v)
+	}
+}
