@@ -104,6 +104,16 @@ func foldConst(e Expr, globals map[string]Expr, reg map[string]map[string]Expr) 
 			return nil, fmt.Errorf("unknown imported module global %s.%s", nm.Value, n.Name.Value)
 		}
 		return nil, fmt.Errorf("unsupported attribute expression")
+	case *ListLit:
+		folded := &ListLit{}
+		for _, el := range n.Elems {
+			fe, err := foldConst(el, globals, reg)
+			if err != nil {
+				return nil, err
+			}
+			folded.Elems = append(folded.Elems, fe)
+		}
+		return folded, nil
 	case *BinOp:
 		l, err := foldConst(n.L, globals, reg)
 		if err != nil {

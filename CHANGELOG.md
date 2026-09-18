@@ -1,3 +1,8 @@
+## [v0.10.21] - list module globals in AOT data imports
+- AOT data imports now constant-fold **list** module globals: `foldConst`
+  accepts a `ListLit` whose elements fold recursively, so `mod.list` reads
+  compile to folded lists (e.g. `l = [1, 2, 3]`).
+
 ## [v0.10.20] - interpreter-vs-AOT parity for reversed import strings
 - Adds TestIRImportReversedInterpVsAOT: `import msg; len(reversed(msg.msg))`
   runs through the interpreter (EvalExpr -> 6) and through the AOT compiler
