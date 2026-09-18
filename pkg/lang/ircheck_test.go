@@ -1418,3 +1418,26 @@ func TestIRImportListGlobals(t *testing.T) {
 		t.Fatalf("module list not folded:\n%s", res.IR)
 	}
 }
+
+func TestIRImportListIndexInterpVsAOT(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+
+	v, _, err := EvalExpr("import cfg\ncfg.l[0]")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	res, err := Compile("import cfg\nprint(cfg.l[0])")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "1") {
+		t.Fatalf("AOT did not fold cfg.l[0]=1:\n%s", res.IR)
+	}
+	if v != 1 {
+		t.Fatalf("interp cfg.l[0]=%d, want 1", v)
+	}
+}

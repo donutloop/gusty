@@ -1,3 +1,8 @@
+## [v0.10.22] - indexing imported list module globals
+- `cfg.l[i]` where `cfg.l` is an imported list module global now indexes into
+  the folded list in the AOT `Index` path (an `*Attr` expression resolves
+  against the imports registry before the literal-list path).
+
 ## [v0.10.21] - list module globals in AOT data imports
 - AOT data imports now constant-fold **list** module globals: `foldConst`
   accepts a `ListLit` whose elements fold recursively, so `mod.list` reads

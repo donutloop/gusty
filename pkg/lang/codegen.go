@@ -1468,6 +1468,20 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 			return "", fmt.Errorf("index of a non-literal variable")
 
+		case *Attr:
+			// imported module list global (data imports): mod.list[i]
+			if nm, ok := obj.Obj.(*Name); ok {
+				if globals, ok2 := g.imports.Globals[nm.Value]; ok2 {
+					if lit, ok3 := globals[obj.Name.Value]; ok3 {
+						if lst, ok4 := lit.(*ListLit); ok4 {
+							if key >= 0 && int(key) < len(lst.Elems) {
+								return g.value(b, lst.Elems[key])
+							}
+						}
+					}
+				}
+			}
+			return "", fmt.Errorf("codegen: index of non-list module attr")
 		case *ListLit:
 			// index into a list literal: evaluate the element directly.
 			return g.value(b, obj.Elems[key])
