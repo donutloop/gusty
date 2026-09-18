@@ -16,58 +16,76 @@ type ImportInfo struct {
 // the working directory, mirroring the interpreter), parses + analyzes it, and
 // constant-folds its top-level global assignments. The main program's
 // `mod.var` references are resolved to the folded constants by the codegen.
+//
+// A module may itself `import other` (nested imports); the nested module's
+// globals are folded too and resolved via `other.var` references.
 func resolveImports(prog *Program) (*ImportInfo, error) {
 	info := &ImportInfo{Globals: map[string]map[string]Expr{}}
+	reg := map[string]map[string]Expr{}
 	for _, st := range prog.Stmts {
 		im, ok := st.(*ImportStmt)
 		if !ok {
 			continue
 		}
-		mod := im.Module
-		if _, dup := info.Globals[mod]; dup {
-			return nil, fmt.Errorf("import: duplicate module %q", mod)
+		if err := resolveModule(im.Module, reg); err != nil {
+			return nil, err
 		}
-		src, err := os.ReadFile(mod + ".gy")
-		if err != nil {
-			return nil, fmt.Errorf("import %q: %v", mod, err)
-		}
-		mp, perr := Parse(string(src))
-		if perr != nil {
-			return nil, fmt.Errorf("import %q: %v", mod, perr)
-		}
-		if diags := Analyze(mp); len(diags) > 0 {
-			return nil, fmt.Errorf("import %q: %s", mod, diags[0].Msg)
-		}
-		globals := map[string]Expr{}
-		for _, mst := range mp.Stmts {
-			switch s := mst.(type) {
-			case *ImportStmt:
-				return nil, fmt.Errorf("import %q: nested imports not yet supported in AOT", mod)
-			case *AssignStmt:
-				nm, ok := s.Target.(*Name)
-				if !ok {
-					return nil, fmt.Errorf("import %q: only plain top-level globals are supported", mod)
-				}
-				v, err := foldConst(s.Value, globals)
-				if err != nil {
-					return nil, fmt.Errorf("import %q: global %q is not a compile-time constant: %v", mod, nm.Value, err)
-				}
-				globals[nm.Value] = v
-			case *FuncDef:
-				return nil, fmt.Errorf("import %q: module functions are not yet supported in AOT imports (data imports only)", mod)
-			default:
-				return nil, fmt.Errorf("import %q: unsupported top-level statement in AOT import", mod)
-			}
-		}
-		info.Globals[mod] = globals
 	}
+	info.Globals = reg
 	return info, nil
+}
+
+// resolveModule loads mod.gy, parses + analyzes it, and constant-folds its
+// top-level globals into the shared registry reg. Nested imports recurse.
+func resolveModule(mod string, reg map[string]map[string]Expr) error {
+	if _, dup := reg[mod]; dup {
+		return fmt.Errorf("import: duplicate module %q", mod)
+	}
+	src, err := os.ReadFile(mod + ".gy")
+	if err != nil {
+		return fmt.Errorf("import %q: %v", mod, err)
+	}
+	mp, perr := Parse(string(src))
+	if perr != nil {
+		return fmt.Errorf("import %q: %v", mod, perr)
+	}
+	if diags := Analyze(mp); hasErr(diags) {
+		return fmt.Errorf("import %q: %s", mod, diags[0].Msg)
+	}
+	// fold the module's own globals, allowing references to previously
+	// folded module globals (this module's own, and nested-imported ones).
+	own := map[string]Expr{}
+	for _, mst := range mp.Stmts {
+		switch s := mst.(type) {
+		case *ImportStmt:
+			if err := resolveModule(s.Module, reg); err != nil {
+				return err
+			}
+		case *AssignStmt:
+			nm, ok := s.Target.(*Name)
+			if !ok {
+				return fmt.Errorf("import %q: only plain top-level globals are supported", mod)
+			}
+			v, err := foldConst(s.Value, own, reg)
+			if err != nil {
+				return fmt.Errorf("import %q: global %q is not a compile-time constant: %v", mod, nm.Value, err)
+			}
+			own[nm.Value] = v
+		case *FuncDef:
+			return fmt.Errorf("import %q: module functions are not yet supported in AOT imports (data imports only)", mod)
+		default:
+			return fmt.Errorf("import %q: unsupported top-level statement in AOT import", mod)
+		}
+	}
+	reg[mod] = own
+	return nil
 }
 
 // foldConst folds an expression to a constant AST literal. It supports
 // integer/float literals, booleans, strings, and arithmetic on already-folded
-// module globals. Anything else (calls, lists, etc.) is rejected.
-func foldConst(e Expr, globals map[string]Expr) (Expr, error) {
+// module globals. `other.var` references resolve against the shared registry
+// (nested imports). Anything else (calls, lists, etc.) is rejected.
+func foldConst(e Expr, globals map[string]Expr, reg map[string]map[string]Expr) (Expr, error) {
 	switch n := e.(type) {
 	case *IntLit, *FloatLit, *BoolLit, *StrLit, *NoneLit:
 		return e, nil
@@ -76,18 +94,28 @@ func foldConst(e Expr, globals map[string]Expr) (Expr, error) {
 			return v, nil
 		}
 		return nil, fmt.Errorf("undefined module global %q", n.Value)
+	case *Attr:
+		if nm, ok := n.Obj.(*Name); ok {
+			if m, ok := reg[nm.Value]; ok {
+				if v, ok := m[n.Name.Value]; ok {
+					return v, nil
+				}
+			}
+			return nil, fmt.Errorf("unknown imported module global %s.%s", nm.Value, n.Name.Value)
+		}
+		return nil, fmt.Errorf("unsupported attribute expression")
 	case *BinOp:
-		l, err := foldConst(n.L, globals)
+		l, err := foldConst(n.L, globals, reg)
 		if err != nil {
 			return nil, err
 		}
-		r, err := foldConst(n.R, globals)
+		r, err := foldConst(n.R, globals, reg)
 		if err != nil {
 			return nil, err
 		}
 		return foldBin(n.Op, l, r)
 	case *UnOp:
-		v, err := foldConst(n.X, globals)
+		v, err := foldConst(n.X, globals, reg)
 		if err != nil {
 			return nil, err
 		}
@@ -163,4 +191,13 @@ func foldUn(op string, v Expr) (Expr, error) {
 		return &BoolLit{Value: !b.Value}, nil
 	}
 	return nil, fmt.Errorf("unsupported unary op %q", op)
+}
+
+func hasErr(diags []Diagnostic) bool {
+	for _, d := range diags {
+		if d.Level == LevelError {
+			return true
+		}
+	}
+	return false
 }

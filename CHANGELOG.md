@@ -1,3 +1,12 @@
+## [v0.10.13] - import mod: nested imports in AOT (data imports)
+- AOT `import mod` now supports **nested imports**: a module that itself
+  `import other` compiles by recursively constant-folding the nested module's
+  globals, and `other.var` references resolve in the parent module's global
+  expressions.
+- `resolveImports` now ignores Analyze *warnings* (e.g. "arithmetic on
+  non-numeric operands" on module-attr operands, which fold to numbers at
+  compile time) and rejects only on true semantic errors.
+
 ## [v0.10.12] - import mod in AOT (data imports)
 - `import mod` now compiles in the AOT backend: `mod.gy` is parsed, analyzed,
   and its top-level global variables are constant-folded to literals, so

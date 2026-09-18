@@ -1298,3 +1298,23 @@ func TestIRImportRejectsModuleFunctions(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestIRImportNestedModules(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/base.gy", []byte("b = 10\n"), 0o600)
+	os.WriteFile(dir+"/config.gy", []byte("import base\nx = base.b * 2\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+
+	res, err := Compile("import config\nprint(config.x + 1)")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	ir := res.IR
+	// config.x = base.b*2 = 20; x+1 => 21 in the emitted add.
+	if !strings.Contains(ir, "20") {
+		t.Fatalf("nested module global not folded:\n%s", ir)
+	}
+	llcCompiles(t, "import config\nprint(config.x + 1)")
+}
