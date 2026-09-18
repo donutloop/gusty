@@ -219,7 +219,7 @@ codegen path. The interpreter indexes dicts/sets at runtime and is unchanged.
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other
-modules. Imports are evaluated in the interpreter (REPL/--eval path).
+modules. Imports are evaluated in the interpreter (REPL/--eval path). The AOT backend supports **data imports**: `import mod` loads `mod.gy`, parses + analyzes it, and constant-folds the module's top-level global variables, so `mod.var` reads compile statically to constants. Module function dispatch and non-constant globals are deferred with a clear compile error.
 
 ### Functions
 

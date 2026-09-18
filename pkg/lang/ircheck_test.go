@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -1253,5 +1254,47 @@ func TestIRPrintChrConst(t *testing.T) {
 	ir := llcCompiles(t, "print(chr(65))")
 	if !strings.Contains(ir, "%s\\0A") && !strings.Contains(ir, "%s\\n") {
 		t.Fatalf("print(chr(65)) should emit a %%s printf, got:\n%s", ir)
+	}
+}
+
+func TestIRImportModuleGlobals(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/config.gy", []byte("base = 21\nstep = base * 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	src := "import config\nprint(config.step + 1)"
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	ir := res.IR
+	// config.base=21, config.step=42 fold to constants.
+	if !strings.Contains(ir, "42") {
+		t.Fatalf("module global not folded into IR:\n%s", ir)
+	}
+	llcCompiles(t, src)
+}
+
+func TestIRImportRejectsModuleFunctions(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/lib.gy", []byte("x = 1\ndef f():\n    return x\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	_, err := Compile("import lib\nprint(lib.x)")
+	if err == nil {
+		t.Fatal("expected error for module function")
+	}
+	if !strings.Contains(err.Error(), "module functions are not yet supported") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

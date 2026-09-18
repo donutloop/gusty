@@ -11,7 +11,11 @@ import (
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 func GenerateIR(prog *Program) (string, error) {
-	g := &irGen{sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+	imports, err := resolveImports(prog)
+	if err != nil {
+		return "", err
+	}
+	g := &irGen{imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -71,6 +75,7 @@ type irGen struct {
 	allocd    map[string]bool     // alloca emitted?
 	funcs     map[string]bool     // user-defined function names
 	fds       map[string]*FuncDef // function definitions by name (for call arg binding)
+	imports *ImportInfo // folded module globals for `import mod`
 	params    map[string]string   // current function params: name -> register
 	fmtIdx    int
 	strIdx    int
@@ -1207,6 +1212,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
+	case *Attr:
+		// `mod.var` — imported module global folded to a constant by resolveImports.
+		if nm, ok := e.(*Attr).Obj.(*Name); ok {
+			if globals, ok := g.imports.Globals[nm.Value]; ok {
+				if lit, ok := globals[e.(*Attr).Name.Value]; ok {
+					return g.value(b, lit)
+				}
+				return "", fmt.Errorf("codegen: unknown module attribute %s.%s", nm.Value, e.(*Attr).Name.Value)
+			}
+		}
+		return "", fmt.Errorf("codegen: unsupported attr expression")
+
 	case *BinOp:
 		if g.isFloat(n.L) || g.isFloat(n.R) {
 			switch n.Op {
@@ -3122,6 +3139,10 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	switch n := st.(type) {
+	case *ImportStmt:
+		// `import mod` resolves module globals at compile time (see resolveImports);
+		// the statement itself emits no IR.
+		return nil
 	case *TryStmt:
 		return g.tryStmt(b, n)
 	case *RaiseStmt:

@@ -1,3 +1,14 @@
+## [v0.10.12] - import mod in AOT (data imports)
+- `import mod` now compiles in the AOT backend: `mod.gy` is parsed, analyzed,
+  and its top-level global variables are constant-folded to literals, so
+  `mod.var` reads resolve statically to compile-time constants.
+- Module function dispatch is deferred with a clear compile error
+  ("module functions are not yet supported in AOT imports").
+- The `deadGlobalElim` optimizer pass now keys function-body start on the
+  first `define` line and counts every embedded reference in a global
+  definition line, so literal globals (e.g. @.strN) after internal globals
+  (@exn_flag, @env_store) are pruned when dead.
+
 ## [v0.10.11] - try/except/finally/raise in the AOT/LLVM backend
 - Compile try/except/finally and raise statements to LLVM IR (ADR 0111).
 - Add @exn_flag/@exn_code globals and a raise-exit label per function so
