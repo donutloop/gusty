@@ -2807,7 +2807,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 
 		rv, rerr := g.constIntVal(c.Args[0])
 		if rerr != nil {
-			return "", fmt.Errorf("round: codegen folds only a constant integer arg")
+			if _, ok := c.Args[0].(*StrLit); ok {
+				return "", fmt.Errorf("round: cannot round a string")
+			}
+			v, verr := g.value(b, c.Args[0])
+			if verr != nil {
+				return "", verr
+			}
+			return v, nil
 		}
 		return fmt.Sprintf("%d", rv), nil
 	case "float":

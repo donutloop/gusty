@@ -1236,3 +1236,12 @@ func TestIRRoundFloatVar(t *testing.T) {
 		t.Fatalf("round(float var) missing llvm.round/fptosi:\n%s", ir)
 	}
 }
+
+func TestIRRoundIntVar(t *testing.T) {
+	// round(int variable) must pass the value through (identity) rather than
+	// error "round: codegen folds only a constant integer arg".
+	ir := llcCompiles(t, "a = 3\nb = -3\nprint(round(a))\nprint(round(b))")
+	if !strings.Contains(ir, "print") {
+		t.Fatalf("round(int var) produced no printf:\n%s", ir)
+	}
+}

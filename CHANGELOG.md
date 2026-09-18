@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [v0.10.6] - round(int variable) AOT parity
+
+- AOT round() now passes an int variable through (identity) instead of
+  erroring "round: codegen folds only a constant integer arg". round(a) for
+  an int var emits the value unchanged; round of a string still errors.
+- Tests: TestIRRoundIntVar, TestExecRoundIntVar.
+
 ## [v0.10.5] - round(float var) AOT parity
 
 - AOT round() now supports float variables: emits llvm.round.f64 + fptosi
