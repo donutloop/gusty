@@ -993,6 +993,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "i32 3") {
 		t.Fatalf("round(2.5) should round to 3, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, "if 0.5: print(1)")
+	if !strings.Contains(ir, "fcmp one double") {
+		t.Fatalf("float truthiness should emit fcmp one vs 0.0, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {

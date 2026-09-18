@@ -1030,6 +1030,17 @@ func (g *irGen) floatEval(e Expr) (float64, bool) {
 	}
 	return 0, false
 }
+
+// truthyValue emits an i32 0/1 for a condition, using float != 0.0
+// for float expressions (fcmp one + zext) instead of truncated ints.
+func (g *irGen) truthyValue(b *strings.Builder, e Expr) string {
+	if g.isFloat(e) {
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, g.floatValue(b, e))
+		return t
+	}
+	return g.valueText(b, e)
+}
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	switch n := e.(type) {
 	case *IntLit:
@@ -1231,10 +1242,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return t, nil
 	case *CondExpr:
 		// ternary `then if cond else otherwise`: pick a branch by condition.
-		cond, err := g.value(b, n.Cond)
-		if err != nil {
-			return "", err
-		}
+			cond := g.truthyValue(b, n.Cond)
 		then, err := g.value(b, n.If)
 		if err != nil {
 			return "", err
@@ -2841,10 +2849,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
 		}
 	case *IfStmt:
-		cond, err := g.value(b, n.Cond)
-		if err != nil {
-			return err
-		}
+			cond := g.truthyValue(b, n.Cond)
 		thenL := g.newLabel("if.then")
 		endL := g.newLabel("if.end")
 		var elseL string
