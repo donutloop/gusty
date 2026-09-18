@@ -2949,10 +2949,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		endL := g.newLabel("while.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
-		cond, err := g.value(b, n.Cond)
-		if err != nil {
-			return err
-		}
+			cond := g.truthyValue(b, n.Cond)
 		// normal completion (cond false) enters else if present; break skips else
 		normalL := endL
 		if len(n.Else) > 0 {

@@ -997,6 +997,10 @@ print(f + 1.0)`)
 	if !strings.Contains(ir, "fcmp one double") {
 		t.Fatalf("float truthiness should emit fcmp one vs 0.0, got:\n%s", ir)
 	}
+	ir = llcCompiles(t, "while 0.5: break")
+	if !strings.Contains(ir, "fcmp one double") {
+		t.Fatalf("while float truthiness should emit fcmp one, got:\n%s", ir)
+	}
 
 }
 func TestIRExpandtabsFolds(t *testing.T) {
