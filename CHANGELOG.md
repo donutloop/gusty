@@ -1,3 +1,8 @@
+## [v0.10.24] - len of imported list module globals
+- `len(cfg.l)` where `cfg.l` is an imported list module global now returns
+  the folded list's length in the AOT `len` builtin (an `*Attr` expression
+  resolves against the imports registry to a folded `ListLit`).
+
 ## [v0.10.23] - dict module globals in AOT data imports
 - AOT data imports now constant-fold **dict** module globals: `foldConst`
   accepts a `DictLit` whose keys and values fold recursively, so `mod.d`

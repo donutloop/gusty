@@ -1456,3 +1456,25 @@ func TestIRImportDictGlobals(t *testing.T) {
 		t.Fatalf("module dict not folded:\n%s", res.IR)
 	}
 }
+
+func TestIRImportLenListInterpVsAOT(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	v, _, err := EvalExpr("import cfg\nlen(cfg.l)")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	res, err := Compile("import cfg\nprint(len(cfg.l))")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "3") {
+		t.Fatalf("AOT did not fold len(cfg.l)=3:\n%s", res.IR)
+	}
+	if v != 3 {
+		t.Fatalf("interp len(cfg.l)=%d, want 3", v)
+	}
+}

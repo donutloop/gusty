@@ -2439,6 +2439,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						if str, ok5 := lit.(*StrLit); ok5 {
 							return fmt.Sprintf("%d", len(str.Value)), nil
 						}
+						if lst, ok5 := lit.(*ListLit); ok5 {
+							return fmt.Sprintf("%d", len(lst.Elems)), nil
+						}
 					}
 				}
 			}
