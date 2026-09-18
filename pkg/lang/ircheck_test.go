@@ -1531,3 +1531,25 @@ func TestIRImportReversedList(t *testing.T) {
 		t.Fatalf("AOT did not fold reversed(cfg.l):\n%s", res.IR)
 	}
 }
+
+func TestIRImportListArithInterpVsAOT(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600)
+	old, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(old)
+	v, _, err := EvalExpr("import cfg\ncfg.l[0] + cfg.l[1]")
+	if err != nil {
+		t.Fatalf("interp: %v", err)
+	}
+	res, err := Compile("import cfg\nprint(cfg.l[0] + cfg.l[1])")
+	if err != nil {
+		t.Fatalf("aot: %v", err)
+	}
+	if !strings.Contains(res.IR, "3") {
+		t.Fatalf("AOT did not fold cfg.l[0]+cfg.l[1]=3:\n%s", res.IR)
+	}
+	if v != 3 {
+		t.Fatalf("interp=%d, want 3", v)
+	}
+}

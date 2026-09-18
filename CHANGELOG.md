@@ -1,3 +1,9 @@
+## [v0.10.28] - arithmetic on indexed imported list globals
+- `cfg.l[i] + cfg.l[j]` where `cfg.l` is an imported list module global now
+  folds to the sum in the AOT (Index resolves `*Attr` to folded lists, and
+  BinOp folds the resulting literals), with an interpreter-vs-AOT parity
+  unit test (TestIRImportListArithInterpVsAOT).
+
 ## [v0.10.27] - reversed of imported list module globals
 - `reversed(cfg.l)` where `cfg.l` is an imported list module global now
   folds the reversed list in the AOT `reversed` builtin (an `*Attr`
