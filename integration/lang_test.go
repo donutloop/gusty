@@ -852,3 +852,19 @@ except:
     print("caught")
 print("done")`, "caught\ndone\n")
 }
+
+func TestExecImportModuleGlobals(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/config.gy", []byte("base = 21\nx = base * 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	assertOutput(t, "import config\nprint(config.x)", "42\n")
+}
