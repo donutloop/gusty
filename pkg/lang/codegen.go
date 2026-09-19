@@ -3460,6 +3460,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
 				return nil
 			}
+			// list var rebound to a non-list value: free its heap slot (GC-correctness).
+			if g.listVars[nm.Value] {
+				g.heapSeq++
+				fs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
+				b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+				g.listVars[nm.Value] = false
+			}
 			v, err := g.value(b, n.Value)
 			if err != nil {
 				return err

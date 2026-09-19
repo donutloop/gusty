@@ -628,6 +628,14 @@ func TestIRRuntimeListReuseLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeListToScalarFreeLowers(t *testing.T) {
+	// A list var rebound to a non-list value must free its old heap slot.
+	ir := llcCompiles(t, "x = [1, 2]\nx = 5\nprint(x)")
+	if !strings.Contains(ir, "@rt_free") {
+		t.Fatalf("expected rt_free call in list-to-scalar rebind, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")

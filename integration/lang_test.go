@@ -1066,3 +1066,14 @@ func TestExecRuntimeListReuse(t *testing.T) {
 	src := "x = [0, 0]\n" + strings.Repeat("x = [0, 0]\n", 2000) + "print(len(x))\n"
 	assertOutput(t, src, "2\n")
 }
+
+// Runtime-heap list->scalar free: rebinding a list var to a non-list value
+// must free its heap slot; alternating list/scalar rebinds must not exhaust
+// the 1024-slot heap.
+func TestExecRuntimeListToScalarFree(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("x = [0]\n")
+	sb.WriteString(strings.Repeat("x = 5\nx = [0]\n", 2000))
+	sb.WriteString("print(len(x))\n")
+	assertOutput(t, sb.String(), "1\n")
+}
