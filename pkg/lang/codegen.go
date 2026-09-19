@@ -22,6 +22,11 @@ entry:
   br i1 %isneg, label %alloc_new, label %alloc_reuse
 alloc_new:
   %c = load i32, i32* @heap_count
+  %oob = icmp sge i32 %c, 1024
+  br i1 %oob, label %full, label %newok
+full:
+  ret i32 -1
+newok:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %c
   %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
   store i32 %kind, i32* %kp

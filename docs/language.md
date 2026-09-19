@@ -637,4 +637,7 @@ literals (`s = {1, 2}`) allocate runtime heap set objects: `len(s)` via
 `rt_set_len` and `print(s)` via `rt_set_print`. Inline sets in expressions and
 module-imported sets stay compile-time globals. Rebinding a var across collection
 kinds (list -> dict -> set -> scalar) frees the old heap slot via `rt_free`,
-so long-running programs don't leak slots on rebind. See ADR 0009.
+so long-running programs don't leak slots on rebind. When the 1024-slot heap
+is truly full (more live collections than slots), `rt_alloc` returns a -1
+sentinel instead of writing out of bounds, so pathological programs can't
+corrupt memory. See ADR 0009.

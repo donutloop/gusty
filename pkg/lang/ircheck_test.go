@@ -679,6 +679,15 @@ func TestIRRuntimeCrossCollectionFreeLowers(t *testing.T) {
 	}
 }
 
+func TestIRHeapBoundsGuardLowers(t *testing.T) {
+	// rt_alloc must not write out of bounds when the 1024-slot heap is full:
+	// it returns a -1 sentinel instead of corrupting memory.
+	ir := llcCompiles(t, "x = [1]\nprint(len(x))")
+	if !strings.Contains(ir, "ret i32 -1") {
+		t.Fatalf("expected heap-full sentinel return in rt_alloc, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")
