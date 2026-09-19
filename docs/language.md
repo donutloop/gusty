@@ -628,4 +628,8 @@ the live contents via `rt_print_list`. Rebinding a list variable (`x = [...]`
 again) frees its old heap slot via `rt_free` into a free-list that `rt_alloc`
 recycles, so long-running programs don't leak heap slots. Rebinding a list var
 to a non-list value (`x = [1,2]; x = 5`) also frees its slot. Inline list
-literals (`len([1,2])`, `print([1,2])`) keep compile-time folding. See ADR 0009.
+literals (`len([1,2])`, `print([1,2])`) keep compile-time folding. Local dict
+literals (`d = {1: 10}`) also allocate runtime heap dict objects: `d[k]` reads
+via `rt_dict_get`, `len(d)` via `rt_dict_len`, and `print(d)` via
+`rt_dict_print`. Inline dicts in expressions (`{1: 2}.keys()`) and module-
+imported dicts stay compile-time globals. See ADR 0009.

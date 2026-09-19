@@ -1083,3 +1083,9 @@ func TestExecRuntimeListToScalarFree(t *testing.T) {
 func TestExecRuntimeListVarIndex(t *testing.T) {
 	assertOutput(t, "x = [10, 20]\na = 1\nprint(x[a])\n", "20\n")
 }
+
+// Runtime-heap dicts: `d = {1: 10}` allocates a runtime dict heap object;
+// `d[k]` reads via rt_dict_get and `len(d)` via rt_dict_len.
+func TestExecRuntimeDict(t *testing.T) {
+	assertOutput(t, "d = {1: 10, 2: 20}\nprint(d[1] + d[2])\nprint(len(d))\n", "30\n2\n")
+}

@@ -645,6 +645,18 @@ func TestIRRuntimeListVarIndexLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeDictLowers(t *testing.T) {
+	// `d = {1: 10}` must allocate a runtime dict heap object via rt_dict_put,
+	// and `d[k]` must read via rt_dict_get (not a compile-time global).
+	ir := llcCompiles(t, "d = {1: 10}\nprint(d[1])")
+	if !strings.Contains(ir, "@rt_dict_put") {
+		t.Fatalf("expected rt_dict_put call in dict creation, got:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@rt_dict_get") {
+		t.Fatalf("expected rt_dict_get call in dict read, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")

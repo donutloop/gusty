@@ -127,6 +127,120 @@ done:
   call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   ret void
 }
+
+@.fmtdopen = private unnamed_addr constant [2 x i8] c"{\00"
+@.fmtditem = private unnamed_addr constant [7 x i8] c"%d: %d\00"
+@.fmtdsep = private unnamed_addr constant [3 x i8] c", \00"
+@.fmtdclose = private unnamed_addr constant [2 x i8] c"}\00"
+
+define internal void @rt_dict_put(i32 %h, i32 %k, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %add
+body:
+  %idx = mul i32 %i, 2
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx
+  %ek = load i32, i32* %kp
+  %eq = icmp eq i32 %ek, %k
+  br i1 %eq, label %upd, label %cont
+upd:
+  %idx2 = add i32 %idx, 1
+  %vp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx2
+  store i32 %v, i32* %vp
+  ret void
+cont:
+  %next = add i32 %i, 1
+  br label %check
+add:
+  %idx3 = mul i32 %len, 2
+  %kp2 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx3
+  store i32 %k, i32* %kp2
+  %idx4 = add i32 %idx3, 1
+  %vp2 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx4
+  store i32 %v, i32* %vp2
+  %len2 = add i32 %len, 1
+  store i32 %len2, i32* %lp
+  ret void
+}
+
+define internal i32 @rt_dict_get(i32 %h, i32 %k) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %miss
+body:
+  %idx = mul i32 %i, 2
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx
+  %ek = load i32, i32* %kp
+  %eq = icmp eq i32 %ek, %k
+  br i1 %eq, label %hit, label %cont
+hit:
+  %idx2 = add i32 %idx, 1
+  %vp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx2
+  %v = load i32, i32* %vp
+  ret i32 %v
+cont:
+  %next = add i32 %i, 1
+  br label %check
+miss:
+  ret i32 0
+}
+
+define internal i32 @rt_dict_len(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  ret i32 %len
+}
+
+define internal void @rt_dict_print(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  %r1 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %done
+body:
+  %idx = mul i32 %i, 2
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx
+  %k = load i32, i32* %kp
+  %idx2 = add i32 %idx, 1
+  %vp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx2
+  %v = load i32, i32* %vp
+  %r2 = call i32 (i8*, ...) @printf(i8* getelementptr ([7 x i8], [7 x i8]* @.fmtditem, i32 0, i32 0), i32 %k, i32 %v)
+  %i1 = add i32 %i, 1
+  %c1 = icmp slt i32 %i1, %len
+  br i1 %c1, label %sep, label %cont
+sep:
+  %r3 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtdsep, i32 0, i32 0))
+  br label %cont
+cont:
+  %next = phi i32 [ %i1, %body ], [ %i1, %sep ]
+  br label %check
+done:
+  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdclose, i32 0, i32 0))
+  ret void
+}
+
 `
 
 func GenerateIR(prog *Program) (string, error) {
@@ -135,7 +249,8 @@ func GenerateIR(prog *Program) (string, error) {
 		return "", err
 	}
 	g := &irGen{
-		listVars: map[string]bool{},imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listVars: map[string]bool{},
+		runtimeDicts: map[string]bool{},imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -247,6 +362,7 @@ type irGen struct {
 	// floatVars tracks variables whose last assignment produced a double.
 	floatVars     map[string]bool
 	listVars      map[string]bool
+	runtimeDicts  map[string]bool
 	heapUsed      bool
 	heapSeq       int
 	handlerStack  []string
@@ -1596,6 +1712,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		switch obj := n.Obj.(type) {
 		case *Name:
 			// runtime heap list variable: x[i] reads heap[x].data[i].
+			if g.runtimeDicts[obj.Value] {
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
+				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %d)\n", hs, hs, key))
+				return fmt.Sprintf("%%g%d", hs), nil
+			}
 			if g.listVars[obj.Value] {
 				idxOp := strconv.FormatInt(key, 10)
 				if _, ok := n.Idx.(*IntLit); !ok {
@@ -2650,6 +2773,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(fmt.Sprintf("  %%l%d = call i32 @rt_list_len(i32 %%h%d)\n", hs, hs))
 				return fmt.Sprintf("%%l%d", hs), nil
 			}
+			if g.runtimeDicts[lit.Value] {
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, lit.Value))
+				b.WriteString(fmt.Sprintf("  %%l%d = call i32 @rt_dict_len(i32 %%h%d)\n", hs, hs))
+				return fmt.Sprintf("%%l%d", hs), nil
+			}
 			return "", fmt.Errorf("len of a non-string variable")
 
 		case *ListLit:
@@ -3497,10 +3627,29 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			// track dict literals assigned to variables for `d[key]`
 			if dl, ok := n.Value.(*DictLit); ok {
-				if g.dictVals == nil {
-					g.dictVals = map[string]*DictLit{}
+				// runtime dict: allocate a heap dict object and fill pairs.
+				if !g.allocd[nm.Value] {
+					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+					g.allocd[nm.Value] = true
 				}
-				g.dictVals[nm.Value] = dl
+				g.heapUsed = true
+				g.runtimeDicts[nm.Value] = true
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 2)\n", hs))
+				for i := range dl.Keys {
+					kk, err := g.value(b, dl.Keys[i])
+					if err != nil {
+						return err
+					}
+					vv, err := g.value(b, dl.Vals[i])
+					if err != nil {
+						return err
+					}
+					b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %%h%d, i32 %s, i32 %s)\n", hs, kk, vv))
+				}
+				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
+					return nil
 			}
 			if !g.allocd[nm.Value] {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
