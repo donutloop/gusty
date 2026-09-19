@@ -38,6 +38,14 @@ entry:
   ret void
 }
 
+define internal i32 @rt_list_len(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  ret i32 %len
+}
+
 define internal void @rt_append(i32 %h, i32 %v) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -2578,6 +2586,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if sv, ok := g.strVals[lit.Value]; ok {
 					return fmt.Sprintf("%d", len(sv)), nil
 				}
+			}
+			if g.listVars[lit.Value] {
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, lit.Value))
+				b.WriteString(fmt.Sprintf("  %%l%d = call i32 @rt_list_len(i32 %%h%d)\n", hs, hs))
+				return fmt.Sprintf("%%l%d", hs), nil
 			}
 			return "", fmt.Errorf("len of a non-string variable")
 

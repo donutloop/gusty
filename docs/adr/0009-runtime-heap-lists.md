@@ -33,5 +33,7 @@ a variable (`heapUsed`):
 - AOT programs can now mutate runtime list objects and print their contents
   (`[1, 2, 3]`), verified end-to-end through llc-20/cc.
 - The heap is a fixed-size global array; allocation is bump-allocated.
-- Follow-on: refcount/mark-sweep GC mirroring the interpreter's `Collect()`,
-  dict/set runtime objects, and `len(x)`/index on runtime list variables.
+- Follow-on (milestone 2, this cycle): `len(x)` on runtime list variables reads
+  the mutated length through the heap (`rt_list_len`), verified end-to-end.
+- Remaining follow-on: refcount/mark-sweep GC mirroring the interpreter's `Collect()`,
+  dict/set runtime objects, and index access on runtime list variables.

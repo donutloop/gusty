@@ -1047,3 +1047,9 @@ func TestExecRuntimeListAppendTwo(t *testing.T) {
 func TestExecRuntimeListPrint(t *testing.T) {
 	assertOutput(t, "x = [5, 6]\nprint(x)", "[5, 6]\n")
 }
+
+// Runtime-heap observability: `len(x)` on a runtime list variable reads back
+// the mutated list length through the heap.
+func TestExecRuntimeListLen(t *testing.T) {
+	assertOutput(t, "x = [1, 2]\nx.append(3)\nprint(len(x))", "3\n")
+}
