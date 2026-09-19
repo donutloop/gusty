@@ -1717,3 +1717,34 @@ func TestIRImportReversedListParity(t *testing.T) {
 		t.Fatalf("interp len(reversed(cfg.l))=%d, want 3", v)
 	}
 }
+
+func TestAOTClassBasics(t *testing.T) {
+	llcCompiles(t, `
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+    def sum(self):
+        return self.x + self.y
+p = Point(2, 3)
+print(p.sum())
+`)
+}
+
+func TestAOTClassInheritanceSuper(t *testing.T) {
+	llcCompiles(t, `
+class Animal:
+    def __init__(self, x):
+        self.x = x
+    def val(self):
+        return self.x
+class Dog(Animal):
+    def __init__(self, x):
+        super().__init__(x)
+        self.y = x + 1
+    def val(self):
+        return super().val() + self.y
+d = Dog(3)
+print(d.val())
+`)
+}

@@ -319,6 +319,21 @@ done:
   ret void
 }
 
+define internal i32 @rt_inst_get(i32 %h, i32 %slot) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %p = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %slot
+  %v = load i32, i32* %p
+  ret i32 %v
+}
+
+define internal void @rt_inst_put(i32 %h, i32 %slot, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %p = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %slot
+  store i32 %v, i32* %p
+  ret void
+}
 `
 
 func GenerateIR(prog *Program) (string, error) {
@@ -446,6 +461,154 @@ type irGen struct {
 	heapSeq       int
 	handlerStack  []string
 	funcRaiseExit string
+
+	classInfos map[string]*classInfo // class name -> info
+	varClasses map[string]string     // local var -> class name
+	selfClass  string                // enclosing class of current self
+	attrSlots  map[string]int        // attr name -> instance data slot
+	nextSlot   int
+}
+
+// classInfo records a statically-known class: its base classes and its methods.
+type classInfo struct {
+	bases   []string
+	methods map[string]string // method name -> IR function name
+}
+
+// registerClass records a class definition (ClassDef) and emits its methods.
+func (g *irGen) registerClass(cd *ClassDef) {
+	if g.classInfos == nil {
+		g.classInfos = map[string]*classInfo{}
+	}
+	ci := &classInfo{bases: []string{}, methods: map[string]string{}}
+	for _, b := range cd.Bases {
+		if b != nil {
+			ci.bases = append(ci.bases, b.Value)
+		}
+	}
+	g.classInfos[cd.Name] = ci
+	for _, st := range cd.Body {
+		fd, ok := st.(*FuncDef)
+		if !ok {
+			continue
+		}
+		mname := fd.Name
+		funcName := fmt.Sprintf("%s_%s", cd.Name, mname)
+		ci.methods[mname] = funcName
+		g.collectAttrs(fd.Body)
+		g.emitClassMethod(cd.Name, funcName, fd)
+	}
+}
+
+// emitClassMethod emits a class method as an LLVM function with self as param 0.
+func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
+	prevParams := g.params
+	prevSelf := g.selfClass
+	paramRegs := []string{"i32 %self"}
+	for i := range fd.Params {
+		paramRegs = append(paramRegs, fmt.Sprintf("i32 %%p%d", i+1))
+	}
+	g.params = map[string]string{"self": "%self"}
+	for i := 1; i < len(fd.Params); i++ {
+		g.params[fd.Params[i].Name] = fmt.Sprintf("%%p%d", i)
+	}
+	g.selfClass = className
+	g.globals.WriteString(fmt.Sprintf("define i32 @%s(%s) {\n", funcName, strings.Join(paramRegs, ", ")))
+	for _, st := range fd.Body {
+		g.stmt(&g.globals, st)
+	}
+	g.globals.WriteString("  ret i32 0\n}\n")
+	g.selfClass = prevSelf
+	g.params = prevParams
+}
+
+// collectAttrs walks a method body and assigns a slot to each instance attr.
+func (g *irGen) collectAttrs(stmts []Stmt) {
+	for _, st := range stmts {
+		g.scanAttrs(st)
+	}
+}
+
+func (g *irGen) scanAttrs(st Stmt) {
+	switch n := st.(type) {
+	case *AssignStmt:
+		g.slotForAttrExpr(n.Target)
+		g.slotForAttrExpr(n.Value)
+	case *ExprStmt:
+		g.slotForAttrExpr(n.Expr)
+	case *IfStmt:
+		for _, s := range n.Then {
+			g.scanAttrs(s)
+		}
+		for _, s := range n.Else {
+			g.scanAttrs(s)
+		}
+	case *WhileStmt:
+		for _, s := range n.Body {
+			g.scanAttrs(s)
+		}
+	case *ForStmt:
+		for _, s := range n.Body {
+			g.scanAttrs(s)
+		}
+	}
+}
+
+// slotForAttrExpr assigns a global slot for each `self.x` / `self.x = v` attr.
+func (g *irGen) slotForAttrExpr(e Expr) {
+	if attr, ok := e.(*Attr); ok {
+		g.attrSlot(attr.Name.Value)
+		return
+	}
+	if call, ok := e.(*Call); ok {
+		for _, a := range call.Args {
+			g.slotForAttrExpr(a)
+		}
+	}
+}
+
+// attrSlot returns the global instance-data slot for an attribute name.
+func (g *irGen) attrSlot(name string) int {
+	if g.attrSlots == nil {
+		g.attrSlots = map[string]int{}
+	}
+	if s, ok := g.attrSlots[name]; ok {
+		return s
+	}
+	s := g.nextSlot
+	g.attrSlots[name] = s
+	g.nextSlot++
+	return s
+}
+
+// resolveMethod resolves a method name across a class chain.
+func (g *irGen) resolveMethod(className, mname string) (string, bool) {
+	ci, ok := g.classInfos[className]
+	if !ok {
+		return "", false
+	}
+	if fn, ok := ci.methods[mname]; ok {
+		return fn, true
+	}
+	for _, b := range ci.bases {
+		if fn, ok := g.resolveMethod(b, mname); ok {
+			return fn, true
+		}
+	}
+	return "", false
+}
+
+// receiverClass returns the class of a receiver expression, if statically known.
+func (g *irGen) receiverClass(recv Expr) string {
+	if n, ok := recv.(*Name); ok {
+		if n.Value == "self" {
+			return g.selfClass
+		}
+		if c, ok := g.varClasses[n.Value]; ok {
+			return c
+		}
+	}
+	return ""
 }
 
 type loopInfo struct {
@@ -1545,7 +1708,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
-	case *Attr:
+		case *Attr:
+		// Instance attribute read: `self.x` / `inst.x`.
+		if className := g.receiverClass(n.Obj); className != "" {
+			objHandle, err := g.value(b, n.Obj)
+			if err != nil {
+				return "", err
+			}
+			g.heapUsed = true
+			slot := g.attrSlot(n.Name.Value)
+			ret := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ret, objHandle, slot))
+			return ret, nil
+		}
+
+
 		// `mod.var` — imported module global folded to a constant by resolveImports.
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
 			if globals, ok := g.imports.Globals[nm.Value]; ok {
@@ -2319,6 +2496,52 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 	// constant-fold attr methods on constant receivers.
 	if attr, ok := c.Fn.(*Attr); ok {
+		mname := attr.Name.Value
+
+		// super().m(args): dispatch m on the base class of the enclosing class.
+		if call, isSuper := attr.Obj.(*Call); isSuper && len(call.Args) == 0 {
+			if n, isN := call.Fn.(*Name); isN && n.Value == "super" {
+				base := ""
+				if ci := g.classInfos[g.selfClass]; ci != nil && len(ci.bases) > 0 {
+					base = ci.bases[0]
+				}
+				if fn, ok := g.resolveMethod(base, mname); ok {
+					ret := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %%self", ret, fn))
+					for _, arg := range c.Args {
+						av, err := g.value(b, arg)
+						if err != nil {
+							return "", err
+						}
+						b.WriteString(", i32 " + av)
+					}
+					b.WriteString(")\n")
+					return ret, nil
+				}
+			}
+		}
+
+		// Class method dispatch: `recv.m(args)` where recv's class is known.
+		if className := g.receiverClass(attr.Obj); className != "" {
+			if fn, ok := g.resolveMethod(className, mname); ok {
+				recvHandle, err := g.value(b, attr.Obj)
+				if err != nil {
+					return "", err
+				}
+				ret := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s", ret, fn, recvHandle))
+				for _, arg := range c.Args {
+					av, err := g.value(b, arg)
+					if err != nil {
+						return "", err
+					}
+					b.WriteString(", i32 " + av)
+				}
+				b.WriteString(")\n")
+				return ret, nil
+			}
+		}
+
 			if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
 				if len(c.Args) != 1 {
 					return "", fmt.Errorf("append expects one argument")
@@ -2671,6 +2894,26 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}
 		return g.strConst(v), nil
+	}
+
+
+	// Class instantiation: `ClassName(args)`.
+	if _, isClass := g.classInfos[fnName]; isClass {
+		g.heapUsed = true
+		h := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 4)\n", h))
+		if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
+			b.WriteString(fmt.Sprintf("  call i32 @%s(i32 %s", fn, h))
+			for _, arg := range c.Args {
+				av, err := g.value(b, arg)
+				if err != nil {
+					return "", err
+				}
+				b.WriteString(", i32 " + av)
+			}
+			b.WriteString(")\n")
+		}
+		return h, nil
 	}
 
 	if g.funcs[fnName] {
@@ -3812,14 +4055,43 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.floatVars[nm.Value] = true
 			} else {
-				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+							// Track the class of a variable assigned from a class instantiation.
+			if call, ok := n.Value.(*Call); ok {
+				if fn, ok2 := call.Fn.(*Name); ok2 {
+					if _, isClass := g.classInfos[fn.Value]; isClass {
+						if g.varClasses == nil {
+							g.varClasses = map[string]string{}
+						}
+						g.varClasses[nm.Value] = fn.Value
+					}
+				}
+			}
+b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
 				if g.floatVars != nil {
 					delete(g.floatVars, nm.Value)
 				}
 			}
-		} else {
-			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
-		}
+		} else if attr, ok := n.Target.(*Attr); ok {
+				// Instance attribute write: `self.x = v` / `inst.x = v`.
+				if className := g.receiverClass(attr.Obj); className != "" {
+					objHandle, err := g.value(b, attr.Obj)
+					if err != nil {
+						return err
+					}
+					v, err := g.value(b, n.Value)
+					if err != nil {
+						return err
+					}
+					g.heapUsed = true
+					slot := g.attrSlot(attr.Name.Value)
+					b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 %d, i32 %s)\n", objHandle, slot, v))
+					return nil
+				}
+				return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
+			} else {
+				return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
+			}
+
 	case *IfStmt:
 		cond := g.truthyValue(b, n.Cond)
 		thenL := g.newLabel("if.then")
@@ -4062,6 +4334,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 		}
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
+	case *ClassDef:
+		g.registerClass(n)
+		return nil
 	case *FuncDef:
 		ci := g.closures[n.Name]
 		if ci == nil {
