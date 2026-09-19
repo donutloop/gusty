@@ -1,3 +1,14 @@
+## [v0.??] - Phase 2: real IR optimizer
+- Replaced the regex-ish `opt.go` text transform with a genuine IR pass
+  pipeline (ADR 0088): a lightweight textual-LLVM-IR parser + CFG
+  construction, then per-function passes to a fixed point:
+  constant propagation + folding (arithmetic/compare/select/zext/sitofp/
+  fptosi, plus branch folding), mem2reg-style alloca promotion (single-store
+  dominating loads, plus dead-alloca/dead-store removal), dead-instruction
+  elimination, and dead-block (unreachable CFG block) elimination.
+- Output is re-serialized as valid textual IR for the whole emitted subset,
+  verified end-to-end through `llvm-as`/`llc` in `TestOptimizedIRValidForLLC`.
+
 ## [v0.10.31] - reversed-list parity: interpreter vs AOT length
 - Adds TestIRImportReversedListParity: `len(reversed(cfg.l))` runs through
   the interpreter (EvalExpr -> 3) and the AOT folds `len(cfg.l)` to 3,

@@ -92,7 +92,12 @@ emitter, then docs + integration tests.
 - **Real optimizer**: keep the textual emitter but add an IR-level pass
   contract (CFG construction, dead-block elimination, constant folding,
   mem2reg-style promotion) verified against `llc` output. Today `opt.go` is a
-  regex-ish text transform.
+  regex-ish text transform. **DONE** — `opt.go` now parses the emitted IR into
+  a module/CFG and runs a real pass pipeline to a fixed point: constant
+  propagation + folding, mem2reg-style alloca promotion, dead-instruction
+  elimination, and dead-block (unreachable CFG block) elimination. The
+  re-serialized output is verified end-to-end through `llvm-as`/`llc` in
+  `TestOptimizedIRValidForLLC` (ADR 0088).
 - **JIT for REPL feedback** (mission: "fast REPL feedback despite AOT"):
   compile the textual IR with `llc`/`cc` per expression and `dlopen`-execute,
   or add a small in-process JIT path — without importing external bindings.
