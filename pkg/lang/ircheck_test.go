@@ -657,6 +657,17 @@ func TestIRRuntimeDictLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeSetLowers(t *testing.T) {
+	// `s = {1, 2}` must allocate a runtime set heap object via rt_set_add.
+	ir := llcCompiles(t, "s = {1, 2}\nprint(len(s))")
+	if !strings.Contains(ir, "@rt_set_add") {
+		t.Fatalf("expected rt_set_add call in set creation, got:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@rt_set_len") {
+		t.Fatalf("expected rt_set_len call in set len, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")

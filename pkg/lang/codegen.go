@@ -131,7 +131,7 @@ done:
 @.fmtdopen = private unnamed_addr constant [2 x i8] c"{\00"
 @.fmtditem = private unnamed_addr constant [7 x i8] c"%d: %d\00"
 @.fmtdsep = private unnamed_addr constant [3 x i8] c", \00"
-@.fmtdclose = private unnamed_addr constant [2 x i8] c"}\00"
+@.fmtdclose = private unnamed_addr constant [3 x i8] c"}\0a\00"
 
 define internal void @rt_dict_put(i32 %h, i32 %k, i32 %v) {
 entry:
@@ -237,7 +237,80 @@ cont:
   %next = phi i32 [ %i1, %body ], [ %i1, %sep ]
   br label %check
 done:
-  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdclose, i32 0, i32 0))
+  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtdclose, i32 0, i32 0))
+  ret void
+}
+
+
+@.fmtsopen = private unnamed_addr constant [2 x i8] c"{\00"
+@.fmtsitem = private unnamed_addr constant [3 x i8] c"%d\00"
+@.fmtssep = private unnamed_addr constant [3 x i8] c", \00"
+@.fmtsclose = private unnamed_addr constant [3 x i8] c"}\0a\00"
+
+define internal void @rt_set_add(i32 %h, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %add
+body:
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
+  %ev = load i32, i32* %kp
+  %eq = icmp eq i32 %ev, %v
+  br i1 %eq, label %ret, label %cont
+ret:
+  ret void
+cont:
+  %next = add i32 %i, 1
+  br label %check
+add:
+  %kp2 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %len
+  store i32 %v, i32* %kp2
+  %len2 = add i32 %len, 1
+  store i32 %len2, i32* %lp
+  ret void
+}
+
+define internal i32 @rt_set_len(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  ret i32 %len
+}
+
+define internal void @rt_set_print(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  %r1 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %done
+body:
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
+  %ev = load i32, i32* %kp
+  %r2 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsitem, i32 0, i32 0), i32 %ev)
+  %i1 = add i32 %i, 1
+  %c1 = icmp slt i32 %i1, %len
+  br i1 %c1, label %sep, label %cont
+sep:
+  %r3 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtssep, i32 0, i32 0))
+  br label %cont
+cont:
+  %next = phi i32 [ %i1, %body ], [ %i1, %sep ]
+  br label %check
+done:
+  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsclose, i32 0, i32 0))
   ret void
 }
 
@@ -250,7 +323,7 @@ func GenerateIR(prog *Program) (string, error) {
 	}
 	g := &irGen{
 		listVars: map[string]bool{},
-		runtimeDicts: map[string]bool{},imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{},imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -363,6 +436,7 @@ type irGen struct {
 	floatVars     map[string]bool
 	listVars      map[string]bool
 	runtimeDicts  map[string]bool
+	runtimeSets   map[string]bool
 	heapUsed      bool
 	heapSeq       int
 	handlerStack  []string
@@ -2704,6 +2778,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				last = t
 				continue
 			}
+			if nm, ok := a.(*Name); ok {
+				if g.runtimeDicts[nm.Value] {
+					g.heapSeq++
+					hs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %%h%d)\n", hs))
+					continue
+				}
+				if g.runtimeSets[nm.Value] {
+					g.heapSeq++
+					hs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %%h%d)\n", hs))
+					continue
+				}
+			}
 			if nm, ok := a.(*Name); ok && g.listVars[nm.Value] {
 				g.heapSeq++
 				hs := g.heapSeq
@@ -2778,6 +2868,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, lit.Value))
 				b.WriteString(fmt.Sprintf("  %%l%d = call i32 @rt_dict_len(i32 %%h%d)\n", hs, hs))
+				return fmt.Sprintf("%%l%d", hs), nil
+			}
+			if g.runtimeSets[lit.Value] {
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, lit.Value))
+				b.WriteString(fmt.Sprintf("  %%l%d = call i32 @rt_set_len(i32 %%h%d)\n", hs, hs))
 				return fmt.Sprintf("%%l%d", hs), nil
 			}
 			return "", fmt.Errorf("len of a non-string variable")
@@ -3584,6 +3681,20 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.heapSeq++
 				hs := g.heapSeq
 				// heap slot reuse: rebinding a list var frees its old heap slot so rt_alloc can recycle it.
+				if g.runtimeDicts[nm.Value] {
+					g.heapSeq++
+					hs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %%h%d)\n", hs))
+					return nil
+				}
+				if g.runtimeSets[nm.Value] {
+					g.heapSeq++
+					hs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %%h%d)\n", hs))
+					return nil
+				}
 				if g.listVars[nm.Value] {
 					g.heapSeq++
 					fs := g.heapSeq
@@ -3613,6 +3724,27 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
 				b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
 				g.listVars[nm.Value] = false
+			}
+			// runtime set: allocate a heap set object and add each element.
+			if sl, ok := n.Value.(*SetLit); ok {
+				if !g.allocd[nm.Value] {
+					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+					g.allocd[nm.Value] = true
+				}
+				g.heapUsed = true
+				g.runtimeSets[nm.Value] = true
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 3)\n", hs))
+				for _, el := range sl.Elems {
+					ev, err := g.value(b, el)
+					if err != nil {
+						return err
+					}
+					b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, ev))
+				}
+				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
+				return nil
 			}
 			v, err := g.value(b, n.Value)
 			if err != nil {

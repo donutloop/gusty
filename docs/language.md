@@ -632,4 +632,7 @@ literals (`len([1,2])`, `print([1,2])`) keep compile-time folding. Local dict
 literals (`d = {1: 10}`) also allocate runtime heap dict objects: `d[k]` reads
 via `rt_dict_get`, `len(d)` via `rt_dict_len`, and `print(d)` via
 `rt_dict_print`. Inline dicts in expressions (`{1: 2}.keys()`) and module-
-imported dicts stay compile-time globals. See ADR 0009.
+imported dicts stay compile-time globals. Local set
+literals (`s = {1, 2}`) allocate runtime heap set objects: `len(s)` via
+`rt_set_len` and `print(s)` via `rt_set_print`. Inline sets in expressions and
+module-imported sets stay compile-time globals. See ADR 0009.

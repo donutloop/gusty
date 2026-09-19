@@ -1089,3 +1089,9 @@ func TestExecRuntimeListVarIndex(t *testing.T) {
 func TestExecRuntimeDict(t *testing.T) {
 	assertOutput(t, "d = {1: 10, 2: 20}\nprint(d[1] + d[2])\nprint(len(d))\n", "30\n2\n")
 }
+
+// Runtime-heap sets: `s = {1, 2}` allocates a runtime set heap object;
+// `len(s)` via rt_set_len and `print(s)` via rt_set_print.
+func TestExecRuntimeSet(t *testing.T) {
+	assertOutput(t, "s = {1, 2}\nprint(len(s))\nprint(s)\n", "2\n{1, 2}\n")
+}
