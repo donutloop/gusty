@@ -592,6 +592,18 @@ func TestIRListAppendLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeListLenLowers(t *testing.T) {
+	// Runtime list variable: `len(x)` must read the mutated heap length via
+	// rt_list_len instead of failing codegen (no compile-time folding available).
+	ir := llcCompiles(t, "x = [1, 2]\nx.append(3)\nprint(len(x))")
+	if !strings.Contains(ir, "@rt_list_len") {
+		t.Fatalf("expected rt_list_len call in runtime len(x) path, got:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@rt_append") {
+		t.Fatalf("expected rt_append call in append path, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")
