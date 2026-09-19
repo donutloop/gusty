@@ -177,3 +177,12 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
   (Vars-only roots); keep Collect explicit. ADR 0132 documents the phased landing.
 - Lesson: LLVM/heap edits via line-index Python surgery are fragile; use exact
   substring replaces and restore from HEAD before re-applying.
+
+## Round 5 — GC stress/leak tests
+- Added TestGCStressBoundedHeap (2000 short-lived nursery allocs with young GC
+  after each; live global survives; promoted survivors survive stress).
+- Added TestGCFullGCBoundsOldGen (promote two globals, drop one, push old-gen
+  past full-GC threshold 512; full GC reclaims unreachable old, keeps live old).
+- Lesson: roadmap item name is "GC stress / leak harness" (not "GC stress/leak
+  tests") — always grep the exact row text before replacing.
+- ADR 0133 documents the stress/leak contract; roadmap marks the item LANDED.

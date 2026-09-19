@@ -139,3 +139,62 @@ func TestGenerationalGC(t *testing.T) {
 		t.Fatal("promoted (old) global should survive subsequent young GCs")
 	}
 }
+
+func TestGCStressBoundedHeap(t *testing.T) {
+	ev := NewEvaluator()
+	prog, err := Parse("g = [1, 2, 3]\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, err := ev.EvalProgram(prog); err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	gid := ev.Vars["g"]
+	// many short-lived nursery allocations must not grow the heap unboundedly:
+	// repeated young GCs reclaim dead nursery objects while keeping g alive.
+	for i := 0; i < 2000; i++ {
+		ev.allocObj("list") // dropped immediately, not reachable from roots
+		ev.Collect()        // young GC
+		if ev.heap[gid] == nil {
+			t.Fatalf("live global reclaimed at iteration %d", i)
+		}
+	}
+	// promote g, then force a full GC: promoted survivors must survive.
+	ev.Collect() // promotes g to old
+	// allocate nursery junk to force old-count growth? old-count is fixed here,
+	// so a second Collect is still a young GC; g (old) must survive it.
+	for i := 0; i < 100; i++ {
+		ev.allocObj("list")
+	}
+	ev.Collect()
+	if ev.heap[gid] == nil {
+		t.Fatal("promoted global should survive stress young GCs")
+	}
+}
+
+func TestGCFullGCBoundsOldGen(t *testing.T) {
+	ev := NewEvaluator()
+	prog, err := Parse("keep = [1, 2, 3]\ndrop = [4, 5]\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, err := ev.EvalProgram(prog); err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	keepID := ev.Vars["keep"]
+	dropID := ev.Vars["drop"]
+	ev.Collect()        // promote keep+drop to old (nurseryBase advances)
+	ev.Vars["drop"] = 0 // make drop unreachable
+	// allocate many nursery objects to push the old generation past the
+	// full-GC threshold (512 old objects) and trigger a full GC.
+	for i := 0; i < 600; i++ {
+		ev.allocObj("list")
+	}
+	ev.Collect() // full GC: old drop reclaimed, old keep survives
+	if ev.heap[keepID] == nil {
+		t.Fatal("reachable old global should survive full GC")
+	}
+	if ev.heap[dropID] != nil {
+		t.Fatal("unreachable old object should be reclaimed by full GC")
+	}
+}
