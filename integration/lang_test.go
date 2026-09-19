@@ -1077,3 +1077,9 @@ func TestExecRuntimeListToScalarFree(t *testing.T) {
 	sb.WriteString("print(len(x))\n")
 	assertOutput(t, sb.String(), "1\n")
 }
+
+// Runtime-heap variable-index read: `x[a]` with a runtime index var reads
+// through the heap via rt_get_elem (not a compile-time literal).
+func TestExecRuntimeListVarIndex(t *testing.T) {
+	assertOutput(t, "x = [10, 20]\na = 1\nprint(x[a])\n", "20\n")
+}

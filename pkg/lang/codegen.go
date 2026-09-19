@@ -1580,19 +1580,35 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// list/dict/set indexing against an inline literal with a constant
 		// index/key (this llc build accepts only constant GEP indices).
 		// Constant keys/elements are resolved at compile time.
-		il, ok := n.Idx.(*IntLit)
-		if !ok {
-			return "", fmt.Errorf("index must be a constant")
+		key := int64(0)
+		if il, ok := n.Idx.(*IntLit); ok {
+			key = il.Value
+		} else {
+			// non-literal index: only runtime list vars support it (x[a]).
+			if nm, ok := n.Obj.(*Name); ok {
+				if !g.listVars[nm.Value] {
+					return "", fmt.Errorf("index must be a constant")
+				}
+			} else {
+				return "", fmt.Errorf("index must be a constant")
+			}
 		}
-		key := il.Value
 		switch obj := n.Obj.(type) {
 		case *Name:
 			// runtime heap list variable: x[i] reads heap[x].data[i].
 			if g.listVars[obj.Value] {
+				idxOp := strconv.FormatInt(key, 10)
+				if _, ok := n.Idx.(*IntLit); !ok {
+					v, e := g.value(b, n.Idx)
+					if e != nil {
+						return "", e
+					}
+					idxOp = v
+				}
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
-				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %d)\n", hs, hs, key))
+				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %s)\n", hs, hs, idxOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
 			if g.dictVals != nil {

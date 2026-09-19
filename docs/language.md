@@ -622,7 +622,8 @@ When a program assigns a list literal to a variable (`x = [1, 2]`), the AOT
 backend emits a small runtime heap (`@heap`, `@heap_count`) and boxed list
 objects. `x.append(v)` mutates the heap object via `rt_append`, `len(x)` on a
 list-variable reads the mutated length via `rt_list_len`, `x[i]` reads a
-mutated element via `rt_get_elem`, and `print(x)` for a list-variable renders
+mutated element via `rt_get_elem` (including a runtime index variable, e.g.
+`x[a]`), and `print(x)` for a list-variable renders
 the live contents via `rt_print_list`. Rebinding a list variable (`x = [...]`
 again) frees its old heap slot via `rt_free` into a free-list that `rt_alloc`
 recycles, so long-running programs don't leak heap slots. Rebinding a list var

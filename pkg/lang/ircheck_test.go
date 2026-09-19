@@ -636,6 +636,15 @@ func TestIRRuntimeListToScalarFreeLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeListVarIndexLowers(t *testing.T) {
+	// `x[a]` with a runtime index var must pass the var operand to rt_get_elem
+	// (not a literal), so variable-index list reads compile.
+	ir := llcCompiles(t, "x = [10, 20]\na = 1\nprint(x[a])")
+	if !strings.Contains(ir, "@rt_get_elem") {
+		t.Fatalf("expected rt_get_elem call in var-index path, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")
