@@ -1768,3 +1768,43 @@ print((x for x in range(6) if x % 2 == 0))
 		t.Fatalf("generator-expression print not lowered to rt_print_list:\n%s", ir)
 	}
 }
+
+func TestAOTIdentityDecorator(t *testing.T) {
+	ir := llcCompiles(t, `
+def twice(f):
+    return f
+@twice
+def g():
+    return 42
+print(g())
+`)
+	// identity decorator resolves to the body: calls go to @g_impl, @g_ptr = @g_impl
+	if !strings.Contains(ir, "@g_ptr = internal global i32()* @g_impl") {
+		t.Fatalf("identity decorator @f_ptr should point at @g_impl:\n%s", ir)
+	}
+	if !strings.Contains(ir, "call i32 @g_impl(") {
+		t.Fatalf("identity-decorated call should go to @g_impl:\n%s", ir)
+	}
+}
+
+func TestAOTRejectsNonIdentityDecorator(t *testing.T) {
+	// a wrapping-closure decorator cannot be represented in AOT; the codegen
+	// must reject it with a clear error instead of silently ignoring it.
+	src := `
+def add1(g):
+    def wrap():
+        return g() + 1
+    return wrap
+@add1
+def f():
+    return 40
+print(f())
+`
+	_, err := Compile(src)
+	if err == nil {
+		t.Fatal("non-identity decorator should be rejected in AOT")
+	}
+	if !strings.Contains(err.Error(), "not an identity decorator") {
+		t.Fatalf("expected clear decorator error, got: %v", err)
+	}
+}

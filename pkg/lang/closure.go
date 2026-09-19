@@ -232,7 +232,7 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 		g.stmt(b, st)
 	}
 	if !strings.HasSuffix(strings.TrimSpace(b.String()), "ret ") {
-				fmt.Fprintf(b, "  ret i32 0\n")
+		fmt.Fprintf(b, "  ret i32 0\n")
 	}
 	fmt.Fprintf(b, "}\n")
 	g.envMode = false
@@ -241,7 +241,7 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 }
 
 // emitDecoratedFunc lowers @dec def f via a function-pointer global + apply.
-func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) {
+func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 	n := len(fd.Params)
 	fty := "i32"
 	for i := 0; i < n; i++ {
@@ -265,15 +265,18 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) {
 	}
 	fmt.Fprintf(b, "  ret i32 0\n}\n")
 	// @f_ptr global fnptr initialized to @f_impl
-	fmt.Fprintf(&g.globals, "@%s_ptr = internal global i32(%s)* @%s_impl\n", fd.Name, repeatParamTypes(n), fd.Name)
-	// @f_apply() applies the decorator at program start (identity AOT form:
-// the decorated function pointer is the impl; composing arbitrary decorators
-// needs fnptr-typed code and is documented as an AOT limit).
-	fmt.Fprintf(b, "define internal void @%s_apply() {\n", fd.Name)
-	fmt.Fprintf(b, "  store i32(%s)* @%s_impl, i32(%s)* @%s_ptr\n", repeatParamTypes(n), fd.Name, repeatParamTypes(n), fd.Name)
-	fmt.Fprintf(b, "  ret void\n}\n")
+	finalLabel, err := g.resolveDecorators(fd)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(&g.globals, "@%s_ptr = internal global i32(%s)* %s\n", fd.Name, repeatParamTypes(n), finalLabel)
+	// @f_apply()
+	fmt.Fprintf(&g.globals, "define internal void @%s_apply() {\n", fd.Name)
+	fmt.Fprintf(&g.globals, "  store i32(%s)* %s, i32(%s)* @%s_ptr\n", repeatParamTypes(n), finalLabel, repeatParamTypes(n), fd.Name)
+	fmt.Fprintf(&g.globals, "  ret void\n}\n")
 	g.applyCalls = append(g.applyCalls, "@"+fd.Name+"_apply")
 	g.decorated[fd.Name] = true
+	return nil
 }
 
 // repeatParamTypes returns the i32 param type list for an n-param function
@@ -283,4 +286,34 @@ func repeatParamTypes(n int) string {
 		return ""
 	}
 	return strings.Repeat("i32, ", n-1)
+}
+
+// resolveDecorators resolves the decorated function value for a FuncDef with
+// decorators, applying decorators in source order (matching the interpreter:
+// @dec1 @dec2 def f == f = dec2(dec1(f))). AOT currently supports identity
+// decorators (`def dec(g): return g`); wrapping/transform decorators that call
+// or transform the decorated function are rejected with a clear codegen error
+// instead of being silently ignored.
+func (g *irGen) resolveDecorators(fd *FuncDef) (string, error) {
+	label := "@" + fd.Name + "_impl"
+	for _, dec := range fd.Decorators {
+		n, ok := dec.(*Name)
+		if !ok {
+			return "", fmt.Errorf("codegen: unsupported decorator expression on %q (only @name decorators are supported in AOT)", fd.Name)
+		}
+		decDef := g.fds[n.Value]
+		if decDef == nil {
+			return "", fmt.Errorf("codegen: cannot resolve decorator %q for %q", n.Value, fd.Name)
+		}
+		// identity decorator: `def dec(g): return g`
+		if len(decDef.Body) == 1 && len(decDef.Params) == 1 {
+			if rs, ok := decDef.Body[0].(*ReturnStmt); ok {
+				if n2, ok := rs.Expr.(*Name); ok && n2.Value == decDef.Params[0].Name {
+					continue
+				}
+			}
+		}
+		return "", fmt.Errorf("codegen: decorator %q for %q is not an identity decorator (wrapping/transform decorators are not yet supported in AOT)", n.Value, fd.Name)
+	}
+	return label, nil
 }

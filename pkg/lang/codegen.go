@@ -3965,7 +3965,9 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.emitClosureDef(b, ci, nd)
 	}
 	if len(fd.Decorators) > 0 {
-		g.emitDecoratedFunc(b, fd)
+		if err := g.emitDecoratedFunc(b, fd); err != nil {
+			return err
+		}
 		return nil
 	}
 	g.params = map[string]string{}

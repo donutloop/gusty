@@ -151,3 +151,19 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
   `llcCompiles` (IR validity), plus a whole-program `integration/` test that
   actually runs. Don't cite ADR numbers you haven't verified (ADR 0088 is
   opt-passes, not runtime dispatch).
+
+## Round 3 — Arbitrary decorators in AOT codegen (identity + clear rejection)
+- Landed decorator application machinery in emitDecoratedFunc: resolveDecorators
+  walks decorators in source order (matching interpreter: @dec1 @dec2 def f ==
+  f = dec2(dec1(f))).
+- Identity decorators (`def dec(g): return g`) resolve to @f_impl and keep the
+  existing direct-call path; multiple identity decorators work.
+- Wrapping/closure/transform decorators are rejected with a clear codegen error
+  ("not an identity decorator") instead of being silently ignored (the previous
+  behavior was a correctness bug).
+- Lesson: the codegen function model returns i32 and has no fnptr operands /
+  indirect calls; full arbitrary decorators (closures calling g()) are a
+  follow-on. ADR 0131 documents the phased landing.
+- Lesson: LLVM IR edits via line-index Python surgery are fragile — use
+  str.replace on exact extracted substrings (starting at the full line, not
+  mid-line). Always restore from HEAD before re-applying.

@@ -930,10 +930,8 @@ func TestExecImportReversedString(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chdir(old)
-		_ = os.Getwd
+	_ = os.Getwd
 }
-
-
 
 func TestExecImportListIndex(t *testing.T) {
 	dir := t.TempDir()
@@ -967,7 +965,6 @@ func TestExecImportLenList(t *testing.T) {
 	assertOutput(t, "import cfg\nprint(len(cfg.l))", "3\n")
 }
 
-
 func TestExecImportDictIndex(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("d = {1: 10}\n"), 0o600); err != nil {
@@ -984,7 +981,6 @@ func TestExecImportDictIndex(t *testing.T) {
 	assertOutput(t, "import cfg\nprint(cfg.d[1])", "10\n")
 }
 
-
 func TestExecImportListArith(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/cfg.gy", []byte("l = [1, 2, 3]\n"), 0o600); err != nil {
@@ -1000,7 +996,6 @@ func TestExecImportListArith(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import cfg\nprint(cfg.l[0] + cfg.l[1])", "3\n")
 }
-
 
 func TestExecImportLenDict(t *testing.T) {
 	dir := t.TempDir()
@@ -1120,4 +1115,38 @@ func TestExecHeapStress(t *testing.T) {
 	sb.WriteString("s = {1, 2}\n")
 	sb.WriteString("print(len(d))\nprint(d[0] + d[1])\nprint(len(s))\n")
 	assertOutput(t, sb.String(), "2\n7\n2\n")
+}
+
+func TestDecoratorIdentityRuntime(t *testing.T) {
+	// identity decorators are supported end-to-end in AOT: the decorated
+	// function resolves to its body, and calls print the expected result.
+	got := compileAndRun(t, `
+def twice(f):
+    return f
+@twice
+def g():
+    return 42
+print(g())
+`)
+	if got != "42\n" {
+		t.Fatalf("identity-decorated call output = %q, want 42", got)
+	}
+}
+
+func TestDecoratorNonIdentityRejected(t *testing.T) {
+	// wrapping/transform decorators are rejected with a clear codegen error
+	// instead of being silently ignored.
+	_, err := lang.Compile(`
+def add1(g):
+    def wrap():
+        return g() + 1
+    return wrap
+@add1
+def f():
+    return 40
+print(f())
+`)
+	if err == nil {
+		t.Fatal("non-identity decorator should be rejected in AOT")
+	}
 }

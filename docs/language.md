@@ -248,8 +248,7 @@ def add(a, b):
   equivalent to `f = dec(f)` at definition time. Multiple decorators apply
   bottom-up (`@dec1 @dec2 def f` -> `f = dec2(dec1(f))`). A decorator is a
   function/closure that takes the function value and returns the (possibly
-  transformed) value bound to `f`. Decorators are implemented in the
-  interpreter (REPL / `--eval` path).
+  transformed) value bound to `f`. Decorators are implemented in the interpreter and in AOT: identity decorators are fully supported, wrapping/transform decorators are rejected with a clear codegen error instead of silently ignored (ADR 0131).
 
 ### Gradual typing
 
