@@ -340,8 +340,24 @@ async function createRoundSession() {
     name: MODEL,
     baseUrl: providerCfg.baseUrl,
     api: providerCfg.api,
-    reasoning: false,
-    thinkingLevelMap: {},
+    reasoning: true,
+    thinkingLevelMap: {
+      off: "off",
+      minimal: "minimal",
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "xhigh",
+      max: "max"
+    },
+    compat: {
+      // ds4-server (not vLLM) enables thinking via the OpenAI-style
+      // `reasoning_effort` field on chat/completions (it compat-maps the level
+      // to the model's prefix-free effort). It does NOT accept vLLM-style
+      // chat_template_kwargs, so leave thinkingFormat unset so the SDK falls
+      // back to its "openai" format (params.reasoning_effort).
+      supportsReasoningEffort: true
+    },
     input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 524288,
@@ -350,7 +366,7 @@ async function createRoundSession() {
   };
   // Mirror the session log to the console AND keep writing to the session file.
   const sessionManager = createConsoleMirrorSessionManager(cwd, agentDir);
-  const created = await createAgentSession({ cwd, agentDir, model, sessionManager });
+  const created = await createAgentSession({ cwd, agentDir, model, sessionManager, thinkingLevel: "medium" });
   const session = created.session ?? created;
   session.subscribe((event) => {
     if (event.type === "message_update") {
