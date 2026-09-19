@@ -342,8 +342,8 @@ func GenerateIR(prog *Program) (string, error) {
 		return "", err
 	}
 	g := &irGen{
-		listVars: map[string]bool{},
-		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{},imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listVars:     map[string]bool{},
+		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -406,7 +406,7 @@ type irGen struct {
 	allocd    map[string]bool     // alloca emitted?
 	funcs     map[string]bool     // user-defined function names
 	fds       map[string]*FuncDef // function definitions by name (for call arg binding)
-	imports *ImportInfo // folded module globals for `import mod`
+	imports   *ImportInfo         // folded module globals for `import mod`
 	params    map[string]string   // current function params: name -> register
 	fmtIdx    int
 	strIdx    int
@@ -467,6 +467,19 @@ type irGen struct {
 	selfClass  string                // enclosing class of current self
 	attrSlots  map[string]int        // attr name -> instance data slot
 	nextSlot   int
+
+	// genFuncs records generator function names; calling one yields a runtime
+	// heap list handle (mirroring the interpreter's eager yield semantics).
+	genFuncs map[string]bool
+	// listOperands records IR operands known to be runtime heap list handles
+	// (generator function results and generator expression results), so
+	// print/indexing can treat them as lists.
+	listOperands map[string]bool
+	// genHandle is the runtime list handle for the generator function whose
+	// body is currently being emitted; stmt() appends each `yield` to it.
+	genHandle  string
+	genIdx     int
+	genExprIdx int
 }
 
 // classInfo records a statically-known class: its base classes and its methods.
@@ -1708,7 +1721,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
-		case *Attr:
+	case *Attr:
 		// Instance attribute read: `self.x` / `inst.x`.
 		if className := g.receiverClass(n.Obj); className != "" {
 			objHandle, err := g.value(b, n.Obj)
@@ -1721,7 +1734,6 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ret, objHandle, slot))
 			return ret, nil
 		}
-
 
 		// `mod.var` — imported module global folded to a constant by resolveImports.
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
@@ -2131,6 +2143,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 	case *Comp:
 		return g.comp(b, n)
+	case *Generator:
+		return g.genExpr(b, n)
 	case *Call:
 		return g.call(b, n)
 	case *KeywordArg:
@@ -2441,6 +2455,81 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	return name, nil
 }
 
+// genExpr lowers a generator expression `(elem for var in iter [if cond])`
+// to a runtime heap list handle, matching the interpreter's eager semantics.
+// The iterable is unrolled at codegen time when it is a constant range() call
+// or list literal (mirroring comp()); each element is appended to the list.
+func (g *irGen) genExpr(b *strings.Builder, gen *Generator) (string, error) {
+	var items []int64
+	if r, ok := gen.Iter.(*Call); ok {
+		// the parser represents a range(...) iterable as a Call (mirroring
+		// comp()); unroll its (constant) bounds into a slice of items.
+		start := int64(0)
+		stop, ok := g.foldConstInt(r.Args[0])
+		if !ok {
+			return "", fmt.Errorf("codegen: generator range() stop must be constant")
+		}
+		step := int64(1)
+		if len(r.Args) > 1 {
+			start = stop
+			stop, ok = g.foldConstInt(r.Args[1])
+			if !ok {
+				return "", fmt.Errorf("codegen: generator range() stop must be constant")
+			}
+		}
+		if len(r.Args) > 2 {
+			step, ok = g.foldConstInt(r.Args[2])
+			if !ok {
+				return "", fmt.Errorf("codegen: generator range() step must be constant")
+			}
+		}
+		if step > 0 {
+			for v := start; v < stop; v += step {
+				items = append(items, v)
+			}
+		} else {
+			for v := start; v > stop; v += step {
+				items = append(items, v)
+			}
+		}
+	} else if lst, ok := gen.Iter.(*ListLit); ok {
+		for _, el := range lst.Elems {
+			v, ok := g.foldConstInt(el)
+			if !ok {
+				return "", fmt.Errorf("codegen: generator list elements must be constant")
+			}
+			items = append(items, v)
+		}
+	}
+	g.genExprIdx++
+	h := fmt.Sprintf("%%gx%d", g.genExprIdx)
+	g.heapUsed = true
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 1)\n", h))
+	if g.constBindings == nil {
+		g.constBindings = map[string]int64{}
+	}
+	for _, item := range items {
+		g.constBindings[gen.ForVar.Value] = item
+		if gen.Cond != nil {
+			if cv, ok := g.foldConstInt(gen.Cond); ok && cv == 0 {
+				continue
+			}
+		}
+		ev, ok := g.foldConstInt(gen.Elems[0])
+		if !ok {
+			evOp, err := g.value(b, gen.Elems[0])
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %s, i32 %s)\n", h, evOp))
+			continue
+		}
+		b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %s, i32 %d)\n", h, ev))
+	}
+	g.listOperands[h] = true
+	return h, nil
+}
+
 // rangeBounds computes the loop start and stop operands for a for statement.
 // A `range(a, b)` iterable yields start=a and stop=b; anything else starts at 0
 // with stop being the single evaluated bound.
@@ -2542,20 +2631,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 		}
 
-			if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
-				if len(c.Args) != 1 {
-					return "", fmt.Errorf("append expects one argument")
-				}
-				av, err := g.value(b, c.Args[0])
-				if err != nil {
-					return "", err
-				}
-				g.heapSeq++
-				hs := g.heapSeq
-				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-				b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %%h%d, i32 %s)\n", hs, av))
-				return "", nil
+		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
+			if len(c.Args) != 1 {
+				return "", fmt.Errorf("append expects one argument")
 			}
+			av, err := g.value(b, c.Args[0])
+			if err != nil {
+				return "", err
+			}
+			g.heapSeq++
+			hs := g.heapSeq
+			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+			b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %%h%d, i32 %s)\n", hs, av))
+			return "", nil
+		}
 
 		// list method: `[1, 2, 3].append(4)` -> [1, 2, 3, 4].
 		if ll, ok := attr.Obj.(*ListLit); ok {
@@ -2896,7 +2985,6 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		return g.strConst(v), nil
 	}
 
-
 	// Class instantiation: `ClassName(args)`.
 	if _, isClass := g.classInfos[fnName]; isClass {
 		g.heapUsed = true
@@ -2994,6 +3082,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		} else {
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
 			g.checkExn(b)
+			// a generator function returns a runtime heap list handle
+			if g.genFuncs[fnName] {
+				g.listOperands[t] = true
+			}
 		}
 		return t, nil
 	}
@@ -3056,11 +3148,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				t = g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
 			} else {
-				fmtName, size := g.fmtStr("%d\n")
 				v, err := g.value(b, a)
 				if err != nil {
 					return "", err
 				}
+				// a generator result is a runtime heap list handle: print it
+				// as a list rather than an int.
+				if g.listOperands[v] {
+					b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %s)\n", v))
+					continue
+				}
+				fmtName, size := g.fmtStr("%d\n")
 				t := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 			}
@@ -3882,15 +3980,33 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	for i, p := range fd.Params {
 		g.params[p.Name] = fmt.Sprintf("%%p%d", i)
 	}
+	isGen := containsYield(fd.Body)
+	if isGen {
+		g.genIdx++
+		g.genHandle = fmt.Sprintf("%%gh%d", g.genIdx)
+		g.genFuncs[fd.Name] = true
+		g.heapUsed = true
+		fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 1)\n", g.genHandle)
+	}
 	for _, st := range fd.Body {
 		if err := g.stmt(b, st); err != nil {
 			return err
 		}
 	}
-	fmt.Fprintf(b, "  ret i32 0\n")
+	if isGen {
+		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
+	} else {
+		fmt.Fprintf(b, "  ret i32 0\n")
+	}
 	fmt.Fprintf(b, "%s:\n", g.funcRaiseExit)
-	fmt.Fprintf(b, "  ret i32 0\n}\n")
+	if isGen {
+		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
+	} else {
+		fmt.Fprintf(b, "  ret i32 0\n")
+	}
+	fmt.Fprintf(b, "}\n")
 	g.funcRaiseExit = prevRaise
+	g.genHandle = ""
 	g.handlerStack = prevHandlers
 	g.params = map[string]string{}
 	return nil
@@ -3958,8 +4074,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
 				b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
 				g.listVars[nm.Value] = false
-			g.runtimeDicts[nm.Value] = false
-			g.runtimeSets[nm.Value] = false
+				g.runtimeDicts[nm.Value] = false
+				g.runtimeSets[nm.Value] = false
 				g.runtimeDicts[nm.Value] = false
 				g.runtimeSets[nm.Value] = false
 			}
@@ -4037,7 +4153,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %%h%d, i32 %s, i32 %s)\n", hs, kk, vv))
 				}
 				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
-					return nil
+				return nil
 			}
 			if !g.allocd[nm.Value] {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
@@ -4055,42 +4171,42 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.floatVars[nm.Value] = true
 			} else {
-							// Track the class of a variable assigned from a class instantiation.
-			if call, ok := n.Value.(*Call); ok {
-				if fn, ok2 := call.Fn.(*Name); ok2 {
-					if _, isClass := g.classInfos[fn.Value]; isClass {
-						if g.varClasses == nil {
-							g.varClasses = map[string]string{}
+				// Track the class of a variable assigned from a class instantiation.
+				if call, ok := n.Value.(*Call); ok {
+					if fn, ok2 := call.Fn.(*Name); ok2 {
+						if _, isClass := g.classInfos[fn.Value]; isClass {
+							if g.varClasses == nil {
+								g.varClasses = map[string]string{}
+							}
+							g.varClasses[nm.Value] = fn.Value
 						}
-						g.varClasses[nm.Value] = fn.Value
 					}
 				}
-			}
-b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
 				if g.floatVars != nil {
 					delete(g.floatVars, nm.Value)
 				}
 			}
 		} else if attr, ok := n.Target.(*Attr); ok {
-				// Instance attribute write: `self.x = v` / `inst.x = v`.
-				if className := g.receiverClass(attr.Obj); className != "" {
-					objHandle, err := g.value(b, attr.Obj)
-					if err != nil {
-						return err
-					}
-					v, err := g.value(b, n.Value)
-					if err != nil {
-						return err
-					}
-					g.heapUsed = true
-					slot := g.attrSlot(attr.Name.Value)
-					b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 %d, i32 %s)\n", objHandle, slot, v))
-					return nil
+			// Instance attribute write: `self.x = v` / `inst.x = v`.
+			if className := g.receiverClass(attr.Obj); className != "" {
+				objHandle, err := g.value(b, attr.Obj)
+				if err != nil {
+					return err
 				}
-				return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
-			} else {
-				return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
+				v, err := g.value(b, n.Value)
+				if err != nil {
+					return err
+				}
+				g.heapUsed = true
+				slot := g.attrSlot(attr.Name.Value)
+				b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 %d, i32 %s)\n", objHandle, slot, v))
+				return nil
 			}
+			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
+		} else {
+			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
+		}
 
 	case *IfStmt:
 		cond := g.truthyValue(b, n.Cond)
@@ -4377,6 +4493,17 @@ b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.continueLabel))
 	case *PassStmt:
 		// no-op statement: emit nothing
+	case *YieldStmt:
+		// `yield expr` inside a generator function appends to the function's
+		// runtime heap list (the interpreter evaluates generators eagerly).
+		if g.genHandle == "" {
+			return fmt.Errorf("codegen: yield outside a generator function")
+		}
+		v, err := g.value(b, n.Expr)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, v)
 	default:
 		return fmt.Errorf("codegen: unsupported statement %T", st)
 	}

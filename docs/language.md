@@ -192,8 +192,8 @@ global struct with the same shape as a list literal:
 `cond`. In the interpreter it evaluates eagerly to a list of the yielded
 values, so it can be consumed by a `for x in gen:` loop or a `list(gen)`
 call. Example: `(x * 2 for x in [1, 2, 3] if x > 1)` → `[4, 6]`. Generator
-expressions are interpreter-only (the AOT codegen has no generator
-lowering yet); see ADR 0081.
+expressions and generator functions (`yield`) evaluate eagerly to runtime
+heap lists in both the interpreter and the AOT codegen; see ADR 0081.
 
 ## Ternary conditional expressions
 

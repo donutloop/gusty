@@ -1748,3 +1748,23 @@ d = Dog(3)
 print(d.val())
 `)
 }
+
+func TestAOTGeneratorFuncsAndExpressions(t *testing.T) {
+	ir := llcCompiles(t, `
+def g(n):
+    yield n * 2
+    yield n * 3
+print(g(5))
+print((x * 2 for x in range(4)))
+print((x for x in [1, 2, 3] if x > 1))
+print((x for x in range(6) if x % 2 == 0))
+`)
+	// generator functions lower to rt_alloc'd heap lists appended via rt_append,
+	// and generator-expression results are printed as lists.
+	if !strings.Contains(ir, "@rt_alloc") || !strings.Contains(ir, "@rt_append") {
+		t.Fatalf("generator IR missing runtime heap calls:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@rt_print_list") {
+		t.Fatalf("generator-expression print not lowered to rt_print_list:\n%s", ir)
+	}
+}

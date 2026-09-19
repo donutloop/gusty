@@ -133,3 +133,21 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
   and an ADR explaining the decision, rationale, and rejected alternatives.
 - Always `go test -tags llvm ./pkg/...` before committing; the llvm build tag
   is required (TinyGo's go-llvm bindings).
+
+## Round 2 — Generators (yield + generator expressions) in AOT codegen
+- Landed generator functions and generator expressions in the LLVM AOT path:
+  `funcDef` detects generators via `containsYield` (recursive body scan),
+  `rt_alloc(1)` a heap-list handle, each `yield` lowers to `rt_append`; the
+  function rets the handle on normal and raise-exit paths.
+- Call sites track generator funcs in `genFuncs`; result operands register in
+  `listOperands` so `print`/indexing treat them as lists (`rt_print_list`).
+- `genExpr` unrolls constant `range(...)`/`ListLit` iterables at codegen time
+  (mirroring `comp()` for comprehensions), folds `Cond`, appends to `%gxN`.
+- Parity rule: keep AOT lowering identical to interpreter eager-list semantics.
+- Lesson: recent AOT features get an ADR (e.g. 0129-classes-aot), NOT a
+  versioned CHANGELOG entry — CHANGELOG only tracks milestone releases. Follow
+  that convention (ADR 0130-generators-aot, no CHANGELOG edit).
+- Lesson: unit tests for AOT landings live in `pkg/lang/ircheck_test.go` via
+  `llcCompiles` (IR validity), plus a whole-program `integration/` test that
+  actually runs. Don't cite ADR numbers you haven't verified (ADR 0088 is
+  opt-passes, not runtime dispatch).

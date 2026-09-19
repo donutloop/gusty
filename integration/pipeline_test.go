@@ -36,3 +36,31 @@ func TestPipelineFloatVars(t *testing.T) {
 		t.Fatalf("pipeline output %q, want %q", got, want)
 	}
 }
+
+func TestGeneratorFunctionsAndExpressions(t *testing.T) {
+	src := `def g(n):
+    yield n * 2
+    yield n * 3
+print(g(5))
+print((x * 2 for x in range(4)))
+print((x for x in [1, 2, 3] if x > 1))
+print((x for x in range(6) if x % 2 == 0))
+`
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "gen.gy")
+	if err := os.WriteFile(srcPath, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "prog")
+	if _, err := lang.Build([]string{srcPath}, exe, 0); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	out, err := exec.Command(exe).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run failed: %v\n%s", err, out)
+	}
+	want := "[10, 15]\n[0, 2, 4, 6]\n[2, 3]\n[0, 2, 4]\n"
+	if string(out) != want {
+		t.Fatalf("output = %q, want %q", out, want)
+	}
+}
