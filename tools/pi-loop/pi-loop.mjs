@@ -43,7 +43,60 @@ const { createAgentSession } = require(sdkPath);
 const SDK_DIR = path.dirname(sdkPath);
 const { SessionManager, getDefaultSessionDir } = require(path.join(SDK_DIR, "core/session-manager.js"));
 
-function contentToString(content) {
+// ---- human-readable console UI -------------------------------------------------
+// The session log is still written to <agentDir>/sessions/*.jsonl exactly as the
+// SDK produces it (we only wrap the append methods, never the file). What you see
+// here is a clean, 2026-developer console: colored roles, wall-clock timestamps,
+// compact token counts, and no raw JSON blobs.
+const ansi = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  magenta: "\x1b[35m",
+  blue: "\x1b[34m",
+  gray: "\x1b[90m",
+  red: "\x1b[31m",
+};
+const paint = (s, code) => (code ? `${code}${s}${ansi.reset}` : s);
+
+function fmtTime(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  const hh = d.getHours().toString().padStart(2, "0");
+  const mm = d.getMinutes().toString().padStart(2, "0");
+  const ss = d.getSeconds().toString().padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+function fmtTokens(n) {
+  if (n == null) return null;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+function fmtUsage(usage) {
+  if (!usage) return null;
+  const parts = [];
+  const inTok = usage.input_tokens ?? usage.prompt_tokens;
+  const outTok = usage.output_tokens ?? usage.completion_tokens;
+  if (inTok != null) parts.push(`${fmtTokens(inTok)} in`);
+  if (outTok != null) parts.push(`${fmtTokens(outTok)} out`);
+  if (usage.total_tokens != null) parts.push(`${fmtTokens(usage.total_tokens)} total`);
+  return parts.length ? `↗ ${parts.join(" · ")}` : null;
+}
+
+function roleBadge(role) {
+  switch (role) {
+    case "user": return paint("you", ansi.cyan);
+    case "assistant": return paint("agent", ansi.magenta);
+    case "toolResult": return paint("tool", ansi.yellow);
+    case "system": return paint("system", ansi.gray);
+    default: return paint(String(role), ansi.gray);
+  }
+}
+
+function renderText(content) {
   if (content == null) return "";
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -62,17 +115,20 @@ function contentToString(content) {
   try { return JSON.stringify(content); } catch { return "[object]"; }
 }
 
-function formatMessage(m) {
+// One message rendered as a two-line block: a header line (timestamp + role
+// badge + token usage) then the body indented beneath it.
+function renderMessage(m) {
   const role = m?.role ?? "message";
-  const text = contentToString(m?.content).replace(/\n/g, "\n  ");
-  let extra = "";
-  if (m?.usage) extra = ` (usage: ${JSON.stringify(m.usage)})`;
-  return `[session] ${role}: ${text}${extra}`;
+  const ts = fmtTime(m?.timestamp);
+  const body = renderText(m?.content).replace(/\n/g, "\n  ");
+  const usage = fmtUsage(m?.usage);
+  const head = `${paint(ts, ansi.dim)} ${roleBadge(role)}${usage ? `  ${paint(usage, ansi.dim)}` : ""}`;
+  return `  ${head}\n  ${body}`;
 }
 
-function formatEntry(type, value) {
-  if (value == null) return `[session] ${type}`;
-  try { return `[session] ${type}: ${JSON.stringify(value)}`; } catch { return `[session] ${type}`; }
+// A small event line (no body) for non-message entries.
+function renderEvent(badge, text) {
+  return `  ${paint(fmtTime(), ansi.dim)} ${badge}${text ? `  ${text}` : ""}`;
 }
 
 /**
@@ -94,35 +150,35 @@ function createConsoleMirrorSessionManager(cwd, agentDir) {
   };
 
   sm.appendMessage = (message) => {
-    console.log(formatMessage(message));
+    console.log(renderMessage(message));
     return orig.appendMessage(message);
   };
   sm.appendThinkingLevelChange = (level) => {
-    console.log(`[session] thinking_level_change: ${level}`);
+    console.log(renderEvent(paint("thought", ansi.blue), String(level)));
     return orig.appendThinkingLevelChange(level);
   };
   sm.appendModelChange = (provider, modelId) => {
-    console.log(`[session] model_change: ${provider}/${modelId}`);
+    console.log(renderEvent(paint("model", ansi.green), `${provider}/${modelId}`));
     return orig.appendModelChange(provider, modelId);
   };
   sm.appendCompaction = (summary) => {
-    console.log(`[session] compaction: ${contentToString(summary)}`);
+    console.log(renderEvent(`${paint("context", ansi.yellow)} ${paint("compacted", ansi.bold)}`, renderText(summary)));
     return orig.appendCompaction(summary);
   };
   sm.appendCustomEntry = (customType, data) => {
-    console.log(formatEntry(customType, data));
+    console.log(renderEvent(paint(String(customType), ansi.gray), typeof data === "string" ? data : renderText(data)));
     return orig.appendCustomEntry(customType, data);
   };
   sm.appendSessionInfo = (name) => {
-    console.log(`[session] session_info: ${name}`);
+    console.log(renderEvent(paint("session", ansi.green), String(name)));
     return orig.appendSessionInfo(name);
   };
   sm.appendCustomMessageEntry = (customType, content, display, details) => {
-    console.log(`[session] ${customType}: ${contentToString(content)}${details ? ` ${JSON.stringify(details)}` : ""}`);
+    console.log(renderEvent(paint(String(customType), ansi.gray), renderText(content)));
     return orig.appendCustomMessageEntry(customType, content, display, details);
   };
   sm.appendLabelChange = (targetId, label) => {
-    console.log(`[session] label: ${targetId} -> ${label ?? "(cleared)"}`);
+    console.log(renderEvent(paint("label", ansi.gray), `${targetId} -> ${label ?? "(cleared)"}`));
     return orig.appendLabelChange(targetId, label);
   };
 
