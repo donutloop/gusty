@@ -79,3 +79,32 @@ func TestMemoryModelKeepsClosureEnv(t *testing.T) {
 		t.Fatalf("list captured by closure env was collected")
 	}
 }
+
+// TestMemoryModelRebindLoopReclaims: rebinding a list var thousands of times
+// makes each old list unreachable; the interpreter GC must reclaim them all,
+// leaving only the final live list reachable.
+func TestMemoryModelRebindLoopReclaims(t *testing.T) {
+	ev := NewEvaluator()
+	var prog string
+	for i := 0; i < 3000; i++ {
+		prog += "x = [3, 4]\n"
+	}
+	p, err := Parse("x = [1, 2]\n" + prog)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, err := ev.EvalProgram(p); err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	ev.Collect()
+	// after GC only the final live [3,4] should remain reachable.
+	live2 := 0
+	for _, o := range ev.heap {
+		if o != nil && o.kind == "list" && len(o.elems) == 2 {
+			live2++
+		}
+	}
+	if live2 > 3 {
+		t.Fatalf("rebind loop left %d live 2-elem lists reachable (expected ~1 after GC)", live2)
+	}
+}
