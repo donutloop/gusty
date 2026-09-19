@@ -48,7 +48,7 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
    - LLVM IR codegen (and any new optimization pass) for lowering, mirroring the interpreter behavior.
    - `docs/help.go` (or equivalent) — one-line help per command/flag.
    - `verify/` — known-good verify case (source in, expected IR/output out).
-   - docs — `docs/language.md`, `docs/operations.md`, `CHANGELOG.md`, `README.md`, an ADR if needed.
+   - docs — `docs/language.md`, `docs/operations.md`, `CHANGELOG.md`, `README.md`, `_001_session_learnings.md`, an ADR if needed.
 3. **Machine path** — if the feature is language/interface, make sure it is discoverable via schema/help and consumable as JSON where it makes sense (agents must not need to scrape prose or parse raw LLVM IR text blindly).
 4. Add tests for the feature before committing: unit tests for the compiler pass, and a codegen/integration test that compiles and runs (or JIT-executes) real source. When the feature is supported in both paths, cover **both** the interpreter (`jit_test.go`, `EvalExpr`) and the LLVM codegen (`integration/`, `Compile` + `llc`).
 5. Run tests before committing: full test suite must pass, and every emitted module must pass LLVM's module verifier.
