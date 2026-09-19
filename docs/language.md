@@ -623,5 +623,7 @@ backend emits a small runtime heap (`@heap`, `@heap_count`) and boxed list
 objects. `x.append(v)` mutates the heap object via `rt_append`, `len(x)` on a
 list-variable reads the mutated length via `rt_list_len`, `x[i]` reads a
 mutated element via `rt_get_elem`, and `print(x)` for a list-variable renders
-the live contents via `rt_print_list`. Inline list literals (`len([1,2])`,
-`print([1,2])`) keep compile-time folding. See ADR 0009.
+the live contents via `rt_print_list`. Rebinding a list variable (`x = [...]`
+again) frees its old heap slot via `rt_free` into a free-list that `rt_alloc`
+recycles, so long-running programs don't leak heap slots. Inline list literals
+(`len([1,2])`, `print([1,2])`) keep compile-time folding. See ADR 0009.

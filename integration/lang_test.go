@@ -1059,3 +1059,10 @@ func TestExecRuntimeListLen(t *testing.T) {
 func TestExecRuntimeListIndex(t *testing.T) {
 	assertOutput(t, "x = [10, 20]\nx.append(30)\nprint(x[0] + x[2])", "40\n")
 }
+
+// Runtime-heap slot reuse: rebinding a list var frees its old heap slot, so
+// thousands of rebinds must not exhaust the 1024-slot heap or corrupt results.
+func TestExecRuntimeListReuse(t *testing.T) {
+	src := "x = [0, 0]\n" + strings.Repeat("x = [0, 0]\n", 2000) + "print(len(x))\n"
+	assertOutput(t, src, "2\n")
+}

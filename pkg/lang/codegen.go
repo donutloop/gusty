@@ -11,21 +11,45 @@ import (
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 const heapRuntimeIR = `@heap_count = internal global i32 0
+@free_head = internal global i32 -1
+@free_next = internal global [1024 x i32] zeroinitializer
 @heap = internal global [1024 x {i32, i32, [256 x i32]}] zeroinitializer
 
 define internal i32 @rt_alloc(i32 %kind) {
 entry:
+  %fh = load i32, i32* @free_head
+  %isneg = icmp slt i32 %fh, 0
+  br i1 %isneg, label %alloc_new, label %alloc_reuse
+alloc_new:
   %c = load i32, i32* @heap_count
-  %c1 = add i32 %c, 1
-  store i32 %c1, i32* @heap_count
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %c
   %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
   store i32 %kind, i32* %kp
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   store i32 0, i32* %lp
+  %c1 = add i32 %c, 1
+  store i32 %c1, i32* @heap_count
   ret i32 %c
+alloc_reuse:
+  %rn = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %fh
+  %next = load i32, i32* %rn
+  store i32 %next, i32* @free_head
+  %obj2 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %fh
+  %kp2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj2, i32 0, i32 0
+  store i32 %kind, i32* %kp2
+  %lp2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj2, i32 0, i32 1
+  store i32 0, i32* %lp2
+  ret i32 %fh
 }
 
+define internal void @rt_free(i32 %h) {
+entry:
+  %fh = load i32, i32* @free_head
+  %fn = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %h
+  store i32 %fh, i32* %fn
+  store i32 %h, i32* @free_head
+  ret void
+}
 define internal void @rt_set_elem(i32 %h, i32 %i, i32 %v) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -3413,6 +3437,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.heapUsed = true
 				g.heapSeq++
 				hs := g.heapSeq
+				// heap slot reuse: rebinding a list var frees its old heap slot so rt_alloc can recycle it.
+				if g.listVars[nm.Value] {
+					g.heapSeq++
+					fs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+				}
 				g.listVars[nm.Value] = true
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))

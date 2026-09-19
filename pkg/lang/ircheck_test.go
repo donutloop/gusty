@@ -616,6 +616,18 @@ func TestIRRuntimeListIndexLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeListReuseLowers(t *testing.T) {
+	// Rebinding a runtime list var must free its old heap slot via rt_free so
+	// rt_alloc can recycle it (no unbounded slot leak on reassignment).
+	ir := llcCompiles(t, "x = [1, 2]\nx = [3, 4]\nprint(len(x))")
+	if !strings.Contains(ir, "@rt_free") {
+		t.Fatalf("expected rt_free call in rebind path, got:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@rt_alloc") {
+		t.Fatalf("expected rt_alloc call in rebind path, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")
