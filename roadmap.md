@@ -13,7 +13,7 @@ doc home:
 - `docs/language.md` — single source of truth for the language surface
   (syntax, semantics, which constructs are interpreter-only vs AOT).
 - `docs/operations.md` — CLI, agent operations, build/test pipeline.
-- `docs/adr/` — architecture decision records (`0001`..`0110`); each new
+- `docs/adr/` — architecture decision records (`0001`..`0128`); each new
   decision is recorded there.
 - `docs/agentic/` — agent-facing notes (currently `ast-ir-schema.md`).
 - `docs/roadmap.md` — pointer mirror of this `roadmap.md`.
@@ -53,6 +53,10 @@ Rule: every component change updates the matching doc; never let
 | Phase 3 — memory model & optimization | Escape analysis + scalar replacement | ⏳ PLANNED | So closures/env-stores don't force heap allocation; keep the interpreter's GC as the fallback. |
 | Phase 4 — docs & verification | Keep docs current | 🔄 CONTINUOUS | Keep `docs/language.md`, `docs/operations.md`, `docs/roadmap.md`, `docs/adr/` current after every change. |
 | Phase 4 — docs & verification | Every AOT feature ships tests | 🔄 CONTINUOUS | Every AOT feature ships a unit test + an `integration/` whole-program compile-and-run test. |
+| Phase 5 — modern GC & dead-object elimination | Generational tracing GC (interpreter) | ⏳ PLANNED | Today `jit.go`'s `Collect()` is a *conservative* mark-and-sweep that frees only pure-data objects (list/dict/set/str/int/float) and **never** classes/methods/closures/imports/modules. Upgrade to a modern generational tracing GC: a young-object nursery, a tenured space, and incremental/safepoint-driven collection so long-running programs reclaim *all* unreachable objects (including closures/classes) without a stop-the-world pause. |
+| Phase 5 — modern GC & dead-object elimination | AOT runtime tracing GC | ⏳ PLANNED | The AOT path has no runtime heap/GC yet (beyond the Phase 1 boxed-value heap). Add a *tracing* collector — roots are AOT globals / env-stores / stack slots; mark walks container fields + closure envs; sweep unreachable heap objects — so AOT programs get leak-free mutation of runtime collections, mirroring `Collect()` semantics. |
+| Phase 5 — modern GC & dead-object elimination | Escape-analysis heap elision (modern dead-object elimination) | ⏳ PLANNED | Replace the pure-Go textual dead-global elimination in `opt.go` with an IR-level liveness + escape-analysis pass that eliminates **whole dead heap objects** — not just dead instructions/blocks — proving an allocation never escapes (no `%obj` handle, closure env, or method table escapes) and deleting it before codegen. |
+| Phase 5 — modern GC & dead-object elimination | GC stress / leak harness | ⏳ PLANNED | Extend `memory_test.go` with stress cases: rebind loops, generator yield-lists, closure envs, and class attr cycles — asserting the collector reclaims unreachable objects and keeps live ones, with parity across both the interpreter and AOT paths. |
 
 ## Definition of done per item
 - Interpreter feature + unit test.

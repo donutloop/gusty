@@ -60,7 +60,8 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 ## New requirements
 
 - Keep `agents.md` at the repo root; do not store prompts under `setup/prompts/`.
-- Every feature commit updates `docs/language.md` (language surface), `docs/operations.md` (CLI/agentic interface), `CHANGELOG.md`, `README.md`, and the ADR if relevant.
+- Every feature commit updates `docs/language.md` (language surface), `docs/operations.md` (CLI/agentic interface), `CHANGELOG.md`, `README.md`, `_001_session_learnings.md` (session learnings), and the ADR if relevant.
+- Record each cycle's decisions, discoveries, and process lessons in `_001_session_learnings.md` at the repo root; update it in the same commit as the change it documents.
 - `docs/operations.md` is the single source of truth for the CLI, flags, JSON schemas, and exit codes.
 - `docs/language.md` is the single source of truth for language syntax and semantics.
 - Always push every commit; never leave a feature unpushed.
