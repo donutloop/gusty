@@ -15,7 +15,18 @@ Every round:
 3. Waits for the agent turn to complete (`agent_end`).
 4. Verifies the round (`git status` / `git rev-parse HEAD`) and **persists
    progress** to `.pi-loop-state.json`.
-5. Re-executes `AGENTS.md` and repeats **forever**.
+5. **Discards** the round's session and starts a brand-new one (new session
+   id + fresh session log file) for the next round.
+6. Re-executes `AGENTS.md` and repeats **forever**.
+
+## Fresh session per round
+
+Each round runs in its **own brand-new pi session** — pi-loop never resumes or
+continues a prior session. Before the round's prompt it creates a fresh
+`SessionManager` (which runs `newSession()`, producing a new session id and a
+new `<agentDir>/sessions/*.jsonl` log), prompts, then **disposes** that session
+once the round completes. The previous round's session context and persisted
+log are fully discarded, so no context or history carries across rounds.
 
 ## Stop / resume semantics
 

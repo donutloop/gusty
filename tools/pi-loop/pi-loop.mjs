@@ -253,8 +253,20 @@ if (!forceReset && state) {
   console.log("pi-loop: no committed progress — RE-EXECUTING AGENTS.md (fresh round 1)");
 }
 
-let session;
-try {
+// Hold a reference to the currently-active round's session so SIGINT and the
+// fatal-error handler can dispose it cleanly. It is replaced (and the prior
+// one disposed) at the start of each new round.
+let currentSession = null;
+
+/**
+ * Create a brand-new pi agent session for a round.
+ *
+ * A fresh SessionManager is built every call, which runs `newSession()` and so
+ * gets a NEW session id AND a NEW session log file — the previous round's
+ * session context (and its persisted log) is fully discarded rather than
+ * resumed/continued.
+ */
+async function createRoundSession() {
   // createAgentSession expects a Model OBJECT (provider + id), not a bare id
   // string. The SDK resolves the full model (auth/endpoint) from
   // <agentDir>/models.json using model.provider / model.id, so a minimal
@@ -283,22 +295,34 @@ try {
   // Mirror the session log to the console AND keep writing to the session file.
   const sessionManager = createConsoleMirrorSessionManager(cwd, agentDir);
   const created = await createAgentSession({ cwd, agentDir, model, sessionManager });
-  session = created.session ?? created;
-  console.log("pi-loop: connected to local pi agent session (" + agentDir + ")");
+  const session = created.session ?? created;
   session.subscribe((event) => {
     if (event.type === "message_update") {
       const delta = event.assistantMessage?.textDelta ?? event.delta ?? "";
       if (delta) process.stdout.write(delta);
     }
   });
+  return session;
+}
 
+try {
   const target = once || rounds;
   const maxRounds = target === Infinity ? Infinity : target;
   while (round <= maxRounds) {
-    const head = await runRound(session, round, maxRounds);
+    // Discard the previous round's session (if any) and start a fresh one.
+    if (currentSession) currentSession.dispose();
+    currentSession = await createRoundSession();
+    console.log("pi-loop: connected to local pi agent session (" + agentDir + ")");
+
+    const head = await runRound(currentSession, round, maxRounds);
     state = { round: round + 1, lastCommit: head, finishedAt: new Date().toISOString() };
     saveState(state);
-    console.log(`pi-loop: round ${round} completed; executing AGENTS.md loop for next round...`);
+
+    // The round is done — dispose this round's session so its context is
+    // discarded and cannot leak into the next round.
+    currentSession.dispose();
+    currentSession = null;
+    console.log(`pi-loop: round ${round} completed; discarding session, executing AGENTS.md loop for next round...`);
     round += 1;
     // Wait a minute after each completed loop before starting the next round.
     // Configurable via PI_LOOP_DELAY_SECONDS (default 60).
@@ -308,17 +332,17 @@ try {
       await sleep(delaySeconds * 1000);
     }
   }
-  session.dispose();
   console.log("pi-loop: finished rounds=" + (round - 1));
 } catch (e) {
   console.error("pi-loop: fatal:", e.message);
   if (state) saveState(state);
-  if (session) session.dispose();
+  if (currentSession) currentSession.dispose();
   process.exit(1);
 }
 
 process.on("SIGINT", () => {
   console.log("\npi-loop: interrupted; persisting progress and disconnecting...");
   if (state) saveState(state);
+  if (currentSession) currentSession.dispose();
   process.exit(130);
 });
