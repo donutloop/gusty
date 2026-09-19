@@ -1107,3 +1107,17 @@ func TestExecRuntimeCrossCollectionFree(t *testing.T) {
 	sb.WriteString("d = [1, 2]\nprint(len(d))\n")
 	assertOutput(t, sb.String(), "2\n")
 }
+
+// Runtime-heap stress/leak harness: thousands of cross-kind rebinds of two
+// live vars (list -> dict -> list -> scalar -> set) must not exhaust the
+// 1024-slot heap; final reads of both vars stay correct.
+func TestExecHeapStress(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("d = [1, 2]\n")
+	sb.WriteString("s = {1, 2}\n")
+	sb.WriteString(strings.Repeat("d = {1: 10}\nd = [3, 4]\nd = 5\ns = {1, 2}\ns = 5\n", 2000))
+	sb.WriteString("d = [3, 4]\n")
+	sb.WriteString("s = {1, 2}\n")
+	sb.WriteString("print(len(d))\nprint(d[0] + d[1])\nprint(len(s))\n")
+	assertOutput(t, sb.String(), "2\n7\n2\n")
+}
