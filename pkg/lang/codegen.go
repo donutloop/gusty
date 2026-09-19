@@ -10,12 +10,92 @@ import (
 )
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
+const heapRuntimeIR = `@heap_count = internal global i32 0
+@heap = internal global [1024 x {i32, i32, [256 x i32]}] zeroinitializer
+
+define internal i32 @rt_alloc(i32 %kind) {
+entry:
+  %c = load i32, i32* @heap_count
+  %c1 = add i32 %c, 1
+  store i32 %c1, i32* @heap_count
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %c
+  %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
+  store i32 %kind, i32* %kp
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  store i32 0, i32* %lp
+  ret i32 %c
+}
+
+define internal void @rt_set_elem(i32 %h, i32 %i, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
+  store i32 %v, i32* %ep
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %len1 = add i32 %len, 1
+  store i32 %len1, i32* %lp
+  ret void
+}
+
+define internal void @rt_append(i32 %h, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %len
+  store i32 %v, i32* %ep
+  %len1 = add i32 %len, 1
+  store i32 %len1, i32* %lp
+  ret void
+}
+
+@.fmtlopen = private unnamed_addr constant [2 x i8] c"[\00"
+@.fmtsep = private unnamed_addr constant [3 x i8] c", \00"
+@.fmtlclose = private unnamed_addr constant [2 x i8] c"]\00"
+@.fmti = private unnamed_addr constant [3 x i8] c"%d\00"
+@.fmtnl = private unnamed_addr constant [2 x i8] c"\0A\00"
+
+define internal void @rt_print_list(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %i1, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %done
+body:
+  %is0 = icmp eq i32 %i, 0
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
+  %e = load i32, i32* %ep
+  br i1 %is0, label %first, label %sep
+first:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %e)
+  br label %cont
+sep:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %e)
+  br label %cont
+cont:
+  %i1 = add i32 %i, 1
+  br label %loop
+done:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  ret void
+}
+`
+
 func GenerateIR(prog *Program) (string, error) {
 	imports, err := resolveImports(prog)
 	if err != nil {
 		return "", err
 	}
-	g := &irGen{imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+	g := &irGen{
+		listVars: map[string]bool{},imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -56,6 +136,9 @@ func GenerateIR(prog *Program) (string, error) {
 	// assemble output
 	var out strings.Builder
 	g.emitEnvGlobals()
+	if g.heapUsed {
+		g.globals.WriteString(heapRuntimeIR)
+	}
 	out.WriteString(g.globals.String())
 	out.WriteString(g.decls)
 	out.WriteString(b.String())
@@ -123,6 +206,9 @@ type irGen struct {
 	lambdas map[string]string
 	// floatVars tracks variables whose last assignment produced a double.
 	floatVars     map[string]bool
+	listVars      map[string]bool
+	heapUsed      bool
+	heapSeq       int
 	handlerStack  []string
 	funcRaiseExit string
 }
@@ -1967,6 +2053,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 	// constant-fold attr methods on constant receivers.
 	if attr, ok := c.Fn.(*Attr); ok {
+			if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
+				if len(c.Args) != 1 {
+					return "", fmt.Errorf("append expects one argument")
+				}
+				av, err := g.value(b, c.Args[0])
+				if err != nil {
+					return "", err
+				}
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+				b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %%h%d, i32 %s)\n", hs, av))
+				return "", nil
+			}
+
 		// list method: `[1, 2, 3].append(4)` -> [1, 2, 3, 4].
 		if ll, ok := attr.Obj.(*ListLit); ok {
 			if attr.Name.Value == "append" {
@@ -2414,6 +2515,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				t := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, v))
 				last = t
+				continue
+			}
+			if nm, ok := a.(*Name); ok && g.listVars[nm.Value] {
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+				b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %%h%d)\n", hs))
 				continue
 			}
 			var t string
@@ -3268,6 +3376,26 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.lambdas = map[string]string{}
 				}
 				g.lambdas[nm.Value] = name
+				return nil
+			}
+			if lit, ok := n.Value.(*ListLit); ok {
+				g.heapUsed = true
+				g.heapSeq++
+				hs := g.heapSeq
+				g.listVars[nm.Value] = true
+				if !g.allocd[nm.Value] {
+					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+					g.allocd[nm.Value] = true
+				}
+				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 1)\n", hs))
+				for i, el := range lit.Elems {
+					ev, err := g.value(b, el)
+					if err != nil {
+						return err
+					}
+					b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, ev))
+				}
+				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
 				return nil
 			}
 			v, err := g.value(b, n.Value)

@@ -616,3 +616,11 @@ loop unrolls literal lists and ranges, but not literal strings); see ADR 0085.
 `float(3)` -> 3.0. `int` ships in both backends: the AOT codegen folds `int` on
 literal int/string args to a compile-time constant. `float` is
 interpreter-only (the AOT codegen has no float representation); see ADR 0086.
+## Runtime heap for mutable lists (AOT)
+
+When a program assigns a list literal to a variable (`x = [1, 2]`), the AOT
+backend emits a small runtime heap (`@heap`, `@heap_count`) and boxed list
+objects. `x.append(v)` mutates the heap object via `rt_append`, and
+`print(x)` for a list-variable renders the live contents via `rt_print_list`.
+Inline list literals (`len([1,2])`, `print([1,2])`) keep compile-time folding.
+See ADR 0009.

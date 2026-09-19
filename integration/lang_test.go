@@ -1033,3 +1033,17 @@ func TestExecImportDictArith(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import cfg\nprint(cfg.d[1] + cfg.d[2])", "30\n")
 }
+
+// Runtime-heap feature: `x = [1, 2]` allocates a runtime list object, `x.append(v)`
+// mutates it on the heap, and `print(x)` renders the runtime list contents.
+func TestExecRuntimeListAppend(t *testing.T) {
+	assertOutput(t, "x = [1, 2]\nx.append(3)\nprint(x)", "[1, 2, 3]\n")
+}
+
+func TestExecRuntimeListAppendTwo(t *testing.T) {
+	assertOutput(t, "x = [1]\nx.append(2)\nx.append(3)\nprint(x)", "[1, 2, 3]\n")
+}
+
+func TestExecRuntimeListPrint(t *testing.T) {
+	assertOutput(t, "x = [5, 6]\nprint(x)", "[5, 6]\n")
+}
