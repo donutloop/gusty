@@ -167,3 +167,13 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
 - Lesson: LLVM IR edits via line-index Python surgery are fragile — use
   str.replace on exact extracted substrings (starting at the full line, not
   mid-line). Always restore from HEAD before re-applying.
+
+## Round 4 — Generational tracing GC in the interpreter heap
+- Made Collect() two-generation: nursery = ids >= nurseryBase; young GC sweeps
+  unreachable nursery objects and promotes survivors (advance nurseryBase to
+  maxHeapID); full GC sweeps whole heap when old-gen count > 512 or nurseryBase==0.
+- allocObj increments allocCount (unused trigger for now — GC stays explicit).
+- Lesson: the interpreter has no stack, so auto-GC mid-execution is unsafe
+  (Vars-only roots); keep Collect explicit. ADR 0132 documents the phased landing.
+- Lesson: LLVM/heap edits via line-index Python surgery are fragile; use exact
+  substring replaces and restore from HEAD before re-applying.

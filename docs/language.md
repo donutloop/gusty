@@ -41,7 +41,7 @@ floats. See ADR 0090.
 
 The evaluator boxes values on a heap (`map[int64]*obj`). Unreachable pure-data
 objects (list/dict/set/str/int/float) are collected by the explicit
-mark-and-sweep primitive `ev.Collect()`: roots are the top-level environment
+two-generation (nursery + old) tracing primitive `ev.Collect()`: roots are the top-level environment
 bindings; marking walks container elems, dict values, closure envs, and attr
 tables; the sweep frees unmarked pure-data objects. Class/method/closure/
 import objects are never freed. Collection is explicit (end-of-program), not

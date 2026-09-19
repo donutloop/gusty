@@ -4,27 +4,28 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strings"
-	"unicode"
 	"sort"
 	"strconv"
-
+	"strings"
+	"unicode"
 )
 
 // Evaluator is a small AST interpreter used by --eval and the REPL.
 // It evaluates integer-typed expressions deterministically without needing
 // an LLVM JIT engine (the AOT backend emits textual IR verified by `llc`).
 type Evaluator struct {
-	Vars      map[string]int64
-	funcs     map[string]*FuncDef
-	inCall    bool // true while evaluating a function body (nested defs become closures)
-	heap      map[int64]*obj
-	nextID    int64
-	classIDs  map[string]int64
-	curRet    *Type  // return annotation of the function currently executing
-	yieldList int64  // list handle accumulating yields (0 = not in generator)
-	curClass  string // class name of the method currently executing (for super())
-	curSelf   int64  // receiver of the method currently executing (for super())
+	Vars        map[string]int64
+	funcs       map[string]*FuncDef
+	inCall      bool // true while evaluating a function body (nested defs become closures)
+	heap        map[int64]*obj
+	nextID      int64
+	nurseryBase int64
+	allocCount  int64
+	classIDs    map[string]int64
+	curRet      *Type  // return annotation of the function currently executing
+	yieldList   int64  // list handle accumulating yields (0 = not in generator)
+	curClass    string // class name of the method currently executing (for super())
+	curSelf     int64  // receiver of the method currently executing (for super())
 }
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
@@ -45,6 +46,7 @@ type obj struct {
 
 func (e *Evaluator) allocObj(kind string) int64 {
 	e.nextID++
+	e.allocCount++
 	id := e.nextID
 	e.heap[id] = &obj{kind: kind, attrs: map[string]int64{}}
 	return id
@@ -379,18 +381,45 @@ func (e *Evaluator) Collect() {
 	for _, id := range e.Vars {
 		mark(id)
 	}
-	for id, o := range e.heap {
-		// Conservative sweep: only pure-data objects are collected. Class,
-		// method, closure, import, and module objects may hold references
-		// outside this heap (e.g. class method tables), so they are never
-		// freed here.
-		switch o.kind {
-		case "list", "dict", "set", "str", "int", "float":
+	// generational sweep: young GC reclaims unreachable nursery objects and
+	// promotes survivors (advance nurseryBase so they become old); a full GC
+	// sweeps the whole heap when the old generation grows past a threshold.
+	oldCount := 0
+	for id := range e.heap {
+		if id < e.nurseryBase {
+			oldCount++
+		}
+	}
+	young := e.nurseryBase
+	if young == 0 || oldCount > 512 {
+		// full GC over the whole heap, then reset the nursery to all-new
+		for id, o := range e.heap {
 			if !marked[id] {
-				delete(e.heap, id)
+				switch o.kind {
+				case "list", "dict", "set", "str", "int", "float":
+					if !marked[id] {
+						delete(e.heap, id)
+					}
+				}
+			}
+		}
+		e.nurseryBase = maxHeapID(e.heap)
+		e.allocCount = 0
+		return
+	}
+	// young GC: reclaim unreachable nursery objects, promote survivors
+	for id, o := range e.heap {
+		if id >= young && !marked[id] {
+			switch o.kind {
+			case "list", "dict", "set", "str", "int", "float":
+				if !marked[id] {
+					delete(e.heap, id)
+				}
 			}
 		}
 	}
+	e.nurseryBase = maxHeapID(e.heap)
+	e.allocCount = 0
 }
 
 func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
@@ -539,14 +568,14 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			if bodyErr != nil {
 				caught := false
 				for _, ec := range s.Excepts {
-						// bare except, or except Exception, matches any exception;
-				// otherwise match the raised exception class name exactly.
-				matches := ec.Exn == nil || ec.Exn.Value == "Exception"
-				if ee, ok := bodyErr.(*EvalError); ok && ee.ExnType != "" {
-					matches = ec.Exn == nil || ec.Exn.Value == "Exception" ||
-						ec.Exn.Value == ee.ExnType
-				}
-				if matches {
+					// bare except, or except Exception, matches any exception;
+					// otherwise match the raised exception class name exactly.
+					matches := ec.Exn == nil || ec.Exn.Value == "Exception"
+					if ee, ok := bodyErr.(*EvalError); ok && ee.ExnType != "" {
+						matches = ec.Exn == nil || ec.Exn.Value == "Exception" ||
+							ec.Exn.Value == ee.ExnType
+					}
+					if matches {
 						_, err2 := e.evalBody(ec.Body)
 						if err2 != nil {
 							return 0, err2
@@ -628,22 +657,22 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 								last = rv
 							}
 						} else {
-						for _, el := range o.elems {
-							e.Vars[n.Value] = el
-							rv, err := e.evalBody(s.Body)
-							if err != nil {
-								if ls, ok := err.(*loopSignal); ok {
-									if ls.kind == "break" {
-										completed = false
-										break
+							for _, el := range o.elems {
+								e.Vars[n.Value] = el
+								rv, err := e.evalBody(s.Body)
+								if err != nil {
+									if ls, ok := err.(*loopSignal); ok {
+										if ls.kind == "break" {
+											completed = false
+											break
+										}
+										continue
 									}
-									continue
+									return 0, err
 								}
-								return 0, err
+								last = rv
 							}
-							last = rv
 						}
-					}
 					} else {
 						start, stop, err := e.rangeBounds(s.Iter)
 						if err != nil {
@@ -925,7 +954,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			return o.elems[idx], nil
 		case "dict":
 			for i, k := range o.elems {
-					if e.dictKeyEq(k, idx) {
+				if e.dictKeyEq(k, idx) {
 					return o.dvals[i], nil
 				}
 			}
@@ -1728,20 +1757,20 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 			return 0, &EvalError{Msg: "substring not found"}
 		}
 		return int64(idx), nil
-			case "rfind":
-				// s.rfind(sub) -> index of last occurrence of sub, or -1 if absent.
-				if len(args) != 1 {
-					return 0, &EvalError{Msg: "rfind() takes exactly 1 argument"}
-				}
-				subv, err := e.eval(args[0])
-				if err != nil {
-					return 0, err
-				}
-				subo, ok := e.heap[subv]
-				if !ok || subo.kind != "str" {
-					return 0, &EvalError{Msg: "rfind() argument must be a string"}
-				}
-				return int64(strings.LastIndex(s, subo.sval)), nil
+	case "rfind":
+		// s.rfind(sub) -> index of last occurrence of sub, or -1 if absent.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "rfind() takes exactly 1 argument"}
+		}
+		subv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		subo, ok := e.heap[subv]
+		if !ok || subo.kind != "str" {
+			return 0, &EvalError{Msg: "rfind() argument must be a string"}
+		}
+		return int64(strings.LastIndex(s, subo.sval)), nil
 	case "count":
 		// s.count(sub[, start[, end]]) -> occurrences of sub within s[start:end].
 		if len(args) < 1 || len(args) > 3 {
@@ -1975,22 +2004,22 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 		}
 		o.elems = append(o.elems, v)
 		return recv, nil
-				case "count":
-					// l.count(value) -> number of occurrences of value in l.
-					if len(args) != 1 {
-						return 0, &EvalError{Msg: "count() takes exactly 1 argument"}
-					}
-					vv, err := e.eval(args[0])
-					if err != nil {
-						return 0, err
-					}
-					cnt := int64(0)
-					for _, el := range o.elems {
-						if e.dictKeyEq(el, vv) {
-							cnt++
-						}
-					}
-					return cnt, nil
+	case "count":
+		// l.count(value) -> number of occurrences of value in l.
+		if len(args) != 1 {
+			return 0, &EvalError{Msg: "count() takes exactly 1 argument"}
+		}
+		vv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		cnt := int64(0)
+		for _, el := range o.elems {
+			if e.dictKeyEq(el, vv) {
+				cnt++
+			}
+		}
+		return cnt, nil
 	}
 	return 0, &EvalError{Msg: "no such list method " + name}
 }
@@ -2049,28 +2078,28 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 		lo := e.heap[listID]
 		lo.elems = append(lo.elems, o.dvals...)
 		return listID, nil
-				case "get":
-					// d.get(key[, default]) -> value for key, or default if absent.
-					if len(args) != 1 && len(args) != 2 {
-						return 0, &EvalError{Msg: "get() takes 1 or 2 arguments"}
-					}
-					kv, err := e.eval(args[0])
-					if err != nil {
-						return 0, err
-					}
-					for i, k := range o.elems {
-						if e.dictKeyEq(k, kv) {
-							return o.dvals[i], nil
-						}
-					}
-					if len(args) == 2 {
-						dv, err := e.eval(args[1])
-						if err != nil {
-							return 0, err
-						}
-						return dv, nil
-					}
-					return 0, nil
+	case "get":
+		// d.get(key[, default]) -> value for key, or default if absent.
+		if len(args) != 1 && len(args) != 2 {
+			return 0, &EvalError{Msg: "get() takes 1 or 2 arguments"}
+		}
+		kv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		for i, k := range o.elems {
+			if e.dictKeyEq(k, kv) {
+				return o.dvals[i], nil
+			}
+		}
+		if len(args) == 2 {
+			dv, err := e.eval(args[1])
+			if err != nil {
+				return 0, err
+			}
+			return dv, nil
+		}
+		return 0, nil
 	}
 	return 0, &EvalError{Msg: "no such dict method " + name}
 }
@@ -2168,6 +2197,18 @@ func (e *Evaluator) importModule(mod string) error {
 	e.Vars, e.funcs = savedVars, savedFuncs
 	e.Vars[mod] = modID
 	return nil
+}
+
+// maxHeapID returns the highest object id currently allocated, used to
+// advance the nursery boundary after a young GC (promoting survivors to old).
+func maxHeapID(heap map[int64]*obj) int64 {
+	maxID := int64(0)
+	for id := range heap {
+		if id > maxID {
+			maxID = id
+		}
+	}
+	return maxID
 }
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
@@ -2451,23 +2492,23 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 			}
 			return best, nil
-			case "sorted":
-				if len(n.Args) < 1 || len(n.Args) > 2 {
-					return 0, &EvalError{Msg: "sorted() takes exactly 1 argument"}
-				}
-				lv, err := e.eval(n.Args[0])
-				if err != nil {
-					return 0, err
-				}
-				lo, ok := e.heap[lv]
-				if !ok || lo.kind != "list" {
-					return 0, &EvalError{Msg: "sorted() argument must be a list"}
-				}
-				elems := append([]int64(nil), lo.elems...)
-				sort.Slice(elems, func(i, j int) bool {
-					return e.lessVal(elems[i], elems[j])
-				})
-				// sorted(iter, reverse=True) returns descending order.
+		case "sorted":
+			if len(n.Args) < 1 || len(n.Args) > 2 {
+				return 0, &EvalError{Msg: "sorted() takes exactly 1 argument"}
+			}
+			lv, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			lo, ok := e.heap[lv]
+			if !ok || lo.kind != "list" {
+				return 0, &EvalError{Msg: "sorted() argument must be a list"}
+			}
+			elems := append([]int64(nil), lo.elems...)
+			sort.Slice(elems, func(i, j int) bool {
+				return e.lessVal(elems[i], elems[j])
+			})
+			// sorted(iter, reverse=True) returns descending order.
 			if len(n.Args) > 1 {
 				// Accept reverse=True (KeywordArg) or a positional truthy second arg.
 				var rev int64
@@ -2491,77 +2532,77 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 			}
 			listID := e.allocObj("list")
-				nl := e.heap[listID]
-				nl.elems = append(nl.elems, elems...)
-				return listID, nil
-					case "reversed":
-				av, err := e.eval(n.Args[0])
-				if err != nil {
-					return 0, err
-				}
-				if o, ok := e.heap[av]; ok {
-					switch o.kind {
-					case "list", "set":
-						id := e.allocObj("list")
-						lo := e.heap[id]
-						lo.elems = append(lo.elems, o.elems...)
-						for i, j := 0, len(lo.elems)-1; i < j; i, j = i+1, j-1 {
-							lo.elems[i], lo.elems[j] = lo.elems[j], lo.elems[i]
-						}
-						return id, nil
-					case "str":
-						return e.allocStr(reverseStr(o.sval)), nil
+			nl := e.heap[listID]
+			nl.elems = append(nl.elems, elems...)
+			return listID, nil
+		case "reversed":
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if o, ok := e.heap[av]; ok {
+				switch o.kind {
+				case "list", "set":
+					id := e.allocObj("list")
+					lo := e.heap[id]
+					lo.elems = append(lo.elems, o.elems...)
+					for i, j := 0, len(lo.elems)-1; i < j; i, j = i+1, j-1 {
+						lo.elems[i], lo.elems[j] = lo.elems[j], lo.elems[i]
 					}
+					return id, nil
+				case "str":
+					return e.allocStr(reverseStr(o.sval)), nil
 				}
-				return 0, &EvalError{Msg: "reversed expects a list or string"}
-	case "enumerate":
-		av, err := e.eval(n.Args[0])
-		if err != nil {
-			return 0, err
-		}
-		if o, ok := e.heap[av]; ok && o.kind == "list" {
+			}
+			return 0, &EvalError{Msg: "reversed expects a list or string"}
+		case "enumerate":
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if o, ok := e.heap[av]; ok && o.kind == "list" {
+				id := e.allocObj("list")
+				lo := e.heap[id]
+				for i, el := range o.elems {
+					pair := e.allocObj("list")
+					po := e.heap[pair]
+					po.elems = append(po.elems, int64(i), el)
+					lo.elems = append(lo.elems, pair)
+				}
+				return id, nil
+			}
+			return 0, &EvalError{Msg: "enumerate expects a list"}
+		case "zip":
+			if len(n.Args) != 2 {
+				return 0, &EvalError{Msg: "zip expects two lists"}
+			}
+			l1, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			l2, err := e.eval(n.Args[1])
+			if err != nil {
+				return 0, err
+			}
+			o1, ok1 := e.heap[l1]
+			o2, ok2 := e.heap[l2]
+			if !ok1 || o1.kind != "list" || !ok2 || o2.kind != "list" {
+				return 0, &EvalError{Msg: "zip expects two lists"}
+			}
+			n := len(o1.elems)
+			if len(o2.elems) < n {
+				n = len(o2.elems)
+			}
 			id := e.allocObj("list")
 			lo := e.heap[id]
-			for i, el := range o.elems {
+			for i := 0; i < n; i++ {
 				pair := e.allocObj("list")
 				po := e.heap[pair]
-				po.elems = append(po.elems, int64(i), el)
+				po.elems = append(po.elems, o1.elems[i], o2.elems[i])
 				lo.elems = append(lo.elems, pair)
 			}
 			return id, nil
-		}
-		return 0, &EvalError{Msg: "enumerate expects a list"}
-	case "zip":
-		if len(n.Args) != 2 {
-			return 0, &EvalError{Msg: "zip expects two lists"}
-		}
-		l1, err := e.eval(n.Args[0])
-		if err != nil {
-			return 0, err
-		}
-		l2, err := e.eval(n.Args[1])
-		if err != nil {
-			return 0, err
-		}
-		o1, ok1 := e.heap[l1]
-		o2, ok2 := e.heap[l2]
-		if !ok1 || o1.kind != "list" || !ok2 || o2.kind != "list" {
-			return 0, &EvalError{Msg: "zip expects two lists"}
-		}
-		n := len(o1.elems)
-		if len(o2.elems) < n {
-			n = len(o2.elems)
-		}
-		id := e.allocObj("list")
-		lo := e.heap[id]
-		for i := 0; i < n; i++ {
-			pair := e.allocObj("list")
-			po := e.heap[pair]
-			po.elems = append(po.elems, o1.elems[i], o2.elems[i])
-			lo.elems = append(lo.elems, pair)
-		}
-		return id, nil
-case "sum":
+		case "sum":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "sum expects 1 argument"}
 			}
@@ -2636,65 +2677,65 @@ case "sum":
 				return 0, &EvalError{Msg: "range expects 1 to 3 arguments"}
 			}
 			return e.eval(n.Args[0])
-			case "any", "all":
-				// any(iter) is 1 if any element is truthy; all(iter) is 1 if all are.
-				arg, err := e.eval(n.Args[0])
-				if err != nil {
-					return 0, err
-				}
-				if arg <= 0 {
-					return 0, &EvalError{Msg: "any/all need a list"}
-				}
-				o, ok := e.heap[arg]
-				if !ok || o.kind != "list" {
-					return 0, &EvalError{Msg: "any/all need a list"}
-				}
-				anyMode := name.Value == "any"
-				if anyMode {
-					for _, v := range o.elems {
-						if v != 0 {
-							return 1, nil
-						}
+		case "any", "all":
+			// any(iter) is 1 if any element is truthy; all(iter) is 1 if all are.
+			arg, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if arg <= 0 {
+				return 0, &EvalError{Msg: "any/all need a list"}
+			}
+			o, ok := e.heap[arg]
+			if !ok || o.kind != "list" {
+				return 0, &EvalError{Msg: "any/all need a list"}
+			}
+			anyMode := name.Value == "any"
+			if anyMode {
+				for _, v := range o.elems {
+					if v != 0 {
+						return 1, nil
 					}
+				}
+				return 0, nil
+			}
+			for _, v := range o.elems {
+				if v == 0 {
 					return 0, nil
 				}
-				for _, v := range o.elems {
-					if v == 0 {
-						return 0, nil
-					}
-				}
-				return 1, nil
-			case "chr":
-				// chr(n) returns the single-character string for codepoint n.
-				cn, err := e.eval(n.Args[0])
-				if err != nil {
-					return 0, err
-				}
-				return e.allocStr(string(rune(cn))), nil
-			case "ord":
-				// ord(s) returns the codepoint of the first character of s.
-				arg, err := e.eval(n.Args[0])
-				if err != nil {
-					return 0, err
-				}
-				o, ok := e.heap[arg]
-				if !ok {
-					return 0, &EvalError{Msg: "ord needs a string"}
-				}
-				if len(o.sval) == 0 {
-					return 0, &EvalError{Msg: "ord of empty string"}
-				}
-				return int64(o.sval[0]), nil
-			case "round":
-				// round(x) is the identity for ints; truncates floats.
-				x, err := e.eval(n.Args[0])
-				if err != nil {
-					return 0, err
-				}
-				if o, ok := e.heap[x]; ok && o.kind == "float" {
-					return int64(math.Round(o.fval)), nil
-				}
-				return x, nil
+			}
+			return 1, nil
+		case "chr":
+			// chr(n) returns the single-character string for codepoint n.
+			cn, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			return e.allocStr(string(rune(cn))), nil
+		case "ord":
+			// ord(s) returns the codepoint of the first character of s.
+			arg, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			o, ok := e.heap[arg]
+			if !ok {
+				return 0, &EvalError{Msg: "ord needs a string"}
+			}
+			if len(o.sval) == 0 {
+				return 0, &EvalError{Msg: "ord of empty string"}
+			}
+			return int64(o.sval[0]), nil
+		case "round":
+			// round(x) is the identity for ints; truncates floats.
+			x, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			if o, ok := e.heap[x]; ok && o.kind == "float" {
+				return int64(math.Round(o.fval)), nil
+			}
+			return x, nil
 
 		case "str":
 			if len(n.Args) != 1 {

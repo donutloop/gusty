@@ -108,3 +108,34 @@ func TestMemoryModelRebindLoopReclaims(t *testing.T) {
 		t.Fatalf("rebind loop left %d live 2-elem lists reachable (expected ~1 after GC)", live2)
 	}
 }
+
+func TestGenerationalGC(t *testing.T) {
+	ev := NewEvaluator()
+	prog, err := Parse("g = [1, 2, 3]\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, err := ev.EvalProgram(prog); err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	gid := ev.Vars["g"]
+	if gid <= 0 || ev.heap[gid] == nil {
+		t.Fatalf("global list not allocated")
+	}
+	// a nursery object not reachable from roots must be reclaimed by a young GC,
+	// while the reachable global is promoted to the old generation.
+	drop := ev.allocObj("list")
+	ev.Collect() // young GC
+	if ev.heap[drop] != nil {
+		t.Fatal("unreachable nursery object should be reclaimed by young GC")
+	}
+	if ev.heap[gid] == nil {
+		t.Fatal("reachable global should be promoted and survive the young GC")
+	}
+	// a second young GC only traces the new nursery: the promoted (old) global
+	// must survive.
+	ev.Collect()
+	if ev.heap[gid] == nil {
+		t.Fatal("promoted (old) global should survive subsequent young GCs")
+	}
+}
