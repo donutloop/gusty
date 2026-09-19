@@ -39,7 +39,7 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 
 ## The loop
 
-1. Pick a new feature.
+1. Pick a new feature from the roadmap — `roadmap.md` (at the repo root) is the single source of truth for what exists and what is next. Each cycle selects the next planned (⏳ PLANNED) item from its phased plan and drives it to done; do not invent off-roadmap features.
 2. Implement across the stack:
    - lexer/parser/AST for syntax, including indentation handling where relevant.
    - semantic analysis / gradual type inference for semantics (respect optional type annotations; fall back to dynamic dispatch where untyped).
@@ -77,7 +77,7 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 
 ## Iteration contract (never stop)
 
-- Keep executing forever: after each feature is done, immediately begin the next one from the mission list (comprehensions, generators, classes/inheritance, decorators, exceptions, pattern matching, gradual typing, modules, standard library, memory model, optimization passes, agentic/JSON/schema paths) or any remaining gap.
+- Keep executing forever: after each feature is done, immediately begin the next one from `roadmap.md` — select the next planned (⏳ PLANNED) item from the phased plan (comprehensions, generators, classes/inheritance, decorators, exceptions, pattern matching, gradual typing, modules, standard library, memory model, optimization passes, agentic/JSON/schema paths) or any remaining gap, and drive it to done.
 - Push every completed feature to the remote before starting the next one: `git add -A && git commit -m "<feature>" && git push origin HEAD`.
 - If the push fails or the remote diverged, `git pull --rebase origin HEAD` and push again.
 - There is no terminal state; the loop continues indefinitely.
