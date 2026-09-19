@@ -366,7 +366,7 @@ async function createRoundSession() {
   };
   // Mirror the session log to the console AND keep writing to the session file.
   const sessionManager = createConsoleMirrorSessionManager(cwd, agentDir);
-  const created = await createAgentSession({ cwd, agentDir, model, sessionManager, thinkingLevel: "medium" });
+  const created = await createAgentSession({ cwd, agentDir, model, sessionManager, thinkingLevel: "max" });
   const session = created.session ?? created;
   session.subscribe((event) => {
     if (event.type === "message_update") {
