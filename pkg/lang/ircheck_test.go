@@ -668,6 +668,17 @@ func TestIRRuntimeSetLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeCrossCollectionFreeLowers(t *testing.T) {
+	// Rebinding a runtime dict var to a list must free the old dict slot.
+	ir := llcCompiles(t, "d = {1: 10}\nd = [1, 2]\nprint(len(d))")
+	if !strings.Contains(ir, "@rt_free") {
+		t.Fatalf("expected rt_free call on dict->list rebind, got:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@rt_alloc") {
+		t.Fatalf("expected rt_alloc call on rebind, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")

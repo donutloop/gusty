@@ -1095,3 +1095,15 @@ func TestExecRuntimeDict(t *testing.T) {
 func TestExecRuntimeSet(t *testing.T) {
 	assertOutput(t, "s = {1, 2}\nprint(len(s))\nprint(s)\n", "2\n{1, 2}\n")
 }
+
+// Runtime-heap cross-collection free: rebinding a var across collection
+// kinds (dict -> set -> list -> scalar) must free each old slot. Without
+// the free, thousands of rebinds exhaust the 1024-slot heap and corrupt the
+// final list read; with it, `len(d)` is correct.
+func TestExecRuntimeCrossCollectionFree(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("d = {1: 10}\n")
+	sb.WriteString(strings.Repeat("s = {1, 2}\nd = [1, 2]\ns = 5\n", 2000))
+	sb.WriteString("d = [1, 2]\nprint(len(d))\n")
+	assertOutput(t, sb.String(), "2\n")
+}

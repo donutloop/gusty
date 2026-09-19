@@ -635,4 +635,6 @@ via `rt_dict_get`, `len(d)` via `rt_dict_len`, and `print(d)` via
 imported dicts stay compile-time globals. Local set
 literals (`s = {1, 2}`) allocate runtime heap set objects: `len(s)` via
 `rt_set_len` and `print(s)` via `rt_set_print`. Inline sets in expressions and
-module-imported sets stay compile-time globals. See ADR 0009.
+module-imported sets stay compile-time globals. Rebinding a var across collection
+kinds (list -> dict -> set -> scalar) frees the old heap slot via `rt_free`,
+so long-running programs don't leak slots on rebind. See ADR 0009.

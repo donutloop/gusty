@@ -3681,21 +3681,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.heapSeq++
 				hs := g.heapSeq
 				// heap slot reuse: rebinding a list var frees its old heap slot so rt_alloc can recycle it.
-				if g.runtimeDicts[nm.Value] {
-					g.heapSeq++
-					hs := g.heapSeq
-					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %%h%d)\n", hs))
-					return nil
-				}
-				if g.runtimeSets[nm.Value] {
-					g.heapSeq++
-					hs := g.heapSeq
-					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %%h%d)\n", hs))
-					return nil
-				}
-				if g.listVars[nm.Value] {
+				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 					g.heapSeq++
 					fs := g.heapSeq
 					b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
@@ -3718,12 +3704,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				return nil
 			}
 			// list var rebound to a non-list value: free its heap slot (GC-correctness).
-			if g.listVars[nm.Value] {
+			if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 				g.heapSeq++
 				fs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
 				b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
 				g.listVars[nm.Value] = false
+			g.runtimeDicts[nm.Value] = false
+			g.runtimeSets[nm.Value] = false
+				g.runtimeDicts[nm.Value] = false
+				g.runtimeSets[nm.Value] = false
 			}
 			// runtime set: allocate a heap set object and add each element.
 			if sl, ok := n.Value.(*SetLit); ok {
@@ -3732,6 +3722,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.allocd[nm.Value] = true
 				}
 				g.heapUsed = true
+				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
+					g.heapSeq++
+					fs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+					g.listVars[nm.Value] = false
+					g.runtimeDicts[nm.Value] = false
+					g.runtimeSets[nm.Value] = false
+				}
 				g.runtimeSets[nm.Value] = true
 				g.heapSeq++
 				hs := g.heapSeq
@@ -3765,6 +3764,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.allocd[nm.Value] = true
 				}
 				g.heapUsed = true
+				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
+					g.heapSeq++
+					fs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+					g.listVars[nm.Value] = false
+					g.runtimeDicts[nm.Value] = false
+					g.runtimeSets[nm.Value] = false
+				}
 				g.runtimeDicts[nm.Value] = true
 				g.heapSeq++
 				hs := g.heapSeq
