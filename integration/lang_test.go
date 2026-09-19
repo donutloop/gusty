@@ -1053,3 +1053,9 @@ func TestExecRuntimeListPrint(t *testing.T) {
 func TestExecRuntimeListLen(t *testing.T) {
 	assertOutput(t, "x = [1, 2]\nx.append(3)\nprint(len(x))", "3\n")
 }
+
+// Runtime-heap indexing: `x[i]` on a runtime list variable reads back the
+// mutated element through the heap.
+func TestExecRuntimeListIndex(t *testing.T) {
+	assertOutput(t, "x = [10, 20]\nx.append(30)\nprint(x[0] + x[2])", "40\n")
+}

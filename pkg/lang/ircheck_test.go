@@ -604,6 +604,18 @@ func TestIRRuntimeListLenLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeListIndexLowers(t *testing.T) {
+	// Runtime list variable: `x[i]` must read heap[x].data[i] via rt_get_elem
+	// instead of failing codegen (no compile-time global for the var).
+	ir := llcCompiles(t, "x = [10, 20]\nx.append(30)\nprint(x[0] + x[2])")
+	if !strings.Contains(ir, "@rt_get_elem") {
+		t.Fatalf("expected rt_get_elem call in runtime index path, got:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@rt_append") {
+		t.Fatalf("expected rt_append call in append path, got:\n%s", ir)
+	}
+}
+
 func TestIRDictItemsLenLowers(t *testing.T) {
 	// len({1: 2, 3: 4}.items()) folds to the pair count 2.
 	ir := llcCompiles(t, "print(len({1: 2, 3: 4}.items()))")

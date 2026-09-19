@@ -620,7 +620,8 @@ interpreter-only (the AOT codegen has no float representation); see ADR 0086.
 
 When a program assigns a list literal to a variable (`x = [1, 2]`), the AOT
 backend emits a small runtime heap (`@heap`, `@heap_count`) and boxed list
-objects. `x.append(v)` mutates the heap object via `rt_append`, and
-`print(x)` for a list-variable renders the live contents via `rt_print_list`.
-Inline list literals (`len([1,2])`, `print([1,2])`) keep compile-time folding.
-See ADR 0009.
+objects. `x.append(v)` mutates the heap object via `rt_append`, `len(x)` on a
+list-variable reads the mutated length via `rt_list_len`, `x[i]` reads a
+mutated element via `rt_get_elem`, and `print(x)` for a list-variable renders
+the live contents via `rt_print_list`. Inline list literals (`len([1,2])`,
+`print([1,2])`) keep compile-time folding. See ADR 0009.

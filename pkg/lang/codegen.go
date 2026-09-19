@@ -46,6 +46,14 @@ entry:
   ret i32 %len
 }
 
+define internal i32 @rt_get_elem(i32 %h, i32 %i) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
+  %v = load i32, i32* %ep
+  ret i32 %v
+}
+
 define internal void @rt_append(i32 %h, i32 %v) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -1555,6 +1563,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		key := il.Value
 		switch obj := n.Obj.(type) {
 		case *Name:
+			// runtime heap list variable: x[i] reads heap[x].data[i].
+			if g.listVars[obj.Value] {
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
+				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %d)\n", hs, hs, key))
+				return fmt.Sprintf("%%g%d", hs), nil
+			}
 			if g.dictVals != nil {
 				if dl, ok := g.dictVals[obj.Value]; ok {
 					return g.dictIndex(dl, key)
