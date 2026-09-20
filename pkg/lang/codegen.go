@@ -11,6 +11,8 @@ import (
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 const heapRuntimeIR = `@heap_count = internal global i32 0
+@gc_mark = internal global [1024 x i8] zeroinitializer
+@gc_urgent = internal global i32 0
 @free_head = internal global i32 -1
 @free_next = internal global [1024 x i32] zeroinitializer
 @heap = internal global [1024 x {i32, i32, [256 x i32]}] zeroinitializer
@@ -334,6 +336,136 @@ entry:
   store i32 %v, i32* %p
   ret void
 }
+
+define internal i32 @rt_gc_mark(i32 %h) {
+entry:
+  %neg = icmp slt i32 %h, 0
+  %hc = load i32, i32* @heap_count
+  %big = icmp sge i32 %h, %hc
+  %bad = or i1 %neg, %big
+  br i1 %bad, label %ret0, label %chk
+chk:
+  %m = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %h
+  %mv = load i8, i8* %m
+  %is = icmp eq i8 %mv, 0
+  br i1 %is, label %mark, label %ret0
+mark:
+  store i8 1, i8* %m
+  br label %ret1
+ret1:
+  ret i32 1
+ret0:
+  ret i32 0
+}
+
+define internal void @rt_gc([1024 x i32*]* %roots, i32 %nroots) {
+entry:
+  br label %cl.loop
+cl.loop:
+  %i = phi i32 [ 0, %entry ], [ %i.nxt, %cl.inc ]
+  %i.end = icmp sge i32 %i, 1024
+  br i1 %i.end, label %fl.init, label %cl.body
+cl.body:
+  %cm = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %i
+  store i8 0, i8* %cm
+  br label %cl.inc
+cl.inc:
+  %i.nxt = add i32 %i, 1
+  br label %cl.loop
+fl.init:
+  %fh0 = load i32, i32* @free_head
+  br label %fl.loop
+fl.loop:
+  %fh = phi i32 [ %fh0, %fl.init ], [ %fn, %fl.body ]
+  %fh.end = icmp slt i32 %fh, 0
+  br i1 %fh.end, label %roots.init, label %fl.body
+fl.body:
+  %fm = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %fh
+  store i8 2, i8* %fm
+  %fnp = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %fh
+  %fn = load i32, i32* %fnp
+  br label %fl.loop
+roots.init:
+  br label %roots.loop
+roots.loop:
+  %j = phi i32 [ 0, %roots.init ], [ %j.nxt, %roots.inc ]
+  %j.end = icmp sge i32 %j, %nroots
+  br i1 %j.end, label %pass.init, label %roots.body
+roots.body:
+  %rp = getelementptr [1024 x i32*], [1024 x i32*]* %roots, i32 0, i32 %j
+  %rpp = load i32*, i32** %rp
+  %rh = load i32, i32* %rpp
+  call void @rt_gc_mark(i32 %rh)
+  br label %roots.inc
+roots.inc:
+  %j.nxt = add i32 %j, 1
+  br label %roots.loop
+pass.init:
+  br label %pass.loop
+pass.loop:
+  %p = phi i32 [ 0, %pass.init ], [ %p.nxt, %pass.inc ]
+  %hc1 = load i32, i32* @heap_count
+  %p.end = icmp sge i32 %p, %hc1
+  br i1 %p.end, label %sweep.init, label %k.init
+k.init:
+  br label %k.loop
+k.loop:
+  %k = phi i32 [ 0, %k.init ], [ %k.nxt, %k.inc ]
+  %k.end = icmp sge i32 %k, %hc1
+  br i1 %k.end, label %pass.inc, label %k.body
+k.body:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %k
+  %km = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %k
+  %kmv = load i8, i8* %km
+  %kmk = icmp eq i8 %kmv, 1
+  br i1 %kmk, label %e.init, label %k.inc
+e.init:
+  br label %e.loop
+e.loop:
+  %e = phi i32 [ 0, %e.init ], [ %e.nxt, %e.inc ]
+  %lenp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lenp
+  %e.end = icmp sge i32 %e, %len
+  br i1 %e.end, label %k.inc, label %e.body
+e.body:
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %e
+  %ev = load i32, i32* %ep
+  call void @rt_gc_mark(i32 %ev)
+  br label %e.inc
+e.inc:
+  %e.nxt = add i32 %e, 1
+  br label %e.loop
+k.inc:
+  %k.nxt = add i32 %k, 1
+  br label %k.loop
+pass.inc:
+  %p.nxt = add i32 %p, 1
+  br label %pass.loop
+sweep.init:
+  br label %sw.loop
+sw.loop:
+  %w = phi i32 [ 0, %sweep.init ], [ %w.nxt, %sw.inc ]
+  %hc2 = load i32, i32* @heap_count
+  %w.end = icmp sge i32 %w, %hc2
+  br i1 %w.end, label %done, label %sw.body
+sw.body:
+  %wm = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %w
+  %wmv = load i8, i8* %wm
+  %wfree = icmp eq i8 %wmv, 0
+  br i1 %wfree, label %sw.free, label %sw.inc
+sw.free:
+  %fhp = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %w
+  %fhc = load i32, i32* @free_head
+  store i32 %fhc, i32* %fhp
+  store i32 %w, i32* @free_head
+  br label %sw.inc
+sw.inc:
+  %w.nxt = add i32 %w, 1
+  br label %sw.loop
+done:
+  ret void
+}
+
 `
 
 func GenerateIR(prog *Program) (string, error) {
@@ -355,6 +487,7 @@ func GenerateIR(prog *Program) (string, error) {
 	}
 	g.decls = "declare i32 @printf(i8*, ...)\n"
 	g.globals.WriteString("@exn_flag = internal global i32 0\n")
+	g.globals.WriteString("@gc_roots_used = internal global i32 0\n")
 	g.globals.WriteString("@exn_code = internal global i32 0\n")
 	var b strings.Builder
 	// pre-scan top-level for user function names
@@ -367,19 +500,24 @@ func GenerateIR(prog *Program) (string, error) {
 		}
 	}
 	b.WriteString("define i32 @main() {\nentry:\n")
-	g.handlerStack = nil
-	g.funcRaiseExit = "main.raiseexit"
 	for _, ap := range g.applyCalls {
-		fmt.Fprintf(&b, "  call void %s()\n", ap)
+		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
 	}
+	b.WriteString("  %gc.roots = alloca [1024 x i32*]\n")
+	b.WriteString("  store i32 0, i32* @gc_roots_used\n")
+	g.funcRaiseExit = "main.raiseexit"
+	g.inMain = true
 	for _, st := range prog.Stmts {
 		if _, ok := st.(*FuncDef); ok {
 			continue
 		}
+		g.gcCall(&b)
 		if err := g.stmt(&b, st); err != nil {
 			return "", err
 		}
 	}
+	g.inMain = false
+	g.gcCall(&b)
 	b.WriteString("  ret i32 0\n")
 	b.WriteString("main.raiseexit:\n")
 	b.WriteString("  ret i32 0\n}\n")
@@ -484,6 +622,10 @@ type irGen struct {
 	genHandle  string
 	genIdx     int
 	genExprIdx int
+	inMain     bool
+	gcRootIdx  int
+	gcCallIdx  int
+	gcRootSeen map[string]bool
 }
 
 // classInfo records a statically-known class: its base classes and its methods.
@@ -651,6 +793,34 @@ func (g *irGen) fmtStr(format string) (string, int) {
 	// (unescaped) format length plus one trailing null is correct.
 	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(format)+1, f))
 	return name, len(format) + 1
+}
+
+func (g *irGen) gcReg(b *strings.Builder, name string) {
+	if !g.inMain {
+		return
+	}
+	if g.gcRootSeen == nil {
+		g.gcRootSeen = map[string]bool{}
+	}
+	if g.gcRootSeen[name] {
+		return
+	}
+	g.gcRootSeen[name] = true
+	idx := g.gcRootIdx
+	g.gcRootIdx++
+	fmt.Fprintf(b, "  %%gc.slot%d = getelementptr [1024 x i32*], [1024 x i32*]* %%gc.roots, i32 0, i32 %d\n", idx, idx)
+	fmt.Fprintf(b, "  store i32* %%_%s, i32** %%gc.slot%d\n", name, idx)
+	fmt.Fprintf(b, "  store i32 %d, i32* @gc_roots_used\n", g.gcRootIdx)
+}
+
+func (g *irGen) gcCall(b *strings.Builder) {
+	if !g.inMain || !g.heapUsed {
+		return
+	}
+	ci := g.gcCallIdx
+	g.gcCallIdx++
+	fmt.Fprintf(b, "  %%gc.n%d = load i32, i32* @gc_roots_used\n", ci)
+	fmt.Fprintf(b, "  call void @rt_gc([1024 x i32*]* %%gc.roots, i32 %%gc.n%d)\n", ci)
 }
 
 // strConst emits a global for a string literal operand.
@@ -4069,6 +4239,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.listVars[nm.Value] = true
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+					g.gcReg(b, nm.Value)
 					g.allocd[nm.Value] = true
 				}
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 1)\n", hs))
@@ -4098,6 +4269,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if sl, ok := n.Value.(*SetLit); ok {
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+					g.gcReg(b, nm.Value)
 					g.allocd[nm.Value] = true
 				}
 				g.heapUsed = true
@@ -4140,6 +4312,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// runtime dict: allocate a heap dict object and fill pairs.
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+					g.gcReg(b, nm.Value)
 					g.allocd[nm.Value] = true
 				}
 				g.heapUsed = true
@@ -4371,6 +4544,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				normalL = elseL
 			}
 			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
+			g.gcReg(b, n.Var.Value)
 			var contL string
 			for _, el := range ll.Elems {
 				v, err := g.value(b, el)
@@ -4420,6 +4594,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return err
 		}
 		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
+		g.gcReg(b, n.Var.Value)
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", start, n.Var.Value))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))

@@ -604,6 +604,15 @@ func TestIRRuntimeListLenLowers(t *testing.T) {
 	}
 }
 
+func TestIRRuntimeGCReclaimsGarbage(t *testing.T) {
+	// A program that accumulates nested heap garbage across statements must
+	// still compile (the AOT mark-and-sweep GC reclaims unreachable objects).
+	ir := llcCompiles(t, "x = [1, 2, 3]\nprint(len(x))")
+	if !strings.Contains(ir, "@rt_gc") {
+		t.Fatalf("expected @rt_gc in AOT heap runtime, got:\n%s", ir)
+	}
+}
+
 func TestIRRuntimeListIndexLowers(t *testing.T) {
 	// Runtime list variable: `x[i]` must read heap[x].data[i] via rt_get_elem
 	// instead of failing codegen (no compile-time global for the var).
