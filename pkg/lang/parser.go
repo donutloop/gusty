@@ -466,6 +466,17 @@ func (p *parser) parseFor() (Stmt, error) {
 	}
 	p.next()
 	varName := &Name{Value: t.Text, sp: t.Span}
+	varExpr := Expr(varName)
+	// tuple loop variable: for a, b in ...
+	if p.peek().IsOp(",") {
+		elems := []Expr{varName}
+		for p.peek().IsOp(",") {
+			p.next()
+			t2 := p.next()
+			elems = append(elems, &Name{Value: t2.Text, sp: t2.Span})
+		}
+		varExpr = &Tuple{Elems: elems, sp: t.Span}
+	}
 	if err := p.expectKeyword("in"); err != nil {
 		return nil, err
 	}
@@ -484,7 +495,7 @@ func (p *parser) parseFor() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ForStmt{Var: varName, Iter: iter, Body: body, Else: elseBody, sp: kw.Span}, nil
+	return &ForStmt{Var: varExpr, Iter: iter, Body: body, Else: elseBody, sp: kw.Span}, nil
 }
 
 // parseLoopElse parses an optional `else:` block following a while/for loop,
@@ -657,6 +668,40 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 	ex, err := p.parseExpr()
 	if err != nil {
 		return nil, err
+	}
+	// tuple targets: a, b = ... or (a, b) = ...
+	targets := []Expr{ex}
+	for p.peek().IsOp(",") {
+		p.next()
+		ex2, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, ex2)
+	}
+	// tuple assignment: a, b = v1, v2
+	if len(targets) > 1 && p.peek().IsOp("=") {
+		p.next()
+		rhs, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		rhsList := []Expr{rhs}
+		for p.peek().IsOp(",") {
+			p.next()
+			ex2, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			rhsList = append(rhsList, ex2)
+		}
+		target := &Tuple{Elems: targets, sp: ex.Span()}
+		value := Expr(rhs)
+		if len(rhsList) > 1 {
+			value = &Tuple{Elems: rhsList, sp: rhs.Span()}
+		}
+		p.skipNewlines()
+		return &AssignStmt{Target: target, Value: value}, nil
 	}
 	// augmented assignment: target op= expr  (x += 1, self.x *= 2, ...)
 	if op := p.peek(); op.Kind == TokOp && isAugOp(op.Text) {
@@ -1029,7 +1074,15 @@ func (p *parser) parseAtom() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		// generator expression: `(elem for var in iter [if cond])`
+		elems := []Expr{ex}
+		for p.peek().IsOp(",") {
+			p.next()
+			ex2, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			elems = append(elems, ex2)
+		}		// generator expression: `(elem for var in iter [if cond])`
 		if p.peek().IsKeyword("for") {
 			g, err := p.parseGeneratorTail(ex)
 			if err != nil {
@@ -1042,6 +1095,9 @@ func (p *parser) parseAtom() (Expr, error) {
 		}
 		if err := p.expectOp(")"); err != nil {
 			return nil, err
+		}
+		if len(elems) > 1 {
+			return &Tuple{Elems: elems, sp: ex.Span()}, nil
 		}
 		return ex, nil
 	case t.IsOp("["):

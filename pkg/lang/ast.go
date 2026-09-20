@@ -89,7 +89,7 @@ func (n *WhileStmt) Span() Span { return n.sp }
 func (n *WhileStmt) stmtNode()  {}
 
 type ForStmt struct {
-	Var  *Name  `json:"var"`
+	Var  Expr   `json:"var"`
 	Iter Expr   `json:"iter"`
 	Body []Stmt `json:"body"`
 	Else []Stmt `json:"else"`
@@ -193,6 +193,36 @@ func (n *BoolLit) exprNode()  {}
 type NoneLit struct{ sp Span `json:"-"` }
 func (n *NoneLit) Span() Span { return n.sp }
 func (n *NoneLit) exprNode()  {}
+
+
+// Tuple is a comma-separated expression list `a, b` or `(a, b)`.
+type Tuple struct {
+	Elems []Expr `json:"elems"`
+	sp    Span   `json:"-"`
+}
+func (n *Tuple) Span() Span { return n.sp }
+
+func (n *Tuple) exprNode()  {}
+
+// loopVarNames returns the names bound by a for-loop variable expression
+// (a Name, or each element of a Tuple of Names).
+func loopVarNames(v Expr) []string {
+	switch t := v.(type) {
+	case *Name:
+		return []string{t.Value}
+	case *Tuple:
+		var names []string
+		for _, e := range t.Elems {
+			if n, ok := e.(*Name); ok {
+				names = append(names, n.Value)
+			}
+		}
+		return names
+	}
+	return nil
+}
+
+
 
 type StrLit struct{ Value string `json:"value"`; sp Span `json:"-"` }
 func (n *StrLit) Span() Span { return n.sp }

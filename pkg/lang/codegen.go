@@ -4551,6 +4551,15 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	return nil
 }
 
+// loopVarName returns the name of a Name loop variable, or "" for a Tuple.
+func loopVarName(v Expr) string {
+	if n, ok := v.(*Name); ok {
+		return n.Value
+	}
+	return ""
+}
+
+
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	switch n := st.(type) {
 	case *ImportStmt:
@@ -4566,6 +4575,35 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return err
 		}
 	case *AssignStmt:
+		// tuple unpacking: a, b = v1, v2
+		if tup, ok := n.Target.(*Tuple); ok {
+			var valElems []Expr
+			switch vt := n.Value.(type) {
+			case *Tuple:
+				valElems = vt.Elems
+			case *ListLit:
+				valElems = vt.Elems
+			default:
+				return fmt.Errorf("codegen: unsupported tuple assignment value %T", n.Value)
+			}
+			if len(tup.Elems) != len(valElems) {
+				return fmt.Errorf("codegen: tuple assignment length mismatch")
+			}
+			for i, tgt := range tup.Elems {
+				if nm, ok2 := tgt.(*Name); ok2 {
+					if !g.allocd[nm.Value] {
+						b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+						g.allocd[nm.Value] = true
+					}
+					v, err := g.value(b, valElems[i])
+					if err != nil {
+						return err
+					}
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+				}
+			}
+			return nil
+		}
 		if nm, ok := n.Target.(*Name); ok {
 			// escape analysis: a list literal assigned to a variable that is
 			// never read (dead) skips its heap allocation entirely.
@@ -4937,8 +4975,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if len(n.Else) > 0 {
 				normalL = elseL
 			}
-			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
-			g.gcReg(b, n.Var.Value)
+			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVarName(n.Var)))
+			g.gcReg(b, loopVarName(n.Var))
 			var contL string
 			for _, el := range ll.Elems {
 				v, err := g.value(b, el)
@@ -4947,7 +4985,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				bodyL := g.newLabel("for.list.body")
 				contL = g.newLabel("for.list.cont")
-				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, n.Var.Value))
+				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, loopVarName(n.Var)))
 				b.WriteString(fmt.Sprintf("  br label %%%s\n", bodyL))
 				b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 				g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: contL})
@@ -4987,14 +5025,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if err != nil {
 			return err
 		}
-		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", n.Var.Value))
-		g.gcReg(b, n.Var.Value)
-		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", start, n.Var.Value))
+		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVarName(n.Var)))
+		g.gcReg(b, loopVarName(n.Var))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", start, loopVarName(n.Var)))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
 		g.ldN++
-		cld := fmt.Sprintf("%%_%s.ld%d", n.Var.Value, g.ldN)
-		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", cld, n.Var.Value))
+		cld := fmt.Sprintf("%%_%s.ld%d", loopVarName(n.Var), g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", cld, loopVarName(n.Var)))
 		t := g.newTmp()
 		cmpOp := "slt"
 		if strings.HasPrefix(step, "-") {
@@ -5018,11 +5056,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", incL))
 		b.WriteString(fmt.Sprintf("%s:\n", incL))
 		g.ldN++
-		ild := fmt.Sprintf("%%_%s.ld%d", n.Var.Value, g.ldN)
-		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ild, n.Var.Value))
+		ild := fmt.Sprintf("%%_%s.ld%d", loopVarName(n.Var), g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ild, loopVarName(n.Var)))
 		itmp := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", itmp, ild, step))
-		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", itmp, n.Var.Value))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", itmp, loopVarName(n.Var)))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		if len(n.Else) > 0 {
 			b.WriteString(fmt.Sprintf("%s:\n", elseL))

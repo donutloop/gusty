@@ -125,6 +125,10 @@ func collectNames(node interface{}, out map[string]bool) {
 		for _, e := range n.Elems {
 			collectNames(e, out)
 		}
+	case *Tuple:
+		for _, e := range n.Elems {
+			collectNames(e, out)
+		}
 	case *DictLit:
 		for _, k := range n.Keys {
 			collectNames(k, out)

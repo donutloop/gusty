@@ -44,6 +44,32 @@ type obj struct {
 	fval  float64          // float value (kind=float)
 }
 
+// setLoopVar binds a for-loop variable (a Name, or a Tuple of Names) to a value.
+// For a Tuple, the value must be a list/tuple object whose length matches.
+func (e *Evaluator) setLoopVar(v Expr, val int64) error {
+	switch t := v.(type) {
+	case *Name:
+		e.Vars[t.Value] = val
+		return nil
+	case *Tuple:
+		obj := e.heap[val]
+		if obj == nil {
+			return &EvalError{Msg: "cannot unpack non-iterable loop value"}
+		}
+		if len(obj.elems) != len(t.Elems) {
+			return &EvalError{Msg: "cannot unpack %d values into %d loop variables"}
+		}
+		for i, n := range t.Elems {
+			if nm, ok := n.(*Name); ok {
+				e.Vars[nm.Value] = obj.elems[i]
+			}
+		}
+		return nil
+	}
+	return &EvalError{Msg: "unsupported loop variable"}
+}
+
+
 func (e *Evaluator) allocObj(kind string) int64 {
 	e.nextID++
 	e.allocCount++
@@ -708,7 +734,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					if o, ok := e.heap[itV]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict" || o.kind == "str") {
 						if o.kind == "str" {
 							for _, r := range o.sval {
-								e.Vars[n.Value] = e.allocStr(string(r))
+								if err := e.setLoopVar(s.Var, e.allocStr(string(r))); err != nil { return 0, err }
 								rv, err := e.evalBody(s.Body)
 								if err != nil {
 									if ls, ok := err.(*loopSignal); ok {
@@ -724,7 +750,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							}
 						} else {
 							for _, el := range o.elems {
-								e.Vars[n.Value] = el
+								if err := e.setLoopVar(s.Var, el); err != nil { return 0, err }
 								rv, err := e.evalBody(s.Body)
 								if err != nil {
 									if ls, ok := err.(*loopSignal); ok {
@@ -749,7 +775,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							return 0, err
 						}
 						for i := start; (step > 0 && i < stop) || (step < 0 && i > stop); i += step {
-							e.Vars[n.Value] = i
+							if err := e.setLoopVar(s.Var, i); err != nil { return 0, err }
 							rv, err := e.evalBody(s.Body)
 							if err != nil {
 								if ls, ok := err.(*loopSignal); ok {
@@ -774,7 +800,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 						return 0, err
 					}
 					for i := start; (step > 0 && i < stop) || (step < 0 && i > stop); i += step {
-						e.Vars[n.Value] = i
+						if err := e.setLoopVar(s.Var, i); err != nil { return 0, err }
 						rv, err := e.evalBody(s.Body)
 						if err != nil {
 							if ls, ok := err.(*loopSignal); ok {
@@ -815,6 +841,22 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				e.Vars[n.Value] = v
 				last = v
 			}
+			if t, ok := s.Target.(*Tuple); ok {
+				obj := e.heap[v]
+				if obj == nil {
+					return 0, &EvalError{Msg: "cannot unpack non-iterable value"}
+				}
+				if len(obj.elems) != len(t.Elems) {
+					return 0, &EvalError{Msg: "cannot unpack value into tuple"}
+				}
+				for i, nm := range t.Elems {
+					if n2, ok2 := nm.(*Name); ok2 {
+						e.Vars[n2.Value] = obj.elems[i]
+					}
+				}
+				last = v
+			}
+
 			if a, ok := s.Target.(*Attr); ok {
 				objV, err := e.eval(a.Obj)
 				if err != nil {
@@ -1017,6 +1059,17 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 	case *Call:
 		return e.evalCall(n)
 	case *ListLit:
+		h := e.allocObj("list")
+		o := e.heap[h]
+		for _, el := range n.Elems {
+			ev, err := e.eval(el)
+			if err != nil {
+				return 0, err
+			}
+			o.elems = append(o.elems, ev)
+		}
+		return h, nil
+	case *Tuple:
 		h := e.allocObj("list")
 		o := e.heap[h]
 		for _, el := range n.Elems {

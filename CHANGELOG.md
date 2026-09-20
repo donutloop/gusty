@@ -414,3 +414,8 @@ that mirrors the interpreter, and a machine-readable CLI for agents.
 [Unreleased]: https://github.com/donutloop/gusty/compare/v0.9.0...HEAD
 [v0.9.0]: https://github.com/donutloop/gusty/compare/v0.8.2...v0.9.0
 [v0.8.2]: https://github.com/donutloop/gusty/releases/tag/v0.8.2
+
+## Tuple unpacking / multi-assign
+- Added tuple expression `(a, b)` and tuple targets `a, b = v1, v2`.
+- Interpreter: unpacking from lists/tuples, swap, and `for a, b in ...` tuple loop vars.
+- Codegen (AOT): tuple assignment `a, b = v1, v2` and swap emit per-element stores.

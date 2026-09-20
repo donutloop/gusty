@@ -156,6 +156,16 @@ func foldConst(e Expr, globals map[string]Expr, reg map[string]map[string]Expr) 
 			folded.Elems = append(folded.Elems, fe)
 		}
 		return folded, nil
+	case *Tuple:
+		folded := &Tuple{}
+		for _, el := range n.Elems {
+			fe, err := foldConst(el, globals, reg)
+			if err != nil {
+				return nil, err
+			}
+			folded.Elems = append(folded.Elems, fe)
+		}
+		return folded, nil
 	case *BinOp:
 		l, err := foldConst(n.L, globals, reg)
 		if err != nil {

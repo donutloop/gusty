@@ -1890,3 +1890,13 @@ print(f"x={x}")`)
 		t.Fatalf("expected AOT f-string rejection")
 	}
 }
+
+
+func TestCodegenTupleUnpack(t *testing.T) {
+	// tuple assignment: a, b = 1, 2
+	llcCompiles(t, "a, b = 1, 2\nprint(a + b)")
+	// tuple swap
+	llcCompiles(t, "a = 1\nb = 2\na, b = b, a\nprint(a + b)")
+}
+
+

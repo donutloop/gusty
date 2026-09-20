@@ -60,7 +60,7 @@ Rule: every component change updates the matching doc; never let
 | Phase 6 — language-surface parity | f-strings / string interpolation | ✅ DONE | Python's signature ergonomic feature; absent in lexer/parser/AST and both backends. Add `f"..."`/`f'...'` with `{}` interpolation. |
 | Phase 6 — language-surface parity | Slicing | ✅ DONE | `s[a:b]`, `s[::step]`, negative indices for str/list/dict; absent (`:` today only in dict literals, annotations, lambdas). |
 | Phase 6 — language-surface parity | Augmented assignment | ✅ DONE | `+= -= *= /= //= %=`; absent today. |
-| Phase 6 — language-surface parity | Tuple unpacking / multi-assign | ⏳ PLANNED | `a, b = b, a`, `for a, b in ...`; absent today. |
+| Phase 6 — language-surface parity | Tuple unpacking / multi-assign | ✅ DONE | `a, b = b, a`, `for a, b in ...`; interpreter + codegen tuple assignment. |
 | Phase 6 — language-surface parity | Membership + identity ops | ✅ DONE | `in`/`not in` (list/dict/set/str) and `is`/`is not`; interpreter + codegen via runtime `rt_contains`. |
 | Phase 6 — language-surface parity | Power `**` | 🟠 PARTIAL | Lexed but never wired as a binop; add `math.Pow` lowering in both backends. |
 | Phase 6 — language-surface parity | Pattern-match depth | ⏳ PLANNED | Guards (`case x if cond:`), or-patterns, dict/class patterns; today only integer-equality + list-destructuring. |

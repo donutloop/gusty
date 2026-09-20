@@ -142,7 +142,9 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			elem = TDyn()
 		}
 		// loop var and body share the enclosing scope (runtime uses shared vars).
-		an.scope.define(s.Var.Value, elem)
+		for _, nm := range loopVarNames(s.Var) {
+				an.scope.define(nm, elem)
+			}
 		an.loopDepth++
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
@@ -214,6 +216,13 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	}
 	if n, ok := as.Target.(*Name); ok {
 		an.scope.define(n.Value, valTy)
+	}
+	if t, ok := as.Target.(*Tuple); ok {
+		for _, nm := range t.Elems {
+			if n, ok2 := nm.(*Name); ok2 {
+				an.scope.define(n.Value, TDyn())
+			}
+		}
 	}
 	if a, ok := as.Target.(*Attr); ok {
 		an.inferExpr(a.Obj)
@@ -296,6 +305,11 @@ func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 			elem = TDyn()
 		}
 		return TList(elem)
+	case *Tuple:
+		for _, el := range n.Elems {
+			an.inferExpr(el)
+		}
+		return TDyn()
 	case *DictLit:
 		var kt, vt *Type
 		if len(n.Keys) > 0 {

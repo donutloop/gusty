@@ -1289,3 +1289,28 @@ func TestEvalAugmentedAttr(t *testing.T) {
 		t.Fatalf("got %d, want 7", v)
 	}
 }
+
+
+func TestTupleUnpack(t *testing.T) {
+	tests := []struct{ src string; want int64 }{
+		{"a, b = 1, 2\na", 1},
+		{"a, b = 1, 2\nb", 2},
+		{"a = 1\nb = 2\na, b = b, a\na", 2},
+		{"a = 1\nb = 2\na, b = b, a\nb", 1},
+		{"a, b = [1, 2]\na", 1},
+		{"a, b = (3, 4)\nb", 4},
+		{"s = 0\nfor a, b in [(1, 2), (3, 4)]:\n  s = s + a + b\ns", 10},
+		{"a, b = 5, 6\na + b", 11},
+	}
+	for _, tt := range tests {
+		v, _, err := EvalExpr(tt.src)
+		if err != nil {
+			t.Fatalf("EvalExpr(%q): %v", tt.src, err)
+		}
+		if v != tt.want {
+			t.Errorf("EvalExpr(%q) = %d, want %d", tt.src, v, tt.want)
+		}
+	}
+}
+
+
