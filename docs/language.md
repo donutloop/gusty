@@ -52,8 +52,11 @@ mid-evaluation. See ADR 0089.
 
 `--opt-level` runs compiler-level optimization passes over emitted LLVM IR.
 level 1 performs dead-global elimination (prunes `@.strN`/`@.lstN` globals
-never referenced by the body). Because `--emit-llvm` is a string flag that
-consumes the next argument as its value, pass `--opt-level` first:
+never referenced by the body). Escape analysis (always on, independent of
+`--opt-level`) skips the runtime heap allocation for a top-level list literal
+whose variable is never read — a dead-object elimination that proves the
+allocation never escapes (see ADR 0134). Because `--emit-llvm` is a string
+flag that consumes the next argument as its value, pass `--opt-level` first:
 
     gustyc --opt-level=1 --emit-llvm='"hi"'
 

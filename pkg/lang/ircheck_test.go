@@ -1808,3 +1808,17 @@ print(f())
 		t.Fatalf("expected clear decorator error, got: %v", err)
 	}
 }
+
+func TestAOTEscapeDeadList(t *testing.T) {
+	// a list literal assigned to a variable that is never read (dead) must
+	// skip its rt_alloc heap allocation (escape analysis / dead-object elim).
+	ir := llcCompiles(t, "g = [1, 2, 3]\n")
+	if strings.Contains(ir, "rt_alloc") {
+		t.Fatalf("dead list should skip rt_alloc:\n%s", ir)
+	}
+	// a live list (elements are read) must still allocate.
+	ir2 := llcCompiles(t, "h = [1, 2, 3]\nprint(h[0])\n")
+	if !strings.Contains(ir2, "rt_alloc") {
+		t.Fatalf("live list should keep rt_alloc:\n%s", ir2)
+	}
+}

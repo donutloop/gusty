@@ -186,3 +186,22 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
 - Lesson: roadmap item name is "GC stress / leak harness" (not "GC stress/leak
   tests") — always grep the exact row text before replacing.
 - ADR 0133 documents the stress/leak contract; roadmap marks the item LANDED.
+
+## Round 3 — escape-analysis heap elision (ADR 0134)
+
+- AOT codegen emitted an `rt_alloc` heap allocation for every top-level list
+  literal, even for variables never read afterwards — a provably dead object.
+- Delivered an always-on source-level escape analysis (`pkg/lang/escape.go`,
+  `deadListAssignments`): a top-level variable is a dead-list candidate iff
+  every top-level assignment to it is a list literal AND it is never read at
+  top level. Function bodies are NOT descended into — verified empirically that
+  this codegen cannot read top-level globals from a function (`index of a
+  non-literal variable`), so top-level deadness is decided purely from top-level
+  reads, and the `inFunc` guard double-protects against firing inside a body.
+- Key soundness checks via `-emit-llvm`: a dead list emits 0 `rt_alloc`; a read
+  list still allocates; a function-local list with the same name as a dead
+  global still allocates (distinct `%_g` local vs `@_g` global). Conservative:
+  any non-list assignment or any top-level read keeps the allocation, so no path
+  can observe a freed slot.
+- Coverage: `TestAOTEscapeDeadList` checks the emitted IR; `TestEscapeDeadListRun`
+  (integration) guards whole-program output parity.

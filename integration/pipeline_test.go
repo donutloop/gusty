@@ -64,3 +64,33 @@ print((x for x in range(6) if x % 2 == 0))
 		t.Fatalf("output = %q, want %q", out, want)
 	}
 }
+
+// TestEscapeDeadListRun guards the escape-analysis dead-list-literal
+// elimination: whole-program output must be unchanged whether the optimizer
+// skips a dead heap allocation or not. A truly dead list (never read) coexists
+// with a live list (elements read) in the same program.
+func TestEscapeDeadListRun(t *testing.T) {
+	src := `dead = [1, 2, 3]     # never read anywhere: allocation is skipped
+live = [4, 5, 6]           # element read below: allocation is kept
+print(live[0])
+print(live[2])
+`
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "esc.gy")
+	if err := os.WriteFile(srcPath, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "prog")
+	if _, err := lang.Build([]string{srcPath}, exe, 0); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	out, err := exec.Command(exe).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run failed: %v\n%s", err, out)
+	}
+	// Output must be identical to the non-optimized program.
+	want := "4\n6\n"
+	if string(out) != want {
+		t.Fatalf("output = %q, want %q", out, want)
+	}
+}

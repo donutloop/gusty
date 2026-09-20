@@ -68,6 +68,8 @@ gusty ships an indentation-based syntax covering:
   list-destructuring patterns (`case [a, b]:`)
 - **Data structures** — inline `list` / `dict` / `set` literals, indexing,
   and list / dict / set comprehensions
+- **Escape-analysis heap elision** — never-read top-level list literals skip
+  their runtime allocation (ADR 0134), an always-on dead-object elimination
   (`[x * 2 for x in ...]`, `{k: v for ...}`, `{x for ...}`)
 - **Generators** — `def g(): yield a; yield b` collects yielded values
 - **Exceptions** — `try` / `except` / `finally` with typed built-in exception

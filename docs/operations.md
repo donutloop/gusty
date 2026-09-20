@@ -36,7 +36,7 @@ into a single native executable. Pipeline:
 
 1. read + parse each file, merge the statement lists into one program
 2. semantic analysis over the merged program
-3. LLVM IR codegen + optimization
+3. LLVM IR codegen + optimization (dead-global elimination at `--opt-level=1`; always-on escape analysis skips dead heap list-literal allocations, ADR 0134)
 4. `llc-20` verifies/lowers the module to an object file
 5. `cc` links it into the binary at `<out>`
 

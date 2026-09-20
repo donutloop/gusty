@@ -345,6 +345,8 @@ func GenerateIR(prog *Program) (string, error) {
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
+	// escape analysis: dead list-literal assignments skip rt_alloc
+	g.deadLists = deadListAssignments(prog.Stmts)
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
 			g.funcs[fd.Name] = true
@@ -420,6 +422,8 @@ type irGen struct {
 	envCaptures map[string]int
 	envParam    string
 	decorated   map[string]bool
+	deadLists   map[string]bool
+	inFunc      bool
 	applyCalls  []string
 	listNames   map[*ListLit]string
 	lstIdx      int
@@ -527,9 +531,11 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	}
 	g.selfClass = className
 	g.globals.WriteString(fmt.Sprintf("define i32 @%s(%s) {\n", funcName, strings.Join(paramRegs, ", ")))
+	g.inFunc = true
 	for _, st := range fd.Body {
 		g.stmt(&g.globals, st)
 	}
+	g.inFunc = false
 	g.globals.WriteString("  ret i32 0\n}\n")
 	g.selfClass = prevSelf
 	g.params = prevParams
@@ -3952,6 +3958,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.envCaptures = nil
 	g.envParam = "%env"
 	g.decorated = map[string]bool{}
+	g.inFunc = true
 	op := map[string]bool{}
 	for _, p := range fd.Params {
 		op[p.Name] = true
@@ -4011,6 +4018,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.genHandle = ""
 	g.handlerStack = prevHandlers
 	g.params = map[string]string{}
+	g.inFunc = false
 	return nil
 }
 
@@ -4030,6 +4038,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 	case *AssignStmt:
 		if nm, ok := n.Target.(*Name); ok {
+			// escape analysis: a list literal assigned to a variable that is
+			// never read (dead) skips its heap allocation entirely.
+			if _, isList := n.Value.(*ListLit); isList && !g.inFunc && g.deadLists[nm.Value] {
+				return nil
+			}
 			// `f = lambda ...` binds the generated lambda FuncDef to the variable.
 			if lam, ok := n.Value.(*Lambda); ok {
 				name, err := g.emitLambda(b, lam)

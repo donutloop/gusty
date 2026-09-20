@@ -1,3 +1,11 @@
+## [v0.10.32] - escape-analysis heap elision (ADR 0134)
+- Always-on dead-object elimination: a top-level list literal assigned to a
+  variable that is never read no longer emits its `rt_alloc` heap allocation
+  (proving the object never escapes). Source-level proof in `pkg/lang/escape.go`,
+  wired into codegen (`Name = ListLit` in `stmt`), guarded by `inFunc` so it
+  never fires inside function bodies. Unit test `TestAOTEscapeDeadList` checks
+  the emitted IR; whole-program correctness guarded by `TestEscapeDeadListRun`.
+
 ## [v0.??] - Phase 2: real IR optimizer
 - Replaced the regex-ish `opt.go` text transform with a genuine IR pass
   pipeline (ADR 0088): a lightweight textual-LLVM-IR parser + CFG

@@ -228,9 +228,11 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	g.funcs[ci.name] = true
 	g.fds[ci.name] = fd
 	g.envParam = "%env"
+	g.inFunc = true
 	for _, st := range fd.Body {
 		g.stmt(b, st)
 	}
+	g.inFunc = false
 	if !strings.HasSuffix(strings.TrimSpace(b.String()), "ret ") {
 		fmt.Fprintf(b, "  ret i32 0\n")
 	}
