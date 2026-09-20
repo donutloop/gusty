@@ -505,6 +505,11 @@ func GenerateIR(prog *Program) (string, error) {
 	}
 	b.WriteString("  %gc.roots = alloca [1024 x i32*]\n")
 	b.WriteString("  store i32 0, i32* @gc_roots_used\n")
+	// Root every module-global closure env slot so GC keeps captured envs
+	// (and any heap handles they hold) alive across top-level boundaries.
+	for _, envName := range g.envSlots {
+		g.gcRegGlobal(&b, envName)
+	}
 	g.funcRaiseExit = "main.raiseexit"
 	g.inMain = true
 	for _, st := range prog.Stmts {
@@ -626,6 +631,9 @@ type irGen struct {
 	gcRootIdx  int
 	gcCallIdx  int
 	gcRootSeen map[string]bool
+	// envSlots holds the module-global closure env slot names; each holds an
+	// env heap handle and must be rooted so GC keeps captured envs alive.
+	envSlots []string
 }
 
 // classInfo records a statically-known class: its base classes and its methods.
@@ -810,6 +818,18 @@ func (g *irGen) gcReg(b *strings.Builder, name string) {
 	g.gcRootIdx++
 	fmt.Fprintf(b, "  %%gc.slot%d = getelementptr [1024 x i32*], [1024 x i32*]* %%gc.roots, i32 0, i32 %d\n", idx, idx)
 	fmt.Fprintf(b, "  store i32* %%_%s, i32** %%gc.slot%d\n", name, idx)
+	fmt.Fprintf(b, "  store i32 %d, i32* @gc_roots_used\n", g.gcRootIdx)
+}
+
+func (g *irGen) gcRegGlobal(b *strings.Builder, name string) {
+	// Root a module-global closure env slot: the env slot holds an i32 heap
+	// handle (the closure env), so GC must mark it even when no main local
+	// references it. Conservative: the slot may hold a scalar, which is just
+	// treated as a potential heap address.
+	slot := g.gcRootIdx
+	g.gcRootIdx++
+	fmt.Fprintf(b, "  %%gc.envSlot%d = getelementptr [1024 x i32*], [1024 x i32*]* %%gc.roots, i32 0, i32 %d\n", slot, slot)
+	fmt.Fprintf(b, "  store i32* @%s_slot, i32** %%gc.envSlot%d\n", name, slot)
 	fmt.Fprintf(b, "  store i32 %d, i32* @gc_roots_used\n", g.gcRootIdx)
 }
 
@@ -4139,6 +4159,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		ci := closureInfoFor(nd, op, ol)
 		g.closures[ci.name] = ci
 		fmt.Fprintf(&g.globals, "@%s_slot = internal global i32 0\n", ci.name)
+			g.envSlots = append(g.envSlots, ci.name)
 		g.emitClosureDef(b, ci, nd)
 	}
 	if len(fd.Decorators) > 0 {

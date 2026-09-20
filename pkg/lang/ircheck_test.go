@@ -125,6 +125,11 @@ func TestIRClosureCompilesWithLLC(t *testing.T) {
 	if !strings.Contains(ir, "@inc_slot") {
 		t.Fatalf("missing closure env slot in IR:\n%s", ir)
 	}
+	// The mark-sweep GC must root the closure env slot so a captured env (and
+	// any heap handles it holds) survives a top-level boundary.
+	if !strings.Contains(ir, "store i32* @inc_slot, i32** %gc.envSlot") {
+		t.Fatalf("closure env slot @inc_slot is not registered as a GC root:\n%s", ir)
+	}
 }
 
 func TestIRDecoratorCompilesWithLLC(t *testing.T) {
