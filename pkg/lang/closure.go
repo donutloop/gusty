@@ -159,6 +159,10 @@ func collectStmtNames(node interface{}, out map[string]bool) {
 		}
 	case *AssignStmt:
 		collectNames(n.Value, out)
+	case *AugAssignStmt:
+		// augmented assignment both reads and writes the target.
+		collectNames(n.Target, out)
+		collectNames(n.Value, out)
 	case *ExprStmt:
 		collectNames(n.Expr, out)
 	case *ReturnStmt:

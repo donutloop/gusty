@@ -77,6 +77,22 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	switch s := st.(type) {
 	case *AssignStmt:
 		an.analyzeAssign(s)
+	case *AugAssignStmt:
+		// augmented assignment reads the target (must already be in scope)
+		// then writes it back. Infer the RHS and validate the target.
+		switch t := s.Target.(type) {
+		case *Name:
+			if an.scope.lookup(t.Value) == nil {
+				an.errorf(t.Span(), "undefined variable %q in augmented assignment", t.Value)
+			}
+			ty := an.inferExpr(s.Value)
+			an.scope.define(t.Value, ty)
+		case *Attr:
+			an.inferExpr(t.Obj)
+			an.inferExpr(s.Value)
+		default:
+			an.errorf(s.Span(), "unsupported augmented-assignment target %T", s.Target)
+		}
 	case *ExprStmt:
 		an.inferExpr(s.Expr)
 	case *ReturnStmt:

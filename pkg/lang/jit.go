@@ -826,6 +826,30 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					last = v
 				}
 			}
+		case *AugAssignStmt:
+			// value = target op rhs, then write the result back to the target.
+			b := &BinOp{Op: s.Op, L: s.Target, R: s.Value}
+			res, err := e.eval(b)
+			if err != nil {
+				return 0, err
+			}
+			switch t := s.Target.(type) {
+			case *Name:
+				e.Vars[t.Value] = res
+				last = res
+			case *Attr:
+				objV, err := e.eval(t.Obj)
+				if err != nil {
+					return 0, err
+				}
+				o, ok := e.heap[objV]
+				if ok && o.kind == "instance" {
+					o.attrs[t.Name.Value] = res
+					last = res
+				}
+			default:
+				return 0, fmt.Errorf("augmented assignment: unsupported target %T", s.Target)
+			}
 		case *ExprStmt:
 			v, err := e.eval(s.Expr)
 			if err != nil {

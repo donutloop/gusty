@@ -139,6 +139,19 @@ x = x + 1
 The target may be a `Name`; the value is any expression. Assignments define or
 rebind a variable in the current scope.
 
+### Augmented assignment
+
+`target op= expr` reads the target, applies an arithmetic operator to the RHS,
+and writes the result back:
+
+- `x += e`  (add), `x -= e`  (subtract), `x *= e`  (multiply),
+  `x /= e`  (integer divide), `x //= e` (integer divide), `x %= e` (modulus).
+
+The target must be a Name or an attribute (`self.x += 1`). Integer division
+treats `/` and `//` the same. Augmented assignment is supported in both the
+tree-walking interpreter and the AOT code generator (int and float Name
+targets, int Attr targets).
+
 ### Expression statements
 
 Any expression on its own line. `print(...)` is a builtin call that writes to

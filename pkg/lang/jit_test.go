@@ -1257,3 +1257,35 @@ print(f"hello {s}!")`)
 		t.Fatalf("plain fstring returned 0")
 	}
 }
+
+func TestEvalAugmentedAssignment(t *testing.T) {
+	cases := []struct {
+		src string
+		want int64
+	}{
+		{"x = 1\nx += 2\nx", 3},
+		{"x = 5\nx -= 1\nx", 4},
+		{"x = 3\nx *= 4\nx", 12},
+		{"x = 8\nx //= 2\nx", 4},
+		{"x = 10\nx %= 3\nx", 1},
+		{"x = 2\nx += 1\nx *= 3\nx", 9},
+	}
+	for _, tc := range cases {
+		if v, _, err := EvalExpr(tc.src); err != nil {
+			t.Fatalf("%q: err: %v", tc.src, err)
+		} else if v != tc.want {
+			t.Fatalf("%q: got %d, want %d", tc.src, v, tc.want)
+		}
+	}
+}
+
+func TestEvalAugmentedAttr(t *testing.T) {
+	src := "class C:\n    def set(self, v):\n        self.x = v\n    def bump(self):\n        self.x += 5\nc = C()\nc.set(2)\nc.bump()\nc.x"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if v != 7 {
+		t.Fatalf("got %d, want 7", v)
+	}
+}

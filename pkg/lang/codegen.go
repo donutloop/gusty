@@ -4754,6 +4754,41 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		} else {
 			return fmt.Errorf("codegen: unsupported assignment target %T", n.Target)
 		}
+	case *AugAssignStmt:
+		// augmented assignment: read target, apply op with rhs, store back.
+		binop := &BinOp{Op: n.Op, L: n.Target, R: n.Value}
+		if nm, ok := n.Target.(*Name); ok {
+			v, err := g.value(b, binop)
+			if err != nil {
+				return err
+			}
+			if g.isFloat(n.Target) || g.isFloat(n.Value) {
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
+				b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", v, nm.Value))
+				g.floatVars[nm.Value] = true
+			} else {
+				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+			}
+			return nil
+		}
+		if attr, ok := n.Target.(*Attr); ok {
+			objHandle, err := g.value(b, attr.Obj)
+			if err != nil {
+				return err
+			}
+			v, err := g.value(b, binop)
+			if err != nil {
+				return err
+			}
+			// attrs are int-only in codegen; truncate a float result to i32.
+			if g.isFloat(n.Value) {
+				b.WriteString(fmt.Sprintf("  %%_aug = fptosi double %s to i32\n", v))
+				v = "%_aug"
+			}
+			b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 %d, i32 %s)\n", objHandle, g.attrSlot(attr.Name.Value), v))
+			return nil
+		}
+		return fmt.Errorf("codegen: unsupported augmented-assignment target %T", n.Target)
 
 	case *IfStmt:
 		cond := g.truthyValue(b, n.Cond)

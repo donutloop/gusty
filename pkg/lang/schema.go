@@ -73,16 +73,16 @@ const ASTIRSchema = `{
         "target": { "$ref": "#/definitions/expr" },
         "value": { "$ref": "#/definitions/expr" },
         "annot": { "$ref": "#/definitions/type" }
-      }
-    },
-    "raiseStmt": {
-      "type": "object",
-      "required": ["expr"],
-      "properties": {
-        "expr": { "$ref": "#/definitions/expr" }
-      }
-    },
-    "ifStmt": {
+		},
+		"augAssignStmt": {
+			"type": "object",
+			"required": ["target", "op", "value"],
+			"properties": {
+				"target": { "$ref": "#/definitions/expr" },
+				"op": { "type": "string" },
+				"value": { "$ref": "#/definitions/expr" }
+			}
+		},
       "type": "object",
       "required": ["cond", "then"],
       "properties": {

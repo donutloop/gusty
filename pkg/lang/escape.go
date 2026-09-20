@@ -105,6 +105,10 @@ func deadListAssignments(prog []Stmt) map[string]bool {
 				walkExpr(n.Target)
 			}
 			walkExpr(n.Value)
+		case *AugAssignStmt:
+			// augmented assignment reads and writes the target.
+			walkExpr(n.Target)
+			walkExpr(n.Value)
 		case *ExprStmt:
 			walkExpr(n.Expr)
 		case *ReturnStmt:

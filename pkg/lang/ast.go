@@ -56,6 +56,19 @@ func (n *RaiseStmt) stmtNode() {}
 func (n *AssignStmt) Span() Span { return n.sp }
 func (n *AssignStmt) stmtNode()  {}
 
+// AugAssignStmt is an augmented assignment `x op= e` (`x += e`, `x -= e`,
+// `x *= e`, `x /= e`, `x //= e`, `x %= e`). Target must be a writable
+// lvalue (Name or Attr); Op is one of "+", "-", "*", "/", "//", "%".
+type AugAssignStmt struct {
+	Target Expr  `json:"target"`
+	Op     string `json:"op"`
+	Value  Expr  `json:"value"`
+	sp     Span  `json:"-"`
+}
+
+func (n *AugAssignStmt) Span() Span { return n.sp }
+func (n *AugAssignStmt) stmtNode()  {}
+
 type IfStmt struct {
 	Cond  Expr       `json:"cond"`
 	Then  []Stmt     `json:"then"`

@@ -594,6 +594,33 @@ func (p *parser) parseTry() (Stmt, error) {
 }
 
 // parseExprOrAssign parses an expression statement or an assignment.
+
+// isAugOp reports whether text is an augmented-assignment operator.
+func isAugOp(text string) bool {
+	switch text {
+	case "+=", "-=", "*=", "/=", "//=", "%=":
+		return true
+	}
+	return false
+}
+
+// augOpBase returns the arithmetic operator underlying an aug-op token.
+func augOpBase(text string) string {
+	switch text {
+	case "+=":
+		return "+"
+	case "-=":
+		return "-"
+	case "*=":
+		return "*"
+	case "/=", "//=":
+		return "/"
+	case "%=":
+		return "%"
+	}
+	return text
+}
+
 func (p *parser) parseExprOrAssign() (Stmt, error) {
 	// detect simple name assignment: IDENT [= | : type =]
 	if t := p.peek(); t.Kind == TokIdent {
@@ -630,6 +657,22 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 	ex, err := p.parseExpr()
 	if err != nil {
 		return nil, err
+	}
+	// augmented assignment: target op= expr  (x += 1, self.x *= 2, ...)
+	if op := p.peek(); op.Kind == TokOp && isAugOp(op.Text) {
+		if _, ok := ex.(*Name); !ok {
+			if _, ok := ex.(*Attr); !ok {
+				return nil, fmt.Errorf("parser: augmented assignment requires a name or attribute target (got %T)", ex)
+			}
+		}
+		p.next()
+		val, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		aug := &AugAssignStmt{Target: ex, Op: augOpBase(op.Text), Value: val}
+		aug.sp = ex.Span()
+		return aug, nil
 	}
 	// attribute assignment: self.x = expr
 	if p.peek().IsOp("=") {

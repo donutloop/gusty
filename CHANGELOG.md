@@ -1,3 +1,17 @@
+## [v0.??] - augmented assignment (Phase 6)
+
+- New `x op= e` augmented-assignment statements: `+=`, `-=`, `*=`, `/=`, `//=`,
+  `%=` on Name and Attr targets (e.g. `x += 2`, `self.x *= 3`).
+- Lexer: aug-op tokens (`+=`, `-=`, `*=`, `/=`, `//=`, `%=`) are single tokens.
+- AST: new `AugAssignStmt` node (`Target`, `Op`, `Value`).
+- Parser: detects `target op= rhs` in assignment parsing; targets must be Name
+  or Attr.
+- Interpreter: evaluates `target op rhs` and writes the result back.
+- Codegen (AOT): emits read-compute-store; supports int and float Name targets
+  and int Attr targets (float Attr results are truncated to int).
+- Semantic/closure/escape walkers handle `AugAssignStmt` (target is read+write).
+- JSON schema: `augAssignStmt` entry.
+
 ## [v0.9.??] - sequence slicing `s[a:b]`, `s[::step]`, negative indices
 
 - Added the `Slice` expression to the AST (`pkg/lang/ast.go`): `Obj`, optional
