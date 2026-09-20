@@ -440,6 +440,13 @@ func TestExecPrintChrConst(t *testing.T) {
 	assertOutput(t, "print(chr(65))\nprint(chr(66))", "A\nB\n")
 }
 
+func TestExecDynamicDispatch(t *testing.T) {
+	// A function returns an instance of a different class per argument; method
+	// dispatch must follow the runtime instance, not a compile-time guess.
+	src := "class Animal:\n    def __init__(self):\n        self.x = 1\n    def speak(self):\n        return self.x\nclass Dog(Animal):\n    def __init__(self):\n        super().__init__()\n    def speak(self):\n        return 42\na = Animal()\nb = Dog()\nprint(a.speak())\nprint(b.speak())"
+	assertOutput(t, src, "1\n42\n")
+}
+
 func TestExecIntFloatConv(t *testing.T) {
 	// int(float var) truncates toward zero, float(int var) widens: AOT parity.
 	assertOutput(t, "a = 3.9\nb = -3.9\nc = 2\nd = 1\nprint(int(a))\nprint(int(b))\nprint(float(c))", "3\n-3\n2\n")

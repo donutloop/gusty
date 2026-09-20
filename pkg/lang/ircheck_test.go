@@ -1836,3 +1836,34 @@ func TestAOTEscapeDeadList(t *testing.T) {
 		t.Fatalf("live list should keep rt_alloc:\n%s", ir2)
 	}
 }
+
+func TestAOTDynamicDispatch(t *testing.T) {
+	ir := llcCompiles(t, `
+class Animal:
+    def __init__(self):
+        self.x = 1
+    def speak(self):
+        return self.x
+class Dog(Animal):
+    def __init__(self):
+        super().__init__()
+    def speak(self):
+        return 42
+def make(kind):
+    if kind == 1:
+        return Animal()
+    return Dog()
+a = make(1)
+print(a.speak())
+`)
+	// The receiver of a.speak() is the result of make(), whose class is
+	// unknown at compile time, so dispatch must be dynamic: the IR should
+	// contain a switch over the runtime class-id and calls to both speak
+	// variants.
+	if !strings.Contains(ir, "switch i32") {
+		t.Fatalf("expected dynamic dispatch switch, got:\n%s", ir)
+	}
+	if !strings.Contains(ir, "@Animal_speak") || !strings.Contains(ir, "@Dog_speak") {
+		t.Fatalf("expected both speak targets in dispatch, got:\n%s", ir)
+	}
+}

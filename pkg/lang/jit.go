@@ -265,6 +265,9 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 		e.yieldList = prev
 		e.Vars = saved
 		e.curRet = prevRet
+		if _, ok := err.(*returnSignal); ok {
+			return genH, nil
+		}
 		return genH, err
 	}
 	e.Vars = scope
@@ -273,6 +276,9 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 	e.inCall = false
 	e.Vars = saved
 	e.curRet = prevRet
+	if rs, ok := err.(*returnSignal); ok {
+		return rs.val, nil
+	}
 	return rv, err
 }
 
@@ -777,8 +783,9 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 						return 0, err
 					}
 				}
-				return v, nil
+				return 0, &returnSignal{val: v}
 			}
+			return 0, &returnSignal{val: 0}
 		case *YieldStmt:
 			v, err := e.eval(s.Expr)
 			if err != nil {
@@ -2127,7 +2134,11 @@ func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error)
 	e.curSelf = self
 	defer func() { e.curClass, e.curSelf = prevClass, prevSelf }()
 
-	return e.evalBody(mo.fn.Body)
+	rv, err := e.evalBody(mo.fn.Body)
+	if rs, ok := err.(*returnSignal); ok {
+		return rs.val, nil
+	}
+	return rv, err
 }
 
 // resolveMethod finds a method named `name` on the class with id `classID`,
@@ -2416,6 +2427,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			e.inCall = false
 			e.Vars = saved
 			e.curRet = prevRet
+			if rs, ok := err.(*returnSignal); ok {
+				return rs.val, nil
+			}
 			return rv, err
 		}
 		// built-in exception constructor: ValueError("msg") etc.
@@ -2780,6 +2794,14 @@ func exnError(exnType, msg string) *EvalError {
 type loopSignal struct{ kind string }
 
 func (l *loopSignal) Error() string { return "loop signal: " + l.kind }
+
+// returnSignal carries a `return` statement's value out of nested blocks to the
+// enclosing function/method call site. It implements error so that it flows up
+// through the statement-loop block handlers (if/while/for), which propagate
+// errors via `return 0, err`.
+type returnSignal struct{ val int64 }
+
+func (r *returnSignal) Error() string { return "return signal" }
 
 // EvalExpr compiles src and evaluates it, returning the integer result and diagnostics.
 func EvalExpr(src string) (int64, []Diagnostic, error) {

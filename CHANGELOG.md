@@ -6,6 +6,17 @@
   never fires inside function bodies. Unit test `TestAOTEscapeDeadList` checks
   the emitted IR; whole-program correctness guarded by `TestEscapeDeadListRun`.
 
+## [v0.??] - dynamic method dispatch (AOT) + interpreter return-in-block fix
+- AOT codegen: dynamic method dispatch on instances whose class is not
+  statically known (statement-level) — a runtime receiver dispatches to the
+  method of the actual class.
+- Interpreter (jit): fix `return` inside nested blocks (if/while/for) so it
+  propagates out of the function/method body — `make(k)` with `if k==1: return A`
+  now returns the correct instance. Previously the else-branch was always taken.
+- Tests: interpreter dynamic-dispatch test (TestEvalDynamicDispatch), AOT
+  codegen IR test (TestAOTDynamicDispatch), and native integration test
+  (TestExecDynamicDispatch).
+
 ## [v0.??] - Phase 2: real IR optimizer
 - Replaced the regex-ish `opt.go` text transform with a genuine IR pass
   pipeline (ADR 0088): a lightweight textual-LLVM-IR parser + CFG

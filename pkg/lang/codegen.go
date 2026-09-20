@@ -474,6 +474,7 @@ func GenerateIR(prog *Program) (string, error) {
 		return "", err
 	}
 	g := &irGen{
+		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
@@ -492,6 +493,15 @@ func GenerateIR(prog *Program) (string, error) {
 	var b strings.Builder
 	// pre-scan top-level for user function names
 	// user function definitions become separate defines before main
+	// Register classes before compiling function bodies so that class
+	// constructor calls and polymorphic dispatch are recognized inside
+	// functions (e.g. `def make(): return Animal()`).
+	for _, st := range prog.Stmts {
+		if cd, ok := st.(*ClassDef); ok {
+			g.registerClass(cd)
+		}
+	}
+
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
 			if err := g.funcDef(&b, fd); err != nil {
@@ -610,6 +620,8 @@ type irGen struct {
 	funcRaiseExit string
 
 	classInfos map[string]*classInfo // class name -> info
+	classIDs   map[string]int   // class name -> runtime dispatch id
+	classOrder  []string            // classes in id order (dispatch switch)
 	varClasses map[string]string     // local var -> class name
 	selfClass  string                // enclosing class of current self
 	attrSlots  map[string]int        // attr name -> instance data slot
@@ -646,6 +658,16 @@ type classInfo struct {
 func (g *irGen) registerClass(cd *ClassDef) {
 	if g.classInfos == nil {
 		g.classInfos = map[string]*classInfo{}
+	}
+	// Idempotent: the class-registration pre-pass runs before main-stmt
+	// processing, so a later duplicate call must not re-emit method bodies
+	// (that would redefine the same LLVM functions).
+	if _, ok := g.classInfos[cd.Name]; ok {
+		return
+	}
+	if _, ok := g.classIDs[cd.Name]; !ok {
+		g.classIDs[cd.Name] = len(g.classOrder)
+		g.classOrder = append(g.classOrder, cd.Name)
 	}
 	ci := &classInfo{bases: []string{}, methods: map[string]string{}}
 	for _, b := range cd.Bases {
@@ -765,6 +787,16 @@ func (g *irGen) resolveMethod(className, mname string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// hasMethod reports whether any registered class defines a method named mname.
+func (g *irGen) hasMethod(mname string) bool {
+	for _, cls := range g.classOrder {
+		if _, ok := g.resolveMethod(cls, mname); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // receiverClass returns the class of a receiver expression, if statically known.
@@ -2827,6 +2859,55 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 		}
 
+		// Dynamic dispatch: `recv.m(args)` where recv is a class instance whose
+		// class is unknown at compile time. Dispatch on the runtime class-id
+		// stored in instance slot 0 (set at instantiation).
+		if mname := attr.Name.Value; g.hasMethod(mname) {
+			h, _ := g.value(b, attr.Obj)
+			cid := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, h))
+			argvals := make([]string, len(c.Args))
+			for i, a := range c.Args {
+				v, _ := g.value(b, a)
+				argvals[i] = v
+			}
+			type dynCase struct{ id int; fn, lab, ret string }
+			var cases []dynCase
+			for _, cls := range g.classOrder {
+				if fn, ok := g.resolveMethod(cls, mname); ok {
+					cases = append(cases, dynCase{g.classIDs[cls], fn, g.newLabel("dyn.c"), g.newTmp()})
+				}
+			}
+			done := g.newLabel("dyn.done")
+			miss := g.newLabel("dyn.miss")
+			b.WriteString(fmt.Sprintf("  switch i32 %s, label %%%s [\n", cid, miss))
+			for _, dc := range cases {
+				b.WriteString(fmt.Sprintf("    i32 %d, label %%%s\n", dc.id, dc.lab))
+			}
+			b.WriteString("  ]\n")
+			for _, dc := range cases {
+				b.WriteString(fmt.Sprintf("%s:\n", dc.lab))
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s", dc.ret, dc.fn, h))
+				for _, av := range argvals {
+					b.WriteString(fmt.Sprintf(", i32 %s", av))
+				}
+				b.WriteString(")\n")
+				b.WriteString(fmt.Sprintf("  br label %%%s\n", done))
+			}
+			b.WriteString(fmt.Sprintf("%s:\n", miss))
+			// Runtime miss: the receiver is not an instance of a class that
+			// defines this method. Return 0 (the interpreter raises; AOT returns
+			// a sentinel since no runtime error infrastructure exists).
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", done))
+			b.WriteString(fmt.Sprintf("%s:\n", done))
+			phi := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = phi i32 [ 0, %%%s ]", phi, miss))
+			for _, dc := range cases {
+				b.WriteString(fmt.Sprintf(", [ %s, %%%s ]", dc.ret, dc.lab))
+			}
+			b.WriteString("\n")
+			return phi, nil
+		}
 		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
@@ -3186,6 +3267,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		g.heapUsed = true
 		h := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 4)\n", h))
+	b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
 		if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
 			b.WriteString(fmt.Sprintf("  call i32 @%s(i32 %s", fn, h))
 			for _, arg := range c.Args {

@@ -205,3 +205,27 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
   can observe a freed slot.
 - Coverage: `TestAOTEscapeDeadList` checks the emitted IR; `TestEscapeDeadListRun`
   (integration) guards whole-program output parity.
+
+## Round 8 — dynamic method dispatch (AOT) + interpreter return-in-block fix
+
+- The previous round left uncommitted AOT dynamic-dispatch work (codegen.go
+  dispatch in `call` for statement-level method calls on runtime receivers,
+  ircheck test TestAOTDynamicDispatch, ADR 0136). This round completed and
+  landed it.
+- Interpreter bug found while verifying dispatch: `return` inside a nested
+  block (if/while/for) was NOT propagated out of a function body — the
+  block handler treated evalBody's returned value as just "last expression"
+  and continued the outer loop, so `def make(k): if k==1: return A; return B`
+  always returned B. Fixed by introducing a `returnSignal{val}` error that
+  flows through the block handlers (which already propagate errors via
+  `return 0, err`) and is unwrapped at callFunc, callClosure, callMethod, the
+  function-call site, decorators, and generators. Lambdas and decorators
+  needed the unwrap at callFunc's regular path too.
+- Added interpreter test TestEvalDynamicDispatch (make returns Animal/Dog by
+  kind; a.speak()+b.speak()=43), AOT ircheck test TestAOTDynamicDispatch, and
+  native integration test TestExecDynamicDispatch (statement-level dispatch).
+- AOT limitation documented: expression-level dispatch on function parameters
+  (e.g. `v.speak()` inside a function) still resolves statically; field reads
+  like `a.x` on runtime-unknown receivers are unsupported (error
+  "unsupported attr expression"). Only statement-level dispatch on instances
+  is correct end-to-end.

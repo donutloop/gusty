@@ -605,6 +605,21 @@ func TestEvalClassGrandChildResolution(t *testing.T) {
 	}
 }
 
+func TestEvalDynamicDispatch(t *testing.T) {
+	// Dynamic dispatch: the receiver's class is only known at runtime because
+	// `make` returns an instance of a different class per argument. Method
+	// resolution must follow the runtime instance, not a compile-time guess.
+	src := "class Animal:\n    def __init__(self):\n        self.x = 1\n    def speak(self):\n        return self.x\nclass Dog(Animal):\n    def __init__(self):\n        super().__init__()\n    def speak(self):\n        return 42\ndef make(kind):\n    if kind == 1:\n        return Animal()\n    return Dog()\na = make(1)\nb = make(2)\na.speak() + b.speak()"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("dyn dispatch err: %v", err)
+	}
+	// a=Animal -> a.speak()=1 ; b=Dog -> b.speak()=42 ; sum=43.
+	if v != 43 {
+		t.Fatalf("got %d, want 43", v)
+	}
+}
+
 func TestEvalImportModuleFunction(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(dir+"/mylib.gy", []byte("def double(x):\n    return x * 2\n"), 0o600)

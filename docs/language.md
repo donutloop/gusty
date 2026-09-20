@@ -296,6 +296,11 @@ for i in range(n):
   implementation with `super()` (valid only inside a method; it resolves methods
   on the base class of the currently-executing class, bound to the current
   instance). Class support is implemented in the interpreter (REPL/--eval path).
+- **Dynamic dispatch**: a method call on an instance whose class is not statically
+  known (e.g. an instance returned by a function or passed as a parameter) resolves
+  the method by the runtime class of the receiver. The interpreter dispatches on the
+  actual instance's class; the AOT/codegen path supports statement-level dynamic
+  dispatch on instances and direct method calls.
 - `raise ValueError("msg")` raises a typed exception carrying a class name and an
   optional message. Built-in exception classes: `Exception`, `ValueError`, `TypeError`,
   `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`. A bare
