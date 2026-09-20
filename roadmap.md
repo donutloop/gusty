@@ -70,6 +70,21 @@ Rule: every component change updates the matching doc; never let
 | Phase 7 — correctness & tooling | REPL error recovery | ⏳ PLANNED | `--repl` aborts on a single parse error; add panic-recovery/error-token parsing for a modern REPL. |
 | Phase 7 — correctness & tooling | Richer `--json` diagnostics | ⏳ PLANNED | Emit spans **and** inferred types (the semantic pass already computes them) in the `--json` schema. |
 
+| Phase | Item | Status | Details |
+|---|---|---|---|
+| Phase 8 — developer tooling & ecosystem | Formatter (`gusty fmt`) | ⏳ PLANNED | `cmd/` ships only the compiler; add a gofmt/black-style source formatter so the language has a canonical style. |
+| Phase 8 — developer tooling & ecosystem | Language server / LSP | ⏳ PLANNED | Editors get completion + hover + diagnostics; build on the `--json` span/type groundwork (semantic already infers types). |
+| Phase 8 — developer tooling & ecosystem | Standard library + package resolution | ⏳ PLANNED | No stdlib dir today; AOT `import` is data-only. Add `math`/`string`/`collections`/`json`-style stdlib and on-disk module/package resolution. |
+| Phase 8 — developer tooling & ecosystem | Runtime tracebacks with source spans | ⏳ PLANNED | Parser errors carry spans today, but runtime errors have no Python-style traceback with line/col; add one in the interpreter and AOT. |
+| Phase 8 — developer tooling & ecosystem | Docstrings / `__doc__` | ⏳ PLANNED | Absent; add `def`/`class` docstrings and `__doc__` introspection. |
+| Phase 8 — developer tooling & ecosystem | Benchmark + profiling suite | ⏳ PLANNED | No `Benchmark` tests today; add a perf harness that runs both backends (supports the "compiler is the product" principle). |
+| Phase 9 — type system & runtime robustness | Tuple type + tuple unpacking | ⏳ PLANNED | Semantic has no `Tuple` kind; add it as the type-system underpinning for Phase 6 unpacking and multi-return. |
+| Phase 9 — type system & runtime robustness | Generics / protocols | ⏳ PLANNED | Gradual types stop at `Any`; add `Sequence[T]`/`Callable` bounds and structural protocols. |
+| Phase 9 — type system & runtime robustness | Standalone type-check mode (`gusty check`) | ⏳ PLANNED | Expose the semantic pass as a `mypy`-style checker that accepts annotated code without executing it. |
+| Phase 9 — type system & runtime robustness | Debug symbols / source maps for AOT binaries | ⏳ PLANNED | `--build` executables need line/col + variable info for real stack traces and debuggers. |
+| Phase 9 — type system & runtime robustness | FFI / C interop + embedding API | ⏳ PLANNED | Systems-language parity: call C from `gusty` and embed the interpreter/codegen as a library. |
+| Phase 9 — type system & runtime robustness | Fuzz/property-based testing of both backends | ⏳ PLANNED | Given the two-backend drift risk, add `go-fuzz`/property tests over the AST → interpreter/codegen. |
+
 ## Definition of done per item
 - Interpreter feature + unit test.
 - AOT emitter feature + unit test.
