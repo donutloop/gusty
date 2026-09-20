@@ -21,6 +21,12 @@ type parser struct {
 func newParser(src string, toks []Token) *parser { return &parser{src: src, toks: toks} }
 
 func (p *parser) peek() Token  { return p.toks[p.pos] }
+func (p *parser) peekNext() Token {
+	if p.pos+1 < len(p.toks) {
+		return p.toks[p.pos+1]
+	}
+	return Token{Kind: TokEOF}
+}
 func (p *parser) atEOF() bool  { return p.peek().Kind == TokEOF }
 func (p *parser) atNewline() bool { return p.peek().Kind == TokNewline }
 func (p *parser) atDedent() bool  { return p.peek().Kind == TokDedent }
@@ -751,15 +757,36 @@ func (p *parser) parseComparison() (Expr, error) {
 	}
 	for {
 		t := p.peek()
-		if !t.IsOp("==") && !t.IsOp("!=") && !t.IsOp("<") && !t.IsOp("<=") && !t.IsOp(">") && !t.IsOp(">=") {
+		op := ""
+		if t.IsOp("==") || t.IsOp("!=") || t.IsOp("<") || t.IsOp("<=") || t.IsOp(">") || t.IsOp(">=") {
+			op = t.Text
+		} else if t.Kind == TokKeyword {
+			switch t.Text {
+			case "in":
+				op = "in"
+			case "is":
+				op = "is"
+				if p.peekNext().IsKeyword("not") {
+					op = "is not"
+				}
+			case "not":
+				if p.peekNext().IsKeyword("in") {
+					op = "not in"
+				}
+			}
+		}
+		if op == "" {
 			break
 		}
 		p.next()
+		if op == "is not" || op == "not in" {
+			p.next()
+		}
 		r, err := p.parseAdditive()
 		if err != nil {
 			return nil, err
 		}
-		l = &BinOp{Op: t.Text, L: l, R: r, sp: t.Span}
+		l = &BinOp{Op: op, L: l, R: r, sp: t.Span}
 	}
 	return l, nil
 }

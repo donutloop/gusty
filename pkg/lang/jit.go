@@ -1170,6 +1170,63 @@ func (e *Evaluator) evalGen(g *Generator) (int64, error) {
 	return id, nil
 }
 
+// eqVal reports value equality between two handles, mirroring `==` semantics:
+// numeric equality via float promotion, string content equality, and handle
+// identity for everything else.
+func (e *Evaluator) eqVal(l, r int64) bool {
+	if lf, ok := e.floatOf(l); ok {
+		rf, rfok := e.floatOf(r)
+		if !rfok {
+			rf = float64(r)
+		}
+		return lf == rf
+	}
+	if rf, ok := e.floatOf(r); ok {
+		if lf, ok := e.floatOf(l); ok {
+			return lf == rf
+		}
+		return false
+	}
+	if lo, ok := e.heap[l]; ok && lo.kind == "str" {
+		if ro, ok := e.heap[r]; ok && ro.kind == "str" {
+			return lo.sval == ro.sval
+		}
+		return false
+	}
+	return l == r
+}
+
+// contains reports whether container holds v: list/set element membership, dict
+// key membership, or (for a string container) substring membership.
+func (e *Evaluator) contains(container, v int64) (bool, error) {
+	co, ok := e.heap[container]
+	if !ok {
+		return false, nil
+	}
+	switch co.kind {
+	case "list", "set":
+		for _, el := range co.elems {
+			if e.eqVal(v, el) {
+				return true, nil
+			}
+		}
+		return false, nil
+	case "dict":
+		for _, k := range co.elems {
+			if e.eqVal(v, k) {
+				return true, nil
+			}
+		}
+		return false, nil
+	case "str":
+		if vo, ok := e.heap[v]; ok && vo.kind == "str" {
+			return strings.Contains(co.sval, vo.sval), nil
+		}
+		return false, nil
+	}
+	return false, nil
+}
+
 func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 	l, err := e.eval(n.L)
 	if err != nil {
@@ -1278,34 +1335,35 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return l % r, nil
 	case "==":
-		if lf, ok := e.floatOf(l); ok {
-			rf, rfok := e.floatOf(r)
-			if !rfok {
-				rf = float64(r)
-			}
-			if lf == rf {
-				return 1, nil
-			}
-			return 0, nil
+		if e.eqVal(l, r) {
+			return 1, nil
 		}
-		if rf, ok := e.floatOf(r); ok {
-			if float64(l) == rf {
-				return 1, nil
-			}
-			return 0, nil
-		}
-		if lo, ok := e.heap[l]; ok && lo.kind == "str" {
-			if ro, ok := e.heap[r]; ok && ro.kind == "str" {
-				if lo.sval == ro.sval {
-					return 1, nil
-				}
-				return 0, nil
-			}
-		}
+		return 0, nil
+	case "is":
 		if l == r {
 			return 1, nil
 		}
 		return 0, nil
+	case "is not":
+		if l != r {
+			return 1, nil
+		}
+		return 0, nil
+	case "in", "not in":
+		found, err := e.contains(r, l)
+		if err != nil {
+			return 0, err
+		}
+		if n.Op == "in" {
+			if found {
+				return 1, nil
+			}
+			return 0, nil
+		}
+		if found {
+			return 0, nil
+		}
+		return 1, nil
 	case "!=":
 		if l != r {
 			return 1, nil

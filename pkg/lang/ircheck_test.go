@@ -1867,3 +1867,13 @@ print(a.speak())
 		t.Fatalf("expected both speak targets in dispatch, got:\n%s", ir)
 	}
 }
+func TestIRMembership(t *testing.T) {
+	srcs := []string{
+		"lst = [1, 2, 3]\nif 1 in lst:\n    print(1)\nif 4 not in lst:\n    print(2)\nif 1 is 1:\n    print(3)\nif 1 is not 2:\n    print(4)",
+		"s = {1, 2, 3}\nif 2 in s:\n    print(5)\nif 9 not in s:\n    print(6)",
+		"d = {1: 10, 2: 20}\nif 2 in d:\n    print(7)\nif 3 not in d:\n    print(8)",
+	}
+	for _, src := range srcs {
+		llcCompiles(t, src)
+	}
+}

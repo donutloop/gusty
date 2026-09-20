@@ -177,6 +177,39 @@ add:
   ret void
 }
 
+define internal i32 @rt_contains(i32 %h, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
+  %kind = load i32, i32* %kp
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  %islist = icmp eq i32 %kind, 1
+  br i1 %islist, label %loop, label %chkdict
+chkdict:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ 0, %chkdict ], [ %inext, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %miss
+body:
+  %isdict = icmp eq i32 %kind, 2
+  %idx = mul i32 %i, 2
+  %sel = select i1 %isdict, i32 %idx, i32 %i
+  %ep = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %sel
+  %e = load i32, i32* %ep
+  %eq = icmp eq i32 %e, %v
+  br i1 %eq, label %hit, label %cont
+cont:
+  %inext = add i32 %i, 1
+  br label %loop
+hit:
+  ret i32 1
+miss:
+  ret i32 0
+}
+
 define internal i32 @rt_dict_get(i32 %h, i32 %k) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -2096,6 +2129,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, t))
 			return res, nil
 		}
+		// Membership tests need runtime container access, so handle them
+		// separately from the i32 arithmetic/comparison ops.
+		if n.Op == "in" || n.Op == "not in" {
+			// l is the value to test, r is the container handle.
+			t := g.newTmp()
+			b.WriteString(fmt.Sprintf("	%s = call i32 @rt_contains(i32 %s, i32 %s)\n", t, r, l))
+			bt := g.newTmp()
+			b.WriteString(fmt.Sprintf("	%s = icmp ne i32 %s, 0\n", bt, t))
+			if n.Op == "not in" {
+				nt := g.newTmp()
+				b.WriteString(fmt.Sprintf("	%s = xor i1 %s, true\n", nt, bt))
+				return nt, nil
+			}
+			return bt, nil
+		}
 		var op string
 		switch n.Op {
 		case "+":
@@ -2108,6 +2156,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			op = "sdiv"
 		case "%":
 			op = "srem"
+		case "is":
+			op = "icmp eq"
+		case "is not":
+			op = "icmp ne"
 		case "==":
 			op = "icmp eq"
 		case "!=":

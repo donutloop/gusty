@@ -342,7 +342,7 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 			an.warnf(n.Span(), "arithmetic on non-numeric operands (%s, %s)", lt.Name(), rt.Name())
 		}
 		return TDyn()
-	case "==", "!=", "<", "<=", ">", ">=":
+	case "==", "!=", "<", "<=", ">", ">=", "in", "not in", "is", "is not":
 		return TBool()
 	case "and", "or":
 		return TBool()

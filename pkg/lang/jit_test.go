@@ -1158,3 +1158,37 @@ func TestEvalAbsFloat(t *testing.T) {
 		}
 	}
 }
+
+func TestEvalMembership(t *testing.T) {
+	tests := []struct {
+		src  string
+		want int64
+	}{
+		{"1 in [1, 2, 3]", 1},
+		{"4 in [1, 2, 3]", 0},
+		{"1 not in [1, 2, 3]", 0},
+		{"4 not in [1, 2, 3]", 1},
+		{"2 in {1, 2, 3}", 1},
+		{"9 in {1, 2, 3}", 0},
+		{`"b" in "abc"`, 1},
+		{`"z" in "abc"`, 0},
+		{"2 in {1: 10, 2: 20}", 1},
+		{"3 in {1: 10, 2: 20}", 0},
+		{"1 is 1", 1},
+		{"1 is 2", 0},
+		{"1 is not 1", 0},
+		{"1 is not 2", 1},
+	}
+	for _, tc := range tests {
+		got, diags, err := EvalExpr(tc.src)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.src, err)
+		}
+		if len(diags) > 0 {
+			t.Fatalf("%s: diags: %v", tc.src, diags)
+		}
+		if got != tc.want {
+			t.Fatalf("%s got %d, want %d", tc.src, got, tc.want)
+		}
+	}
+}
