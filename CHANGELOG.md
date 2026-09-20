@@ -1,4 +1,19 @@
-## [v0.??] - augmented assignment (Phase 6)
+# CHANGELOG
+
+All notable changes to gusty are documented here, newest first.
+pre-`1.0.0` releases (`v0.x.y`) while still in development.
+
+
+## [Unreleased] - v0.10.0 (in progress)
+
+
+### Tuple unpacking / multi-assign
+- Added tuple expression `(a, b)` and tuple targets `a, b = v1, v2`.
+- Interpreter: unpacking from lists/tuples, swap, and `for a, b in ...` tuple loop vars.
+- Codegen (AOT): tuple assignment `a, b = v1, v2` and swap emit per-element stores.
+
+
+### augmented assignment (Phase 6)
 
 - New `x op= e` augmented-assignment statements: `+=`, `-=`, `*=`, `/=`, `//=`,
   `%=` on Name and Attr targets (e.g. `x += 2`, `self.x *= 3`).
@@ -12,7 +27,8 @@
 - Semantic/closure/escape walkers handle `AugAssignStmt` (target is read+write).
 - JSON schema: `augAssignStmt` entry.
 
-## [v0.9.??] - sequence slicing `s[a:b]`, `s[::step]`, negative indices
+
+### sequence slicing `s[a:b]`, `s[::step]`, negative indices
 
 - Added the `Slice` expression to the AST (`pkg/lang/ast.go`): `Obj`, optional
   `Low`/`High`/`Step` bounds; parsed in `parsePostfix` for `s[a:b]`, `s[a:b:c]`,
@@ -29,15 +45,8 @@
 - Integration test `TestSlice` covers step, defaults, negative indices, and
   reverse (`l[::-1]`) in both the interpreter and native paths.
 
-## [v0.10.32] - escape-analysis heap elision (ADR 0134)
-- Always-on dead-object elimination: a top-level list literal assigned to a
-  variable that is never read no longer emits its `rt_alloc` heap allocation
-  (proving the object never escapes). Source-level proof in `pkg/lang/escape.go`,
-  wired into codegen (`Name = ListLit` in `stmt`), guarded by `inFunc` so it
-  never fires inside function bodies. Unit test `TestAOTEscapeDeadList` checks
-  the emitted IR; whole-program correctness guarded by `TestEscapeDeadListRun`.
 
-## [v0.??] - dynamic method dispatch (AOT) + interpreter return-in-block fix
+### dynamic method dispatch (AOT) + interpreter return-in-block fix
 - AOT codegen: dynamic method dispatch on instances whose class is not
   statically known (statement-level) — a runtime receiver dispatches to the
   method of the actual class.
@@ -48,7 +57,17 @@
   codegen IR test (TestAOTDynamicDispatch), and native integration test
   (TestExecDynamicDispatch).
 
-## [v0.??] - Phase 2: real IR optimizer
+
+### escape-analysis heap elision (ADR 0134)
+- Always-on dead-object elimination: a top-level list literal assigned to a
+  variable that is never read no longer emits its `rt_alloc` heap allocation
+  (proving the object never escapes). Source-level proof in `pkg/lang/escape.go`,
+  wired into codegen (`Name = ListLit` in `stmt`), guarded by `inFunc` so it
+  never fires inside function bodies. Unit test `TestAOTEscapeDeadList` checks
+  the emitted IR; whole-program correctness guarded by `TestEscapeDeadListRun`.
+
+
+### Phase 2: real IR optimizer
 - Replaced the regex-ish `opt.go` text transform with a genuine IR pass
   pipeline (ADR 0088): a lightweight textual-LLVM-IR parser + CFG
   construction, then per-function passes to a fixed point:
@@ -59,107 +78,126 @@
 - Output is re-serialized as valid textual IR for the whole emitted subset,
   verified end-to-end through `llvm-as`/`llc` in `TestOptimizedIRValidForLLC`.
 
-## [v0.10.31] - reversed-list parity: interpreter vs AOT length
+
+### reversed-list parity: interpreter vs AOT length
 - Adds TestIRImportReversedListParity: `len(reversed(cfg.l))` runs through
   the interpreter (EvalExpr -> 3) and the AOT folds `len(cfg.l)` to 3,
   documenting that `reversed(cfg.l)` preserves the source list length in
   AOT data imports.
 
-## [v0.10.30] - arithmetic on indexed imported dict globals
+
+### arithmetic on indexed imported dict globals
 - `cfg.d[k] + cfg.d[j]` where `cfg.d` is an imported dict module global now
   folds to the sum in the AOT (Index resolves `*Attr` to folded dicts and
   BinOp folds the resulting literals), with an interpreter-vs-AOT parity
   unit test (TestIRImportDictArithInterpVsAOT).
 
-## [v0.10.29] - len of imported dict module globals
+
+### len of imported dict module globals
 - `len(cfg.d)` where `cfg.d` is an imported dict module global now returns
   the folded dict's entry count in the AOT `len` builtin (an `*Attr`
   expression resolves against the imports registry to a folded `DictLit`).
 
-## [v0.10.28] - arithmetic on indexed imported list globals
+
+### arithmetic on indexed imported list globals
 - `cfg.l[i] + cfg.l[j]` where `cfg.l` is an imported list module global now
   folds to the sum in the AOT (Index resolves `*Attr` to folded lists, and
   BinOp folds the resulting literals), with an interpreter-vs-AOT parity
   unit test (TestIRImportListArithInterpVsAOT).
 
-## [v0.10.27] - reversed of imported list module globals
+
+### reversed of imported list module globals
 - `reversed(cfg.l)` where `cfg.l` is an imported list module global now
   folds the reversed list in the AOT `reversed` builtin (an `*Attr`
   expression resolves against the imports registry to a folded `ListLit`).
 
-## [v0.10.26] - indexing imported dict module globals
+
+### indexing imported dict module globals
 - `cfg.d[k]` where `cfg.d` is an imported dict module global now indexes
   into the folded dict in the AOT `Index` path (an `*Attr` expression
   resolves against the imports registry to a folded `DictLit`, comparing
   integer keys).
 
-## [v0.10.25] - sorted of imported list module globals
+
+### sorted of imported list module globals
 - `sorted(cfg.l)` where `cfg.l` is an imported list module global now folds
   the sorted list in the AOT `sorted` builtin (an `*Attr` expression
   resolves against the imports registry to a folded `ListLit`).
 
-## [v0.10.24] - len of imported list module globals
+
+### len of imported list module globals
 - `len(cfg.l)` where `cfg.l` is an imported list module global now returns
   the folded list's length in the AOT `len` builtin (an `*Attr` expression
   resolves against the imports registry to a folded `ListLit`).
 
-## [v0.10.23] - dict module globals in AOT data imports
+
+### dict module globals in AOT data imports
 - AOT data imports now constant-fold **dict** module globals: `foldConst`
   accepts a `DictLit` whose keys and values fold recursively, so `mod.d`
   reads compile to folded dicts (e.g. `d = {1: 10}`).
 
-## [v0.10.22] - indexing imported list module globals
+
+### indexing imported list module globals
 - `cfg.l[i]` where `cfg.l` is an imported list module global now indexes into
   the folded list in the AOT `Index` path (an `*Attr` expression resolves
   against the imports registry before the literal-list path).
 
-## [v0.10.21] - list module globals in AOT data imports
+
+### list module globals in AOT data imports
 - AOT data imports now constant-fold **list** module globals: `foldConst`
   accepts a `ListLit` whose elements fold recursively, so `mod.list` reads
   compile to folded lists (e.g. `l = [1, 2, 3]`).
 
-## [v0.10.20] - interpreter-vs-AOT parity for reversed import strings
+
+### interpreter-vs-AOT parity for reversed import strings
 - Adds TestIRImportReversedInterpVsAOT: `import msg; len(reversed(msg.msg))`
   runs through the interpreter (EvalExpr -> 6) and through the AOT compiler
   (IR folds len(reversed("hello!")) to 6), asserting both agree.
 
-## [v0.10.19] - reversed of imported string module globals
+
+### reversed of imported string module globals
 - `reversed(mod.str)` where `mod.str` is an imported string module global now
   folds to the reversed string in the AOT `reversed` builtin (an `*Attr`
   expression resolves against the imports registry before the generic
   string-reversal path).
 
-## [v0.10.18] - interpreter-vs-AOT comparison tests for import string globals
+
+### interpreter-vs-AOT comparison tests for import string globals
 - Adds TestIRImportStringInterpVsAOT: runs `import msg; len(msg.msg)` through
   the interpreter (EvalExpr) and the AOT compiler, asserting both fold to the
   same value (len("hello!") == 6), covering the string module-global data
   import path end-to-end.
 
-## [v0.10.17] - ord of imported string module globals
+
+### ord of imported string module globals
 - `ord(mod.str)` where `mod.str` is an imported string module global now
   returns the folded string's first byte value in the AOT `ord` builtin
   (an `*Attr` expression resolves against the imports registry).
 
-## [v0.10.16] - len of imported string module globals
+
+### len of imported string module globals
 - `len(mod.str)` where `mod.str` is an imported string module global now
   returns the folded string's length in the AOT `len` builtin (an `*Attr`
   expression resolves against the imports registry before the generic
   string-length path).
 
-## [v0.10.15] - print of imported string module globals
+
+### print of imported string module globals
 - `print(mod.str)` where `mod.str` is an imported string module global now
   emits `printf("%s", i8*)` and outputs the string. `stringVal` resolves an
   `*Attr` expression against the AOT imports registry (folded module
   globals), so folded string constants print correctly (previously they fell
   into the integer `%d` path and produced invalid IR).
 
-## [v0.10.14] - import mod: string globals & concat in AOT data imports
+
+### import mod: string globals & concat in AOT data imports
 - AOT data imports now constant-fold **string** module globals and
   **string concatenation** (`"a" + "b"` -> `"ab"`) in module global
   expressions, so layered string constants (e.g. `greet = "hello"`,
   `msg = greet + "!"`) compile to folded constants.
 
-## [v0.10.13] - import mod: nested imports in AOT (data imports)
+
+### import mod: nested imports in AOT (data imports)
 - AOT `import mod` now supports **nested imports**: a module that itself
   `import other` compiles by recursively constant-folding the nested module's
   globals, and `other.var` references resolve in the parent module's global
@@ -168,7 +206,8 @@
   non-numeric operands" on module-attr operands, which fold to numbers at
   compile time) and rejects only on true semantic errors.
 
-## [v0.10.12] - import mod in AOT (data imports)
+
+### import mod in AOT (data imports)
 - `import mod` now compiles in the AOT backend: `mod.gy` is parsed, analyzed,
   and its top-level global variables are constant-folded to literals, so
   `mod.var` reads resolve statically to compile-time constants.
@@ -179,17 +218,18 @@
   definition line, so literal globals (e.g. @.strN) after internal globals
   (@exn_flag, @env_store) are pruned when dead.
 
-## [v0.10.11] - try/except/finally/raise in the AOT/LLVM backend
+
+### try/except/finally/raise in the AOT/LLVM backend
 - Compile try/except/finally and raise statements to LLVM IR (ADR 0111).
 - Add @exn_flag/@exn_code globals and a raise-exit label per function so
   exceptions propagate across user-function calls to the nearest except handler.
 - Add integration tests (TestExecTryExcept) covering bare except, finally,
   specific except matching, and cross-function raise propagation.
 
-# CHANGELOG
 
 
-## [v0.10.10] - print(chr(const)) valid %s printf
+
+### print(chr(const)) valid %s printf
 
 - print(chr(65)) previously fed the chr string-global array as i32 to a
   %d printf (llc: global variable reference must have pointer type).
@@ -197,46 +237,53 @@
   printf with the chr global pointer. Adds TestIRPrintChrConst and
   TestExecPrintChrConst.
 
-## [v0.10.9] - int(float var) / float(int var) AOT parity
+
+### int(float var) / float(int var) AOT parity
 
 - Locks AOT binary conversion parity: int(3.9) truncates to 3, int(-3.9)
   to -3, float(2) widens to 2.0. Adds TestExecIntFloatConv.
 
-## [v0.10.8] - negative float floor/mod/neg AOT verification
+
+### negative float floor/mod/neg AOT verification
 
 - Locks AOT binary parity for negative floats: -3.5//2.0 == -2 (llvm.floor),
   -3.5%%2.0 == -1.5 (frem), abs(-3.5) == 3.5 (fabs), round(-3.5) == -4
   (llvm.round). Interpreter already matched; adds TestExecFloatFloorModNegNeg.
 
-## [v0.10.7] - abs(float) interpreter parity
+
+### abs(float) interpreter parity
 
 - Interpreter abs() now negates a negative float64 payload instead of
   returning the boxed heap handle unchanged (abs(-3.5) gave -3.5, now 3.5).
   AOT already emitted llvm.fabs.
 - Tests: TestEvalAbsFloat, TestExecAbsFloat.
 
-## [v0.10.6] - round(int variable) AOT parity
+
+### round(int variable) AOT parity
 
 - AOT round() now passes an int variable through (identity) instead of
   erroring "round: codegen folds only a constant integer arg". round(a) for
   an int var emits the value unchanged; round of a string still errors.
 - Tests: TestIRRoundIntVar, TestExecRoundIntVar.
 
-## [v0.10.5] - round(float var) AOT parity
+
+### round(float var) AOT parity
 
 - AOT round() now supports float variables: emits llvm.round.f64 + fptosi
   (round-half-away), matching interpreter math.Round. Previously round()
   errored with "folds only a constant integer arg" for a float variable.
 - Tests: TestIRRoundFloatVar, TestExecRoundVar.
 
-## [v0.10.4] - round() float parity
+
+### round() float parity
 
 - Interpreter `round(float)` now uses math.Round (half-away-from-zero), matching
   the AOT codegen constant-folded math.Round. Previously it truncated toward
   zero (round(2.5) gave 2 instead of 3).
 - Tests: TestEvalRound, TestExecRound.
 
-## [v0.10.3] - float floor/mod/neg parity
+
+### float floor/mod/neg parity
 
 - **Float `//` floor division, `%` remainder, unary `-`** (interpreter + AOT):
   interpreter now floors `//` (`math.Floor`), uses `math.Mod` for `%`, and
@@ -249,7 +296,8 @@
 - Tests: `TestEvalFloatFloorModNeg`, `TestIRFloatFloorModNeg`,
   `TestExecFloatFloorModNeg`.
 
-## [v0.10.2] - interpreter float sub/mul parity
+
+### interpreter float sub/mul parity
 
 - **Float `-` and `*` arithmetic** (roadmap floats gap): the interpreter now
   operates on the float64 payload of boxed floats instead of multiplying or
@@ -260,7 +308,8 @@
 - Interpreter test `TestEvalFloatSubMul` asserts exact float payloads via
   `floatOf`.
 
-## [v0.10.1] - float str() print parity
+
+### float str() print parity
 
 - **`print(str(float-const))` AOT parity** (roadmap gap): `str(3.5)` now
   folds to its `%g` decimal string constant (matching the interpreter's
@@ -272,7 +321,8 @@
 - Unit tests (`TestIRPrintStrFloatIsValid`) and integration tests
   (`TestExecPrintStrFloat`) lock in the fix.
 
-## [v0.10.0] - roadmap phase 0
+
+### roadmap phase 0
 
 - **Version hygiene (roadmap Phase 0)**: reconcile the stale compiler version
   constant (`pkg/lang/compile.go` said `0.1.0` while the changelog said
@@ -285,7 +335,8 @@
   deps; codegen remains a textual IR emitter verified by external `llc`/`cc`.
 
 
-## [Unreleased] - 2026-09-17
+
+### CLI multi-file build
 
 ### Added — CLI multi-file build
 
@@ -309,9 +360,8 @@
   (`len(esc)+1`); it now uses the decoded raw length `len(s)+1`.
 
 
-All notable changes to gusty are documented here, newest first.
 This project adheres to [Semantic Versioning](https://semver.org) with
-pre-`1.0.0` releases (`v0.x.y`) while still in development.
+
 
 ## [v0.9.0] - 2026-09-17
 
@@ -405,6 +455,7 @@ that mirrors the interpreter, and a machine-readable CLI for agents.
   native binary's stdout matches the expected output.
 - CI workflow installs LLVM 20 and runs the unit + integration suites.
 
+
 ## [v0.8.2] - 2023-05-08
 
 - Base release of gusty with the indentation-based lexer, parser, semantic
@@ -414,8 +465,3 @@ that mirrors the interpreter, and a machine-readable CLI for agents.
 [Unreleased]: https://github.com/donutloop/gusty/compare/v0.9.0...HEAD
 [v0.9.0]: https://github.com/donutloop/gusty/compare/v0.8.2...v0.9.0
 [v0.8.2]: https://github.com/donutloop/gusty/releases/tag/v0.8.2
-
-## Tuple unpacking / multi-assign
-- Added tuple expression `(a, b)` and tuple targets `a, b = v1, v2`.
-- Interpreter: unpacking from lists/tuples, swap, and `for a, b in ...` tuple loop vars.
-- Codegen (AOT): tuple assignment `a, b = v1, v2` and swap emit per-element stores.
