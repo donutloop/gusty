@@ -58,6 +58,17 @@ func deadListAssignments(prog []Stmt) map[string]bool {
 		case *Index:
 			walkExpr(n.Obj)
 			walkExpr(n.Idx)
+		case *Slice:
+			walkExpr(n.Obj)
+			if n.Low != nil {
+				walkExpr(n.Low)
+			}
+			if n.High != nil {
+				walkExpr(n.High)
+			}
+			if n.Step != nil {
+				walkExpr(n.Step)
+			}
 		case *Comp:
 			for _, el := range n.Elems {
 				walkExpr(el)

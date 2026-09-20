@@ -307,6 +307,22 @@ func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 		an.inferExpr(n.Obj)
 		an.inferExpr(n.Idx)
 		return TDyn()
+	case *Slice:
+		objTy := an.inferExpr(n.Obj)
+		if n.Low != nil {
+			an.inferExpr(n.Low)
+		}
+		if n.High != nil {
+			an.inferExpr(n.High)
+		}
+		if n.Step != nil {
+			an.inferExpr(n.Step)
+		}
+		// slicing preserves the element container type (str -> str, list -> list)
+		if objTy.Kind == KindString || objTy.Kind == KindList {
+			return objTy
+		}
+		return TDyn()
 	case *Generator:
 		return TIter(TDyn())
 	case *CondExpr:

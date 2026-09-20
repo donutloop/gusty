@@ -135,6 +135,17 @@ func collectNames(node interface{}, out map[string]bool) {
 	case *Index:
 		collectNames(n.Obj, out)
 		collectNames(n.Idx, out)
+	case *Slice:
+		collectNames(n.Obj, out)
+		if n.Low != nil {
+			collectNames(n.Low, out)
+		}
+		if n.High != nil {
+			collectNames(n.High, out)
+		}
+		if n.Step != nil {
+			collectNames(n.Step, out)
+		}
 	case *Attr:
 		collectNames(n.Obj, out)
 	}

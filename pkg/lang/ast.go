@@ -265,6 +265,18 @@ type Index struct {
 func (n *Index) Span() Span { return n.sp }
 func (n *Index) exprNode()  {}
 
+// Slice is a sequence slice expression `s[a:b]`, `s[a:b:c]`, `s[::step]`.
+// Low/High/Step are nil when the corresponding bound is absent (`s[:b]`).
+type Slice struct {
+	Obj  Expr `json:"obj"`
+	Low  Expr `json:"low,omitempty"`
+	High Expr `json:"high,omitempty"`
+	Step Expr `json:"step,omitempty"`
+	sp   Span `json:"-"`
+}
+func (n *Slice) Span() Span { return n.sp }
+func (n *Slice) exprNode()  {}
+
 type Attr struct {
 	Obj  Expr  `json:"obj"`
 	Name *Name `json:"name"`

@@ -1,3 +1,20 @@
+## [v0.9.??] - sequence slicing `s[a:b]`, `s[::step]`, negative indices
+
+- Added the `Slice` expression to the AST (`pkg/lang/ast.go`): `Obj`, optional
+  `Low`/`High`/`Step` bounds; parsed in `parsePostfix` for `s[a:b]`, `s[a:b:c]`,
+  `s[:b]`, `s[a:]`, `s[:]`, `s[::step]`, and negative indices (`parser.go`).
+- Interpreter (`jit.go`): full CPython `PySlice_GetIndicesEx` semantics via the
+  new `pySliceIndices` helper; returns a new list or string object (strings are
+  sliced by byte; lists by element handle). Rejects dict/other with a clear error.
+- AOT backend (`codegen.go`): new runtime helpers `rt_max`, `rt_min`, and
+  `rt_slice` (heap kind-aware copy with positive/negative-step normalization);
+  emits `%slN = call @rt_slice(...)` from the `value` function's `case *Slice:`.
+  List slices are recognized by `print` so they print as `[a, b, c]` rather
+  than as an opaque handle.
+- Semantics/escape/closure passes walk the new `Slice` node.
+- Integration test `TestSlice` covers step, defaults, negative indices, and
+  reverse (`l[::-1]`) in both the interpreter and native paths.
+
 ## [v0.10.32] - escape-analysis heap elision (ADR 0134)
 - Always-on dead-object elimination: a top-level list literal assigned to a
   variable that is never read no longer emits its `rt_alloc` heap allocation

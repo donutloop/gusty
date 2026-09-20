@@ -1157,3 +1157,23 @@ print(f())
 		t.Fatal("non-identity decorator should be rejected in AOT")
 	}
 }
+func TestSlice(t *testing.T) {
+	assertOutput(t, `
+l = [1, 2, 3, 4, 5, 6]
+print(l[1:4])
+print(l[::2])
+print(l[-3:])
+print(l[:])
+print(l[:4])
+print(l[1:5:2])
+print(l[::-1])
+print(l[0])
+print(l[2:])
+print(l[:-2])
+print(l[5:0:-2])
+print(l[100:200])
+print(l[-100:100])
+print(l[0:100:3])
+print(l[6:0:-1])
+`, "[2, 3, 4]\n[1, 3, 5]\n[4, 5, 6]\n[1, 2, 3, 4, 5, 6]\n[1, 2, 3, 4]\n[2, 4]\n[6, 5, 4, 3, 2, 1]\n1\n[3, 4, 5, 6]\n[1, 2, 3, 4]\n[6, 4, 2]\n[]\n[1, 2, 3, 4, 5, 6]\n[1, 4]\n[6, 5, 4, 3, 2]\n")
+}

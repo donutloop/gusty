@@ -896,14 +896,41 @@ func (p *parser) parsePostfix() (Expr, error) {
 		}
 		if t.IsOp("[") {
 			p.next()
-			idx, err := p.parseExpr()
-			if err != nil {
-				return nil, err
+			var low, high, step Expr
+			var isSlice bool
+			if !p.peek().IsOp(":") && !p.peek().IsOp("]") {
+				low, err = p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+			}
+			if p.peek().IsOp(":") {
+				isSlice = true
+				p.next()
+				if !p.peek().IsOp(":") && !p.peek().IsOp("]") {
+					high, err = p.parseExpr()
+					if err != nil {
+						return nil, err
+					}
+				}
+				if p.peek().IsOp(":") {
+					p.next()
+					if !p.peek().IsOp("]") {
+						step, err = p.parseExpr()
+						if err != nil {
+							return nil, err
+						}
+					}
+				}
 			}
 			if err := p.expectOp("]"); err != nil {
 				return nil, err
 			}
-			x = &Index{Obj: x, Idx: idx, sp: t.Span}
+			if isSlice {
+				x = &Slice{Obj: x, Low: low, High: high, Step: step, sp: t.Span}
+			} else {
+				x = &Index{Obj: x, Idx: low, sp: t.Span}
+			}
 			continue
 		}
 		if t.IsOp(".") {

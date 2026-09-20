@@ -13,6 +13,33 @@ List, dict, and set comprehensions are supported. Dict/set comprehensions use
 `for` inside the braces, Python-style: `{x: x*2 for x in [1,2,3]}` builds a
 dict, `{x for x in [1,2]}` a set. See ADR 0095.
 
+## Slicing (`s[a:b]`, `s[::step]`, negative indices)
+
+Sequence slicing is supported on strings and lists in both the interpreter and
+the AOT (native) backend:
+
+```
+l = [1, 2, 3, 4, 5, 6]
+print(l[1:4])    # [2, 3, 4]
+print(l[:])      # [1, 2, 3, 4, 5, 6]
+print(l[::2])    # [1, 3, 5]
+print(l[-3:])    # [4, 5, 6]
+print(l[::-1])   # [6, 5, 4, 3, 2, 1]
+```
+
+- `s[a:b]` copies the slice from index `a` (inclusive) to `b` (exclusive).
+- Omitted bounds default to the sequence start/end (`s[:b]`, `s[a:]`, `s[:]`).
+- An explicit `step` selects every `step`-th element (`s[a:b:c]`, `s[::step]`);
+  a negative step walks backwards (`l[::-1]`).
+- Negative indices count from the end (`s[-3:]` == last three elements).
+- A zero step is an error.
+- Slicing a string returns a string; slicing a list returns a list.
+
+String slicing is supported in the interpreter; in the AOT backend string
+variables are currently limited (string *literals* are supported inline), so
+list slicing is the primary native path. See `pkg/lang/jit.go` (`pySliceIndices`)
+and the `rt_slice` runtime helper in `pkg/lang/codegen.go`.
+
 ## Pattern matching
 
 `match` supports list-destructuring patterns: `case [a, b]:` matches a list

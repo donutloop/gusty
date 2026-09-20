@@ -60,6 +60,66 @@ func (e *Evaluator) allocStr(val string) int64 {
 	return id
 }
 
+// pySliceIndices computes the normalized start/stop/step for a slice
+// following CPython's PySlice_GetIndicesEx semantics (used by s[a:b:c]).
+func pySliceIndices(low, high, step int64, hasLow, hasHigh bool, n int64) (start, stop, stp int64) {
+	if step > 0 {
+		if hasLow {
+			if low < 0 {
+				low = maxInt(n+low, 0)
+			} else {
+				low = minInt(low, n)
+			}
+		} else {
+			low = 0
+		}
+		if hasHigh {
+			if high < 0 {
+				high = maxInt(n+high, 0)
+			} else {
+				high = minInt(high, n)
+			}
+		} else {
+			high = n
+		}
+		return low, high, step
+	}
+	// step < 0
+	if hasLow {
+		if low < 0 {
+			low = maxInt(n+low, -1)
+		} else {
+			low = minInt(low, n-1)
+		}
+	} else {
+		low = n - 1
+	}
+	if hasHigh {
+		if high < 0 {
+			high = maxInt(n+high, -1)
+		} else {
+			high = minInt(high, n-1)
+		}
+	} else {
+		high = -1
+	}
+	return low, high, step
+}
+
+func maxInt(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // allocFloat allocates a boxed float value and returns its heap handle.
 func (e *Evaluator) allocFloat(val float64) int64 {
 	id := e.allocObj("float")
@@ -995,6 +1055,68 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		default:
 			return 0, &EvalError{Msg: "cannot index this value"}
 		}
+
+	case *Slice:
+		objH, err := e.eval(n.Obj)
+		if err != nil {
+			return 0, err
+		}
+		o := e.heap[objH]
+		if o == nil {
+			return 0, &EvalError{Msg: "slice of null"}
+		}
+		if o.kind != "list" && o.kind != "str" {
+			return 0, &EvalError{Msg: "cannot slice this value"}
+		}
+		lowRaw := int64(0)
+		highRaw := int64(0)
+		step := int64(1)
+		if n.Low != nil {
+			v, err := e.eval(n.Low)
+			if err != nil {
+				return 0, err
+			}
+			lowRaw = v
+		}
+		if n.High != nil {
+			v, err := e.eval(n.High)
+			if err != nil {
+				return 0, err
+			}
+			highRaw = v
+		}
+		if n.Step != nil {
+			v, err := e.eval(n.Step)
+			if err != nil {
+				return 0, err
+			}
+			step = v
+			if step == 0 {
+				return 0, &EvalError{Msg: "slice step cannot be zero"}
+			}
+		}
+		length := int64(0)
+		if o.kind == "str" {
+			length = int64(len(o.sval))
+		} else {
+			length = int64(len(o.elems))
+		}
+		start, stop, stp := pySliceIndices(lowRaw, highRaw, step, n.Low != nil, n.High != nil, length)
+		if o.kind == "str" {
+			var sb strings.Builder
+			for i := start; (stp > 0 && i < stop) || (stp < 0 && i > stop); i += stp {
+				sb.WriteByte(o.sval[i])
+			}
+			return e.allocStr(sb.String()), nil
+		}
+		var elems []int64
+		for i := start; (stp > 0 && i < stop) || (stp < 0 && i > stop); i += stp {
+			elems = append(elems, o.elems[i])
+		}
+		nh := e.allocObj("list")
+		e.heap[nh].elems = elems
+		return nh, nil
+
 	case *DictLit:
 		h := e.allocObj("dict")
 		o := e.heap[h]

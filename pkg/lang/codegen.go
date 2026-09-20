@@ -499,6 +499,160 @@ done:
   ret void
 }
 
+
+define internal i32 @rt_max(i32 %a, i32 %b) {
+entry:
+  %cmp = icmp sgt i32 %a, %b
+  br i1 %cmp, label %aret, label %bret
+aret:
+  ret i32 %a
+bret:
+  ret i32 %b
+}
+
+define internal i32 @rt_min(i32 %a, i32 %b) {
+entry:
+  %cmp = icmp slt i32 %a, %b
+  br i1 %cmp, label %aret, label %bret
+aret:
+  ret i32 %a
+bret:
+  ret i32 %b
+}
+
+define internal i32 @rt_slice(i32 %h, i32 %low, i32 %high, i32 %step, i32 %hasLow, i32 %hasHigh, i32 %hasStep) {
+entry:
+  %p = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lenp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %p, i32 0, i32 1
+  %len = load i32, i32* %lenp
+  %kindp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %p, i32 0, i32 0
+  %kind = load i32, i32* %kindp
+  %posCmp = icmp sgt i32 %step, 0
+  br i1 %posCmp, label %pos, label %neg
+
+pos:
+  %ps = alloca i32
+  %pt = alloca i32
+  store i32 0, i32* %ps
+  store i32 %len, i32* %pt
+  %hl = icmp ne i32 %hasLow, 0
+  br i1 %hl, label %p_low, label %p_hi
+p_low:
+  %lneg = icmp slt i32 %low, 0
+  br i1 %lneg, label %p_low_neg, label %p_low_nn
+p_low_neg:
+  %l1 = add i32 %len, %low
+  %lm = call i32 @rt_max(i32 %l1, i32 0)
+  store i32 %lm, i32* %ps
+  br label %p_hi
+p_low_nn:
+  %lmin = call i32 @rt_min(i32 %low, i32 %len)
+  store i32 %lmin, i32* %ps
+  br label %p_hi
+p_hi:
+  %hh = icmp ne i32 %hasHigh, 0
+  br i1 %hh, label %p_high, label %p_done
+p_high:
+  %hneg = icmp slt i32 %high, 0
+  br i1 %hneg, label %p_high_neg, label %p_high_nn
+p_high_neg:
+  %h1 = add i32 %len, %high
+  %hm = call i32 @rt_max(i32 %h1, i32 0)
+  store i32 %hm, i32* %pt
+  br label %p_done
+p_high_nn:
+  %hmin = call i32 @rt_min(i32 %high, i32 %len)
+  store i32 %hmin, i32* %pt
+  br label %p_done
+p_done:
+  %s = load i32, i32* %ps
+  %t = load i32, i32* %pt
+  br label %build
+
+neg:
+  %ns = alloca i32
+  %nt = alloca i32
+  %lmb = sub i32 %len, 1
+  store i32 %lmb, i32* %ns
+  store i32 -1, i32* %nt
+  %nl = icmp ne i32 %hasLow, 0
+  br i1 %nl, label %n_low, label %n_hi
+n_low:
+  %nlneg = icmp slt i32 %low, 0
+  br i1 %nlneg, label %n_low_neg, label %n_low_nn
+n_low_neg:
+  %nl1 = add i32 %len, %low
+  %nlm = call i32 @rt_max(i32 %nl1, i32 -1)
+  store i32 %nlm, i32* %ns
+  br label %n_hi
+n_low_nn:
+  %nlmin = call i32 @rt_min(i32 %low, i32 %lmb)
+  store i32 %nlmin, i32* %ns
+  br label %n_hi
+n_hi:
+  %nh2 = icmp ne i32 %hasHigh, 0
+  br i1 %nh2, label %n_high, label %n_done
+n_high:
+  %nhneg = icmp slt i32 %high, 0
+  br i1 %nhneg, label %n_high_neg, label %n_high_nn
+n_high_neg:
+  %nh1 = add i32 %len, %high
+  %nhm = call i32 @rt_max(i32 %nh1, i32 -1)
+  store i32 %nhm, i32* %nt
+  br label %n_done
+n_high_nn:
+  %nhmin = call i32 @rt_min(i32 %high, i32 %lmb)
+  store i32 %nhmin, i32* %nt
+  br label %n_done
+n_done:
+  %ns2 = load i32, i32* %ns
+  %nt2 = load i32, i32* %nt
+  br label %build
+
+build:
+  %ss = phi i32 [ %s, %p_done ], [ %ns2, %n_done ]
+  %tt = phi i32 [ %t, %p_done ], [ %nt2, %n_done ]
+  %stp = phi i32 [ %step, %p_done ], [ %step, %n_done ]
+  %nh = call i32 @rt_alloc(i32 %kind)
+  %np = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %nh
+  %nlenp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %np, i32 0, i32 1
+  store i32 0, i32* %nlenp
+  %ci = alloca i32
+  store i32 %ss, i32* %ci
+  %cd = alloca i32
+  store i32 0, i32* %cd
+  br label %loop
+
+loop:
+  %i = load i32, i32* %ci
+  %spos = icmp sgt i32 %stp, 0
+  br i1 %spos, label %cond_pos, label %cond_neg
+cond_pos:
+  %cp = icmp slt i32 %i, %tt
+  br i1 %cp, label %body, label %done
+cond_neg:
+  %cn = icmp sgt i32 %i, %tt
+  br i1 %cn, label %body, label %done
+body:
+  %srcdp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %p, i32 0, i32 2
+  %src = getelementptr [256 x i32], [256 x i32]* %srcdp, i32 0, i32 %i
+  %v = load i32, i32* %src
+  %dstp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %np, i32 0, i32 2
+  %c = load i32, i32* %cd
+  %dst = getelementptr [256 x i32], [256 x i32]* %dstp, i32 0, i32 %c
+  store i32 %v, i32* %dst
+  %c1 = add i32 %c, 1
+  store i32 %c1, i32* %cd
+  %i1 = add i32 %i, %stp
+  store i32 %i1, i32* %ci
+  br label %loop
+
+done:
+  %c2 = load i32, i32* %cd
+  store i32 %c2, i32* %nlenp
+  ret i32 %nh
+}
+
 `
 
 func GenerateIR(prog *Program) (string, error) {
@@ -2241,6 +2395,43 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return "", err
 		}
 		return name, nil
+	case *Slice:
+		objReg, err := g.value(b, n.Obj)
+		if err != nil {
+			return "", err
+		}
+		lowReg := "0"
+		highReg := "0"
+		stepReg := "1"
+		hasLow := "0"
+		hasHigh := "0"
+		hasStep := "0"
+		if n.Low != nil {
+			lowReg, err = g.value(b, n.Low)
+			if err != nil {
+				return "", err
+		}
+			hasLow = "1"
+		}
+		if n.High != nil {
+			highReg, err = g.value(b, n.High)
+			if err != nil {
+				return "", err
+		}
+			hasHigh = "1"
+		}
+		if n.Step != nil {
+			stepReg, err = g.value(b, n.Step)
+			if err != nil {
+				return "", err
+		}
+			hasStep = "1"
+		}
+		r := g.heapSeq
+		g.heapSeq++
+		fmt.Fprintf(b, "  %%sl%d = call i32 @rt_slice(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)\n", r, objReg, lowReg, highReg, stepReg, hasLow, hasHigh, hasStep)
+		return fmt.Sprintf("%%sl%d", r), nil
+
 	case *Index:
 		// list/dict/set indexing against an inline literal with a constant
 		// index/key (this llc build accepts only constant GEP indices).
@@ -3463,6 +3654,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
 					b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %%h%d)\n", hs))
 					continue
+				}
+			}
+			if sl, ok := a.(*Slice); ok {
+				if nm2, ok2 := sl.Obj.(*Name); ok2 {
+					if _, isList := g.listVars[nm2.Value]; isList {
+						h, err := g.value(b, sl)
+						if err != nil {
+							return "", err
+						}
+						fmt.Fprintf(b, "  call void @rt_print_list(i32 %s)\n", h)
+						continue
+					}
 				}
 			}
 			if nm, ok := a.(*Name); ok && g.listVars[nm.Value] {
