@@ -58,6 +58,8 @@ Rule: every component change updates the matching doc; never let
 | Phase 5 — modern GC & dead-object elimination | Escape-analysis heap elision (modern dead-object elimination) | ⏳ PLANNED | Replace the pure-Go textual dead-global elimination in `opt.go` with an IR-level liveness + escape-analysis pass that eliminates **whole dead heap objects** — not just dead instructions/blocks — proving an allocation never escapes (no `%obj` handle, closure env, or method table escapes) and deleting it before codegen. |
 | Phase 5 — modern GC & dead-object elimination | GC stress / leak harness | ✅ LANDED (TestGCStressBoundedHeap + TestGCFullGCBoundsOldGen, ADR 0133) | Extend `memory_test.go` with stress cases: rebind loops, generator yield-lists, closure envs, and class attr cycles — asserting the collector reclaims unreachable objects and keeps live ones, with parity across both the interpreter and AOT paths. |
 
+| Phase | Item | Status | Details |
+|---|---|---|---|
 | Phase 6 — language-surface parity | f-strings / string interpolation | ⏳ PLANNED | Python's signature ergonomic feature; absent in lexer/parser/AST and both backends. Add `f"..."`/`f'...'` with `{}` interpolation. |
 | Phase 6 — language-surface parity | Slicing | ⏳ PLANNED | `s[a:b]`, `s[::step]`, negative indices for str/list/dict; absent (`:` today only in dict literals, annotations, lambdas). |
 | Phase 6 — language-surface parity | Augmented assignment | ⏳ PLANNED | `+= -= *= /= //= %=`; absent today. |
