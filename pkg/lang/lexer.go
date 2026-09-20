@@ -198,6 +198,30 @@ func Lex(src string) ([]Token, error) {
 				}
 				i = j
 			case isIdentStart(c):
+				// f-string prefix: f"..." / f'...'
+				if (c == 'f' || c == 'F') && i+1 < n && (src[i+1] == '"' || src[i+1] == '\'') {
+					quote := src[i+1]
+					start := i + 2
+					j := start
+					raw := ""
+					for j < n && src[j] != quote {
+						if src[j] == '\\' && j+1 < n {
+							raw += src[start:j] + "\\" + string(src[j+1])
+							start = j + 2
+							j += 2
+							continue
+						}
+						j++
+					}
+					if j >= n {
+						return nil, &LexError{Msg: "unterminated f-string"}
+					}
+					raw += src[start:j]
+					emit(TokFString, src[i:j+1], func(t *Token) { t.FStrRaw = raw })
+					i = j
+					i++
+					continue
+				}
 				j := i
 				for j < n && isIdentChar(src[j]) {
 					j++

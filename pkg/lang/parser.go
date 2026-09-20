@@ -933,6 +933,9 @@ func (p *parser) parseAtom() (Expr, error) {
 	case t.Kind == TokString:
 		p.next()
 		return &StrLit{Value: t.Str, sp: t.Span}, nil
+	case t.Kind == TokFString:
+		p.next()
+		return p.buildFString(t.FStrRaw, t.Span)
 	case t.Kind == TokKeyword && t.Text == "True":
 		p.next()
 		return &BoolLit{Value: true, sp: t.Span}, nil
@@ -1211,4 +1214,114 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 		return &DictLit{Keys: keys, Vals: vals, sp: t.Span}, nil
 	}
 	return &SetLit{Elems: elems, sp: t.Span}, nil
+}
+
+// buildFString parses the raw inner content of an f-string token into an
+// FString AST node. The raw content keeps escape sequences intact; literal
+// segments are unescaped (backslash dropped, matching the lexer) and each
+// `{expr}` segment is re-lexed and re-parsed as a full expression. A format
+// spec (`:` suffix) is stripped before parsing the expression.
+func (p *parser) buildFString(raw string, sp Span) (*FString, error) {
+	fs := &FString{sp: sp}
+	lit := ""
+	flush := func() {
+		if lit != "" {
+			fs.Parts = append(fs.Parts, FStringPart{Lit: unescapeStr(lit)})
+			lit = ""
+		}
+	}
+	i := 0
+	n := len(raw)
+	for i < n {
+		c := raw[i]
+		switch c {
+		case '{':
+			if i+1 < n && raw[i+1] == '{' {
+				lit += "{"
+				i += 2
+				continue
+			}
+			flush()
+			depth := 1
+			j := i + 1
+			for j < n {
+				if raw[j] == '{' {
+					depth++
+				} else if raw[j] == '}' {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+				j++
+			}
+			if j >= n {
+				return nil, &ParseError{Span: sp, Msg: "unterminated f-string expression"}
+			}
+			exprSrc := stripFormatSpec(raw[i+1 : j])
+			toks, err := Lex(exprSrc)
+			if err != nil {
+				return nil, err
+			}
+			sub := &parser{src: exprSrc, toks: toks}
+			ex, err := sub.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			fs.Parts = append(fs.Parts, FStringPart{Expr: ex})
+			i = j + 1
+		case '}':
+			if i+1 < n && raw[i+1] == '}' {
+				lit += "}"
+				i += 2
+				continue
+			}
+			lit += "}"
+			i++
+		default:
+			lit += string(c)
+			i++
+		}
+	}
+	flush()
+	if len(fs.Parts) == 0 {
+		return nil, &ParseError{Span: sp, Msg: "empty f-string"}
+	}
+	return fs, nil
+}
+
+// stripFormatSpec returns the expression source before any top-level `:` so
+// a Python-style format spec like `{x:>5}` parses as just `x`.
+func stripFormatSpec(src string) string {
+	depth := 0
+	for i := 0; i < len(src); i++ {
+		switch src[i] {
+		case '{', '[':
+			depth++
+		case '}', ']':
+			if depth > 0 {
+				depth--
+			}
+		case ':':
+			if depth == 0 {
+				return src[:i]
+			}
+		}
+	}
+	return src
+}
+
+// unescapeStr drops a leading backslash from escape sequences, matching the
+// lexer's existing string handling (`\n` becomes `n`).
+func unescapeStr(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			out = append(out, s[i+1])
+			i++
+			continue
+		}
+		out = append(out, s[i])
+	}
+	return string(out)
 }

@@ -1877,3 +1877,16 @@ func TestIRMembership(t *testing.T) {
 		llcCompiles(t, src)
 	}
 }
+func TestIRFStringUnsupported(t *testing.T) {
+	// the AOT backend rejects f-strings that need runtime string building,
+	// matching its compile-time-global string model; the interpreter handles
+	// them (see TestEvalFString).
+	prog, err := Parse(`x = 3
+print(f"x={x}")`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, err := GenerateIR(prog); err == nil {
+		t.Fatalf("expected AOT f-string rejection")
+	}
+}

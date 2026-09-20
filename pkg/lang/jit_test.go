@@ -1192,3 +1192,68 @@ func TestEvalMembership(t *testing.T) {
 		}
 	}
 }
+
+func TestEvalFString(t *testing.T) {
+	// a plain f-string is just a string
+	if v, _, err := EvalExpr(`f"hello"`); err != nil {
+		t.Fatalf("plain fstring err: %v", err)
+	} else if v == 0 {
+		t.Fatalf("plain fstring returned 0")
+	}
+	// literal with {{ }} escapes
+	if v, _, err := EvalExpr(`f"a{{b}}"`); err != nil {
+		t.Fatalf("escape fstring err: %v", err)
+	} else if v == 0 {
+		t.Fatalf("escape fstring returned 0")
+	}
+	// print interpolates runtime values
+	out := captureStdout(t, `x = 42
+print(f"x={x}")`)
+	if out != "x=42\n" {
+		t.Fatalf("print f-string stdout %q, want x=42\\n", out)
+	}
+	out = captureStdout(t, `print(f"{1 + 2}")`)
+	if out != "3\n" {
+		t.Fatalf("print expr f-string stdout %q, want 3\\n", out)
+	}
+	// f-string with multiple parts and a format spec is supported
+	out = captureStdout(t, `n = 7
+print(f"val={n:>3}")`)
+	if out != "val=7\n" {
+		t.Fatalf("print fmt f-string stdout %q, want val=7\\n", out)
+	}
+}
+
+func TestFStringConstantFold(t *testing.T) {
+	// constant-only f-strings should fold through the optimizer to a StrLit
+	if v, _, err := EvalExpr(`f"a{1}b"`); err != nil {
+		t.Fatalf("const fstring err: %v", err)
+	} else if v == 0 {
+		t.Fatalf("const fstring returned 0")
+	}
+}
+
+func TestEvalFStringEdgeCases(t *testing.T) {
+	// multiple parts and string interpolation
+	out := captureStdout(t, `s = "world"
+print(f"hello {s}!")`)
+	if out != "hello world!\n" {
+		t.Fatalf("multi-part stdout %q, want hello world!\\n", out)
+	}
+	// float interpolation uses the same formatting as print
+	out = captureStdout(t, `print(f"{1.5}")`)
+	if out != "1.5\n" {
+		t.Fatalf("float f-string stdout %q, want 1.5\\n", out)
+	}
+	// bool interpolation
+	out = captureStdout(t, `print(f"{True}")`)
+	if out != "1\n" {
+		t.Fatalf("bool f-string stdout %q, want True\\n", out)
+	}
+	// a bare f-string returns a non-zero string handle
+	if v, _, err := EvalExpr(`f"plain"`); err != nil {
+		t.Fatalf("plain fstring err: %v", err)
+	} else if v == 0 {
+		t.Fatalf("plain fstring returned 0")
+	}
+}

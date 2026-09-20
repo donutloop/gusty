@@ -831,6 +831,20 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return n.Value, nil
 	case *StrLit:
 		return e.allocStr(n.Value), nil
+	case *FString:
+		var b strings.Builder
+		for _, part := range n.Parts {
+			if part.Lit != "" {
+				b.WriteString(part.Lit)
+				continue
+			}
+			v, err := e.eval(part.Expr)
+			if err != nil {
+				return 0, err
+			}
+			b.WriteString(e.Repr(v))
+		}
+		return e.allocStr(b.String()), nil
 	case *FloatLit:
 		return e.allocFloat(n.Value), nil
 	case *BoolLit:

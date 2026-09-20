@@ -1470,8 +1470,7 @@ func (g *irGen) indexListElems(c *Call) ([]Expr, bool) {
 }
 
 func (g *irGen) stringVal(e Expr) (string, bool) {
-	switch n := e.(type) {
-	case *Attr:
+	switch n := e.(type) {	case *Attr:
 		// imported module global folded to a string (data imports)
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
 			if globals, ok := g.imports.Globals[nm.Value]; ok {
@@ -2221,6 +2220,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *StrLit:
 		name := g.strConst(n.Value)
 		return name, nil
+	case *FString:
+		return "", fmt.Errorf("codegen: f-string requires a constant expression (AOT backend)")
 	case *ListLit:
 		// inline list literal: emit a dedicated global struct and return its name.
 		name, err := g.emitList(n)

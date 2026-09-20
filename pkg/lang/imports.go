@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"strings"
 	"fmt"
 	"os"
 )
@@ -88,6 +89,30 @@ func resolveModule(mod string, reg map[string]map[string]Expr) error {
 func foldConst(e Expr, globals map[string]Expr, reg map[string]map[string]Expr) (Expr, error) {
 	switch n := e.(type) {
 	case *IntLit, *FloatLit, *BoolLit, *StrLit, *NoneLit:
+		return e, nil
+	case *FString:
+		var b strings.Builder
+		ok := true
+		for _, part := range n.Parts {
+			if part.Lit != "" {
+				b.WriteString(part.Lit)
+				continue
+			}
+			fv, err := foldConst(part.Expr, globals, reg)
+			if err != nil || fv == nil {
+				ok = false
+				break
+			}
+			if sv, is := fv.(*StrLit); is {
+				b.WriteString(sv.Value)
+			} else {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return &StrLit{Value: b.String(), sp: n.sp}, nil
+		}
 		return e, nil
 	case *Name:
 		if v, ok := globals[n.Value]; ok {

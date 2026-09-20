@@ -184,6 +184,17 @@ func (n *NoneLit) exprNode()  {}
 type StrLit struct{ Value string `json:"value"`; sp Span `json:"-"` }
 func (n *StrLit) Span() Span { return n.sp }
 func (n *StrLit) exprNode()  {}
+type FString struct{ Parts []FStringPart `json:"parts"`; sp Span `json:"-"` }
+func (n *FString) Span() Span { return n.sp }
+func (n *FString) exprNode()  {}
+
+// FStringPart is one segment of an interpolated format string: either a
+// literal segment (Lit non-empty) or an interpolated expression (Expr set).
+type FStringPart struct {
+	Lit  string `json:"lit,omitempty"`
+	Expr Expr   `json:"expr,omitempty"`
+}
+
 
 type ListLit struct{ Elems []Expr `json:"elems"`; sp Span `json:"-"` }
 func (n *ListLit) Span() Span { return n.sp }

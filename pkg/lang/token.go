@@ -20,6 +20,7 @@ const (
 	TokInt
 	TokFloat
 	TokString
+	TokFString
 	TokOp
 	TokKeyword
 )
@@ -34,6 +35,7 @@ type Token struct {
 	Int   int64
 	Float float64
 	Str   string
+	FStrRaw string // raw inner content of an f-string token
 }
 
 func (t Token) Is(kind TokenKind, text string) bool {
