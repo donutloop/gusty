@@ -69,9 +69,6 @@ Rule: every component change updates the matching doc; never let
 | Phase 7 — correctness & tooling | Shared IR / conformance matrix | ⏳ PLANNED | Interpreter and codegen each consume the AST independently today — no shared IR, so semantics drift (e.g., dispatch is statement-level in AOT only). Add a shared lowering spec + a matrix that runs every `integration/` case through **both** backends and diffs. |
 | Phase 7 — correctness & tooling | REPL error recovery | ⏳ PLANNED | `--repl` aborts on a single parse error; add panic-recovery/error-token parsing for a modern REPL. |
 | Phase 7 — correctness & tooling | Richer `--json` diagnostics | ⏳ PLANNED | Emit spans **and** inferred types (the semantic pass already computes them) in the `--json` schema. |
-
-| Phase | Item | Status | Details |
-|---|---|---|---|
 | Phase 8 — developer tooling & ecosystem | Formatter (`gusty fmt`) | ⏳ PLANNED | `cmd/` ships only the compiler; add a gofmt/black-style source formatter so the language has a canonical style. |
 | Phase 8 — developer tooling & ecosystem | Language server / LSP | ⏳ PLANNED | Editors get completion + hover + diagnostics; build on the `--json` span/type groundwork (semantic already infers types). |
 | Phase 8 — developer tooling & ecosystem | Standard library + package resolution | ⏳ PLANNED | No stdlib dir today; AOT `import` is data-only. Add `math`/`string`/`collections`/`json`-style stdlib and on-disk module/package resolution. |
