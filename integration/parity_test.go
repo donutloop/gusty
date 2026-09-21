@@ -416,3 +416,55 @@ print(f"prod={a * b}")
 print("done")
 `)
 }
+
+// TestParityLoopVarReuse drives a whole program that reuses the same loop
+// variable name across several for-loops (a literal-list unroll and a range
+// loop), across a while-else, and in nested loops. Reusing a loop var name
+// previously broke AOT with "multiple definition of local value named '_i'";
+// the per-function alloca guard keeps both backends in agreement.
+func TestParityLoopVarReuse(t *testing.T) {
+	parity(t, `
+s = 0
+for i in range(3):
+    s = s + i
+print("sum1", s)
+t = 0
+for i in range(5):
+    t = t + i
+print("sum2", t)
+u = 0
+for i in [2, 4, 6]:
+    u = u + i
+print("list", u)
+v = 0
+for i in [1, 3]:
+    v = v + i
+print("list2", v)
+w = 0
+for k in range(4):
+    w = w + k
+for k in range(2):
+    w = w + k
+print("reuse", w)
+x = 0
+for row in range(2):
+    for col in range(3):
+        x = x + row * 10 + col
+print("nested", x)
+y = 0
+for q in range(4):
+    if q == 2:
+        continue
+    y = y + q
+else:
+    y = y + 100
+print("forelse", y)
+z = 0
+while z < 3:
+    z = z + 1
+else:
+    z = z + 50
+print("whileelse", z)
+print("done")
+`)
+}

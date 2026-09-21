@@ -4624,6 +4624,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.handlerStack = nil
 	g.funcRaiseExit = fd.Name + ".raiseexit"
 	g.closures = map[string]*closureInfo{}
+	g.allocd = map[string]bool{}
 	g.envMode = false
 	g.envCaptures = nil
 	g.envParam = "%env"
@@ -5157,8 +5158,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if len(n.Else) > 0 {
 				normalL = elseL
 			}
-			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVarName(n.Var)))
-			g.gcReg(b, loopVarName(n.Var))
+			if !g.allocd[loopVarName(n.Var)] {
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVarName(n.Var)))
+				g.gcReg(b, loopVarName(n.Var))
+				g.allocd[loopVarName(n.Var)] = true
+			}
 			var contL string
 			for _, el := range ll.Elems {
 				v, err := g.value(b, el)
@@ -5238,7 +5242,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", cmp, ild, lenT))
 			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cmp, bodyL, elseL))
 			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
-			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVar))
+			if !g.allocd[loopVar] {
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVar))
+			}
+				g.allocd[loopVar] = true
 			elemT := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, ild))
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", elemT, loopVar))
@@ -5281,8 +5288,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if err != nil {
 			return err
 		}
-		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVarName(n.Var)))
-		g.gcReg(b, loopVarName(n.Var))
+		if !g.allocd[loopVarName(n.Var)] {
+			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVarName(n.Var)))
+			g.gcReg(b, loopVarName(n.Var))
+			g.allocd[loopVarName(n.Var)] = true
+		}
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", start, loopVarName(n.Var)))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))

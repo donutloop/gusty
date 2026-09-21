@@ -6,6 +6,11 @@ pre-`1.0.0` releases (`v0.x.y`) while still in development.
 
 ## [Unreleased] - v0.10.0 (in progress)
 
+### loop-variable reuse (AOT alloca guard)
+- Reusing the same loop variable name across multiple `for` loops (e.g. `for i in range(3)` then `for i in range(5)`) previously failed AOT with "multiple definition of local value named '_i'".
+- Codegen now guards loop-var allocas with the per-function `allocd` map, so a reused name reuses the existing alloca instead of emitting a duplicate.
+- `allocd` is reset at the start of each function compilation so distinct functions may reuse the same name without cross-function conflicts.
+
 
 ### Tuple unpacking / multi-assign
 - Added tuple expression `(a, b)` and tuple targets `a, b = v1, v2`.
