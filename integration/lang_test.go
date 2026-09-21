@@ -471,6 +471,17 @@ func TestExecStringInClassMethod(t *testing.T) {
 	assertOutput(t, "class A:\n    def m(self):\n        print(\"inside method\")\n        return 42\na = A()\nprint(\"r\", a.m())", "r\ninside method\n42\n")
 }
 
+func TestExecForOverGeneratorList(t *testing.T) {
+	// Regression: generator calls return runtime heap list handles, but the
+	// target was not tracked as a list, so `print(g)` printed a scalar and
+	// `for x in gen()` / `for x in g` iterated 0..handle instead of the list
+	// elements. Assignments from generator calls are now marked as listVars
+	// and for-loops over runtime list handles iterate via rt_list_len/rt_get_elem.
+	assertOutput(t, "def gen():\n    yield 1\n    yield 2\n    yield 3\ns = 0\nfor x in gen():\n    s = s + x\nprint(s)", "6\n")
+	assertOutput(t, "def gen():\n    yield 1\n    yield 2\n    yield 3\ng = gen()\ns = 0\nfor x in g:\n    s = s + x\nprint(s)", "6\n")
+	assertOutput(t, "def gen():\n    yield 1\n    yield 2\nprint(gen())", "[1, 2]\n")
+}
+
 func TestExecFloatFloorModNegNeg(t *testing.T) {
 	// Negative float floor/mod/neg must match in the AOT binary:
 	// -3.5//2.0 == -2, -3.5%%2.0 == -1.5, abs(-3.5) == 3.5, round(-3.5) == -4.

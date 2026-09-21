@@ -4776,6 +4776,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						}
 					}
 				}
+				// a generator call returns a runtime heap list handle: track the
+				// target so print/for/indexing treat it as a list, not a scalar.
+				if call, ok := n.Value.(*Call); ok {
+					if fn, ok2 := call.Fn.(*Name); ok2 {
+						if g.genFuncs[fn.Value] {
+							g.listVars[nm.Value] = true
+						}
+					}
+				}
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
 				if g.floatVars != nil {
 					delete(g.floatVars, nm.Value)
@@ -5019,6 +5028,80 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 			}
+			b.WriteString(fmt.Sprintf("%s:\n", endL))
+			return nil
+		}
+		// runtime heap list iterable: a generator-call result or a tracked
+		// list variable. Iterate positions 0..len-1 and bind the loop
+		// variable to each element via rt_get_elem.
+		loopVar := loopVarName(n.Var)
+		isListIter := false
+		var hVal string
+		if name, ok := n.Iter.(*Name); ok {
+			if g.listVars[name.Value] {
+				isListIter = true
+			}
+		} else if call, ok := n.Iter.(*Call); ok {
+			if fn, ok2 := call.Fn.(*Name); ok2 {
+				if g.genFuncs[fn.Value] {
+					isListIter = true
+				}
+			}
+		}
+		if isListIter {
+			if hVal == "" {
+				hv, err := g.value(b, n.Iter)
+				if err != nil {
+					return err
+				}
+				hVal = hv
+			}
+			lenT := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", lenT, hVal))
+			idxVar := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = alloca i32\n", idxVar))
+			b.WriteString(fmt.Sprintf("  store i32 0, i32* %s\n", idxVar))
+			condL := g.newLabel("for.list.cond")
+			bodyL := g.newLabel("for.list.body")
+			incL := g.newLabel("for.list.inc")
+			elseL := g.newLabel("for.list.else")
+			endL := g.newLabel("for.list.end")
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
+			b.WriteString(fmt.Sprintf("%s:\n", condL))
+			ild := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* %s\n", ild, idxVar))
+			cmp := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", cmp, ild, lenT))
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cmp, bodyL, elseL))
+			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVar))
+			elemT := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, ild))
+			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", elemT, loopVar))
+			g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
+			for _, s := range n.Body {
+				if err := g.stmt(b, s); err != nil {
+					return err
+				}
+			}
+			g.loopStack = g.loopStack[:len(g.loopStack)-1]
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", incL))
+			b.WriteString(fmt.Sprintf("%s:\n", incL))
+			ild2 := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* %s\n", ild2, idxVar))
+			i2 := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = add i32 %s, 1\n", i2, ild2))
+			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %s\n", i2, idxVar))
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
+			b.WriteString(fmt.Sprintf("%s:\n", elseL))
+			if n.Else != nil {
+				for _, s := range n.Else {
+					if err := g.stmt(b, s); err != nil {
+						return err
+					}
+				}
+			}
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 			b.WriteString(fmt.Sprintf("%s:\n", endL))
 			return nil
 		}
