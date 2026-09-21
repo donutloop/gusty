@@ -1783,6 +1783,25 @@ print((x for x in range(6) if x % 2 == 0))
 	}
 }
 
+func TestAOTYieldInsideMatchCase(t *testing.T) {
+	// Regression: containsYield must recurse into match-case bodies so a
+	// generator whose only yield sits inside a `match` case is registered as
+	// a generator. Previously the yield was missed, so codegen emitted
+	// "yield outside a generator function" and failed the llc step.
+	ir := llcCompiles(t, `
+def g(n):
+    match n:
+        case 1:
+            yield 10
+        case 2:
+            yield 20
+print(g(2))
+`)
+	if !strings.Contains(ir, "@rt_alloc") || !strings.Contains(ir, "@rt_append") {
+		t.Fatalf("generator with match-case yield not lowered to rt_alloc/rt_append:\n%s", ir)
+	}
+}
+
 func TestAOTIdentityDecorator(t *testing.T) {
 	ir := llcCompiles(t, `
 def twice(f):

@@ -3114,6 +3114,12 @@ func containsYield(stmts []Stmt) bool {
 			if containsYield(s.Body) || containsYield(s.Else) {
 				return true
 			}
+		case *MatchStmt:
+			for _, c := range s.Cases {
+				if containsYield(c.Body) {
+					return true
+				}
+			}
 		case *FuncDef:
 			if containsYield(s.Body) {
 				return true
