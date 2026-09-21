@@ -729,6 +729,7 @@ func GenerateIR(prog *Program) (string, error) {
 	if g.heapUsed {
 		g.globals.WriteString(heapRuntimeIR)
 	}
+	out.WriteString(g.strGlobals.String())
 	out.WriteString(g.globals.String())
 	out.WriteString(g.decls)
 	out.WriteString(b.String())
@@ -743,6 +744,7 @@ func GenerateIR(prog *Program) (string, error) {
 
 type irGen struct {
 	globals   strings.Builder
+	strGlobals strings.Builder // string constants, emitted at top of IR
 	decls     string
 	sym       map[string]string   // variable -> load temp
 	allocd    map[string]bool     // alloca emitted?
@@ -1018,7 +1020,7 @@ func (g *irGen) fmtStr(format string) (string, int) {
 	// The array size must be the decoded byte count of the emitted constant:
 	// each IR \\0A escape decodes to a single newline byte, so the raw
 	// (unescaped) format length plus one trailing null is correct.
-	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(format)+1, f))
+	g.strGlobals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(format)+1, f))
 	return name, len(format) + 1
 }
 
@@ -1070,7 +1072,7 @@ func (g *irGen) strConst(s string) string {
 	esc = strings.ReplaceAll(esc, "\n", "\\0A")
 	// Array size is the decoded byte count: the raw string length (newlines
 	// and backslashes are single bytes) plus one trailing null.
-	g.globals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(s)+1, esc))
+	g.strGlobals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(s)+1, esc))
 	return name
 }
 

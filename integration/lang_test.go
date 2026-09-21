@@ -462,6 +462,15 @@ func TestExecClassInitArgs(t *testing.T) {
 	assertOutput(t, src, "1\n2\n7\n30\n")
 }
 
+func TestExecStringInClassMethod(t *testing.T) {
+	// Regression: a string literal inside a class method body previously
+	// emitted its global declaration interleaved into the method's instruction
+	// stream (g.globals held both globals and method bodies), producing
+	// malformed IR that failed the llc step. String constants are now emitted
+	// into a dedicated builder at the top of the module.
+	assertOutput(t, "class A:\n    def m(self):\n        print(\"inside method\")\n        return 42\na = A()\nprint(\"r\", a.m())", "r\ninside method\n42\n")
+}
+
 func TestExecFloatFloorModNegNeg(t *testing.T) {
 	// Negative float floor/mod/neg must match in the AOT binary:
 	// -3.5//2.0 == -2, -3.5%%2.0 == -1.5, abs(-3.5) == 3.5, round(-3.5) == -4.
