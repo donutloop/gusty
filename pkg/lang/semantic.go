@@ -42,6 +42,7 @@ type SemanticAnalyzer struct {
 	classes    map[string]bool
 	inFunc     bool
 	loopDepth  int
+	inferring map[string]bool
 }
 
 // Analyze runs semantic analysis and type inference on prog.
@@ -398,6 +399,15 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 }
 
 func (an *SemanticAnalyzer) inferReturn(fd *FuncDef, argTypes []*Type) *Type {
+	if an.inferring[fd.Name] {
+		return TDyn()
+	}
+	if an.inferring == nil {
+		an.inferring = map[string]bool{}
+	}
+	an.inferring[fd.Name] = true
+	defer delete(an.inferring, fd.Name)
+
 	old := an.scope
 	fscope := newScope(an.scope)
 	for i, p := range fd.Params {
