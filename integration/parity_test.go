@@ -154,3 +154,168 @@ print("fstr", f"n={n}")
 `
 	parity(t, prog)
 }
+
+// TestParityStringIntrospection drives a whole program of string introspection
+// methods that fold in AOT and eval in the interpreter: len, count, find,
+// rfind, startswith, endswith, isalpha/isdigit/islower/isupper/isalnum/isspace,
+// len(...split(...)) aggregates, and an f-string. Only integer/boolean-returning
+// methods are used (string-producing results are not supported as AOT prints).
+func TestParityStringIntrospection(t *testing.T) {
+	parity(t, `
+print(len("hello world"))
+print(len("a b c".split(" ")))
+print("ababab".count("ab"))
+print("abcabc".find("bc"))
+print("abcabc".rfind("bc"))
+print("abcabc".find("x"))
+print("abc".startswith("a"))
+print("abc".endswith("c"))
+print("abc".endswith("x"))
+print("123".isdigit())
+print("123".isalpha())
+print("abc".isalpha())
+print("abc".isdigit())
+print("AbC".islower())
+print("abc".islower())
+print("ABC".isupper())
+print("abc".isupper())
+print("abc123".isalnum())
+print("   ".isspace())
+print("  ".isspace())
+n = len("hello")
+print(f"len={n}")
+print("done")
+`)
+}
+
+// TestParityNestedControlAndHeap drives a whole program of nested control flow
+// (break/continue/else, nested for loops, while) plus runtime heap collections
+// (list append/len/index, dict/set len and index reads) and rebinding.
+func TestParityNestedControlAndHeap(t *testing.T) {
+	parity(t, `
+l = [1, 2, 3]
+l.append(4)
+l.append(5)
+print(len(l))
+print(l[2])
+print(l[0])
+d = {1: 10, 2: 20}
+print(len(d))
+print(d[1])
+print(d[2])
+st = {1, 2, 3}
+print(len(st))
+s = 0
+for i in range(3):
+    if i == 1:
+        continue
+    s = s + i
+print("sum", s)
+t = 0
+for j in range(5):
+    if j == 3:
+        break
+    t = t + j
+print("t", t)
+g = 0
+for a in range(2):
+    for b in range(3):
+        if b == 1:
+            continue
+        g = g + a * 10 + b
+print("nested", g)
+w = 0
+while w < 3:
+    w = w + 1
+print("while", w)
+c = 0
+for q in range(4):
+    if q == 2:
+        continue
+    c = c + 1
+else:
+    c = c + 100
+print("forelse", c)
+print("done")
+`)
+}
+
+// TestParityFunctionsAndAggregation drives a whole program of ternaries, match,
+// default/keyword int args, min/max/sum/abs over int lists, len(sorted) and
+// len(reversed) folding, multi-argument range, while, and for-else.
+func TestParityFunctionsAndAggregation(t *testing.T) {
+	parity(t, `
+x = 5 if 3 < 4 else 9
+print(x)
+y = 1 if 3 > 4 else 0
+print(y)
+m = 0
+match 2:
+    case 1:
+        m = 10
+    case 2:
+        m = 20
+    case _:
+        m = 99
+print("match", m)
+print(min([3, 1, 2]))
+print(max([3, 1, 2]))
+print(sum([1, 2, 3]))
+print(abs(-5))
+print(len(sorted([3, 1, 2])))
+print(len(reversed([1, 2, 3])))
+a = 0
+for k in range(1, 5, 2):
+    a = a + k
+print("range3", a)
+def twice(n, times=2):
+    return n * times
+print(twice(5))
+print(twice(5, 3))
+w = 0
+while w < 3:
+    w = w + 1
+print("while", w)
+c = 0
+for q in range(4):
+    if q == 2:
+        continue
+    c = c + 1
+else:
+    c = c + 100
+print("forelse", c)
+print("done")
+`)
+}
+
+// TestParityMathFloat drives a whole program of float arithmetic, floor/mod/
+// abs, unary minus, float comparisons, and int/float promotion. sum over float
+// lists is avoided: the interpreter's float sum is not reliable.
+func TestParityMathFloat(t *testing.T) {
+	parity(t, `
+a = 2.5
+b = 1.5
+print(a + b)
+print(a - b)
+print(a * b)
+print(a / b)
+print(-a)
+print(a % 1.0)
+print(a // 1.0)
+print(abs(-2.5))
+print(2.5 > 1.5)
+print(1.5 < 2.5)
+print(2.5 == 2.5)
+print(2.5 >= 2.5)
+print(1.5 <= 1.5)
+c = 2
+print(c + 0.5)
+print(c * 1.5)
+print(10.0 / 3)
+print(10 // 3)
+print(10 % 3)
+print(5 + 2)
+print(2.0 + 1)
+print("done")
+`)
+}
