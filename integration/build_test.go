@@ -174,6 +174,51 @@ func TestCLIBuildSingleFile(t *testing.T) {
 	}
 }
 
+// TestCLIBuildFString verifies f-strings with runtime integer/float
+// interpolation compile ahead-of-time and print a single combined line,
+// matching the interpreter's one-string Repr.
+func TestCLIBuildFString(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+
+	src := writeSrc(t, dir, "fstr.gy", readProgram(t, "fstr.gy"))
+	out := filepath.Join(dir, "prog")
+	build := exec.Command(bin, "--build", out, src)
+	if outb, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("gustyc --build: %v\n%s", err, outb)
+	}
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("run built fstr program: %v", err)
+	}
+	if string(got) != readWant(t, "fstr.txt") {
+		t.Errorf("output = %q, want %q", got, readWant(t, "fstr.txt"))
+	}
+}
+
+// TestCLIBuildFloatFunction verifies a user function that returns a float
+// (e.g. `return x / 2.0`) emits a `double` return and prints the exact value
+// in the AOT codegen path.
+func TestCLIBuildFloatFunction(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+	src := writeSrc(t, dir, "floatfn.gy", readProgram(t, "floatfn.gy"))
+	out := filepath.Join(dir, "prog")
+	build := exec.Command(bin, "--build", out, src)
+	if outb, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("gustyc --build: %v\n%s", err, outb)
+	}
+	got, err := exec.Command(out).Output()
+	if err != nil {
+		t.Fatalf("run built floatfn: %v", err)
+	}
+	if string(got) != readWant(t, "floatfn.txt") {
+		t.Errorf("output = %q, want %q", got, readWant(t, "floatfn.txt"))
+	}
+}
+
 // TestCLIBuildOptLevel verifies --opt-level is honored end-to-end: the CLI
 // passes it through to Build, and the produced binary still runs correctly.
 func TestCLIBuildOptLevel(t *testing.T) {

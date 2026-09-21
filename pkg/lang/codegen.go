@@ -663,7 +663,7 @@ func GenerateIR(prog *Program) (string, error) {
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
-		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -743,21 +743,21 @@ func GenerateIR(prog *Program) (string, error) {
 }
 
 type irGen struct {
-	globals   strings.Builder
+	globals    strings.Builder
 	strGlobals strings.Builder // string constants, emitted at top of IR
-	decls     string
-	sym       map[string]string   // variable -> load temp
-	allocd    map[string]bool     // alloca emitted?
-	funcs     map[string]bool     // user-defined function names
-	fds       map[string]*FuncDef // function definitions by name (for call arg binding)
-	imports   *ImportInfo         // folded module globals for `import mod`
-	params    map[string]string   // current function params: name -> register
-	fmtIdx    int
-	strIdx    int
-	tmp       int
-	label     int
-	ldN       int
-	loopStack []loopInfo
+	decls      string
+	sym        map[string]string   // variable -> load temp
+	allocd     map[string]bool     // alloca emitted?
+	funcs      map[string]bool     // user-defined function names
+	fds        map[string]*FuncDef // function definitions by name (for call arg binding)
+	imports    *ImportInfo         // folded module globals for `import mod`
+	params     map[string]string   // current function params: name -> register
+	fmtIdx     int
+	strIdx     int
+	tmp        int
+	label      int
+	ldN        int
+	loopStack  []loopInfo
 
 	closures    map[string]*closureInfo
 	envMode     bool
@@ -799,7 +799,13 @@ type irGen struct {
 	// FuncDef name, so `f = lambda x: ...; f(3)` resolves in Call.
 	lambdas map[string]string
 	// floatVars tracks variables whose last assignment produced a double.
-	floatVars     map[string]bool
+	floatVars map[string]bool
+	// floatTemps tracks temps that hold a double result (e.g. a float call).
+	floatTemps map[string]bool
+	// floatFuncs tracks user functions that return a double.
+	floatFuncs map[string]bool
+	// curFunc tracks the user function currently being emitted.
+	curFunc       string
 	listVars      map[string]bool
 	runtimeDicts  map[string]bool
 	runtimeSets   map[string]bool
@@ -809,8 +815,8 @@ type irGen struct {
 	funcRaiseExit string
 
 	classInfos map[string]*classInfo // class name -> info
-	classIDs   map[string]int   // class name -> runtime dispatch id
-	classOrder  []string            // classes in id order (dispatch switch)
+	classIDs   map[string]int        // class name -> runtime dispatch id
+	classOrder []string              // classes in id order (dispatch switch)
 	varClasses map[string]string     // local var -> class name
 	selfClass  string                // enclosing class of current self
 	attrSlots  map[string]int        // attr name -> instance data slot
@@ -1626,7 +1632,8 @@ func (g *irGen) indexListElems(c *Call) ([]Expr, bool) {
 }
 
 func (g *irGen) stringVal(e Expr) (string, bool) {
-	switch n := e.(type) {	case *Attr:
+	switch n := e.(type) {
+	case *Attr:
 		// imported module global folded to a string (data imports)
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
 			if globals, ok := g.imports.Globals[nm.Value]; ok {
@@ -1805,6 +1812,9 @@ func (g *irGen) isFloat(e Expr) bool {
 				if id.Value == "float" {
 					return true
 				}
+				if g.floatFuncs[id.Value] {
+					return true
+				}
 				if id.Value == "abs" || id.Value == "min" || id.Value == "max" {
 					for _, a := range n.Args {
 						if g.isFloat(a) {
@@ -1843,6 +1853,9 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(n.Value))
 		return t
 	case *Name:
+		if g.floatTemps != nil && g.floatTemps[n.Value] {
+			return n.Value
+		}
 		if g.floatVars != nil && g.floatVars[n.Value] {
 			t := g.newTmp()
 			fmt.Fprintf(b, "  %s = load double, double* %%_%s\n", t, n.Value)
@@ -1862,6 +1875,15 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		return g.floatBinOp(b, n)
 	case *Call:
 		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok {
+				if g.floatFuncs[id.Value] {
+					t, err := g.call(b, n)
+					if err != nil {
+						return ""
+					}
+					return t
+				}
+			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "sum" && len(n.Args) >= 1 {
 				if lst, ok := n.Args[0].(*ListLit); ok {
 					total := 0.0
@@ -2412,21 +2434,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			lowReg, err = g.value(b, n.Low)
 			if err != nil {
 				return "", err
-		}
+			}
 			hasLow = "1"
 		}
 		if n.High != nil {
 			highReg, err = g.value(b, n.High)
 			if err != nil {
 				return "", err
-		}
+			}
 			hasHigh = "1"
 		}
 		if n.Step != nil {
 			stepReg, err = g.value(b, n.Step)
 			if err != nil {
 				return "", err
-		}
+			}
 			hasStep = "1"
 		}
 		r := g.heapSeq
@@ -3117,7 +3139,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				v, _ := g.value(b, a)
 				argvals[i] = v
 			}
-			type dynCase struct{ id int; fn, lab, ret string }
+			type dynCase struct {
+				id           int
+				fn, lab, ret string
+			}
 			var cases []dynCase
 			for _, cls := range g.classOrder {
 				if fn, ok := g.resolveMethod(cls, mname); ok {
@@ -3513,7 +3538,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		g.heapUsed = true
 		h := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 4)\n", h))
-	b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
+		b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
 		if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
 			// Compute each argument value first (each emits its own load
 			// statement on a fresh line), then emit the call using the
@@ -3541,6 +3566,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("codegen: unknown function %q", fnName)
 		}
 		n := len(fd.Params)
+		isFloat := g.floatFuncs[fnName]
 		vals := make([]string, n)
 		provided := make([]bool, n)
 		pos := 0
@@ -3561,11 +3587,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if provided[idx] {
 					return "", fmt.Errorf("codegen: multiple values for argument %q of %s", kw.Name, fnName)
 				}
-				av, err := g.value(b, kw.Value)
-				if err != nil {
-					return "", err
+				if isFloat {
+					fv := g.floatValue(b, kw.Value)
+					vals[idx] = "double " + fv
+				} else {
+					av, err := g.value(b, kw.Value)
+					if err != nil {
+						return "", err
+					}
+					vals[idx] = "i32 " + av
 				}
-				vals[idx] = "i32 " + av
 				provided[idx] = true
 				continue
 			}
@@ -3578,11 +3609,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if provided[pos] {
 				return "", fmt.Errorf("codegen: multiple values for argument %q of %s", fd.Params[pos].Name, fnName)
 			}
-			av, err := g.value(b, a)
-			if err != nil {
-				return "", err
+			if isFloat {
+				fv := g.floatValue(b, a)
+				vals[pos] = "double " + fv
+			} else {
+				av, err := g.value(b, a)
+				if err != nil {
+					return "", err
+				}
+				vals[pos] = "i32 " + av
 			}
-			vals[pos] = "i32 " + av
 			provided[pos] = true
 			pos++
 		}
@@ -3594,11 +3630,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if fd.Params[i].Default == nil {
 				return "", fmt.Errorf("codegen: missing argument %q for %s", fd.Params[i].Name, fnName)
 			}
-			dv, err := g.value(b, fd.Params[i].Default)
-			if err != nil {
-				return "", err
+			if isFloat {
+				fv := g.floatValue(b, fd.Params[i].Default)
+				vals[i] = "double " + fv
+			} else {
+				dv, err := g.value(b, fd.Params[i].Default)
+				if err != nil {
+					return "", err
+				}
+				vals[i] = "i32 " + dv
 			}
-			vals[i] = "i32 " + dv
 		}
 		t := g.newTmp()
 		if _, ok := g.closures[fnName]; ok {
@@ -3611,7 +3652,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, fnName, strings.Join(vals, ", ")))
 			g.checkExn(b)
 		} else {
-			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+			if isFloat {
+				b.WriteString(fmt.Sprintf("  %s = call double @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+				if g.floatTemps == nil {
+					g.floatTemps = map[string]bool{}
+				}
+				g.floatTemps[t] = true
+			} else {
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+			}
 			g.checkExn(b)
 			// a generator function returns a runtime heap list handle
 			if g.genFuncs[fnName] {
@@ -3646,6 +3695,44 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				}
 				t := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, v))
+				last = t
+				continue
+			}
+			// an f-string: print each constant part as a string and each
+			// interpolated expression as its value (no runtime string type).
+			// All parts are combined into a single printf call so the output
+			// matches the interpreter's one-string Repr.
+			if fs, ok := a.(*FString); ok {
+				var fmtLit string
+				var operands []string
+				for _, part := range fs.Parts {
+					if part.Lit != "" {
+						// escape % as %% so printf shows a literal %
+						fmtLit += strings.ReplaceAll(part.Lit, "%", "%%")
+						continue
+					}
+					if part.Expr != nil {
+						if g.isFloat(part.Expr) {
+							fmtLit += "%.17g"
+							fv := g.floatValue(b, part.Expr)
+							operands = append(operands, "double "+fv)
+						} else {
+							fmtLit += "%d"
+							vv, err := g.value(b, part.Expr)
+							if err != nil {
+								return "", err
+							}
+							operands = append(operands, "i32 "+vv)
+						}
+					}
+				}
+				fmtName, size := g.fmtStr(fmtLit + "\n")
+				t := g.newTmp()
+				callArgs := fmt.Sprintf("i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0)", size, size, fmtName)
+				if len(operands) > 0 {
+					callArgs += ", " + strings.Join(operands, ", ")
+				}
+				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(%s)\n", t, callArgs))
 				last = t
 				continue
 			}
@@ -4485,6 +4572,52 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 	return nil
 }
 
+// funcReturnsFloat reports whether fd has a return expression that produces a
+// double. It scans the body for ReturnStmt expressions and asks isFloat, also
+// tracking local variables that are assigned float values so that a function
+// returning such a variable (e.g. `y = x * 1.5; return y`) is detected.
+func funcReturnsFloat(g *irGen, fd *FuncDef) bool {
+	var scan func([]Stmt) bool
+	scan = func(sts []Stmt) bool {
+		for _, st := range sts {
+			switch n := st.(type) {
+			case *ReturnStmt:
+				if g.isFloat(n.Expr) {
+					return true
+				}
+			case *IfStmt:
+				if scan(n.Then) {
+					return true
+				}
+				for _, e := range n.Elifs {
+					if scan(e.Then) {
+						return true
+					}
+				}
+				if scan(n.Else) {
+					return true
+				}
+			case *WhileStmt:
+				if scan(n.Body) {
+					return true
+				}
+			case *ForStmt:
+				if scan(n.Body) {
+					return true
+				}
+			case *MatchStmt:
+				for _, c := range n.Cases {
+					if scan(c.Body) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	return scan(fd.Body)
+}
+
 func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	prevRaise := g.funcRaiseExit
 	prevHandlers := g.handlerStack
@@ -4506,7 +4639,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		ci := closureInfoFor(nd, op, ol)
 		g.closures[ci.name] = ci
 		fmt.Fprintf(&g.globals, "@%s_slot = internal global i32 0\n", ci.name)
-			g.envSlots = append(g.envSlots, ci.name)
+		g.envSlots = append(g.envSlots, ci.name)
 		g.emitClosureDef(b, ci, nd)
 	}
 	if len(fd.Decorators) > 0 {
@@ -4516,16 +4649,35 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		return nil
 	}
 	g.params = map[string]string{}
-	fmt.Fprintf(b, "define i32 @%s(", fd.Name)
+	g.curFunc = fd.Name
+	floatRet := funcReturnsFloat(g, fd)
+	retTy := "i32"
+	retVal := "0"
+	paramTy := "i32"
+	if floatRet {
+		g.floatFuncs[fd.Name] = true
+		retTy = "double"
+		retVal = "0.0"
+		paramTy = "double"
+	}
+	fmt.Fprintf(b, "define %s @%s(", retTy, fd.Name)
 	for i := range fd.Params {
 		if i > 0 {
 			fmt.Fprintf(b, ", ")
 		}
-		fmt.Fprintf(b, "i32 %%p%d", i)
+		fmt.Fprintf(b, "%s %%p%d", paramTy, i)
 	}
 	fmt.Fprintf(b, ") {\n")
 	for i, p := range fd.Params {
 		g.params[p.Name] = fmt.Sprintf("%%p%d", i)
+		if floatRet {
+			if g.floatVars == nil {
+				g.floatVars = map[string]bool{}
+			}
+			g.floatVars[p.Name] = true
+			fmt.Fprintf(b, "  %%_%s = alloca double\n", p.Name)
+			fmt.Fprintf(b, "  store double %%p%d, double* %%_%s\n", i, p.Name)
+		}
 	}
 	isGen := containsYield(fd.Body)
 	if isGen {
@@ -4543,19 +4695,20 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	if isGen {
 		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
 	} else {
-		fmt.Fprintf(b, "  ret i32 0\n")
+		fmt.Fprintf(b, "  ret %s %s\n", retTy, retVal)
 	}
 	fmt.Fprintf(b, "%s:\n", g.funcRaiseExit)
 	if isGen {
 		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
 	} else {
-		fmt.Fprintf(b, "  ret i32 0\n")
+		fmt.Fprintf(b, "  ret %s %s\n", retTy, retVal)
 	}
 	fmt.Fprintf(b, "}\n")
 	g.funcRaiseExit = prevRaise
 	g.genHandle = ""
 	g.handlerStack = prevHandlers
 	g.params = map[string]string{}
+	g.curFunc = ""
 	g.inFunc = false
 	return nil
 }
@@ -4567,7 +4720,6 @@ func loopVarName(v Expr) string {
 	}
 	return ""
 }
-
 
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	switch n := st.(type) {
@@ -5188,6 +5340,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		fmt.Fprintf(b, "  store i32 %s, i32* @%s_slot\n", env, n.Name)
 	case *ReturnStmt:
+		if g.floatFuncs[g.curFunc] {
+			fv := g.floatValue(b, n.Expr)
+			b.WriteString(fmt.Sprintf("  ret double %s\n", fv))
+			return nil
+		}
 		v, err := g.value(b, n.Expr)
 		if err != nil {
 			return err

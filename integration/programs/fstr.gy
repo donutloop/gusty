@@ -1,0 +1,7 @@
+x = 3
+y = 7
+print(f"x={x}")
+print(f"{1 + 2}")
+print(f"{1.5}")
+print(f"a{y} c")
+print(f"100% done")

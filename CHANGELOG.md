@@ -360,7 +360,18 @@ pre-`1.0.0` releases (`v0.x.y`) while still in development.
   (`len(esc)+1`); it now uses the decoded raw length `len(s)+1`.
 
 
+### AOT f-string print decomposition (codegen fix)
+- F-strings with runtime integer/float interpolation (`print(f"x={x}")`) no
+  longer reject in the AOT backend; the print lowering decomposes each f-string
+  into a single combined `printf` (constant parts as literal text with `%`
+  escaped, interpolated expressions as `%d`/`%.17g` operands).
+- Output matches the interpreter's one-string Repr exactly.
+- Unit test `TestIRFStringPrint` and integration test `TestCLIBuildFString`
+  added.
+
+
 This project adheres to [Semantic Versioning](https://semver.org) with
+
 
 
 ## [v0.9.0] - 2026-09-17
