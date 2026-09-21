@@ -452,6 +452,16 @@ func TestExecIntFloatConv(t *testing.T) {
 	assertOutput(t, "a = 3.9\nb = -3.9\nc = 2\nd = 1\nprint(int(a))\nprint(int(b))\nprint(float(c))", "3\n-3\n2\n")
 }
 
+
+func TestExecClassInitArgs(t *testing.T) {
+	// Regression: class instantiation with constructor args previously
+	// produced malformed IR (the arg loads were emitted inline inside the
+	// __init__ call), failing the llc step. This exercises __init__ with
+	// one and multiple runtime args plus a follow-up method call.
+	src := "class Box:\n    def __init__(self, v):\n        self.v = v\n    def get(self):\n        return self.v\n\nb1 = Box(1)\nprint(b1.get())\nb2 = Box(2)\nprint(b2.get())\nclass Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n    def sum(self):\n        return self.x + self.y\np = Point(3, 4)\nprint(p.sum())\nq = Point(10, 20)\nprint(q.sum())"
+	assertOutput(t, src, "1\n2\n7\n30\n")
+}
+
 func TestExecFloatFloorModNegNeg(t *testing.T) {
 	// Negative float floor/mod/neg must match in the AOT binary:
 	// -3.5//2.0 == -2, -3.5%%2.0 == -1.5, abs(-3.5) == 3.5, round(-3.5) == -4.

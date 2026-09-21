@@ -3513,12 +3513,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 4)\n", h))
 	b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
 		if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
-			b.WriteString(fmt.Sprintf("  call i32 @%s(i32 %s", fn, h))
-			for _, arg := range c.Args {
+			// Compute each argument value first (each emits its own load
+			// statement on a fresh line), then emit the call using the
+			// computed temporaries so the IR stays well-formed.
+			argTmp := make([]string, len(c.Args))
+			for i, arg := range c.Args {
 				av, err := g.value(b, arg)
 				if err != nil {
 					return "", err
 				}
+				argTmp[i] = av
+			}
+			b.WriteString(fmt.Sprintf("  call i32 @%s(i32 %s", fn, h))
+			for _, av := range argTmp {
 				b.WriteString(", i32 " + av)
 			}
 			b.WriteString(")\n")
