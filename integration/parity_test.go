@@ -319,3 +319,100 @@ print(2.0 + 1)
 print("done")
 `)
 }
+
+// TestParityOopAggregation drives a whole program of deep OOP (a class with an
+// aggregating method, a subclass overriding a method via super), recursion
+// (factorial), a generator consumed by a counting/summing loop, and an inline
+// comprehension read at a constant index. All fold/eval identically in AOT and
+// the interpreter.
+func TestParityOopAggregation(t *testing.T) {
+	parity(t, `
+class Counter:
+    def __init__(self, start):
+        self.n = start
+    def step(self):
+        self.n = self.n + 1
+        return self.n
+    def total(self):
+        t = 0
+        for i in range(self.n):
+            t = t + i
+        return t
+
+class DoubleCounter(Counter):
+    def __init__(self, start):
+        super().__init__(start)
+    def step(self):
+        self.n = self.n + 2
+        return self.n
+
+c = Counter(1)
+print(c.step())
+print(c.total())
+d = DoubleCounter(0)
+print(d.step())
+print(d.total())
+
+def fact(n):
+    if n <= 1:
+        return 1
+    return n * fact(n - 1)
+print(fact(5))
+print(fact(0))
+
+def gen_sq(n):
+    for i in range(n):
+        yield i * i
+cnt = 0
+s = 0
+for x in gen_sq(3):
+    cnt = cnt + 1
+    s = s + x
+print("cnt", cnt)
+print("sum", s)
+print([y * y for y in range(3)][1])
+print("done")
+`)
+}
+
+// TestParityNumericPromotion drives a whole program mixing ints and floats
+// (promotion in add/sub/mul/div/floor/mod/abs and unary minus), aggregates
+// (min/max/sum/len over int literals, len(sorted)/len(reversed) folding), tuple
+// unpack statements, integer floor/mod, an f-string, and a nested summing loop.
+func TestParityNumericPromotion(t *testing.T) {
+	parity(t, `
+a = 3
+b = 2
+print(a + 0.5)
+print(a * 1.5)
+print(a / 2.0)
+print(a // 2.0)
+print(a % 2.0)
+print(abs(a - 3.5))
+print(1.5 + 2)
+print(2.5 * 3)
+print(3 / 2.0)
+print(5 // 2.0)
+print(7 % 2.0)
+print(-a + 0.5)
+print(2.5 + 3.5)
+print(1.5 * 2.5)
+print(min([3, 1, 2]))
+print(max([3, 1, 2]))
+print(sum([1, 2, 3]))
+print(len(sorted([3, 1, 2])))
+print(len(reversed([1, 2, 3])))
+p, q = 7, 3
+print(p + q)
+print(p - q)
+print(p * q)
+print(p // q)
+print(p % q)
+r = 0
+for i in range(5):
+    r = r + i * 2
+print("sum2", r)
+print(f"prod={a * b}")
+print("done")
+`)
+}
