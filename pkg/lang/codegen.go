@@ -4750,17 +4750,29 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if len(tup.Elems) != len(valElems) {
 				return fmt.Errorf("codegen: tuple assignment length mismatch")
 			}
-			for i, tgt := range tup.Elems {
+			// Tuple assignment must be simultaneous: `a, b = b, a` swaps,
+			// it must not alias the updated targets. Emit all target allocas
+			// first, then snapshot all RHS values, then store each target.
+			for _, tgt := range tup.Elems {
 				if nm, ok2 := tgt.(*Name); ok2 {
 					if !g.allocd[nm.Value] {
-						b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
 						g.allocd[nm.Value] = true
+						b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+						g.gcReg(b, nm.Value)
 					}
-					v, err := g.value(b, valElems[i])
-					if err != nil {
-						return err
-					}
-					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+				}
+			}
+			vals := make([]string, len(tup.Elems))
+			for i := range tup.Elems {
+				val, err := g.value(b, valElems[i])
+				if err != nil {
+					return err
+				}
+				vals[i] = val
+			}
+			for i, tgt := range tup.Elems {
+				if nm, ok2 := tgt.(*Name); ok2 {
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", vals[i], nm.Value))
 				}
 			}
 			return nil
