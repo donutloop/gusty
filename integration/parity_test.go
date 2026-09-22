@@ -468,3 +468,33 @@ print("whileelse", z)
 print("done")
 `)
 }
+
+// TestParityObjTaggedDispatch proves the AOT runtime and the interpreter agree
+// on the dynamic type model end-to-end: a polymorphic call on a runtime
+// receiver is dispatched through the %obj-tagged value representation in the
+// AOT backend and through the same canonical kind tags in the interpreter, so
+// both must produce identical stdout.
+func TestParityObjTaggedDispatch(t *testing.T) {
+	parity(t, `
+class A:
+    def f(self):
+        return 1
+class B(A):
+    def f(self):
+        return 2
+class C(A):
+    def f(self):
+        return 3
+
+def pick(x):
+    return x.f()
+
+a = A()
+print(pick(a))
+b = B()
+print(pick(b))
+c = C()
+print(pick(c))
+print("done")
+`)
+}

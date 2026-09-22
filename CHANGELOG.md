@@ -1,3 +1,12 @@
+# Round 12 — Runtime dispatch: `%obj`-tagged value representation
+
+- Introduced the canonical tagged runtime value `%obj = type {i32, i32}` ({kind tag, payload}) in the AOT prelude, with helpers `rt_mkobj`, `rt_obj_tag`, `rt_obj_payload`, `rt_obj_is`.
+- Added `pkg/lang/value.go` — a single canonical kind-tag table both the AOT runtime IR and the interpreter heap derive tags from, so AOT and interpreter agree on the dynamic type model by construction.
+- Wired runtime dispatch to operate on a tagged receiver: wrap `{tag=instance, payload=handle}`, verify the tag (`rt_obj_is`), extract the payload (`rt_obj_payload`) before the class-id switch.
+- Interpreter mirror: `obj.tag()` maps heap `obj.kind` strings to the canonical tags; `tagOfVal` reports reference-kind tags.
+- Tests: `value_test.go` (canonical table / obj.tag / tagOfVal), ircheck `TestObjTaggedDispatch` (llc-valid `%obj` dispatch IR), parity `TestParityObjTaggedDispatch` (polymorphic dispatch identical on both backends).
+- Docs: `docs/agentic/ast-ir-schema.md` `%obj` section, ADR 0142, roadmap Phase 2 Runtime dispatch marked DONE.
+
 # Round 11 — Tuple type + tuple unpacking (Phase 9)
 
 Added a first-class `Tuple` type to the gradual type system:

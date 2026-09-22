@@ -1936,3 +1936,33 @@ func TestIRPowerConst(t *testing.T) {
 		t.Fatalf("constant power should fold but IR contains rt_pow:\n%s", ir)
 	}
 }
+
+// TestObjTaggedDispatch verifies the runtime dispatch path emits the canonical
+// %obj-tagged value representation and that the IR is valid LLVM. A polymorphic
+// call on a runtime receiver must wrap the receiver as {tag=instance,
+// payload=handle}, tag-check it (rt_obj_is), and read the payload
+// (rt_obj_payload) before the class-id switch.
+func TestObjTaggedDispatch(t *testing.T) {
+	src := "class A:\n    def f(self):\n        return 1\nclass B(A):\n    def f(self):\n        return 2\ndef pick(x):\n    return x.f()\na = A()\nprint(pick(a))\nb = B()\nprint(pick(b))\nprint(\"done\")"
+	ir := llcCompiles(t, src)
+	for _, want := range []string{
+		"%obj = type {i32, i32}",
+		"@rt_mkobj",
+		"@rt_obj_is",
+		"@rt_obj_payload",
+	} {
+		if !hasIR(ir, want) {
+			t.Fatalf("compiled IR missing %s:\n%s", want, ir)
+		}
+	}
+}
+
+// hasIR reports whether the compiled IR string contains sub.
+func hasIR(ir, sub string) bool {
+	for i := 0; i+len(sub) <= len(ir); i++ {
+		if ir[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

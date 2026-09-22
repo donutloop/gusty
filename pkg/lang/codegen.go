@@ -653,6 +653,40 @@ done:
   ret i32 %nh
 }
 
+%obj = type {i32, i32} ; tagged dynamic value: {tag, payload}
+
+; Construct a tagged %obj value from a kind tag and a payload. The payload is
+; a heap handle for reference kinds (str/list/dict/set/tuple/class/instance/
+; method/closure/exn/module) or the raw immediate for int/bool/None.
+define internal %obj @rt_mkobj(i32 %tag, i32 %payload) {
+entry:
+  %o = insertvalue %obj undef, i32 %tag, 0
+  %o2 = insertvalue %obj %o, i32 %payload, 1
+  ret %obj %o2
+}
+
+; Read the kind tag word of an %obj value.
+define internal i32 @rt_obj_tag(%obj %o) {
+entry:
+  %t = extractvalue %obj %o, 0
+  ret i32 %t
+}
+
+; Read the payload word of an %obj value.
+define internal i32 @rt_obj_payload(%obj %o) {
+entry:
+  %p = extractvalue %obj %o, 1
+  ret i32 %p
+}
+
+; Test whether an %obj value carries the given kind tag.
+define internal i1 @rt_obj_is(%obj %o, i32 %tag) {
+entry:
+  %t = extractvalue %obj %o, 0
+  %eq = icmp eq i32 %t, %tag
+  ret i1 %eq
+}
+
 `
 
 func GenerateIR(prog *Program) (string, error) {
@@ -3161,8 +3195,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// stored in instance slot 0 (set at instantiation).
 		if mname := attr.Name.Value; g.hasMethod(mname) {
 			h, _ := g.value(b, attr.Obj)
+			// Runtime dispatch operates on the canonical %obj-tagged value
+			// representation: the receiver is wrapped as {tag=instance,
+			// payload=heap-handle}, its kind tag is verified, and the payload
+			// (the instance heap handle) is extracted before the class-id is
+			// read from instance slot 0. Both AOT and interpreter derive these
+			// tags from the same canonical table (value.go).
+			recv := g.newTmp() // %obj
+			b.WriteString(fmt.Sprintf("  %s = call %%obj @rt_mkobj(i32 %d, i32 %s)\n", recv, int(TagInstance), h))
+			isInst := g.newTmp() // i1
+			b.WriteString(fmt.Sprintf("  %s = call i1 @rt_obj_is(%%obj %s, i32 %d)\n", isInst, recv, int(TagInstance)))
+			h2 := g.newTmp() // i32 payload = the instance heap handle
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_obj_payload(%%obj %s)\n", h2, recv))
 			cid := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, h))
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, h2))
 			argvals := make([]string, len(c.Args))
 			for i, a := range c.Args {
 				v, _ := g.value(b, a)

@@ -47,6 +47,25 @@ type obj struct {
 	doc   string           // __doc__ string (def/class/closure objects)
 }
 
+// tag returns the canonical %obj kind tag for this heap object. Both the
+// interpreter heap and the AOT runtime derive tags from the same canonical
+// table (value.go), so AOT and interpreter agree on the dynamic type model.
+func (o *obj) tag() ValueTag {
+	return objKindTag(o.kind)
+}
+
+// tagOfVal returns the canonical %obj kind tag for a runtime value. Heap
+// values map their obj.kind; plain ints/bools/None are raw i64s in the
+// interpreter today, so they report the immediate tag (the %obj payload word
+// carries the raw value, exactly as the AOT representation does).
+func (e *Evaluator) tagOfVal(v int64) ValueTag {
+	if o, ok := e.heap[v]; ok {
+		return o.tag()
+	}
+	return TagInt
+}
+
+
 // setLoopVar binds a for-loop variable (a Name, or a Tuple of Names) to a value.
 // For a Tuple, the value must be a list/tuple object whose length matches.
 func (e *Evaluator) setLoopVar(v Expr, val int64) error {
