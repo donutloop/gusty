@@ -1314,3 +1314,70 @@ func TestTupleUnpack(t *testing.T) {
 }
 
 
+
+func TestEvalPower(t *testing.T) {
+	// integer power: 2 ** 3 == 8
+	v, diags, err := EvalExpr("2 ** 3")
+	if err != nil {
+		t.Fatalf("2 ** 3: %v", err)
+	}
+	if v != 8 {
+		t.Fatalf("2 ** 3 = %d, want 8", v)
+	}
+	_ = diags
+
+	// right-associative: 2 ** 3 ** 2 == 2 ** (3 ** 2) == 2 ** 9 == 512
+	v, _, err = EvalExpr("2 ** 3 ** 2")
+	if err != nil || v != 512 {
+		t.Fatalf("2 ** 3 ** 2 = %d err %v, want 512", v, err)
+	}
+
+	// the lexer folds `-2` into a single negative literal, so -2 ** 2 == (-2) ** 2 == 4
+	// (unary-minus-on-literal is a lexer-level choice in this language)
+	v, _, err = EvalExpr("-2 ** 2")
+	if err != nil || v != 4 {
+		t.Fatalf("-2 ** 2 = %d err %v, want 4", v, err)
+	}
+
+	// power with variable base/exponent
+	v, _, err = EvalExpr("a = 2\nb = 10\na ** b")
+	if err != nil || v != 1024 {
+		t.Fatalf("2 ** 10 = %d err %v, want 1024", v, err)
+	}
+
+	// negative integer exponent yields 0 (int result), like Python's 2 ** -1 -> int floor
+	v, _, err = EvalExpr("2 ** -1")
+	if err != nil || v != 0 {
+		t.Fatalf("2 ** -1 = %d err %v, want 0", v, err)
+	}
+
+	// float power: 2.0 ** 3.0 == 8.0
+	prog, err := Parse("2.0 ** 3.0")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	ev := NewEvaluator()
+	v, err = ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("2.0 ** 3.0: %v", err)
+	}
+	f, ok := ev.floatOf(v)
+	if !ok || f != 8.0 {
+		t.Fatalf("2.0 ** 3.0 = %v (float=%v) err %v, want 8.0", v, f, err)
+	}
+
+	// mixed float/int power: 2.0 ** 3 == 8.0
+	prog, err = Parse("2.0 ** 3")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	ev = NewEvaluator()
+	v, err = ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("2.0 ** 3: %v", err)
+	}
+	f, ok = ev.floatOf(v)
+	if !ok || f != 8.0 {
+		t.Fatalf("2.0 ** 3 = %v (float=%v), want 8.0", v, f)
+	}
+}

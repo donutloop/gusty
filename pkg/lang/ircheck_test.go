@@ -1916,3 +1916,23 @@ func TestCodegenTupleUnpack(t *testing.T) {
 }
 
 
+
+func TestIRPowerInt(t *testing.T) {
+	// Non-literal integer operands lower to @llvm.pow.f64 (converted to double).
+	ir := llcCompiles(t, "x = 2\ny = 3\nz = x ** y\nprint(z)")
+	if !strings.Contains(ir, "@llvm.pow.f64") {
+		t.Fatalf("IR missing @llvm.pow.f64:\n%s", ir)
+	}
+	if !strings.Contains(ir, "fptosi double") {
+		t.Fatalf("IR missing fptosi result conversion:\n%s", ir)
+	}
+}
+
+
+func TestIRPowerConst(t *testing.T) {
+	// Integer-literal power folds at compile time, so no rt_pow is emitted.
+	ir := llcCompiles(t, "print(2 ** 3)")
+	if strings.Contains(ir, "rt_pow") {
+		t.Fatalf("constant power should fold but IR contains rt_pow:\n%s", ir)
+	}
+}

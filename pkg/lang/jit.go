@@ -1676,6 +1676,34 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			return 1, nil
 		}
 		return 0, nil
+	case "**":
+		if lf, ok := e.floatOf(l); ok {
+			rf, rfok := e.floatOf(r)
+			if !rfok {
+				rf = float64(r)
+			}
+			return e.allocFloat(math.Pow(lf, rf)), nil
+		}
+		if rf, ok := e.floatOf(r); ok {
+			return e.allocFloat(math.Pow(float64(l), rf)), nil
+		}
+		// exact integer power (binary exponentiation); negative exponents
+		// yield 0 for an integer result, mirroring Python's int ** int.
+		if r < 0 {
+			return 0, nil
+		}
+		base, exp := l, r
+		res := int64(1)
+		for exp > 0 {
+			if exp&1 != 0 {
+				res *= base
+			}
+			exp >>= 1
+			if exp > 0 {
+				base *= base
+			}
+		}
+		return res, nil
 	}
 	return 0, &EvalError{Msg: "unsupported operator " + n.Op}
 }

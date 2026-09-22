@@ -928,7 +928,28 @@ func (p *parser) parseUnary() (Expr, error) {
 		}
 		return &UnOp{Op: "-", X: x, sp: op.Span}, nil
 	}
-	return p.parsePostfix()
+	return p.parsePower()
+}
+
+// parsePower handles the `**` (power) operator, which binds tighter than
+// unary minus on the left (`-2**2 == -(2**2)`), is right-associative
+// (`2**3**2 == 2**(3**2)`), and allows a unary expression as the right
+// operand (`2**-2`). This matches Python's precedence rules.
+func (p *parser) parsePower() (Expr, error) {
+	x, err := p.parsePostfix()
+	if err != nil {
+		return nil, err
+	}
+	t := p.peek()
+	if !t.IsOp("**") {
+		return x, nil
+	}
+	p.next()
+	r, err := p.parseUnary()
+	if err != nil {
+		return nil, err
+	}
+	return &BinOp{Op: "**", L: x, R: r, sp: t.Span}, nil
 }
 
 // parseArg parses a single call argument. It recognizes a `name = value`

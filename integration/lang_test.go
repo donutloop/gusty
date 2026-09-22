@@ -1207,3 +1207,12 @@ print(l[0:100:3])
 print(l[6:0:-1])
 `, "[2, 3, 4]\n[1, 3, 5]\n[4, 5, 6]\n[1, 2, 3, 4, 5, 6]\n[1, 2, 3, 4]\n[2, 4]\n[6, 5, 4, 3, 2, 1]\n1\n[3, 4, 5, 6]\n[1, 2, 3, 4]\n[6, 4, 2]\n[]\n[1, 2, 3, 4, 5, 6]\n[1, 4]\n[6, 5, 4, 3, 2]\n")
 }
+
+func TestExecPower(t *testing.T) {
+	// integer power: 2 ** 3 == 8
+	assertOutput(t, "print(2 ** 3)", "8\n")
+	// right-associative: 2 ** 3 ** 2 == 2 ** (3 ** 2) == 2 ** 9 == 512
+	assertOutput(t, "print(2 ** 3 ** 2)", "512\n")
+	// variable base/exponent
+	assertOutput(t, "a = 2\nb = 10\nprint(a ** b)", "1024\n")
+}

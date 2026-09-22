@@ -2042,6 +2042,8 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
 	case "%":
 		fmt.Fprintf(b, "  %s = frem double %s, %s\n", t, l, r)
+	case "**":
+		fmt.Fprintf(b, "  %s = call double @llvm.pow.f64(double %s, double %s)\n", t, l, r)
 	case "==":
 		bt := g.newTmp()
 		fmt.Fprintf(b, "  %s = fcmp oeq double %s, %s\n", bt, l, r)
@@ -2101,6 +2103,8 @@ func (g *irGen) floatEval(e Expr) (float64, bool) {
 				return 0, false
 			}
 			return l / r, true
+		case "**":
+			return math.Pow(l, r), true
 		}
 		return 0, false
 	case *Call:
@@ -2247,6 +2251,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					if rv != 0 {
 						res, folded = lv%rv, true
 					}
+				case "**":
+					if rv >= 0 {
+						base, exp := lv, rv
+						res = 1
+						for exp > 0 {
+							if exp&1 != 0 {
+								res *= base
+							}
+							exp >>= 1
+							if exp > 0 {
+								base *= base
+							}
+						}
+						folded = true
+					}
 				case "and":
 					folded = true
 					if lv != 0 && rv != 0 {
@@ -2333,6 +2352,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			op = "sdiv"
 		case "%":
 			op = "srem"
+		case "**":
+			ld := g.newTmp()
+			fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", ld, l)
+			rd := g.newTmp()
+			fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", rd, r)
+			pw := g.newTmp()
+			fmt.Fprintf(b, "  %s = call double @llvm.pow.f64(double %s, double %s)\n", pw, ld, rd)
+			t2 := g.newTmp()
+			fmt.Fprintf(b, "  %s = fptosi double %s to i32\n", t2, pw)
+			return t2, nil
 		case "is":
 			op = "icmp eq"
 		case "is not":

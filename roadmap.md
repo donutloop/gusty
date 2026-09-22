@@ -62,7 +62,7 @@ Rule: every component change updates the matching doc; never let
 | Phase 6 — language-surface parity | Augmented assignment | ✅ DONE | `+= -= *= /= //= %=`; absent today. |
 | Phase 6 — language-surface parity | Tuple unpacking / multi-assign | ✅ DONE | `a, b = b, a`, `for a, b in ...`; interpreter + codegen tuple assignment. |
 | Phase 6 — language-surface parity | Membership + identity ops | ✅ DONE | `in`/`not in` (list/dict/set/str) and `is`/`is not`; interpreter + codegen via runtime `rt_contains`. |
-| Phase 6 — language-surface parity | Power `**` | 🟠 PARTIAL | Lexed but never wired as a binop; add `math.Pow` lowering in both backends. |
+| Phase 6 — language-surface parity | Power `**` | ✅ DONE | Wired as a right-associative binop binding tighter than unary on the left. Interpreter: `math.Pow` for float, exact binary-exponentiation for int. Codegen: exact fold for int literals, `@llvm.pow.f64` (sitofp/fptosi) for non-literal ints, `@llvm.pow.f64` in `floatBinOp`/`floatEval`. Tests: `TestEvalPower`, `TestIRPowerInt`, `TestIRPowerConst`, `TestExecPower`. |
 | Phase 6 — language-surface parity | Pattern-match depth | ⏳ PLANNED | Guards (`case x if cond:`), or-patterns, dict/class patterns; today only integer-equality + list-destructuring. |
 | Phase 6 — language-surface parity | Operator overloading (dunder) | ⏳ PLANNED | `__add__`, `__getitem__`, ...; prerequisite for `with` and idiomatic classes. |
 | Phase 6 — language-surface parity | `with` / context managers, `yield from` | ⏳ PLANNED | Natural follow-ons to exceptions and generators. |
