@@ -143,3 +143,21 @@ func TestCLIJSONType(t *testing.T) {
 		t.Fatalf("exit = %d, want 0", doc.Exit)
 	}
 }
+
+// TestCLIJIT verifies the in-process dlopen JIT path end-to-end through the
+// CLI: `--jit --eval` compiles, links, dlopen's, and runs the generated
+// native `main`, returning the same stdout as the AST interpreter.
+func TestCLIJIT(t *testing.T) {
+	got := cli(t, "--jit", "--eval", "x = 6\nprint(x * 7)\n")
+	if got != "42\n" {
+		t.Fatalf("jit eval output = %q, want 42", got)
+	}
+}
+
+// TestCLIJITJSON verifies the JSON output mode captures the JIT stdout.
+func TestCLIJITJSON(t *testing.T) {
+	got := cli(t, "--jit", "--json", "--eval", "print(2 + 3)\n")
+	if got != `{"output": "5\n", "exit": 0}`+"\n" {
+		t.Fatalf("jit json output = %q", got)
+	}
+}

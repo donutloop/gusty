@@ -50,6 +50,7 @@ func run() int {
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
+	jit := fs.Bool("jit", false, "use the in-process dlopen JIT (codegen -> llc -> cc -shared -> dlopen -> run) instead of the AST interpreter")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
 	help := fs.Bool("help", false, "show usage")
@@ -111,7 +112,7 @@ func run() int {
 		return exitOK
 	}
 	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *emitLLVMF == "" && *emitASTF == "" && isTTY()) {
-		return replMode()
+		return replMode(*jit)
 	}
 
 	if *verify != "" {
@@ -124,7 +125,7 @@ func run() int {
 		return emitAST(*emitASTF)
 	}
 	if *evalSrc != "" || *file != "" {
-		return evalSrcOrFile(*evalSrc, *file, *jsonOut)
+		return evalSrcOrFile(*evalSrc, *file, *jsonOut, *jit)
 	}
 	usage(fs)
 	return exitUsage
@@ -141,11 +142,28 @@ func srcOrFile(src, file string) (string, error) {
 	return string(b), nil
 }
 
-func evalSrcOrFile(src, file string, jsonOut bool) int {
+func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		return exitErr
+	}
+	if jitMode {
+		res, err := lang.JIT(s, 0)
+		if err != nil {
+			if jsonOut {
+				fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitErr)
+			} else {
+				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+			}
+			return exitErr
+		}
+		if jsonOut {
+			fmt.Printf("{\"output\": %q, \"exit\": 0}\n", res.Output)
+		} else {
+			fmt.Print(res.Output)
+		}
+		return exitOK
 	}
 	ev := lang.NewEvaluator()
 	prog, err := lang.Parse(s)
@@ -264,23 +282,37 @@ func isTTY() bool {
 	return info.Mode()&os.ModeCharDevice != 0
 }
 
-func replMode() int {
+func replMode(jitMode bool) int {
+	fmt.Printf("gustyc %s (jit=%t) — type .help, .lang, .quit\n", lang.Version, jitMode)
 	ev := lang.NewEvaluator()
-	fmt.Printf("gustyc %s — type .help, .lang, .quit\n", lang.Version)
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
-		line := sc.Text()
-		switch line {
-		case ".quit", ".exit", "q":
-			return exitOK
-		case ".help":
-			fmt.Println("REPL commands: .quit, .lang")
-			continue
-		case ".lang":
-			listLang()
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
 			continue
 		}
-		if strings.TrimSpace(line) == "" {
+		if strings.HasPrefix(line, ".") {
+			switch line {
+			case ".quit", ".exit", "q":
+				return exitOK
+			case ".help":
+				fmt.Println("REPL commands: .quit, .lang, .help")
+				continue
+			case ".lang":
+				listLang()
+				continue
+			default:
+				fmt.Fprintf(os.Stderr, "gustyc: unknown command %q\n", line)
+				continue
+			}
+		}
+		if jitMode {
+			res, err := lang.JIT(line+"\n", 0)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+				continue
+			}
+			fmt.Print(res.Output)
 			continue
 		}
 		prog, err := lang.Parse(line)
@@ -290,12 +322,10 @@ func replMode() int {
 		}
 		v, err := ev.EvalProgram(prog)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 			continue
 		}
-		if v != 0 {
-			fmt.Println(ev.Repr(v))
-		}
+		fmt.Println(ev.Repr(v))
 	}
 	if err := sc.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
