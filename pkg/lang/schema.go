@@ -18,11 +18,15 @@ const ASTIRSchema = `{
   "title": "gusty AST & IR dump schema",
   "description": "Describes the JSON AST dump from --emit-ast and the LLVM IR text dump from --emit-llvm.",
   "type": "object",
-  "required": ["stmts"],
+  "required": [
+    "stmts"
+  ],
   "properties": {
     "stmts": {
       "type": "array",
-      "items": { "$ref": "#/definitions/stmt" },
+      "items": {
+        "$ref": "#/definitions/stmt"
+      },
       "description": "Top-level statements of the parsed program, in order."
     }
   },
@@ -30,205 +34,920 @@ const ASTIRSchema = `{
     "irDump": {
       "type": "string",
       "contentMediaType": "text/plain",
-      "description": "LLVM IR text (--emit-llvm). Validated by llc/opt, not this schema."
+      "description": "LLVM IR text (--emit-llvm). Validated by llc/opt, not this schema.",
+      "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
     },
     "stmt": {
       "oneOf": [
-        { "$ref": "#/definitions/returnStmt" },
-        { "$ref": "#/definitions/exprStmt" },
-        { "$ref": "#/definitions/assignStmt" },
-        { "$ref": "#/definitions/raiseStmt" },
-        { "$ref": "#/definitions/ifStmt" },
-        { "$ref": "#/definitions/whileStmt" },
-        { "$ref": "#/definitions/forStmt" },
-        { "$ref": "#/definitions/funcDef" },
-        { "$ref": "#/definitions/classDef" },
-        { "$ref": "#/definitions/matchStmt" },
-        { "$ref": "#/definitions/tryStmt" },
-        { "$ref": "#/definitions/importStmt" },
-        { "$ref": "#/definitions/yieldStmt" },
-        { "$ref": "#/definitions/breakStmt" },
-        { "$ref": "#/definitions/passStmt" },
-        { "$ref": "#/definitions/continueStmt" }
-      ]
+        {
+          "$ref": "#/definitions/returnStmt"
+        },
+        {
+          "$ref": "#/definitions/exprStmt"
+        },
+        {
+          "$ref": "#/definitions/assignStmt"
+        },
+        {
+          "$ref": "#/definitions/raiseStmt"
+        },
+        {
+          "$ref": "#/definitions/ifStmt"
+        },
+        {
+          "$ref": "#/definitions/whileStmt"
+        },
+        {
+          "$ref": "#/definitions/forStmt"
+        },
+        {
+          "$ref": "#/definitions/funcDef"
+        },
+        {
+          "$ref": "#/definitions/classDef"
+        },
+        {
+          "$ref": "#/definitions/matchStmt"
+        },
+        {
+          "$ref": "#/definitions/tryStmt"
+        },
+        {
+          "$ref": "#/definitions/importStmt"
+        },
+        {
+          "$ref": "#/definitions/yieldStmt"
+        },
+        {
+          "$ref": "#/definitions/breakStmt"
+        },
+        {
+          "$ref": "#/definitions/passStmt"
+        },
+        {
+          "$ref": "#/definitions/continueStmt"
+        }
+      ],
+      "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
     },
     "returnStmt": {
       "type": "object",
-      "required": ["expr"],
+      "required": [
+        "expr"
+      ],
       "properties": {
-        "expr": { "$ref": "#/definitions/expr" }
+        "expr": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "exprStmt": {
       "type": "object",
-      "required": ["expr"],
+      "required": [
+        "expr"
+      ],
       "properties": {
-        "expr": { "$ref": "#/definitions/expr" }
+        "expr": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "assignStmt": {
       "type": "object",
-      "required": ["target", "value"],
+      "required": [
+        "cond",
+        "then"
+      ],
       "properties": {
-        "target": { "$ref": "#/definitions/expr" },
-        "value": { "$ref": "#/definitions/expr" },
-        "annot": { "$ref": "#/definitions/type" }
-		},
-		"augAssignStmt": {
-			"type": "object",
-			"required": ["target", "op", "value"],
-			"properties": {
-				"target": { "$ref": "#/definitions/expr" },
-				"op": { "type": "string" },
-				"value": { "$ref": "#/definitions/expr" }
-			}
-		},
-      "type": "object",
-      "required": ["cond", "then"],
-      "properties": {
-        "cond": { "$ref": "#/definitions/expr" },
-        "then": { "type": "array", "items": { "$ref": "#/definitions/stmt" } },
-        "elifs": { "type": "array", "items": { "$ref": "#/definitions/stmt" } },
-        "else": { "type": "array", "items": { "$ref": "#/definitions/stmt" } }
+        "cond": {
+          "$ref": "#/definitions/expr"
+        },
+        "then": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "elifs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      },
+      "augAssignStmt": {
+        "type": "object",
+        "required": [
+          "target",
+          "op",
+          "value"
+        ],
+        "properties": {
+          "target": {
+            "$ref": "#/definitions/expr"
+          },
+          "op": {
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/definitions/expr"
+          }
+        }
       }
     },
     "whileStmt": {
       "type": "object",
-      "required": ["cond", "body"],
+      "required": [
+        "cond",
+        "body"
+      ],
       "properties": {
-        "cond": { "$ref": "#/definitions/expr" },
-        "body": { "type": "array", "items": { "$ref": "#/definitions/stmt" } },
-        "else": { "type": "array", "items": { "$ref": "#/definitions/stmt" } }
+        "cond": {
+          "$ref": "#/definitions/expr"
+        },
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "forStmt": {
       "type": "object",
-      "required": ["var", "iter", "body"],
+      "required": [
+        "var",
+        "iter",
+        "body"
+      ],
       "properties": {
-        "var": { "$ref": "#/definitions/expr" },
-        "iter": { "$ref": "#/definitions/expr" },
-        "body": { "type": "array", "items": { "$ref": "#/definitions/stmt" } },
-        "else": { "type": "array", "items": { "$ref": "#/definitions/stmt" } }
+        "var": {
+          "$ref": "#/definitions/expr"
+        },
+        "iter": {
+          "$ref": "#/definitions/expr"
+        },
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "funcDef": {
       "type": "object",
-      "required": ["name", "params", "body"],
+      "required": [
+        "name",
+        "params",
+        "body"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "params": { "type": "array", "items": { "$ref": "#/definitions/param" } },
-        "return_annot": { "$ref": "#/definitions/type" },
-        "body": { "type": "array", "items": { "$ref": "#/definitions/stmt" } },
-        "decorators": { "type": "array", "items": { "$ref": "#/definitions/expr" } }
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/param"
+          }
+        },
+        "return_annot": {
+          "$ref": "#/definitions/type"
+        },
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "decorators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "param": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "annot": { "$ref": "#/definitions/type" },
-        "default": { "$ref": "#/definitions/expr" }
+        "name": {
+          "type": "string"
+        },
+        "annot": {
+          "$ref": "#/definitions/type"
+        },
+        "default": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "classDef": {
       "type": "object",
-      "required": ["name", "body"],
+      "required": [
+        "name",
+        "body"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "bases": { "type": "array", "items": { "$ref": "#/definitions/expr" } },
-        "body": { "type": "array", "items": { "$ref": "#/definitions/stmt" } }
+        "name": {
+          "type": "string"
+        },
+        "bases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "matchStmt": {
       "type": "object",
-      "required": ["subject", "cases"],
+      "required": [
+        "subject",
+        "cases"
+      ],
       "properties": {
-        "subject": { "$ref": "#/definitions/expr" },
-        "cases": { "type": "array", "items": { "$ref": "#/definitions/matchCase" } }
+        "subject": {
+          "$ref": "#/definitions/expr"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/matchCase"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "matchCase": {
       "type": "object",
-      "required": ["pattern", "body"],
+      "required": [
+        "pattern",
+        "body"
+      ],
       "properties": {
-        "pattern": { "$ref": "#/definitions/expr" },
-        "body": { "type": "array", "items": { "$ref": "#/definitions/stmt" } }
+        "pattern": {
+          "$ref": "#/definitions/expr"
+        },
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "tryStmt": {
       "type": "object",
-      "required": ["body"],
+      "required": [
+        "body"
+      ],
       "properties": {
-        "body": { "type": "array", "items": { "$ref": "#/definitions/stmt" } },
-        "excepts": { "type": "array", "items": { "$ref": "#/definitions/exceptClause" } },
-        "finally": { "type": "array", "items": { "$ref": "#/definitions/stmt" } }
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "excepts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/exceptClause"
+          }
+        },
+        "finally": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "exceptClause": {
       "type": "object",
-      "required": ["body"],
+      "required": [
+        "body"
+      ],
       "properties": {
-        "exn": { "$ref": "#/definitions/expr" },
-        "body": { "type": "array", "items": { "$ref": "#/definitions/stmt" } }
+        "exn": {
+          "$ref": "#/definitions/expr"
+        },
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stmt"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "importStmt": {
       "type": "object",
-      "required": ["module"],
+      "required": [
+        "module"
+      ],
       "properties": {
-        "module": { "type": "string" }
+        "module": {
+          "type": "string"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
     "yieldStmt": {
       "type": "object",
-      "required": ["expr"],
+      "required": [
+        "expr"
+      ],
       "properties": {
-        "expr": { "$ref": "#/definitions/expr" }
+        "expr": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
       }
     },
-    "breakStmt": { "type": "object" },
-    "passStmt": { "type": "object" },
-    "continueStmt": { "type": "object" },
+    "breakStmt": {
+      "type": "object",
+      "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
+    },
+    "passStmt": {
+      "type": "object",
+      "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
+    },
+    "continueStmt": {
+      "type": "object",
+      "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
+    },
     "expr": {
       "oneOf": [
-        { "$ref": "#/definitions/name" },
-        { "$ref": "#/definitions/intLit" },
-        { "$ref": "#/definitions/floatLit" },
-        { "$ref": "#/definitions/boolLit" },
-        { "$ref": "#/definitions/strLit" },
-        { "$ref": "#/definitions/listLit" },
-        { "$ref": "#/definitions/dictLit" },
-        { "$ref": "#/definitions/setLit" },
-        { "$ref": "#/definitions/binOp" },
-        { "$ref": "#/definitions/unOp" },
-        { "$ref": "#/definitions/condExpr" },
-        { "$ref": "#/definitions/call" },
-        { "$ref": "#/definitions/index" },
-        { "$ref": "#/definitions/attr" },
-        { "$ref": "#/definitions/lambda" },
-        { "$ref": "#/definitions/comp" },
-        { "$ref": "#/definitions/generator" }
-      ]
+        {
+          "$ref": "#/definitions/name"
+        },
+        {
+          "$ref": "#/definitions/intLit"
+        },
+        {
+          "$ref": "#/definitions/floatLit"
+        },
+        {
+          "$ref": "#/definitions/boolLit"
+        },
+        {
+          "$ref": "#/definitions/strLit"
+        },
+        {
+          "$ref": "#/definitions/listLit"
+        },
+        {
+          "$ref": "#/definitions/dictLit"
+        },
+        {
+          "$ref": "#/definitions/setLit"
+        },
+        {
+          "$ref": "#/definitions/binOp"
+        },
+        {
+          "$ref": "#/definitions/unOp"
+        },
+        {
+          "$ref": "#/definitions/condExpr"
+        },
+        {
+          "$ref": "#/definitions/call"
+        },
+        {
+          "$ref": "#/definitions/index"
+        },
+        {
+          "$ref": "#/definitions/attr"
+        },
+        {
+          "$ref": "#/definitions/lambda"
+        },
+        {
+          "$ref": "#/definitions/comp"
+        },
+        {
+          "$ref": "#/definitions/generator"
+        }
+      ],
+      "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
     },
-    "name": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string" } } },
-    "intLit": { "type": "object", "required": ["value"], "properties": { "value": { "type": "integer" } } },
-    "floatLit": { "type": "object", "required": ["value"], "properties": { "value": { "type": "number" } } },
-    "boolLit": { "type": "object", "required": ["value"], "properties": { "value": { "type": "boolean" } } },
-    "strLit": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string" } } },
-    "listLit": { "type": "object", "required": ["elems"], "properties": { "elems": { "type": "array", "items": { "$ref": "#/definitions/expr" } } } },
-    "dictLit": { "type": "object", "required": ["keys", "vals"], "properties": { "keys": { "type": "array", "items": { "$ref": "#/definitions/expr" } }, "vals": { "type": "array", "items": { "$ref": "#/definitions/expr" } } } },
-    "setLit": { "type": "object", "required": ["elems"], "properties": { "elems": { "type": "array", "items": { "$ref": "#/definitions/expr" } } } },
-    "binOp": { "type": "object", "required": ["op", "left", "right"], "properties": { "op": { "type": "string" }, "left": { "$ref": "#/definitions/expr" }, "right": { "$ref": "#/definitions/expr" } } },
-    "unOp": { "type": "object", "required": ["op", "x"], "properties": { "op": { "type": "string" }, "x": { "$ref": "#/definitions/expr" } } },
-    "condExpr": { "type": "object", "required": ["if", "then", "else"], "properties": { "if": { "$ref": "#/definitions/expr" }, "then": { "$ref": "#/definitions/expr" }, "else": { "$ref": "#/definitions/expr" } } },
-    "call": { "type": "object", "required": ["fn", "args"], "properties": { "fn": { "$ref": "#/definitions/expr" }, "args": { "type": "array", "items": { "$ref": "#/definitions/expr" } } } },
-    "index": { "type": "object", "required": ["obj", "idx"], "properties": { "obj": { "$ref": "#/definitions/expr" }, "idx": { "$ref": "#/definitions/expr" } } },
-    "attr": { "type": "object", "required": ["obj", "name"], "properties": { "obj": { "$ref": "#/definitions/expr" }, "name": { "$ref": "#/definitions/expr" } } },
-    "lambda": { "type": "object", "required": ["params", "body"], "properties": { "params": { "type": "array", "items": { "$ref": "#/definitions/param" } }, "body": { "$ref": "#/definitions/expr" } } },
-    "comp": { "type": "object", "required": ["kind", "elem", "iter"], "properties": { "kind": { "type": "string" }, "elem": { "$ref": "#/definitions/expr" }, "iter": { "$ref": "#/definitions/expr" }, "cond": { "$ref": "#/definitions/expr" } } },
-    "generator": { "type": "object", "required": ["elems"], "properties": { "elems": { "type": "array", "items": { "$ref": "#/definitions/expr" } } } },
-    "type": { "type": "string", "description": "Type annotation text." }
+    "name": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "intLit": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "integer"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "floatLit": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "boolLit": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "boolean"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "strLit": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "listLit": {
+      "type": "object",
+      "required": [
+        "elems"
+      ],
+      "properties": {
+        "elems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "dictLit": {
+      "type": "object",
+      "required": [
+        "keys",
+        "vals"
+      ],
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "vals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "setLit": {
+      "type": "object",
+      "required": [
+        "elems"
+      ],
+      "properties": {
+        "elems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "binOp": {
+      "type": "object",
+      "required": [
+        "op",
+        "left",
+        "right"
+      ],
+      "properties": {
+        "op": {
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/definitions/expr"
+        },
+        "right": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "unOp": {
+      "type": "object",
+      "required": [
+        "op",
+        "x"
+      ],
+      "properties": {
+        "op": {
+          "type": "string"
+        },
+        "x": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "condExpr": {
+      "type": "object",
+      "required": [
+        "if",
+        "then",
+        "else"
+      ],
+      "properties": {
+        "if": {
+          "$ref": "#/definitions/expr"
+        },
+        "then": {
+          "$ref": "#/definitions/expr"
+        },
+        "else": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "call": {
+      "type": "object",
+      "required": [
+        "fn",
+        "args"
+      ],
+      "properties": {
+        "fn": {
+          "$ref": "#/definitions/expr"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "index": {
+      "type": "object",
+      "required": [
+        "obj",
+        "idx"
+      ],
+      "properties": {
+        "obj": {
+          "$ref": "#/definitions/expr"
+        },
+        "idx": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "attr": {
+      "type": "object",
+      "required": [
+        "obj",
+        "name"
+      ],
+      "properties": {
+        "obj": {
+          "$ref": "#/definitions/expr"
+        },
+        "name": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "lambda": {
+      "type": "object",
+      "required": [
+        "params",
+        "body"
+      ],
+      "properties": {
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/param"
+          }
+        },
+        "body": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "comp": {
+      "type": "object",
+      "required": [
+        "kind",
+        "elem",
+        "iter"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "elem": {
+          "$ref": "#/definitions/expr"
+        },
+        "iter": {
+          "$ref": "#/definitions/expr"
+        },
+        "cond": {
+          "$ref": "#/definitions/expr"
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "required": [
+        "elems"
+      ],
+      "properties": {
+        "elems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/expr"
+          }
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        },
+        "inferred": {
+          "type": "string",
+          "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "type": {
+      "type": "string",
+      "description": "Type annotation text.",
+      "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
+    }
   },
   "additionalProperties": true
 }`

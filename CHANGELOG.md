@@ -6,6 +6,16 @@ pre-`1.0.0` releases (`v0.x.y`) while still in development.
 
 ## [Unreleased] - v0.10.0 (in progress)
 
+### Richer --emit-ast JSON: spans + inferred types
+- Each AST node in `--emit-ast` output now carries its source `span` (from the
+  node's `Src` field), and each expression node carries the `inferred` static
+  type name computed by the semantic pass (e.g. `int`, `list[int]`).
+- The semantic analyzer annotates every Expr node with its inferred type during
+  `Analyze`; the AST dump is self-describing for agentic static-analysis.
+- The `ASTIRSchema` in `pkg/lang/schema.go` now documents `span` and `inferred`
+  properties; `docs/agentic/ast-ir-schema.md` describes the richer schema.
+- New test `TestEmitASTIncludesSpanAndInferredType` covers the feature.
+
 ### loop-variable reuse (AOT alloca guard)
 - Reusing the same loop variable name across multiple `for` loops (e.g. `for i in range(3)` then `for i in range(5)`) previously failed AOT with "multiple definition of local value named '_i'".
 - Codegen now guards loop-var allocas with the per-function `allocd` map, so a reused name reuses the existing alloca instead of emitting a duplicate.

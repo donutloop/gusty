@@ -111,7 +111,7 @@ func foldConst(e Expr, globals map[string]Expr, reg map[string]map[string]Expr) 
 			}
 		}
 		if ok {
-			return &StrLit{Value: b.String(), sp: n.sp}, nil
+			return &StrLit{Value: b.String(), Src: n.Src}, nil
 		}
 		return e, nil
 	case *Name:

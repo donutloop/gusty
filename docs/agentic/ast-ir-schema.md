@@ -1,36 +1,50 @@
-# gusty AST/IR JSON schema (agentic contract)
+# Richer AST IR JSON schema (`--emit-ast`)
 
-gusty exposes a machine-readable, self-describing JSON Schema (draft-07) for
-its structured outputs. Agents consuming gusty's AST dump can validate and
-plan against it without reading the compiler source.
+`gustyc -emit-ast "<src>"` prints the parsed AST as JSON. Each node now carries
+two optional fields alongside its syntactic fields:
 
-## Retrieve
+- `span` — the source span `{"line": L, "col": C}` (or `{line,col,end_line,end_col}`)
+  of the node, serialized from the node's internal `Src` field. Statements and
+  expressions both carry their span.
+- `inferred` — the static type inferred by the semantic pass for an expression,
+  as a readable name string, e.g. `"int"`, `"str"`, `"list[int]"`,
+  `"dict[str, int]"`, `"fn"`. This comes from the same inference the
+  semantic analyzer already computes (it is annotated onto each Expr node
+  during `Analyze`).
 
-    gustyc --schema            # prints the JSON Schema document to stdout
+Because these fields are additive and `omitempty`, the JSON remains backward
+compatible: nodes that could not be typed simply omit `inferred`.
 
-## The AST dump (`--emit-ast`)
+## Example
 
-`--emit-ast` prints the parsed `Program` as JSON: `{"stmts": [...]}`. Each
-statement is one of the `stmt` kinds in the schema (`assignStmt`, `ifStmt`,
-`call` via `exprStmt`, `funcDef`, `classDef`, `matchStmt`, `tryStmt`,
-`importStmt`, `yieldStmt`, `breakStmt`, `passStmt`, `continueStmt`, ...).
-Expressions nest recursively via `expr` definitions.
+    echo 'x = 1 + 2' | gustyc -emit-ast
 
-Node kinds are identified by required field names (Go's default struct JSON
-tags), not an explicit `kind` discriminator; the schema's `oneOf` lists the
-required-field signatures.
+produces (abridged):
 
-## The IR dump (`--emit-llvm`)
+```json
+{
+  "stmts": [
+    {
+      "target": { "name": "x", "span": {...}, "inferred": "any" },
+      "value": {
+        "op": "+",
+        "left": { "value": 1, "span": {...}, "inferred": "int" },
+        "right": { "value": 2, "span": {...}, "inferred": "int" },
+        "span": {...},
+        "inferred": "int"
+      },
+      "span": {...}
+    }
+  ]
+}
+```
 
-`--emit-llvm` prints LLVM IR **text**, not JSON. The schema documents it as
-`definitions.irDump` with `contentMediaType: text/plain`; it is validated by
-`llc`/`opt`, not by this JSON Schema.
+The machine-readable schema in `pkg/lang/schema.go` (`ASTIRSchema`) documents
+the `span` and `inferred` properties on node definitions.
 
-## Validation example
+## Correlation
 
-    python3 -c '
-      import json, sys
-      d = json.load(open("dump.json"))     # --emit-ast output
-      assert "stmts" in d                  # schema root: required ["stmts"]
-      print(len(d["stmts"]), "statements")
-    '
+An agent can walk the JSON to find each expression's `inferred` type directly
+on the node, and use `span` to locate it in source. This makes the AST dump
+self-describing for static-analysis agents: no separate type table or span
+reconstruction is required.

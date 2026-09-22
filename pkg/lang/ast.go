@@ -8,11 +8,11 @@ type Node interface {
 // Program is the root AST: a list of statements.
 type Program struct {
 	Stmts []Stmt `json:"stmts"`
-	sp    Span   `json:"-"`
+	Src    Span   `json:"span,omitempty"`
 }
 
-func (p *Program) Span() Span     { return p.sp }
-func (p *Program) SetSpan(s Span) { p.sp = s }
+func (p *Program) Span() Span     { return p.Src }
+func (p *Program) SetSpan(s Span) { p.Src = s }
 
 // Stmt is a statement node.
 type Stmt interface {
@@ -30,37 +30,37 @@ type Expr interface {
 
 type ReturnStmt struct {
 	Expr Expr `json:"expr"`
-	sp   Span `json:"-"`
+	Src   Span `json:"span,omitempty"`
 }
 
-func (n *ReturnStmt) Span() Span     { return n.sp }
+func (n *ReturnStmt) Span() Span     { return n.Src }
 func (n *ReturnStmt) stmtNode()      {}
-func (n *ReturnStmt) SetSpan(s Span) { n.sp = s }
+func (n *ReturnStmt) SetSpan(s Span) { n.Src = s }
 
 type ExprStmt struct {
 	Expr Expr `json:"expr"`
-	sp   Span `json:"-"`
+	Src   Span `json:"span,omitempty"`
 }
 
-func (n *ExprStmt) Span() Span { return n.sp }
+func (n *ExprStmt) Span() Span { return n.Src }
 func (n *ExprStmt) stmtNode()  {}
 
 type AssignStmt struct {
 	Target Expr  `json:"target"`
 	Value  Expr  `json:"value"`
 	Annot  *Type `json:"annot,omitempty"`
-	sp     Span  `json:"-"`
+	Src     Span  `json:"span,omitempty"`
 }
 
 type RaiseStmt struct {
 	Expr Expr
-	sp   Span
+	Src   Span
 }
 
-func (n *RaiseStmt) Span() Span { return n.sp }
+func (n *RaiseStmt) Span() Span { return n.Src }
 
 func (n *RaiseStmt) stmtNode()   {}
-func (n *AssignStmt) Span() Span { return n.sp }
+func (n *AssignStmt) Span() Span { return n.Src }
 func (n *AssignStmt) stmtNode()  {}
 
 // AugAssignStmt is an augmented assignment `x op= e` (`x += e`, `x -= e`,
@@ -70,10 +70,10 @@ type AugAssignStmt struct {
 	Target Expr   `json:"target"`
 	Op     string `json:"op"`
 	Value  Expr   `json:"value"`
-	sp     Span   `json:"-"`
+	Src     Span   `json:"span,omitempty"`
 }
 
-func (n *AugAssignStmt) Span() Span { return n.sp }
+func (n *AugAssignStmt) Span() Span { return n.Src }
 func (n *AugAssignStmt) stmtNode()  {}
 
 type IfStmt struct {
@@ -81,20 +81,20 @@ type IfStmt struct {
 	Then  []Stmt    `json:"then"`
 	Elifs []*IfStmt `json:"elifs,omitempty"`
 	Else  []Stmt    `json:"else,omitempty"`
-	sp    Span      `json:"-"`
+	Src    Span      `json:"span,omitempty"`
 }
 
-func (n *IfStmt) Span() Span { return n.sp }
+func (n *IfStmt) Span() Span { return n.Src }
 func (n *IfStmt) stmtNode()  {}
 
 type WhileStmt struct {
 	Cond Expr   `json:"cond"`
 	Body []Stmt `json:"body"`
 	Else []Stmt `json:"else"`
-	sp   Span   `json:"-"`
+	Src   Span   `json:"span,omitempty"`
 }
 
-func (n *WhileStmt) Span() Span { return n.sp }
+func (n *WhileStmt) Span() Span { return n.Src }
 func (n *WhileStmt) stmtNode()  {}
 
 type ForStmt struct {
@@ -102,20 +102,20 @@ type ForStmt struct {
 	Iter Expr   `json:"iter"`
 	Body []Stmt `json:"body"`
 	Else []Stmt `json:"else"`
-	sp   Span   `json:"-"`
+	Src   Span   `json:"span,omitempty"`
 }
 
-func (n *ForStmt) Span() Span { return n.sp }
+func (n *ForStmt) Span() Span { return n.Src }
 func (n *ForStmt) stmtNode()  {}
 
 type Param struct {
 	Name    string `json:"name"`
 	Annot   *Type  `json:"annot,omitempty"`
 	Default Expr   `json:"default,omitempty"`
-	sp      Span   `json:"-"`
+	Src      Span   `json:"span,omitempty"`
 }
 
-func (n *Param) Span() Span { return n.sp }
+func (n *Param) Span() Span { return n.Src }
 
 type FuncDef struct {
 	Name       string   `json:"name"`
@@ -123,20 +123,20 @@ type FuncDef struct {
 	ReturnAnno *Type    `json:"return_annot,omitempty"`
 	Body       []Stmt   `json:"body"`
 	Decorators []Expr   `json:"decorators,omitempty"`
-	sp         Span     `json:"-"`
+	Src         Span     `json:"span,omitempty"`
 }
 
-func (n *FuncDef) Span() Span { return n.sp }
+func (n *FuncDef) Span() Span { return n.Src }
 func (n *FuncDef) stmtNode()  {}
 
 type ClassDef struct {
 	Name  string  `json:"name"`
 	Bases []*Name `json:"bases,omitempty"`
 	Body  []Stmt  `json:"body"`
-	sp    Span    `json:"-"`
+	Src    Span    `json:"span,omitempty"`
 }
 
-func (n *ClassDef) Span() Span { return n.sp }
+func (n *ClassDef) Span() Span { return n.Src }
 func (n *ClassDef) stmtNode()  {}
 
 type MatchCase struct {
@@ -144,57 +144,57 @@ type MatchCase struct {
 	Or      []Expr `json:"or,omitempty"`
 	Guard   Expr   `json:"guard,omitempty"`
 	Body    []Stmt `json:"body"`
-	sp      Span   `json:"-"`
+	Src      Span   `json:"span,omitempty"`
 }
 
 type MatchStmt struct {
 	Subject Expr         `json:"subject"`
 	Cases   []*MatchCase `json:"cases"`
-	sp      Span         `json:"-"`
+	Src      Span         `json:"span,omitempty"`
 }
 
-func (n *MatchStmt) Span() Span { return n.sp }
+func (n *MatchStmt) Span() Span { return n.Src }
 func (n *MatchStmt) stmtNode()  {}
 
 type ExceptClause struct {
 	Exn  *Name  `json:"exn,omitempty"`
 	Body []Stmt `json:"body"`
-	sp   Span   `json:"-"`
+	Src   Span   `json:"span,omitempty"`
 }
 
 type TryStmt struct {
 	Body    []Stmt          `json:"body"`
 	Excepts []*ExceptClause `json:"excepts,omitempty"`
 	Finally []Stmt          `json:"finally,omitempty"`
-	sp      Span            `json:"-"`
+	Src      Span            `json:"span,omitempty"`
 }
 
-func (n *TryStmt) Span() Span { return n.sp }
+func (n *TryStmt) Span() Span { return n.Src }
 func (n *TryStmt) stmtNode()  {}
 
 type ImportStmt struct {
 	Module string `json:"module"`
-	sp     Span   `json:"-"`
+	Src     Span   `json:"span,omitempty"`
 }
 
-func (n *ImportStmt) Span() Span { return n.sp }
+func (n *ImportStmt) Span() Span { return n.Src }
 func (n *ImportStmt) stmtNode()  {}
 
 type YieldStmt struct {
 	Expr Expr `json:"expr"`
-	sp   Span `json:"-"`
+	Src   Span `json:"span,omitempty"`
 }
 
-func (n *YieldStmt) Span() Span { return n.sp }
+func (n *YieldStmt) Span() Span { return n.Src }
 func (n *YieldStmt) stmtNode()  {}
 
 // YieldFromStmt is `yield from expr`: delegate yields to a sub-iterable.
 type YieldFromStmt struct {
 	Expr Expr `json:"expr"`
-	sp   Span `json:"-"`
+	Src   Span `json:"span,omitempty"`
 }
 
-func (n *YieldFromStmt) Span() Span { return n.sp }
+func (n *YieldFromStmt) Span() Span { return n.Src }
 func (n *YieldFromStmt) stmtNode()  {}
 
 // WithStmt is `with expr [as name]: body`. It drives a context manager's
@@ -203,60 +203,66 @@ type WithStmt struct {
 	Expr Expr   `json:"expr"`
 	As   *Name  `json:"as,omitempty"` // binding name, nil when no `as`
 	Body []Stmt `json:"body"`
-	sp   Span   `json:"-"`
+	Src   Span   `json:"span,omitempty"`
 }
 
-func (n *WithStmt) Span() Span { return n.sp }
+func (n *WithStmt) Span() Span { return n.Src }
 func (n *WithStmt) stmtNode()  {}
 
 // --- Expressions ---
 
 type Name struct {
 	Value string `json:"name"`
-	sp    Span   `json:"-"`
+	Src    Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Name) Span() Span { return n.sp }
+func (n *Name) Span() Span { return n.Src }
 func (n *Name) exprNode()  {}
 
 type IntLit struct {
 	Value int64 `json:"value"`
-	sp    Span  `json:"-"`
+	Src    Span  `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *IntLit) Span() Span { return n.sp }
+func (n *IntLit) Span() Span { return n.Src }
 func (n *IntLit) exprNode()  {}
 
 type FloatLit struct {
 	Value float64 `json:"value"`
-	sp    Span    `json:"-"`
+	Src    Span    `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *FloatLit) Span() Span { return n.sp }
+func (n *FloatLit) Span() Span { return n.Src }
 func (n *FloatLit) exprNode()  {}
 
 type BoolLit struct {
 	Value bool `json:"value"`
-	sp    Span `json:"-"`
+	Src    Span `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *BoolLit) Span() Span { return n.sp }
+func (n *BoolLit) Span() Span { return n.Src }
 func (n *BoolLit) exprNode()  {}
 
 type NoneLit struct {
-	sp Span `json:"-"`
+	Src Span `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *NoneLit) Span() Span { return n.sp }
+func (n *NoneLit) Span() Span { return n.Src }
 func (n *NoneLit) exprNode()  {}
 
 // Tuple is a comma-separated expression list `a, b` or `(a, b)`.
 type Tuple struct {
 	Elems []Expr `json:"elems"`
-	sp    Span   `json:"-"`
+	Src    Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Tuple) Span() Span { return n.sp }
+func (n *Tuple) Span() Span { return n.Src }
 
 func (n *Tuple) exprNode() {}
 
@@ -280,18 +286,20 @@ func loopVarNames(v Expr) []string {
 
 type StrLit struct {
 	Value string `json:"value"`
-	sp    Span   `json:"-"`
+	Src    Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *StrLit) Span() Span { return n.sp }
+func (n *StrLit) Span() Span { return n.Src }
 func (n *StrLit) exprNode()  {}
 
 type FString struct {
 	Parts []FStringPart `json:"parts"`
-	sp    Span          `json:"-"`
+	Src    Span          `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *FString) Span() Span { return n.sp }
+func (n *FString) Span() Span { return n.Src }
 func (n *FString) exprNode()  {}
 
 // FStringPart is one segment of an interpolated format string: either a
@@ -303,46 +311,51 @@ type FStringPart struct {
 
 type ListLit struct {
 	Elems []Expr `json:"elems"`
-	sp    Span   `json:"-"`
+	Src    Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *ListLit) Span() Span { return n.sp }
+func (n *ListLit) Span() Span { return n.Src }
 func (n *ListLit) exprNode()  {}
 
 type DictLit struct {
 	Keys []Expr `json:"keys"`
 	Vals []Expr `json:"vals"`
-	sp   Span   `json:"-"`
+	Src   Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *DictLit) Span() Span { return n.sp }
+func (n *DictLit) Span() Span { return n.Src }
 func (n *DictLit) exprNode()  {}
 
 type SetLit struct {
 	Elems []Expr `json:"elems"`
-	sp    Span   `json:"-"`
+	Src    Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *SetLit) Span() Span { return n.sp }
+func (n *SetLit) Span() Span { return n.Src }
 func (n *SetLit) exprNode()  {}
 
 type BinOp struct {
 	Op string `json:"op"`
 	L  Expr   `json:"left"`
 	R  Expr   `json:"right"`
-	sp Span   `json:"-"`
+	Src Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *BinOp) Span() Span { return n.sp }
+func (n *BinOp) Span() Span { return n.Src }
 func (n *BinOp) exprNode()  {}
 
 type UnOp struct {
 	Op string `json:"op"`
 	X  Expr   `json:"x"`
-	sp Span   `json:"-"`
+	Src Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *UnOp) Span() Span { return n.sp }
+func (n *UnOp) Span() Span { return n.Src }
 func (n *UnOp) exprNode()  {}
 
 // CondExpr is a ternary conditional expression `then if cond else otherwise`.
@@ -350,19 +363,21 @@ type CondExpr struct {
 	If   Expr `json:"if"`   // value when cond is truthy
 	Cond Expr `json:"cond"` // condition
 	Else Expr `json:"else"` // value when cond is falsy
-	sp   Span `json:"-"`
+	Src   Span `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *CondExpr) Span() Span { return n.sp }
+func (n *CondExpr) Span() Span { return n.Src }
 func (n *CondExpr) exprNode()  {}
 
 type Call struct {
 	Fn   Expr   `json:"fn"`
 	Args []Expr `json:"args"`
-	sp   Span   `json:"-"`
+	Src   Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Call) Span() Span { return n.sp }
+func (n *Call) Span() Span { return n.Src }
 func (n *Call) exprNode()  {}
 
 // KeywordArg is a `name = value` argument inside a call: the function
@@ -370,19 +385,20 @@ func (n *Call) exprNode()  {}
 type KeywordArg struct {
 	Name  string `json:"name"`
 	Value Expr   `json:"value"`
-	sp    Span   `json:"-"`
+	Src    Span   `json:"span,omitempty"`
 }
 
-func (n *KeywordArg) Span() Span { return n.sp }
+func (n *KeywordArg) Span() Span { return n.Src }
 func (n *KeywordArg) exprNode()  {}
 
 type Index struct {
 	Obj Expr `json:"obj"`
 	Idx Expr `json:"index"`
-	sp  Span `json:"-"`
+	Src  Span `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Index) Span() Span { return n.sp }
+func (n *Index) Span() Span { return n.Src }
 func (n *Index) exprNode()  {}
 
 // Slice is a sequence slice expression `s[a:b]`, `s[a:b:c]`, `s[::step]`.
@@ -392,28 +408,31 @@ type Slice struct {
 	Low  Expr `json:"low,omitempty"`
 	High Expr `json:"high,omitempty"`
 	Step Expr `json:"step,omitempty"`
-	sp   Span `json:"-"`
+	Src   Span `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Slice) Span() Span { return n.sp }
+func (n *Slice) Span() Span { return n.Src }
 func (n *Slice) exprNode()  {}
 
 type Attr struct {
 	Obj  Expr  `json:"obj"`
 	Name *Name `json:"name"`
-	sp   Span  `json:"-"`
+	Src   Span  `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Attr) Span() Span { return n.sp }
+func (n *Attr) Span() Span { return n.Src }
 func (n *Attr) exprNode()  {}
 
 type Lambda struct {
 	Params []*Param `json:"params"`
 	Body   Expr     `json:"body"`
-	sp     Span     `json:"-"`
+	Src     Span     `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Lambda) Span() Span { return n.sp }
+func (n *Lambda) Span() Span { return n.Src }
 func (n *Lambda) exprNode()  {}
 
 // CompKind distinguishes list/dict/set/generator comprehensions.
@@ -434,10 +453,11 @@ type Comp struct {
 	ForVar *Name    `json:"for_var"`
 	Iter   Expr     `json:"iter"`
 	Cond   Expr     `json:"cond,omitempty"`
-	sp     Span     `json:"-"`
+	Src     Span     `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Comp) Span() Span { return n.sp }
+func (n *Comp) Span() Span { return n.Src }
 func (n *Comp) exprNode()  {}
 
 // Generator is a generator expression `(x for x in iter)`.
@@ -446,32 +466,34 @@ type Generator struct {
 	ForVar *Name  `json:"for_var"`
 	Iter   Expr   `json:"iter"`
 	Cond   Expr   `json:"cond,omitempty"`
-	sp     Span   `json:"-"`
+	Src     Span   `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
 }
 
-func (n *Generator) Span() Span { return n.sp }
+func (n *Generator) Span() Span { return n.Src }
 func (n *Generator) exprNode()  {}
 
 type BreakStmt struct {
-	sp Span `json:"-"`
+	Src Span `json:"span,omitempty"`
 }
 type PassStmt struct {
-	sp Span `json:"-"`
+	Src Span `json:"span,omitempty"`
 }
 
-func (n *BreakStmt) Span() Span     { return n.sp }
+func (n *BreakStmt) Span() Span     { return n.Src }
 func (n *BreakStmt) stmtNode()      {}
-func (n *BreakStmt) SetSpan(s Span) { n.sp = s }
+func (n *BreakStmt) SetSpan(s Span) { n.Src = s }
 
 type ContinueStmt struct {
-	sp Span `json:"-"`
+	Src Span `json:"span,omitempty"`
 }
 
-func (n *PassStmt) Span() Span     { return n.sp }
-func (n *PassStmt) SetSpan(s Span) { n.sp = s }
+func (n *PassStmt) Span() Span     { return n.Src }
+func (n *PassStmt) SetSpan(s Span) { n.Src = s }
 
 func (n *PassStmt) stmtNode() {}
 
-func (n *ContinueStmt) Span() Span     { return n.sp }
+func (n *ContinueStmt) Span() Span     { return n.Src }
 func (n *ContinueStmt) stmtNode()      {}
-func (n *ContinueStmt) SetSpan(s Span) { n.sp = s }
+func (n *ContinueStmt) SetSpan(s Span) { n.Src = s }
+

@@ -150,15 +150,15 @@ func (p *parser) parseStmt() (Stmt, error) {
 	}
 	if t.IsKeyword("break") {
 		p.next()
-		return &BreakStmt{sp: t.Span}, nil
+		return &BreakStmt{Src: t.Span}, nil
 	}
 	if t.IsKeyword("continue") {
 		p.next()
-		return &ContinueStmt{sp: t.Span}, nil
+		return &ContinueStmt{Src: t.Span}, nil
 	}
 	if t.IsKeyword("pass") {
 		p.next()
-		return &PassStmt{sp: t.Span}, nil
+		return &PassStmt{Src: t.Span}, nil
 	}
 	// expression / assignment
 	return p.parseExprOrAssign()
@@ -210,7 +210,7 @@ func (p *parser) parseFuncDef() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	fd := &FuncDef{Name: name, sp: def.Span}
+	fd := &FuncDef{Name: name, Src: def.Span}
 	if err := p.expectOp("("); err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func (p *parser) parseParam() (*Param, error) {
 	if err != nil {
 		return nil, err
 	}
-	param := &Param{Name: name, sp: t.Span}
+	param := &Param{Name: name, Src: t.Span}
 	// optional : type
 	if p.peek().IsOp(":") {
 		p.next()
@@ -321,7 +321,7 @@ func (p *parser) parseClassDef() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	cd := &ClassDef{Name: name, sp: cls.Span}
+	cd := &ClassDef{Name: name, Src: cls.Span}
 	// optional base list in parens
 	if p.peek().IsOp("(") {
 		p.next()
@@ -331,7 +331,7 @@ func (p *parser) parseClassDef() (Stmt, error) {
 				return nil, p.errorf(t, "expected base class name")
 			}
 			p.next()
-			cd.Bases = append(cd.Bases, &Name{Value: t.Text, sp: t.Span})
+			cd.Bases = append(cd.Bases, &Name{Value: t.Text, Src: t.Span})
 			if p.peek().IsOp(",") {
 				p.next()
 				continue
@@ -360,12 +360,12 @@ func (p *parser) parseImport() (Stmt, error) {
 		return nil, err
 	}
 	p.skipNewlines()
-	return &ImportStmt{Module: name, sp: im.Span}, nil
+	return &ImportStmt{Module: name, Src: im.Span}, nil
 }
 
 func (p *parser) parseReturn() (Stmt, error) {
 	rt := p.next() // 'return'
-	rs := &ReturnStmt{sp: rt.Span}
+	rs := &ReturnStmt{Src: rt.Span}
 	if !p.atNewline() && !p.atEOF() && !p.atDedent() {
 		ex, err := p.parseExpr()
 		if err != nil {
@@ -385,9 +385,9 @@ func (p *parser) parseYield() (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &YieldFromStmt{Expr: ex, sp: yt.Span}, nil
+		return &YieldFromStmt{Expr: ex, Src: yt.Span}, nil
 	}
-	ys := &YieldStmt{sp: yt.Span}
+	ys := &YieldStmt{Src: yt.Span}
 	if !p.atNewline() && !p.atEOF() && !p.atDedent() {
 		ex, err := p.parseExpr()
 		if err != nil {
@@ -412,7 +412,7 @@ func (p *parser) parseIf() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	isf := &IfStmt{Cond: cond, Then: body, sp: kw.Span}
+	isf := &IfStmt{Cond: cond, Then: body, Src: kw.Span}
 	// elif / else at the same level
 	for {
 		p.skipNewlines()
@@ -430,7 +430,7 @@ func (p *parser) parseIf() (Stmt, error) {
 			if err != nil {
 				return nil, err
 			}
-			isf.Elifs = append(isf.Elifs, &IfStmt{Cond: cond2, Then: body2, sp: t.Span})
+			isf.Elifs = append(isf.Elifs, &IfStmt{Cond: cond2, Then: body2, Src: t.Span})
 			continue
 		}
 		if t.IsKeyword("else") {
@@ -466,7 +466,7 @@ func (p *parser) parseWhile() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WhileStmt{Cond: cond, Body: body, Else: elseBody, sp: kw.Span}, nil
+	return &WhileStmt{Cond: cond, Body: body, Else: elseBody, Src: kw.Span}, nil
 }
 
 func (p *parser) parseFor() (Stmt, error) {
@@ -476,7 +476,7 @@ func (p *parser) parseFor() (Stmt, error) {
 		return nil, p.errorf(t, "expected loop variable")
 	}
 	p.next()
-	varName := &Name{Value: t.Text, sp: t.Span}
+	varName := &Name{Value: t.Text, Src: t.Span}
 	varExpr := Expr(varName)
 	// tuple loop variable: for a, b in ...
 	if p.peek().IsOp(",") {
@@ -484,9 +484,9 @@ func (p *parser) parseFor() (Stmt, error) {
 		for p.peek().IsOp(",") {
 			p.next()
 			t2 := p.next()
-			elems = append(elems, &Name{Value: t2.Text, sp: t2.Span})
+			elems = append(elems, &Name{Value: t2.Text, Src: t2.Span})
 		}
-		varExpr = &Tuple{Elems: elems, sp: t.Span}
+		varExpr = &Tuple{Elems: elems, Src: t.Span}
 	}
 	if err := p.expectKeyword("in"); err != nil {
 		return nil, err
@@ -506,7 +506,7 @@ func (p *parser) parseFor() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ForStmt{Var: varExpr, Iter: iter, Body: body, Else: elseBody, sp: kw.Span}, nil
+	return &ForStmt{Var: varExpr, Iter: iter, Body: body, Else: elseBody, Src: kw.Span}, nil
 }
 
 // parseLoopElse parses an optional `else:` block following a while/for loop,
@@ -533,7 +533,7 @@ func (p *parser) parseMatch() (Stmt, error) {
 	if err := p.expectOp(":"); err != nil {
 		return nil, err
 	}
-	ms := &MatchStmt{Subject: subj, sp: kw.Span}
+	ms := &MatchStmt{Subject: subj, Src: kw.Span}
 	// cases are indented blocks each starting with 'case'
 	if !p.atIndent() {
 		p.skipNewlines()
@@ -559,7 +559,7 @@ func (p *parser) parseMatch() (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		ms.Cases = append(ms.Cases, &MatchCase{Pattern: pat, Or: ors, Guard: guard, Body: body, sp: t.Span})
+		ms.Cases = append(ms.Cases, &MatchCase{Pattern: pat, Or: ors, Guard: guard, Body: body, Src: t.Span})
 	}
 	if p.atDedent() {
 		p.next()
@@ -597,13 +597,13 @@ func (p *parser) parsePatternAtom() (Expr, error) {
 	switch {
 	case t.Kind == TokIdent:
 		p.next()
-		return &Name{Value: t.Text, sp: t.Span}, nil
+		return &Name{Value: t.Text, Src: t.Span}, nil
 	case t.Kind == TokInt:
 		p.next()
-		return &IntLit{Value: t.Int, sp: t.Span}, nil
+		return &IntLit{Value: t.Int, Src: t.Span}, nil
 	case t.Kind == TokString:
 		p.next()
-		return &StrLit{Value: t.Text, sp: t.Span}, nil
+		return &StrLit{Value: t.Text, Src: t.Span}, nil
 	case t.IsOp("["):
 		return p.parseListOrComp()
 	case t.IsOp("{"):
@@ -622,17 +622,17 @@ func (p *parser) parseTry() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	ts := &TryStmt{Body: body, sp: kw.Span}
+	ts := &TryStmt{Body: body, Src: kw.Span}
 	// except / finally clauses
 	for {
 		p.skipNewlines()
 		t := p.peek()
 		if t.IsKeyword("except") {
 			p.next()
-			ec := &ExceptClause{sp: t.Span}
+			ec := &ExceptClause{Src: t.Span}
 			if p.peek().Kind == TokIdent {
 				nt := p.next()
-				ec.Exn = &Name{Value: nt.Text, sp: nt.Span}
+				ec.Exn = &Name{Value: nt.Text, Src: nt.Span}
 			}
 			if err := p.expectOp(":"); err != nil {
 				return nil, err
@@ -668,7 +668,7 @@ func (p *parser) parseWith() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	ws := &WithStmt{Expr: ex, sp: kw.Span}
+	ws := &WithStmt{Expr: ex, Src: kw.Span}
 	if p.peek().IsKeyword("as") {
 		p.next()
 		nm, err := p.parseExpr()
@@ -730,8 +730,8 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 		}
 		if i < len(p.toks) && (p.toks[i].IsOp("=") || p.toks[i].IsOp(":")) {
 			p.next() // ident
-			name := &Name{Value: t.Text, sp: t.Span}
-			as := &AssignStmt{Target: name, sp: t.Span}
+			name := &Name{Value: t.Text, Src: t.Span}
+			as := &AssignStmt{Target: name, Src: t.Span}
 			// optional : type
 			if p.peek().IsOp(":") {
 				p.next()
@@ -783,10 +783,10 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 			}
 			rhsList = append(rhsList, ex2)
 		}
-		target := &Tuple{Elems: targets, sp: ex.Span()}
+		target := &Tuple{Elems: targets, Src: ex.Span()}
 		value := Expr(rhs)
 		if len(rhsList) > 1 {
-			value = &Tuple{Elems: rhsList, sp: rhs.Span()}
+			value = &Tuple{Elems: rhsList, Src: rhs.Span()}
 		}
 		p.skipNewlines()
 		return &AssignStmt{Target: target, Value: value}, nil
@@ -804,7 +804,7 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 			return nil, err
 		}
 		aug := &AugAssignStmt{Target: ex, Op: augOpBase(op.Text), Value: val}
-		aug.sp = ex.Span()
+		aug.Src = ex.Span()
 		return aug, nil
 	}
 	// attribute assignment: self.x = expr
@@ -819,7 +819,7 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 		}
 	}
 	p.skipNewlines()
-	return &ExprStmt{Expr: ex, sp: ex.Span()}, nil
+	return &ExprStmt{Expr: ex, Src: ex.Span()}, nil
 }
 
 // parseTypeAnnot parses a type annotation token (int/float/bool/str/any).
@@ -877,7 +877,7 @@ func (p *parser) parseTernary() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &CondExpr{If: l, Cond: cond, Else: r, sp: op.Span}, nil
+		return &CondExpr{If: l, Cond: cond, Else: r, Src: op.Span}, nil
 	}
 	return l, nil
 }
@@ -893,7 +893,7 @@ func (p *parser) parseOr() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &BinOp{Op: "or", L: l, R: r, sp: op.Span}
+		l = &BinOp{Op: "or", L: l, R: r, Src: op.Span}
 	}
 	return l, nil
 }
@@ -909,7 +909,7 @@ func (p *parser) parseAnd() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &BinOp{Op: "and", L: l, R: r, sp: op.Span}
+		l = &BinOp{Op: "and", L: l, R: r, Src: op.Span}
 	}
 	return l, nil
 }
@@ -921,7 +921,7 @@ func (p *parser) parseNot() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &UnOp{Op: "not", X: x, sp: op.Span}, nil
+		return &UnOp{Op: "not", X: x, Src: op.Span}, nil
 	}
 	return p.parseComparison()
 }
@@ -962,7 +962,7 @@ func (p *parser) parseComparison() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &BinOp{Op: op, L: l, R: r, sp: t.Span}
+		l = &BinOp{Op: op, L: l, R: r, Src: t.Span}
 	}
 	return l, nil
 }
@@ -982,7 +982,7 @@ func (p *parser) parseAdditive() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &BinOp{Op: t.Text, L: l, R: r, sp: t.Span}
+		l = &BinOp{Op: t.Text, L: l, R: r, Src: t.Span}
 	}
 	return l, nil
 }
@@ -1002,7 +1002,7 @@ func (p *parser) parseMultiplicative() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &BinOp{Op: t.Text, L: l, R: r, sp: t.Span}
+		l = &BinOp{Op: t.Text, L: l, R: r, Src: t.Span}
 	}
 	return l, nil
 }
@@ -1014,7 +1014,7 @@ func (p *parser) parseUnary() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &UnOp{Op: "-", X: x, sp: op.Span}, nil
+		return &UnOp{Op: "-", X: x, Src: op.Span}, nil
 	}
 	return p.parsePower()
 }
@@ -1037,7 +1037,7 @@ func (p *parser) parsePower() (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &BinOp{Op: "**", L: x, R: r, sp: t.Span}, nil
+	return &BinOp{Op: "**", L: x, R: r, Src: t.Span}, nil
 }
 
 // parseArg parses a single call argument. It recognizes a `name = value`
@@ -1055,7 +1055,7 @@ func (p *parser) parseArg() (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			return &KeywordArg{Name: name, Value: val, sp: t.Span}, nil
+			return &KeywordArg{Name: name, Value: val, Src: t.Span}, nil
 		}
 	}
 	return p.parseExpr()
@@ -1088,7 +1088,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 			if err := p.expectOp(")"); err != nil {
 				return nil, err
 			}
-			x = &Call{Fn: x, Args: args, sp: t.Span}
+			x = &Call{Fn: x, Args: args, Src: t.Span}
 			continue
 		}
 		if t.IsOp("[") {
@@ -1124,9 +1124,9 @@ func (p *parser) parsePostfix() (Expr, error) {
 				return nil, err
 			}
 			if isSlice {
-				x = &Slice{Obj: x, Low: low, High: high, Step: step, sp: t.Span}
+				x = &Slice{Obj: x, Low: low, High: high, Step: step, Src: t.Span}
 			} else {
-				x = &Index{Obj: x, Idx: low, sp: t.Span}
+				x = &Index{Obj: x, Idx: low, Src: t.Span}
 			}
 			continue
 		}
@@ -1137,7 +1137,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 				return nil, p.errorf(nt, "expected attribute name")
 			}
 			p.next()
-			x = &Attr{Obj: x, Name: &Name{Value: nt.Text, sp: nt.Span}, sp: t.Span}
+			x = &Attr{Obj: x, Name: &Name{Value: nt.Text, Src: nt.Span}, Src: t.Span}
 			continue
 		}
 		break
@@ -1150,33 +1150,33 @@ func (p *parser) parseAtom() (Expr, error) {
 	switch {
 	case t.Kind == TokInt:
 		p.next()
-		return &IntLit{Value: t.Int, sp: t.Span}, nil
+		return &IntLit{Value: t.Int, Src: t.Span}, nil
 	case t.Kind == TokFloat:
 		p.next()
-		return &FloatLit{Value: t.Float, sp: t.Span}, nil
+		return &FloatLit{Value: t.Float, Src: t.Span}, nil
 	case t.Kind == TokString:
 		p.next()
-		return &StrLit{Value: t.Str, sp: t.Span}, nil
+		return &StrLit{Value: t.Str, Src: t.Span}, nil
 	case t.Kind == TokFString:
 		p.next()
 		return p.buildFString(t.FStrRaw, t.Span)
 	case t.Kind == TokKeyword && t.Text == "True":
 		p.next()
-		return &BoolLit{Value: true, sp: t.Span}, nil
+		return &BoolLit{Value: true, Src: t.Span}, nil
 	case t.Kind == TokKeyword && t.Text == "False":
 		p.next()
-		return &BoolLit{Value: false, sp: t.Span}, nil
+		return &BoolLit{Value: false, Src: t.Span}, nil
 	case t.Kind == TokKeyword && t.Text == "None":
 		p.next()
-		return &NoneLit{sp: t.Span}, nil
+		return &NoneLit{Src: t.Span}, nil
 	case t.Kind == TokKeyword && (t.Text == "print" || t.Text == "range"):
 		p.next()
-		return &Name{Value: t.Text, sp: t.Span}, nil
+		return &Name{Value: t.Text, Src: t.Span}, nil
 	case t.Kind == TokKeyword && t.Text == "lambda":
 		return p.parseLambda()
 	case t.Kind == TokIdent:
 		p.next()
-		return &Name{Value: t.Text, sp: t.Span}, nil
+		return &Name{Value: t.Text, Src: t.Span}, nil
 	case t.IsOp("("):
 		p.next()
 		ex, err := p.parseExpr()
@@ -1206,7 +1206,7 @@ func (p *parser) parseAtom() (Expr, error) {
 			return nil, err
 		}
 		if len(elems) > 1 {
-			return &Tuple{Elems: elems, sp: ex.Span()}, nil
+			return &Tuple{Elems: elems, Src: ex.Span()}, nil
 		}
 		return ex, nil
 	case t.IsOp("["):
@@ -1219,7 +1219,7 @@ func (p *parser) parseAtom() (Expr, error) {
 
 func (p *parser) parseLambda() (Expr, error) {
 	t := p.next() // 'lambda'
-	lm := &Lambda{sp: t.Span}
+	lm := &Lambda{Src: t.Span}
 	if p.peek().Kind == TokIdent {
 		for {
 			// Lambda params are plain names: parseParam() would greedily treat the
@@ -1318,7 +1318,7 @@ func (p *parser) parseListOrComp() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		c := &Comp{Kind: CompList, Elems: elems, ForVar: &Name{Value: v.Text, sp: v.Span}, Iter: iter, sp: t.Span}
+		c := &Comp{Kind: CompList, Elems: elems, ForVar: &Name{Value: v.Text, Src: v.Span}, Iter: iter, Src: t.Span}
 		if p.peek().IsKeyword("if") {
 			p.next()
 			cond, err := p.parseExpr()
@@ -1335,7 +1335,7 @@ func (p *parser) parseListOrComp() (Expr, error) {
 	if err := p.expectOp("]"); err != nil {
 		return nil, err
 	}
-	return &ListLit{Elems: elems, sp: t.Span}, nil
+	return &ListLit{Elems: elems, Src: t.Span}, nil
 }
 
 func (p *parser) parseDictOrSet() (Expr, error) {
@@ -1394,7 +1394,7 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		vn := &Name{Value: v.Text, sp: v.Span}
+		vn := &Name{Value: v.Text, Src: v.Span}
 		var comp *Comp
 		if isDict {
 			comp = &Comp{Kind: CompDict, Keys: keys, Vals: vals, ForVar: vn, Iter: iter}
@@ -1424,7 +1424,7 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 			return nil, p.errorf(v, "expected comprehension variable")
 		}
 		p.next()
-		vn := &Name{Value: v.Text, sp: v.Span}
+		vn := &Name{Value: v.Text, Src: v.Span}
 		if err := p.expectKeyword("in"); err != nil {
 			return nil, err
 		}
@@ -1441,14 +1441,14 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 			}
 		}
 		if isDict {
-			return &Comp{Kind: CompDict, Keys: keys, Vals: vals, ForVar: vn, Iter: iter, Cond: cond, sp: t.Span}, nil
+			return &Comp{Kind: CompDict, Keys: keys, Vals: vals, ForVar: vn, Iter: iter, Cond: cond, Src: t.Span}, nil
 		}
-		return &Comp{Kind: CompSet, Elems: elems, ForVar: vn, Iter: iter, Cond: cond, sp: t.Span}, nil
+		return &Comp{Kind: CompSet, Elems: elems, ForVar: vn, Iter: iter, Cond: cond, Src: t.Span}, nil
 	}
 	if isDict {
-		return &DictLit{Keys: keys, Vals: vals, sp: t.Span}, nil
+		return &DictLit{Keys: keys, Vals: vals, Src: t.Span}, nil
 	}
-	return &SetLit{Elems: elems, sp: t.Span}, nil
+	return &SetLit{Elems: elems, Src: t.Span}, nil
 }
 
 // buildFString parses the raw inner content of an f-string token into an
@@ -1457,7 +1457,7 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 // `{expr}` segment is re-lexed and re-parsed as a full expression. A format
 // spec (`:` suffix) is stripped before parsing the expression.
 func (p *parser) buildFString(raw string, sp Span) (*FString, error) {
-	fs := &FString{sp: sp}
+	fs := &FString{Src: sp}
 	lit := ""
 	flush := func() {
 		if lit != "" {

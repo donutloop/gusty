@@ -294,6 +294,36 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 
 // inferExpr returns the inferred type of an expression.
 func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
+	ty := an.inferExprTy(e)
+	if ty != nil {
+		switch n := e.(type) {
+		case *Name: n.Ty = ty.Name()
+		case *IntLit: n.Ty = ty.Name()
+		case *FloatLit: n.Ty = ty.Name()
+		case *BoolLit: n.Ty = ty.Name()
+		case *NoneLit: n.Ty = ty.Name()
+		case *StrLit: n.Ty = ty.Name()
+		case *FString: n.Ty = ty.Name()
+		case *ListLit: n.Ty = ty.Name()
+		case *DictLit: n.Ty = ty.Name()
+		case *SetLit: n.Ty = ty.Name()
+		case *Tuple: n.Ty = ty.Name()
+		case *BinOp: n.Ty = ty.Name()
+		case *UnOp: n.Ty = ty.Name()
+		case *CondExpr: n.Ty = ty.Name()
+		case *Call: n.Ty = ty.Name()
+		case *Index: n.Ty = ty.Name()
+		case *Slice: n.Ty = ty.Name()
+		case *Attr: n.Ty = ty.Name()
+		case *Lambda: n.Ty = ty.Name()
+		case *Comp: n.Ty = ty.Name()
+		case *Generator: n.Ty = ty.Name()
+		}
+	}
+	return ty
+}
+
+func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 	switch n := e.(type) {
 	case *IntLit:
 		return TInt()
