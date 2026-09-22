@@ -31,6 +31,7 @@ import (
 const exitOK = 0
 const exitErr = 1
 const exitUsage = 2
+const exitNotCanonical = 1
 
 func main() {
 	os.Exit(run())
@@ -53,7 +54,16 @@ func run() int {
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
 	help := fs.Bool("help", false, "show usage")
-	fs.Parse(os.Args[1:])
+
+	fmtSrc := fs.String("fmt", "", "format a source string to canonical gusty source (machine: deterministic stdout)")
+	fmtCheck := fs.Bool("fmt-check", false, "verify a source is already canonical; exit 0 if canonical, 1 if not (with --json: machine report)")
+	fmtFile := fs.String("fmt-file", "", "path to a source file to format/check (alternative to --file with --fmt)")
+		fs.Parse(os.Args[1:])
+
+	if *fmtSrc != "" || *fmtCheck || *fmtFile != "" {
+		return runFmt(*fmtSrc, *fmtCheck, *fmtFile, *jsonOut)
+	}
+
 
 	if *help {
 		usage(fs)
@@ -288,4 +298,44 @@ func emitDiagnosticsJSON(diags []lang.Diagnostic, exit int) {
 		return
 	}
 	fmt.Println(string(b))
+}
+
+
+func runFmt(src string, check bool, file string, jsonOut bool) int {
+	input := src
+	if file != "" {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			if jsonOut {
+				fmt.Printf(`{"ok": false, "error": %q, "exit": %d}`+"\n", err.Error(), exitErr)
+			}
+			return exitErr
+		}
+		input = string(b)
+	}
+	f, err := lang.FormatSrc(input)
+	if err != nil {
+		if jsonOut {
+			fmt.Printf(`{"ok": false, "error": %q, "exit": %d}`+"\n", err.Error(), exitErr)
+		}
+		return exitErr
+	}
+	if check {
+		canonical := f == input || f == strings.TrimRight(input, "\n")
+		if jsonOut {
+			if canonical {
+				fmt.Printf(`{"ok": true, "canonical": true, "exit": %d}`+"\n", exitOK)
+			} else {
+				fmt.Printf(`{"ok": true, "canonical": false, "exit": %d}`+"\n", exitNotCanonical)
+			}
+		} else if !canonical {
+			fmt.Println(f)
+		}
+		if canonical {
+			return exitOK
+		}
+		return exitNotCanonical
+	}
+	fmt.Println(f)
+	return exitOK
 }

@@ -241,3 +241,18 @@ Landed Phase 6 language-surface feature. Adds:
 - Known codegen parity gap (consistent with i32-only codegen): `in` on an inline literal container is not lowered (only runtime container variables); the interpreter supports literals.
 
 Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprintf(...))`; comparison results are i1 in codegen (usable in `br i1`), not i32, so `in` must return i1; literal containers are globals (`@.lstN`), not `@heap` indices, so `rt_contains` works only for runtime heap handles.
+
+---
+
+## Round 8 — Formatter (`gusty fmt`) [Phase 8]
+- Added a full canonical pretty-printer in `pkg/lang/fmt.go`: `Format`, `FormatSrc`, `IsFormatted`.
+- Deterministic 2-space-indent canonical style; precedence-based parenthesization for `BinOp`; canonical literal rendering
+  (int via `FormatInt`, float via `FormatFloat` with `.0` suffix so it stays a float, double-quoted strings with escaping).
+- Covers every statement/expr node: if/elif/else, while/for/else, def (params/annot/return-anno/decorators),
+  class (bases), match/case/guard, try/except/finally, with/as, yield/yield-from, import, lambda,
+  tuple/list/set/dict, call/index/attr/slice, cond-expr, comprehensions, f-strings.
+- CLI: `--fmt <src>` prints canonical source (machine: deterministic stdout); `--fmt-check <src>` verifies
+  canonical and returns exit 0 if canonical / 1 if not (trailing-newline tolerant); `--fmt-file <path>`
+  reads a file; `--json` emits a machine report. Added `exitNotCanonical = 1`.
+- Tests: `pkg/lang/fmt_test.go` — round-trip (re-format stable, re-parse succeeds) + canonical examples.
+- Idempotence: `Format(Parse(Format(src))) == Format(src)`; canonical output re-parses successfully.
