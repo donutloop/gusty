@@ -302,3 +302,81 @@ func TestOptimizeRealProgram(t *testing.T) {
 		t.Fatalf("add not folded into call:\n%s", opt)
 	}
 }
+
+// TestDeadHeapElim exercises the IR-level escape analysis that removes whole
+// dead heap objects: an rt_alloc'd object whose handle never escapes the
+// function and is never read/printed is unobservable, so its allocation and
+// all of its mutating operations can be eliminated together.
+func TestDeadHeapElim(t *testing.T) {
+	// (1) an object allocated and written but never read/printed/escaped.
+	dead := `define i32 @main() {
+entry:
+  %h = call i32 @rt_alloc(i32 1)
+  call void @rt_set_elem(i32 %h, i32 0, i32 5)
+  ret i32 0
+}
+`
+	got := OptimizeIR(dead, 1)
+	if strings.Contains(got, "rt_alloc") || strings.Contains(got, "rt_set_elem") {
+		t.Fatalf("dead heap object not eliminated:\n%s", got)
+	}
+
+	// (2) two dead objects: their writes are eliminated together.
+	two := `define i32 @main() {
+entry:
+  %h1 = call i32 @rt_alloc(i32 1)
+  %h2 = call i32 @rt_alloc(i32 1)
+  call void @rt_set_elem(i32 %h1, i32 0, i32 5)
+  call void @rt_set_elem(i32 %h2, i32 0, i32 5)
+  ret i32 0
+}
+`
+	got = OptimizeIR(two, 1)
+	if strings.Contains(got, "rt_alloc") || strings.Contains(got, "rt_set_elem") {
+		t.Fatalf("dead heap objects not eliminated:\n%s", got)
+	}
+
+	// (3) an object that is read must stay alive.
+	read := `define i32 @main() {
+entry:
+  %h = call i32 @rt_alloc(i32 1)
+  call void @rt_set_elem(i32 %h, i32 0, i32 5)
+  %v = call i32 @rt_get_elem(i32 %h, i32 0)
+  ret i32 %v
+}
+`
+	got = OptimizeIR(read, 1)
+	if !strings.Contains(got, "rt_alloc") || !strings.Contains(got, "rt_get_elem") {
+		t.Fatalf("read heap object wrongly eliminated:\n%s", got)
+	}
+
+	// (4) an object that is printed must stay alive.
+	printed := `define i32 @main() {
+entry:
+  %h = call i32 @rt_alloc(i32 1)
+  call void @rt_set_elem(i32 %h, i32 0, i32 5)
+  call void @rt_print_list(i32 %h)
+  ret i32 0
+}
+`
+	got = OptimizeIR(printed, 1)
+	if !strings.Contains(got, "rt_alloc") || !strings.Contains(got, "rt_print_list") {
+		t.Fatalf("printed heap object wrongly eliminated:\n%s", got)
+	}
+
+	// (5) an object stored into a live (printed) object escapes: kept.
+	escape := `define i32 @main() {
+entry:
+  %h1 = call i32 @rt_alloc(i32 1)
+  %h2 = call i32 @rt_alloc(i32 1)
+  call void @rt_set_elem(i32 %h2, i32 0, i32 5)
+  call void @rt_append(i32 %h1, i32 %h2)
+  call void @rt_print_list(i32 %h1)
+  ret i32 0
+}
+`
+	got = OptimizeIR(escape, 1)
+	if !strings.Contains(got, "rt_alloc") {
+		t.Fatalf("escaping heap object wrongly eliminated:\n%s", got)
+	}
+}

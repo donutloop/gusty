@@ -960,6 +960,152 @@ func (fn *irFunction) dce() bool {
 	return changed
 }
 
+// callArgs returns the raw argument substrings of a call instruction's
+// operand list (between the parens).
+func callArgs(raw string) []string {
+	li := strings.Index(raw, "(")
+	if li < 0 {
+		return nil
+	}
+	ri := strings.LastIndex(raw, ")")
+	if ri < 0 || ri < li {
+		return nil
+	}
+	body := raw[li+1 : ri]
+	var args []string
+	for _, a := range strings.Split(body, ",") {
+		args = append(args, strings.TrimSpace(a))
+	}
+	return args
+}
+
+// callArgRegs returns the argument registers of a call instruction, in
+// position order. A constant operand (e.g. "i32 0") yields "".
+func callArgRegs(raw string) []string {
+	var out []string
+	for _, a := range callArgs(raw) {
+		rs := regsIn(a)
+		if len(rs) > 0 {
+			out = append(out, rs[len(rs)-1])
+		} else {
+			out = append(out, "")
+		}
+	}
+	return out
+}
+
+// heapArgKind classifies what a heap handle does when it appears at argument
+// position pos of a call to callee:
+//
+//	"write"  — receiver of a mutating op; unobservable if the object is dead
+//	"read"   — receiver of a reading op; the object's contents are observed
+//	"print"  — receiver of a print op; the object's contents are observed
+//	"escape" — the handle is copied/derived/retained and may outlive the
+//	           function (stored into another object, turned into an %obj
+//	           value, sliced into a new object, or returned).
+func heapArgKind(callee string, pos int) string {
+	callee = calleeTrim(callee)
+	if pos == 0 {
+		switch callee {
+		case "rt_set_elem", "rt_append", "rt_dict_put", "rt_set_add":
+			return "write"
+		case "rt_get_elem", "rt_list_len", "rt_dict_get", "rt_dict_len",
+			"rt_set_len", "rt_contains":
+			return "read"
+		case "rt_print_list", "rt_print_dict", "rt_print_set":
+			return "print"
+		case "rt_slice":
+			return "escape"
+		}
+	}
+	if callee == "rt_mkobj" && pos == 1 {
+		return "escape"
+	}
+	// any other (callee, position) — value operand, unknown callee, etc.
+	return "escape"
+}
+
+// calleeTrim returns the callee name without the leading '@'.
+func calleeTrim(callee string) string {
+	return strings.TrimPrefix(callee, "@")
+}
+
+// deadHeapElim eliminates whole dead heap objects. An rt_alloc'd object whose
+// handle never escapes the function and is never read, printed, or derived is
+// unobservable: its allocation and all of its mutating operations
+// (rt_set_elem/rt_append/rt_dict_put/rt_set_add) can be removed together,
+// leaving no heap write or allocation behind. This is the IR-level escape
+// analysis counterpart of the source-level dead-list elision in escape.go; it
+// also catches objects built inside function bodies.
+func (fn *irFunction) deadHeapElim() bool {
+	type use struct {
+		blk *irBlock
+		i   int
+		in  *irInstr
+	}
+	var all []use
+	alloc := map[string]*irInstr{} // heap handle -> its rt_alloc instruction
+	for _, b := range fn.blocks {
+		for i, in := range b.instrs {
+			if in.deleted {
+				continue
+			}
+			if calleeTrim(in.callee) == "rt_alloc" && in.def != "" {
+				alloc[in.def] = in
+			}
+			all = append(all, use{b, i, in})
+		}
+	}
+	if len(alloc) == 0 {
+		return false
+	}
+	// An object starts dead; any read/print/escape use marks it live.
+	dead := map[string]bool{}
+	for h := range alloc {
+		dead[h] = true
+	}
+	writes := map[string][]use{} // handle -> its mutating (write) call sites
+	for _, u := range all {
+		in := u.in
+		if in.callee != "" {
+			args := callArgRegs(in.raw)
+			for pos, reg := range args {
+				if reg == "" || reg == in.def {
+					continue
+				}
+				if _, ok := alloc[reg]; !ok {
+					continue
+				}
+				if heapArgKind(in.callee, pos) == "write" {
+					writes[reg] = append(writes[reg], u)
+				} else {
+					dead[reg] = false
+				}
+			}
+			continue
+		}
+		// non-call uses (store, ret, arith, br, phi, gep, ...) escape.
+		for _, reg := range regsIn(in.raw) {
+			if _, ok := alloc[reg]; ok {
+				dead[reg] = false
+			}
+		}
+	}
+	changed := false
+	for h, alive := range dead {
+		if !alive {
+			continue
+		}
+		alloc[h].deleted = true
+		changed = true
+		for _, w := range writes[h] {
+			w.in.deleted = true
+			changed = true
+		}
+	}
+	return changed
+}
+
 // ---------------------------------------------------------------------------
 // Dead-global elimination (module level)
 // ---------------------------------------------------------------------------
@@ -1068,7 +1214,8 @@ func OptimizeIR(ir string, level int) string {
 			c2 := fn.promote()
 			c3 := fn.dce()
 			c4 := fn.deadBlockElim()
-			if !(c1 || c2 || c3 || c4) {
+			c5 := fn.deadHeapElim()
+			if !(c1 || c2 || c3 || c4 || c5) {
 				break
 			}
 		}

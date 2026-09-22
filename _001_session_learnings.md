@@ -290,3 +290,19 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
   (fmt flags), CHANGELOG, README (fmt flags + docstring note).
 - Round 8 hygiene: the formatter had shipped without doc updates; this round
   back-filled roadmap/CHANGELOG/README/operations for `gusty fmt`.
+
+## Round 15 — IR-level dead-heap-object elimination
+- Added `fn.deadHeapElim()` in `pkg/lang/opt.go`: an IR-level liveness +
+  escape-analysis pass that removes **whole dead heap objects** (an `rt_alloc`
+  plus every mutating op on it) when the handle never escapes the function and
+  is never read/printed/sliced/`%obj`-converted. Wired into `OptimizeIR`'s
+  fixpoint loop (`c5`).
+- Learned: `in.callee` is stored WITH the leading `@` (`@rt_alloc`, not
+  `rt_alloc`), so comparisons must trim the prefix (`calleeTrim`).
+- Learned: call instructions do not parse their args into `irInstr`; I parse
+  `in.raw` with `callArgRegs` (taking the LAST `%` token per arg so `%obj %o`
+  yields `%o`, and `""` for constants like `i32 0`).
+- Added `TestDeadHeapElim` covering: dead single object, two dead objects,
+  read-kept, print-kept, escape-via-append-kept.
+- The `integration` parity large-program segfault is pre-existing/environmental
+  (reproduces with the feature fully stashed); unit tests are the validator.
