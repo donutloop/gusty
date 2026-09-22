@@ -23,6 +23,8 @@ type Evaluator struct {
 	allocCount  int64
 	classIDs    map[string]int64
 	curRet      *Type  // return annotation of the function currently executing
+	fnName      string // name of the function whose body is being evaluated
+	cur         Span   // source span of the statement currently being evaluated
 	yieldList   int64  // list handle accumulating yields (0 = not in generator)
 	curClass    string // class name of the method currently executing (for super())
 	curSelf     int64  // receiver of the method currently executing (for super())
@@ -313,7 +315,29 @@ func tyName(t *Type) string {
 
 // callFunc evaluates a function body with params bound into a scope seeded
 // from env (nil = empty scope). Nested defs inside the body become closures.
+
+func (e *Evaluator) recordCall(err error, callee string, caller string, callSite Span) error {
+	ee, ok := err.(*EvalError)
+	if !ok {
+		return err
+	}
+	cf := Frame{Name: caller, Line: callSite.Line, Col: callSite.Col}
+	if ee.Traceback == nil {
+		inner := Frame{Name: callee, Line: e.cur.Line, Col: e.cur.Col}
+		ee.Traceback = []Frame{cf, inner}
+	} else {
+		ee.Traceback = append([]Frame{cf}, ee.Traceback...)
+	}
+	return err
+}
+
 func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64) (int64, error) {
+	caller := e.fnName
+	callSite := e.cur
+	savedFn := e.fnName
+	e.fnName = fd.Name
+	defer func() { e.fnName = savedFn }()
+
 	scope := map[string]int64{}
 	for k, v := range env {
 		scope[k] = v
@@ -354,7 +378,7 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 		if _, ok := err.(*returnSignal); ok {
 			return genH, nil
 		}
-		return genH, err
+		return genH, e.recordCall(err, fd.Name, caller, callSite)
 	}
 	e.Vars = scope
 	e.inCall = true
@@ -365,7 +389,7 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 	if rs, ok := err.(*returnSignal); ok {
 		return rs.val, nil
 	}
-	return rv, err
+	return rv, e.recordCall(err, fd.Name, caller, callSite)
 }
 
 // callClosure invokes a closure value with its captured environment.
@@ -417,7 +441,7 @@ func NewEvaluator() *Evaluator {
 	// integer literal values (which are stored raw in lists, dict keys, vars).
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
-	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, nextID: 1 << 20}
+	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, nextID: 1 << 20, fnName: "<module>"}
 }
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
@@ -517,6 +541,7 @@ func (e *Evaluator) Collect() {
 func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 	var last int64
 	for _, st := range prog.Stmts {
+		e.cur = st.Span()
 		switch s := st.(type) {
 		case *ClassDef:
 			classID := e.allocObj("class")
@@ -2690,6 +2715,11 @@ func (e *Evaluator) callDunder(self int64, name string, args []int64) (int64, er
 	return e.callMethod(e.heap[mID], self, args)
 }
 func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error) {
+	caller := e.fnName
+	callSite := e.cur
+	savedFn := e.fnName
+	e.fnName = mo.mname
+	defer func() { e.fnName = savedFn }()
 	scope := map[string]int64{}
 	scope["self"] = self
 	// params[0] is the receiver `self`; bind the remaining params from args
@@ -2716,7 +2746,7 @@ func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error)
 	if rs, ok := err.(*returnSignal); ok {
 		return rs.val, nil
 	}
-	return rv, err
+	return rv, e.recordCall(err, mo.mname, caller, callSite)
 }
 
 // resolveMethod finds a method named `name` on the class with id `classID`,
@@ -2985,6 +3015,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			prevRet := e.curRet
 			e.curRet = fd.ReturnAnno
+				caller := e.fnName
+				callSite := e.cur
+				savedFn := e.fnName
+				e.fnName = fd.Name
+				defer func() { e.fnName = savedFn }()
 			if containsYield(fd.Body) {
 				genH := e.allocObj("list")
 				prev := e.yieldList
@@ -3008,7 +3043,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if rs, ok := err.(*returnSignal); ok {
 				return rs.val, nil
 			}
-			return rv, err
+			return rv, e.recordCall(err, fd.Name, caller, callSite)
 		}
 		// built-in exception constructor: ValueError("msg") etc.
 		if isExnClass(name.Value) {
@@ -3346,10 +3381,18 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 // EvalError is a runtime eval error. When a raised exception is the cause,
 // ExnType carries the exception class name (e.g. "ValueError") and ExnMsg
 // its message; otherwise both are empty.
+// Frame is one call-stack frame in a runtime traceback.
+type Frame struct {
+	Name string `json:"name"`
+	Line int    `json:"line"`
+	Col  int    `json:"col"`
+}
+
 type EvalError struct {
 	Msg     string
 	ExnType string
 	ExnMsg  string
+	Traceback []Frame `json:"traceback,omitempty"`
 }
 
 func (e *EvalError) Error() string { return "eval error: " + e.Msg }
@@ -3393,7 +3436,34 @@ func EvalExpr(src string) (int64, []Diagnostic, error) {
 	}
 	ev := NewEvaluator()
 	v, err := ev.EvalProgram(prog)
+	if err != nil {
+		return v, diags, ev.FinalizeTraceback(err)
+	}
 	return v, diags, err
+}
+
+// FinalizeTraceback attaches the <module> frame to a runtime error when a
+// module was evaluated directly (the CLI calls EvalProgram directly).
+func (e *Evaluator) FinalizeTraceback(err error) error {
+	ee, ok := err.(*EvalError)
+	if !ok || ee.Traceback != nil {
+		return err
+	}
+	ee.Traceback = []Frame{{Name: "<module>", Line: e.cur.Line, Col: e.cur.Col}}
+	return err
+}
+
+// RenderTraceback renders a Python-style traceback for a runtime EvalError.
+func (e *EvalError) RenderTraceback() string {
+	if len(e.Traceback) == 0 {
+		return ""
+	}
+	out := "Traceback (most recent call last):\n"
+	for _, f := range e.Traceback {
+		out += fmt.Sprintf("  File \"prog\", line %d, in %s\n", f.Line, f.Name)
+	}
+	out += e.Msg
+	return out
 }
 
 func containsYield(stmts []Stmt) bool {

@@ -181,8 +181,16 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 	}
 	v, err := ev.EvalProgram(prog)
 	if err != nil {
+		err = ev.FinalizeTraceback(err)
+		ee, isRT := err.(*lang.EvalError)
+		tb := ""
+		if isRT && len(ee.Traceback) > 0 {
+			tb = ee.RenderTraceback()
+		}
 		if jsonOut {
-			fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitErr)
+			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"exit\": %d}\n", err.Error(), tb, exitErr)
+		} else if tb != "" {
+			fmt.Println(tb)
 		} else {
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		}

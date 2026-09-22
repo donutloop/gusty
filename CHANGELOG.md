@@ -1,3 +1,24 @@
+# Round 10 — Runtime tracebacks with source spans
+
+The interpreter runtime now surfaces Python-style tracebacks with source
+line/col for every runtime error, and the CLI emits a structured `traceback`
+field in its JSON machine output.
+
+- Call-stack frames are recorded as runtime errors cross function/method
+  call boundaries (`callFunc`, `callMethod`, and the `evalCall` `*Name` path).
+  Frames are ordered outermost-first with the failing statement innermost-last:
+  `Traceback (most recent call last): File "prog", line N, in <module> ...`.
+- Plain top-level statement failures get a single `<module>` frame via
+  `FinalizeTraceback` (used by `EvalExpr` and the CLI eval path).
+- `EvalError` carries `Traceback []Frame` and a `RenderTraceback()` method;
+  the CLI prints the traceback and adds a JSON `traceback` field.
+- AOT has no runtime-error infrastructure (errors are compile-time folds), so
+  runtime tracebacks apply to the interpreter path; codegen compile errors
+  already carry source spans.
+
+New tests: `TestTracebackNestedCalls`, `TestTracebackMethodCall`,
+`TestTracebackPlainModuleError`, `TestFinalizeTracebackDirectEval`.
+
 # CHANGELOG
 
 ## Round 9 — Docstrings / `__doc__` (ADR 0141)

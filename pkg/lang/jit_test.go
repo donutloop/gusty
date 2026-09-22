@@ -1472,3 +1472,76 @@ print(g.__doc__)`)
 		t.Fatalf("g.__doc__ = %q, want empty string", out)
 	}
 }
+
+func traceErr(t *testing.T, src string) *EvalError {
+	t.Helper()
+	_, _, err := EvalExpr(src)
+	ee, ok := err.(*EvalError)
+	if !ok {
+		t.Fatalf("expected *EvalError, got %T: %v", err, err)
+	}
+	return ee
+}
+
+func TestTracebackNestedCalls(t *testing.T) {
+	src := "def bar(x):\n  return x // 0\ndef foo(x):\n  return bar(x)\nfoo(10)\n"
+	ee := traceErr(t, src)
+	// frames innermost-last: <module> (call foo), foo (call bar), bar (failing)
+	if len(ee.Traceback) != 3 {
+		t.Fatalf("expected 3 frames, got %d: %v", len(ee.Traceback), ee.Traceback)
+	}
+	if ee.Traceback[0].Name != "<module>" || ee.Traceback[1].Name != "foo" || ee.Traceback[2].Name != "bar" {
+		t.Fatalf("unexpected frame order: %v", ee.Traceback)
+	}
+	// bar's failing statement is line 2 (return x // 0)
+	if ee.Traceback[2].Line != 2 {
+		t.Fatalf("bar failing line = %d, want 2", ee.Traceback[2].Line)
+	}
+	if ee.RenderTraceback() == "" {
+		t.Fatalf("empty rendered traceback")
+	}
+}
+
+func TestTracebackMethodCall(t *testing.T) {
+	src := "class C:\n  def m(self):\n    return 1 // 0\nc = C()\nc.m()\n"
+	ee := traceErr(t, src)
+	if len(ee.Traceback) != 2 {
+		t.Fatalf("expected 2 frames, got %d: %v", len(ee.Traceback), ee.Traceback)
+	}
+	if ee.Traceback[0].Name != "<module>" || ee.Traceback[1].Name != "m" {
+		t.Fatalf("unexpected frames: %v", ee.Traceback)
+	}
+}
+
+func TestTracebackPlainModuleError(t *testing.T) {
+	src := "x = 1 // 0\n"
+	ee := traceErr(t, src)
+	if len(ee.Traceback) != 1 || ee.Traceback[0].Name != "<module>" {
+		t.Fatalf("expected single module frame, got %v", ee.Traceback)
+	}
+	if ee.Traceback[0].Line != 1 {
+		t.Fatalf("module failing line = %d, want 1", ee.Traceback[0].Line)
+	}
+}
+
+func TestFinalizeTracebackDirectEval(t *testing.T) {
+	// Simulate the CLI path: EvalProgram directly, then FinalizeTraceback.
+	src := "def foo(x):\n  return x // 0\nfoo(1)\n"
+	prog, err := parseProgram(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := NewEvaluator()
+	_, err = ev.EvalProgram(prog)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	err = ev.FinalizeTraceback(err)
+	ee, ok := err.(*EvalError)
+	if !ok || len(ee.Traceback) != 2 {
+		t.Fatalf("expected 2 frames after FinalizeTraceback, got %v", err)
+	}
+	if ee.Traceback[0].Name != "<module>" || ee.Traceback[1].Name != "foo" {
+		t.Fatalf("unexpected frames: %v", ee.Traceback)
+	}
+}
