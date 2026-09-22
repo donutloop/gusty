@@ -1,6 +1,9 @@
 package lang
 
 import (
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -196,5 +199,70 @@ func TestGCFullGCBoundsOldGen(t *testing.T) {
 	}
 	if ev.heap[dropID] != nil {
 		t.Fatal("unreachable old object should be reclaimed by full GC")
+	}
+}
+
+
+func runIR(t *testing.T, ir string) string {
+	tmp, err := os.CreateTemp("", "gc-*.ll")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tmp.WriteString(ir); err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+	bc := tmp.Name() + ".bc"
+	defer os.Remove(bc)
+	if out, err := exec.Command("llvm-as-20", tmp.Name(), "-o", bc).CombinedOutput(); err != nil {
+		t.Fatalf("llvm-as: %v\n%s", err, out)
+	}
+	out, err := exec.Command("lli-20", bc).CombinedOutput()
+	if err != nil {
+		t.Fatalf("lli: %v\n%s", err, out)
+	}
+	return string(out)
+}
+
+// TestIRGCFunctionLocalAllocGC verifies that GC runs inside function bodies at
+// top-level statement boundaries, freeing unreachable heap objects so a
+// function with more allocations than the 1024-object heap cap completes.
+func TestIRGCFunctionLocalAllocGC(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("def f():\n")
+	for i := 0; i < 1200; i++ {
+		b.WriteString("    x = [0]\n")
+	}
+	b.WriteString("    return 0\n")
+	b.WriteString("print(f())\n")
+	res, err := Compile(b.String())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out := runIR(t, res.IR)
+	if out != "0\n" {
+		t.Fatalf("expected 0\n, got %q", out)
+	}
+}
+
+// TestIRGCParamRooting verifies that a heap-object parameter survives GC at
+// function-body statement boundaries (params are rooted).
+func TestIRGCFunctionLocalRooting(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("def f():\n")
+	b.WriteString("    a = [42]\n")
+	for i := 0; i < 1100; i++ {
+		b.WriteString("    x = [0]\n")
+	}
+	b.WriteString("    return a[0]\n")
+	b.WriteString("print(f())\n")
+	res, err := Compile(b.String())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out := runIR(t, res.IR)
+	if out != "42\n" {
+		t.Fatalf("expected 42\n, got %q", out)
 	}
 }

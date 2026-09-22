@@ -710,6 +710,7 @@ func GenerateIR(prog *Program) (string, error) {
 	g.decls = "declare i32 @printf(i8*, ...)\n"
 	g.globals.WriteString("@exn_flag = internal global i32 0\n")
 	g.globals.WriteString("@gc_roots_used = internal global i32 0\n")
+	g.globals.WriteString("@gc.roots = internal global [1024 x i32*] zeroinitializer\n")
 	g.globals.WriteString("@exn_code = internal global i32 0\n")
 	var b strings.Builder
 	// pre-scan top-level for user function names
@@ -734,7 +735,6 @@ func GenerateIR(prog *Program) (string, error) {
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
 	}
-	b.WriteString("  %gc.roots = alloca [1024 x i32*]\n")
 	b.WriteString("  store i32 0, i32* @gc_roots_used\n")
 	// Root every module-global closure env slot so GC keeps captured envs
 	// (and any heap handles they hold) alive across top-level boundaries.
@@ -1065,9 +1065,6 @@ func (g *irGen) fmtStr(format string) (string, int) {
 }
 
 func (g *irGen) gcReg(b *strings.Builder, name string) {
-	if !g.inMain {
-		return
-	}
 	if g.gcRootSeen == nil {
 		g.gcRootSeen = map[string]bool{}
 	}
@@ -1077,7 +1074,7 @@ func (g *irGen) gcReg(b *strings.Builder, name string) {
 	g.gcRootSeen[name] = true
 	idx := g.gcRootIdx
 	g.gcRootIdx++
-	fmt.Fprintf(b, "  %%gc.slot%d = getelementptr [1024 x i32*], [1024 x i32*]* %%gc.roots, i32 0, i32 %d\n", idx, idx)
+	fmt.Fprintf(b, "  %%gc.slot%d = getelementptr [1024 x i32*], [1024 x i32*]* @gc.roots, i32 0, i32 %d\n", idx, idx)
 	fmt.Fprintf(b, "  store i32* %%_%s, i32** %%gc.slot%d\n", name, idx)
 	fmt.Fprintf(b, "  store i32 %d, i32* @gc_roots_used\n", g.gcRootIdx)
 }
@@ -1089,19 +1086,19 @@ func (g *irGen) gcRegGlobal(b *strings.Builder, name string) {
 	// treated as a potential heap address.
 	slot := g.gcRootIdx
 	g.gcRootIdx++
-	fmt.Fprintf(b, "  %%gc.envSlot%d = getelementptr [1024 x i32*], [1024 x i32*]* %%gc.roots, i32 0, i32 %d\n", slot, slot)
+	fmt.Fprintf(b, "  %%gc.envSlot%d = getelementptr [1024 x i32*], [1024 x i32*]* @gc.roots, i32 0, i32 %d\n", slot, slot)
 	fmt.Fprintf(b, "  store i32* @%s_slot, i32** %%gc.envSlot%d\n", name, slot)
 	fmt.Fprintf(b, "  store i32 %d, i32* @gc_roots_used\n", g.gcRootIdx)
 }
 
 func (g *irGen) gcCall(b *strings.Builder) {
-	if !g.inMain || !g.heapUsed {
+	if !g.heapUsed {
 		return
 	}
 	ci := g.gcCallIdx
 	g.gcCallIdx++
 	fmt.Fprintf(b, "  %%gc.n%d = load i32, i32* @gc_roots_used\n", ci)
-	fmt.Fprintf(b, "  call void @rt_gc([1024 x i32*]* %%gc.roots, i32 %%gc.n%d)\n", ci)
+	fmt.Fprintf(b, "  call void @rt_gc([1024 x i32*]* @gc.roots, i32 %%gc.n%d)\n", ci)
 }
 
 // strConst emits a global for a string literal operand.
@@ -4700,6 +4697,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.funcRaiseExit = fd.Name + ".raiseexit"
 	g.closures = map[string]*closureInfo{}
 	g.allocd = map[string]bool{}
+	g.gcRootSeen = map[string]bool{}
 	g.envMode = false
 	g.envCaptures = nil
 	g.envParam = "%env"
@@ -4763,7 +4761,16 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.heapUsed = true
 		fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 1)\n", g.genHandle)
 	}
+	for i := range fd.Params {
+		if floatRet {
+			continue
+		}
+		fmt.Fprintf(b, "  %%_param%d = alloca i32\n", i)
+		fmt.Fprintf(b, "  store i32 %%p%d, i32* %%_param%d\n", i, i)
+		g.gcReg(b, fmt.Sprintf("param%d", i))
+	}
 	for _, st := range fd.Body {
+		g.gcCall(b)
 		if err := g.stmt(b, st); err != nil {
 			return err
 		}

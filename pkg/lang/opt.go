@@ -834,6 +834,7 @@ func (fn *irFunction) promote() bool {
 	}
 
 	allocas := map[string]*allocaInfo{}
+	esc := map[string]bool{}
 	for bi, b := range fn.blocks {
 		for idx, in := range b.instrs {
 			if in.deleted {
@@ -854,7 +855,23 @@ func (fn *irFunction) promote() bool {
 		}
 	}
 
-	for _, ai := range allocas {
+	for bi := range fn.blocks {
+		for _, in := range fn.blocks[bi].instrs {
+
+			if _, ok := allocas[in.storeVal]; ok {
+				esc[in.storeVal] = true
+			}
+			for _, op := range in.ops {
+				if _, ok := allocas[op]; ok && !(op == in.ptr && (in.op == "store" || in.op == "load")) {
+					esc[op] = true
+				}
+			}
+		}
+	}
+	for def, ai := range allocas {
+		if esc[def] {
+			continue
+		}
 		if ai == nil {
 			continue
 		}
