@@ -1,3 +1,19 @@
+# Round 13 — Standalone type-check mode (`gusty check`)
+
+- **Semantic checks**: `pkg/lang/semantic.go` now compares each statically-typed
+  argument against its parameter annotation at call sites
+  (`argument "x": expected T, got U`) and each `return` statement against the
+  function's `->` annotation (`return type mismatch: expected T, got U`).
+  Dynamic values stay accepted (gradual typing).
+- **Check API**: new `pkg/lang/check.go` exposes `CheckSource`, `CheckFile`,
+  `CheckFiles` returning a structured `CheckResult` (`{files, diagnostics, ok,
+  exit}`) with deterministic exit codes (0 clean / 1 type errors / 2 parse).
+- **CLI**: new `--check <src>` flag and `gusty check <file1> <file2> ...`
+  subcommand; `--json` emits aggregate diagnostics for agents.
+- Tests: `pkg/lang/semantic_test.go`, `pkg/lang/check_test.go`,
+  `cmd/gustyc/main_test.go` (`TestCheck*`).
+- ADR 0143, README, roadmap updated.
+
 # Round 12 — Runtime dispatch: `%obj`-tagged value representation
 
 - Introduced the canonical tagged runtime value `%obj = type {i32, i32}` ({kind tag, payload}) in the AOT prelude, with helpers `rt_mkobj`, `rt_obj_tag`, `rt_obj_payload`, `rt_obj_is`.

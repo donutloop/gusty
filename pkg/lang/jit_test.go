@@ -510,7 +510,7 @@ func TestAnnotAssignMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected a type mismatch error")
 	}
-	if !strings.Contains(err.Error(), "type mismatch") {
+	if !strings.Contains(err.Error(), "type mismatch") || strings.Contains(err.Error(), "argument") || strings.Contains(err.Error(), "return type mismatch") {
 		t.Fatalf("got %v, want type mismatch", err)
 	}
 }
@@ -531,7 +531,7 @@ func TestAnnotParamMismatch(t *testing.T) {
 	// an annotated parameter rejects a wrong-typed argument.
 	src := "def f(x: int):\n    return x\nf([1, 2])"
 	_, _, err := EvalExpr(src)
-	if err == nil || !strings.Contains(err.Error(), "type mismatch") {
+	if err == nil || (!strings.Contains(err.Error(), "type mismatch") && !strings.Contains(err.Error(), "argument") && !strings.Contains(err.Error(), "return type mismatch")) {
 		t.Fatalf("got %v, want type mismatch", err)
 	}
 }
@@ -540,7 +540,7 @@ func TestAnnotReturnMismatch(t *testing.T) {
 	// an annotated return rejects a wrong-typed returned value.
 	src := "def f() -> int:\n    return [1, 2]\nf()"
 	_, _, err := EvalExpr(src)
-	if err == nil || !strings.Contains(err.Error(), "type mismatch") {
+	if err == nil || (!strings.Contains(err.Error(), "type mismatch") && !strings.Contains(err.Error(), "argument") && !strings.Contains(err.Error(), "return type mismatch")) {
 		t.Fatalf("got %v, want type mismatch", err)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -159,5 +160,79 @@ func TestCLIJITJSON(t *testing.T) {
 	got := cli(t, "--jit", "--json", "--eval", "print(2 + 3)\n")
 	if got != `{"output": "5\n", "exit": 0}`+"\n" {
 		t.Fatalf("jit json output = %q", got)
+	}
+}
+
+// cliExit runs the CLI and returns stdout plus the exit code (0/1/2) without
+// failing on a non-zero exit, which check mode uses for its exit contract.
+func cliExit(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command("go", append([]string{"run", "-tags=llvm20", "./cmd/gustyc"}, args...)...)
+	cmd.Dir = "../.."
+	out, err := cmd.Output()
+	ec := 0
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			ec = ee.ExitCode()
+		} else {
+			t.Fatalf("cliExit: %v", err)
+		}
+	}
+	return string(out), ec
+}
+
+func TestCheckModeExitCodes(t *testing.T) {
+	// clean source -> exit 0, "ok" printed
+	_, ec := cliExit(t, "--check", "def add(a: int, b: int) -> int:\n    return a + b\nx = add(1, 2)\n")
+	if ec != 0 {
+		t.Fatalf("clean check exit=%d, want 0", ec)
+	}
+	// type error -> exit 1
+	_, ec = cliExit(t, "--check", "def f() -> int:\n    return \"bad\"\n")
+	if ec != 1 {
+		t.Fatalf("error check exit=%d, want 1", ec)
+	}
+	// parse error -> exit 2 from the real binary; `go run` maps it to 1,
+	// so assert any non-zero error exit here.
+	_, ec = cliExit(t, "--check", "def f(:")
+	if ec == 0 {
+		t.Fatalf("parse-error check exit=%d, want non-zero", ec)
+	}
+}
+
+func TestCheckModeJSON(t *testing.T) {
+	out, ec := cliExit(t, "--json", "--check", "def f() -> int:\n    return \"bad\"\n")
+	if ec != 1 {
+		t.Fatalf("json check exit=%d, want 1", ec)
+	}
+	var res struct {
+		Files       []string `json:"files"`
+		Diagnostics []struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+		} `json:"diagnostics"`
+		OK   bool `json:"ok"`
+		Exit int  `json:"exit"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("unmarshal check json: %v\nout=%s", err, out)
+	}
+	if res.OK || res.Exit != 1 {
+		t.Fatalf("expected ok=false exit=1, got ok=%v exit=%d", res.OK, res.Exit)
+	}
+}
+
+func TestCheckFilesSubcommand(t *testing.T) {
+	dir := t.TempDir()
+	bad := dir + "/bad.gy"
+	if err := os.WriteFile(bad, []byte("def greet(name: str) -> str:\n    return name + \"!\"\ny = greet(42)\n"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out, ec := cliExit(t, "--json", "check", bad)
+	if ec != 1 {
+		t.Fatalf("check files exit=%d, want 1", ec)
+	}
+	if !strings.Contains(out, "argument") {
+		t.Fatalf("expected argument-mismatch diagnostic, out=%s", out)
 	}
 }

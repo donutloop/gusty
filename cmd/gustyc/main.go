@@ -42,6 +42,7 @@ func run() int {
 	evalSrc := fs.String("eval", "", "evaluate a source string")
 	file := fs.String("file", "", "read and evaluate a source file")
 	verify := fs.String("verify", "", "parse + analyze a source string")
+	check := fs.String("check", "", "type-check a source string without executing (mypy-style)")
 	emitLLVMF := fs.String("emit-llvm", "", "print LLVM IR for a source string")
 	emitASTF := fs.String("emit-ast", "", "print the AST as JSON for a source string")
 	target := fs.String("target", "", "target triple for codegen")
@@ -120,12 +121,19 @@ func run() int {
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *emitLLVMF == "" && *emitASTF == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
 	if *verify != "" {
 		return verifySrc(*verify, *jsonOut)
+	}
+	if *check != "" {
+		return runCheck(*check, nil, *jsonOut)
+	}
+	// `gusty check <file1> <file2> ...` : type-check files without executing.
+	if fs.NArg() > 0 && fs.Arg(0) == "check" && *buildOut == "" && *evalSrc == "" {
+		return runCheck("", fs.Args()[1:], *jsonOut)
 	}
 	if *emitLLVMF != "" {
 		return emitLLVM(*emitLLVMF, *target, *optLevel)
@@ -277,6 +285,7 @@ Flags:
 	fs.PrintDefaults()
 	fmt.Printf(`
 Build: gustyc --build <out> <file1> <file2> ...  # compile sources into a native binary
+Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style type-check without executing
 
 Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error.
 `)
@@ -346,4 +355,38 @@ func runFmt(src string, check bool, file string, jsonOut bool) int {
 	}
 	fmt.Println(f)
 	return exitOK
+}
+
+// runCheck implements the standalone type-check mode (`--check <src>` and
+// `gusty check <file>...`). It runs the semantic pass (mypy-style: annotated
+// code is checked without being executed), emits diagnostics (JSON with
+// --json), and exits deterministically: 0 = clean, 1 = type errors, 2 = usage.
+func runCheck(src string, files []string, jsonOut bool) int {
+	var res *lang.CheckResult
+	var err error
+	if len(files) > 0 {
+		res, err = lang.CheckFiles(files)
+	} else {
+		res, err = lang.CheckSource(src)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitUsage
+	}
+	if jsonOut {
+		b, jerr := json.Marshal(res)
+		if jerr != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
+			return exitErr
+		}
+		fmt.Println(string(b))
+	} else {
+		for _, d := range res.Diagnostics {
+			fmt.Fprintf(os.Stderr, "%v\n", d)
+		}
+		if res.OK {
+			fmt.Println("ok")
+		}
+	}
+	return res.Exit
 }

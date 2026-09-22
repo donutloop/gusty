@@ -166,7 +166,24 @@ gustyc --schema                         # print the JSON Schema for AST/IR dumps
 gustyc                                  # start the REPL (stateful)
 ```
 
-Flags: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`,
+Flags: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`,`
+
+### Type-check mode (`gusty check`)
+
+`gusty check` is a mypy-style checker: it runs the semantic pass on annotated
+code **without executing it** and reports type diagnostics. It accepts a
+source string (`--check <src>`) or one or more files (`gusty check <f1> <f2> ...`).
+
+```
+gustyc --check "def f() -> int:
+    return \"bad\""          # type error, exit 1
+gustyc --json check lib.gy app.gy     # aggregate JSON diagnostics
+gustyc check good.gy                  # clean, prints ok, exit 0
+```
+
+Exit codes: `0` = clean, `1` = type errors found, `2` = parse/usage error.
+
+
 `--target`, `--opt-level`, `--lang`, `--json`, `--schema`, `--version`,
 `--repl`, `--help`, `--fmt`, `--fmt-check`, `--fmt-file`.
 
@@ -178,6 +195,7 @@ For agents and scripts, `gustyc` emits structured output:
 
 - `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "exit": 0}`
 - `--json --verify <src>` → `{"ok": true, "exit": 0}` or
+`--json --check <src>` / `--json check <files>` → `{"files": [...], "diagnostics": [...], "ok": bool, "exit": int}`
   `{"diagnostics": [...], "exit": 1}`
 - `--schema` prints a draft-07 JSON Schema describing the `--emit-ast` AST
   dump (`{"stmts": [...]}`) and the `--emit-llvm` IR text dump

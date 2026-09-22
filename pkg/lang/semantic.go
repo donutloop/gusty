@@ -98,7 +98,10 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		an.inferExpr(s.Expr)
 	case *ReturnStmt:
 		if s.Expr != nil {
-			an.inferExpr(s.Expr)
+			ty := an.inferExpr(s.Expr)
+			if ra := an.returnAnno(); ra != nil && ty != nil && ty.Kind != KindDynamic && ty.Kind != KindVoid && ty.Kind != ra.Kind {
+				an.errorf(s.Span(), "return type mismatch: expected %s, got %s", ra.Name(), ty.Name())
+			}
 		}
 	case *RaiseStmt:
 		if s.Expr != nil {
@@ -304,6 +307,13 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 }
 
 // inferExpr returns the inferred type of an expression.
+func (an *SemanticAnalyzer) returnAnno() *Type {
+	if an.curFn == nil || an.curFn.ReturnAnno == nil {
+		return nil
+	}
+	return an.curFn.ReturnAnno
+}
+
 func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 	ty := an.inferExprTy(e)
 	if ty != nil {
@@ -561,6 +571,19 @@ func (an *SemanticAnalyzer) inferUserCall(fd *FuncDef, n *Call) *Type {
 			argTypes[i] = an.inferExpr(p.Default)
 		} else {
 			argTypes[i] = nil
+		}
+	}
+	// mypy-style: check each statically-typed argument against its annotation.
+	for i, p := range fd.Params {
+		if p.Annot == nil || p.Annot.Kind == KindDynamic {
+			continue
+		}
+		got := argTypes[i]
+		if got == nil || got.IsDyn() {
+			continue
+		}
+		if !got.Same(p.Annot) {
+			an.errorf(n.Span(), "argument %q: expected %s, got %s", p.Name, p.Annot.Name(), got.Name())
 		}
 	}
 	return an.inferReturn(fd, argTypes)
