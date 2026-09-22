@@ -42,6 +42,7 @@ type obj struct {
 	dvals []int64          // dict values parallel to elems keys (kind=dict)
 	sval  string           // string value (kind=str)
 	fval  float64          // float value (kind=float)
+	doc   string           // __doc__ string (def/class/closure objects)
 }
 
 // setLoopVar binds a for-loop variable (a Name, or a Tuple of Names) to a value.
@@ -229,7 +230,7 @@ func (e *Evaluator) Repr(id int64) string {
 func (e *Evaluator) allocClosure(fn *FuncDef, env map[string]int64) int64 {
 	e.nextID++
 	id := e.nextID
-	e.heap[id] = &obj{kind: "closure", fn: fn, env: env, attrs: map[string]int64{}}
+	e.heap[id] = &obj{kind: "closure", fn: fn, env: env, attrs: map[string]int64{}, doc: fn.Doc}
 	return id
 }
 
@@ -521,6 +522,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			classID := e.allocObj("class")
 			e.classIDs[s.Name] = classID
 			cls := e.heap[classID]
+			cls.doc = s.Doc
 			// inheritance: the first base (if any) becomes the base class;
 			// methods/attrs missing on the subclass resolve up the base chain.
 			if len(s.Bases) > 0 {
@@ -971,7 +973,6 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 		}
 		return 0, &EvalError{Msg: "yield from outside a generator"}
-		continue
 		case *RaiseStmt:
 			// raise Exception("msg") / raise ValueError("msg") etc.
 			if s.Expr == nil {
@@ -1055,9 +1056,30 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		}
 		return 0, &EvalError{Msg: "unsupported unary " + n.Op}
 	case *Attr:
+		// __doc__ introspection on a top-level def/class name: these have no
+		// runtime object (top-level functions live in e.funcs as AST nodes).
+		if n.Name.Value == "__doc__" {
+			if nm, ok := n.Obj.(*Name); ok {
+				if fd, ok := e.funcs[nm.Value]; ok {
+					return e.allocStr(fd.Doc), nil
+				}
+				if cid, ok := e.classIDs[nm.Value]; ok {
+					if c := e.heap[cid]; c != nil {
+						return e.allocStr(c.doc), nil
+					}
+				}
+			}
+		}
 		objV, err := e.eval(n.Obj)
 		if err != nil {
 			return 0, err
+		}
+		if n.Name.Value == "__doc__" {
+			// __doc__ on a closure/class value: the object carries doc on the
+			// heap object itself (not in attrs).
+			if o, ok := e.heap[objV]; ok {
+				return e.allocStr(o.doc), nil
+			}
 		}
 		o, ok := e.heap[objV]
 		if !ok {

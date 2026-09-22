@@ -712,3 +712,28 @@ corrupt memory. See ADR 0009.
 - `yield from expr` delegates yields to a sub-iterable (a generator call, a list
   literal, or `range(...)`), appending each element to the current generator.
 - Full support in the interpreter; codegen emits a runtime loop over the sub-list.
+
+## Docstrings and `__doc__` (Round 9, ADR 0141)
+
+A leading bare string literal in a `def` or `class` body is captured as a
+docstring at definition time (Python-style). It is removed from the body (not
+re-evaluated as a no-op statement) and stored on the node.
+
+- `def greet(): "returns a greeting"; return "hi"` — `greet.__doc__` is
+  `"returns a greeting"`.
+- `class Animal: "an animal class"; def speak(self): return self` —
+  `Animal.__doc__` is `"an animal class"`.
+- Nested `def` (closures) carry `__doc__` too.
+- A function/class without a docstring yields `""`.
+- A string literal that is NOT the first statement is a normal expression, not
+  a docstring.
+
+`__doc__` reads are **interpreter-only** in the AOT backend: AOT lowers
+functions/classes to compile-time artifacts with no runtime introspection
+objects (ADR 0141).
+
+## Canonical formatter (`gusty fmt`, Round 8)
+
+The compiler ships a deterministic source formatter. Docstrings are re-emitted
+as the first statement of a `def`/`class` body so formatting round-trips
+preserve them.

@@ -69,11 +69,11 @@ Rule: every component change updates the matching doc; never let
 | Phase 7 — correctness & tooling | Shared IR / conformance matrix | ⏳ PLANNED | Interpreter and codegen each consume the AST independently today — no shared IR, so semantics drift (e.g., dispatch is statement-level in AOT only). Add a shared lowering spec + a matrix that runs every `integration/` case through **both** backends and diffs. |
 | Phase 7 — correctness & tooling | REPL error recovery | ✅ DONE | `--repl` aborts on a single parse error; add panic-recovery/error-token parsing for a modern REPL. |
 | Phase 7 — correctness & tooling | Richer `--json` diagnostics | ✅ DONE | Emit spans **and** inferred types (the semantic pass already computes them) in the `--json` schema. |
-| Phase 8 — developer tooling & ecosystem | Formatter (`gusty fmt`) | ⏳ PLANNED | `cmd/` ships only the compiler; add a gofmt/black-style source formatter so the language has a canonical style. |
+| Phase 8 — developer tooling & ecosystem | Formatter (`gusty fmt`) | ✅ DONE (Round 8) | `cmd/` ships only the compiler; add a gofmt/black-style source formatter so the language has a canonical style. |
 | Phase 8 — developer tooling & ecosystem | Language server / LSP | ⏳ PLANNED | Editors get completion + hover + diagnostics; build on the `--json` span/type groundwork (semantic already infers types). |
 | Phase 8 — developer tooling & ecosystem | Standard library + package resolution | ⏳ PLANNED | No stdlib dir today; AOT `import` is data-only. Add `math`/`string`/`collections`/`json`-style stdlib and on-disk module/package resolution. |
 | Phase 8 — developer tooling & ecosystem | Runtime tracebacks with source spans | ⏳ PLANNED | Parser errors carry spans today, but runtime errors have no Python-style traceback with line/col; add one in the interpreter and AOT. |
-| Phase 8 — developer tooling & ecosystem | Docstrings / `__doc__` | ⏳ PLANNED | Absent; add `def`/`class` docstrings and `__doc__` introspection. |
+| Phase 8 — developer tooling & ecosystem | Docstrings / `__doc__` | ✅ DONE (Round 9, ADR 0141; AOT `__doc__` interpreter-only) | Absent; add `def`/`class` docstrings and `__doc__` introspection. |
 | Phase 8 — developer tooling & ecosystem | Benchmark + profiling suite | ⏳ PLANNED | No `Benchmark` tests today; add a perf harness that runs both backends (supports the "compiler is the product" principle). |
 | Phase 9 — type system & runtime robustness | Tuple type + tuple unpacking | ⏳ PLANNED | Semantic has no `Tuple` kind; add it as the type-system underpinning for Phase 6 unpacking and multi-return. |
 | Phase 9 — type system & runtime robustness | Generics / protocols | ⏳ PLANNED | Gradual types stop at `Any`; add `Sequence[T]`/`Callable` bounds and structural protocols. |

@@ -237,3 +237,12 @@ collide with raw small integer literals stored in lists/dicts/vars. This keeps
 Machine consumption via `--json --eval "xs = [1,2]
 xs.append(3)
 xs"`.
+
+## Source formatter (`gusty fmt`, Round 8)
+
+- `--fmt <src>` — print the canonical formatted source.
+- `--fmt-check <src>` — verify the source is already canonical; exit 0 if so,
+  1 if not.
+- `--fmt-file <path>` — format a source file.
+The formatter round-trips docstrings (they are re-emitted as the first body
+statement), so `--fmt` preserves `def`/`class` docstrings.

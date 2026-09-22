@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## Round 9 — Docstrings / `__doc__` (ADR 0141)
+
+- Parser: a leading bare string literal in `def`/`class` bodies is captured as
+  `Doc` (not a no-op statement); non-first string literals stay expressions.
+- AST: `FuncDef`/`ClassDef` gain a `Doc` field.
+- Interpreter: `f.__doc__`, `cls.__doc__`, and closure `__doc__` (empty if none).
+- Formatter: docstrings round-trip (`writeDoc` emits them as the first stmt).
+- AOT: `__doc__` reads are interpreter-only (documented in ADR 0141).
+
+## Round 8 — Canonical source formatter (`gusty fmt`)
+
+- `--fmt`, `--fmt-check`, `--fmt-file` CLI flags.
+- Deterministic formatter with docstring round-tripping (now preserved).
+
+
+
 All notable changes to gusty are documented here, newest first.
 pre-`1.0.0` releases (`v0.x.y`) while still in development.
 

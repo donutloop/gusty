@@ -110,6 +110,11 @@ literals, comprehensions, `len`, numeric builtins, and a wide range of
 constant-folding string/dict operations (e.g. `len("AbC".upper())` → `3`,
 `len("a b c".split())` → `3`, `{1: 2, 3: 4}.keys()` → `[1, 3]`).
 
+Docstrings (Round 9): a leading bare string literal in a `def`/`class` body is
+captured as `__doc__` (`f.__doc__`, `cls.__doc__`, closure `__doc__`). The
+canonical formatter (`gusty fmt`, Round 8) round-trips docstrings. `__doc__`
+reads are interpreter-only in AOT (ADR 0141).
+
 ---
 
 ## Requirements
@@ -163,7 +168,7 @@ gustyc                                  # start the REPL (stateful)
 
 Flags: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`,
 `--target`, `--opt-level`, `--lang`, `--json`, `--schema`, `--version`,
-`--repl`, `--help`.
+`--repl`, `--help`, `--fmt`, `--fmt-check`, `--fmt-file`.
 
 Exit codes: `0` = ok, `1` = runtime/eval error, `2` = parse/usage error.
 

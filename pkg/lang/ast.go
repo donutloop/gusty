@@ -121,6 +121,7 @@ type FuncDef struct {
 	Name       string   `json:"name"`
 	Params     []*Param `json:"params"`
 	ReturnAnno *Type    `json:"return_annot,omitempty"`
+	Doc        string   `json:"doc,omitempty"`
 	Body       []Stmt   `json:"body"`
 	Decorators []Expr   `json:"decorators,omitempty"`
 	Src         Span     `json:"span,omitempty"`
@@ -132,6 +133,7 @@ func (n *FuncDef) stmtNode()  {}
 type ClassDef struct {
 	Name  string  `json:"name"`
 	Bases []*Name `json:"bases,omitempty"`
+	Doc   string  `json:"doc,omitempty"`
 	Body  []Stmt  `json:"body"`
 	Src    Span    `json:"span,omitempty"`
 }

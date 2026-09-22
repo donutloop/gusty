@@ -1,6 +1,9 @@
 package lang
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFmtRoundTrip(t *testing.T) {
 	srcs := []string{
@@ -42,5 +45,29 @@ func TestFmtCanonical(t *testing.T) {
 	want := "x = 1\nif x > 1:\n  print(x)"
 	if f != want {
 		t.Errorf("got %q want %q", f, want)
+	}
+}
+
+func TestFormatDocstringRoundTrip(t *testing.T) {
+	// Docstrings are extracted from the body into FuncDef.Doc, so the
+	// formatter must re-emit them or round-trips would drop them.
+	src := `def greet():
+    "returns a greeting"
+    return "hi"
+class Animal:
+    "an animal class"
+    def speak(self):
+        return self
+`
+	out, err := FormatSrc(src)
+	if err != nil {
+		t.Fatalf("FormatSrc: %v", err)
+	}
+	// The docstring must appear as the first statement of each body.
+	if !strings.Contains(out, `"returns a greeting"`) {
+		t.Fatalf("format dropped func docstring:\n%s", out)
+	}
+	if !strings.Contains(out, `"an animal class"`) {
+		t.Fatalf("format dropped class docstring:\n%s", out)
 	}
 }

@@ -1411,3 +1411,64 @@ func TestEvalOperatorOverloading(t *testing.T) {
 		t.Fatalf("got %d, want 1", v)
 	}
 }
+
+func TestEvalDocstringFunc(t *testing.T) {
+	// A leading bare string literal in a def body becomes __doc__.
+	out := captureStdout(t, `def greet():
+    "returns a greeting"
+    return "hi"
+print(greet.__doc__)`)
+	if out != "returns a greeting\n" {
+		t.Fatalf("greet.__doc__ = %q, want %q", out, "returns a greeting\n")
+	}
+}
+
+func TestEvalDocstringFuncNone(t *testing.T) {
+	// A function without a docstring yields the empty string.
+	out := captureStdout(t, `def f():
+    return 1
+print(f.__doc__)`)
+	if out != "\n" {
+		t.Fatalf("f.__doc__ = %q, want empty string", out)
+	}
+}
+
+func TestEvalDocstringClass(t *testing.T) {
+	// A leading string literal in a class body becomes cls.__doc__.
+	out := captureStdout(t, `class Animal:
+    "an animal class"
+    def speak(self):
+        return self
+a = Animal()
+print(Animal.__doc__)`)
+	if out != "an animal class\n" {
+		t.Fatalf("Animal.__doc__ = %q, want %q", out, "an animal class\n")
+	}
+}
+
+func TestEvalDocstringClosure(t *testing.T) {
+	// A nested def (closure value) carries __doc__ too.
+	out := captureStdout(t, `def outer():
+    def inner():
+        "inner helper"
+        return 1
+    return inner
+f = outer()
+print(f.__doc__)`)
+	if out != "inner helper\n" {
+		t.Fatalf("closure.__doc__ = %q, want %q", out, "inner helper\n")
+	}
+}
+
+func TestEvalDocstringNotFirst(t *testing.T) {
+	// A string literal that is NOT the first statement is a normal expression,
+	// not a docstring.
+	out := captureStdout(t, `def g():
+    x = 1
+    "not a docstring"
+    return x
+print(g.__doc__)`)
+	if out != "\n" {
+		t.Fatalf("g.__doc__ = %q, want empty string", out)
+	}
+}

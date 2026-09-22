@@ -256,3 +256,26 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
   reads a file; `--json` emits a machine report. Added `exitNotCanonical = 1`.
 - Tests: `pkg/lang/fmt_test.go` — round-trip (re-format stable, re-parse succeeds) + canonical examples.
 - Idempotence: `Format(Parse(Format(src))) == Format(src)`; canonical output re-parses successfully.
+
+## Round 9 — Docstrings / `__doc__` (ADR 0141)
+
+- Parser: `parseFuncDef`/`parseClassDef` pull a leading bare `StrLit` statement
+  out of the body into `FuncDef.Doc`/`ClassDef.Doc` via `extractDoc`; non-first
+  string literals stay expressions.
+- AST: `Doc string` fields on `FuncDef` and `ClassDef`.
+- Interpreter: `obj.doc` on closures (set in `allocClosure` from `fn.Doc`) and
+  classes (set at `ClassDef` eval); top-level `f.__doc__` resolves straight to
+  `e.funcs[name].Doc` (top-level funcs are AST nodes, no runtime object); the
+  `case *Attr` handler checks `__doc__` before eval (Name case) and after eval
+  (closure/class heap objects).
+- Formatter: `writeDoc` re-emits the docstring as the first body statement so
+  `gusty fmt` round-trips preserve it (added `TestFormatDocstringRoundTrip`).
+- AOT limit documented in ADR 0141: functions/classes are compile-time
+  artifacts (class ids, method functions), so `__doc__` reads are
+  interpreter-only — mirrors ADR 0131 (decorators/closures).
+- Tests: `TestEvalDocstringFunc`, `...FuncNone`, `...Class`, `...Closure`,
+  `...NotFirst`, plus the fmt round-trip. Full `go test ./...` green.
+- Docs: roadmap (formatter DONE + docstrings DONE), language.md, operations.md
+  (fmt flags), CHANGELOG, README (fmt flags + docstring note).
+- Round 8 hygiene: the formatter had shipped without doc updates; this round
+  back-filled roadmap/CHANGELOG/README/operations for `gusty fmt`.

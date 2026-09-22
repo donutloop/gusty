@@ -204,6 +204,24 @@ func (p *parser) parseBlock(open Span) ([]Stmt, error) {
 	return stmts, nil
 }
 
+// extractDoc pulls a leading bare string-literal statement out of a def/class
+// body and returns it as the docstring (Python-style). The literal is removed
+// from the body so it is not re-evaluated as a no-op expression statement.
+func (p *parser) extractDoc(body []Stmt) (string, []Stmt) {
+	if len(body) == 0 {
+		return "", body
+	}
+	es, ok := body[0].(*ExprStmt)
+	if !ok {
+		return "", body
+	}
+	lit, ok := es.Expr.(*StrLit)
+	if !ok {
+		return "", body
+	}
+	return lit.Value, body[1:]
+}
+
 func (p *parser) parseFuncDef() (Stmt, error) {
 	def := p.next() // 'def'
 	name, err := p.expectIdent()
@@ -247,7 +265,7 @@ func (p *parser) parseFuncDef() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	fd.Body = body
+	fd.Doc, fd.Body = p.extractDoc(body)
 	return fd, nil
 }
 
@@ -349,7 +367,7 @@ func (p *parser) parseClassDef() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	cd.Body = body
+	cd.Doc, cd.Body = p.extractDoc(body)
 	return cd, nil
 }
 

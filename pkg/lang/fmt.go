@@ -187,6 +187,17 @@ func writeIf(sb *strings.Builder, s *IfStmt, depth int) {
 	}
 }
 
+// writeDoc emits a def/class docstring (if any) as the first statement of the
+// body so formatting round-trips preserve it.
+func writeDoc(sb *strings.Builder, doc string, depth int) {
+	if doc == "" {
+		return
+	}
+	indent(sb, depth)
+	sb.WriteString(quoteString(doc))
+	sb.WriteByte('\n')
+}
+
 func writeFuncDef(sb *strings.Builder, s *FuncDef, depth int) {
 	for _, dec := range s.Decorators {
 		indent(sb, depth)
@@ -205,6 +216,7 @@ func writeFuncDef(sb *strings.Builder, s *FuncDef, depth int) {
 		sb.WriteString(s.ReturnAnno.Name())
 	}
 	sb.WriteString(":\n")
+	writeDoc(sb, s.Doc, depth+1)
 	writeBlock(sb, s.Body, depth+1)
 }
 
@@ -221,6 +233,7 @@ func writeClassDef(sb *strings.Builder, s *ClassDef, depth int) {
 	}
 	sb.WriteByte(')')
 	sb.WriteString(":\n")
+	writeDoc(sb, s.Doc, depth+1)
 	writeBlock(sb, s.Body, depth+1)
 }
 
