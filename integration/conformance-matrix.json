@@ -1,0 +1,255 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "integration/conformance_test.go",
+  "results": [
+    {
+      "case": {
+        "id": "programs/single",
+        "name": "single.gy",
+        "source": "x = 0\nfor i in range(3):\n    x = x + i\nprint(x)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "3\n",
+      "aot_ok": true,
+      "aot_stdout": "3\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/sq",
+        "name": "sq.gy",
+        "source": "def sq(x):\n    return x * x\nprint(sq(7))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "49\n",
+      "aot_ok": true,
+      "aot_stdout": "49\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/print1",
+        "name": "print1.gy",
+        "source": "print(1)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "1\n",
+      "aot_ok": true,
+      "aot_stdout": "1\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/ir",
+        "name": "ir.gy",
+        "source": "print(40 + 2)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "42\n",
+      "aot_ok": true,
+      "aot_stdout": "42\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/fstr",
+        "name": "fstr.gy",
+        "source": "x = 3\ny = 7\nprint(f\"x={x}\")\nprint(f\"{1 + 2}\")\nprint(f\"{1.5}\")\nprint(f\"a{y} c\")\nprint(f\"100% done\")\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "x=3\n3\n1.5\na7 c\n100% done\n",
+      "aot_ok": true,
+      "aot_stdout": "x=3\n3\n1.5\na7 c\n100% done\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/floatfn",
+        "name": "floatfn.gy",
+        "source": "def half(x):\n    return x / 2.0\nprint(half(5.0))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "2.5\n",
+      "aot_ok": true,
+      "aot_stdout": "2.5\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/ctrl_a",
+        "name": "ctrl_a.gy",
+        "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "acc\n15\nacc2\n20\nacc3\n30\n",
+      "aot_ok": true,
+      "aot_stdout": "acc\n15\nacc2\n20\nacc3\n30\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/ctrl_b",
+        "name": "ctrl_b.gy",
+        "source": "w1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "while\n100\nwhile2\n20\n",
+      "aot_ok": true,
+      "aot_stdout": "while\n100\nwhile2\n20\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/ctrl_c",
+        "name": "ctrl_c.gy",
+        "source": "def classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "cls\n2\n0\n3\nnested\n9\ncont\n14\n",
+      "aot_ok": true,
+      "aot_stdout": "cls\n2\n0\n3\nnested\n9\ncont\n14\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/data_a",
+        "name": "data_a.gy",
+        "source": "da1 = 0\nfor di in range(1, 6):\n    da1 = da1 + di\nprint(\"dsum\", da1)\nprint(\"dmin\", min([3, 1, 4, 1, 5]))\nprint(\"dmax\", max([3, 1, 4, 1, 5]))\nprint(\"dlen\", len([10, 20, 30]))\nprint(\"didx\", [7, 8, 9][1])\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "dsum\n15\ndmin\n1\ndmax\n5\ndlen\n3\ndidx\n8\n",
+      "aot_ok": true,
+      "aot_stdout": "dsum\n15\ndmin\n1\ndmax\n5\ndlen\n3\ndidx\n8\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/data_b",
+        "name": "data_b.gy",
+        "source": "print(\"dkeys\", len({1: 10, 2: 20, 3: 30}))\nprint(\"dval\", {1: 10, 2: 20}[2])\nprint(\"slen\", len({5, 6, 7}))\nprint(\"sidx\", {5, 6, 7}[6])\ndb1 = 0\nfor dj in range(1, 10, 2):\n    db1 = db1 + dj\nprint(\"odd\", db1)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "dkeys\n3\ndval\n20\nslen\n3\nsidx\n6\nodd\n25\n",
+      "aot_ok": true,
+      "aot_stdout": "dkeys\n3\ndval\n20\nslen\n3\nsidx\n6\nodd\n25\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/data_c",
+        "name": "data_c.gy",
+        "source": "def total(n):\n    t = 0\n    for tk in range(1, n):\n        t = t + tk\n    return t\ndc1 = total(7)\nprint(\"fsum\", dc1)\ndc2 = 0\nfor dl in range(1, 10):\n    dc2 = dc2 + dl\nprint(\"loop\", dc2)\ndc3 = dc1 + dc2\nprint(\"big\", dc3)\nprint(\"abs\", abs(-42))\nprint(\"conv\", int(\"100\"), float(2), str(7))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "fsum\n21\nloop\n45\nbig\n66\nabs\n42\nconv\n100\n2\n7\n",
+      "aot_ok": true,
+      "aot_stdout": "fsum\n21\nloop\n45\nbig\n66\nabs\n42\nconv\n100\n2\n7\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/features_a",
+        "name": "features_a.gy",
+        "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "sum\n10\narith\n3\n1\n5\n6\n-1\n5\nfloat\n3.5\nstr\nabc\nslen\n5\nsidx\n98\nsup\nABC\nslow\nabc\n",
+      "aot_ok": true,
+      "aot_stdout": "sum\n10\narith\n3\n1\n5\n6\n-1\n5\nfloat\n3.5\nstr\nabc\nslen\n5\nsidx\n98\nsup\nABC\nslow\nabc\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/features_b",
+        "name": "features_b.gy",
+        "source": "def add(a, b):\n    return a + b\ndef kw(a, b):\n    return a - b\nprint(\"func\", add(2, 3))\nprint(\"kw\", kw(a=9, b=4))\ng = lambda a: a * a\nprint(\"lambda\", g(7))\nprint(\"len\", len([1, 2, 3]))\nprint(\"idx\", [1, 2, 3][1])\nprint(\"sum\", sum([1, 2, 3]))\nprint(\"minmax\", min([1, 2, 3]), max([1, 2, 3]))\nprint(\"dict\", len({1: 10, 2: 20}), {1: 10, 2: 20}[1])\nprint(\"set\", len({1, 2, 3}), {1, 2, 3}[2])\nwi = 0\nwt = 0\nwhile wi \u003c 10:\n    wi = wi + 1\n    if wi == 3:\n        continue\n    if wi == 7:\n        break\n    wt = wt + wi\nprint(\"while\", wt)\nxf = 3\nif xf == 1:\n    print(\"if\", \"one\")\nelif xf == 2:\n    print(\"if\", \"two\")\nelse:\n    print(\"if\", \"many\")\nstp = 0\nfor si in range(0, 10, 2):\n    stp = stp + si\nprint(\"step\", stp)\nprint(\"abs\", abs(-5))\nprint(\"conv\", int(\"42\"), float(1), str(42))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "func\n5\nkw\n5\nlambda\n49\nlen\n3\nidx\n2\nsum\n6\nminmax\n1\n3\ndict\n2\n10\nset\n3\n2\nwhile\n18\nif\nmany\nstep\n20\nabs\n5\nconv\n42\n1\n42\n",
+      "aot_ok": true,
+      "aot_stdout": "func\n5\nkw\n5\nlambda\n49\nlen\n3\nidx\n2\nsum\n6\nminmax\n1\n3\ndict\n2\n10\nset\n3\n2\nwhile\n18\nif\nmany\nstep\n20\nabs\n5\nconv\n42\n1\n42\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "merged/ctrl",
+        "name": "ctrl_a+b+c",
+        "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "acc\n15\nacc2\n20\nacc3\n30\nwhile\n100\nwhile2\n20\ncls\n2\n0\n3\nnested\n9\ncont\n14\n",
+      "aot_ok": true,
+      "aot_stdout": "acc\n15\nacc2\n20\nacc3\n30\nwhile\n100\nwhile2\n20\ncls\n2\n0\n3\nnested\n9\ncont\n14\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "merged/data",
+        "name": "data_a+b+c",
+        "source": "da1 = 0\nfor di in range(1, 6):\n    da1 = da1 + di\nprint(\"dsum\", da1)\nprint(\"dmin\", min([3, 1, 4, 1, 5]))\nprint(\"dmax\", max([3, 1, 4, 1, 5]))\nprint(\"dlen\", len([10, 20, 30]))\nprint(\"didx\", [7, 8, 9][1])\n\nprint(\"dkeys\", len({1: 10, 2: 20, 3: 30}))\nprint(\"dval\", {1: 10, 2: 20}[2])\nprint(\"slen\", len({5, 6, 7}))\nprint(\"sidx\", {5, 6, 7}[6])\ndb1 = 0\nfor dj in range(1, 10, 2):\n    db1 = db1 + dj\nprint(\"odd\", db1)\n\ndef total(n):\n    t = 0\n    for tk in range(1, n):\n        t = t + tk\n    return t\ndc1 = total(7)\nprint(\"fsum\", dc1)\ndc2 = 0\nfor dl in range(1, 10):\n    dc2 = dc2 + dl\nprint(\"loop\", dc2)\ndc3 = dc1 + dc2\nprint(\"big\", dc3)\nprint(\"abs\", abs(-42))\nprint(\"conv\", int(\"100\"), float(2), str(7))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "dsum\n15\ndmin\n1\ndmax\n5\ndlen\n3\ndidx\n8\ndkeys\n3\ndval\n20\nslen\n3\nsidx\n6\nodd\n25\nfsum\n21\nloop\n45\nbig\n66\nabs\n42\nconv\n100\n2\n7\n",
+      "aot_ok": true,
+      "aot_stdout": "dsum\n15\ndmin\n1\ndmax\n5\ndlen\n3\ndidx\n8\ndkeys\n3\ndval\n20\nslen\n3\nsidx\n6\nodd\n25\nfsum\n21\nloop\n45\nbig\n66\nabs\n42\nconv\n100\n2\n7\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "merged/features",
+        "name": "features_a+b",
+        "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n\ndef add(a, b):\n    return a + b\ndef kw(a, b):\n    return a - b\nprint(\"func\", add(2, 3))\nprint(\"kw\", kw(a=9, b=4))\ng = lambda a: a * a\nprint(\"lambda\", g(7))\nprint(\"len\", len([1, 2, 3]))\nprint(\"idx\", [1, 2, 3][1])\nprint(\"sum\", sum([1, 2, 3]))\nprint(\"minmax\", min([1, 2, 3]), max([1, 2, 3]))\nprint(\"dict\", len({1: 10, 2: 20}), {1: 10, 2: 20}[1])\nprint(\"set\", len({1, 2, 3}), {1, 2, 3}[2])\nwi = 0\nwt = 0\nwhile wi \u003c 10:\n    wi = wi + 1\n    if wi == 3:\n        continue\n    if wi == 7:\n        break\n    wt = wt + wi\nprint(\"while\", wt)\nxf = 3\nif xf == 1:\n    print(\"if\", \"one\")\nelif xf == 2:\n    print(\"if\", \"two\")\nelse:\n    print(\"if\", \"many\")\nstp = 0\nfor si in range(0, 10, 2):\n    stp = stp + si\nprint(\"step\", stp)\nprint(\"abs\", abs(-5))\nprint(\"conv\", int(\"42\"), float(1), str(42))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "sum\n10\narith\n3\n1\n5\n6\n-1\n5\nfloat\n3.5\nstr\nabc\nslen\n5\nsidx\n98\nsup\nABC\nslow\nabc\nfunc\n5\nkw\n5\nlambda\n49\nlen\n3\nidx\n2\nsum\n6\nminmax\n1\n3\ndict\n2\n10\nset\n3\n2\nwhile\n18\nif\nmany\nstep\n20\nabs\n5\nconv\n42\n1\n42\n",
+      "aot_ok": true,
+      "aot_stdout": "sum\n10\narith\n3\n1\n5\n6\n-1\n5\nfloat\n3.5\nstr\nabc\nslen\n5\nsidx\n98\nsup\nABC\nslow\nabc\nfunc\n5\nkw\n5\nlambda\n49\nlen\n3\nidx\n2\nsum\n6\nminmax\n1\n3\ndict\n2\n10\nset\n3\n2\nwhile\n18\nif\nmany\nstep\n20\nabs\n5\nconv\n42\n1\n42\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "merged/whole",
+        "name": "whole_a+b",
+        "source": "def double(x):\n    return x * 2\n\ns = 0\nfor i in range(1, 4):\n    s = s + i\nprint(s + double(5))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "16\n",
+      "aot_ok": true,
+      "aot_stdout": "16\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "merged/math",
+        "name": "math_lib+calc+main",
+        "source": "def add(a, b):\n    return a + b\ndef mul(a, b):\n    return a * b\ndef scale(x, n):\n    return x * n\n\nac = 0\nfor ic in range(1, 6):\n    ac = ac + ic\nbc = add(ac, mul(2, 3))\nprint(\"calc\", bc)\nprint(\"scaled\", scale(bc, 2))\n\nmc = 0\nfor jc in range(0, 10, 2):\n    mc = mc + jc\nmc2 = mc + 10\nprint(\"main\", mc2)\nprint(\"addcall\", add(mc2, 5))\nprint(\"mulcall\", mul(mc2, 2))\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "calc\n21\nscaled\n42\nmain\n30\naddcall\n35\nmulcall\n60\n",
+      "aot_ok": true,
+      "aot_stdout": "calc\n21\nscaled\n42\nmain\n30\naddcall\n35\nmulcall\n60\n",
+      "parity": true
+    }
+  ],
+  "pass": 19,
+  "fail": 0
+}
