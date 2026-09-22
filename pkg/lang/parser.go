@@ -130,6 +130,9 @@ func (p *parser) parseStmt() (Stmt, error) {
 	if t.IsKeyword("try") {
 		return p.parseTry()
 	}
+	if t.IsKeyword("with") {
+		return p.parseWith()
+	}
 	if t.IsKeyword("raise") {
 		p.next()
 		var ex Expr
@@ -376,6 +379,14 @@ func (p *parser) parseReturn() (Stmt, error) {
 
 func (p *parser) parseYield() (Stmt, error) {
 	yt := p.next() // 'yield'
+	if p.peek().IsKeyword("from") {
+		p.next()
+		ex, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &YieldFromStmt{Expr: ex, sp: yt.Span}, nil
+	}
 	ys := &YieldStmt{sp: yt.Span}
 	if !p.atNewline() && !p.atEOF() && !p.atDedent() {
 		ex, err := p.parseExpr()
@@ -648,6 +659,37 @@ func (p *parser) parseTry() (Stmt, error) {
 		break
 	}
 	return ts, nil
+}
+
+// parseWith parses `with expr [as name]: body`.
+func (p *parser) parseWith() (Stmt, error) {
+	kw := p.next() // 'with'
+	ex, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	ws := &WithStmt{Expr: ex, sp: kw.Span}
+	if p.peek().IsKeyword("as") {
+		p.next()
+		nm, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		an, ok := nm.(*Name)
+		if !ok {
+			return nil, p.errorf(p.peek(), "expected identifier after 'as'")
+		}
+		ws.As = an
+	}
+	if err := p.expectOp(":"); err != nil {
+		return nil, err
+	}
+	body, err := p.parseBlock(kw.Span)
+	if err != nil {
+		return nil, err
+	}
+	ws.Body = body
+	return ws, nil
 }
 
 // parseExprOrAssign parses an expression statement or an assignment.

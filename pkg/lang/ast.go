@@ -188,6 +188,27 @@ type YieldStmt struct {
 func (n *YieldStmt) Span() Span { return n.sp }
 func (n *YieldStmt) stmtNode()  {}
 
+// YieldFromStmt is `yield from expr`: delegate yields to a sub-iterable.
+type YieldFromStmt struct {
+	Expr Expr `json:"expr"`
+	sp   Span `json:"-"`
+}
+
+func (n *YieldFromStmt) Span() Span { return n.sp }
+func (n *YieldFromStmt) stmtNode()  {}
+
+// WithStmt is `with expr [as name]: body`. It drives a context manager's
+// __enter__/__exit__ protocol.
+type WithStmt struct {
+	Expr Expr   `json:"expr"`
+	As   *Name  `json:"as,omitempty"` // binding name, nil when no `as`
+	Body []Stmt `json:"body"`
+	sp   Span   `json:"-"`
+}
+
+func (n *WithStmt) Span() Span { return n.sp }
+func (n *WithStmt) stmtNode()  {}
+
 // --- Expressions ---
 
 type Name struct {

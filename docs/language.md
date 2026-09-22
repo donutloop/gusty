@@ -697,3 +697,18 @@ so long-running programs don't leak slots on rebind. When the 1024-slot heap
 is truly full (more live collections than slots), `rt_alloc` returns a -1
 sentinel instead of writing out of bounds, so pathological programs can't
 corrupt memory. See ADR 0009.
+
+## `with` context managers
+
+- `with expr as name:` binds `name` to `expr.__enter__()` for the body; `with expr:`
+  discards the entered value.
+- On normal completion `__exit__(none, none, none)` is called; on an exception
+  `__exit__(exc_type, exc_val, exc_tb)` is called and a truthy return suppresses it.
+- Full support in the interpreter; codegen emits the protocol but runtime execution
+  is blocked by a pre-existing duplicate-function defect (ADR 0140).
+
+## `yield from`
+
+- `yield from expr` delegates yields to a sub-iterable (a generator call, a list
+  literal, or `range(...)`), appending each element to the current generator.
+- Full support in the interpreter; codegen emits a runtime loop over the sub-list.

@@ -675,6 +675,41 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					return 0, err
 				}
 			}
+	case *WithStmt:
+		m, err := e.eval(s.Expr)
+		if err != nil {
+			return 0, err
+		}
+		ent, err := e.callDunder(m, "__enter__", nil)
+		if err != nil {
+			return 0, err
+		}
+		if s.As != nil {
+			e.Vars[s.As.Value] = ent
+		}
+		_, bodyErr := e.evalBody(s.Body)
+		if bodyErr != nil {
+			if ee, ok := bodyErr.(*EvalError); ok {
+				sup, err2 := e.callDunder(m, "__exit__", []int64{int64(len(ee.ExnType)), 0, 0})
+				if err2 != nil {
+					return 0, err2
+				}
+				if sup != 0 {
+					return 0, nil
+				}
+				return 0, bodyErr
+			}
+			_, err2 := e.callDunder(m, "__exit__", []int64{0, 0, 0})
+			if err2 != nil {
+				return 0, err2
+			}
+			return 0, bodyErr
+		}
+		_, err = e.callDunder(m, "__exit__", []int64{0, 0, 0})
+		if err != nil {
+			return 0, err
+		}
+		continue
 		case *WhileStmt:
 			completed := true
 			for {
@@ -923,6 +958,20 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 			last = v
 			continue
+	case *YieldFromStmt:
+		if e.yieldList != 0 {
+			gl, ok := e.heap[e.yieldList]
+			if ok {
+				elems, err := e.evalIterable(s.Expr)
+				if err != nil {
+					return 0, err
+				}
+				gl.elems = append(gl.elems, elems...)
+				continue
+			}
+		}
+		return 0, &EvalError{Msg: "yield from outside a generator"}
+		continue
 		case *RaiseStmt:
 			// raise Exception("msg") / raise ValueError("msg") etc.
 			if s.Expr == nil {
@@ -1954,6 +2003,33 @@ func swapcase(s string) string {
 		return unicode.ToUpper(r)
 	}, s)
 }
+
+// evalIterable evaluates an expression to an ordered list of element handles,
+// used by `yield from`. It supports list literals, generator calls (which return
+// list handles), and range(...) calls.
+func (e *Evaluator) evalIterable(x Expr) ([]int64, error) {
+	if c, ok := x.(*Call); ok {
+		if n, ok2 := c.Fn.(*Name); ok2 && n.Value == "range" {
+			start, stop, err := e.rangeBounds(x)
+			if err != nil {
+				return nil, err
+			}
+			var elems []int64
+			for i := start; i < stop; i++ {
+				elems = append(elems, i)
+			}
+			return elems, nil
+		}
+	}
+	h, err := e.eval(x)
+	if err != nil {
+		return nil, err
+	}
+	if o, ok := e.heap[h]; ok && o.kind == "list" {
+		return o.elems, nil
+	}
+	return nil, &EvalError{Msg: "yield from target is not iterable"}
+}
 func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, error) {
 	o := e.heap[recv]
 	s := o.sval
@@ -2578,6 +2654,19 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 	return 0, &EvalError{Msg: "no such dict method " + name}
 }
 
+
+// callDunder calls a dunder (__enter__/__exit__) method on an instance handle.
+func (e *Evaluator) callDunder(self int64, name string, args []int64) (int64, error) {
+	o := e.heap[self]
+	if o == nil {
+		return 0, &EvalError{Msg: "with: context manager is not an object"}
+	}
+	mID, ok := e.resolveMethod(e.classIDs[o.class], name)
+	if !ok {
+		return 0, &EvalError{Msg: "with: missing " + name + " method"}
+	}
+	return e.callMethod(e.heap[mID], self, args)
+}
 func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error) {
 	scope := map[string]int64{}
 	scope["self"] = self

@@ -5439,6 +5439,67 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return err
 		}
 		fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, v)
+	case *YieldFromStmt:
+		if g.genHandle == "" {
+			return fmt.Errorf("codegen: yield from outside a generator")
+		}
+		hv, err := g.value(b, n.Expr)
+		if err != nil {
+			return err
+		}
+		ln := g.newTmp()
+		fmt.Fprintf(b, "%s = call i32 @rt_list_len(i32 %s)\n", ln, hv)
+		ild := g.newLabel("yf.cond")
+		ilp := g.newLabel("yf.body")
+		inc := g.newLabel("yf.inc")
+		end := g.newLabel("yf.end")
+		iv := g.newTmp()
+		fmt.Fprintf(b, "%s = alloca i32\n", iv)
+		fmt.Fprintf(b, "  store i32 0, i32* %s\n", iv)
+		fmt.Fprintf(b, "  br label %%%s\n", ild)
+		fmt.Fprintf(b, "%s:\n", ild)
+		ivc := g.newTmp()
+		fmt.Fprintf(b, "%s = load i32, i32* %s\n", ivc, iv)
+		cmp := g.newTmp()
+		fmt.Fprintf(b, "%s = icmp slt i32 %s, %s\n", cmp, ivc, ln)
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", cmp, ilp, end)
+		fmt.Fprintf(b, "%s:\n", ilp)
+		el := g.newTmp()
+		fmt.Fprintf(b, "%s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", el, hv, ivc)
+		fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, el)
+		fmt.Fprintf(b, "  br label %%%s\n", inc)
+		fmt.Fprintf(b, "%s:\n", inc)
+		nv := g.newTmp()
+		fmt.Fprintf(b, "%s = add i32 %s, 1\n", nv, ivc)
+		fmt.Fprintf(b, "  store i32 %s, i32* %s\n", nv, iv)
+		fmt.Fprintf(b, "  br label %%%s\n", ild)
+		fmt.Fprintf(b, "%s:\n", end)
+	case *WithStmt:
+		mh, err := g.value(b, n.Expr)
+		if err != nil {
+			return err
+		}
+		_ = mh // manager handle kept for __exit__ dispatch
+		enterCall := &Call{Fn: &Attr{Obj: n.Expr, Name: &Name{Value: "__enter__"}}}
+		eh, err := g.value(b, enterCall)
+		if err != nil {
+			return err
+		}
+		if n.As != nil {
+			fmt.Fprintf(b, "%%%s = alloca i32\n", n.As.Value)
+			fmt.Fprintf(b, "  store i32 %s, i32* %%%s\n", eh, n.As.Value)
+		}
+		for _, s := range n.Body {
+			if err := g.stmt(b, s); err != nil {
+				return err
+			}
+		}
+		exitCall := &Call{Fn: &Attr{Obj: n.Expr, Name: &Name{Value: "__exit__"}},
+			Args: []Expr{&IntLit{Value: 0}, &IntLit{Value: 0}, &IntLit{Value: 0}}}
+		_, err = g.value(b, exitCall)
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("codegen: unsupported statement %T", st)
 	}

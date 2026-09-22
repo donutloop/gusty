@@ -1267,3 +1267,90 @@ func TestGenIntFloat(t *testing.T) {
 		t.Fatalf("float string: got id %v kind=%v", rv, o.kind)
 	}
 }
+
+
+func TestWithContextManager(t *testing.T) {
+	src := `
+class M:
+    def __enter__(self):
+        return 42
+    def __exit__(self, t, val, tb):
+        pass
+def main():
+    m = M()
+    with m as x:
+        return x
+main()
+`
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("with: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("with __enter__ value: got %d, want 42", v)
+	}
+}
+
+func TestWithExitOnNormal(t *testing.T) {
+	src := `
+class M:
+    def __enter__(self):
+        return 1
+    def __exit__(self, t, val, tb):
+        return 2
+def main():
+    m = M()
+    with m:
+        return 7
+main()
+`
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("with normal exit: %v", err)
+	}
+	if v != 7 {
+		t.Fatalf("with body: got %d, want 7", v)
+	}
+}
+
+func TestYieldFrom(t *testing.T) {
+	src := `
+def inner():
+    yield 1
+    yield 2
+def outer():
+    yield 0
+    yield from inner()
+    yield 3
+def main():
+    g = outer()
+    return len(g)
+main()
+`
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("yield from: %v", err)
+	}
+	if v != 4 {
+		t.Fatalf("yield from len: got %d, want 4", v)
+	}
+}
+
+func TestYieldFromRange(t *testing.T) {
+	src := `
+def outer():
+    yield 10
+    yield from range(3)
+def main():
+    g = outer()
+    return len(g)
+main()
+`
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("yield from range: %v", err)
+	}
+	if v != 4 {
+		t.Fatalf("yield from range len: got %d, want 4", v)
+	}
+}

@@ -221,6 +221,16 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		if s.Expr != nil {
 			an.inferExpr(s.Expr)
 		}
+	case *YieldFromStmt:
+		an.inferExpr(s.Expr)
+	case *WithStmt:
+		an.inferExpr(s.Expr)
+		if s.As != nil {
+			an.scope.define(s.As.Value, TDyn())
+		}
+		for _, b := range s.Body {
+			an.analyzeStmt(b)
+		}
 	}
 }
 
