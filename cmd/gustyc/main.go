@@ -18,7 +18,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -214,7 +213,6 @@ func verifySrc(src string, jsonOut bool) int {
 	return exitOK
 }
 
-
 func atoi(s string) int {
 	n, err := strconv.Atoi(strings.TrimSpace(s))
 	if err != nil {
@@ -280,58 +278,6 @@ func isTTY() bool {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
-}
-
-func replMode(jitMode bool) int {
-	fmt.Printf("gustyc %s (jit=%t) — type .help, .lang, .quit\n", lang.Version, jitMode)
-	ev := lang.NewEvaluator()
-	sc := bufio.NewScanner(os.Stdin)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, ".") {
-			switch line {
-			case ".quit", ".exit", "q":
-				return exitOK
-			case ".help":
-				fmt.Println("REPL commands: .quit, .lang, .help")
-				continue
-			case ".lang":
-				listLang()
-				continue
-			default:
-				fmt.Fprintf(os.Stderr, "gustyc: unknown command %q\n", line)
-				continue
-			}
-		}
-		if jitMode {
-			res, err := lang.JIT(line+"\n", 0)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-				continue
-			}
-			fmt.Print(res.Output)
-			continue
-		}
-		prog, err := lang.Parse(line)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			continue
-		}
-		v, err := ev.EvalProgram(prog)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-			continue
-		}
-		fmt.Println(ev.Repr(v))
-	}
-	if err := sc.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-		return exitErr
-	}
-	return exitOK
 }
 
 // emitDiagnosticsJSON prints diagnostics as a JSON array with the exit code.

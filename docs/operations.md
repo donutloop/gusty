@@ -118,7 +118,7 @@ AST dump (`--emit-ast`) with no schema change.
 - `--verify <src>`: parse + analyze, exit 1 on diagnostics
 - `--emit-llvm <src>` / `--emit-ast <src>`: machine-readable IR / AST JSON
 - `--lang`: self-describing feature list for agents
-- REPL (stateful) via `gustyc` (TTY) or `gustyc --repl`
+- REPL (interactive): accumulates input line by line so multi-line suites (functions, classes, `if`/`for`/`while` bodies) can be entered; shows `> ` primary and `... ` continuation prompts on a terminal; recovers from parser/eval panics so a bug never kills the session.
 
 Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
 
