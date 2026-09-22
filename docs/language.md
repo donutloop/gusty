@@ -341,6 +341,15 @@ for i in range(n):
   the method by the runtime class of the receiver. The interpreter dispatches on the
   actual instance's class; the AOT/codegen path supports statement-level dynamic
   dispatch on instances and direct method calls.
+- **Operator overloading (dunder dispatch)**: binary operators dispatch to
+  dunder methods on class instances. For `a OP b`, the interpreter calls
+  `__add__`/`__sub__`/`__mul__`/`__truediv__`/`__floordiv__`/`__mod__`/`__pow__`
+  on `a` when `a` is an instance, falling back to the reflected method
+  (`__radd__`, `__rsub__`, `__rmul__`, `__rtruediv__`, `__rfloordiv__`,
+  `__rmod__`, `__rpow__`) on `b`. Comparisons dispatch to `__eq__`/`__ne__`/
+  `__lt__`/`__le__`/`__gt__`/`__ge__` (with the swapped comparison as the
+  reflected fallback). This is currently an interpreter-only feature in the
+  AOT/codegen path; see ADR 0139.
 - `raise ValueError("msg")` raises a typed exception carrying a class name and an
   optional message. Built-in exception classes: `Exception`, `ValueError`, `TypeError`,
   `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`. A bare

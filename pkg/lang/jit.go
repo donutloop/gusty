@@ -1437,6 +1437,93 @@ func (e *Evaluator) contains(container, v int64) (bool, error) {
 	return false, nil
 }
 
+
+// dunderForBinOp returns the dunder method name for a binary operator, if any.
+func dunderForBinOp(op string) string {
+	switch op {
+	case "+":
+		return "__add__"
+	case "-":
+		return "__sub__"
+	case "*":
+		return "__mul__"
+	case "/":
+		return "__truediv__"
+	case "//":
+		return "__floordiv__"
+	case "%":
+		return "__mod__"
+	case "**":
+		return "__pow__"
+	case "==":
+		return "__eq__"
+	case "!=":
+		return "__ne__"
+	case "<":
+		return "__lt__"
+	case "<=":
+		return "__le__"
+	case ">":
+		return "__gt__"
+	case ">=":
+		return "__ge__"
+	}
+	return ""
+}
+
+// reflectedDunder returns the reflected dunder name for a dunder method name,
+// used when the left operand is not overloaded but the right operand is.
+func reflectedDunder(name string) string {
+	switch name {
+	case "__add__":
+		return "__radd__"
+	case "__sub__":
+		return "__rsub__"
+	case "__mul__":
+		return "__rmul__"
+	case "__truediv__":
+		return "__rtruediv__"
+	case "__floordiv__":
+		return "__rfloordiv__"
+	case "__mod__":
+		return "__rmod__"
+	case "__pow__":
+		return "__rpow__"
+	case "__eq__":
+		return "__eq__"
+	case "__ne__":
+		return "__ne__"
+	case "__lt__":
+		return "__gt__"
+	case "__le__":
+		return "__ge__"
+	case "__gt__":
+		return "__lt__"
+	case "__ge__":
+		return "__le__"
+	}
+	return ""
+}
+
+// dunderCall resolves and invokes a dunder method `name` on the instance at
+// handle `self`, binding self as the receiver and `args` as the arguments.
+// It reports whether the instance has such a method, and any call error.
+func (e *Evaluator) dunderCall(self int64, name string, args ...int64) (int64, bool, error) {
+	o := e.heap[self]
+	if o == nil || o.kind != "instance" {
+		return 0, false, nil
+	}
+	mID, ok := e.resolveMethod(e.classIDs[o.class], name)
+	if !ok {
+		return 0, false, nil
+	}
+	rv, err := e.callMethod(e.heap[mID], self, args)
+	if err != nil {
+		return 0, true, err
+	}
+	return rv, true, nil
+}
+
 func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 	l, err := e.eval(n.L)
 	if err != nil {
@@ -1445,6 +1532,25 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 	r, err := e.eval(n.R)
 	if err != nil {
 		return 0, err
+	}
+	// Operator overloading (dunder dispatch): if an operand is a class instance
+	// with a dunder method for this operator, call it. If the left operand is
+	// not overloaded, fall back to a reflected (__r__) method on the right.
+	if name := dunderForBinOp(n.Op); name != "" {
+		if o := e.heap[l]; o != nil && o.kind == "instance" {
+			rv, found, err := e.dunderCall(l, name, r)
+			if found {
+				return rv, err
+			}
+		}
+		if o := e.heap[r]; o != nil && o.kind == "instance" {
+			if rname := reflectedDunder(name); rname != "" {
+				rv, found, err := e.dunderCall(r, rname, l)
+				if found {
+					return rv, err
+				}
+			}
+		}
 	}
 	switch n.Op {
 	case "+":

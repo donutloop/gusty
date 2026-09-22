@@ -1381,3 +1381,33 @@ func TestEvalPower(t *testing.T) {
 		t.Fatalf("2.0 ** 3 = %v (float=%v), want 8.0", v, f)
 	}
 }
+
+func TestEvalOperatorOverloading(t *testing.T) {
+	// Left-operand dunder dispatch: Vec.__add__ combines two vectors' x.
+	src := "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __add__(self, other):\n        return self.x + other.x\n    def __mul__(self, n):\n        return self.x * n\na = Vec(2)\nb = Vec(3)\na + b"
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("overload +: %v", err)
+	}
+	if v != 5 {
+		t.Fatalf("got %d, want 5", v)
+	}
+	// Right-operand reflected dispatch: 10 * Vec(4) uses Vec.__rmul__.
+	src = "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __rmul__(self, n):\n        return self.x * n\nv = Vec(4)\n10 * v"
+	v, _, err = EvalExpr(src)
+	if err != nil {
+		t.Fatalf("overload rmul: %v", err)
+	}
+	if v != 40 {
+		t.Fatalf("got %d, want 40", v)
+	}
+	// Comparison dunder: Vec.__lt__ compares by x.
+	src = "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __lt__(self, other):\n        return 1 if self.x < other.x else 0\na = Vec(2)\nb = Vec(9)\na < b"
+	v, _, err = EvalExpr(src)
+	if err != nil {
+		t.Fatalf("overload lt: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("got %d, want 1", v)
+	}
+}
