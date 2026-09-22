@@ -5103,33 +5103,46 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		endL := g.newLabel("match.end")
 		for i, c := range n.Cases {
-			pat := sub
-			var err error
-			if name, ok := c.Pattern.(*Name); !ok || name.Value != "_" {
-				// `case _:` wildcard: pat == sub makes the icmp always true.
-				pat, err = g.value(b, c.Pattern)
-				if err != nil {
-					return err
-				}
-			}
 			bodyL := g.newLabel("match.case")
-			cmp := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pat))
-			var fallL string
+			fallL := endL
 			if i < len(n.Cases)-1 {
 				fallL = g.newLabel("match.next")
-			} else {
-				fallL = endL
 			}
-			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cmp, bodyL, fallL))
+			patterns := append([]Expr{c.Pattern}, c.Or...)
+			var orTmp string
+			for _, p := range patterns {
+				pat := sub
+				if name, ok := p.(*Name); !ok || name.Value != "_" {
+					pat, err = g.value(b, p)
+					if err != nil {
+						return err
+					}
+				}
+				cmp := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pat))
+				if orTmp == "" {
+					orTmp = cmp
+				} else {
+					nt := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", nt, orTmp, cmp))
+					orTmp = nt
+				}
+			}
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", orTmp, bodyL, fallL))
 			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+			if c.Guard != nil {
+				gok := g.truthyValue(b, c.Guard)
+				bodyAfter := g.newLabel("match.case.body")
+				b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", gok, bodyAfter, fallL))
+				b.WriteString(fmt.Sprintf("%s:\n", bodyAfter))
+			}
 			for _, s := range c.Body {
 				if err := g.stmt(b, s); err != nil {
 					return err
 				}
 			}
 			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
-			if fallL != endL {
+			if i < len(n.Cases)-1 {
 				b.WriteString(fmt.Sprintf("%s:\n", fallL))
 			}
 		}
@@ -5274,7 +5287,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if !g.allocd[loopVar] {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVar))
 			}
-				g.allocd[loopVar] = true
+			g.allocd[loopVar] = true
 			elemT := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, ild))
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", elemT, loopVar))

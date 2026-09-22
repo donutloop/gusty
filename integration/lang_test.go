@@ -452,7 +452,6 @@ func TestExecIntFloatConv(t *testing.T) {
 	assertOutput(t, "a = 3.9\nb = -3.9\nc = 2\nd = 1\nprint(int(a))\nprint(int(b))\nprint(float(c))", "3\n-3\n2\n")
 }
 
-
 func TestExecClassInitArgs(t *testing.T) {
 	// Regression: class instantiation with constructor args previously
 	// produced malformed IR (the arg loads were emitted inline inside the
@@ -1215,4 +1214,26 @@ func TestExecPower(t *testing.T) {
 	assertOutput(t, "print(2 ** 3 ** 2)", "512\n")
 	// variable base/exponent
 	assertOutput(t, "a = 2\nb = 10\nprint(a ** b)", "1024\n")
+}
+
+func TestExecMatchOrPatterns(t *testing.T) {
+	assertOutput(t, `x = 3
+match x:
+    case 1 | 2:
+        print(111)
+    case 3 | 4:
+        print(333)
+    case _:
+        print(999)`, "333\n")
+}
+
+func TestExecMatchGuard(t *testing.T) {
+	assertOutput(t, `x = 5
+match x:
+    case 5 if x > 10:
+        print(100)
+    case 5:
+        print(555)
+    case _:
+        print(999)`, "555\n")
 }

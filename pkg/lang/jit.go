@@ -69,7 +69,6 @@ func (e *Evaluator) setLoopVar(v Expr, val int64) error {
 	return &EvalError{Msg: "unsupported loop variable"}
 }
 
-
 func (e *Evaluator) allocObj(kind string) int64 {
 	e.nextID++
 	e.allocCount++
@@ -615,37 +614,27 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				return 0, err
 			}
 			for _, c := range s.Cases {
-				matches := true
-				// List-destructuring pattern: match sub element-wise and bind Name
-				// elems to sub's elements (e.g. case [a, b]:).
-				if lp, ok := c.Pattern.(*ListLit); ok {
-					o, ok := e.heap[sub]
-					if !ok || o.kind != "list" || len(o.elems) != len(lp.Elems) {
-						matches = false
-					} else {
-						for i, pe := range lp.Elems {
-							if n, ok2 := pe.(*Name); ok2 && n.Value != "_" {
-								e.Vars[n.Value] = o.elems[i]
-								continue
-							}
-							pev, err := e.eval(pe)
-							if err != nil {
-								return 0, err
-							}
-							if pev != o.elems[i] {
-								matches = false
-								break
-							}
-						}
-					}
-				} else if pn, ok := c.Pattern.(*Name); !ok || pn.Value != "_" {
-					pv, err := e.eval(c.Pattern)
+				matched := false
+				for _, p := range append([]Expr{c.Pattern}, c.Or...) {
+					ok, err := e.matchPattern(sub, p)
 					if err != nil {
 						return 0, err
 					}
-					matches = pv == sub
+					if ok {
+						matched = true
+						break
+					}
 				}
-				if matches {
+				if matched && c.Guard != nil {
+					gv, err := e.eval(c.Guard)
+					if err != nil {
+						return 0, err
+					}
+					if gv == 0 {
+						matched = false
+					}
+				}
+				if matched {
 					rv, err := e.evalBody(c.Body)
 					if err != nil {
 						return 0, err
@@ -734,7 +723,9 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					if o, ok := e.heap[itV]; ok && (o.kind == "list" || o.kind == "set" || o.kind == "dict" || o.kind == "str") {
 						if o.kind == "str" {
 							for _, r := range o.sval {
-								if err := e.setLoopVar(s.Var, e.allocStr(string(r))); err != nil { return 0, err }
+								if err := e.setLoopVar(s.Var, e.allocStr(string(r))); err != nil {
+									return 0, err
+								}
 								rv, err := e.evalBody(s.Body)
 								if err != nil {
 									if ls, ok := err.(*loopSignal); ok {
@@ -750,7 +741,9 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							}
 						} else {
 							for _, el := range o.elems {
-								if err := e.setLoopVar(s.Var, el); err != nil { return 0, err }
+								if err := e.setLoopVar(s.Var, el); err != nil {
+									return 0, err
+								}
 								rv, err := e.evalBody(s.Body)
 								if err != nil {
 									if ls, ok := err.(*loopSignal); ok {
@@ -775,7 +768,9 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							return 0, err
 						}
 						for i := start; (step > 0 && i < stop) || (step < 0 && i > stop); i += step {
-							if err := e.setLoopVar(s.Var, i); err != nil { return 0, err }
+							if err := e.setLoopVar(s.Var, i); err != nil {
+								return 0, err
+							}
 							rv, err := e.evalBody(s.Body)
 							if err != nil {
 								if ls, ok := err.(*loopSignal); ok {
@@ -800,7 +795,9 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 						return 0, err
 					}
 					for i := start; (step > 0 && i < stop) || (step < 0 && i > stop); i += step {
-						if err := e.setLoopVar(s.Var, i); err != nil { return 0, err }
+						if err := e.setLoopVar(s.Var, i); err != nil {
+							return 0, err
+						}
 						rv, err := e.evalBody(s.Body)
 						if err != nil {
 							if ls, ok := err.(*loopSignal); ok {
@@ -1706,6 +1703,71 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		return res, nil
 	}
 	return 0, &EvalError{Msg: "unsupported operator " + n.Op}
+}
+
+func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
+	switch t := p.(type) {
+	case *ListLit:
+		o, ok := e.heap[sub]
+		if !ok || o.kind != "list" || len(o.elems) != len(t.Elems) {
+			return false, nil
+		}
+		for i, pe := range t.Elems {
+			if n, ok2 := pe.(*Name); ok2 && n.Value != "_" {
+				e.Vars[n.Value] = o.elems[i]
+				continue
+			}
+			ev, err := e.eval(pe)
+			if err != nil {
+				return false, err
+			}
+			if ev != o.elems[i] {
+				return false, nil
+			}
+		}
+		return true, nil
+	case *DictLit:
+		o, ok := e.heap[sub]
+		if !ok || o.kind != "dict" {
+			return false, nil
+		}
+		for i, k := range t.Keys {
+			kv, err := e.eval(k)
+			if err != nil {
+				return false, err
+			}
+			found := false
+			for j, k2 := range o.elems {
+				if e.dictKeyEq(kv, k2) {
+					if n, ok2 := t.Vals[i].(*Name); ok2 && n.Value != "_" {
+						e.Vars[n.Value] = o.dvals[j]
+					} else {
+						vv, err := e.eval(t.Vals[i])
+						if err != nil {
+							return false, err
+						}
+						if vv != o.dvals[j] {
+							return false, nil
+						}
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false, nil
+			}
+		}
+		return true, nil
+	case *Name:
+		return t.Value == "_", nil
+	default:
+		pv, err := e.eval(p)
+		if err != nil {
+			return false, err
+		}
+		return pv == sub, nil
+	}
 }
 
 func (e *Evaluator) evalBody(stmts []Stmt) (int64, error) {

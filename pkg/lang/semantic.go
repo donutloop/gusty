@@ -42,7 +42,7 @@ type SemanticAnalyzer struct {
 	classes    map[string]bool
 	inFunc     bool
 	loopDepth  int
-	inferring map[string]bool
+	inferring  map[string]bool
 }
 
 // Analyze runs semantic analysis and type inference on prog.
@@ -144,8 +144,8 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		}
 		// loop var and body share the enclosing scope (runtime uses shared vars).
 		for _, nm := range loopVarNames(s.Var) {
-				an.scope.define(nm, elem)
-			}
+			an.scope.define(nm, elem)
+		}
 		an.loopDepth++
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
@@ -179,7 +179,26 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *MatchStmt:
 		an.inferExpr(s.Subject)
 		for _, c := range s.Cases {
+			if c.Guard != nil {
+				an.inferExpr(c.Guard)
+			}
 			an.scope = newScope(an.scope)
+			for _, p := range append([]Expr{c.Pattern}, c.Or...) {
+				switch t := p.(type) {
+				case *ListLit:
+					for _, pe := range t.Elems {
+						if n, ok := pe.(*Name); ok && n.Value != "_" {
+							an.scope.define(n.Value, TDyn())
+						}
+					}
+				case *DictLit:
+					for _, ve := range t.Vals {
+						if n, ok := ve.(*Name); ok && n.Value != "_" {
+							an.scope.define(n.Value, TDyn())
+						}
+					}
+				}
+			}
 			for _, b := range c.Body {
 				an.analyzeStmt(b)
 			}
@@ -572,4 +591,3 @@ func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
 		return TIter(e)
 	}
 }
-

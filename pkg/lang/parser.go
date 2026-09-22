@@ -20,14 +20,14 @@ type parser struct {
 
 func newParser(src string, toks []Token) *parser { return &parser{src: src, toks: toks} }
 
-func (p *parser) peek() Token  { return p.toks[p.pos] }
+func (p *parser) peek() Token { return p.toks[p.pos] }
 func (p *parser) peekNext() Token {
 	if p.pos+1 < len(p.toks) {
 		return p.toks[p.pos+1]
 	}
 	return Token{Kind: TokEOF}
 }
-func (p *parser) atEOF() bool  { return p.peek().Kind == TokEOF }
+func (p *parser) atEOF() bool     { return p.peek().Kind == TokEOF }
 func (p *parser) atNewline() bool { return p.peek().Kind == TokNewline }
 func (p *parser) atDedent() bool  { return p.peek().Kind == TokDedent }
 func (p *parser) atIndent() bool  { return p.peek().Kind == TokIndent }
@@ -537,7 +537,7 @@ func (p *parser) parseMatch() (Stmt, error) {
 			break
 		}
 		p.next()
-		pat, err := p.parseExpr()
+		pat, ors, guard, err := p.parseMatchPattern()
 		if err != nil {
 			return nil, err
 		}
@@ -548,12 +548,58 @@ func (p *parser) parseMatch() (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		ms.Cases = append(ms.Cases, &MatchCase{Pattern: pat, Body: body, sp: t.Span})
+		ms.Cases = append(ms.Cases, &MatchCase{Pattern: pat, Or: ors, Guard: guard, Body: body, sp: t.Span})
 	}
 	if p.atDedent() {
 		p.next()
 	}
 	return ms, nil
+}
+
+func (p *parser) parseMatchPattern() (Expr, []Expr, Expr, error) {
+	pat, err := p.parsePatternAtom()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var ors []Expr
+	for p.peek().IsOp("|") {
+		p.next()
+		alt, err := p.parsePatternAtom()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		ors = append(ors, alt)
+	}
+	var guard Expr
+	if p.peek().IsKeyword("if") {
+		p.next()
+		guard, err = p.parseExpr()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	return pat, ors, guard, nil
+}
+
+func (p *parser) parsePatternAtom() (Expr, error) {
+	t := p.peek()
+	switch {
+	case t.Kind == TokIdent:
+		p.next()
+		return &Name{Value: t.Text, sp: t.Span}, nil
+	case t.Kind == TokInt:
+		p.next()
+		return &IntLit{Value: t.Int, sp: t.Span}, nil
+	case t.Kind == TokString:
+		p.next()
+		return &StrLit{Value: t.Text, sp: t.Span}, nil
+	case t.IsOp("["):
+		return p.parseListOrComp()
+	case t.IsOp("{"):
+		return p.parseDictOrSet()
+	default:
+		return p.parseExpr()
+	}
 }
 
 func (p *parser) parseTry() (Stmt, error) {
@@ -1103,7 +1149,7 @@ func (p *parser) parseAtom() (Expr, error) {
 				return nil, err
 			}
 			elems = append(elems, ex2)
-		}		// generator expression: `(elem for var in iter [if cond])`
+		} // generator expression: `(elem for var in iter [if cond])`
 		if p.peek().IsKeyword("for") {
 			g, err := p.parseGeneratorTail(ex)
 			if err != nil {
