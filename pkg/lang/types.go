@@ -13,6 +13,7 @@ const (
 	KindList
 	KindDict
 	KindSet
+	KindTuple
 	KindFunc
 	KindClass
 	KindIterator
@@ -28,6 +29,7 @@ type Type struct {
 	Params []*Type `json:"params,omitempty"` // function params
 	Ret    *Type  `json:"ret,omitempty"`    // function return
 	ClassName string `json:"class_name,omitempty"` // class/type name
+	Elems []*Type `json:"elems,omitempty"` // tuple element types
 }
 
 // singleton constructors
@@ -37,6 +39,8 @@ func TBool() *Type     { return &Type{Kind: KindBool} }
 func TStr() *Type      { return &Type{Kind: KindString} }
 func TNone() *Type     { return &Type{Kind: KindNone} }
 func TDyn() *Type      { return &Type{Kind: KindDynamic} }
+
+func TTuple(elems ...*Type) *Type { return &Type{Kind: KindTuple, Elems: elems} }
 func TVoid() *Type     { return &Type{Kind: KindVoid} }
 func TList(e *Type) *Type  { return &Type{Kind: KindList, Elem: e} }
 func TDict(k, v *Type) *Type { return &Type{Kind: KindDict, Key: k, Val: v} }
@@ -74,6 +78,8 @@ func (t *Type) Name() string {
 		return "None"
 	case KindList:
 		return "list[" + t.Elem.Name() + "]"
+	case KindTuple:
+		return "tuple[" + tupleElemNames(t.Elems) + "]"
 	case KindDict:
 		return "dict[" + t.Key.Name() + ", " + t.Val.Name() + "]"
 	case KindSet:
@@ -91,6 +97,15 @@ func (t *Type) Name() string {
 }
 
 // Same reports whether two types are structurally identical.
+func tupleElemNames(elems []*Type) string {
+	out := ""
+	for i, e := range elems {
+		if i > 0 { out += ", " }
+		out += e.Name()
+	}
+	return out
+}
+
 func (t *Type) Same(o *Type) bool {
 	if t == nil || o == nil {
 		return t == o
@@ -101,6 +116,10 @@ func (t *Type) Same(o *Type) bool {
 	switch t.Kind {
 	case KindList:
 		return t.Elem.Same(o.Elem)
+	case KindTuple:
+		if len(t.Elems) != len(o.Elems) { return false }
+		for i := range t.Elems { if !t.Elems[i].Same(o.Elems[i]) { return false } }
+		return true
 	case KindDict:
 		return t.Key.Same(o.Key) && t.Val.Same(o.Val)
 	case KindIterator:

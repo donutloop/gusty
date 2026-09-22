@@ -1,3 +1,16 @@
+# Round 11 — Tuple type + tuple unpacking (Phase 9)
+
+Added a first-class `Tuple` type to the gradual type system:
+
+- `KindTuple` and `TTuple(elems ...*Type)`; tuple types render as `tuple[int, str]`.
+- `Same()` compares tuple element types pairwise.
+- Tuple literals `(1, "a")` now infer `tuple[int, str]` (previously `any`).
+- Tuple unpacking `a, b = (1, "a")` binds each target to the corresponding
+  element type, and reports a `tuple unpack length mismatch` diagnostic when
+  the target count does not match the value's arity.
+
+Tests: `tuple_test.go` covers tuple type name/equality, literal inference,
+unpack binding, and mismatch reporting.
 # Round 10 — Runtime tracebacks with source spans
 
 The interpreter runtime now surfaces Python-style tracebacks with source

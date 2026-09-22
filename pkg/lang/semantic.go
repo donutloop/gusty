@@ -247,11 +247,22 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	if n, ok := as.Target.(*Name); ok {
 		an.scope.define(n.Value, valTy)
 	}
-	if t, ok := as.Target.(*Tuple); ok {
-		for _, nm := range t.Elems {
+		if t, ok := as.Target.(*Tuple); ok {
+		var elemTypes []*Type
+		if valTy != nil && valTy.Kind == KindTuple {
+			elemTypes = valTy.Elems
+		}
+		for i, nm := range t.Elems {
 			if n, ok2 := nm.(*Name); ok2 {
-				an.scope.define(n.Value, TDyn())
+				et := TDyn()
+				if i < len(elemTypes) {
+					et = elemTypes[i]
+				}
+				an.scope.define(n.Value, et)
 			}
+		}
+		if valTy != nil && valTy.Kind == KindTuple && len(valTy.Elems) != len(t.Elems) {
+			an.errorf(as.Span(), "tuple unpack length mismatch: got %d, want %d", len(valTy.Elems), len(t.Elems))
 		}
 	}
 	if a, ok := as.Target.(*Attr); ok {
@@ -365,11 +376,12 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 			elem = TDyn()
 		}
 		return TList(elem)
-	case *Tuple:
+		case *Tuple:
+		var elems []*Type
 		for _, el := range n.Elems {
-			an.inferExpr(el)
+			elems = append(elems, an.inferExpr(el))
 		}
-		return TDyn()
+		return TTuple(elems...)
 	case *DictLit:
 		var kt, vt *Type
 		if len(n.Keys) > 0 {
