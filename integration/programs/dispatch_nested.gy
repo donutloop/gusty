@@ -1,0 +1,29 @@
+# Dynamic dispatch at nested call sites: a method call with a statically
+# unknown receiver used as a value inside arithmetic, as a function argument,
+# in a return, and assigned to a variable. Exercises the AOT dispatch switch
+# from every expression position (all-call-site dispatch).
+class Animal:
+    def __init__(self):
+        self.x = 1
+    def speak(self):
+        return self.x
+class Dog(Animal):
+    def __init__(self):
+        super().__init__()
+    def speak(self):
+        return 42
+def make(kind):
+    if kind == 1:
+        return Animal()
+    return Dog()
+def add(a, b):
+    return a + b
+def get(v):
+    return v.speak()
+print(make(1).speak() + make(2).speak())
+print(add(make(1).speak(), make(2).speak()))
+print(get(make(1)) + get(make(2)))
+c = Animal()
+d = Dog()
+print(c.speak() + d.speak())
+print("done")

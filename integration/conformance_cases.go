@@ -42,7 +42,8 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"ctrl_a", "ctrl_b", "ctrl_c",
 		"data_a", "data_b", "data_c",
 		"features_a", "features_b",
-	"stdlib",}
+	"stdlib", "dispatch_nested",
+}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
 		cases = append(cases, lang.ConformanceCase{
