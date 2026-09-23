@@ -38,6 +38,7 @@ type SemanticAnalyzer struct {
 	Diags      []Diagnostic
 	curFn      *FuncDef
 	funcs      map[string]*FuncDef
+	externs    map[string]*ExternDecl
 	exceptions map[string]bool
 	classes    map[string]bool
 	inFunc     bool
@@ -47,7 +48,7 @@ type SemanticAnalyzer struct {
 
 // Analyze runs semantic analysis and type inference on prog.
 func Analyze(prog *Program) []Diagnostic {
-	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, classes: map[string]bool{}, exceptions: map[string]bool{"Exception": true}}
+	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: map[string]bool{"Exception": true}}
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
@@ -158,6 +159,8 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		}
 		an.loopDepth--
 
+	case *ExternDecl:
+		an.externs[s.Name] = s
 	case *FuncDef:
 		an.analyzeFunc(s)
 	case *ClassDef:
@@ -518,7 +521,25 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 		if an.classes[name.Value] {
 			return TDyn()
 		}
-		if fd, ok2 := an.funcs[name.Value]; ok2 {
+		if ed, ok2 := an.externs[name.Value]; ok2 {
+		// extern (FFI) call: arity + arg type check; return type comes from the
+		// extern declaration's return annotation.
+		if len(ed.Params) != len(n.Args) {
+			an.errorf(n.Src, "extern function %q expects %d arguments, got %d", name.Value, len(ed.Params), len(n.Args))
+			return TDyn()
+		}
+		for i, p := range ed.Params {
+			at := an.inferExpr(n.Args[i])
+			if !assignable(at, p.Annot) {
+				an.errorf(n.Args[i].Span(), "argument %d of extern function %q: expected %s, got %s", i+1, name.Value, typeName(p.Annot), typeName(at))
+			}
+		}
+		if ed.ReturnAnno != nil {
+			return ed.ReturnAnno
+		}
+		return TDyn()
+	}
+	if fd, ok2 := an.funcs[name.Value]; ok2 {
 			return an.inferUserCall(fd, n)
 		}
 		switch name.Value {

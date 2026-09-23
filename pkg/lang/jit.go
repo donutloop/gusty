@@ -3,6 +3,7 @@ package lang
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"sort"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 type Evaluator struct {
 	Vars        map[string]int64
 	funcs       map[string]*FuncDef
+	externs     map[string]*ExternDecl
 	inCall      bool // true while evaluating a function body (nested defs become closures)
 	heap        map[int64]*obj
 	nextID      int64
@@ -460,7 +462,7 @@ func NewEvaluator() *Evaluator {
 	// integer literal values (which are stored raw in lists, dict keys, vars).
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
-	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, nextID: 1 << 20, fnName: "<module>"}
+	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, nextID: 1 << 20, fnName: "<module>"}
 }
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
@@ -591,6 +593,8 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				return 0, err
 			}
 			continue
+		case *ExternDecl:
+			e.externs[s.Name] = s
 		case *FuncDef:
 			// Nested defs bind a closure capturing the enclosing scope.
 			if len(s.Decorators) > 0 {
@@ -2815,7 +2819,7 @@ func (e *Evaluator) importModule(mod string) error {
 	savedVars := e.Vars
 	savedFuncs := e.funcs
 	e.Vars = map[string]int64{}
-	e.funcs = map[string]*FuncDef{}
+	e.funcs = map[string]*FuncDef{}; e.externs = map[string]*ExternDecl{}
 	_, err = e.EvalProgram(prog)
 	if err != nil {
 		e.Vars, e.funcs = savedVars, savedFuncs
@@ -2966,7 +2970,10 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return e.callClosure(o, n)
 			}
 		}
-		if fd, ok2 := e.funcs[name.Value]; ok2 {
+		if ed, ok2 := e.externs[name.Value]; ok2 {
+		return e.callExtern(ed, n.Args)
+	}
+	if fd, ok2 := e.funcs[name.Value]; ok2 {
 			argVals := make([]int64, len(fd.Params))
 			argSet := make([]bool, len(fd.Params))
 			pos := 0
@@ -3528,3 +3535,44 @@ func containsYield(stmts []Stmt) bool {
 	}
 	return false
 }
+
+// callExtern evaluates an FFI call to a C function. In the AST interpreter we
+// dispatch to a small Go registry mirroring the C stdlib functions.
+func (e *Evaluator) callExtern(ed *ExternDecl, args []Expr) (int64, error) {
+	vals := []int64{}
+	for _, a := range args {
+		v, err := e.eval(a)
+		if err != nil {
+			return 0, err
+		}
+		vals = append(vals, v)
+	}
+	switch ed.Name {
+	case "abs":
+		if len(vals) != 1 {
+			return 0, fmt.Errorf("abs expects 1 argument")
+		}
+		x := vals[0]
+		if x < 0 {
+			x = -x
+		}
+		return x, nil
+	case "getpid":
+		return int64(os.Getpid()), nil
+	case "rand":
+		return int64(rand.Intn(1 << 30)), nil
+	case "strlen":
+		if len(vals) != 1 {
+			return 0, fmt.Errorf("strlen expects 1 argument")
+		}
+		sid := vals[0]
+		sv, ok := e.heap[sid]
+		if !ok || sv == nil || sv.sval == "" && sv.kind != "str" {
+			return 0, fmt.Errorf("strlen: not a string value")
+		}
+		return int64(len(sv.sval)), nil
+	default:
+		return 0, fmt.Errorf("extern function %q is not available in the interpreter", ed.Name)
+	}
+}
+

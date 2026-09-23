@@ -128,6 +128,17 @@ type FuncDef struct {
 }
 
 func (n *FuncDef) Span() Span { return n.Src }
+// ExternDecl declares a C function that can be called from gusty (FFI).
+type ExternDecl struct {
+	Name       string   `json:"name"`
+	Params     []*Param `json:"params,omitempty"`
+	ReturnAnno *Type    `json:"return_annot,omitempty"`
+	Src         Span     `json:"span,omitempty"`
+}
+
+func (n *ExternDecl) Span() Span { return n.Src }
+func (n *ExternDecl) stmtNode()  {}
+
 func (n *FuncDef) stmtNode()  {}
 
 type ClassDef struct {

@@ -58,7 +58,8 @@ func (t Token) IsIdent(text string) bool {
 var keywords = map[string]bool{
 	"def": true, "return": true, "if": true, "elif": true, "else": true,
 	"while": true, "for": true, "in": true, "range": true, "print": true,
-	"class": true, "import": true, "match": true, "case": true, "try": true,
+	"class": true, "import": true,
+	"extern": true, "match": true, "case": true, "try": true,
 	"except": true, "finally": true, "yield": true, "lambda": true,
 	"None": true, "True": true, "False": true, "not": true, "and": true, "or": true,
 	"is": true,

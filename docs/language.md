@@ -412,6 +412,30 @@ match x:
 - `Call` to user functions or builtins (`print`, `range`).
 - Attribute access (`obj.attr`) and indexing are parsed for future features.
 
+
+## FFI / C interop (`extern fn`)
+
+Gusty can call C library functions by declaring them with `extern fn`:
+
+```text
+extern fn abs(x: int) -> int
+extern fn getpid() -> int
+extern fn strlen(s: str) -> int
+print(abs(-5))        # 5
+print(strlen("hello")) # 5
+```
+
+- An `extern` declaration has no body; it is a C prototype. The AOT codegen
+  emits a `declare` for it in the LLVM IR and lowers calls: `int` arguments
+  marshal to `i32`, string-literal arguments marshal to `i8*`, and the native
+  `i32` return is used directly as the value. The existing `cc` link pipeline
+  resolves the symbol (stdlib functions like `abs`/`getpid`/`strlen` need no
+  extra libraries).
+- The AST interpreter dispatches extern calls to a small Go registry mirroring
+  the C stdlib (`abs`, `getpid`, `rand`, `strlen`); other externs raise a clear
+  "not available in the interpreter" error.
+- Arity and argument types are checked at compile time.
+
 ## Types
 
 - `int`, `float`, `bool`, `str`, `none`, `void`, and `any` (dynamic).

@@ -697,7 +697,7 @@ func GenerateIR(prog *Program) (string, error) {
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
-		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -731,6 +731,26 @@ func GenerateIR(prog *Program) (string, error) {
 			}
 		}
 	}
+	// FFI: collect extern declarations and emit their C prototypes.
+	for _, st := range prog.Stmts {
+		if ed, ok := st.(*ExternDecl); ok {
+			g.externs[ed.Name] = ed
+			argTypes := []string{}
+			for _, p := range ed.Params {
+				if p.Annot != nil && p.Annot.Kind == KindString {
+					argTypes = append(argTypes, "i8*")
+				} else {
+					argTypes = append(argTypes, "i32")
+				}
+			}
+			ret := "i32"
+			if ed.ReturnAnno != nil && ed.ReturnAnno.Kind == KindString {
+				ret = "i8*"
+			}
+			g.decls += "declare " + ret + " @" + ed.Name + "(" + strings.Join(argTypes, ", ") + ")\n"
+		}
+	}
+
 	b.WriteString("define i32 @main() {\nentry:\n")
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
@@ -782,7 +802,8 @@ type irGen struct {
 	decls      string
 	sym        map[string]string   // variable -> load temp
 	allocd     map[string]bool     // alloca emitted?
-	funcs      map[string]bool     // user-defined function names
+	funcs      map[string]bool
+	externs    map[string]*ExternDecl     // user-defined function names
 	fds        map[string]*FuncDef // function definitions by name (for call arg binding)
 	imports    *ImportInfo         // folded module globals for `import mod`
 	params     map[string]string   // current function params: name -> register
@@ -3632,6 +3653,43 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		return h, nil
 	}
 
+	if ed, ok := g.externs[fnName]; ok {
+		if len(ed.Params) != len(c.Args) {
+			panic(fmt.Sprintf("extern function %q: expected %d args, got %d", fnName, len(ed.Params), len(c.Args)))
+		}
+		argTypes := []string{}
+		argRegs := []string{}
+		for i, p := range ed.Params {
+			if p.Annot != nil && p.Annot.Kind == KindString {
+				lit, ok2 := c.Args[i].(*StrLit)
+				if !ok2 {
+					panic("extern string args must be string literals: " + fnName)
+				}
+				gn := g.strConst(lit.Value)
+				n := len(lit.Value)
+				argTypes = append(argTypes, "i8*")
+				argRegs = append(argRegs, fmt.Sprintf("getelementptr([%d x i8], [%d x i8]* %s, i32 0, i32 0)", n, n, gn))
+			} else {
+				v, err := g.value(b, c.Args[i])
+				if err != nil {
+					return "", err
+				}
+				argTypes = append(argTypes, "i32")
+				argRegs = append(argRegs, v)
+			}
+		}
+		ret := "i32"
+		if ed.ReturnAnno != nil && ed.ReturnAnno.Kind == KindString {
+			ret = "i8*"
+		}
+		callArgs := []string{}
+		for i := range argTypes {
+			callArgs = append(callArgs, argTypes[i]+" "+argRegs[i])
+		}
+		t := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, fnName, strings.Join(callArgs, ", ")))
+		return t, nil
+	}
 	if g.funcs[fnName] {
 		fd := g.fds[fnName]
 		if fd == nil {
@@ -3731,7 +3789,44 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				}
 				g.floatTemps[t] = true
 			} else {
-				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+				// FFI: call to an extern (C) function — marshal values to native types.
+			if ed, ok := g.externs[fnName]; ok {
+				if len(ed.Params) != len(c.Args) {
+					panic(fmt.Sprintf("extern function %q: expected %d args, got %d", fnName, len(ed.Params), len(c.Args)))
+				}
+				argTypes := []string{}
+				argRegs := []string{}
+				for i, p := range ed.Params {
+					if p.Annot != nil && p.Annot.Kind == KindString {
+						lit, ok2 := c.Args[i].(*StrLit)
+						if !ok2 {
+							panic("extern string args must be string literals: " + fnName)
+						}
+						gn := g.strConst(lit.Value) // ensure global @.strN exists
+						n := len(lit.Value)
+						argTypes = append(argTypes, "i8*")
+						argRegs = append(argRegs, fmt.Sprintf("i8* getelementptr([%d x i8], [%d x i8]* %s, i32 0, i32 0)", n, n, gn))
+					} else {
+						v, err := g.value(b, c.Args[i])
+						if err != nil {
+							return "", err
+						}
+						argTypes = append(argTypes, "i32")
+						argRegs = append(argRegs, "i32 "+v)
+					}
+				}
+				ret := "i32"
+				if ed.ReturnAnno != nil && ed.ReturnAnno.Kind == KindString {
+					ret = "i8*"
+				}
+				callArgs := []string{}
+				for i := range argTypes {
+					callArgs = append(callArgs, argTypes[i]+" "+argRegs[i])
+				}
+				b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, fnName, strings.Join(callArgs, ", ")))
+				return t, nil
+			}
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
 			}
 			g.checkExn(b)
 			// a generator function returns a runtime heap list handle
@@ -4806,7 +4901,9 @@ func loopVarName(v Expr) string {
 
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	switch n := st.(type) {
-	case *ImportStmt:
+	case *ImportStmt:	case *ExternDecl:
+		// extern declarations are handled at the module level
+
 		// `import mod` resolves module globals at compile time (see resolveImports);
 		// the statement itself emits no IR.
 		return nil

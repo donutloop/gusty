@@ -112,8 +112,12 @@ func (p *parser) parseStmt() (Stmt, error) {
 	if t.IsKeyword("class") {
 		return p.parseClassDef()
 	}
+
 	if t.IsKeyword("import") {
 		return p.parseImport()
+	}
+	if t.IsKeyword("extern") {
+		return p.parseExternDecl()
 	}
 	if t.IsKeyword("if") {
 		return p.parseIf()
@@ -220,6 +224,65 @@ func (p *parser) extractDoc(body []Stmt) (string, []Stmt) {
 		return "", body
 	}
 	return lit.Value, body[1:]
+}
+
+
+// parseExternDecl parses `extern fn name(params) -> ret` — a declaration of a
+// C function that gusty can call (FFI). It produces an ExternDecl statement.
+func (p *parser) parseExternDecl() (Stmt, error) {
+	t := p.peek()
+	if t.Kind != TokKeyword || t.Text != "extern" {
+		return nil, p.errorf(t, "expected 'extern'")
+	}
+	p.next() // 'extern'
+	if p.peek().Text != "fn" {
+		return nil, p.errorf(p.peek(), "expected 'fn' after 'extern'")
+	}
+	p.next() // 'fn'
+	nameTok := p.peek()
+	if nameTok.Kind != TokIdent {
+		return nil, p.errorf(nameTok, "expected extern function name")
+	}
+	name := nameTok.Text
+	p.next()
+	decl := &ExternDecl{Name: name, Src: nameTok.Span}
+	if !p.peek().IsOp("(") {
+		return nil, p.errorf(p.peek(), "expected '(' after extern function name")
+	}
+	p.next()
+	for {
+		if p.atEOF() {
+			return nil, p.errorf(p.peek(), "unexpected EOF in extern params")
+		}
+		if p.peek().IsOp(")") {
+			p.next()
+			break
+		}
+		param, err := p.parseParam()
+		if err != nil {
+			return nil, err
+		}
+		decl.Params = append(decl.Params, param)
+		if p.peek().IsOp(",") {
+			p.next()
+			continue
+		}
+		if !p.peek().IsOp(")") {
+			return nil, p.errorf(p.peek(), "expected ',' or ')' in extern params")
+		}
+	}
+	if p.peek().IsOp("->") {
+		p.next()
+		ty, err := p.parseTypeAnnot()
+		if err != nil {
+			return nil, err
+		}
+		decl.ReturnAnno = ty
+	}
+	if p.atNewline() {
+		p.next()
+	}
+	return decl, nil
 }
 
 func (p *parser) parseFuncDef() (Stmt, error) {

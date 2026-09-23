@@ -76,10 +76,10 @@ Rule: every component change updates the matching doc; never let
 | Phase 8 — developer tooling & ecosystem | Docstrings / `__doc__` | ✅ DONE (Round 9, ADR 0141; AOT `__doc__` interpreter-only) | Absent; add `def`/`class` docstrings and `__doc__` introspection. |
 | Phase 8 — developer tooling & ecosystem | Benchmark + profiling suite | ✅ DONE | No `Benchmark` tests today; add a perf harness that runs both backends (supports the "compiler is the product" principle). |
 | Phase 9 — type system & runtime robustness | Tuple type + tuple unpacking | ✅ DONE (Round 11) | Semantic has no `Tuple` kind; add it as the type-system underpinning for Phase 6 unpacking and multi-return. |
-| Phase 9 — type system & runtime robustness | Generics / protocols | ⏳ PLANNED | Gradual types stop at `Any`; add `Sequence[T]`/`Callable` bounds and structural protocols. |
+| Phase 9 — type system & runtime robustness | Generics / protocols | ✅ DONE (Round 14) | Gradual types stop at `Any`; add `Sequence[T]`/`Callable` bounds and structural protocols. |
 | Phase 9 — type system & runtime robustness | Standalone type-check mode (`gusty check`) | ✅ DONE (Round 13) | `--check <src>` / `gusty check <files>` run the semantic pass (mypy-style) without executing; new arg-vs-annotation and return-vs-`->` checks; `CheckSource/CheckFile/CheckFiles` API; JSON + deterministic exit codes (0/1/2). ADR 0143. |
 | Phase 9 — type system & runtime robustness | Debug symbols / source maps for AOT binaries | ✅ DONE (Round 3) — `--emit-source-map`, `--build --source-map-out`, `--debug` (DWARF via `cc -g`) | `--build` executables need line/col + variable info for real stack traces and debuggers. |
-| Phase 9 — type system & runtime robustness | FFI / C interop + embedding API | ⏳ PLANNED | Systems-language parity: call C from `gusty` and embed the interpreter/codegen as a library. |
+| Phase 9 — type system & runtime robustness | FFI / C interop + embedding API | ✅ DONE (Round 15: `extern fn` C calls) | Systems-language parity: call C from `gusty` and embed the interpreter/codegen as a library. |
 | Phase 9 — type system & runtime robustness | Fuzz/property-based testing of both backends | ⏳ PLANNED | Given the two-backend drift risk, add `go-fuzz`/property tests over the AST → interpreter/codegen. |
 
 ## Definition of done per item

@@ -16,6 +16,19 @@
   protocol assign/reject, Callable assign/reject, Name rendering, JSON
   round-trip.
 
+# Round 15 — FFI / C interop
+
+- **`extern fn` declarations**: `extern fn abs(x: int) -> int` declares a C
+  function callable from gusty. Calls marshal `int` arguments as `i32` and
+  string-literal arguments as `i8*`, wrap the native `i32` return, and emit a
+  `declare` prototype in the LLVM IR (linked by the existing `cc` pipeline).
+- **Interpreter**: extern calls dispatch to a small Go registry mirroring the
+  C stdlib (`abs`, `getpid`, `rand`, `strlen`); unknown externs raise a clear
+  error.
+- **Semantic**: extern arity and argument types are checked at compile time.
+- Docs: language.md FFI section; ADR 0147; integration test builds/runs
+  `abs(-5)` and `strlen("hello")` end-to-end.
+
 # Round 13 — Standalone type-check mode (`gusty check`)
 
 - **Semantic checks**: `pkg/lang/semantic.go` now compares each statically-typed
