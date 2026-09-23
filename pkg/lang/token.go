@@ -20,6 +20,9 @@ const (
 	TokInt
 	TokFloat
 	TokString
+	TokRawString
+	TokTripleString
+	TokRawTripleString
 	TokFString
 	TokOp
 	TokKeyword

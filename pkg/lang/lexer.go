@@ -235,25 +235,39 @@ func Lex(src string) ([]Token, error) {
 					i++
 				}
 			case c == '"' || c == '\'':
-				quote := c
-				start := i
-				j := i + 1
-				val := ""
-				for j < n && src[j] != quote {
-					if src[j] == '\\' && j+1 < n {
-						val += string(src[j+1])
-						j += 2
-					} else {
-						val += string(src[j])
-						j++
-					}
+			quote := c
+			start := i
+			// triple-quoted string (""" / ''' ) may span multiple lines
+			if i+2 < n && src[i+1] == quote && src[i+2] == quote {
+				end, val, ok := scanString(src, i, quote, true, false)
+				if !ok {
+					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, i)}, Msg: "unterminated triple-quoted string"}
 				}
-				if j >= n {
-					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, start)}, Msg: "unterminated string literal"}
+				i = end
+				// a triple string may contain newlines; update line tracking
+				nl, last := countNewlines(src[start:end])
+				line += nl
+				if last >= 0 {
+					lineStart = start + last + 1
 				}
-				i = j
-				emit(TokString, src[start:i], func(t *Token) { t.Str = val })
-				i++
+				emit(TokTripleString, src[start:end], func(t *Token) { t.Str = val })
+				continue
+			}
+			j := i + 1
+			val := ""
+			for j < n && src[j] != quote {
+				if src[j] == '\\' && j+1 < n {
+					// escape: drop the backslash, keep the next character
+					val += string(src[j+1])
+					j += 2
+					continue
+				}
+				val += string(src[j])
+				j++
+			}
+			i = j
+			i++ // skip closing quote
+			emit(TokString, src[start:i], func(t *Token) { t.Str = val })
 			case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])):
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, start+1)
@@ -305,6 +319,30 @@ func Lex(src string) ([]Token, error) {
 					i++
 					continue
 				}
+			if (c == 'r' || c == 'R') && i+1 < n && (src[i+1] == '"' || src[i+1] == '\'') {
+				quote := src[i+1]
+				start := i
+				i++ // consume the r/R prefix
+				triple := i+2 < n && src[i+1] == quote && src[i+2] == quote
+				kind := TokRawString
+				if triple {
+					kind = TokRawTripleString
+				}
+				end, val, ok := scanString(src, i, quote, triple, true)
+				if !ok {
+					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, i)}, Msg: "unterminated raw string"}
+				}
+				i = end
+				if triple {
+					nl, last := countNewlines(src[start:end])
+					line += nl
+					if last >= 0 {
+						lineStart = start + last + 1
+					}
+				}
+				emit(kind, src[start:end], func(t *Token) { t.Str = val })
+				continue
+			}
 				j := i
 				for j < n && isIdentChar(src[j]) {
 					j++
@@ -357,4 +395,71 @@ func isIdentStart(c byte) bool {
 }
 func isIdentChar(c byte) bool {
 	return isIdentStart(c) || (c >= '0' && c <= '9')
+}
+
+// scanString scans a string literal body. It is called with i at the opening
+// quote (or at the first of three quote bytes for triple strings). quote is
+// the quote byte. triple means the closing delimiter is three quote bytes.
+// raw means no escape processing: backslashes are literal, except that a
+// backslash immediately before the quote keeps the string open (so the quote
+// appears in the value). It returns the index just past the closing delimiter
+// and the decoded value, or ok=false when the string is unterminated.
+func scanString(src string, i int, quote byte, triple, raw bool) (int, string, bool) {
+	n := len(src)
+	step := 1
+	if triple {
+		step = 3
+	}
+	i += step
+	var b strings.Builder
+	for i < n {
+		c := src[i]
+		if c == quote {
+			if triple {
+				if i+step <= n && src[i] == quote && src[i+1] == quote && src[i+2] == quote {
+					i += step
+					return i, b.String(), true
+				}
+				b.WriteByte(c)
+				i++
+				continue
+			}
+			i++
+			return i, b.String(), true
+		}
+		if raw {
+			if c == '\\' && i+1 < n && src[i+1] == quote {
+				b.WriteByte(c)
+				b.WriteByte(src[i+1])
+				i += 2
+				continue
+			}
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		// non-raw: escape processing (drop the backslash, keep the next byte)
+		if c == '\\' && i+1 < n {
+			i++
+			b.WriteByte(src[i])
+			i++
+			continue
+		}
+		b.WriteByte(c)
+		i++
+	}
+	return i, "", false
+}
+
+// countNewlines returns the number of '\n' bytes in s and the 0-based index of
+// the last one, or -1 when s contains no newline.
+func countNewlines(s string) (int, int) {
+	count, last := 0, -1
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			count++
+			last = i
+		}
+	}
+	return count, last
 }

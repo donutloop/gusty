@@ -370,3 +370,25 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
 - Push still blocked: the deploy key is passphrase-protected and no token or
   keyring is available (see top note). Commits are local-only; `git log`
   ahead-of-origin shows rounds 9-16 unpushed.
+
+## Round 2 — L4.5: raw strings + triple-quoted strings (lexer modernization)
+
+Implemented raw string literals (`r"..."`/`R'...'`), triple-quoted strings
+(`"""..."""`/`'''...'''`), and raw triple-quoted strings (`r"""..."""`), per
+roadmap Phase 4 item L4.5.
+
+- Lexer: `scanString` handles triple/raw forms; `countNewlines` tracks lines for
+  multi-line triple strings; raw-prefix detection in the identifier case.
+- Tokens: `TokRawString`, `TokTripleString`, `TokRawTripleString`.
+- AST: `StrLit` gains `Raw`/`Triple` fields.
+- Parser: `parseAtom` + `parsePatternAtom` build `StrLit` with the decoded
+  value (`t.Str`) and set the flags.
+- Docstrings: any string-literal form (incl. triple-quoted) as a leading
+  statement is extracted into `FuncDef.Doc`; `funcDoc` in the LSP index now
+  prefers the parser-extracted `Doc`.
+- Formatter: `fmtStrLit` re-emits raw/triple/raw-triple faithfully.
+- Fixed an accidental codegen.go corruption from an earlier splice (restored to
+  HEAD), and a `funcDoc` path that re-read the body instead of `fd.Doc`.
+
+Tests: `strings_test.go` covers raw, triple, raw-triple, and triple docstrings;
+full `pkg/lang` suite passes; `go build ./...` passes.

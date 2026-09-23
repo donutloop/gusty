@@ -710,6 +710,15 @@ func (p *parser) parsePatternAtom() (Expr, error) {
 	case t.Kind == TokString:
 		p.next()
 		return &StrLit{Value: t.Text, Src: t.Span}, nil
+		case t.Kind == TokRawString:
+			p.next()
+			return &StrLit{Value: t.Str, Raw: true, Src: t.Span}, nil
+		case t.Kind == TokTripleString:
+			p.next()
+			return &StrLit{Value: t.Str, Triple: true, Src: t.Span}, nil
+		case t.Kind == TokRawTripleString:
+			p.next()
+			return &StrLit{Value: t.Str, Raw: true, Triple: true, Src: t.Span}, nil
 	case t.IsOp("["):
 		return p.parseListOrComp()
 	case t.IsOp("{"):
@@ -1368,6 +1377,15 @@ func (p *parser) parseAtom() (Expr, error) {
 	case t.Kind == TokString:
 		p.next()
 		return &StrLit{Value: t.Str, Src: t.Span}, nil
+		case t.Kind == TokRawString:
+			p.next()
+			return &StrLit{Value: t.Str, Raw: true, Src: t.Span}, nil
+		case t.Kind == TokTripleString:
+			p.next()
+			return &StrLit{Value: t.Str, Triple: true, Src: t.Span}, nil
+		case t.Kind == TokRawTripleString:
+			p.next()
+			return &StrLit{Value: t.Str, Raw: true, Triple: true, Src: t.Span}, nil
 	case t.Kind == TokFString:
 		p.next()
 		return p.buildFString(t.FStrRaw, t.Span)

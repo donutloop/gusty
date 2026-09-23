@@ -543,6 +543,14 @@ Example:
     s = "hello"
     print(s)          # hello
     print(len(s))     # 5
+
+String literals support three extra forms:
+
+- **Raw strings** `r"..."` / `r'...'` (also `R` prefix): backslashes are kept literally, so `r"a\nb"` is the 4-byte value `a\nb`. A backslash immediately before the quote keeps the string open, so the quote appears in the value.
+- **Triple-quoted strings** `"""..."""` / `'''...'''`: may span multiple lines; newlines are part of the value, and escapes are processed like ordinary strings.
+- **Raw triple-quoted strings** `r"""..."""` / `r'''...'''`: a raw string that may span multiple lines with backslashes preserved.
+
+Docstrings may be written in any string-literal form; a triple-quoted docstring preserves its multi-line content and is extracted into `__doc__`.
     print("a" + "b")  # ab
 
 The AOT LLVM codegen also lowers **string-constant concatenation and `len`**

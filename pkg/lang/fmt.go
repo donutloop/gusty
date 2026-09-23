@@ -334,7 +334,7 @@ func writeExpr(sb *strings.Builder, e Expr, prec int) {
 	case *NoneLit:
 		sb.WriteString("None")
 	case *StrLit:
-		sb.WriteString(quoteString(x.Value))
+			sb.WriteString(fmtStrLit(x))
 	case *KeywordArg:
 		sb.WriteString(x.Name)
 		sb.WriteString(" = ")
@@ -566,4 +566,19 @@ func binPrec(op string) int {
 		return 6
 	}
 	return 4
+}
+
+// fmtStrLit renders a string literal, preserving raw (r"...") and
+// triple-quoted ("""...""") forms when the value is safe to re-emit.
+func fmtStrLit(x *StrLit) string {
+	if x.Raw && x.Triple && !strings.Contains(x.Value, "\"\"\"") {
+		return "r\"\"\"" + x.Value + "\"\"\""
+	}
+	if x.Triple && !strings.Contains(x.Value, "\"\"\"") {
+		return "\"\"\"" + x.Value + "\"\"\""
+	}
+	if x.Raw && !strings.Contains(x.Value, "\"") && !strings.HasSuffix(x.Value, "\\") {
+		return "r\"" + x.Value + "\""
+	}
+	return quoteString(x.Value)
 }

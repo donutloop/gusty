@@ -300,9 +300,11 @@ func loopVarNames(v Expr) []string {
 }
 
 type StrLit struct {
-	Value string `json:"value"`
+	Value  string `json:"value"`
+	Raw    bool   `json:"raw,omitempty"`    // r"..." raw string (no escape processing)
+	Triple bool   `json:"triple,omitempty"` // triple-quoted string (may span lines)
 	Src    Span   `json:"span,omitempty"`
-	Ty    string `json:"inferred,omitempty"`
+	Ty     string `json:"inferred,omitempty"`
 }
 
 func (n *StrLit) Span() Span { return n.Src }

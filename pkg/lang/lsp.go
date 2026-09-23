@@ -563,6 +563,9 @@ func nameSpan(src string, line int, name, prefix string) Span {
 
 // funcDoc extracts the first docstring statement from a function body.
 func funcDoc(f *FuncDef) string {
+	if f.Doc != "" {
+		return f.Doc
+	}
 	if len(f.Body) == 0 {
 		return ""
 	}

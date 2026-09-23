@@ -185,9 +185,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L4.4 Numeric-literal modernization** — `0xFF` hex, `0b101` binary,
   `0o17` octal, and `1_000`/`0x_FF` digit-group separators; keep exact
   integer semantics, reject `_` misuse. ✅ DONE (ADR 0153)
-- **L4.5 Raw strings + triple-quoted strings** — `r"..."` (no escape
-  processing) and `"""..."""`/`'''...'''` for docstrings and multi-line
-  literals; the docstring extraction path (`__doc__`) re-uses them.
+- **L4.5 Raw strings + triple-quoted strings** — `r"..."`/`R'...'` raw strings (no escape processing; a `\` before a quote keeps the string open) and `"""..."""`/`'''...'''` triple-quoted strings (may span lines); raw-triple `r"""..."""`; docstring extraction reuses both forms; formatter preserves raw/triple forms. — ✅ DONE
 - **L4.6 Line continuation** — trailing `\` at end of line joins the next
   physical line into one logical line (Python-compatible), so long call
   argument lists don't force parens.
