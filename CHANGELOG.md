@@ -1,3 +1,22 @@
+# Class patterns in `match` (interpreter)
+
+- `match` now supports class patterns: `case Point(x, y):` matches a subject
+  that is an instance of `Point` (or a subclass) and binds `x`, `y` to the
+  instance's same-named attributes.
+- The pattern class may be referenced by name (`Point`) or by a variable
+  holding a class value (`Alias = Point`).
+- A missing attribute or a non-matching instance fails the pattern and the
+  next case is tried.
+- Parser: `parsePatternAtom` now detects `Name(...)` and builds a `Call`
+  class-pattern AST node with attribute-name arguments.
+- Interpreter: `matchPattern` adds a `*Call` case that checks instance class
+  (with subclass walk via the `classIDs` base chain) and binds attributes;
+  non-class `Call` patterns still use expression-equality.
+- Tests: `pkg/lang/match_test.go` covers basic, subclass, non-match,
+  missing-attr, and alias class patterns.
+- AOT/codegen `match` remains expression-equality only; class patterns are an
+  interpreter-side feature (documented in `docs/language.md`).
+
 # Round 14 — Generics / structural protocols
 # Round 16 — Fuzz / property-based testing of both backends
 

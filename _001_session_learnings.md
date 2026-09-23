@@ -350,3 +350,23 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
 - Pushing the unpushed backlog (Rounds 10-16 commits) blocked this session:
   the SSH deploy key is passphrase-protected and no token/credential is
   available, so `git push` cannot authenticate. Local commits are intact.
+
+## Round: class patterns in `match`
+
+- Delivered `case Point(x, y):` class patterns in the interpreter:
+  - Parser: `parsePatternAtom` now detects `Name(...)` after an ident and
+    builds a `Call` class-pattern AST node (attribute-name args).
+  - Interpreter: `matchPattern` adds a `*Call` case using a new
+    `resolveClassID` helper (definition name or class-valued variable); it
+    requires an `instance` whose `classIDs` base chain contains the pattern
+    class, then binds same-named attributes to capture variables.
+  - Missing attr / non-instance / non-subclass => pattern fails; non-class
+    `Call` patterns keep expression-equality.
+- Tests: `match_test.go` (basic, subclass, non-match, missing-attr, alias).
+- Docs: `docs/language.md` match section, `docs/adr/0149-class-patterns.md`,
+  `CHANGELOG.md`, `roadmap.md` (Phase 6 row).
+- AOT/codegen `match` remains expression-equality only — documented as an
+  interpreter-side feature.
+- Push still blocked: the deploy key is passphrase-protected and no token or
+  keyring is available (see top note). Commits are local-only; `git log`
+  ahead-of-origin shows rounds 9-16 unpushed.

@@ -93,6 +93,21 @@ func (e *Evaluator) setLoopVar(v Expr, val int64) error {
 	return &EvalError{Msg: "unsupported loop variable"}
 }
 
+// resolveClassID returns the heap id of the class bound to name, if any.
+// Classes can be referenced by their definition name (classIDs) or as a
+// class value stored in a variable (e.g. `Alias = Point`).
+func (e *Evaluator) resolveClassID(name string) (int64, bool) {
+	if id, ok := e.classIDs[name]; ok {
+		return id, true
+	}
+	if v, ok := e.Vars[name]; ok {
+		if o, ok2 := e.heap[v]; ok2 && o.kind == "class" {
+			return v, true
+		}
+	}
+	return 0, false
+}
+
 func (e *Evaluator) allocObj(kind string) int64 {
 	e.nextID++
 	e.allocCount++
@@ -1986,6 +2001,55 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 		return true, nil
 	case *Name:
 		return t.Value == "_", nil
+	case *Call:
+		// Class pattern: `case Point(x, y):` matches an instance of Point
+		// (or a subclass) and binds attributes x and y to the instance's
+		// values. If the callee is not a known class, fall back to the
+		// default expression-equality behavior.
+		fnName, ok := t.Fn.(*Name)
+		if ok {
+			if pid, ok2 := e.resolveClassID(fnName.Value); ok2 {
+				o, ok3 := e.heap[sub]
+				if !ok3 || o.kind != "instance" {
+					return false, nil
+				}
+				// The subject must be an instance of pid or a subclass of it.
+				instCID, ok4 := e.classIDs[o.class]
+				if !ok4 {
+					return false, nil
+				}
+				matched := false
+				for c := instCID; c != 0; c = e.heap[c].base {
+					if c == pid {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					return false, nil
+				}
+				for _, arg := range t.Args {
+					nm, ok5 := arg.(*Name)
+					if !ok5 {
+						return false, nil
+					}
+					v, ok6 := o.attrs[nm.Value]
+					if !ok6 {
+						// missing attribute => the pattern fails to match
+						return false, nil
+					}
+					e.Vars[nm.Value] = v
+				}
+				return true, nil
+			}
+		}
+		// Not a class pattern: treat as expression-equality (the previous
+		// default behavior) so `case someCall():` still works.
+		pv, err := e.eval(t)
+		if err != nil {
+			return false, err
+		}
+		return pv == sub, nil
 	default:
 		pv, err := e.eval(p)
 		if err != nil {

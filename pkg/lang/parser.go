@@ -678,6 +678,31 @@ func (p *parser) parsePatternAtom() (Expr, error) {
 	switch {
 	case t.Kind == TokIdent:
 		p.next()
+		// class pattern: `case Point(x, y):` binds instance attributes x, y
+		if p.peek().IsOp("(") {
+			p.next() // consume '('
+			fn := &Name{Value: t.Text, Src: t.Span}
+			var args []Expr
+			if !p.peek().IsOp(")") {
+				for {
+					attr := p.next()
+					if attr.Kind != TokIdent {
+						return nil, p.errorf(attr, "class pattern attribute must be a name")
+					}
+					args = append(args, &Name{Value: attr.Text, Src: attr.Span})
+					if p.peek().IsOp(",") {
+						p.next()
+						continue
+					}
+					break
+				}
+			}
+			if !p.peek().IsOp(")") {
+				return nil, p.errorf(p.peek(), "expected ')' in class pattern")
+			}
+			p.next() // consume ')'
+			return &Call{Fn: fn, Args: args, Src: t.Span}, nil
+		}
 		return &Name{Value: t.Text, Src: t.Span}, nil
 	case t.Kind == TokInt:
 		p.next()

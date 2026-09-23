@@ -395,7 +395,35 @@ match x:
 - `match` selects a case whose pattern equals the subject (integer equality).
 - A `case _:` pattern is a wildcard and always matches.
 - The first matching case body runs; then control continues after the match.
-- Lowered to a chain of integer comparisons.
+- Patterns are tried in order; the first one that matches wins.
+
+#### Class patterns
+
+`case Point(x, y):` matches a value that is an instance of `Point` (or any
+subclass of `Point`) and binds the capture variables `x` and `y` to the
+instance's attributes of the same names:
+
+```
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+p = Point(2, 3)
+match p:
+    case Point(x, y):
+        x + y      # -> 5
+    case _:
+        0
+```
+
+- The class may be referenced by name or via a variable holding a class value
+  (e.g. `Alias = Point`).
+- Each argument is an attribute name; the pattern looks up that attribute on
+  the instance and binds a same-named capture variable to its value.
+- A missing attribute, or a subject that is not an instance of the class (or a
+  subclass), fails the pattern and the next case is tried.
+- Class patterns are an interpreter-side feature; the AOT/codegen backend
+  lowers `match` to expression-equality only (see `CHANGELOG.md`).
 
 ## Expressions
 
