@@ -11,6 +11,7 @@ import (
 // constant AST literals (data imports); module function dispatch is deferred.
 type ImportInfo struct {
 	Globals map[string]map[string]Expr // module name -> global name -> folded constant
+	Funcs   map[string]map[string]*FuncDef // module name -> fn name -> module function
 }
 
 // resolveImports loads each top-level `import mod` from `mod.gy` (relative to
@@ -21,24 +22,26 @@ type ImportInfo struct {
 // A module may itself `import other` (nested imports); the nested module's
 // globals are folded too and resolved via `other.var` references.
 func resolveImports(prog *Program) (*ImportInfo, error) {
-	info := &ImportInfo{Globals: map[string]map[string]Expr{}}
+	info := &ImportInfo{Globals: map[string]map[string]Expr{}, Funcs: map[string]map[string]*FuncDef{}}
 	reg := map[string]map[string]Expr{}
+	freg := map[string]map[string]*FuncDef{}
 	for _, st := range prog.Stmts {
 		im, ok := st.(*ImportStmt)
 		if !ok {
 			continue
 		}
-		if err := resolveModule(im.Module, reg); err != nil {
+		if err := resolveModule(im.Module, reg, freg); err != nil {
 			return nil, err
 		}
 	}
 	info.Globals = reg
+	info.Funcs = freg
 	return info, nil
 }
 
 // resolveModule loads mod.gy, parses + analyzes it, and constant-folds its
 // top-level globals into the shared registry reg. Nested imports recurse.
-func resolveModule(mod string, reg map[string]map[string]Expr) error {
+func resolveModule(mod string, reg map[string]map[string]Expr, freg map[string]map[string]*FuncDef) error {
 	if _, dup := reg[mod]; dup {
 		return fmt.Errorf("import: duplicate module %q", mod)
 	}
@@ -63,7 +66,7 @@ func resolveModule(mod string, reg map[string]map[string]Expr) error {
 	for _, mst := range mp.Stmts {
 		switch s := mst.(type) {
 		case *ImportStmt:
-			if err := resolveModule(s.Module, reg); err != nil {
+			if err := resolveModule(s.Module, reg, freg); err != nil {
 				return err
 			}
 		case *AssignStmt:
@@ -77,7 +80,10 @@ func resolveModule(mod string, reg map[string]map[string]Expr) error {
 			}
 			own[nm.Value] = v
 		case *FuncDef:
-			return fmt.Errorf("import %q: module functions are not yet supported in AOT imports (data imports only)", mod)
+			if freg[mod] == nil {
+				freg[mod] = map[string]*FuncDef{}
+			}
+			freg[mod][s.Name] = s
 		default:
 			return fmt.Errorf("import %q: unsupported top-level statement in AOT import", mod)
 		}

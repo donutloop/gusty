@@ -731,6 +731,9 @@ func GenerateIR(prog *Program) (string, error) {
 			}
 		}
 	}
+	if err := g.emitModuleFuncs(&b); err != nil {
+		return "", err
+	}
 	// FFI: collect extern declarations and emit their C prototypes.
 	for _, st := range prog.Stmts {
 		if ed, ok := st.(*ExternDecl); ok {
@@ -896,6 +899,19 @@ type irGen struct {
 	// envSlots holds the module-global closure env slot names; each holds an
 	// env heap handle and must be rooted so GC keeps captured envs alive.
 	envSlots []string
+
+	// curFnOverride, when non-empty, overrides the emitted name of the
+	// current FuncDef (used for AOT module-function emission).
+	curFnOverride string
+	// curModName is the module whose function is currently being emitted; bare
+	// Name calls inside it dispatch to sibling module functions.
+	curModName string
+	// curModGlobals holds folded module-global constants for the module
+	// function currently being emitted; bare Name refs resolve against it.
+	curModGlobals map[string]Expr
+	// curModParams holds the param set of the module function being emitted,
+	// so a param that shadows a module global is not substituted.
+	curModParams map[string]bool
 }
 
 // classInfo records a statically-known class: its base classes and its methods.
@@ -2200,6 +2216,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *NoneLit:
 		return "0", nil
 	case *Name:
+		// A module function body may reference a folded module-global
+		// constant by its bare name (captured like a closure env). Resolve
+		// it to the folded constant unless a parameter shadows it.
+		if g.curModGlobals != nil {
+			if folded, ok := g.curModGlobals[n.Value]; ok && !g.curModParams[n.Value] {
+				return g.value(b, folded)
+			}
+		}
 		// Comprehension variable bound to a compile-time constant.
 		if v, ok := g.constBindings[n.Value]; ok {
 			return fmt.Sprintf("%d", v), nil
@@ -3162,6 +3186,28 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 	// constant-fold attr methods on constant receivers.
 	if attr, ok := c.Fn.(*Attr); ok {
+		// mod.fn(args): dispatch to an AOT module function.
+		if modName, isName := attr.Obj.(*Name); isName {
+			if modFuncs := g.imports.Funcs[modName.Value]; modFuncs != nil {
+				if fd, ok := modFuncs[attr.Name.Value]; ok && fd != nil {
+					mangle := modName.Value + "$" + attr.Name.Value
+					ret := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = call i32 @%s(", ret, mangle))
+					for i, arg := range c.Args {
+						if i > 0 {
+							b.WriteString(", ")
+						}
+						av, err := g.value(b, arg)
+						if err != nil {
+							return "", err
+						}
+						b.WriteString("i32 " + av)
+					}
+					b.WriteString(")\n")
+					return ret, nil
+				}
+			}
+		}
 		mname := attr.Name.Value
 
 		// super().m(args): dispatch m on the base class of the enclosing class.
@@ -3689,6 +3735,27 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		t := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, fnName, strings.Join(callArgs, ", ")))
 		return t, nil
+	}
+	if g.curModName != "" && g.imports != nil {
+		if sibling := g.imports.Funcs[g.curModName]; sibling != nil {
+			if fd, ok := sibling[fnName]; ok && fd != nil {
+				mangle := g.curModName + "$" + fnName
+				ret := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(", ret, mangle))
+				for i, arg := range c.Args {
+					if i > 0 {
+						b.WriteString(", ")
+					}
+					av, err := g.value(b, arg)
+					if err != nil {
+						return "", err
+					}
+					b.WriteString("i32 " + av)
+				}
+				b.WriteString(")\n")
+				return ret, nil
+			}
+		}
 	}
 	if g.funcs[fnName] {
 		fd := g.fds[fnName]
@@ -4785,11 +4852,54 @@ func funcReturnsFloat(g *irGen, fd *FuncDef) bool {
 	return scan(fd.Body)
 }
 
+// fnName returns the emitted IR name for fd, honoring a module-function
+// name override (g.curFnOverride) so AOT module functions get a mangled,
+// collision-free label like `mod$fn`.
+func (g *irGen) fnName(fd *FuncDef) string {
+	if g.curFnOverride != "" {
+		return g.curFnOverride
+	}
+	return fd.Name
+}
+
+// emitModuleFuncs lowers AOT module functions (from `import mod` where mod
+// defines functions) as standalone IR defines with a mangled name `mod$fn`.
+// Module-global constants are captured by bare-name resolution during funcDef.
+func (g *irGen) emitModuleFuncs(b *strings.Builder) error {
+	if g.imports == nil {
+		return nil
+	}
+	for mod, fns := range g.imports.Funcs {
+		globals := g.imports.Globals[mod]
+		for fnName, fd := range fns {
+			mangle := mod + "$" + fnName
+			params := map[string]bool{}
+			for _, p := range fd.Params {
+				params[p.Name] = true
+			}
+			prevOverride, prevGlobals, prevParams, prevMod := g.curFnOverride, g.curModGlobals, g.curModParams, g.curModName
+			g.curFnOverride = mangle
+			g.curModName = mod
+			g.curModGlobals = globals
+			g.curModParams = params
+			err := g.funcDef(b, fd)
+			g.curFnOverride = prevOverride
+			g.curModName = prevMod
+			g.curModGlobals = prevGlobals
+			g.curModParams = prevParams
+			if err != nil {
+				return fmt.Errorf("import %q: lowering module function %q: %v", mod, fnName, err)
+			}
+		}
+	}
+	return nil
+}
+
 func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	prevRaise := g.funcRaiseExit
 	prevHandlers := g.handlerStack
 	g.handlerStack = nil
-	g.funcRaiseExit = fd.Name + ".raiseexit"
+	g.funcRaiseExit = g.fnName(fd) + ".raiseexit"
 	g.closures = map[string]*closureInfo{}
 	g.allocd = map[string]bool{}
 	g.gcRootSeen = map[string]bool{}
@@ -4818,18 +4928,18 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		return nil
 	}
 	g.params = map[string]string{}
-	g.curFunc = fd.Name
+	g.curFunc = g.fnName(fd)
 	floatRet := funcReturnsFloat(g, fd)
 	retTy := "i32"
 	retVal := "0"
 	paramTy := "i32"
 	if floatRet {
-		g.floatFuncs[fd.Name] = true
+		g.floatFuncs[g.fnName(fd)] = true
 		retTy = "double"
 		retVal = "0.0"
 		paramTy = "double"
 	}
-	fmt.Fprintf(b, "define %s @%s(", retTy, fd.Name)
+	fmt.Fprintf(b, "define %s @%s(", retTy, g.fnName(fd))
 	for i := range fd.Params {
 		if i > 0 {
 			fmt.Fprintf(b, ", ")
@@ -4852,7 +4962,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	if isGen {
 		g.genIdx++
 		g.genHandle = fmt.Sprintf("%%gh%d", g.genIdx)
-		g.genFuncs[fd.Name] = true
+		g.genFuncs[g.fnName(fd)] = true
 		g.heapUsed = true
 		fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 1)\n", g.genHandle)
 	}

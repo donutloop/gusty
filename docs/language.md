@@ -278,7 +278,7 @@ interpreter and the AOT compiler fold as top-level constants:
 
 Reads like `math.PI` resolve to the folded constant in both backends. The interpreter
 also supports importing function-bearing modules (module functions dispatch at runtime);
-AOT module-function emission remains a follow-on (AOT import folds data-only globals today).
+AOT module-function emission is supported: imported modules that define functions are lowered as mangled defines (`mod$fn`), and `mod.fn(args)` calls plus sibling-module calls and bare-name module-global capture are handled by the AOT compiler.
 ### Functions
 
 Lambda is an anonymous single-expression function: `lambda x: int: x + 1`.

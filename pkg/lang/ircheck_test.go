@@ -1394,20 +1394,27 @@ func TestIRImportModuleGlobals(t *testing.T) {
 	llcCompiles(t, src)
 }
 
-func TestIRImportRejectsModuleFunctions(t *testing.T) {
+
+func TestIRImportModuleFunctions(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(dir+"/lib.gy", []byte("x = 1\ndef f():\n    return x\n"), 0o600)
+	os.WriteFile(dir + "/lib.gy", []byte("def f(x):\n    return x * 2\n"), 0o600)
 	old, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(old)
-	_, err := Compile("import lib\nprint(lib.x)")
-	if err == nil {
-		t.Fatal("expected error for module function")
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "module functions are not yet supported") {
-		t.Fatalf("unexpected error: %v", err)
+	defer os.Chdir(old)
+	res, err := Compile("import lib\nprint(lib.f(21))")
+	if err != nil {
+		t.Fatalf("AOT import with module functions should compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "@lib$f") {
+		t.Fatalf("expected lowered module function @lib$f in IR:\n%s", res.IR)
+	}
+	if !strings.Contains(res.IR, "call i32 @lib$f") {
+		t.Fatalf("expected a call to @lib$f in IR:\n%s", res.IR)
 	}
 }
+
 
 func TestIRImportNestedModules(t *testing.T) {
 	dir := t.TempDir()

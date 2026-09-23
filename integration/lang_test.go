@@ -1071,6 +1071,26 @@ func TestExecRuntimeListAppend(t *testing.T) {
 	assertOutput(t, "x = [1, 2]\nx.append(3)\nprint(x)", "[1, 2, 3]\n")
 }
 
+
+func TestExecImportModuleGlobalsAndCrossCalls(t *testing.T) {
+	dir := t.TempDir()
+	// A module with a global constant, a helper function, and a function that
+	// calls the helper and uses the global.
+	os.WriteFile(dir+"/calc.gy", []byte("BASE = 10\ndef helper(x):\n    return x + BASE\ndef total(a, b):\n    return helper(a) + helper(b)\n"), 0o600)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	assertOutput(t, "import calc\nprint(calc.total(1, 2))", "23\n")
+}
+
+
+
+
 func TestExecRuntimeListAppendTwo(t *testing.T) {
 	assertOutput(t, "x = [1]\nx.append(2)\nx.append(3)\nprint(x)", "[1, 2, 3]\n")
 }
