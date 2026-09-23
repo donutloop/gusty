@@ -54,6 +54,25 @@ positional files are a usage error (exit 2). A semantic error in any source
 file aborts the build before any toolchain step runs.
 
 
+## Debug symbols / source maps (AOT)
+
+`gustyc` can emit machine-readable source maps and DWARF debug info for AOT
+builds:
+
+- `--emit-source-map <src>` prints a JSON source map: each user function
+  (top-level, nested, and class methods) mapped to its emitted LLVM symbol
+  and 1-based IR line, plus the source line/col. Class methods are mangled to
+  `<class>_<method>`.
+- `--build out.bin --source-map-out a.smap.json src.gy` writes the same JSON
+  source map alongside the binary.
+- `--build out.bin --debug src.gy` passes `-g` to the final `cc` link so the
+  binary carries DWARF debug info (line tables).
+
+Example source map entry:
+```json
+{ "name": "C_m", "symbol": "C_m", "irLine": 9, "line": 5, "col": 5 }
+```
+
 ## Diagnostics
 
 Diagnostics carry source spans and messages. The machine-readable path is a

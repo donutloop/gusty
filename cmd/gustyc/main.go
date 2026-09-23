@@ -44,10 +44,13 @@ func run() int {
 	verify := fs.String("verify", "", "parse + analyze a source string")
 	check := fs.String("check", "", "type-check a source string without executing (mypy-style)")
 	emitLLVMF := fs.String("emit-llvm", "", "print LLVM IR for a source string")
+	emitSourceMapF := fs.String("emit-source-map", "", "print the source-map JSON for a source file")
 	emitASTF := fs.String("emit-ast", "", "print the AST as JSON for a source string")
 	target := fs.String("target", "", "target triple for codegen")
 	optLevel := fs.String("opt-level", "0", "optimization level")
 	buildOut := fs.String("build", "", "output binary path for a multi-file build (sources are the positional args)")
+	debugFlag := fs.Bool("debug", false, "pass -g to llc/cc so the binary carries DWARF debug info")
+	sourceMapOut := fs.String("source-map-out", "", "write a JSON source map (source fn -> IR symbol+line) to this path")
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
@@ -101,7 +104,7 @@ func run() int {
 			usage(fs)
 			return exitUsage
 		}
-		res, err := lang.Build(buildFiles, *buildOut, atoi(*optLevel))
+		res, err := lang.BuildWithOptions(buildFiles, *buildOut, atoi(*optLevel), &lang.BuildOptions{Debug: *debugFlag, SourceMapOut: *sourceMapOut})
 		if err != nil {
 			// machine mode: still emit the (partial) BuildResult carrying
 			// diagnostics on stdout, plus a human error on stderr.
@@ -132,7 +135,7 @@ func run() int {
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
@@ -148,6 +151,9 @@ func run() int {
 	}
 	if *emitLLVMF != "" {
 		return emitLLVM(*emitLLVMF, *target, *optLevel)
+	}
+	if *emitSourceMapF != "" {
+		return emitSourceMap(*emitSourceMapF)
 	}
 	if *emitASTF != "" {
 		return emitAST(*emitASTF)
@@ -272,6 +278,16 @@ func emitLLVM(src, target, opt string) int {
 	fmt.Print(lang.OptimizeIR(res.IR, atoi(opt)))
 	return exitOK
 }
+func emitSourceMap(src string) int {
+	sm, err := lang.EmitSourceMap(src)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: emit-source-map: %v\n", err)
+		return exitErr
+	}
+	fmt.Println(string(sm))
+	return exitOK
+}
+
 
 func emitAST(src string) int {
 	res, err := lang.Compile(src)

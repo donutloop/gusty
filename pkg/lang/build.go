@@ -34,7 +34,22 @@ var (
 // links it into the binary at out. Returns the structured outcome for machine
 // consumption; on compile/link failure it returns a partial BuildResult plus
 // an error carrying the failing tool's output.
+// BuildOptions controls optional debug-symbol / source-map emission for an
+// AOT build.
+type BuildOptions struct {
+	Debug        bool   // pass -g to llc/cc so the binary carries DWARF info
+	SourceMapOut string // write a JSON source map (source fn -> IR symbol+line)
+}
+
+// Build compiles with the default BuildOptions.
 func Build(files []string, out string, optLevel int) (*BuildResult, error) {
+	return BuildWithOptions(files, out, optLevel, nil)
+}
+
+// BuildWithOptions compiles files into the executable at out. When opts is
+// non-nil, Debug adds DWARF debug info to the binary and SourceMapOut writes a
+// JSON source map (source function -> emitted LLVM symbol + IR line).
+func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptions) (*BuildResult, error) {
 	prog := &Program{}
 	for _, f := range files {
 		b, err := os.ReadFile(f)
@@ -60,6 +75,16 @@ func Build(files []string, out string, optLevel int) (*BuildResult, error) {
 	}
 	ir = OptimizeIR(ir, optLevel)
 
+	if opts != nil && opts.SourceMapOut != "" {
+		sm, err := GenerateSourceMap(prog, ir)
+		if err != nil {
+			return &BuildResult{}, fmt.Errorf("build: source map: %w", err)
+		}
+		if err := os.WriteFile(opts.SourceMapOut, sm, 0o644); err != nil {
+			return &BuildResult{}, fmt.Errorf("build: write source map: %w", err)
+		}
+	}
+
 	dir, err := os.MkdirTemp("", "gusty-build-")
 	if err != nil {
 		return nil, fmt.Errorf("build: temp dir: %w", err)
@@ -73,12 +98,18 @@ func Build(files []string, out string, optLevel int) (*BuildResult, error) {
 	}
 
 	llcCmdline := []string{"-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath}
+
+
 	if outLL, err := exec.Command(llcCmd, llcCmdline...).CombinedOutput(); err != nil {
 		return &BuildResult{Output: out, IR: ir},
 			fmt.Errorf("build: llc: %v\n%s", err, outLL)
 	}
 
 	ccCmdline := []string{objPath, "-o", out, "-lm"}
+
+	if opts != nil && opts.Debug {
+		ccCmdline = append(ccCmdline, "-g")
+	}
 	if outCC, err := exec.Command(ccCmd, ccCmdline...).CombinedOutput(); err != nil {
 		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}},
 			fmt.Errorf("build: cc: %v\n%s", err, outCC)

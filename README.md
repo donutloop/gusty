@@ -166,7 +166,7 @@ gustyc --schema                         # print the JSON Schema for AST/IR dumps
 gustyc                                  # start the REPL (stateful)
 ```
 
-Flags: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-ast`,`
+Flags: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-source-map`, `--build ... --source-map-out`, `--build ... --debug`, `--emit-ast`,`
 
 ### Type-check mode (`gusty check`)
 
