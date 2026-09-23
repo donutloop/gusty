@@ -1,25 +1,14 @@
-# Pyre — Roadmap (LLVM-core Python-like language)
+# Pyre (gusty repo) — Roadmap
 
 This file is the living, concrete plan for building and evolving **Pyre** (the
 `gusty` repo), a Python-like language whose core is compiled ahead-of-time
 through LLVM. It lives next to `AGENTS.md` and is the single source of truth
-for *what exists* and *what is next*.
+for *what exists*, *what is next*, and *what is gap-shaped*.
 
-## Documentation home (always keep this in sync)
-
-The agent maintains **rich documentation under `docs/`** — this is the canonical
-doc home:
-
-- `docs/language.md` — single source of truth for the language surface
-  (syntax, semantics, which constructs are interpreter-only vs AOT).
-- `docs/operations.md` — CLI, agent operations, build/test pipeline.
-- `docs/adr/` — architecture decision records (`0001`..`0128`); each new
-  decision is recorded there.
-- `docs/agentic/` — agent-facing notes (currently `ast-ir-schema.md`).
-- `docs/roadmap.md` — pointer mirror of this `roadmap.md`.
-
-Rule: every component change updates the matching doc; never let
-`docs/language.md` and `roadmap.md` drift apart.
+> Status snapshot (verified against the code, 2026): version `0.10.0`
+> (`pkg/lang/compile.go`), CHANGELOG at `[Unreleased] v0.10.0`. ADRs run
+> `0001`..`0151`. NOTE: two ADRs share number `0143` — a duplicate to be
+> renumbered (dead-object elimination vs standalone type-check mode).
 
 ## Component map (state verified against the code)
 
@@ -29,68 +18,328 @@ Rule: every component change updates the matching doc; never let
 | Parser → AST | `pkg/lang/parser.go`, `ast.go`, `token.go`, `types.go` | done |
 | Semantic analysis / gradual typing | `pkg/lang/semantic.go` | static checks only |
 | Interpreter backend + heap GC | `pkg/lang/jit.go` | full dynamic surface |
-| AOT codegen (textual IR) | `pkg/lang/codegen.go`, `closure.go` | i32-only, see gaps |
+| AOT codegen (textual IR) | `pkg/lang/codegen.go`, `closure.go` | i32-first, see gaps |
 | Optimizer | `pkg/lang/opt.go` | pure-Go textual dead-global elim. (not an LLVM `opt` pass) |
 | Multi-file build | `pkg/lang/build.go` | done |
+| Source maps / debug info | `pkg/lang/sourcemap.go` | AOT line/col + DWARF via `cc -g` |
+| Standalone type-check (`gusty check`) | `pkg/lang/check.go` | mypy-style, ADR 0143 |
+| Canonical formatter (`gusty fmt`) | `pkg/lang/fmt.go` | round-trips docstrings |
+| Language server / LSP | `pkg/lang/lsp.go` | stdio; hover + completion + diagnostics |
+| JSON schema / machine output | `pkg/lang/schema.go` | `--json` AST/IR dumps |
+| Property/fuzz testing | `pkg/lang/proptest.go`, `proptest_test.go` | seeded cross-backend parity |
 | CLI | `cmd/gustyc/main.go` | parse → semantic → (eval \| codegen → `llc` → `cc`) |
-| Version constant | `pkg/lang/compile.go` | reconciled at `0.10.0` (compile.go), CHANGELOG at v0.10.32 (verified) |
-| Unit tests | `pkg/lang/*_test.go` | green |
-| Whole-program tests | `integration/` (CLI compile-and-run) | green |
+| Version constant | `pkg/lang/compile.go` | reconciled at `0.10.0` |
 
 ## Roadmap — phased plan
 
-| Phase | Item | Status | Details |
-|---|---|---|---|
-| Phase 0 — hygiene | Version reconciled (v0.10.0) | ✅ DONE | The single version constant lives in `pkg/lang/compile.go` and is printed by `cmd/gustyc`. `CHANGELOG.md` is bumped and records this roadmap entry. |
-| Phase 1 — AOT/interpreter parity | Floats in AOT | ✅ DONE | ~~today codegen truncates `FloatLit` to `int64`~~ codegen emits real `double` IR — float literals (`fadd double 0.0, <const>`), `fadd/fsub/fmul/fdiv` arithmetic with `sitofp` int promotion, `%.17g` float print (matches interpreter `%v`), `fcmp` float comparisons, and `double` allocas/stores for float variables tracked via `floatVars`. `float()` folds int/string literals to double constants. |
-| Phase 1 — AOT/interpreter parity | Runtime heap + GC in AOT (milestone 1: runtime heap + boxed mutable lists with `list.append()` on variables and `print(list)` — done, ADR 0009; milestone 2: `len(x)` on runtime list vars — done; milestone 3: `x[i]` index read — done; milestone 4: slot reuse via a free-list on rebinding — done; milestone 5: free a list slot when rebound to a non-list — done; milestone 6: variable-index list reads `x[a]` — done; milestone 7: runtime heap dicts — done; milestone 8: runtime heap sets — done; milestone 9: cross-collection rebind free — done; milestone 10: heap-stress/leak harness — done; milestone 11: heap bounds safety (rt_alloc returns -1 sentinel instead of out-of-bounds write when full) — done; conservative mark-and-sweep GC landed; closure env slots are now rooted so captured envs survive top-level GC boundaries) | ✅ DONE | Today lists/dicts/sets/strings are compile-time globals only. Introduce an object heap, boxed values, and a refcount/GC pass so AOT programs can mutate runtime collections. Mirror the interpreter's `Collect()` contract. |
-| Phase 1 — AOT/interpreter parity | Dynamic dispatch + method tables | 🟠 PARTIAL — statement-level dynamic dispatch landed (ADR 0136); remaining: all-call-site dispatch, devirtualization, module fn dispatch — **status update: all-call-site dispatch now has conformance coverage (ADR 0151, `dispatch_nested` program); AOT dispatch-on-variable across allocations is a known GC/instance-layout bug (ADR 0151)** | Classes/inheritance/`super`, `import`, `try`/`except`/`finally`, `raise`, `yield` are interpreter-only. Land each in AOT in this order: exceptions → modules/imports → classes → generators. **classes (definitions, instantiation, inheritance, `super()`) are now landed in AOT codegen (static-dispatch model)**; generators (`yield` statements and generator expressions) are now landed too. Record each in `docs/adr/` and update `docs/language.md`. **AOT module-function dispatch is now landed**: `import mod` where mod defines functions lowers them as mangled `mod$fn` defines, with `mod.fn(args)` calls, sibling-module calls, and bare-name module-global capture handled by the AOT compiler (see `docs/language.md`). |
-| Phase 1 — AOT/interpreter parity | Arbitrary decorators | ✅ LANDED (identity + clear rejection) | Decorator application machinery in AOT (ADR 0131): identity decorators and source-order resolution work; wrapping/closure decorators are rejected with a clear codegen error instead of silently ignored. Full fnptr-valued decorators are a follow-on (needs fnptr operands/indirect calls). |
-| Phase 2 — LLVM core deepening | Real optimizer | ✅ DONE | `opt.go` now parses the emitted IR into a module/CFG and runs a real pass pipeline to a fixed point: constant propagation + folding, mem2reg-style alloca promotion, dead-instruction elimination, and dead-block (unreachable CFG block) elimination. The re-serialized output is verified end-to-end through `llvm-as`/`llc` in `TestOptimizedIRValidForLLC` (ADR 0088). |
-| Phase 2 — LLVM core deepening | JIT for REPL feedback | ✅ DONE | `pkg/lang/jit_llvm.go`: source → codegen → `llc` → `cc -shared` → `dlopen` into-process → dlsym `main` → run with fd 1 captured. `gustyc --jit` threads it through `--eval`/`--repl`; `TestJIT*` + `TestCLIJIT*` cover it. |
-| Phase 2 — LLVM core deepening | Runtime dispatch | ✅ DONE (Round 12) | `%obj`-tagged value representation (`%obj = {i32 tag, i32 payload}`) + canonical kind-tag table (`pkg/lang/value.go`) shared by AOT IR and interpreter heap; helpers `rt_mkobj`/`rt_obj_tag`/`rt_obj_payload`/`rt_obj_is`; dispatch wraps+tag-checks receivers; documented (ast-ir-schema.md, ADR 0142). |
-| Phase 3 — memory model & optimization | Document the memory model | ✅ DONE (ADR 0135) | `docs/adr/0135-memory-model.md`: AOT fixed heap + free-list + rebind-free + escape-analysis elision (ADR 0134); interpreter generational GC (ADR 0132); precise stack roots follow-on; stress harness (ADR 0133); safe GC collection points.
-| Phase 3 — memory model & optimization | Escape analysis + scalar replacement | 🟠 PARTIAL (ADR 0134: dead top-level list elision; scalar replacement follow-on) | So closures/env-stores don't force heap allocation; keep the interpreter's GC as the fallback. |
-| Phase 4 — docs & verification | Keep docs current | 🔄 CONTINUOUS | Keep `docs/language.md`, `docs/operations.md`, `docs/roadmap.md`, `docs/adr/` current after every change. |
-| Phase 4 — docs & verification | Every AOT feature ships tests | 🔄 CONTINUOUS | Every AOT feature ships a unit test + an `integration/` whole-program compile-and-run test. |
-| Phase 5 — modern GC & dead-object elimination | Generational tracing GC (interpreter) | ✅ LANDED (two-generation nursery, ADR 0132; full-GC threshold bounds old-gen) | Today `jit.go`'s `Collect()` is a *conservative* mark-and-sweep that frees only pure-data objects (list/dict/set/str/int/float) and **never** classes/methods/closures/imports/modules. Upgrade to a modern generational tracing GC: a young-object nursery, a tenured space, and incremental/safepoint-driven collection so long-running programs reclaim *all* unreachable objects (including closures/classes) without a stop-the-world pause. |
-✅ DONE — GC runs inside function bodies at top-level statement boundaries; params are spilled into rooted stack slots and function-local allocas are registered as GC roots (via gcReg), so live heap objects survive GC while a function executes. The optimizer promote pass treats address-escaped allocas (gc-store roots) as non-promotable, keeping rooting stores valid under `opt`. Runtime tests verify a function with >1024 unreachable allocations completes and a live function-local list survives GC.
-| Phase 5 — modern GC & dead-object elimination | Escape-analysis heap elision (modern dead-object elimination) | ✅ DONE (`fn.deadHeapElim` in `opt.go`, ADR 0143) | IR-level liveness + escape-analysis pass over the emitted heap IR: an `rt_alloc`'d object whose handle never escapes the function and is never read/printed/derived (`rt_slice`) is unobservable, so its allocation and **all** of its mutating ops (`rt_set_elem`/`rt_append`/`rt_dict_put`/`rt_set_add`) are eliminated together. A handle escapes if it is stored into another object (value operand), converted via `rt_mkobj`, returned, stored to memory, or used in any non-call instruction. This is the IR-level generalization of the source-level `escape.go` dead-list elision and also catches objects built inside function bodies. |
-| Phase 5 — modern GC & dead-object elimination | GC stress / leak harness | ✅ LANDED (TestGCStressBoundedHeap + TestGCFullGCBoundsOldGen, ADR 0133) | Extend `memory_test.go` with stress cases: rebind loops, generator yield-lists, closure envs, and class attr cycles — asserting the collector reclaims unreachable objects and keeps live ones, with parity across both the interpreter and AOT paths. |
-| Phase 6 — language-surface parity | f-strings / string interpolation | ✅ DONE | Python's signature ergonomic feature; absent in lexer/parser/AST and both backends. Add `f"..."`/`f'...'` with `{}` interpolation. |
-| Phase 6 — language-surface parity | Slicing | ✅ DONE | `s[a:b]`, `s[::step]`, negative indices for str/list/dict; absent (`:` today only in dict literals, annotations, lambdas). |
-| Phase 6 — language-surface parity | Augmented assignment | ✅ DONE | `+= -= *= /= //= %=`; absent today. |
-| Phase 6 — language-surface parity | Tuple unpacking / multi-assign | ✅ DONE | `a, b = b, a`, `for a, b in ...`; interpreter + codegen tuple assignment. |
-| Phase 6 — language-surface parity | Membership + identity ops | ✅ DONE | `in`/`not in` (list/dict/set/str) and `is`/`is not`; interpreter + codegen via runtime `rt_contains`. |
-| Phase 6 — language-surface parity | Power `**` | ✅ DONE | Wired as a right-associative binop binding tighter than unary on the left. Interpreter: `math.Pow` for float, exact binary-exponentiation for int. Codegen: exact fold for int literals, `@llvm.pow.f64` (sitofp/fptosi) for non-literal ints, `@llvm.pow.f64` in `floatBinOp`/`floatEval`. Tests: `TestEvalPower`, `TestIRPowerInt`, `TestIRPowerConst`, `TestExecPower`. |
-| Phase 6 — language-surface parity | Pattern-match depth | ✅ DONE | Guards (`case x if cond:`), or-patterns (`case 1 | 2:`), dict patterns (`case {"k": v}:`) delivered (ADR 0138); class patterns (`case Point(x, y):`) delivered in the interpreter (attribute binding, subclass walk, alias classes); AOT/codegen match remains expression-equality only |
-| Phase 6 — language-surface parity | Operator overloading (dunder) | ✅ DONE (ADR 0139) | `__add__`/`__sub__`/`__mul__`/`__truediv__`/`__floordiv__`/`__mod__`/`__pow__` + comparisons dispatch in the interpreter, with reflected `__r*__` fallback; codegen static-dispatch is an AOT limit. |
-| Phase 6 — language-surface parity | `with` / context managers, `yield from` | ✅ DONE | `with` / context managers and `yield from` are implemented (commits fa52b1c). |
-| Phase 7 — correctness & tooling | Shared IR / conformance matrix | ✅ DONE | Interpreter and codegen each consume the AST independently today — no shared IR, so semantics drift (e.g., dispatch is statement-level in AOT only). Add a shared lowering spec + a matrix that runs every `integration/` case through **both** backends and diffs. |
-| Phase 7 — correctness & tooling | REPL error recovery | ✅ DONE | `--repl` aborts on a single parse error; add panic-recovery/error-token parsing for a modern REPL. |
-| Phase 7 — correctness & tooling | Richer `--json` diagnostics | ✅ DONE | Emit spans **and** inferred types (the semantic pass already computes them) in the `--json` schema. |
-| Phase 8 — developer tooling & ecosystem | Formatter (`gusty fmt`) | ✅ DONE (Round 8) | `cmd/` ships only the compiler; add a gofmt/black-style source formatter so the language has a canonical style. |
-| Phase 8 — developer tooling & ecosystem | Language server / LSP | ✅ DONE | Editors get completion + hover + diagnostics; build on the `--json` span/type groundwork (semantic already infers types). |
-| Phase 8 — developer tooling & ecosystem | Standard library + package resolution | ✅ DONE | No stdlib dir today; AOT `import` is data-only. Add `math`/`string`/`collections`/`json`-style stdlib and on-disk module/package resolution. |
-| Phase 8 — developer tooling & ecosystem | Runtime tracebacks with source spans | ✅ DONE | Interpreter runtime errors now render a Python-style traceback with line/col call frames (module, function, and method frames, innermost-last), and the CLI emits a structured `traceback` field in JSON output. AOT has no runtime-error infrastructure (errors are compile-time folds), so tracebacks apply to the interpreter runtime path; codegen compile errors already carry source spans. |
-| Phase 8 — developer tooling & ecosystem | Docstrings / `__doc__` | ✅ DONE (Round 9, ADR 0141; AOT `__doc__` interpreter-only) | Absent; add `def`/`class` docstrings and `__doc__` introspection. |
-| Phase 8 — developer tooling & ecosystem | Benchmark + profiling suite | ✅ DONE | No `Benchmark` tests today; add a perf harness that runs both backends (supports the "compiler is the product" principle). |
-| Phase 9 — type system & runtime robustness | Tuple type + tuple unpacking | ✅ DONE (Round 11) | Semantic has no `Tuple` kind; add it as the type-system underpinning for Phase 6 unpacking and multi-return. |
-| Phase 9 — type system & runtime robustness | Generics / protocols | ✅ DONE (Round 14) | Gradual types stop at `Any`; add `Sequence[T]`/`Callable` bounds and structural protocols. |
-| Phase 9 — type system & runtime robustness | Standalone type-check mode (`gusty check`) | ✅ DONE (Round 13) | `--check <src>` / `gusty check <files>` run the semantic pass (mypy-style) without executing; new arg-vs-annotation and return-vs-`->` checks; `CheckSource/CheckFile/CheckFiles` API; JSON + deterministic exit codes (0/1/2). ADR 0143. |
-| Phase 9 — type system & runtime robustness | Debug symbols / source maps for AOT binaries | ✅ DONE (Round 3) — `--emit-source-map`, `--build --source-map-out`, `--debug` (DWARF via `cc -g`) | `--build` executables need line/col + variable info for real stack traces and debuggers. |
-| Phase 9 — type system & runtime robustness | FFI / C interop + embedding API | ✅ DONE (Round 15: `extern fn` C calls) | Systems-language parity: call C from `gusty` and embed the interpreter/codegen as a library. |
-| Phase 9 — type system & runtime robustness | Fuzz/property-based testing of both backends | ✅ DONE (Round 16) | Given the two-backend drift risk, add `go-fuzz`/property tests over the AST → interpreter/codegen. |
+### Phase 0 — hygiene
+- Version reconciled (v0.10.0 in `compile.go`, printed by CLI). ✅ DONE
+- CHANGELOG kept as one clean list; dedupe if it grows. ✅ DONE
+- **New**: renumber the duplicated `docs/adr/0143-*.md` (dead-heap-elimination
+  vs standalone-type-check) to `0143` and `0143bis` (or 0152). ⏳ PLANNED
+
+### Phase 1 — AOT/interpreter parity
+- Floats in AOT ✅ DONE — codegen emits real `double` IR (`fadd double 0.0, <const>`),
+  float arithmetic with `sitofp` promotion, `%.17g` float print matching interpreter
+  `%v`, `fcmp` float comparisons, and `double` allocas/stores tracked via `floatVars`;
+  `float()` folds int/string literals to double constants.
+- Runtime heap + GC in AOT (milestone 1..11) ✅ DONE — boxed mutable lists with
+  `list.append()` on variables + `print(list)`, `len(x)` on runtime list vars,
+  `x[i]` index read, free-list slot reuse on rebind, free on rebind-to-non-list,
+  variable-index reads `x[a]`, runtime heap dicts, runtime heap sets,
+  cross-collection rebind free, heap-stress/leak harness, heap bounds safety
+  (`rt_alloc` -1 sentinel), conservative mark-and-sweep GC, closure env slots
+  rooted across top-level GC boundaries. ✅ DONE
+
+### Phase 2 — language surface
+- Gradual typing (`--verify` checks assignment annotations) ✅ DONE
+- Comprehensions (list/dict/set) ✅ DONE
+- Slicing (`s[a:b]`, `s[::step]`, negative indices) ✅ DONE — interpreter + codegen
+  (string *variables* limited to inline literals in AOT; see gap below)
+- Augmented assignment (`+= -= *= /= //= %=`) ✅ DONE
+- Tuple unpacking / multi-assign (`a, b = b, a`, `for a, b in ...`) ✅ DONE
+- Membership + identity ops (`in`/`not in`, `is`/`is not` via `rt_contains`) ✅ DONE
+- Power `**` (right-assoc binop; `math.Pow`/binary-exponentiation; `@llvm.pow.f64` in AOT) ✅ DONE
+- Pattern-match depth: guards (`case x if cond:`), or-patterns (`case 1 | 2:`),
+  dict patterns (`case {"k": v}:`) ✅ DONE (interpreter; AOT is expression-equality only — see gap)
+- Class patterns (`case Point(x, y):` with subclass walk + aliases) ✅ DONE (interpreter-only; see gap)
+- Operator overloading / dunder dispatch ✅ DONE (interpreter; AOT static-dispatch only — see gap)
+- `with` / context managers + `yield from` ✅ DONE (interpreter; AOT emits protocol/loop but runtime blocked — see gap)
+- f-strings (`f"..."` / `f'...'` with `{}` interpolation) ✅ DONE
+- Docstrings + `__doc__` ✅ DONE (interpreter; AOT `__doc__` interpreter-only — see gap)
+- FFI / `extern fn` → C calls ✅ DONE
+- On-disk stdlib modules (`math`, `string`, `collections`, `json` — folded as AOT constants) ✅ DONE
+
+### Phase 3 — tooling
+- CLI pipeline (eval | codegen → `llc` → `cc`) ✅ DONE
+- Multi-file build ✅ DONE
+- Source maps + DWARF debug info ✅ DONE
+- Standalone type-check mode (`gusty check`) ✅ DONE
+- Canonical formatter (`gusty fmt`) ✅ DONE
+- LSP server (stdio; hover, completion, diagnostics) ✅ DONE
+- `--json` schema for AST/IR dumps ✅ DONE
+- Seeded property/fuzz testing across both backends ✅ DONE
+
+---
+
+## Current gap-shaped work (fill before new features)
+
+These are the *known* parity/robustness gaps — the next planned items, in
+priority order. Each ships with a unit test + an `integration/` compile-and-run
+case (and an ADR where the decision is non-obvious).
+
+### Gap A — AOT dynamic-dispatch correctness (ADR 0151)
+- **Status**: 🟠 PARTIAL — statement-level dynamic dispatch landed; all-call-site
+  dispatch now has conformance coverage (`dispatch_nested` program). Remaining:
+- AOT dispatch-on-variable *across allocations* is a known GC/instance-layout
+  bug (ADR 0151): a receiver handle that points at a re-allocated slot is
+  mis-tagged. Fix the instance-layout/rooting so a polymorphic receiver that
+  survives GC dispatches correctly on the live instance.
+- Extend all-call-site dispatch to *expression-level* calls on runtime-unknown
+  receivers (e.g. `v.speak()` inside a function body), not just statement-level.
+- DoD: parity program dispatches identically on interpreter + AOT + JIT.
+
+### Gap B — AOT match / pattern exhaustiveness
+- **Status**: 🟠 PARTIAL — AOT `match` is expression-equality only.
+- Port interpreter pattern semantics to codegen: guards, or-patterns, dict
+  patterns, class patterns (subclass walk + attribute binding).
+- **New**: exhaustiveness / irrefutability checking in `semantic.go` — a
+  `match` over an `int`/enum-like subject with a `case _:` is exhaustive; a
+  non-exhaustive `match` is a warning (mypy-style) and a definite-assignment
+  analysis proves which bindings are definitely assigned after the `match`.
+- DoD: every interpreter `match` case also lowers to AOT; a
+  `match_exhaustive` integration program runs identically on both backends.
+
+### Gap C — arbitrary (fnptr-valued) decorators
+- **Status**: 🟠 PARTIAL — identity + source-order decorators work; full
+  wrapping decorators need function-pointer operands + indirect calls.
+- Add fnptr operands and indirect `call` lowering to codegen (`closure.go`),
+  then support `@dec` where `dec(f)` returns a transformed function value.
+- DoD: `@dec @dec2 def f` with wrapping decorators runs identically on both
+  backends.
+
+### Gap D — AOT `with` / `yield from` runtime (ADR 0140)
+- **Status**: 🟠 PARTIAL — codegen emits the `__enter__`/`__exit__` protocol and
+  a runtime yield-from loop, but execution is blocked by a pre-existing
+  duplicate-function defect (ADR 0140).
+- Fix the duplicate-function lowering so the emitted protocol/loop actually
+  runs; add parity programs for `with expr as name` + `yield from`.
+- DoD: `with` and `yield from` integration programs run on AOT, byte-identical
+  to the interpreter.
+
+### Gap E — AOT float/`__doc__`/string-slicing leftovers
+- **Status**: ✅ mostly DONE, small leftovers.
+- `float()`/`round()` paths that still fall back to interpreter-only
+  (`codegen.go:4449`) should emit real `double` IR.
+- `__doc__` reads are interpreter-only: emit the folded docstring constant in AOT.
+- String slicing in AOT is limited to inline literals; support string *variable*
+  slicing by lowering to the runtime `rt_slice` helper.
+- DoD: no `interpreter-only` branch remains in codegen for a tested feature.
+
+### Gap F — AOT operator-overloading (static dispatch only)
+- **Status**: 🟠 PARTIAL — dunder dispatch is interpreter-only; AOT is static.
+- Lower `__add__`/`__sub__`/... dispatch to runtime method lookup when the
+  operand is a class instance (reuse Gap A's dispatch machinery).
+- DoD: `a + b` on user classes runs identically on both backends.
+
+### Gap G — AOT `in`/`not in` on inline literal containers
+- **Status**: 🟠 PARTIAL — `rt_contains` handles runtime heap handles; inline
+  literal containers (a global `@.lstN` struct) are not lowered.
+- Unwrap the literal-list global and feed its element chain to `rt_contains`.
+- DoD: `x in [1,2,3]` with a runtime `x` lowers on AOT.
+
+### Gap H — real LLVM `opt` pipeline (scalar replacement follow-on)
+- **Status**: 🟠 PARTIAL — `opt.go` is a pure-Go textual dead-global eliminator,
+  not an LLVM pass.
+- Drive the real `llvm::verifyModule`/`opt` pipeline through the
+  `tinygo.org/x/go-llvm` bindings so AOT emits verified, optimized IR.
+- **New (follow-on)**: scalar replacement / SROA — promote a heap object whose
+  handle never escapes the function to registers, eliminating the `rt_alloc`
+  (this is the natural partner of Gap A's instance-layout work).
+- DoD: every emitted module passes `verifyModule`; a hot loop shows SROA
+  eliminates the allocation.
+
+---
+
+## New work — modern 2026 language-design roadmap
+
+These are *new* phases layered on top of the existing DONE work. Each item is
+a first-class roadmap entry with an ADR, a unit test, and an `integration/`
+program where relevant. Order reflects dependency: front-end (lexer/parser)
+first, then semantics/type system, then runtime, then codegen, then tooling.
+
+### Phase 4 — lexer modernization (2026)
+
+**Goal: a resilient, position-rich lexer that supports a modern source surface.**
+
+- **L4.1 Error-recovering lexer** — on an unexpected character, emit a
+  `TokError` token carrying the span + message and *resume*, instead of
+  aborting the whole file. The parser/semantic can then report multiple
+  diagnostics per run (feed the LSP).
+- **L4.2 Rich token spans** — each token carries `start` AND `end` (byte +
+  rune offsets), plus an optional multi-line flag, so f-strings, slices, and
+  `match` patterns have exact ranges for hover/diagnostics/formatting.
+- **L4.3 Unicode identifiers** — accept the full `XID_Start`/`XID_Continue`
+  classes (not just ASCII), with NFC normalization + a clear diagnostic for
+  confusables (e.g. `l` vs `1`, `Ο` vs `O`).
+- **L4.4 Numeric-literal modernization** — `0xFF` hex, `0b101` binary,
+  `0o17` octal, and `1_000`/`0x_FF` digit-group separators; keep exact
+  integer semantics, reject `_` misuse.
+- **L4.5 Raw strings + triple-quoted strings** — `r"..."` (no escape
+  processing) and `"""..."""`/`'''...'''` for docstrings and multi-line
+  literals; the docstring extraction path (`__doc__`) re-uses them.
+- **L4.6 Line continuation** — trailing `\` at end of line joins the next
+  physical line into one logical line (Python-compatible), so long call
+  argument lists don't force parens.
+- **L4.7 Token-stream cursor API** — a small cursor/`peek(n)`/`mark()`
+  abstraction shared by parser, formatter, and LSP so all three walk the same
+  stream (single source of truth for spans).
+
+### Phase 5 — parser modernization (2026)
+
+**Goal: a fast, error-tolerant Pratt parser with a modern syntax surface.**
+
+- **L5.1 Pratt / precedence-climbing parser** — replace the recursive
+  expression parser with a Pratt loop keyed off a precedence table (unary,
+  `**` right-assoc, multiplicative, additive, comparison, `and`/`or`, ternary).
+  Keeps current semantics; makes new operators one-line additions.
+- **L5.2 Panic-mode error recovery** — on a parse error, skip to the next
+  statement/block boundary and keep parsing, producing a forest of
+  `ParseError`s (not just the first). Feeds the LSP + `gusty check`.
+- **L5.3 Trailing commas** — allow `f(a, b,)`, `[1, 2,]`, `{1: 2,}` and
+  `match` case arg lists, for clean diffs and formatter round-trips.
+- **L5.4 Walrus operator `:=`** — assignment expressions usable inside `if`
+  conditions and comprehensions (`if (n := len(x)) > 0:`); scope rules per
+  Python 3.8+.
+- **L5.5 Union-type syntax `int | str`** — parse `|` in annotation position
+  (and in `match` patterns) as a union type, not a bitwise-or; feed the
+  gradual type checker.
+- **L5.6 `async`/`await` + effectful syntax** — parse `async def`,
+  `await expr`, `async for`, `async with` as first-class syntax (see
+  Phase 7 runtime); AOT lowers them to state machines.
+- **L5.7 Type aliases `type X = ...`** — parse alias declarations; the type
+  checker resolves them structurally (not nominal) by default.
+- **L5.8 Incremental parse** — a stable parse tree keyed by spans so the LSP
+  and REPL can re-parse only edited ranges (feeds incremental JIT in Phase 9).
+
+### Phase 6 — semantics & type-system growth (2026)
+
+**Goal: move `semantic.go` from static checks toward a real gradual checker.**
+
+- **L6.1 Exhaustiveness checking for `match`** — prove a `match` covers all
+  subject shapes (int ranges, unions, wildcard); warn on non-exhaustive;
+  this is the semantic half of Gap B.
+- **L6.2 Definite-assignment analysis** — track which names are definitely
+  assigned on every path through `if`/`match`/`try`; warn on possibly-unbound
+  reads (mypy-style) before codegen.
+- **L6.3 Union types** (`int | str`, `None | int` sugar for `Optional`) —
+  infer/check unions through assignment + call boundaries; AOT widens to a
+  tagged union layout.
+- **L6.4 Literal types** — `Literal[1, 2]` so `match` on constants enables
+  exhaustiveness + narrowing; feed L6.1.
+- **L6.5 Type narrowing / refinement** — after `if isinstance(x, int):`, the
+  checker narrows `x` from `any` to `int`; after `match case 1:`, narrows to
+  literal `1`. Drives better AOT layout (Gap A).
+- **L6.6 Variance + generics** — `list[T]` invariance, protocol structural
+  subtyping; `gusty check` reports contravariant misuse. (Monomorphization is
+  Phase 8.)
+- **L6.7 Call-graph + reachability** — compute a module call graph so
+  dead-global elimination (`opt.go`) is precise and `__doc__` folding is
+  reachable-driven.
+
+### Phase 7 — runtime: concurrency, effects, precise GC (2026)
+
+**Goal: a deterministic async core + memory-safety hardening.**
+
+- **L7.1 Async runtime (`async`/`await`)** — a small cooperative scheduler
+  (event loop) in the interpreter and AOT; `async for`/`async with` lower to
+  generator state machines; deterministic, no GIL-style races.
+- **L7.2 Precise stack roots** — replace conservative mark-and-sweep with
+  precise rooting: the GC knows exactly which stack slots/registers hold
+  handles (fixes Gap A's instance-layout bug at the root cause).
+- **L7.3 Tagged pointers / NaN-boxing** — box small ints and floats in the
+  payload so `int`/`float`/`bool` avoid heap allocation; pairs with L7.2 for
+  a compact, allocation-free fast path.
+- **L7.4 Refcount + cycle-collect hybrid** — refcount for acyclic data (fast
+  reclaim), tracing collector for cycles; deterministic pause for the AOT
+  path.
+- **L7.5 Algebraic effects** — a `raise`/`yield`/`await` effect system as a
+  first-class control-flow model in codegen, unifying exceptions, generators,
+  and async (one lowering, one runtime).
+- **L7.6 Effect/async exhaustiveness** — the semantic check proves an
+  `async def`'s control flow always terminates (no missing `await`/`return`).
+
+### Phase 8 — codegen: monomorphization, verification, autovectorization (2026)
+
+**Goal: make AOT a first-class optimized backend.**
+
+- **L8.1 Generic monomorphization** — instantiate `list[T]`/`dict[K,V]` per
+  concrete type at compile time (no runtime generics), enabling scalar
+  replacement (Gap H) and boxing elimination (L7.3).
+- **L8.2 `verifyModule`-driven pipeline** — every emitted module runs the real
+  LLVM verifier + `opt` passes through `tinygo.org/x/go-llvm` (extends Gap H).
+- **L8.3 Autovectorization** — annotate loop/array IR so LLVM vectorizes hot
+  numeric loops; add a `--report=vector` output showing which loops vectorize.
+- **L8.4 SROA/scalar-replacement** — promote non-escaping heap objects to
+  registers (the Gap H follow-on), now driven by monomorphization (L8.1).
+- **L8.5 Debug line tables in IR** — emit `!dbg` records from `sourcemap.go`
+  spans so DWARF (already wired via `cc -g`) shows exact source lines.
+
+### Phase 9 — tooling: incremental JIT, package manager, richer LSP (2026)
+
+**Goal: a modern developer loop.**
+
+- **L9.1 Incremental JIT REPL** — recompile only edited ranges (L5.8) through
+  the LLVM JIT; hot loop retains registers across edits; `--repl` mode.
+- **L9.2 Package manager (`gusty install`/`publish`)** — a module registry for
+  on-disk stdlib + user packages; `extern fn` + FFI bindings per package;
+  reproducible lockfile.
+- **L9.3 Incremental build cache** — key module IR/objects by source hash +
+  dependency graph (L6.7); only rebuild dirty subgraphs (`gusty build --cache`).
+- **L9.4 Richer LSP** — go-to-definition, find-references, rename, hover type
+  display (uses L6.3/L6.5 narrowing), inline error squiggles from the
+  error-recovering lexer/parser (L4.1/L5.2).
+- **L9.5 Formatting on save** — `gusty fmt` as an LSP `textDocument/format`
+  provider, round-tripping f-strings, trailing commas (L5.3), and docstrings.
+- **L9.6 Fuzz/parity CI** — extend `proptest.go` to differential-test the
+  lexer/parser (parse → format → reparse) and both backends on the new
+  surface (unions, async, walrus), seeded + deterministic.
+
+### Phase 10 — cross-cutting: targets, ABI, portability (2026)
+
+**Goal: Pyre runs anywhere.**
+
+- **L10.1 WASM target** — lower AOT to WebAssembly via LLVM; `gusty --target=wasm`
+  for browser/edge runtimes; the scheduler (L7.1) maps to `wasm` event loop.
+- **L10.2 ABI stability** — a versioned, documented C ABI for `extern fn`
+  exports (stable struct layout for unions/tagged values across releases).
+- **L10.3 Shared-library export** — `gusty --build=shared` emits a
+  position-independent `.so`/`.dylib` with the stable ABI (L10.2).
+- **L10.4 Benchmark harness** — `integration/` parity programs become
+  benchmark cases (interp vs AOT vs JIT) so regressions surface as numbers.
+
+---
 
 ## Definition of done per item
-- Interpreter feature + unit test.
-- AOT emitter feature + unit test.
-- `integration/` whole-program compile-and-run (through `llc`/`cc`).
-- `docs/language.md` + `docs/adr/` updated; `CHANGELOG.md` bumped.
 
-## Quick build/test commands
-```
-go build ./...            # compile compiler + CLI
-go test ./pkg/lang/       # unit tests (interpreter + codegen)
-go test ./integration/    # whole-program compile-and-run
-```
+An item is done when it ships:
+
+- A unit test in `pkg/lang/` exercising the behavior.
+- An `integration/` whole-program compile-and-run case where applicable,
+  asserting interpreter/AOT/JIT parity (byte-identical stdout).
+- A `docs/adr/` entry for any non-obvious decision (or a renumbering of an
+  existing ADR, e.g. the duplicated `0143`).
+- An update to `docs/language.md` and `docs/operations.md` when it changes
+  user-visible syntax or CLI flags.
+- A CHANGELOG entry under `[Unreleased] v0.10.0`.
+
+## Definition of done for gap-shaped work
+A gap is closed when the previously interpreter-only path also lowers on AOT
+(or a new feature's both-backend parity program passes), and no
+`interpreter-only`/`not lowered` comment remains in `codegen.go` for it.
+
+## Sequencing note
+Gaps A–H are the *current* next work (they unblock modern features). The 2026
+phases (4–10) are layered on top: lexer/parser modernization (4–5) is
+front-end work that can start in parallel with Gap D–H; semantics (6) and
+runtime (7) build on Gap A–B; codegen (8) builds on Gap H.
