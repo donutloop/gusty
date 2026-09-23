@@ -184,7 +184,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   confusables (e.g. `l` vs `1`, `Ο` vs `O`).
 - **L4.4 Numeric-literal modernization** — `0xFF` hex, `0b101` binary,
   `0o17` octal, and `1_000`/`0x_FF` digit-group separators; keep exact
-  integer semantics, reject `_` misuse.
+  integer semantics, reject `_` misuse. ✅ DONE (ADR 0153)
 - **L4.5 Raw strings + triple-quoted strings** — `r"..."` (no escape
   processing) and `"""..."""`/`'''...'''` for docstrings and multi-line
   literals; the docstring extraction path (`__doc__`) re-uses them.

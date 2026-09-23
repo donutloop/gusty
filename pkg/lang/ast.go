@@ -234,8 +234,9 @@ func (n *Name) Span() Span { return n.Src }
 func (n *Name) exprNode()  {}
 
 type IntLit struct {
-	Value int64 `json:"value"`
-	Src    Span  `json:"span,omitempty"`
+	Value int64  `json:"value"`
+	Text  string `json:"text,omitempty"`
+	Src   Span   `json:"span,omitempty"`
 	Ty    string `json:"inferred,omitempty"`
 }
 
@@ -244,6 +245,7 @@ func (n *IntLit) exprNode()  {}
 
 type FloatLit struct {
 	Value float64 `json:"value"`
+	Text  string `json:"text,omitempty"`
 	Src    Span    `json:"span,omitempty"`
 	Ty    string `json:"inferred,omitempty"`
 }

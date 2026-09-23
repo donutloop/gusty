@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -32,6 +33,120 @@ func colAt(src string, lineStart, i int) int {
 
 // Lex tokenizes src into tokens, emitting NEWLINE/INDENT/DEDENT per Python rules.
 // Blank and comment-only lines produce no NEWLINE and do not change indentation.
+// isDigitForBase reports whether c is a digit in the given base.
+func isDigitForBase(c byte, base int) bool {
+	switch base {
+	case 16:
+		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+	case 10:
+		return c >= '0' && c <= '9'
+	case 8:
+		return c >= '0' && c <= '7'
+	case 2:
+		return c == '0' || c == '1'
+	}
+	return false
+}
+
+// scanDigits scans digits of base, allowing single '_' separators between
+// digits, or a single leading separator after a base prefix (allowLeading,
+// e.g. 0x_FF). It returns the cleaned digit string (separators removed) and
+// the index just past the last digit, or an error on misplaced separators.
+func scanDigits(src string, i, base int, allowLeading bool) (string, int, *LexError) {
+	digits := ""
+	seen := false
+	for i < len(src) {
+		c := src[i]
+		switch {
+		case c == '_':
+			// a separator is valid only between digits, or once right after a
+			// non-decimal base prefix (e.g. 0x_FF).
+			if seen {
+				if i+1 >= len(src) || !isDigitForBase(src[i+1], base) {
+					return "", i, &LexError{Msg: "misplaced '_' in numeric literal"}
+				}
+				seen = false
+				i++
+				continue
+			}
+			if allowLeading {
+				if i+1 >= len(src) || !isDigitForBase(src[i+1], base) {
+					return "", i, &LexError{Msg: "misplaced '_' in numeric literal"}
+				}
+				allowLeading = false
+				i++
+				continue
+			}
+			return "", i, &LexError{Msg: "misplaced '_' in numeric literal"}
+		case isDigitForBase(c, base):
+			digits += string(c)
+			seen = true
+			i++
+			continue
+		default:
+			return digits, i, nil
+		}
+	}
+	if !seen {
+		return "", i, &LexError{Msg: "invalid numeric literal"}
+	}
+	return digits, i, nil
+}
+
+// lexNumber parses a numeric literal beginning at src[start] (the first
+// character of the value, i.e. after any leading '-' sign). It supports
+// decimal integer/float, hex (0x), binary (0b), octal (0o), and '_' digit
+// separators. It returns whether the literal is a float, its integer value,
+// its float value, and the index just past the end of the literal.
+func lexNumber(src string, start int) (isFloat bool, ival int64, fval float64, end int, err *LexError) {
+	i := start
+	base := 10
+	allowLeading := false
+	if i+1 < len(src) && src[i] == '0' {
+		switch src[i+1] {
+		case 'x', 'X':
+			base, allowLeading = 16, true
+			i += 2
+		case 'b', 'B':
+			base, allowLeading = 2, true
+			i += 2
+		case 'o', 'O':
+			base, allowLeading = 8, true
+			i += 2
+		}
+	}
+	intDigits, j, serr := scanDigits(src, i, base, allowLeading)
+	if serr != nil {
+		return false, 0, 0, start, serr
+	}
+	if base != 10 {
+		// hex/binary/octal are integer-only literals
+		v, perr := strconv.ParseInt(intDigits, base, 64)
+		if perr != nil {
+			return false, 0, 0, start, &LexError{Msg: "integer literal too large"}
+		}
+		return false, v, 0, j, nil
+	}
+	// decimal: integer or float
+	if j < len(src) && src[j] == '.' {
+		fracDigits, k, ferr := scanDigits(src, j+1, 10, false)
+		if ferr != nil {
+			return false, 0, 0, start, ferr
+		}
+		text := intDigits + "." + fracDigits
+		f, perr := strconv.ParseFloat(text, 64)
+		if perr != nil {
+			return false, 0, 0, start, &LexError{Msg: "invalid float literal"}
+		}
+		return true, 0, f, k, nil
+	}
+	v, perr := strconv.ParseInt(intDigits, 10, 64)
+	if perr != nil {
+		return false, 0, 0, start, &LexError{Msg: "integer literal too large"}
+	}
+	return false, v, 0, j, nil
+}
+
 func Lex(src string) ([]Token, error) {
 	var toks []Token
 	n := len(src)
@@ -141,63 +256,30 @@ func Lex(src string) ([]Token, error) {
 				i++
 			case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])):
 				start := i
-				neg := true
-				i++
-				j := i
-				for j < n && unicode.IsDigit(rune(src[j])) {
-					j++
+				isFloat, ival, fval, end, lerr := lexNumber(src, start+1)
+				if lerr != nil {
+								return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, start)}, Msg: lerr.Msg}
 				}
-				isFloat := false
-				if j < n && src[j] == '.' {
-					isFloat = true
-					j++
-					for j < n && unicode.IsDigit(rune(src[j])) {
-						j++
-					}
-				}
-				digits := src[i:j]
-				text := src[start:j]
+				text := src[start:end]
 				if isFloat {
-					f := float64(0)
-					fmt.Sscanf(digits, "%f", &f)
-					if neg {
-						f = -f
-					}
-					emit(TokFloat, text, func(t *Token) { t.Float = f })
+								emit(TokFloat, text, func(t *Token) { t.Float = -fval })
 				} else {
-					var v int64
-					fmt.Sscanf(digits, "%d", &v)
-					if neg {
-						v = -v
-					}
-					emit(TokInt, text, func(t *Token) { t.Int = v })
+								emit(TokInt, text, func(t *Token) { t.Int = -ival })
 				}
-				i = j
+				i = end
 			case c >= '0' && c <= '9':
 				start := i
-				j := i
-				for j < n && unicode.IsDigit(rune(src[j])) {
-					j++
+				isFloat, ival, fval, end, lerr := lexNumber(src, i)
+				if lerr != nil {
+								return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, start)}, Msg: lerr.Msg}
 				}
-				isFloat := false
-				if j < n && src[j] == '.' {
-					isFloat = true
-					j++
-					for j < n && unicode.IsDigit(rune(src[j])) {
-						j++
-					}
-				}
-				digits := src[i:j]
+				text := src[start:end]
 				if isFloat {
-					f := float64(0)
-					fmt.Sscanf(digits, "%f", &f)
-					emit(TokFloat, src[start:j], func(t *Token) { t.Float = f })
+								emit(TokFloat, text, func(t *Token) { t.Float = fval })
 				} else {
-					var v int64
-					fmt.Sscanf(digits, "%d", &v)
-					emit(TokInt, src[start:j], func(t *Token) { t.Int = v })
+								emit(TokInt, text, func(t *Token) { t.Int = ival })
 				}
-				i = j
+				i = end
 			case isIdentStart(c):
 				// f-string prefix: f"..." / f'...'
 				if (c == 'f' || c == 'F') && i+1 < n && (src[i+1] == '"' || src[i+1] == '\'') {

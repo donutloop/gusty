@@ -127,6 +127,26 @@ and untyped code falls back to dynamic dispatch at runtime.
 - Statements are separated by newlines; a line ends a statement.
 - Comments begin with `#` and run to end of line.
 
+- Comments begin with `#` and run to end of line.
+
+### Numeric literals
+
+Integer and float literals accept several base prefixes and `_` digit
+separators, mirroring Python's syntax:
+
+- `0x` / `0X` — hexadecimal integer, e.g. `0xFF` == 255.
+- `0b` / `0B` — binary integer, e.g. `0b101` == 5.
+- `0o` / `0O` — octal integer, e.g. `0o17` == 15.
+- `_` may appear between digits, or once right after a base prefix, as a
+  digit separator (e.g. `1_000`, `0x_FF`, `0b1010_0000`). It is ignored for
+  the numeric value.
+- Floats accept separators in the integral and fractional parts
+  (e.g. `1_0.5` == 10.5, `1.5_0` == 1.5).
+
+Misplaced separators (`1__0`, `1_`, `0x_`) are a lexical error. Hex/binary/
+octal literals are integer-only. Values are computed exactly at lex time, so
+the interpreter and the AOT backend agree on `0xFF + 0b101 + 0o17 + 1_000`.
+
 ## Statements
 
 ### Assignment

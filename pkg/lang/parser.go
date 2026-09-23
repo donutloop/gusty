@@ -706,7 +706,7 @@ func (p *parser) parsePatternAtom() (Expr, error) {
 		return &Name{Value: t.Text, Src: t.Span}, nil
 	case t.Kind == TokInt:
 		p.next()
-		return &IntLit{Value: t.Int, Src: t.Span}, nil
+		return &IntLit{Value: t.Int, Text: t.Text, Src: t.Span}, nil
 	case t.Kind == TokString:
 		p.next()
 		return &StrLit{Value: t.Text, Src: t.Span}, nil
@@ -1361,10 +1361,10 @@ func (p *parser) parseAtom() (Expr, error) {
 	switch {
 	case t.Kind == TokInt:
 		p.next()
-		return &IntLit{Value: t.Int, Src: t.Span}, nil
+		return &IntLit{Value: t.Int, Text: t.Text, Src: t.Span}, nil
 	case t.Kind == TokFloat:
 		p.next()
-		return &FloatLit{Value: t.Float, Src: t.Span}, nil
+		return &FloatLit{Value: t.Float, Text: t.Text, Src: t.Span}, nil
 	case t.Kind == TokString:
 		p.next()
 		return &StrLit{Value: t.Str, Src: t.Span}, nil

@@ -71,3 +71,22 @@ class Animal:
 		t.Fatalf("format dropped class docstring:\n%s", out)
 	}
 }
+
+// TestFmtNumericLiterals verifies the canonical formatter preserves modern
+// numeric-literal spelling (hex/binary/octal and digit separators) verbatim,
+// so formatting is a faithful round-trip.
+func TestFmtNumericLiterals(t *testing.T) {
+	src := `x = 0xFF + 0b101 + 0o17 + 1_000 + 0x_FF
+y = -0b1010
+z = 2_5
+`
+	f, err := FormatSrc(src)
+	if err != nil {
+		t.Fatalf("FormatSrc: %v", err)
+	}
+	for _, lit := range []string{"0xFF", "0b101", "0o17", "1_000", "0x_FF", "-0b1010", "2_5"} {
+		if !strings.Contains(f, lit) {
+			t.Errorf("format lost literal %q:\n%s", lit, f)
+		}
+	}
+}

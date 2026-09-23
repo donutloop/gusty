@@ -506,3 +506,38 @@ print(pick(c))
 print("done")
 `)
 }
+
+// TestParityNumericLiterals drives the modern numeric-literal syntax (hex,
+// binary, octal, digit separators, and underscore misuse) through both
+// backends and asserts identical stdout.
+func TestParityNumericLiterals(t *testing.T) {
+	parity(t, `
+print(0xFF)
+print(0XFF)
+print(0b101)
+print(0B101)
+print(0o17)
+print(0O17)
+print(0xFF + 1)
+print(0b101 * 2)
+print(0o17 + 0xFF)
+print(1_000)
+print(1_000 + 2)
+print(10_000_000)
+print(0x_FF)
+print(0b_1010)
+print(0o_777)
+print(-0xFF)
+print(-0b101)
+print(-0o17)
+print(-1_000)
+print(2_5)
+print(3_14)
+print(0b1111_0000)
+print(0xFFFF)
+print(0x7FFF_FFFF)
+print(1_0.5)
+print(1.5_0)
+print("done")
+`)
+}

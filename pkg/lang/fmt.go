@@ -310,13 +310,21 @@ func writeExpr(sb *strings.Builder, e Expr, prec int) {
 	case *Name:
 		sb.WriteString(x.Value)
 	case *IntLit:
-		sb.WriteString(strconv.FormatInt(x.Value, 10))
-	case *FloatLit:
-		s := strconv.FormatFloat(x.Value, 'f', -1, 64)
-		if !strings.ContainsAny(s, ".") {
-			s += ".0"
+		if x.Text != "" {
+			sb.WriteString(x.Text)
+		} else {
+			sb.WriteString(strconv.FormatInt(x.Value, 10))
 		}
-		sb.WriteString(s)
+	case *FloatLit:
+		if x.Text != "" {
+			sb.WriteString(x.Text)
+		} else {
+			s := strconv.FormatFloat(x.Value, 'f', -1, 64)
+			if !strings.Contains(s, ".") {
+				s += ".0"
+			}
+			sb.WriteString(s)
+		}
 	case *BoolLit:
 		if x.Value {
 			sb.WriteString("True")
