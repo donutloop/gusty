@@ -54,12 +54,18 @@ func run() int {
 	jit := fs.Bool("jit", false, "use the in-process dlopen JIT (codegen -> llc -> cc -shared -> dlopen -> run) instead of the AST interpreter")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
+	lsp := fs.Bool("lsp", false, "run the language server over stdio (LSP)")
 	help := fs.Bool("help", false, "show usage")
 
 	fmtSrc := fs.String("fmt", "", "format a source string to canonical gusty source (machine: deterministic stdout)")
 	fmtCheck := fs.Bool("fmt-check", false, "verify a source is already canonical; exit 0 if canonical, 1 if not (with --json: machine report)")
 	fmtFile := fs.String("fmt-file", "", "path to a source file to format/check (alternative to --file with --fmt)")
 		fs.Parse(os.Args[1:])
+
+	if *lsp {
+		lang.RunLSP(os.Stdin, os.Stdout)
+		return exitOK
+	}
 
 	if *fmtSrc != "" || *fmtCheck || *fmtFile != "" {
 		return runFmt(*fmtSrc, *fmtCheck, *fmtFile, *jsonOut)
