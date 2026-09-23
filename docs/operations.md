@@ -265,3 +265,11 @@ xs"`.
 - `--fmt-file <path>` — format a source file.
 The formatter round-trips docstrings (they are re-emitted as the first body
 statement), so `--fmt` preserves `def`/`class` docstrings.
+
+## Benchmarking
+
+`gustyc --bench '<src>' --bench-runs N --bench-opt L` runs the program through
+both the AST interpreter and the AOT JIT and prints wall-clock totals, means,
+bests, an interpreter phase profile, and a speedup ratio. Use `--bench-file
+<path>` to benchmark a file, and `--json` for the machine-readable
+`BenchResult`. See `docs/benchmark.md`.

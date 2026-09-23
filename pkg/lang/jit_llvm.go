@@ -49,6 +49,8 @@ import "C"
 import (
 	"fmt"
 	"io"
+	"math"
+	"time"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,4 +188,41 @@ func captureFD1(fn func()) (string, error) {
 		return "", fmt.Errorf("jit: read output: %w", err)
 	}
 	return string(b), nil
+}
+
+// benchSO loads the shared object once, resolves its generated `main`, and
+// calls it runs times, returning wall-clock timing. Keeping the handle open
+// across all runs makes the measurement warm execution only — no per-run
+// dlopen/dlsym or build cost is included.
+func benchSO(soPath string, runs int) (BenchReport, error) {
+	cpath := C.CString(soPath)
+	defer C.free(unsafe.Pointer(cpath))
+	h := C.jit_dlopen(cpath)
+	if h == nil {
+		return BenchReport{}, fmt.Errorf("bench: dlopen %s", soPath)
+	}
+	defer C.jit_dlclose(h)
+
+	cmain := C.CString("main")
+	defer C.free(unsafe.Pointer(cmain))
+	fn := C.jit_dlsym(h, cmain)
+	if fn == nil {
+		return BenchReport{}, fmt.Errorf("bench: dlsym(main)")
+	}
+
+	var total float64
+	best := math.Inf(1)
+	for i := 0; i < runs; i++ {
+		t0 := time.Now()
+		C.jit_call(fn) // exit code discarded; timing only
+		ms := float64(time.Since(t0).Nanoseconds()) / 1e6
+		total += ms
+		if ms < best {
+			best = ms
+		}
+	}
+	if math.IsInf(best, 1) {
+		best = 0
+	}
+	return BenchReport{TotalMs: total, MeanMs: total / float64(runs), BestMs: best}, nil
 }

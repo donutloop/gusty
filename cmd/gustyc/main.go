@@ -39,6 +39,10 @@ func main() {
 
 func run() int {
 	fs := flag.NewFlagSet("gustyc", flag.ExitOnError)
+	benchSrc := fs.String("bench", "", "benchmark a source program through both backends (interpreter + AOT JIT)")
+	benchFile := fs.String("bench-file", "", "benchmark a source file")
+	benchRuns := fs.Int("bench-runs", 3, "runs per backend for benchmarks")
+	benchOpt := fs.Int("bench-opt", 2, "AOT optimization level for benchmarks")
 	evalSrc := fs.String("eval", "", "evaluate a source string")
 	file := fs.String("file", "", "read and evaluate a source file")
 	verify := fs.String("verify", "", "parse + analyze a source string")
@@ -135,7 +139,7 @@ func run() int {
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
@@ -157,6 +161,9 @@ func run() int {
 	}
 	if *emitASTF != "" {
 		return emitAST(*emitASTF)
+	}
+	if *benchSrc != "" || *benchFile != "" {
+		return benchMode(*benchSrc, *benchFile, *benchRuns, *benchOpt, *jsonOut)
 	}
 	if *evalSrc != "" || *file != "" {
 		return evalSrcOrFile(*evalSrc, *file, *jsonOut, *jit)
@@ -416,4 +423,39 @@ func runCheck(src string, files []string, jsonOut bool) int {
 		}
 	}
 	return res.Exit
+}
+
+// benchMode runs a source program through both the AST interpreter and the
+// AOT JIT, reports wall-clock timings, and prints a human or JSON report.
+func benchMode(src, file string, runs, opt int, jsonOut bool) int {
+	src, err := srcOrFile(src, file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitErr
+	}
+	res, err := lang.Benchmark(src, runs, opt)
+	if err != nil {
+		for _, d := range res.Diagnostics {
+			fmt.Fprintf(os.Stderr, "bench: %v\n", d)
+		}
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitErr
+	}
+	if jsonOut {
+		out, jerr := json.MarshalIndent(res, "", "  ")
+		if jerr != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
+			return exitErr
+		}
+		fmt.Println(string(out))
+	} else {
+		fmt.Printf("benchmark: %d runs, AOT opt=%d\n", res.Runs, res.OptLevel)
+		for _, p := range res.Profile {
+			fmt.Printf("  interpreter profile: %-6s %8.3f ms\n", p.Phase, p.Ms)
+		}
+		fmt.Printf("  interpreter: total %8.3f ms  mean %8.3f ms  best %8.3f ms\n", res.Interpreter.TotalMs, res.Interpreter.MeanMs, res.Interpreter.BestMs)
+		fmt.Printf("  aot:         total %8.3f ms  mean %8.3f ms  best %8.3f ms\n", res.AOT.TotalMs, res.AOT.MeanMs, res.AOT.BestMs)
+		fmt.Printf("  speedup (interp best / aot best): %.2fx\n", res.Speedup)
+	}
+	return exitOK
 }
