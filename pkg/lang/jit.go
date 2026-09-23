@@ -2795,7 +2795,11 @@ func (e *Evaluator) classIDFor(objV int64) int64 {
 // importModule loads <mod>.gy, evaluates it in a fresh top-level scope, and
 // binds `mod` to a module obj whose attrs are the module's top-level names.
 func (e *Evaluator) importModule(mod string) error {
-	data, err := os.ReadFile(mod + ".gy")
+	path := ResolveImportPath(mod)
+	if path == "" {
+		return &EvalError{Msg: "cannot import module " + mod}
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return &EvalError{Msg: "cannot import module " + mod}
 	}

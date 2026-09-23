@@ -1,0 +1,4 @@
+# stdlib — import a standard-library module from the on-disk stdlib root
+import string
+print(string.DIGITS)
+print(string.LOWERCASE)

@@ -1,0 +1,4 @@
+# json — JSON data conventions (data-only stdlib module)
+NULL = None
+TRUE = True
+FALSE = False

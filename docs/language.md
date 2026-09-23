@@ -264,6 +264,21 @@ namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other
 modules. Imports are evaluated in the interpreter (REPL/--eval path). The AOT backend supports **data imports**: `import mod` loads `mod.gy`, parses + analyzes it, and constant-folds the module's top-level global variables, so `mod.var` reads compile statically to constants. Module function dispatch and non-constant globals are deferred with a clear compile error. Modules may themselves `import other` (nested imports): the nested module's globals are folded recursively and resolve via `other.var` references. Module globals may be strings and use `+` string concatenation. Printing an imported string module global (`print(mod.str)`) emits `printf("%s", i8*)` and outputs the folded string. `len(mod.str)` returns the folded string's length. `ord(mod.str)` returns the folded string's first byte value. `reversed(mod.str)` returns the folded string reversed. Module globals may also be lists (`mod.list`), folded element-wise; `mod.list[i]` indexes into the folded list; `len(mod.list)` returns its length. `sorted(mod.list)` folds the sorted list. `reversed(mod.list)` folds the reversed list. Module globals may also be dicts (`mod.d`), folded key/value-wise; `mod.d[k]` indexes the folded dict by integer key; `len(mod.d)` returns its entry count. Indexed imported dict elements fold in arithmetic (`mod.d[k] + mod.d[j]`). Indexed imported list elements fold in arithmetic (`mod.l[i] + mod.l[j]`).
 
+### On-disk stdlib modules
+
+`import mod` resolves `mod.gy` on disk: first in the working directory, then in the
+standard-library root (`stdlib/` at the repository root, or `$GUSTY_STDLIB_DIR` /
+`gustyc --stdlib <dir>`). The bundled stdlib ships data-only modules that both the
+interpreter and the AOT compiler fold as top-level constants:
+
+- `import math` — `PI`, `E`, `TAU`, `PHI`, `SQRT2`, `LN2`, `LN10`.
+- `import string` — `DIGITS`, `LOWERCASE`, `UPPERCASE`, `HEXDIGITS`, `WHITESPACE`, `PUNCT`.
+- `import collections` — `EMPTY_DICT`, `EMPTY_LIST`, `ZERO`, `ONE`.
+- `import json` — `NULL` (`None`), `TRUE` (`True`), `FALSE` (`False`).
+
+Reads like `math.PI` resolve to the folded constant in both backends. The interpreter
+also supports importing function-bearing modules (module functions dispatch at runtime);
+AOT module-function emission remains a follow-on (AOT import folds data-only globals today).
 ### Functions
 
 Lambda is an anonymous single-expression function: `lambda x: int: x + 1`.

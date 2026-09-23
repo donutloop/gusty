@@ -42,7 +42,11 @@ func resolveModule(mod string, reg map[string]map[string]Expr) error {
 	if _, dup := reg[mod]; dup {
 		return fmt.Errorf("import: duplicate module %q", mod)
 	}
-	src, err := os.ReadFile(mod + ".gy")
+	path := ResolveImportPath(mod)
+	if path == "" {
+		return fmt.Errorf("import %q: no such module (cwd and stdlib searched)", mod)
+	}
+	src, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("import %q: %v", mod, err)
 	}

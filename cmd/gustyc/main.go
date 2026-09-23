@@ -59,8 +59,13 @@ func run() int {
 
 	fmtSrc := fs.String("fmt", "", "format a source string to canonical gusty source (machine: deterministic stdout)")
 	fmtCheck := fs.Bool("fmt-check", false, "verify a source is already canonical; exit 0 if canonical, 1 if not (with --json: machine report)")
+	stdlibDir := fs.String("stdlib", "", "standard-library root directory (default: GUSTY_STDLIB_DIR or a discovered ./stdlib)")
 	fmtFile := fs.String("fmt-file", "", "path to a source file to format/check (alternative to --file with --fmt)")
 		fs.Parse(os.Args[1:])
+
+	if *stdlibDir != "" {
+		lang.SetStdlibDir(*stdlibDir)
+	}
 
 	if *lsp {
 		lang.RunLSP(os.Stdin, os.Stdout)

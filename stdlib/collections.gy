@@ -1,0 +1,5 @@
+# collections — container/data conventions (data-only stdlib module)
+EMPTY_DICT = {}
+EMPTY_LIST = []
+ZERO = 0
+ONE = 1

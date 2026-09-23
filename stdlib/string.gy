@@ -1,0 +1,7 @@
+# string — character/string data tables (data-only stdlib module)
+DIGITS = "0123456789"
+LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
+UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+HEXDIGITS = "0123456789abcdefABCDEF"
+WHITESPACE = " \t\n\r"
+PUNCT = "!\"#$%&'()*+,-./:;<=>?@[]^_`{|}~"
