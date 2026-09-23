@@ -290,3 +290,38 @@ both the AST interpreter and the AOT JIT and prints wall-clock totals, means,
 bests, an interpreter phase profile, and a speedup ratio. Use `--bench-file
 <path>` to benchmark a file, and `--json` for the machine-readable
 `BenchResult`. See `docs/benchmark.md`.
+
+## Property / fuzz testing (both backends)
+
+gusty validates the interpreter and the LLVM AOT backend against **generated**
+whole-program inputs, not just a fixed corpus.
+
+- `pkg/lang/proptest.go` — `PropGrammar` + `DefaultPropGrammar()`: a seeded
+  `rand.Rand`-driven grammar that builds random `*Program` ASTs over the
+  shared surface and renders them to canonical source via `Format`.
+- `PropSource(seed, n, g)` — deterministic: the same seed always yields the
+  same `n` source strings, so failures/drift are reproducible.
+  `PropPrograms(seed, n, g)` is the AST-level twin used by unit properties.
+- Scope discipline keeps generated programs well-formed: top-level
+  expressions read only top-level vars (bound before use), suite bodies
+  (if/for/function) read only their own locals (loop var / params) plus
+  literals — no undefined references, no forward bindings.
+- `pkg/lang/proptest_test.go` — unit properties: corpus reproducibility,
+  parse-cleanliness, interpreter validity (no undefined names / runtime
+  errors), interpreter determinism (run-twice byte-identical stdout).
+- `integration/proptest_test.go` — cross-backend parity harness: each
+  generated source runs through `lang.InterpreterRun` and the
+  `Compile` → `llc` → `cc` → run pipeline; stdout is diffed. Interpreter
+  failures fail the build; AOT drift is logged (seed+index) so the suite
+  stays green while drift is tracked.
+- `FuzzPropInterpreter` — a Go-native fuzz target seeded from the
+  deterministic corpus; asserts the interpreter never panics on arbitrary
+  input.
+
+Run them with the normal pipeline:
+
+```sh
+go test ./pkg/lang/ ./integration/
+# long fuzz run (optional):
+go test ./pkg/lang/ -fuzz=FuzzPropInterpreter -fuzztime 30s
+```

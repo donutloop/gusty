@@ -325,3 +325,28 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
 - Tested parser generics, nested generics, Callable multi-param, Sequence
   protocol assign/reject, Callable assign/reject (unit-testing `assignable`),
   Name rendering, and JSON round-trip.
+
+## Round 16 — Fuzz / property-based testing of both backends
+
+- Added a deterministic, seeded whole-program generator for the
+  interpreter+LLVM-AOT shared surface (`pkg/lang/proptest.go`):
+  `PropGrammar` / `DefaultPropGrammar`, `PropSource(seed,n,g)` (source
+  strings), `PropPrograms(seed,n,g)` (ASTs). Same seed ⇒ same corpus, so
+  drift/failures are reproducible.
+- Scope discipline keeps generated programs well-formed: top-level
+  expressions read only top-level vars (bound-before-use), suite bodies
+  (if/for/function) read only locals + literals. No undefined refs, no
+  forward bindings.
+- `pkg/lang/proptest_test.go` — unit properties: corpus reproducibility,
+  parse-cleanliness, interpreter validity (no undefined names / runtime
+  errors), interpreter determinism (run-twice byte-identical stdout).
+- `integration/proptest_test.go` — cross-backend parity harness: each
+  generated source runs through interpreter AND the `Compile`→`llc`→`cc`→run
+  pipeline; stdout diffed. Interpreter failures fail the build; AOT drift is
+  logged (seed+index) so the suite stays green while drift is tracked.
+- `FuzzPropInterpreter` — Go-native fuzz target seeded from the corpus;
+  asserts the interpreter never panics on arbitrary input.
+- ADR 0148 records the decision; roadmap Phase 9 item marked DONE.
+- Pushing the unpushed backlog (Rounds 10-16 commits) blocked this session:
+  the SSH deploy key is passphrase-protected and no token/credential is
+  available, so `git push` cannot authenticate. Local commits are intact.

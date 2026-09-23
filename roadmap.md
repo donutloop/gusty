@@ -80,7 +80,7 @@ Rule: every component change updates the matching doc; never let
 | Phase 9 — type system & runtime robustness | Standalone type-check mode (`gusty check`) | ✅ DONE (Round 13) | `--check <src>` / `gusty check <files>` run the semantic pass (mypy-style) without executing; new arg-vs-annotation and return-vs-`->` checks; `CheckSource/CheckFile/CheckFiles` API; JSON + deterministic exit codes (0/1/2). ADR 0143. |
 | Phase 9 — type system & runtime robustness | Debug symbols / source maps for AOT binaries | ✅ DONE (Round 3) — `--emit-source-map`, `--build --source-map-out`, `--debug` (DWARF via `cc -g`) | `--build` executables need line/col + variable info for real stack traces and debuggers. |
 | Phase 9 — type system & runtime robustness | FFI / C interop + embedding API | ✅ DONE (Round 15: `extern fn` C calls) | Systems-language parity: call C from `gusty` and embed the interpreter/codegen as a library. |
-| Phase 9 — type system & runtime robustness | Fuzz/property-based testing of both backends | ⏳ PLANNED | Given the two-backend drift risk, add `go-fuzz`/property tests over the AST → interpreter/codegen. |
+| Phase 9 — type system & runtime robustness | Fuzz/property-based testing of both backends | ✅ DONE (Round 16) | Given the two-backend drift risk, add `go-fuzz`/property tests over the AST → interpreter/codegen. |
 
 ## Definition of done per item
 - Interpreter feature + unit test.

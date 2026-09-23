@@ -144,6 +144,21 @@ go test -tags=llvm20 ./integration/...
 
 The integration suite drives the real pipeline — `source → codegen (IR) →
 llc-20` (module verification + object) `→ cc link → run` — and asserts the
+
+### Property / fuzz testing (both backends)
+
+Generated, deterministic property coverage and a Go-native fuzz target guard
+against two-backend semantics drift and interpreter panics:
+
+- `pkg/lang/proptest.go` — seeded whole-program generator (`PropSource`, `PropPrograms`)
+- `pkg/lang/proptest_test.go` — unit properties (reproducibility, parse-cleanliness, interpreter validity/determinism)
+- `integration/proptest_test.go` — cross-backend parity harness + `FuzzPropInterpreter`
+
+```sh
+go test ./pkg/lang/ ./integration/   # deterministic property corpus + parity harness
+go test ./pkg/lang/ -fuzz=FuzzPropInterpreter -fuzztime 30s   # optional long fuzz
+```
+
 native binary's stdout matches the expected output.
 
 `make` targets:

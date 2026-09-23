@@ -1,4 +1,14 @@
 # Round 14 — Generics / structural protocols
+# Round 16 — Fuzz / property-based testing of both backends
+
+- `pkg/lang/proptest.go` — deterministic seeded whole-program generator
+  (`PropGrammar`, `DefaultPropGrammar`, `PropSource`, `PropPrograms`) over
+  the interpreter+AOT shared surface; renders ASTs back to canonical source.
+- `pkg/lang/proptest_test.go` — unit properties: corpus reproducibility,
+  parse-cleanliness, interpreter validity, interpreter determinism.
+- `integration/proptest_test.go` — cross-backend parity harness + Go-native
+  `FuzzPropInterpreter` fuzz target (interpreter must never panic).
+
 
 - **Protocol kinds**: `Type` gains `KindSequence` (`Sequence[T]`) and
   `KindCallable` (`Callable[[...], R]`) structural bounds. `Sequence[T]`
