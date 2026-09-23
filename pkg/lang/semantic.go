@@ -99,7 +99,7 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *ReturnStmt:
 		if s.Expr != nil {
 			ty := an.inferExpr(s.Expr)
-			if ra := an.returnAnno(); ra != nil && ty != nil && ty.Kind != KindDynamic && ty.Kind != KindVoid && ty.Kind != ra.Kind {
+			if ra := an.returnAnno(); ra != nil && ty != nil && ty.Kind != KindDynamic && ty.Kind != KindVoid && !assignable(ty, ra) {
 				an.errorf(s.Span(), "return type mismatch: expected %s, got %s", ra.Name(), ty.Name())
 			}
 		}
@@ -240,7 +240,7 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	valTy := an.inferExpr(as.Value)
 	// Static gradual typing: report an annotation/inferred-type mismatch.
-	if as.Annot != nil && valTy != nil && valTy.Kind != KindDynamic && as.Annot.Kind != KindDynamic && valTy.Kind != as.Annot.Kind {
+	if as.Annot != nil && valTy != nil && valTy.Kind != KindDynamic && as.Annot.Kind != KindDynamic && !assignable(valTy, as.Annot) {
 		an.errorf(as.Span(), "type mismatch: expected %s, got %s", as.Annot.Name(), valTy.Name())
 	}
 	if as.Annot != nil {
@@ -582,7 +582,7 @@ func (an *SemanticAnalyzer) inferUserCall(fd *FuncDef, n *Call) *Type {
 		if got == nil || got.IsDyn() {
 			continue
 		}
-		if !got.Same(p.Annot) {
+		if !assignable(got, p.Annot) {
 			an.errorf(n.Span(), "argument %q: expected %s, got %s", p.Name, p.Annot.Name(), got.Name())
 		}
 	}
@@ -665,4 +665,91 @@ func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
 	default:
 		return TIter(e)
 	}
+}
+
+// assignable reports whether a concrete type `got` is assignable to a declared
+// type `want` under gradual typing and structural protocols (generics).
+// Dynamic types are tolerated in either position; Sequence[T] and
+// Callable[[...], R] act as structural bounds accepting matching concrete
+// sequence / callable types.
+func assignable(got, want *Type) bool {
+	if got == nil || want == nil {
+		return true
+	}
+	if got.IsDyn() || want.IsDyn() {
+		return true
+	}
+	switch want.Kind {
+	case KindSequence:
+		return seqAssignable(got, want.Elem)
+	case KindCallable:
+		return callableAssignable(got, want.Params, want.Ret)
+	default:
+		return got.Kind == want.Kind
+	}
+}
+
+// seqAssignable reports whether `got` is a sequence of element type compatible
+// with the Sequence bound's element type.
+func seqAssignable(got *Type, elem *Type) bool {
+	if elem == nil || elem.IsDyn() {
+		return true
+	}
+	switch got.Kind {
+	case KindList, KindSet, KindIterator:
+		if got.Elem == nil || got.Elem.IsDyn() {
+			return true
+		}
+		return got.Elem.Kind == elem.Kind || got.Elem.Same(elem)
+	case KindTuple:
+		// A heterogeneous tuple is Sequence[T] only when every element is T.
+		for _, e := range got.Elems {
+			if e == nil || e.IsDyn() {
+				continue
+			}
+			if e.Kind != elem.Kind && !e.Same(elem) {
+				return false
+			}
+		}
+		return true
+	case KindString:
+		// str is Sequence[str].
+		return elem.Kind == KindString
+	case KindSequence:
+		return got.Elem == nil || got.Elem.IsDyn() || got.Elem.Kind == elem.Kind
+	default:
+		return false
+	}
+}
+
+// callableAssignable reports whether `got` (a func/callable type) matches a
+// Callable bound with the given parameter and return types.
+func callableAssignable(got *Type, wantParams []*Type, wantRet *Type) bool {
+	if got.Kind != KindFunc && got.Kind != KindCallable {
+		return false
+	}
+	// A function-name reference carries no parameter info (empty Params), so
+	// under gradual typing it is assignable to any Callable bound: arity and
+	// param kinds cannot be checked. Explicitly-typed funcs with params must
+	// match arity and kinds.
+	if len(got.Params) == 0 {
+		return true
+	}
+	if len(got.Params) != len(wantParams) {
+		return false
+	}
+	for i, gp := range got.Params {
+		wp := wantParams[i]
+		if gp == nil || wp == nil || gp.IsDyn() || wp.IsDyn() {
+			continue
+		}
+		if gp.Kind != wp.Kind && !assignable(gp, wp) {
+			return false
+		}
+	}
+	// Return is covariant: got's return must be assignable to the bound's.
+	if got.Ret == nil || wantRet == nil || got.Ret.IsDyn() || wantRet.IsDyn() {
+		return true
+	}
+	return assignable(got.Ret, wantRet)
 }

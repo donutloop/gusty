@@ -329,7 +329,7 @@ func listLang() {
 	fmt.Printf(`gusty language features (%s)
 statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, match, try/except/finally, raise, class, import
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda
-types: int, float, str, list, dict, class, function
+types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
 `, lang.Version)
 }
 

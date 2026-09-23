@@ -18,6 +18,9 @@ const (
 	KindClass
 	KindIterator
 	KindVoid
+	// structural protocol kinds (generics / protocols)
+	KindSequence // Sequence[T] — accepts any indexable sequence of T
+	KindCallable // Callable[[...], R] — accepts any function with matching signature
 )
 
 // Type is a value type. Gradual typing: KindDynamic means "any".
@@ -39,6 +42,10 @@ func TBool() *Type     { return &Type{Kind: KindBool} }
 func TStr() *Type      { return &Type{Kind: KindString} }
 func TNone() *Type     { return &Type{Kind: KindNone} }
 func TDyn() *Type      { return &Type{Kind: KindDynamic} }
+func TSequence(e *Type) *Type { return &Type{Kind: KindSequence, Elem: e} }
+func TCallable(params []*Type, ret *Type) *Type {
+	return &Type{Kind: KindCallable, Params: params, Ret: ret}
+}
 
 func TTuple(elems ...*Type) *Type { return &Type{Kind: KindTuple, Elems: elems} }
 func TVoid() *Type     { return &Type{Kind: KindVoid} }
@@ -92,8 +99,27 @@ func (t *Type) Name() string {
 		return "iter[" + t.Elem.Name() + "]"
 	case KindVoid:
 		return "void"
+	case KindSequence:
+		return "Sequence[" + t.Elem.Name() + "]"
+	case KindCallable:
+		return "Callable[[" + callableParamNames(t.Params) + "], " + t.Ret.Name() + "]"
 	}
 	return "any"
+}
+
+// callableParamNames renders a Callable's parameter list as comma-separated
+// type names for Name().
+func callableParamNames(params []*Type) string {
+	out := ""
+	for i, p := range params {
+		if i > 0 { out += ", " }
+		if p == nil {
+			out += "any"
+			continue
+		}
+		out += p.Name()
+	}
+	return out
 }
 
 // Same reports whether two types are structurally identical.
@@ -124,6 +150,21 @@ func (t *Type) Same(o *Type) bool {
 		return t.Key.Same(o.Key) && t.Val.Same(o.Val)
 	case KindIterator:
 		return t.Elem.Same(o.Elem)
+	case KindSequence:
+		return o.Kind == KindSequence && (t.Elem == nil || o.Elem == nil || t.Elem.Same(o.Elem))
+	case KindCallable:
+		if o.Kind != KindCallable || len(t.Params) != len(o.Params) {
+			return false
+		}
+		for i := range t.Params {
+			if t.Params[i] == nil || o.Params[i] == nil {
+				continue
+			}
+			if !t.Params[i].Same(o.Params[i]) {
+				return false
+			}
+		}
+		return t.Ret == nil || o.Ret == nil || t.Ret.Same(o.Ret)
 	default:
 		return true
 	}

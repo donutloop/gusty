@@ -92,6 +92,10 @@ gusty ships an indentation-based syntax covering:
 - **Gradual typing** — optional type annotations on variables, parameters,
   and returns, statically checked by `--verify` (with `any` as the dynamic
   escape hatch); untyped code falls back to dynamic dispatch
+- **Generics / protocols** — recursive generic annotations (`list[int]`,
+  `dict[str, int]`, `Callable[[int], bool]`) plus structural protocol bounds
+  `Sequence[T]` and `Callable[[...], R]`, checked via an `assignable(got, want)`
+  relation at assignment, call-argument, and return sites
 
 ### Two execution backends, always in sync
 

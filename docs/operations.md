@@ -266,6 +266,23 @@ xs"`.
 The formatter round-trips docstrings (they are re-emitted as the first body
 statement), so `--fmt` preserves `def`/`class` docstrings.
 
+## Standalone type-check (`gusty check`, Round 13 + generics/protocols Round 14)
+
+`gustyc --check <src>` (or `gusty check <file1> <file2> ...`) runs the semantic
+pass mypy-style without executing: annotations are validated and mismatches
+are reported. Exit codes are deterministic: `0` = clean, `1` = type errors,
+`2` = usage. `--json` emits a machine-readable `{files, diagnostics, ok, exit}`
+result.
+
+Annotations are recursive generic expressions: `list[int]`,
+`dict[str, int]`, `tuple[int, str]`, `list[list[int]]`,
+`Callable[[int, str], bool]`, and structural protocol bounds `Sequence[T]`.
+Assignment to a protocol bound checks the structural `assignable(got, want)`
+relation: `Sequence[int] = [1, 2]` and `Sequence[int] = (1, 2)` pass; `str`
+is `Sequence[str]` (not `Sequence[int]`), and an `int`/`dict` is not a
+sequence, so those are rejected. A function-name reference (bare `fn`) is
+assignable to any Callable bound under gradual typing.
+
 ## Benchmarking
 
 `gustyc --bench '<src>' --bench-runs N --bench-opt L` runs the program through

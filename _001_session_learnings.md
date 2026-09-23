@@ -306,3 +306,22 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
   read-kept, print-kept, escape-via-append-kept.
 - The `integration` parity large-program segfault is pre-existing/environmental
   (reproduces with the feature fully stashed); unit tests are the validator.
+
+## Round 14 — Generics / structural protocols
+
+- Implemented the roadmap Phase 9 generics/protocols item: annotations are now
+  recursive generic expressions (`list[int]`, `dict[str, int]`,
+  `Callable[[int], bool]`, nested `list[list[int]]`).
+- Added two structural protocol kinds to `Type`: `KindSequence`
+  (`Sequence[T]`) and `KindCallable` (`Callable[[...], R]`); `Name()` and
+  `Same()` handle their shape structurally; JSON round-trips carry them via
+  existing struct tags (machine path unchanged).
+- Replaced exact-kind equality at assignment/call-argument/return checks with a
+  single `assignable(got, want)` relation; concrete kinds keep exact equality,
+  `any` tolerates anything, protocols recurse on element/param/return shape.
+- Key learning: function-name arguments resolve to a bare `fn` (no params/ret),
+  so Callable checking happens structurally at the bound rather than at call
+  sites; a bare `fn` reference is assignable to any Callable bound.
+- Tested parser generics, nested generics, Callable multi-param, Sequence
+  protocol assign/reject, Callable assign/reject (unit-testing `assignable`),
+  Name rendering, and JSON round-trip.

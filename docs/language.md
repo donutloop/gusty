@@ -416,6 +416,21 @@ match x:
 
 - `int`, `float`, `bool`, `str`, `none`, `void`, and `any` (dynamic).
 - Unannotated variables infer to `any`; annotated variables pin their type.
+
+### Generics / structural protocols
+
+Annotations are recursive generic type expressions:
+
+- `list[T]`, `dict[K, V]`, `set[T]`, `tuple[...]`, and nested `list[list[int]]`.
+- `Sequence[T]` — a structural protocol bound accepting any list/set/iter/tuple/str
+  whose element type is compatible with `T`.
+- `Callable[[A, B], R]` — a structural protocol bound accepting any function whose
+  arity, parameter kinds, and return type match; a bare `fn` reference is accepted.
+
+The type checker uses a structural `assignable(got, want)` relation at assignment,
+call-argument, and return checks: concrete kinds keep exact-kind equality, `any`
+tolerates anything in either position, and protocol kinds recurse on element/
+param/return shape.
 - Arithmetic on non-numeric operands reports a diagnostic (suppressed inside
   untyped function bodies, which fall back to dynamic dispatch).
 

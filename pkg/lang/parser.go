@@ -852,7 +852,86 @@ func isTypeName(s string) bool {
 func (p *parser) parseTypeAnnot() (*Type, error) {
 	t := p.peek()
 	p.next()
-	switch t.Text {
+	name := t.Text
+
+	// Generic/protocol annotation with args: name [ args ].
+	if p.peek().IsOp("[") {
+		p.next()
+		// Callable[[A, B], R] — the first arg is itself a bracketed param list.
+		if name == "Callable" || name == "callable" {
+			pl, err := p.parseTypeList()
+			if err != nil {
+				return nil, err
+			}
+			if !p.peek().IsOp(",") {
+				return nil, p.errorf(p.peek(), "expected ',' after Callable params")
+			}
+			p.next()
+			retTy, err := p.parseTypeAnnot()
+			if err != nil {
+				return nil, err
+			}
+			if !p.peek().IsOp("]") {
+				return nil, p.errorf(p.peek(), "expected ']' in Callable annotation")
+			}
+			p.next()
+			return TCallable(pl, retTy), nil
+		}
+		// Generic element args: list[int], dict[str, int], Sequence[int], ...
+		var args []*Type
+		for {
+			argTy, err := p.parseTypeAnnot()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, argTy)
+			if p.peek().IsOp(",") {
+				p.next()
+				continue
+			}
+			break
+		}
+		if !p.peek().IsOp("]") {
+			return nil, p.errorf(p.peek(), "expected ']' in type annotation")
+		}
+		p.next()
+		return buildType(name, args, t)
+	}
+
+	// Bare name (no generic args).
+	return buildType(name, nil, t)
+}
+
+// parseTypeList parses `[ type (, type)* ]` and returns the contained types.
+// Used for Callable's parameter list, e.g. Callable[[int, str], bool].
+func (p *parser) parseTypeList() ([]*Type, error) {
+	if !p.peek().IsOp("[") {
+		return nil, p.errorf(p.peek(), "expected '[' in type annotation")
+	}
+	p.next()
+	var tys []*Type
+	for {
+		ty, err := p.parseTypeAnnot()
+		if err != nil {
+			return nil, err
+		}
+		tys = append(tys, ty)
+		if p.peek().IsOp(",") {
+			p.next()
+			continue
+		}
+		break
+	}
+	if !p.peek().IsOp("]") {
+		return nil, p.errorf(p.peek(), "expected ']' in type annotation")
+	}
+	p.next()
+	return tys, nil
+}
+
+// buildType maps a parsed type name (with optional generic args) to a *Type.
+func buildType(name string, args []*Type, t Token) (*Type, error) {
+	switch name {
 	case "int":
 		return TInt(), nil
 	case "float":
@@ -863,8 +942,34 @@ func (p *parser) parseTypeAnnot() (*Type, error) {
 		return TStr(), nil
 	case "any":
 		return TDyn(), nil
+	case "None":
+		return TNone(), nil
+	case "void":
+		return TVoid(), nil
+	case "list":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("list requires 1 type argument")
+		}
+		return TList(args[0]), nil
+	case "dict":
+		if len(args) != 2 {
+			return nil, fmt.Errorf("dict requires 2 type arguments")
+		}
+		return TDict(args[0], args[1]), nil
+	case "set":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("set requires 1 type argument")
+		}
+		return TSet(args[0]), nil
+	case "tuple":
+		return TTuple(args...), nil
+	case "Sequence", "sequence":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("Sequence requires 1 type argument")
+		}
+		return TSequence(args[0]), nil
 	default:
-		return nil, p.errorf(t, "unknown type annotation "+t.Text)
+		return nil, fmt.Errorf("unknown type annotation %q", name)
 	}
 }
 

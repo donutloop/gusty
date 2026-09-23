@@ -1,3 +1,21 @@
+# Round 14 — Generics / structural protocols
+
+- **Protocol kinds**: `Type` gains `KindSequence` (`Sequence[T]`) and
+  `KindCallable` (`Callable[[...], R]`) structural bounds. `Sequence[T]`
+  accepts any list/set/iter/tuple/str whose element type matches `T`;
+  `Callable` accepts any matching-arity function whose params and return match.
+- **Generic annotations**: the parser now accepts recursive generic type
+  expressions — `list[int]`, `dict[str, int]`, `set[int]`, `tuple[int, str]`,
+  `Sequence[int]`, `Callable[[int, str], bool]`, and nested `list[list[int]]`.
+- **Structural checking**: assignment, call-argument, and return checks now use
+  a single `assignable(got, want)` relation instead of exact-kind equality;
+  concrete kinds keep exact equality, dynamic tolerates anything, protocols
+  recurse on element/param/return shape. A bare `fn` reference is assignable to
+  any Callable bound.
+- Tests: parser generics, nested generics, Callable multi-param, Sequence
+  protocol assign/reject, Callable assign/reject, Name rendering, JSON
+  round-trip.
+
 # Round 13 — Standalone type-check mode (`gusty check`)
 
 - **Semantic checks**: `pkg/lang/semantic.go` now compares each statically-typed
