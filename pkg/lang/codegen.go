@@ -427,8 +427,13 @@ roots.loop:
 roots.body:
   %rp = getelementptr [1024 x i32*], [1024 x i32*]* %roots, i32 0, i32 %j
   %rpp = load i32*, i32** %rp
+  %rnull = icmp eq i32* %rpp, null
+  br i1 %rnull, label %roots.skip, label %roots.mark
+roots.mark:
   %rh = load i32, i32* %rpp
   call void @rt_gc_mark(i32 %rh)
+  br label %roots.skip
+roots.skip:
   br label %roots.inc
 roots.inc:
   %j.nxt = add i32 %j, 1
@@ -758,7 +763,7 @@ func GenerateIR(prog *Program) (string, error) {
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
 	}
-	b.WriteString("  store i32 0, i32* @gc_roots_used\n")
+	b.WriteString("  store i32 1024, i32* @gc_roots_used\n")
 	// Root every module-global closure env slot so GC keeps captured envs
 	// (and any heap handles they hold) alive across top-level boundaries.
 	for _, envName := range g.envSlots {
@@ -1101,6 +1106,14 @@ func (g *irGen) fmtStr(format string) (string, int) {
 	return name, len(format) + 1
 }
 
+func isScalarConst(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *FloatLit, *BoolLit, *StrLit:
+		return true
+	}
+	return false
+}
+
 func (g *irGen) gcReg(b *strings.Builder, name string) {
 	if g.gcRootSeen == nil {
 		g.gcRootSeen = map[string]bool{}
@@ -1113,7 +1126,6 @@ func (g *irGen) gcReg(b *strings.Builder, name string) {
 	g.gcRootIdx++
 	fmt.Fprintf(b, "  %%gc.slot%d = getelementptr [1024 x i32*], [1024 x i32*]* @gc.roots, i32 0, i32 %d\n", idx, idx)
 	fmt.Fprintf(b, "  store i32* %%_%s, i32** %%gc.slot%d\n", name, idx)
-	fmt.Fprintf(b, "  store i32 %d, i32* @gc_roots_used\n", g.gcRootIdx)
 }
 
 func (g *irGen) gcRegGlobal(b *strings.Builder, name string) {
@@ -5203,15 +5215,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
 				return nil
 			}
+			isFloat := g.isFloat(n.Value)
 			if !g.allocd[nm.Value] {
-				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
+				slotTy := "i32"
+				if isFloat {
+					slotTy = "double"
+				}
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca %s\n", nm.Value, slotTy))
 				g.allocd[nm.Value] = true
 			}
-			if g.isFloat(n.Value) {
-				if !g.allocd[nm.Value] {
-					b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
-					g.allocd[nm.Value] = true
-				}
+			if isFloat {
 				fv := g.floatValue(b, n.Value)
 				b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", fv, nm.Value))
 				if g.floatVars == nil {
@@ -5219,6 +5232,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.floatVars[nm.Value] = true
 			} else {
+				// Root the variable's slot so a heap handle (instance/list/dict/set
+				// handle) stored here survives a later GC collection (Gap A / ADR
+				// 0151). Only i32 slots are rooted; double slots hold floats.
+				if !g.floatVars[nm.Value] && !isScalarConst(n.Value) {
+					g.gcReg(b, nm.Value)
+				}
 				// Track the class of a variable assigned from a class instantiation.
 				if call, ok := n.Value.(*Call); ok {
 					if fn, ok2 := call.Fn.(*Name); ok2 {

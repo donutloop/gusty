@@ -8,7 +8,7 @@
 declare i32 @printf(i8*, ...)
 define i32 @main() {
 entry:
-  store i32 0, i32* @gc_roots_used
+  store i32 1024, i32* @gc_roots_used
   %t1 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.fmt1, i32 0, i32 0), i32 42)
   ret i32 0
 main.raiseexit:

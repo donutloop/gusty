@@ -1,0 +1,21 @@
+# Gap A reproducer: an instance handle stored in a local variable must stay
+# alive across a later allocation that triggers GC. Expected: 43.
+class Animal:
+    def __init__(self):
+        self.x = 1
+    def speak(self):
+        return self.x
+class Dog(Animal):
+    def __init__(self):
+        super().__init__()
+    def speak(self):
+        return 42
+def make(kind):
+    if kind == 1:
+        return Animal()
+    return Dog()
+def f():
+    a = make(1)
+    b = make(2)
+    return a.speak() + b.speak()
+print(f())
