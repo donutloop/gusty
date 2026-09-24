@@ -151,8 +151,8 @@ case (and an ADR where the decision is non-obvious).
 ### Gap H — real LLVM `opt` pipeline (scalar replacement follow-on)
 - **Status**: 🟠 PARTIAL — `opt.go` is a pure-Go textual dead-global eliminator,
   not an LLVM pass.
-- Drive the real `llvm::verifyModule`/`opt` pipeline through the
-  `tinygo.org/x/go-llvm` bindings so AOT emits verified, optimized IR.
+- Drive a real LLVM `opt` pipeline via the external `llc`/`opt` tools so AOT
+  emits verified, optimized IR.
 - **New (follow-on)**: scalar replacement / SROA — promote a heap object whose
   handle never escapes the function to registers, eliminating the `rt_alloc`
   (this is the natural partner of Gap A's instance-layout work).
@@ -283,7 +283,8 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   concrete type at compile time (no runtime generics), enabling scalar
   replacement (Gap H) and boxing elimination (L7.3).
 - **L8.2 `verifyModule`-driven pipeline** — every emitted module runs the real
-  LLVM verifier + `opt` passes through `tinygo.org/x/go-llvm` (extends Gap H).
+  LLVM verifier + `opt` passes through the external `llc`/`opt` tools
+  (extends Gap H).
 - **L8.3 Autovectorization** — annotate loop/array IR so LLVM vectorizes hot
   numeric loops; add a `--report=vector` output showing which loops vectorize.
 - **L8.4 SROA/scalar-replacement** — promote non-escaping heap objects to

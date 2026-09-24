@@ -12,24 +12,27 @@
 
 
 ## Goal
-Get the `gusty` compiler building and passing tests against LLVM 20 with TinyGo's
-`tinygo.org/x/go-llvm` bindings, and fix the printf codegen semantics. Continue the
-greater vision (Python-like language) — but this session focused on the build/correctness
-fix, not new language features.
+Get the `gusty` compiler building and passing tests against LLVM 20, and fix the
+printf codegen semantics. Continue the greater vision (Python-like language) — but this
+session focused on the build/correctness fix, not new language features.
 
 ## Key facts discovered
 
-### go-llvm dependency & the local reference dir
-- The local `go-llvm/` directory is a **full separate module** (own `go.mod`, `go 1.14`)
+### go-llvm dependency & the local reference dir (since removed)
+> Note: the `go-llvm` binding dependency described here has since been **removed** from the
+> project. Codegen is now a textual LLVM IR emitter verified by external `llc`/`cc`; go.mod
+> no longer requires any LLVM Go bindings. The notes below are retained as history.
+
+- The local `go-llvm/` directory was a **full separate module** (own `go.mod`, `go 1.14`)
   with the *free-function* API (`llvm.NewModule`, `llvm.Int32Type`, `llvm.VoidType`,
   `llvm.NewBuilder`).
-- The module-cache version `tinygo.org/x/go-llvm v0.0.0-20260721072906-185673ef46a5`
-  has the **Context-method** API (`func (c Context) NewModule`, `Int32Type`, `VoidType`,
-  `NewBuilder`) and free `FunctionType`, `PointerType`, `ConstInt`, `InitializeAll*`.
-  It does NOT have the free `NewModule`/`Int32Type`/`VoidType`/`NewBuilder` functions.
-- User preference: **update the module dependency**, do NOT vendor/commit the local
+- The module-cache version of `go-llvm` had the **Context-method** API (`func (c Context)
+  NewModule`, `Int32Type`, `VoidType`, `NewBuilder`) and free `FunctionType`,
+  `PointerType`, `ConstInt`, `InitializeAll*`. It did NOT have the free
+  `NewModule`/`Int32Type`/`VoidType`/`NewBuilder` functions.
+- User preference then: **update the module dependency**, do NOT vendor/commit the local
   `go-llvm/` (it stays gitignored reference-only). A `replace => ./go-llvm` directive would
-  break builds for other clones because go-llvm is not committed.
+  break builds for other clones because go-llvm was not committed.
 
 ### The two codegen bugs (both were silently masked before)
 1. **printf signature**: first param was `PointerType(ctx.Int32Type(), 0)` (ptr-to-i32),
@@ -53,13 +56,13 @@ fix, not new language features.
 
 ## Commands
 - `go test -tags=llvm20 ./pkg/... ./integration/ -count=1` — the full check (exit 0).
-- `go env GOMODCACHE` + grep the cached `tinygo.org/x/go-llvm@v0.0.0-...` to check API.
+- `go env GOMODCACHE` + grep the cached `go-llvm@v0.0.0-...` module to check API.
 - Regenerate expected files by temporarily adding `os.WriteFile(...)` to the assert in the
   test, running it, then reverting (kept the diff minimal — reverted import-block cosmetic
   change too).
 
 ## Final state
-- go.mod: require `tinygo.org/x/go-llvm v0.0.0-20260721072906-185673ef46a5`, NO replace.
+- go.mod: require `go-llvm v0.0.0-...`, NO replace (since removed).
 - go.sum updated; .gitignore reduced to just `go-llvm` (reference-only).
 - `pkg/lang/IR.go`: Context-method port (`ctx := llvm.NewContext()`, `ctx.NewModule`,
   `ctx.NewBuilder`, `ctx.Int32Type`, `ctx.VoidType`) threaded through generateCaller/
@@ -87,7 +90,7 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
 - The "compiler" is mostly an AST interpreter: `pkg/lang/parser.go` builds a
   `Program` of `Stmt`/`Expr` AST nodes; `pkg/lang/semantic.go` is a type
   checker; `pkg/lang/jit.go` is a tree-walking evaluator; `pkg/lang/codegen.go`
-  is the LLVM IR emitter (via TinyGo's `go-llvm` bindings).
+  is the LLVM IR emitter.
 - There is no IR/bytecode in between — the interpreter evaluates ASTs directly.
 
 ## The value model is unusual
@@ -142,8 +145,8 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
   `docs/adr/` + tests, committed and pushed per feature.
 - The repo convention is one commit per feature with a `feat(lang):` message,
   and an ADR explaining the decision, rationale, and rejected alternatives.
-- Always `go test -tags llvm ./pkg/...` before committing; the llvm build tag
-  is required (TinyGo's go-llvm bindings).
+- Always `go test ./pkg/...` before committing; verify emitted IR with the
+  external `llc`/`llvm-as` tools.
 
 ## Round 2 — Generators (yield + generator expressions) in AOT codegen
 - Landed generator functions and generator expressions in the LLVM AOT path:

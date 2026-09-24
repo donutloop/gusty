@@ -21,7 +21,7 @@ Build the best Python-like language ever known by humanity, compiled through LLV
 - **Internal components** — lexer (including indentation/`INDENT`/`DEDENT` tracking), parser, AST, semantic analysis / type inference (gradual typing, optional annotations), a lightweight runtime (boxed values, reference counting or a simple GC, dynamic dispatch for methods), LLVM IR codegen, optimization pass pipeline, linker integration. Keep them clean, layered, and extensible.
 - **User experience** — a great CLI and REPL for humans: clear help, discoverable commands, readable diagnostics with source spans and suggestions (in the spirit of Python's tracebacks, but better), sensible defaults for optimization levels and target triples, fast REPL feedback despite AOT compilation underneath (e.g. via a JIT execution engine for interactive use).
 - **Agentic workflows** — this toolchain is not just for humans: it is also a compilation engine for agents and scripts. The interface must expose machine-readable output (JSON diagnostics, JSON AST/IR dumps, schema), stable CLI flags (`--emit-llvm`, `--emit-ast`, `--eval`, `--file`, `--verify`, `--target`, `--opt-level`, `--version`), and self-describing commands so an agent can discover the full language surface, plan its compilation, and consume results without guessing.
-- **Correctness** — every feature ships with unit tests, IR verification (via `llvm::verifyModule` through the `tinygo.org/x/go-llvm` bindings), lit-style codegen tests, and verify coverage. `go test ./...` must pass before commit.
+- **Correctness** — every feature ships with unit tests, IR verification (emitted textual IR checked by external `llc`/`llvm-as`), lit-style codegen tests, and verify coverage. `go test ./...` must pass before commit.
 
 Because we build for both humans and agents, the interface must reflect both: humans get a friendly CLI/REPL; agents get structured, predictable, self-describing access. Every new feature should consider its machine consumption path (JSON output, exit codes, schema) as well as its human one.
 
@@ -32,10 +32,9 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 ## Toolchain
 
 - **Implementation language**: Go.
-- **LLVM binding**: `tinygo.org/x/go-llvm` — Cgo-based bindings to a system-installed LLVM (the fork used by TinyGo). Chosen over `github.com/llir/llvm` (pure-Go, text/bitcode-IR only, no direct optimizer/JIT/target API) and over the deprecated/unofficial `llvm.org/llvm/bindings/go/llvm` forks (unmaintained, no security audit), because the REPL's JIT execution path and the correctness contract's IR verification both need the real LLVM C API, not just IR text generation.
-- **LLVM version**: pin one supported version via build tag (e.g. `-tags=llvm18`) and record it in `docs/operations.md`; do not silently float across LLVM versions.
-- **Install/build**: `go get tinygo.org/x/go-llvm`, with LLVM installed from apt.llvm.org (Debian/Ubuntu) or Homebrew (macOS) matching the pinned tag.
-- Record this choice as `docs/adr/0001-llvm-binding-choice.md` before any codegen work begins.
+- **LLVM codegen**: a textual LLVM IR emitter (`pkg/lang/codegen.go`), verified and lowered by external `llc`/`llvm-as` and linked with `cc` — no Go LLVM bindings.
+- **LLVM version**: pin one supported version (e.g. LLVM 20 / `llc-20`) and record it in `docs/operations.md`; do not silently float across LLVM versions.
+- **Install/build**: LLVM tools installed from apt.llvm.org (Debian/Ubuntu) or Homebrew (macOS) matching the pinned version.
 
 ## The loop
 
