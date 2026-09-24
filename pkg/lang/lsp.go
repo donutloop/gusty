@@ -90,7 +90,7 @@ type didOpenParams struct {
 }
 
 type didChangeParams struct {
-	TextDocument    textDocID `json:"textDocument"`
+	TextDocument   textDocID `json:"textDocument"`
 	ContentChanges []struct {
 		Text string `json:"text"`
 	} `json:"contentChanges"`
@@ -131,7 +131,7 @@ type publishParams struct {
 
 type initResult struct {
 	Capabilities struct {
-		TextDocumentSync   int `json:"textDocumentSync"` // 1 = full sync
+		TextDocumentSync   int  `json:"textDocumentSync"` // 1 = full sync
 		HoverProvider      bool `json:"hoverProvider"`
 		CompletionProvider struct {
 			TriggerCharacters []string `json:"triggerCharacters"`
@@ -547,7 +547,6 @@ func maxStmtLine(stmts []Stmt) int {
 	return max
 }
 
-
 // nameSpan locates the column of a function/class name in its source line.
 func nameSpan(src string, line int, name, prefix string) Span {
 	lines := strings.Split(src, "\n")
@@ -627,15 +626,25 @@ type Document struct {
 func (d *Document) analyze() {
 	d.Diags = nil
 	prog, err := Parse(d.Text)
+	var parseDiags []lspDiag
 	if err != nil {
-		line, col := 1, 1
-		if pe, ok := err.(*ParseError); ok {
-			line, col = pe.Span.Line, pe.Span.Col
+		// panic-mode recovery surfaces a forest of parse errors: report each
+		// one as a separate diagnostic and keep the partially-parsed AST so
+		// the symbol index still works.
+		if pes, ok := err.(*ParseErrors); ok {
+			parseDiags = make([]lspDiag, 0, len(pes.Errors))
+			for _, pe := range pes.Errors {
+				parseDiags = append(parseDiags, diagAt(pe.Span.Line, pe.Span.Col, 1, "parse error: "+pe.Msg))
+			}
+		} else if pe, ok := err.(*ParseError); ok {
+			parseDiags = []lspDiag{diagAt(pe.Span.Line, pe.Span.Col, 1, "parse error: "+pe.Msg)}
+		} else {
+			// lexer-level failure: no AST to index.
+			d.Diags = []lspDiag{diagAt(1, 1, 1, "parse error: "+err.Error())}
+			d.Prog = nil
+			d.Index = nil
+			return
 		}
-		d.Diags = []lspDiag{diagAt(line, col, 1, "parse error: "+err.Error())}
-		d.Prog = nil
-		d.Index = nil
-		return
 	}
 	semDiags := Analyze(prog)
 	d.Prog = prog
@@ -651,6 +660,9 @@ func (d *Document) analyze() {
 		}
 		d.Diags = append(d.Diags, diagAt(sd.Span.Line, sd.Span.Col, sev, sd.Msg))
 	}
+	// prepend the panic-mode parse-error forest so parse and semantic
+	// diagnostics are both surfaced.
+	d.Diags = append(parseDiags, d.Diags...)
 }
 
 func diagAt(line, col, sev int, msg string) lspDiag {

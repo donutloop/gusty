@@ -220,7 +220,12 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   Keeps current semantics; makes new operators one-line additions.
 - **L5.2 Panic-mode error recovery** — on a parse error, skip to the next
   statement/block boundary and keep parsing, producing a forest of
-  `ParseError`s (not just the first). Feeds the LSP + `gusty check`.
+  `ParseError`s (not just the first). Feeds the LSP + `gusty check`. ✅ DONE
+  — `parseProgram` collects a forest of `*ParseError`s via `recoverStmt()`
+  (nest-aware INDENT/DEDENT skipping), returns a partial AST plus an
+  aggregate `*ParseErrors`; the LSP reports each error as a separate
+  diagnostic and still indexes the partial program; `gusty check`/`verify`
+  print the whole forest.
 - **L5.3 Trailing commas** — allow `f(a, b,)`, `[1, 2,]`, `{1: 2,}` and
   `match` case arg lists, for clean diffs and formatter round-trips.
 - **L5.4 Walrus operator `:=`** — assignment expressions usable inside `if`

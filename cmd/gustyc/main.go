@@ -68,7 +68,7 @@ func run() int {
 	fmtCheck := fs.Bool("fmt-check", false, "verify a source is already canonical; exit 0 if canonical, 1 if not (with --json: machine report)")
 	stdlibDir := fs.String("stdlib", "", "standard-library root directory (default: GUSTY_STDLIB_DIR or a discovered ./stdlib)")
 	fmtFile := fs.String("fmt-file", "", "path to a source file to format/check (alternative to --file with --fmt)")
-		fs.Parse(os.Args[1:])
+	fs.Parse(os.Args[1:])
 
 	if *stdlibDir != "" {
 		lang.SetStdlibDir(*stdlibDir)
@@ -82,7 +82,6 @@ func run() int {
 	if *fmtSrc != "" || *fmtCheck || *fmtFile != "" {
 		return runFmt(*fmtSrc, *fmtCheck, *fmtFile, *jsonOut)
 	}
-
 
 	if *help {
 		usage(fs)
@@ -295,7 +294,6 @@ func emitSourceMap(src string) int {
 	return exitOK
 }
 
-
 func emitAST(src string) int {
 	res, err := lang.Compile(src)
 	if err != nil {
@@ -306,6 +304,13 @@ func emitAST(src string) int {
 }
 
 func reportParseErr(err error) int {
+	if pes, ok := err.(*lang.ParseErrors); ok {
+		// panic-mode recovery surfaces a forest of parse errors: print each.
+		for _, pe := range pes.Errors {
+			fmt.Fprintf(os.Stderr, "gustyc: parse error at %d:%d: %s\n", pe.Span.Line, pe.Span.Col, pe.Msg)
+		}
+		return exitUsage
+	}
 	fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 	return exitUsage
 }
@@ -350,7 +355,6 @@ func emitDiagnosticsJSON(diags []lang.Diagnostic, exit int) {
 	}
 	fmt.Println(string(b))
 }
-
 
 func runFmt(src string, check bool, file string, jsonOut bool) int {
 	input := src

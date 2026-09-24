@@ -1,6 +1,9 @@
 package lang
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ParseError is a parsing error with a source span.
 type ParseError struct {
@@ -12,9 +15,34 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("parse error at %d:%d: %s", e.Span.Line, e.Span.Col, e.Msg)
 }
 
+// ParseErrors is an aggregate of one or more parse errors produced by
+// panic-mode error recovery: the parser skips past a bad statement and keeps
+// parsing, so a single run can surface a forest of diagnostics rather than
+// just the first one.
+type ParseErrors struct {
+	Errors []*ParseError
+}
+
+func (pe *ParseErrors) Error() string {
+	if len(pe.Errors) == 0 {
+		return "parse error"
+	}
+	if len(pe.Errors) == 1 {
+		return pe.Errors[0].Error()
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d parse errors", len(pe.Errors))
+	for _, e := range pe.Errors {
+		b.WriteString("\n\t")
+		b.WriteString(e.Error())
+	}
+	return b.String()
+}
+
 type parser struct {
-	src string
-	cur Cursor
+	src  string
+	cur  Cursor
+	nest int // currently-open block depth (unconsumed DEDENTs); used by panic-mode recovery
 }
 
 func newParser(src string, toks []Token) *parser {
@@ -86,6 +114,7 @@ func parseProgram(src string) (*Program, error) {
 	}
 	p := newParser(src, ok)
 	prog := &Program{Diags: diags}
+	var parseErrs []*ParseError
 	for !p.atEOF() {
 		p.skipNewlines()
 		if p.atEOF() {
@@ -93,11 +122,52 @@ func parseProgram(src string) (*Program, error) {
 		}
 		st, err := p.parseStmt()
 		if err != nil {
-			return nil, err
+			if pe, ok := err.(*ParseError); ok {
+				parseErrs = append(parseErrs, pe)
+			}
+			p.recoverStmt()
+			continue
 		}
 		prog.Stmts = append(prog.Stmts, st)
 	}
+	if len(parseErrs) > 0 {
+		return prog, &ParseErrors{Errors: parseErrs}
+	}
 	return prog, nil
+}
+
+// recoverStmt performs panic-mode error recovery: it skips tokens until the
+// parser can resume at a top-level statement boundary. It tracks INDENT/DEDENT
+// nesting (seeded from p.nest, which counts blocks whose INDENT was already
+// consumed) so that a parse error deep inside a partially-parsed block skips
+// out past the block's closing DEDENTs before resuming.
+func (p *parser) recoverStmt() {
+	for !p.atEOF() {
+		t := p.peek()
+		switch t.Kind {
+		case TokIndent:
+			p.nest++
+			p.next()
+		case TokDedent:
+			if p.nest > 0 {
+				p.nest--
+			}
+			p.next()
+			if p.nest == 0 {
+				// the partially-parsed block just closed: the next token
+				// starts a top-level statement, so resume here.
+				return
+			}
+		case TokNewline:
+			if p.nest == 0 {
+				p.skipNewlines()
+				return
+			}
+			p.next()
+		default:
+			p.next()
+		}
+	}
 }
 
 // parseStmt parses a single statement and consumes its trailing NEWLINE(s).
@@ -185,6 +255,7 @@ func (p *parser) parseBlock(open Span) ([]Stmt, error) {
 	}
 	// consume INDENT
 	p.next()
+	p.nest++
 	var stmts []Stmt
 	for !p.atDedent() && !p.atEOF() {
 		p.skipNewlines()
@@ -200,6 +271,9 @@ func (p *parser) parseBlock(open Span) ([]Stmt, error) {
 	// consume DEDENT
 	if p.atDedent() {
 		p.next()
+		if p.nest > 0 {
+			p.nest--
+		}
 	}
 	// consume trailing NEWLINE after block close if any
 	for p.atNewline() {
