@@ -228,6 +228,10 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   print the whole forest.
 - **L5.3 Trailing commas** — allow `f(a, b,)`, `[1, 2,]`, `{1: 2,}` and
   `match` case arg lists, for clean diffs and formatter round-trips.
+  ✅ DONE — call args, list/dict/set literals, tuples (incl. `(a,)` 1-tuple),
+  and match class-pattern arg lists all tolerate a trailing comma; the
+  canonical formatter normalizes them away and its output re-parses cleanly.
+  Covered by `pkg/lang/trailing_comma_test.go`.
 - **L5.4 Walrus operator `:=`** — assignment expressions usable inside `if`
   conditions and comprehensions (`if (n := len(x)) > 0:`); scope rules per
   Python 3.8+.

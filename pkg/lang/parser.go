@@ -765,6 +765,9 @@ func (p *parser) parsePatternAtom() (Expr, error) {
 					args = append(args, &Name{Value: attr.Text, Src: attr.Span})
 					if p.peek().IsOp(",") {
 						p.next()
+						if p.peek().IsOp(")") {
+							break // trailing comma: `case Point(x, y,)`
+						}
 						continue
 					}
 					break
@@ -1351,6 +1354,9 @@ func (p *parser) parsePostfixOp(lhs Expr) (Expr, error) {
 				args = append(args, a)
 				if p.peek().IsOp(",") {
 					p.next()
+					if p.peek().IsOp(")") {
+						break // trailing comma: `f(a, b,)`
+					}
 					continue
 				}
 				break
@@ -1461,8 +1467,13 @@ func (p *parser) parseAtom() (Expr, error) {
 			return nil, err
 		}
 		elems := []Expr{ex}
+		trailing := false
 		for p.peek().IsOp(",") {
 			p.next()
+			if p.peek().IsOp(")") {
+				trailing = true // trailing comma: `(a, b,)` / 1-tuple `(a,)`
+				break
+			}
 			ex2, err := p.parseExpr()
 			if err != nil {
 				return nil, err
@@ -1482,7 +1493,7 @@ func (p *parser) parseAtom() (Expr, error) {
 		if err := p.expectOp(")"); err != nil {
 			return nil, err
 		}
-		if len(elems) > 1 {
+		if len(elems) > 1 || trailing {
 			return &Tuple{Elems: elems, Src: ex.Span()}, nil
 		}
 		return ex, nil
@@ -1636,6 +1647,9 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 			vals = append(vals, val)
 			for p.peek().IsOp(",") {
 				p.next()
+				if p.peek().IsOp("}") {
+					break // trailing comma: `{1: 2,}`
+				}
 				k, err := p.parseExpr()
 				if err != nil {
 					return nil, err
@@ -1654,6 +1668,9 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 			elems = append(elems, first)
 			for p.peek().IsOp(",") {
 				p.next()
+				if p.peek().IsOp("}") {
+					break // trailing comma: `{1, 2,}`
+				}
 				e, err := p.parseExpr()
 				if err != nil {
 					return nil, err

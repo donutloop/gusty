@@ -416,3 +416,24 @@ full `pkg/lang` suite passes; `go build ./...` passes.
   does), matching mypy semantics.
 - New ADR 0154, integration suite `integration/match_exhaustiveness_check_test.go`
   (6 tests), docs updates in language.md / operations.md / CHANGELOG / README.
+
+## Round 7 — L5.3: Trailing commas (parser modernization)
+
+- **Next roadmap item taken**: Phase 5 L5.3 Trailing commas — allow
+  `f(a, b,)`, `[1, 2,]`, `{1: 2,}`, `{1, 2,}`, `(a, b,)`, and `match`
+  class-pattern arg lists (`case Point(x, y,)`).
+- **Parser fixes** (`pkg/lang/parser.go`):
+  - call args (`parsePostfixOp`): after consuming `,`, break if peek is `)`;
+  - dict literal (`parseDictOrSet`): break if peek is `}` after the comma;
+  - set literal: same `}` trailing-comma break;
+  - tuple (`parseAtom` `(` case): track a `trailing` flag so `(a,)` becomes a
+    1-tuple (Python semantics) and `(a, b,)` a 2-tuple;
+  - match class-pattern args (`case Point(x, y,)`): break if peek is `)`.
+  - List literals and class patterns already tolerated trailing commas
+    (loop-condition checks), so only the above needed changes.
+- **Formatter**: `FormatSrc` already normalizes commas away, so trailing-comma
+  source round-trips to clean canonical output that re-parses fine.
+- **Tests**: new `pkg/lang/trailing_comma_test.go` — 7 tests via `EvalExpr`
+  (call/list/dict/set/tuple/1-tuple/match-arg end-to-end values) plus a
+  format round-trip re-parse check.
+- **Full suite green**; roadmap updated; commit pushed to origin/main.
