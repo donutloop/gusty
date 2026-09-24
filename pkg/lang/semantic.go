@@ -58,7 +58,10 @@ func Analyze(prog *Program) []Diagnostic {
 	for _, st := range prog.Stmts {
 		an.analyzeStmt(st)
 	}
-	return an.Diags
+	// surface lexer-recovered diagnostics (L4.1) ahead of semantic ones
+	all := append([]Diagnostic{}, prog.Diags...)
+	all = append(all, an.Diags...)
+	return all
 }
 
 func (an *SemanticAnalyzer) errorf(sp Span, msg string, args ...interface{}) {

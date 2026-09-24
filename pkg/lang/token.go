@@ -26,6 +26,7 @@ const (
 	TokFString
 	TokOp
 	TokKeyword
+	TokError
 )
 
 // Token is a single lexical token with its source span.
@@ -39,6 +40,7 @@ type Token struct {
 	Float float64
 	Str   string
 	FStrRaw string // raw inner content of an f-string token
+	ErrMsg string // message carried by a TokError token
 }
 
 func (t Token) Is(kind TokenKind, text string) bool {

@@ -71,8 +71,18 @@ func parseProgram(src string) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := newParser(src, toks)
-	prog := &Program{}
+	// collect error tokens (L4.1 error-recovering lexer) into diagnostics and drop them
+	var diags []Diagnostic
+	var ok []Token
+	for _, tk := range toks {
+		if tk.Kind == TokError {
+			diags = append(diags, Diagnostic{Level: LevelError, Span: tk.Span, Msg: tk.ErrMsg})
+			continue
+		}
+		ok = append(ok, tk)
+	}
+	p := newParser(src, ok)
+	prog := &Program{Diags: diags}
 	for !p.atEOF() {
 		p.skipNewlines()
 		if p.atEOF() {

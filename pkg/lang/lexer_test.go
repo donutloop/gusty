@@ -82,10 +82,44 @@ func TestLexFloatSeparators(t *testing.T) {
 
 // TestLexUnderscoreMisuse verifies misplaced '_' separators are rejected.
 func TestLexUnderscoreMisuse(t *testing.T) {
+	// L4.1 error-recovering lexer: numeric misuse no longer aborts; it emits a
+	// TokError token and resumes, so the parser can surface multiple diagnostics.
 	for _, src := range []string{"1__0", "1_", "0x_", "0b1_", "1_a"} {
-		if _, err := Lex(src); err == nil {
-			t.Errorf("Lex(%q): expected error", src)
+		toks, err := Lex(src)
+		if err != nil {
+			t.Fatalf("Lex(%q): unexpected hard error %v", src, err)
 		}
+		if !hasTokError(toks) {
+			t.Errorf("Lex(%q): expected a TokError token, got %d tokens", src, len(toks))
+		}
+	}
+}
+
+func hasTokError(toks []Token) bool {
+	for _, tk := range toks {
+		if tk.Kind == TokError {
+			return true
+		}
+	}
+	return false
+}
+
+func TestLexRecoveryMultipleErrors(t *testing.T) {
+	// L4.1: the lexer recovers and emits one TokError token per bad site, so the
+	// parser can surface multiple diagnostics in a single pass.
+	src := "1__0; \"unterminated"
+	toks, err := Lex(src)
+	if err != nil {
+		t.Fatalf("Lex: should recover, got %v", err)
+	}
+	var n int
+	for _, tk := range toks {
+		if tk.Kind == TokError {
+			n++
+		}
+	}
+	if n < 2 {
+		t.Errorf("Lex(%q): expected >=2 TokError tokens, got %d", src, n)
 	}
 }
 
@@ -145,9 +179,13 @@ func TestLexLineContinuation(t *testing.T) {
 	}
 
 	// a lone backslash not before a newline is rejected
-	if _, err := Lex("x = \\ 1\n"); err == nil {
-		t.Fatalf("Lex: expected error for misplaced backslash")
-	}
+	toks2, err2 := Lex("x = \\ 1\n")
+		if err2 != nil {
+			t.Fatalf("Lex: misplaced backslash should recover, got %v", err2)
+		}
+		if !hasTokError(toks2) {
+			t.Fatalf("Lex: misplaced backslash should emit a TokError token")
+		}
 }
 
 // TestParseLineContinuation verifies the parser consumes a continued logical

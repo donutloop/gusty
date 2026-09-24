@@ -7,6 +7,8 @@ type Node interface {
 
 // Program is the root AST: a list of statements.
 type Program struct {
+	Diags []Diagnostic `json:"diagnostics,omitempty"`
+
 	Stmts []Stmt `json:"stmts"`
 	Src    Span   `json:"span,omitempty"`
 }

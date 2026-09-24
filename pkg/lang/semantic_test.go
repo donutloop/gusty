@@ -128,3 +128,27 @@ def f(x):
 		t.Fatalf("definitely-assigned binding reported undefined: %v", diags3)
 	}
 }
+
+
+func TestAnalyzeSurfacesLexRecoveryDiagnostics(t *testing.T) {
+	// L4.1: the parser collects TokError tokens (lexer recovery) into prog.Diags,
+	// and Analyze prepends them so the CLI/LSP report every lex error per run.
+	prog, err := Parse("1__0")
+	if err != nil {
+		t.Fatalf("Parse should recover, got %v", err)
+	}
+	diags := Analyze(prog)
+	if len(diags) == 0 {
+		t.Fatal("Analyze should surface at least one lexer-recovery diagnostic")
+	}
+	found := false
+	for _, d := range diags {
+		if d.Msg != "" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a lexer-recovery diagnostic, got %d diags", len(diags))
+	}
+}

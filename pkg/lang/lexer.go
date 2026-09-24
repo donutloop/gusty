@@ -163,6 +163,9 @@ func Lex(src string) ([]Token, error) {
 		}
 		toks = append(toks, t)
 	}
+	emitErr := func(sp Span, msg string) {
+		toks = append(toks, Token{Kind: TokError, Span: sp, ErrMsg: msg})
+	}
 	lastKind := func() TokenKind {
 		if len(toks) == 0 {
 			return TokEOF
@@ -243,7 +246,9 @@ func Lex(src string) ([]Token, error) {
 				} else if i+1 < n && src[i+1] == '\r' && i+2 < n && src[i+2] == '\n' {
 					i += 3
 				} else {
-					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, i)}, Msg: "unexpected character '\\'"}
+					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unexpected character '\\'")
+						i++
+						continue
 				}
 				line++
 				// skip leading whitespace and blank / comment-only continuation lines
@@ -273,7 +278,11 @@ func Lex(src string) ([]Token, error) {
 			if i+2 < n && src[i+1] == quote && src[i+2] == quote {
 				end, val, ok := scanString(src, i, quote, true, false)
 				if !ok {
-					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, i)}, Msg: "unterminated triple-quoted string"}
+					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unterminated triple-quoted string")
+						for i < n && src[i] != '\n' {
+							i++
+						}
+						continue
 				}
 				i = end
 				// a triple string may contain newlines; update line tracking
@@ -297,14 +306,23 @@ func Lex(src string) ([]Token, error) {
 				val += string(src[j])
 				j++
 			}
-			i = j
+				if j >= n {
+			emitErr(Span{Line: line, Col: colAt(src, lineStart, start)}, "unterminated string")
+			for i < n && src[i] != '\n' {
+				i++
+			}
+			continue
+		}
+	i = j
 			i++ // skip closing quote
 			emit(TokString, src[start:i], func(t *Token) { t.Str = val })
 			case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])):
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, start+1)
 				if lerr != nil {
-								return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, start)}, Msg: lerr.Msg}
+								emitErr(Span{Line: line, Col: colAt(src, lineStart, start)}, lerr.Msg)
+									i = start + 1
+									continue
 				}
 				text := src[start:end]
 				if isFloat {
@@ -317,7 +335,9 @@ func Lex(src string) ([]Token, error) {
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, i)
 				if lerr != nil {
-								return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, start)}, Msg: lerr.Msg}
+								emitErr(Span{Line: line, Col: colAt(src, lineStart, start)}, lerr.Msg)
+									i = start + 1
+									continue
 				}
 				text := src[start:end]
 				if isFloat {
@@ -343,7 +363,11 @@ func Lex(src string) ([]Token, error) {
 						j++
 					}
 					if j >= n {
-						return nil, &LexError{Msg: "unterminated f-string"}
+						emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unterminated f-string")
+							for i < n && src[i] != '\n' {
+								i++
+							}
+							continue
 					}
 					raw += src[start:j]
 					emit(TokFString, src[i:j+1], func(t *Token) { t.FStrRaw = raw })
@@ -362,7 +386,11 @@ func Lex(src string) ([]Token, error) {
 				}
 				end, val, ok := scanString(src, i, quote, triple, true)
 				if !ok {
-					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, i)}, Msg: "unterminated raw string"}
+					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unterminated raw string")
+						for i < n && src[i] != '\n' {
+							i++
+						}
+						continue
 				}
 				i = end
 				if triple {
@@ -397,7 +425,9 @@ func Lex(src string) ([]Token, error) {
 					}
 				}
 				if !matched {
-					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, i)}, Msg: fmt.Sprintf("unexpected character %q", string(c))}
+					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, fmt.Sprintf("unexpected character %q", string(c)))
+						i++
+						continue
 				}
 			}
 		}
