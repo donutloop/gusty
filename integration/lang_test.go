@@ -1258,6 +1258,51 @@ match x:
         print(999)`, "555\n")
 }
 
+func TestExecMatchListPattern(t *testing.T) {
+	assertOutput(t, `x = [10, 20]
+match x:
+    case [a, b]:
+        print(a + b)
+    case _:
+        print(0)`, "30\n")
+	// length mismatch falls through
+	assertOutput(t, `x = [1, 2, 3]
+match x:
+    case [a, b]:
+        print(a + b)
+    case _:
+        print(99)`, "99\n")
+}
+
+func TestExecMatchDictPattern(t *testing.T) {
+	assertOutput(t, `d = {1: 10}
+match d:
+    case {1: v}:
+        print(v)
+    case _:
+        print(0)`, "10\n")
+	// missing key falls through
+	assertOutput(t, `d = {2: 5}
+match d:
+    case {1: v}:
+        print(v)
+    case _:
+        print(99)`, "99\n")
+}
+
+func TestExecMatchClassPattern(t *testing.T) {
+	assertOutput(t, `class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+p = Point(3, 4)
+match p:
+    case Point(x, y):
+        print(x + y)
+    case _:
+        print(0)`, "7\n")
+}
+
 // TestExecLineContinuation verifies L4.6 end-to-end: a trailing backslash
 // joins the next physical line into one logical line, so a long expression or
 // call argument list split across lines compiles and runs identically to the

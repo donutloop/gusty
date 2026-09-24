@@ -100,7 +100,7 @@ case (and an ADR where the decision is non-obvious).
 - DoD: parity program dispatches identically on interpreter + AOT + JIT.
 
 ### Gap B — AOT match / pattern exhaustiveness
-- **Status**: 🟠 PARTIAL — AOT `match` is expression-equality only.
+- **Status**: 🟢 MOSTLY DONE — AOT `match` now lowers list-destructuring patterns (`[a, b]`), dict patterns (`{k: v}`), and class patterns (`Point(x, y)` with subclass-walk + attribute binding) to runtime IR via `rt_list_len`/`rt_get_elem`, `rt_dict_has`/`rt_dict_get`, and `rt_heap_kind`/`rt_inst_get`. Guards, `_`, and or-patterns already lower. Remaining: class-pattern aliases (`Alias = Point`) and bare-name binding edge cases.
 - Port interpreter pattern semantics to codegen: guards, or-patterns, dict
   patterns, class patterns (subclass walk + attribute binding).
 - **New**: exhaustiveness / irrefutability checking in `semantic.go` — a

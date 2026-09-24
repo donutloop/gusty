@@ -692,6 +692,56 @@ entry:
   ret i1 %eq
 }
 
+
+define internal i32 @rt_heap_kind(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %kf = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
+  %k = load i32, i32* %kf
+  ret i32 %k
+}
+
+define internal i32 @rt_heap_len(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lf = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %l = load i32, i32* %lf
+  ret i32 %l
+}
+
+define internal i32 @rt_heap_get(i32 %h, i32 %i) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %arr = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  %p = getelementptr [256 x i32], [256 x i32]* %arr, i32 0, i32 %i
+  %v = load i32, i32* %p
+  ret i32 %v
+}
+
+define internal i32 @rt_dict_has(i32 %h, i32 %k) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lf = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lf
+  %arr = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %header
+header:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %ok = icmp slt i32 %i, %len
+  br i1 %ok, label %loop, label %miss
+loop:
+  %p = getelementptr [256 x i32], [256 x i32]* %arr, i32 0, i32 %i
+  %kv = load i32, i32* %p
+  %eq = icmp eq i32 %kv, %k
+  br i1 %eq, label %hit, label %cont
+cont:
+  %next = add i32 %i, 2
+  br label %header
+hit:
+  ret i32 1
+miss:
+  ret i32 0
+}
 `
 
 func GenerateIR(prog *Program) (string, error) {
@@ -5021,6 +5071,178 @@ func loopVarName(v Expr) string {
 	return ""
 }
 
+
+func (g *irGen) andCond(b *strings.Builder, a, c string) string {
+	if a == "1" {
+		return c
+	}
+	if c == "1" {
+		return a
+	}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", t, a, c))
+	return t
+}
+
+func (g *irGen) orCond(b *strings.Builder, a, c string) string {
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", t, a, c))
+	return t
+}
+
+func (g *irGen) bindPat(b *strings.Builder, name, val string) {
+	if !g.allocd[name] {
+		g.allocd[name] = true
+		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", name))
+	}
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, name))
+}
+
+func (g *irGen) hasBase(bases []string, class string) bool {
+	for _, base := range bases {
+		if base == class {
+			return true
+		}
+		if g.classInfos[base] != nil && g.hasBase(g.classInfos[base].bases, class) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *irGen) classChainCond(b *strings.Builder, cid, class string) string {
+	pid := g.classIDs[class]
+	regs := []string{}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", t, cid, pid))
+	regs = append(regs, t)
+	for cname, ci := range g.classInfos {
+		if cname == class {
+			continue
+		}
+		if g.hasBase(ci.bases, class) {
+			sc := g.classIDs[cname]
+			st := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", st, cid, sc))
+			regs = append(regs, st)
+		}
+	}
+	cond := regs[0]
+	for _, r := range regs[1:] {
+		cond = g.orCond(b, cond, r)
+	}
+	return cond
+}
+
+func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) string {
+	switch p := pat.(type) {
+	case *Name:
+		if p.Value == "_" {
+			cmp := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, sub))
+			return cmp
+		}
+		pv, err := g.value(b, p)
+		if err != nil {
+			return "0"
+		}
+		cmp := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
+		return cmp
+	case *ListLit:
+		n := len(p.Elems)
+		ln := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, sub))
+		lc := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", lc, ln, n))
+		cond := lc
+		for i, e := range p.Elems {
+			er := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %d)\n", er, sub, i))
+			if nm, ok := e.(*Name); ok && nm.Value != "_" {
+				g.bindPat(b, nm.Value, er)
+				continue
+			}
+			ev, err := g.value(b, e)
+			if err != nil {
+				continue
+			}
+			ec := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", ec, er, ev))
+			cond = g.andCond(b, cond, ec)
+		}
+		return cond
+	case *DictLit:
+		cond := "1"
+		for i, k := range p.Keys {
+			kv, err := g.value(b, k)
+			if err != nil {
+				continue
+			}
+			hs := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has(i32 %s, i32 %s)\n", hs, sub, kv))
+			hc := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", hc, hs))
+			cond = g.andCond(b, cond, hc)
+			v := p.Vals[i]
+			vr := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_get(i32 %s, i32 %s)\n", vr, sub, kv))
+			if nm, ok := v.(*Name); ok && nm.Value != "_" {
+				g.bindPat(b, nm.Value, vr)
+				continue
+			}
+			vv, err := g.value(b, v)
+			if err != nil {
+				continue
+			}
+			vc := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", vc, vr, vv))
+			cond = g.andCond(b, cond, vc)
+		}
+		return cond
+	case *Call:
+		if fn, ok := p.Fn.(*Name); ok {
+			class := fn.Value
+			if g.classIDs[class] != 0 || g.classInfos[class] != nil {
+				kind := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_heap_kind(i32 %s)\n", kind, sub))
+				kc := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 4\n", kc, kind))
+				cond := kc
+				cid := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, sub))
+				cc := g.classChainCond(b, cid, class)
+				cond = g.andCond(b, cond, cc)
+				for _, arg := range p.Args {
+					if nm, ok := arg.(*Name); ok && nm.Value != "_" {
+						slot := g.attrSlot(nm.Value)
+						ar := g.newTmp()
+						b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ar, sub, slot))
+						g.bindPat(b, nm.Value, ar)
+					}
+				}
+				return cond
+			}
+		}
+		pv, err := g.value(b, pat)
+		if err != nil {
+			return "0"
+		}
+		cmp := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
+		return cmp
+	default:
+		pv, err := g.value(b, pat)
+		if err != nil {
+			return "0"
+		}
+		cmp := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
+		return cmp
+	}
+}
+
+
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	switch n := st.(type) {
 	case *ImportStmt:	case *ExternDecl:
@@ -5390,23 +5612,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			patterns := append([]Expr{c.Pattern}, c.Or...)
 			var orTmp string
 			for _, p := range patterns {
-				pat := sub
-				if name, ok := p.(*Name); !ok || name.Value != "_" {
-					pat, err = g.value(b, p)
-					if err != nil {
-						return err
-					}
-				}
-				cmp := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pat))
+				pc := g.matchPattern(b, sub, p)
 				if orTmp == "" {
-					orTmp = cmp
+					orTmp = pc
 				} else {
 					nt := g.newTmp()
-					b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", nt, orTmp, cmp))
+					b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", nt, orTmp, pc))
 					orTmp = nt
-				}
-			}
+				}			}
 			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", orTmp, bodyL, fallL))
 			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 			if c.Guard != nil {
