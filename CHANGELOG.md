@@ -154,6 +154,21 @@ pre-`1.0.0` releases (`v0.x.y`) while still in development.
 
 ## [Unreleased] - v0.10.0 (in progress)
 
+### Match exhaustiveness + definite-assignment checking (ADR 0154)
+
+- A `match` with only refutable (literal) cases — no `case _:` and no
+  bare-name `case y:` — is NON-exhaustive: the semantic pass emits a
+  mypy-style `match is not exhaustive` *warning* (does not fail `gusty
+  check`; only errors do). Surfaces in human and `--json` check output.
+- Definite assignment: a name bound by an irrefutable case on every path is
+  defined in the enclosing scope after the match (readable, no `undefined
+  name`); a name bound on only some paths is left undefined and reading it
+  reports `undefined name`. `_` is a wildcard (irrefutable, binds nothing).
+- New integration tests: `integration/match_exhaustiveness_check_test.go`
+  cover warning / no-warning, definite-assignment both paths, and compiled
+  runtime parity for `case _:`.
+- Unit tests: `pkg/lang/semantic_test.go` (`TestMatchExhaustiveness`).
+
 ### Richer --emit-ast JSON: spans + inferred types
 - Each AST node in `--emit-ast` output now carries its source `span` (from the
   node's `Src` field), and each expression node carries the `inferred` static

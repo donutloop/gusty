@@ -75,3 +75,56 @@ func hasErrorMsg(diags []Diagnostic, substr string) bool {
 	}
 	return false
 }
+
+func hasWarningMsg(diags []Diagnostic, substr string) bool {
+	for _, d := range diags {
+		if d.Level == LevelWarning && strings.Contains(d.Msg, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMatchExhaustiveness(t *testing.T) {
+	// A match with a wildcard `_` case is exhaustive: no non-exhaustive warning.
+	src := `
+def f(x):
+    match x:
+        case 1:
+            print(1)
+        case _:
+            print(0)
+`
+	diags := Analyze(parseOrFatal(t, src))
+	if hasWarningMsg(diags, "match is not exhaustive") {
+		t.Fatalf("exhaustive match produced a warning: %v", diags)
+	}
+
+	// A match without a wildcard or always-matching case is non-exhaustive.
+	src2 := `
+def f(x):
+    match x:
+        case 1:
+            print(1)
+        case 2:
+            print(2)
+`
+	diags2 := Analyze(parseOrFatal(t, src2))
+	if !hasWarningMsg(diags2, "match is not exhaustive") {
+		t.Fatalf("expected a non-exhaustive warning, got %v", diags2)
+	}
+
+	// Definite assignment: a binding in every (here the only) case is usable
+	// after the match and must not be reported as undefined.
+	src3 := `
+def f(x):
+    match x:
+        case y:
+            pass
+    print(y)
+`
+	diags3 := Analyze(parseOrFatal(t, src3))
+	if hasErrorMsg(diags3, "undefined name") {
+		t.Fatalf("definitely-assigned binding reported undefined: %v", diags3)
+	}
+}

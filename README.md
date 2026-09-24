@@ -65,7 +65,10 @@ gusty ships an indentation-based syntax covering:
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
   `else:` clauses, `break` / `continue`, and `pass`
 - **Pattern matching** — `match` with integer equality, `_` wildcards, and
-  list-destructuring patterns (`case [a, b]:`)
+  list-destructuring patterns (`case [a, b]:`); `gusty check` flags
+  non-exhaustive matches (missing `case _:` / bare-name fallback) as a
+  mypy-style warning and enforces definite assignment of match-bound names
+  (ADR 0154)
 - **Data structures** — inline `list` / `dict` / `set` literals, indexing,
   and list / dict / set comprehensions
 - **Escape-analysis heap elision** — never-read top-level list literals skip

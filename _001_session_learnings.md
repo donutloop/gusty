@@ -392,3 +392,24 @@ roadmap Phase 4 item L4.5.
 
 Tests: `strings_test.go` covers raw, triple, raw-triple, and triple docstrings;
 full `pkg/lang` suite passes; `go build ./...` passes.
+
+## Round 4 — Match exhaustiveness + definite-assignment checking (Gap B semantic half, L6.1/L6.2)
+
+- Completed the in-progress semantic work left in the working tree: `MatchStmt`
+  in `pkg/lang/semantic.go` now (a) warns when a match has NO irrefutable case
+  (`case _:` or a bare-name `case y:`) and (b) intersects each case's bound
+  names (`boundAll`) and defines only those in the enclosing scope after the
+  match — definite assignment.
+- Key discovery while writing integration tests: the `print(...)` builtin does
+  NOT analyze its arguments (returns `TVoid()` without recursing into args), so
+  `print(y)` never triggers undefined-name detection. Definite-assignment tests
+  must use a construct that walks `inferExpr` on a Name, e.g. `return y`.
+- The runtime parity test must use `assertOutput` (compiles to native and runs,
+  capturing stdout): `EvalProgram` returns the last *value* (None -> 0 for a
+  trailing `print`), not stdout, so `ev.Repr(out)` gave "0" not "9".
+- AOT codegen already lowers guards, or-patterns, and `_`; only dict-pattern /
+  class-pattern lowering remains interpreter-only. The exhaustiveness warning
+  is advisory: it does not change `gusty check` exit codes (only LevelError
+  does), matching mypy semantics.
+- New ADR 0154, integration suite `integration/match_exhaustiveness_check_test.go`
+  (6 tests), docs updates in language.md / operations.md / CHANGELOG / README.

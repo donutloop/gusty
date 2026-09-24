@@ -48,6 +48,25 @@ subject element-wise, binding Name pattern elems to the subject's elements
 non-Name element is compared element-wise; mismatched arity/kind falls through
 to later cases. See ADR 0091.
 
+A bare-name pattern (`case y:`) is *irrefutable*: it always matches and binds
+the subject. `case _:` is a wildcard: it always matches and binds nothing.
+
+**Exhaustiveness (ADR 0154).** A `match` is *exhaustive* iff at least one
+case is irrefutable (a bare `Name`, including `_`). A `match` with only
+refutable (literal) cases is non-exhaustive: `gusty check` emits a mypy-style
+warning, so you know to add a `case _:` fallback. Warnings don't fail the
+check (only errors do).
+
+**Definite assignment (ADR 0154).** A name bound by an irrefutable case that
+fires on *every* path is definitely assigned and readable after the match.
+A name bound on only *some* paths (an earlier refutable case can skip it) is
+not definitely assigned, and reading it after the match is an `undefined
+name` error.
+
+**AOT lowering.** Guards, or-patterns, and the `_` wildcard lower to native
+code (`codegen.go`); dict-pattern and class-pattern lowering is
+interpreter-only today.
+
 ## Standard library
 
 Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,

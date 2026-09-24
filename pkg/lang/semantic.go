@@ -184,24 +184,36 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		// no-op statement
 	case *MatchStmt:
 		an.inferExpr(s.Subject)
+		var boundAll map[string]bool
+		first := true
+		irrefutable := false
 		for _, c := range s.Cases {
-			if c.Guard != nil {
-				an.inferExpr(c.Guard)
-			}
 			an.scope = newScope(an.scope)
 			for _, p := range append([]Expr{c.Pattern}, c.Or...) {
-				switch t := p.(type) {
-				case *ListLit:
-					for _, pe := range t.Elems {
-						if n, ok := pe.(*Name); ok && n.Value != "_" {
-							an.scope.define(n.Value, TDyn())
-						}
+				for n := range matchPatternNames(p) {
+					an.scope.define(n, TDyn())
+				}
+			}
+			bound := map[string]bool{}
+			for _, p := range append([]Expr{c.Pattern}, c.Or...) {
+				for n := range matchPatternNames(p) {
+					bound[n] = true
+				}
+			}
+			if first {
+				boundAll = bound
+				first = false
+			} else {
+				for n := range boundAll {
+					if !bound[n] {
+						delete(boundAll, n)
 					}
-				case *DictLit:
-					for _, ve := range t.Vals {
-						if n, ok := ve.(*Name); ok && n.Value != "_" {
-							an.scope.define(n.Value, TDyn())
-						}
+				}
+			}
+			if c.Guard == nil {
+				for _, p := range append([]Expr{c.Pattern}, c.Or...) {
+					if _, ok := p.(*Name); ok {
+						irrefutable = true
 					}
 				}
 			}
@@ -209,6 +221,12 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 				an.analyzeStmt(b)
 			}
 			an.scope = an.scope.Parent
+		}
+		if !irrefutable {
+			an.warnf(s.Src, "match is not exhaustive: add a wildcard `_` or always-matching binding case")
+		}
+		for n := range boundAll {
+			an.scope.define(n, TDyn())
 		}
 	case *TryStmt:
 		an.scope = newScope(an.scope)
@@ -253,7 +271,7 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	if n, ok := as.Target.(*Name); ok {
 		an.scope.define(n.Value, valTy)
 	}
-		if t, ok := as.Target.(*Tuple); ok {
+	if t, ok := as.Target.(*Tuple); ok {
 		var elemTypes []*Type
 		if valTy != nil && valTy.Kind == KindTuple {
 			elemTypes = valTy.Elems
@@ -321,27 +339,48 @@ func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 	ty := an.inferExprTy(e)
 	if ty != nil {
 		switch n := e.(type) {
-		case *Name: n.Ty = ty.Name()
-		case *IntLit: n.Ty = ty.Name()
-		case *FloatLit: n.Ty = ty.Name()
-		case *BoolLit: n.Ty = ty.Name()
-		case *NoneLit: n.Ty = ty.Name()
-		case *StrLit: n.Ty = ty.Name()
-		case *FString: n.Ty = ty.Name()
-		case *ListLit: n.Ty = ty.Name()
-		case *DictLit: n.Ty = ty.Name()
-		case *SetLit: n.Ty = ty.Name()
-		case *Tuple: n.Ty = ty.Name()
-		case *BinOp: n.Ty = ty.Name()
-		case *UnOp: n.Ty = ty.Name()
-		case *CondExpr: n.Ty = ty.Name()
-		case *Call: n.Ty = ty.Name()
-		case *Index: n.Ty = ty.Name()
-		case *Slice: n.Ty = ty.Name()
-		case *Attr: n.Ty = ty.Name()
-		case *Lambda: n.Ty = ty.Name()
-		case *Comp: n.Ty = ty.Name()
-		case *Generator: n.Ty = ty.Name()
+		case *Name:
+			n.Ty = ty.Name()
+		case *IntLit:
+			n.Ty = ty.Name()
+		case *FloatLit:
+			n.Ty = ty.Name()
+		case *BoolLit:
+			n.Ty = ty.Name()
+		case *NoneLit:
+			n.Ty = ty.Name()
+		case *StrLit:
+			n.Ty = ty.Name()
+		case *FString:
+			n.Ty = ty.Name()
+		case *ListLit:
+			n.Ty = ty.Name()
+		case *DictLit:
+			n.Ty = ty.Name()
+		case *SetLit:
+			n.Ty = ty.Name()
+		case *Tuple:
+			n.Ty = ty.Name()
+		case *BinOp:
+			n.Ty = ty.Name()
+		case *UnOp:
+			n.Ty = ty.Name()
+		case *CondExpr:
+			n.Ty = ty.Name()
+		case *Call:
+			n.Ty = ty.Name()
+		case *Index:
+			n.Ty = ty.Name()
+		case *Slice:
+			n.Ty = ty.Name()
+		case *Attr:
+			n.Ty = ty.Name()
+		case *Lambda:
+			n.Ty = ty.Name()
+		case *Comp:
+			n.Ty = ty.Name()
+		case *Generator:
+			n.Ty = ty.Name()
 		}
 	}
 	return ty
@@ -389,7 +428,7 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 			elem = TDyn()
 		}
 		return TList(elem)
-		case *Tuple:
+	case *Tuple:
 		var elems []*Type
 		for _, el := range n.Elems {
 			elems = append(elems, an.inferExpr(el))
@@ -522,24 +561,24 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			return TDyn()
 		}
 		if ed, ok2 := an.externs[name.Value]; ok2 {
-		// extern (FFI) call: arity + arg type check; return type comes from the
-		// extern declaration's return annotation.
-		if len(ed.Params) != len(n.Args) {
-			an.errorf(n.Src, "extern function %q expects %d arguments, got %d", name.Value, len(ed.Params), len(n.Args))
+			// extern (FFI) call: arity + arg type check; return type comes from the
+			// extern declaration's return annotation.
+			if len(ed.Params) != len(n.Args) {
+				an.errorf(n.Src, "extern function %q expects %d arguments, got %d", name.Value, len(ed.Params), len(n.Args))
+				return TDyn()
+			}
+			for i, p := range ed.Params {
+				at := an.inferExpr(n.Args[i])
+				if !assignable(at, p.Annot) {
+					an.errorf(n.Args[i].Span(), "argument %d of extern function %q: expected %s, got %s", i+1, name.Value, typeName(p.Annot), typeName(at))
+				}
+			}
+			if ed.ReturnAnno != nil {
+				return ed.ReturnAnno
+			}
 			return TDyn()
 		}
-		for i, p := range ed.Params {
-			at := an.inferExpr(n.Args[i])
-			if !assignable(at, p.Annot) {
-				an.errorf(n.Args[i].Span(), "argument %d of extern function %q: expected %s, got %s", i+1, name.Value, typeName(p.Annot), typeName(at))
-			}
-		}
-		if ed.ReturnAnno != nil {
-			return ed.ReturnAnno
-		}
-		return TDyn()
-	}
-	if fd, ok2 := an.funcs[name.Value]; ok2 {
+		if fd, ok2 := an.funcs[name.Value]; ok2 {
 			return an.inferUserCall(fd, n)
 		}
 		switch name.Value {
@@ -773,4 +812,35 @@ func callableAssignable(got *Type, wantParams []*Type, wantRet *Type) bool {
 		return true
 	}
 	return assignable(got.Ret, wantRet)
+}
+
+// matchPatternNames returns the set of pattern-bound names (non-wildcard)
+// introduced by a match pattern expression.
+func matchPatternNames(p Expr) map[string]bool {
+	names := map[string]bool{}
+	switch pat := p.(type) {
+	case *Name:
+		if pat.Value != "_" {
+			names[pat.Value] = true
+		}
+	case *ListLit:
+		for _, e := range pat.Elems {
+			for n := range matchPatternNames(e) {
+				names[n] = true
+			}
+		}
+	case *DictLit:
+		for _, v := range pat.Vals {
+			for n := range matchPatternNames(v) {
+				names[n] = true
+			}
+		}
+	case *Call:
+		for _, a := range pat.Args {
+			for n := range matchPatternNames(a) {
+				names[n] = true
+			}
+		}
+	}
+	return names
 }

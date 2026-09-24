@@ -280,7 +280,15 @@ Annotations are recursive generic expressions: `list[int]`,
 Assignment to a protocol bound checks the structural `assignable(got, want)`
 relation: `Sequence[int] = [1, 2]` and `Sequence[int] = (1, 2)` pass; `str`
 is `Sequence[str]` (not `Sequence[int]`), and an `int`/`dict` is not a
-sequence, so those are rejected. A function-name reference (bare `fn`) is
+sequence, so those are rejected.
+
+**Match exhaustiveness (ADR 0154).** A `match` with only refutable (literal)
+cases and no irrefutable case (`case _:` or a bare-name `case y:`) is
+non-exhaustive; `gusty check` emits a mypy-style *warning*. Warnings appear
+in the human output and the `--json` machine path but do not change the exit
+code (only `LevelError` does). Reading a name bound by an irrefutable case
+on every path is accepted (definitely assigned); reading one bound on only
+some paths is an `undefined name` error. A function-name reference (bare `fn`) is
 assignable to any Callable bound under gradual typing.
 
 ## Benchmarking
