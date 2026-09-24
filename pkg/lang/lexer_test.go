@@ -1,6 +1,9 @@
 package lang
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestLexNumericLiterals verifies modern numeric-literal syntax (hex,
 // binary, octal, and digit separators) lexes to correct token values and
@@ -83,5 +86,91 @@ func TestLexUnderscoreMisuse(t *testing.T) {
 		if _, err := Lex(src); err == nil {
 			t.Errorf("Lex(%q): expected error", src)
 		}
+	}
+}
+
+// kindName maps a TokenKind to its short name for test assertions.
+func kindName(k TokenKind) string {
+	names := [...]string{"EOF", "Newline", "Indent", "Dedent", "Ident", "Int",
+		"Float", "String", "RawString", "TripleString", "RawTripleString",
+		"FString", "Op", "Keyword"}
+	if int(k) < len(names) {
+		return names[k]
+	}
+	return "?"
+}
+
+// lexKinds returns a compact string of token kinds for a source, for assertions.
+func lexKinds(src string) string {
+	toks, err := Lex(src)
+	if err != nil {
+		return "ERR:" + err.Error()
+	}
+	var b strings.Builder
+	for _, t := range toks {
+		b.WriteString(kindName(t.Kind))
+		if t.Kind == TokNewline || t.Kind == TokEOF {
+			b.WriteByte('\n')
+		} else {
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
+}
+
+// TestLexLineContinuation verifies L4.6: a trailing backslash before the
+// newline joins the next physical line into one logical line (no NEWLINE token
+// in the middle), ignoring the continuation line's leading indentation.
+func TestLexLineContinuation(t *testing.T) {
+	// a long call argument list split with a continuation must lex as one line
+	src := "print(1 + \\\n    2)\nprint(3)\n"
+	got := lexKinds(src)
+	want := "Keyword Op Int Op Int Op Newline\nKeyword Op Int Op Newline\nEOF\n"
+	if got != want {
+		t.Fatalf("lex line continuation:\n got %q\nwant %q", got, want)
+	}
+
+	// multiple continuations chain within one logical line
+	got = lexKinds("x = 1 + \\\n    2 + \\\n    3\nprint(x)\n")
+	want = "Ident Op Int Op Int Op Int Newline\nKeyword Op Ident Op Newline\nEOF\n"
+	if got != want {
+		t.Fatalf("lex chained continuation:\n got %q\nwant %q", got, want)
+	}
+
+	// blank and comment-only continuation lines are skipped
+	got = lexKinds("x = 1 + \\\n\n    # note\n    2\nprint(x)\n")
+	want = "Ident Op Int Op Int Newline\nKeyword Op Ident Op Newline\nEOF\n"
+	if got != want {
+		t.Fatalf("lex continuation with blank/comment lines:\n got %q\nwant %q", got, want)
+	}
+
+	// a lone backslash not before a newline is rejected
+	if _, err := Lex("x = \\ 1\n"); err == nil {
+		t.Fatalf("Lex: expected error for misplaced backslash")
+	}
+}
+
+// TestParseLineContinuation verifies the parser consumes a continued logical
+// line as a single statement.
+func TestParseLineContinuation(t *testing.T) {
+	prog, err := Parse("total = 1 + \\\n    2 + \\\n    3\nprint(total)\n")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(prog.Stmts) != 2 {
+		t.Fatalf("want 2 statements, got %d", len(prog.Stmts))
+	}
+	as, ok := prog.Stmts[0].(*AssignStmt)
+	if !ok {
+		t.Fatalf("stmt[0] is %T, want *AssignStmt", prog.Stmts[0])
+	}
+	be, ok := as.Value.(*BinOp)
+	if !ok || be.Op != "+" {
+		t.Fatalf("continued expression not a full binary expr: %#v", as.Value)
+	}
+	// the inner + must also be a binary expr (1 + 2 + 3 fully folded left)
+	inner, ok := be.L.(*BinOp)
+	if !ok || inner.Op != "+" {
+		t.Fatalf("expected left-assoc nested binary expr, got %#v", be.L)
 	}
 }

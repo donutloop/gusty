@@ -1,3 +1,16 @@
+# Round L4.6 — Line continuation
+
+- A trailing backslash at end of line joins the next physical line into one
+  logical line (Python-compatible), so long expressions and call argument
+  lists can be split without forcing parens.
+- The lexer ignores the continuation line's leading indentation (matching
+  Python) and skips blank and comment-only continuation lines.
+- A lone backslash not immediately before a newline is a lex error
+  ("unexpected character '\\'").
+- Tests: `pkg/lang/lexer_test.go` (token-stream + parse assertions) and
+  `integration/lang_test.go` (end-to-end AOT run of continued expressions and
+  call argument lists).
+
 # Class patterns in `match` (interpreter)
 
 - `match` now supports class patterns: `case Point(x, y):` matches a subject

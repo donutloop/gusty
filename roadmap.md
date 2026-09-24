@@ -188,7 +188,9 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L4.5 Raw strings + triple-quoted strings** — `r"..."`/`R'...'` raw strings (no escape processing; a `\` before a quote keeps the string open) and `"""..."""`/`'''...'''` triple-quoted strings (may span lines); raw-triple `r"""..."""`; docstring extraction reuses both forms; formatter preserves raw/triple forms. — ✅ DONE
 - **L4.6 Line continuation** — trailing `\` at end of line joins the next
   physical line into one logical line (Python-compatible), so long call
-  argument lists don't force parens.
+  argument lists don't force parens. — ✅ DONE (lexer skips the continued
+  line's leading indentation and blank/comment-only continuation lines;
+  unit + integration tests)
 - **L4.7 Token-stream cursor API** — a small cursor/`peek(n)`/`mark()`
   abstraction shared by parser, formatter, and LSP so all three walk the same
   stream (single source of truth for spans).

@@ -234,6 +234,38 @@ func Lex(src string) ([]Token, error) {
 				for i < n && src[i] != '\n' {
 					i++
 				}
+			case c == '\\':
+				// L4.6 line continuation: a trailing backslash immediately before
+				// the newline joins the next physical line into this logical line,
+				// ignoring the continuation line's leading indentation.
+				if i+1 < n && src[i+1] == '\n' {
+					i += 2
+				} else if i+1 < n && src[i+1] == '\r' && i+2 < n && src[i+2] == '\n' {
+					i += 3
+				} else {
+					return nil, &LexError{Span: Span{Line: line, Col: colAt(src, lineStart, i)}, Msg: "unexpected character '\\'"}
+				}
+				line++
+				// skip leading whitespace and blank / comment-only continuation lines
+				for i < n {
+					for i < n && (src[i] == ' ' || src[i] == '\t' || src[i] == '\r') {
+						i++
+					}
+					if i < n && src[i] == '\n' {
+						i++
+						line++
+						continue
+					}
+					if i < n && src[i] == '#' {
+						for i < n && src[i] != '\n' {
+							i++
+						}
+						continue
+					}
+					break
+				}
+				lineStart = i
+				continue
 			case c == '"' || c == '\'':
 			quote := c
 			start := i

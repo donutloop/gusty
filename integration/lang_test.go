@@ -1257,3 +1257,16 @@ match x:
     case _:
         print(999)`, "555\n")
 }
+
+// TestExecLineContinuation verifies L4.6 end-to-end: a trailing backslash
+// joins the next physical line into one logical line, so a long expression or
+// call argument list split across lines compiles and runs identically to the
+// single-line form (byte-identical stdout on the AOT binary).
+func TestExecLineContinuation(t *testing.T) {
+	// long arithmetic expression split with a continuation
+	assertOutput(t, "s = 1 + \\\n    2 + \\\n    3\nprint(s)", "6\n")
+	// continued call argument list (no forced parens)
+	assertOutput(t, "def add(a, b):\n    return a + b\nprint(add(\\\n    20, \\\n    22))", "42\n")
+	// continuation with blank + comment-only lines between
+	assertOutput(t, "x = 5 + \\\n\n    # note\n    37\nprint(x)", "42\n")
+}
