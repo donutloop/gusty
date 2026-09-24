@@ -1315,3 +1315,37 @@ func TestExecLineContinuation(t *testing.T) {
 	// continuation with blank + comment-only lines between
 	assertOutput(t, "x = 5 + \\\n\n    # note\n    37\nprint(x)", "42\n")
 }
+
+func TestMatchClassPatternAliasAOT(t *testing.T) {
+	// `Alias = Point` stores the class id; `case Alias(x, y)` must match
+	// a Point instance through the runtime alias path in AOT.
+	assertOutput(t, `class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+Alias = Point
+p = Point(5, 6)
+match p:
+    case Alias(x, y):
+        print(x * y)
+    case _:
+        print(0)`, "30\n")
+}
+
+func TestMatchClassPatternAliasMismatchAOT(t *testing.T) {
+	// A non-matching class pattern falls through to the wildcard.
+	assertOutput(t, `class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+class Line:
+    def __init__(self, a):
+        self.a = a
+Alias = Point
+q = Line(7)
+match q:
+    case Alias(x, y):
+        print(x + y)
+    case _:
+        print(9)`, "9\n")
+}

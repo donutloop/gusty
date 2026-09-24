@@ -2278,6 +2278,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *NoneLit:
 		return "0", nil
 	case *Name:
+		// A module-level class name used as a value (e.g. `Alias = Point`)
+		// resolves to its class id so aliases can be stored and matched.
+		if g.classIDs[n.Value] != 0 || g.classInfos[n.Value] != nil {
+			return fmt.Sprintf("%d", g.classIDs[n.Value]), nil
+		}
 		// A module function body may reference a folded module-global
 		// constant by its bare name (captured like a closure env). Resolve
 		// it to the folded constant unless a parameter shadows it.
@@ -5222,7 +5227,30 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) string {
 					}
 				}
 				return cond
+		} else if g.classIDs[class] == 0 && g.classInfos[class] == nil {
+			// Runtime class-pattern alias (`Alias = Point`): fn is a variable
+			// holding a class id (stored by value() as a classid constant).
+			// Match the subject instance class id against the runtime alias id.
+			kind := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_heap_kind(i32 %s)\n", kind, sub))
+			cond := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 4\n", cond, kind))
+			cid := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, sub))
+			alias, _ := g.value(b, fn)
+			cc := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cc, cid, alias))
+			cond = g.andCond(b, cond, cc)
+			for _, arg := range p.Args {
+				if nm, ok := arg.(*Name); ok && nm.Value != "_" {
+					slot := g.attrSlot(nm.Value)
+					ar := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ar, sub, slot))
+					g.bindPat(b, nm.Value, ar)
+				}
 			}
+			return cond
+		}
 		}
 		pv, err := g.value(b, pat)
 		if err != nil {
