@@ -66,3 +66,34 @@ func TestJITError(t *testing.T) {
 		t.Fatal("expected an error for an undefined name")
 	}
 }
+
+// TestJITDocstrings verifies `def.__doc__` / `Cls.__doc__` folds to a string
+// constant in the AOT/JIT backend.
+func TestJITDocstrings(t *testing.T) {
+	res, err := JIT(`
+def greet():
+    "returns a greeting"
+    return 1
+def nodoc():
+    return 2
+class Animal:
+    "an animal class"
+    def speak(self):
+        return self
+class Plain:
+    def noop(self):
+        return self
+print(greet.__doc__)
+print(nodoc.__doc__)
+print(Animal.__doc__)
+print(Plain.__doc__)
+print("done")
+`, 0)
+	if err != nil {
+		t.Fatalf("JIT failed: %v", err)
+	}
+	want := "returns a greeting\n\nan animal class\n\ndone\n"
+	if res.Output != want {
+		t.Fatalf("output = %q, want %q", res.Output, want)
+	}
+}

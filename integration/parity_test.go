@@ -541,3 +541,27 @@ print(1.5_0)
 print("done")
 `)
 }
+
+// TestParityDocstrings verifies that `def.__doc__` / `Cls.__doc__` folds to a
+// string constant identically in the interpreter and the AOT backend.
+func TestParityDocstrings(t *testing.T) {
+	parity(t, `
+def greet():
+    "returns a greeting"
+    return 1
+def nodoc():
+    return 2
+class Animal:
+    "an animal class"
+    def speak(self):
+        return self
+class Plain:
+    def noop(self):
+        return self
+print(greet.__doc__)
+print(nodoc.__doc__)
+print(Animal.__doc__)
+print(Plain.__doc__)
+print("done")
+`)
+}

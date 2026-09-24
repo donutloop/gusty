@@ -131,7 +131,7 @@ case (and an ADR where the decision is non-obvious).
 - **Status**: ✅ mostly DONE, small leftovers.
 - `float()`/`round()` paths that still fall back to interpreter-only
   (`codegen.go:4449`) should emit real `double` IR.
-- `__doc__` reads are interpreter-only: emit the folded docstring constant in AOT.
+- `__doc__` reads are interpreter-only: emit the folded docstring constant in AOT. ✅ DONE — `def.__doc__`/`Cls.__doc__` now folds to a string constant in the AOT backend (see `case *Attr:` in `value()` + `stringVal()`), with a JIT unit test (`TestJITDocstrings`) and an integration parity test (`TestParityDocstrings`).
 - String slicing in AOT is limited to inline literals; support string *variable*
   slicing by lowering to the runtime `rt_slice` helper.
 - DoD: no `interpreter-only` branch remains in codegen for a tested feature.

@@ -973,6 +973,7 @@ type irGen struct {
 type classInfo struct {
 	bases   []string
 	methods map[string]string // method name -> IR function name
+	doc     string            // class docstring (for `Cls.__doc__` in AOT)
 }
 
 // registerClass records a class definition (ClassDef) and emits its methods.
@@ -990,7 +991,7 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		g.classIDs[cd.Name] = len(g.classOrder)
 		g.classOrder = append(g.classOrder, cd.Name)
 	}
-	ci := &classInfo{bases: []string{}, methods: map[string]string{}}
+	ci := &classInfo{bases: []string{}, methods: map[string]string{}, doc: cd.Doc}
 	for _, b := range cd.Bases {
 		if b != nil {
 			ci.bases = append(ci.bases, b.Value)
@@ -1764,6 +1765,18 @@ func (g *irGen) indexListElems(c *Call) ([]Expr, bool) {
 func (g *irGen) stringVal(e Expr) (string, bool) {
 	switch n := e.(type) {
 	case *Attr:
+		// `def.__doc__` / `Cls.__doc__` folds the docstring to a string
+		// (mirrors the interpreter's doc introspection in AOT).
+		if e.(*Attr).Name.Value == "__doc__" {
+			if nm, ok := e.(*Attr).Obj.(*Name); ok {
+				if fd, ok := g.fds[nm.Value]; ok {
+					return fd.Doc, true
+				}
+				if ci, ok := g.classInfos[nm.Value]; ok {
+					return ci.doc, true
+				}
+			}
+		}
 		// imported module global folded to a string (data imports)
 		if nm, ok := e.(*Attr).Obj.(*Name); ok {
 			if globals, ok := g.imports.Globals[nm.Value]; ok {
@@ -2307,6 +2320,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
 	case *Attr:
+		// `__doc__` on a top-level def/class name folds the docstring to a
+		// string constant (mirrors the interpreter's jit doc introspection).
+		if n.Name.Value == "__doc__" {
+			if nm, ok := n.Obj.(*Name); ok {
+				if fd, ok := g.fds[nm.Value]; ok {
+					return g.strConst(fd.Doc), nil
+				}
+				if ci, ok := g.classInfos[nm.Value]; ok {
+					return g.strConst(ci.doc), nil
+				}
+			}
+		}
 		// Instance attribute read: `self.x` / `inst.x`.
 		if className := g.receiverClass(n.Obj); className != "" {
 			objHandle, err := g.value(b, n.Obj)
