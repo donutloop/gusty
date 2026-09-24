@@ -181,7 +181,16 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   `match` patterns have exact ranges for hover/diagnostics/formatting.
 - **L4.3 Unicode identifiers** — accept the full `XID_Start`/`XID_Continue`
   classes (not just ASCII), with NFC normalization + a clear diagnostic for
-  confusables (e.g. `l` vs `1`, `Ο` vs `O`).
+  confusables (e.g. `l` vs `1`, `Ο` vs `O`). ✅ DONE — lexer now decodes UTF-8
+  runes and scans identifiers by Unicode `ID_Start`/`ID_Continue` categories
+  (letters + Nl + Other_ID_Start additions for start; plus marks, digits,
+  connector punctuation, and Other_ID_Continue for continuation), NFC-normalizes
+  identifier text via `golang.org/x/text/unicode/norm` (so decomposed and
+  precomposed spellings are one symbol), and emits a `TokWarning` →
+  `LevelWarning` diagnostic for Greek/Cyrillic homoglyph lookalikes (e.g.
+  `Ο` U+039F vs Latin `O`). ASCII-start identifiers may continue through
+  multi-byte runes (e.g. `café`). Added `TokWarning` token kind; parser
+  collects warnings into `prog.Diags` for the CLI/LSP warning path.
 - **L4.4 Numeric-literal modernization** — `0xFF` hex, `0b101` binary,
   `0o17` octal, and `1_000`/`0x_FF` digit-group separators; keep exact
   integer semantics, reject `_` misuse. ✅ DONE (ADR 0153)

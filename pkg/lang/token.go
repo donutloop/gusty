@@ -27,6 +27,7 @@ const (
 	TokOp
 	TokKeyword
 	TokError
+	TokWarning
 )
 
 // Token is a single lexical token with its source span.

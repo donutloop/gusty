@@ -278,3 +278,109 @@ func TestRichTokenSpans(t *testing.T) {
 		t.Errorf("triple rune span invalid: %d..%d", triple.StartRune, triple.EndRune)
 	}
 }
+
+// TestLexUnicodeIdentifiers verifies L4.3: identifiers may start with
+// non-ASCII characters from the Unicode XID_Start class and continue with
+// XID_Continue characters (letters, marks, digits, connector punctuation).
+func TestLexUnicodeIdentifiers(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"café = 1", "café"},     // Latin-1 Supplement (U+00E9)
+		{"你好 = 2", "你好"},      // CJK ideographs (Lo)
+		{"αβγ = 3", "αβγ"},        // Greek letters
+		{"变量 = 4", "变量"},       // CJK ideographs
+		{"num١ = 5", "num١"},     // ASCII start + Arabic-Indic digit continue
+		{"naïve", "naïve"},        // U+00EF i with diaeresis
+	}
+	for _, c := range cases {
+		toks, err := Lex(c.src)
+		if err != nil {
+			t.Fatalf("Lex(%q): %v", c.src, err)
+		}
+		var id string
+		for _, tk := range toks {
+			if tk.Kind == TokIdent {
+				id = tk.Text
+				break
+			}
+		}
+		if id != c.want {
+			t.Errorf("Lex(%q): identifier = %q, want %q (tokens: %+v)", c.src, id, c.want, toks)
+		}
+	}
+}
+
+// TestLexNFCNormalization verifies L4.3: identifier text is NFC-normalized,
+// so a decomposed spelling (e + U+0301 COMBINING ACUTE) and the precomposed
+// U+00E9 are the same canonical identifier.
+func TestLexNFCNormalization(t *testing.T) {
+	toks, err := Lex("e\u0301clair = 1")
+	if err != nil {
+		t.Fatalf("Lex: %v", err)
+	}
+	var id string
+	for _, tk := range toks {
+		if tk.Kind == TokIdent {
+			id = tk.Text
+			break
+		}
+	}
+	if id != "éclair" {
+		t.Errorf("NFC normalization failed: got %q (%U), want precomposed éclair", id, []rune(id))
+	}
+}
+
+// TestLexUnicodeContinuation verifies an ASCII start can continue through
+// non-ASCII runes (XID_Continue), which the old byte scanner rejected.
+func TestLexUnicodeContinuation(t *testing.T) {
+	toks, err := Lex("café")
+	if err != nil {
+		t.Fatalf("Lex: %v", err)
+	}
+	var id string
+	for _, tk := range toks {
+		if tk.Kind == TokIdent {
+			id = tk.Text
+			break
+		}
+	}
+	if id != "café" {
+		t.Errorf("continuation: got %q, want café", id)
+	}
+}
+
+// TestLexConfusableWarning verifies L4.3: an identifier containing a rune
+// visually confusable with an ASCII character (U+039F GREEK CAPITAL OMICRON
+// vs Latin 'O') emits a TokWarning so the parser surfaces a LevelWarning.
+func TestLexConfusableWarning(t *testing.T) {
+	// "cafΟ" uses GREEK CAPITAL OMICRON U+039F, confusable with Latin 'O'.
+	toks, err := Lex("cafΟ = 1")
+	if err != nil {
+		t.Fatalf("Lex: %v", err)
+	}
+	found := false
+	for _, tk := range toks {
+		if tk.Kind == TokWarning {
+			found = true
+			if tk.ErrMsg == "" {
+				t.Errorf("warning token must carry a message")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a TokWarning for confusable identifier, tokens: %+v", toks)
+	}
+}
+
+// TestLexNoConfusableASCII verifies plain ASCII identifiers produce no warning.
+func TestLexNoConfusableASCII(t *testing.T) {
+	toks, err := Lex("order = 1")
+	if err != nil {
+		t.Fatalf("Lex: %v", err)
+	}
+	for _, tk := range toks {
+		if tk.Kind == TokWarning {
+			t.Errorf("unexpected warning for ASCII identifier: %+v", tk)
+		}
+	}
+}

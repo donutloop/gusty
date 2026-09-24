@@ -152,3 +152,39 @@ func TestAnalyzeSurfacesLexRecoveryDiagnostics(t *testing.T) {
 		t.Errorf("expected a lexer-recovery diagnostic, got %d diags", len(diags))
 	}
 }
+
+// TestParseConfusableWarning verifies L4.3: a confusable identifier is still
+// parsed (it is a valid XID identifier) but surfaces a LevelWarning
+// diagnostic in prog.Diags, feeding the CLI/LSP warning path.
+func TestParseConfusableWarning(t *testing.T) {
+	// "cafΟ" uses GREEK CAPITAL OMICRON U+039F, visually confusable with Latin 'O'.
+	src := "cafΟ = 1\nprint(cafΟ)\n"
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("parse %q: %v", src, err)
+	}
+	found := false
+	for _, d := range prog.Diags {
+		if d.Level == LevelWarning && strings.Contains(d.Msg, "confusable") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected a confusable LevelWarning diagnostic, got diags=%+v", prog.Diags)
+	}
+}
+
+// TestParseNoWarningAscii verifies plain identifiers produce no warning.
+func TestParseNoWarningAscii(t *testing.T) {
+	src := "order = 1\nprint(order)\n"
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("parse %q: %v", src, err)
+	}
+	for _, d := range prog.Diags {
+		if d.Level == LevelWarning {
+			t.Fatalf("unexpected warning for ASCII identifier: %+v", d)
+		}
+	}
+}

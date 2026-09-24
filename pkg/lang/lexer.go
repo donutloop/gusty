@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"golang.org/x/text/unicode/norm"
 	"strconv"
 	"strings"
 	"unicode"
@@ -198,6 +199,34 @@ func Lex(src string) ([]Token, error) {
 		er := utf8.RuneCount([]byte(src[:end]))
 		multi := strings.Contains(src[start:end], "\n")
 		toks = append(toks, Token{Kind: TokError, Span: sp, ErrMsg: msg, Start: start, End: end, StartRune: sr, EndRune: er, Multiline: multi})
+	}
+	scanIdent := func(i int) int {
+		j := i
+		for j < n {
+			r, size := utf8.DecodeRuneInString(src[j:])
+			if r == utf8.RuneError || !isXIDContinue(r) {
+				break
+			}
+			j += size
+		}
+		word := norm.NFC.String(src[i:j])
+		if keywords[word] {
+			emit(TokKeyword, word, i, j, nil)
+		} else {
+			emit(TokIdent, word, i, j, nil)
+		}
+		// homoglyph warning: flag non-ASCII identifier runes visually
+		// confusable with ASCII identifier characters (Greek/Cyrillic
+		// lookalikes) to surface homoglyph attacks.
+		for _, r := range word {
+			if ascii, ok := confusables[r]; ok {
+				emit(TokWarning, "", i, j, func(t *Token) {
+					t.ErrMsg = fmt.Sprintf("identifier contains %U (%q), visually confusable with %q; rename to avoid homoglyph confusion", r, r, ascii)
+				})
+				break
+			}
+		}
+		return j
 	}
 	lastKind := func() TokenKind {
 		if len(toks) == 0 {
@@ -436,18 +465,22 @@ func Lex(src string) ([]Token, error) {
 				emit(kind, src[start:end], start, end, func(t *Token) { t.Str = val })
 				continue
 			}
-				j := i
-				for j < n && isIdentChar(src[j]) {
-					j++
-				}
-				word := src[i:j]
-				if keywords[word] {
-					emit(TokKeyword, word, i, j, nil)
-				} else {
-					emit(TokIdent, word, i, j, nil)
-				}
-				i = j
+				i = scanIdent(i)
 			default:
+				if c >= utf8.RuneSelf {
+					r, size := utf8.DecodeRuneInString(src[i:])
+					if r != utf8.RuneError && isXIDStart(r) {
+						i = scanIdent(i)
+						continue
+					}
+					if r != utf8.RuneError {
+						emitErr(fmt.Sprintf("unexpected character %q", string(r)), i, i+size)
+					} else {
+						emitErr("invalid UTF-8", i, i+1)
+					}
+					i += size
+					continue
+				}
 				matched := false
 				for _, op := range ops {
 					if strings.HasPrefix(src[i:], op) {
@@ -490,6 +523,55 @@ func isIdentStart(c byte) bool {
 }
 func isIdentChar(c byte) bool {
 	return isIdentStart(c) || (c >= '0' && c <= '9')
+}
+
+// isXIDStart reports whether r may begin an identifier, per the Unicode
+// XID_Start derived property. Go's unicode package does not expose the XID
+// tables, so we approximate with the category-level ID_Start definition:
+// letters + Nl (letter number) + Other_ID_Start additions.
+func isXIDStart(r rune) bool {
+	return unicode.IsLetter(r) || unicode.Is(unicode.Nl, r) || inOtherIDStart(r)
+}
+
+// isXIDContinue reports whether r may continue an identifier (XID_Continue):
+// XID_Start + marks + digits + connector punctuation + Other_ID_Continue.
+func isXIDContinue(r rune) bool {
+	return isXIDStart(r) || unicode.IsMark(r) || unicode.IsDigit(r) || unicode.Is(unicode.Pc, r) || inOtherIDContinue(r)
+}
+
+// inOtherIDStart covers the Other_ID_Start additions from Unicode TR31 that
+// are not classified as letters by Go's categories (chiefly the CJK and
+// Kangxi radicals, which live in symbol categories).
+func inOtherIDStart(r rune) bool {
+	return (r >= 0x2E80 && r <= 0x2EFF) || (r >= 0x2F00 && r <= 0x2FD5)
+}
+
+// inOtherIDContinue covers the Other_ID_Continue additions from Unicode TR31:
+// middle dots, Hebrew points, and assorted Tibetan/Lao/Thai combining marks.
+func inOtherIDContinue(r rune) bool {
+	switch r {
+	case 0x00B7, 0x0375, 0x05F3, 0x05F4, 0x30FB, 0x309B, 0x309C:
+		return true
+	}
+	return (r >= 0x0E37 && r <= 0x0E3E) || (r >= 0x0E47 && r <= 0x0E4E) || (r >= 0x0E64 && r <= 0x0E65) ||
+		(r >= 0x0ED0 && r <= 0x0ED4) || (r >= 0x0ED7 && r <= 0x0ED8) || (r >= 0x0F37 && r <= 0x0F3A) ||
+		(r >= 0x0F3E && r <= 0x0F3F) || (r >= 0x0F47 && r <= 0x0F4E) || (r >= 0x0F57 && r <= 0x0F58) ||
+		(r >= 0x0F5F && r <= 0x0F60) || (r >= 0x0F69 && r <= 0x0F6F) || (r >= 0x0F73 && r <= 0x0F7E) ||
+		(r >= 0x0F81 && r <= 0x0F84) || (r >= 0x0F86 && r <= 0x0F87)
+}
+
+// confusables maps non-ASCII identifier runes that are visually confusable
+// with ASCII identifier characters to their ASCII lookalike. This is a
+// focused subset of Unicode's confusables.txt covering the Greek/Cyrillic
+// homoglyphs most likely to be abused in identifiers (e.g. U+039F GREEK
+// CAPITAL OMICRON vs Latin 'O').
+var confusables = map[rune]rune{
+	'Α': 'A', 'Ε': 'E', 'Η': 'H', 'Ι': 'I', 'Κ': 'K', 'Μ': 'M', 'Ν': 'N', 'Ο': 'O', 'Ρ': 'P', 'Τ': 'T', 'Χ': 'X', 'Ζ': 'Z',
+	'α': 'a', 'ε': 'e', 'η': 'h', 'ι': 'i', 'κ': 'k', 'μ': 'u', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't', 'χ': 'x', 'ζ': 'z',
+	'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T', 'У': 'Y', 'Х': 'X',
+	'а': 'a', 'в': 'b', 'е': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'п': 'p', 'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x',
+	'І': 'I', 'і': 'i', // Cyrillic byelorussian-Ukrainian i
+	'ѕ': 's', // Cyrillic small dze
 }
 
 // scanString scans a string literal body. It is called with i at the opening

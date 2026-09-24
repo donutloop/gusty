@@ -1,3 +1,26 @@
+# Round L4.3 — Unicode identifiers
+
+- **Unicode identifiers (L4.3)**: the lexer now decodes UTF-8 runes and
+  accepts identifiers from the Unicode `ID_Start`/`ID_Continue` classes
+  (letters + `Nl` + Other_ID_Start additions to start; plus marks, digits,
+  connector punctuation, and Other_ID_Continue to continue), not just ASCII.
+  ASCII-start identifiers may continue through multi-byte runes (e.g. `café`,
+  `naïve`, `你好`, `αβγ`).
+- **NFC normalization**: identifier text is canonicalized to NFC via
+  `golang.org/x/text/unicode/norm`, so a decomposed spelling (`e` + combining
+  acute) and the precomposed form (`é`) are the same symbol.
+- **Confusable diagnostics**: a focused homoglyph table (Greek/Cyrillic
+  lookalikes of ASCII letters, e.g. `Ο` U+039F vs Latin `O`) surfaces a new
+  `TokWarning` token, which the parser collects as a `LevelWarning`
+  diagnostic in `prog.Diags` for the CLI/LSP warning path. Valid identifiers
+  are still parsed; only a warning is emitted.
+- Added `TokWarning` token kind; parser drops warning tokens from the stream
+  while recording their diagnostics.
+- Tests: `TestLexUnicodeIdentifiers`, `TestLexNFCNormalization`,
+  `TestLexUnicodeContinuation`, `TestLexConfusableWarning`,
+  `TestLexNoConfusableASCII`, `TestParseConfusableWarning`,
+  `TestParseNoWarningAscii`.
+
 # Round L4.7 — Token-stream cursor API
 
 - Added a shared, bounds-safe `Cursor` over `[]Token` in `pkg/lang/token.go`:

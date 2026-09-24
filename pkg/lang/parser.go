@@ -75,11 +75,14 @@ func parseProgram(src string) (*Program, error) {
 	var diags []Diagnostic
 	var ok []Token
 	for _, tk := range toks {
-		if tk.Kind == TokError {
+		switch tk.Kind {
+		case TokError:
 			diags = append(diags, Diagnostic{Level: LevelError, Span: tk.Span, Msg: tk.ErrMsg})
-			continue
+		case TokWarning:
+			diags = append(diags, Diagnostic{Level: LevelWarning, Span: tk.Span, Msg: tk.ErrMsg})
+		default:
+			ok = append(ok, tk)
 		}
-		ok = append(ok, tk)
 	}
 	p := newParser(src, ok)
 	prog := &Program{Diags: diags}
