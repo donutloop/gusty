@@ -33,7 +33,18 @@ const (
 type Token struct {
 	Kind TokenKind
 	Text string
-	Span Span
+	Span Span // start position: 1-based Line/Col (rune-based column)
+
+	// L4.2 rich spans: start AND end as byte + rune offsets, plus a
+	// multi-line flag. Start/End are 0-based byte offsets into the source
+	// (Start inclusive, End exclusive); StartRune/EndRune are the same
+	// boundaries measured in runes (0-based). Multiline reports whether the
+	// token spans more than one physical source line.
+	Start      int
+	End        int
+	StartRune  int
+	EndRune    int
+	Multiline  bool
 
 	// Literal payloads.
 	Int   int64

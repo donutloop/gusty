@@ -34,6 +34,20 @@ func colAt(src string, lineStart, i int) int {
 // Lex tokenizes src into tokens, emitting NEWLINE/INDENT/DEDENT per Python rules.
 // Blank and comment-only lines produce no NEWLINE and do not change indentation.
 // isDigitForBase reports whether c is a digit in the given base.
+// posAt returns the 1-based line and rune-based column of the byte offset off.
+func posAt(src string, off int) (line, col int) {
+	line, col = 1, 1
+	for _, r := range src[:off] {
+		if r == '\n' {
+			line++
+			col = 1
+		} else {
+			col++
+		}
+	}
+	return
+}
+
 func isDigitForBase(c byte, base int) bool {
 	switch base {
 	case 16:
@@ -155,16 +169,35 @@ func Lex(src string) ([]Token, error) {
 	lineStart := 0
 	indentStack := []int{0}
 
-	emit := func(kind TokenKind, text string, setFn func(*Token)) {
-		sp := Span{Line: line, Col: colAt(src, lineStart, i)}
-		t := Token{Kind: kind, Text: text, Span: sp}
+	emit := func(kind TokenKind, text string, start, end int, setFn func(*Token)) {
+		var sp Span
+		if start < lineStart {
+			sl, sc := posAt(src, start)
+			sp = Span{Line: sl, Col: sc}
+		} else {
+			sp = Span{Line: line, Col: colAt(src, lineStart, start)}
+		}
+		sr := utf8.RuneCount([]byte(src[:start]))
+		er := utf8.RuneCount([]byte(src[:end]))
+		multi := strings.Contains(src[start:end], "\n")
+		t := Token{Kind: kind, Text: text, Span: sp, Start: start, End: end, StartRune: sr, EndRune: er, Multiline: multi}
 		if setFn != nil {
 			setFn(&t)
 		}
 		toks = append(toks, t)
 	}
-	emitErr := func(sp Span, msg string) {
-		toks = append(toks, Token{Kind: TokError, Span: sp, ErrMsg: msg})
+	emitErr := func(msg string, start, end int) {
+		var sp Span
+		if start < lineStart {
+			sl, sc := posAt(src, start)
+			sp = Span{Line: sl, Col: sc}
+		} else {
+			sp = Span{Line: line, Col: colAt(src, lineStart, start)}
+		}
+		sr := utf8.RuneCount([]byte(src[:start]))
+		er := utf8.RuneCount([]byte(src[:end]))
+		multi := strings.Contains(src[start:end], "\n")
+		toks = append(toks, Token{Kind: TokError, Span: sp, ErrMsg: msg, Start: start, End: end, StartRune: sr, EndRune: er, Multiline: multi})
 	}
 	lastKind := func() TokenKind {
 		if len(toks) == 0 {
@@ -210,11 +243,11 @@ func Lex(src string) ([]Token, error) {
 		// emit INDENT/DEDENT based on indent vs stack
 		top := indentStack[len(indentStack)-1]
 		if indent > top {
-			emit(TokIndent, "", nil)
+			emit(TokIndent, "", i, i, nil)
 			indentStack = append(indentStack, indent)
 		} else if indent < top {
 			for len(indentStack) > 1 && indentStack[len(indentStack)-1] > indent {
-				emit(TokDedent, "", nil)
+				emit(TokDedent, "", i, i, nil)
 				indentStack = indentStack[:len(indentStack)-1]
 			}
 		}
@@ -225,7 +258,7 @@ func Lex(src string) ([]Token, error) {
 			switch {
 			case c == '\n':
 				// end of logical line: NEWLINE
-				emit(TokNewline, "\\n", nil)
+				emit(TokNewline, "\\n", i, i, nil)
 				i++
 				line++
 				lineStart = i
@@ -246,7 +279,7 @@ func Lex(src string) ([]Token, error) {
 				} else if i+1 < n && src[i+1] == '\r' && i+2 < n && src[i+2] == '\n' {
 					i += 3
 				} else {
-					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unexpected character '\\'")
+					emitErr("unexpected character '\\'", i, i)
 						i++
 						continue
 				}
@@ -278,7 +311,7 @@ func Lex(src string) ([]Token, error) {
 			if i+2 < n && src[i+1] == quote && src[i+2] == quote {
 				end, val, ok := scanString(src, i, quote, true, false)
 				if !ok {
-					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unterminated triple-quoted string")
+					emitErr("unterminated triple-quoted string", start, i)
 						for i < n && src[i] != '\n' {
 							i++
 						}
@@ -291,7 +324,7 @@ func Lex(src string) ([]Token, error) {
 				if last >= 0 {
 					lineStart = start + last + 1
 				}
-				emit(TokTripleString, src[start:end], func(t *Token) { t.Str = val })
+				emit(TokTripleString, src[start:end], start, end, func(t *Token) { t.Str = val })
 				continue
 			}
 			j := i + 1
@@ -307,7 +340,7 @@ func Lex(src string) ([]Token, error) {
 				j++
 			}
 				if j >= n {
-			emitErr(Span{Line: line, Col: colAt(src, lineStart, start)}, "unterminated string")
+			emitErr("unterminated string", start, i)
 			for i < n && src[i] != '\n' {
 				i++
 			}
@@ -315,35 +348,35 @@ func Lex(src string) ([]Token, error) {
 		}
 	i = j
 			i++ // skip closing quote
-			emit(TokString, src[start:i], func(t *Token) { t.Str = val })
+			emit(TokString, src[start:i], start, i, func(t *Token) { t.Str = val })
 			case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])):
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, start+1)
 				if lerr != nil {
-								emitErr(Span{Line: line, Col: colAt(src, lineStart, start)}, lerr.Msg)
+								emitErr(lerr.Msg, start, i)
 									i = start + 1
 									continue
 				}
 				text := src[start:end]
 				if isFloat {
-								emit(TokFloat, text, func(t *Token) { t.Float = -fval })
+								emit(TokFloat, text, start, end, func(t *Token) { t.Float = -fval })
 				} else {
-								emit(TokInt, text, func(t *Token) { t.Int = -ival })
+								emit(TokInt, text, start, end, func(t *Token) { t.Int = -ival })
 				}
 				i = end
 			case c >= '0' && c <= '9':
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, i)
 				if lerr != nil {
-								emitErr(Span{Line: line, Col: colAt(src, lineStart, start)}, lerr.Msg)
+								emitErr(lerr.Msg, start, i)
 									i = start + 1
 									continue
 				}
 				text := src[start:end]
 				if isFloat {
-								emit(TokFloat, text, func(t *Token) { t.Float = fval })
+								emit(TokFloat, text, start, end, func(t *Token) { t.Float = fval })
 				} else {
-								emit(TokInt, text, func(t *Token) { t.Int = ival })
+								emit(TokInt, text, start, end, func(t *Token) { t.Int = ival })
 				}
 				i = end
 			case isIdentStart(c):
@@ -363,14 +396,14 @@ func Lex(src string) ([]Token, error) {
 						j++
 					}
 					if j >= n {
-						emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unterminated f-string")
+						emitErr("unterminated f-string", start, i)
 							for i < n && src[i] != '\n' {
 								i++
 							}
 							continue
 					}
 					raw += src[start:j]
-					emit(TokFString, src[i:j+1], func(t *Token) { t.FStrRaw = raw })
+					emit(TokFString, src[i:j+1], i, j+1, func(t *Token) { t.FStrRaw = raw })
 					i = j
 					i++
 					continue
@@ -386,7 +419,7 @@ func Lex(src string) ([]Token, error) {
 				}
 				end, val, ok := scanString(src, i, quote, triple, true)
 				if !ok {
-					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, "unterminated raw string")
+					emitErr("unterminated raw string", start, i)
 						for i < n && src[i] != '\n' {
 							i++
 						}
@@ -400,7 +433,7 @@ func Lex(src string) ([]Token, error) {
 						lineStart = start + last + 1
 					}
 				}
-				emit(kind, src[start:end], func(t *Token) { t.Str = val })
+				emit(kind, src[start:end], start, end, func(t *Token) { t.Str = val })
 				continue
 			}
 				j := i
@@ -409,23 +442,23 @@ func Lex(src string) ([]Token, error) {
 				}
 				word := src[i:j]
 				if keywords[word] {
-					emit(TokKeyword, word, nil)
+					emit(TokKeyword, word, i, j, nil)
 				} else {
-					emit(TokIdent, word, nil)
+					emit(TokIdent, word, i, j, nil)
 				}
 				i = j
 			default:
 				matched := false
 				for _, op := range ops {
 					if strings.HasPrefix(src[i:], op) {
-						emit(TokOp, op, nil)
+						emit(TokOp, op, i, i+len(op), nil)
 						i += len(op)
 						matched = true
 						break
 					}
 				}
 				if !matched {
-					emitErr(Span{Line: line, Col: colAt(src, lineStart, i)}, fmt.Sprintf("unexpected character %q", string(c)))
+					emitErr(fmt.Sprintf("unexpected character %q", string(c)), i, i)
 						i++
 						continue
 				}
@@ -438,17 +471,17 @@ func Lex(src string) ([]Token, error) {
 
 	// close open blocks at EOF
 	for len(indentStack) > 1 {
-		emit(TokDedent, "", nil)
+		emit(TokDedent, "", i, i, nil)
 		indentStack = indentStack[:len(indentStack)-1]
 	}
 	// ensure a trailing NEWLINE statement terminator when the last token isn't one
 	if len(toks) > 0 {
 		k := toks[len(toks)-1].Kind
 		if k != TokNewline && k != TokDedent {
-			emit(TokNewline, "\\n", nil)
+			emit(TokNewline, "\\n", i, i, nil)
 		}
 	}
-	emit(TokEOF, "", nil)
+	emit(TokEOF, "", i, i, nil)
 	return toks, nil
 }
 

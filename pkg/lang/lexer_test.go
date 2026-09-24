@@ -212,3 +212,69 @@ func TestParseLineContinuation(t *testing.T) {
 		t.Fatalf("expected left-assoc nested binary expr, got %#v", be.L)
 	}
 }
+
+// TestRichTokenSpans verifies L4.2: every token carries precise start/end byte
+// offsets, rune offsets, and a multi-line flag.
+func TestRichTokenSpans(t *testing.T) {
+	src := "foo bar\n\"hi\"\n"
+	toks, err := Lex(src)
+	if err != nil {
+		t.Fatalf("Lex(%q): %v", src, err)
+	}
+	var foo, hi *Token
+	for i := range toks {
+		if toks[i].Text == "foo" {
+			foo = &toks[i]
+		}
+		if toks[i].Text == "\"hi\"" {
+			hi = &toks[i]
+		}
+	}
+	if foo == nil {
+		t.Fatalf("no 'foo' token")
+	}
+	if hi == nil {
+		t.Fatalf("no string token")
+	}
+	if foo.Start != 0 || foo.End != 3 {
+		t.Errorf("foo byte span = %d..%d, want 0..3", foo.Start, foo.End)
+	}
+	if foo.StartRune != 0 || foo.EndRune != 3 {
+		t.Errorf("foo rune span = %d..%d, want 0..3", foo.StartRune, foo.EndRune)
+	}
+	if foo.Multiline {
+		t.Errorf("foo must not be multiline")
+	}
+	if hi.Start != 8 || hi.End != 12 {
+		t.Errorf("string byte span = %d..%d, want 8..12", hi.Start, hi.End)
+	}
+	if hi.Multiline {
+		t.Errorf("single-line string must not be multiline")
+	}
+
+	// A triple-quoted string spanning multiple lines must be flagged multiline.
+	src2 := "x \"\"\"\nline2\nline3\"\"\""
+	toks2, err := Lex(src2)
+	if err != nil {
+		t.Fatalf("Lex(%q): %v", src2, err)
+	}
+	var triple *Token
+	for i := range toks2 {
+		if toks2[i].Kind == TokTripleString {
+			triple = &toks2[i]
+			break
+		}
+	}
+	if triple == nil {
+		t.Fatalf("no triple-string token")
+	}
+	if !triple.Multiline {
+		t.Errorf("triple string must be multiline")
+	}
+	if triple.Start >= triple.End {
+		t.Errorf("triple span invalid: %d..%d", triple.Start, triple.End)
+	}
+	if triple.StartRune >= triple.EndRune {
+		t.Errorf("triple rune span invalid: %d..%d", triple.StartRune, triple.EndRune)
+	}
+}
