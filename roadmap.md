@@ -193,7 +193,13 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   unit + integration tests)
 - **L4.7 Token-stream cursor API** — a small cursor/`peek(n)`/`mark()`
   abstraction shared by parser, formatter, and LSP so all three walk the same
-  stream (single source of truth for spans).
+  stream (single source of truth for spans). ✅ DONE — `Cursor` in
+  `pkg/lang/token.go` with bounds-safe `peek(n)`, `next()`, `mark()`/`reset()`,
+  `position()`, and `atEOF`/`atNewline`/`atDedent`/`atIndent`/`skipNewlines`;
+  the parser now walks the shared cursor (its `toks`/`pos` are gone), so the
+  token stream and spans are a single source of truth; unit tests in
+  `pkg/lang/cursor_test.go` (lookahead, mark/reset backtracking, EOF safety,
+  predicates).
 
 ### Phase 5 — parser modernization (2026)
 

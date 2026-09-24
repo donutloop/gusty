@@ -13,38 +13,25 @@ func (e *ParseError) Error() string {
 }
 
 type parser struct {
-	src  string
-	toks []Token
-	pos  int
+	src string
+	cur Cursor
 }
 
-func newParser(src string, toks []Token) *parser { return &parser{src: src, toks: toks} }
-
-func (p *parser) peek() Token { return p.toks[p.pos] }
-func (p *parser) peekNext() Token {
-	if p.pos+1 < len(p.toks) {
-		return p.toks[p.pos+1]
-	}
-	return Token{Kind: TokEOF}
-}
-func (p *parser) atEOF() bool     { return p.peek().Kind == TokEOF }
-func (p *parser) atNewline() bool { return p.peek().Kind == TokNewline }
-func (p *parser) atDedent() bool  { return p.peek().Kind == TokDedent }
-func (p *parser) atIndent() bool  { return p.peek().Kind == TokIndent }
-
-func (p *parser) next() Token {
-	t := p.toks[p.pos]
-	if p.pos < len(p.toks)-1 {
-		p.pos++
-	}
-	return t
+func newParser(src string, toks []Token) *parser {
+	return &parser{src: src, cur: *NewCursor(toks)}
 }
 
-func (p *parser) skipNewlines() {
-	for p.atNewline() {
-		p.next()
-	}
-}
+// The parser walks the token stream through the shared Cursor abstraction
+// (token.go) — the single source of truth for spans. These are thin wrappers
+// so the parser reads the same stream as the formatter and LSP.
+func (p *parser) peek() Token      { return p.cur.peek(0) }
+func (p *parser) peekNext() Token  { return p.cur.peek(1) }
+func (p *parser) atEOF() bool      { return p.cur.atEOF() }
+func (p *parser) atNewline() bool  { return p.cur.atNewline() }
+func (p *parser) atDedent() bool   { return p.cur.atDedent() }
+func (p *parser) atIndent() bool   { return p.cur.atIndent() }
+func (p *parser) next() Token      { return p.cur.next() }
+func (p *parser) skipNewlines()    { p.cur.skipNewlines() }
 
 // errorf reports a parse error at the given token span.
 func (p *parser) errorf(t Token, msg string) error {
@@ -838,12 +825,12 @@ func augOpBase(text string) string {
 func (p *parser) parseExprOrAssign() (Stmt, error) {
 	// detect simple name assignment: IDENT [= | : type =]
 	if t := p.peek(); t.Kind == TokIdent {
-		// lookahead: next significant token
-		i := p.pos + 1
-		for i < len(p.toks) && p.toks[i].Kind == TokNewline {
-			i++
+			// lookahead: next significant token
+		n := 1
+		for p.cur.peek(n).Kind == TokNewline {
+			n++
 		}
-		if i < len(p.toks) && (p.toks[i].IsOp("=") || p.toks[i].IsOp(":")) {
+		if tk := p.cur.peek(n); tk.IsOp("=") || tk.IsOp(":") {
 			p.next() // ident
 			name := &Name{Value: t.Text, Src: t.Span}
 			as := &AssignStmt{Target: name, Src: t.Span}
@@ -1266,8 +1253,7 @@ func (p *parser) parsePower() (Expr, error) {
 func (p *parser) parseArg() (Expr, error) {
 	t := p.peek()
 	if t.Kind == TokIdent {
-		nx := p.pos + 1
-		if nx < len(p.toks) && p.toks[nx].Kind == TokOp && p.toks[nx].Text == "=" {
+		if tk := p.cur.peek(1); tk.Kind == TokOp && tk.Text == "=" {
 			name := t.Text
 			p.next() // ident
 			p.next() // '='
@@ -1460,7 +1446,7 @@ func (p *parser) parseLambda() (Expr, error) {
 			param := &Param{Name: tok.Text}
 			// Optional `: type` annotation, but only when the token after ':' is a
 			// known type keyword; otherwise ':' is the lambda body separator.
-			if p.peek().IsOp(":") && isTypeName(p.toks[p.pos+1].Text) {
+			if p.peek().IsOp(":") && isTypeName(p.cur.peek(1).Text) {
 				p.next() // consume ':'
 				ty, err := p.parseTypeAnnot()
 				if err != nil {
@@ -1727,7 +1713,7 @@ func (p *parser) buildFString(raw string, sp Span) (*FString, error) {
 			if err != nil {
 				return nil, err
 			}
-			sub := &parser{src: exprSrc, toks: toks}
+			sub := newParser(exprSrc, toks)
 			ex, err := sub.parseExpr()
 			if err != nil {
 				return nil, err
