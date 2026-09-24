@@ -102,7 +102,7 @@
   subcommand; `--json` emits aggregate diagnostics for agents.
 - Tests: `pkg/lang/semantic_test.go`, `pkg/lang/check_test.go`,
   `cmd/gustyc/main_test.go` (`TestCheck*`).
-- ADR 0143, README, roadmap updated.
+- ADR 0152, README, roadmap updated.
 
 # Round 12 — Runtime dispatch: `%obj`-tagged value representation
 

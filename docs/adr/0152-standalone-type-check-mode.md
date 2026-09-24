@@ -1,4 +1,4 @@
-# ADR 0143: Standalone type-check mode (`gusty check`)
+# ADR 0152: Standalone type-check mode (`gusty check`)
 
 ## Status
 Implemented (Round 13).

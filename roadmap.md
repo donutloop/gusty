@@ -7,8 +7,7 @@ for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
 > (`pkg/lang/compile.go`), CHANGELOG at `[Unreleased] v0.10.0`. ADRs run
-> `0001`..`0151`. NOTE: two ADRs share number `0143` — a duplicate to be
-> renumbered (dead-object elimination vs standalone type-check mode).
+> `0001`..`0154`.
 
 ## Component map (state verified against the code)
 
@@ -22,7 +21,7 @@ for *what exists*, *what is next*, and *what is gap-shaped*.
 | Optimizer | `pkg/lang/opt.go` | pure-Go textual dead-global elim. (not an LLVM `opt` pass) |
 | Multi-file build | `pkg/lang/build.go` | done |
 | Source maps / debug info | `pkg/lang/sourcemap.go` | AOT line/col + DWARF via `cc -g` |
-| Standalone type-check (`gusty check`) | `pkg/lang/check.go` | mypy-style, ADR 0143 |
+| Standalone type-check (`gusty check`) | `pkg/lang/check.go` | mypy-style, ADR 0152 |
 | Canonical formatter (`gusty fmt`) | `pkg/lang/fmt.go` | round-trips docstrings |
 | Language server / LSP | `pkg/lang/lsp.go` | stdio; hover + completion + diagnostics |
 | JSON schema / machine output | `pkg/lang/schema.go` | `--json` AST/IR dumps |
@@ -35,8 +34,9 @@ for *what exists*, *what is next*, and *what is gap-shaped*.
 ### Phase 0 — hygiene
 - Version reconciled (v0.10.0 in `compile.go`, printed by CLI). ✅ DONE
 - CHANGELOG kept as one clean list; dedupe if it grows. ✅ DONE
-- **New**: renumber the duplicated `docs/adr/0143-*.md` (dead-heap-elimination
-  vs standalone-type-check) to `0143` and `0143bis` (or 0152). ⏳ PLANNED
+- **New**: renumber the duplicated ADR `0143` (standalone-type-check) to `0152`;
+  the file header, roadmap snapshot/component-map references, and CHANGELOG
+  entry now all say `0152`. ✅ DONE
 
 ### Phase 1 — AOT/interpreter parity
 - Floats in AOT ✅ DONE — codegen emits real `double` IR (`fadd double 0.0, <const>`),
@@ -335,7 +335,7 @@ An item is done when it ships:
 - An `integration/` whole-program compile-and-run case where applicable,
   asserting interpreter/AOT/JIT parity (byte-identical stdout).
 - A `docs/adr/` entry for any non-obvious decision (or a renumbering of an
-  existing ADR, e.g. the duplicated `0143`).
+  existing ADR, e.g. `0152` renumbered from the duplicated `0143`).
 - An update to `docs/language.md` and `docs/operations.md` when it changes
   user-visible syntax or CLI flags.
 - A CHANGELOG entry under `[Unreleased] v0.10.0`.
