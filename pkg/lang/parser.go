@@ -24,14 +24,14 @@ func newParser(src string, toks []Token) *parser {
 // The parser walks the token stream through the shared Cursor abstraction
 // (token.go) — the single source of truth for spans. These are thin wrappers
 // so the parser reads the same stream as the formatter and LSP.
-func (p *parser) peek() Token      { return p.cur.peek(0) }
-func (p *parser) peekNext() Token  { return p.cur.peek(1) }
-func (p *parser) atEOF() bool      { return p.cur.atEOF() }
-func (p *parser) atNewline() bool  { return p.cur.atNewline() }
-func (p *parser) atDedent() bool   { return p.cur.atDedent() }
-func (p *parser) atIndent() bool   { return p.cur.atIndent() }
-func (p *parser) next() Token      { return p.cur.next() }
-func (p *parser) skipNewlines()    { p.cur.skipNewlines() }
+func (p *parser) peek() Token     { return p.cur.peek(0) }
+func (p *parser) peekNext() Token { return p.cur.peek(1) }
+func (p *parser) atEOF() bool     { return p.cur.atEOF() }
+func (p *parser) atNewline() bool { return p.cur.atNewline() }
+func (p *parser) atDedent() bool  { return p.cur.atDedent() }
+func (p *parser) atIndent() bool  { return p.cur.atIndent() }
+func (p *parser) next() Token     { return p.cur.next() }
+func (p *parser) skipNewlines()   { p.cur.skipNewlines() }
 
 // errorf reports a parse error at the given token span.
 func (p *parser) errorf(t Token, msg string) error {
@@ -225,7 +225,6 @@ func (p *parser) extractDoc(body []Stmt) (string, []Stmt) {
 	}
 	return lit.Value, body[1:]
 }
-
 
 // parseExternDecl parses `extern fn name(params) -> ret` — a declaration of a
 // C function that gusty can call (FFI). It produces an ExternDecl statement.
@@ -710,15 +709,15 @@ func (p *parser) parsePatternAtom() (Expr, error) {
 	case t.Kind == TokString:
 		p.next()
 		return &StrLit{Value: t.Text, Src: t.Span}, nil
-		case t.Kind == TokRawString:
-			p.next()
-			return &StrLit{Value: t.Str, Raw: true, Src: t.Span}, nil
-		case t.Kind == TokTripleString:
-			p.next()
-			return &StrLit{Value: t.Str, Triple: true, Src: t.Span}, nil
-		case t.Kind == TokRawTripleString:
-			p.next()
-			return &StrLit{Value: t.Str, Raw: true, Triple: true, Src: t.Span}, nil
+	case t.Kind == TokRawString:
+		p.next()
+		return &StrLit{Value: t.Str, Raw: true, Src: t.Span}, nil
+	case t.Kind == TokTripleString:
+		p.next()
+		return &StrLit{Value: t.Str, Triple: true, Src: t.Span}, nil
+	case t.Kind == TokRawTripleString:
+		p.next()
+		return &StrLit{Value: t.Str, Raw: true, Triple: true, Src: t.Span}, nil
 	case t.IsOp("["):
 		return p.parseListOrComp()
 	case t.IsOp("{"):
@@ -838,7 +837,7 @@ func augOpBase(text string) string {
 func (p *parser) parseExprOrAssign() (Stmt, error) {
 	// detect simple name assignment: IDENT [= | : type =]
 	if t := p.peek(); t.Kind == TokIdent {
-			// lookahead: next significant token
+		// lookahead: next significant token
 		n := 1
 		for p.cur.peek(n).Kind == TokNewline {
 			n++
@@ -1072,296 +1071,272 @@ func buildType(name string, args []*Type, t Token) (*Type, error) {
 
 // --- expression parsing (precedence climbing) ---
 
+// prec is a precedence level for the Pratt / precedence-climbing expression
+// parser. Higher binds tighter; the ordering mirrors Python's precedence.
+type prec int
+
+const (
+	precTernary prec = iota + 1 // a if b else c
+	precOr                      // or
+	precAnd                     // and
+	precNot                     // prefix not
+	precCompare                 // == != < <= > >= in not in is is not
+	precAdd                     // + -
+	precMul                     // * / // %
+	precUnary                   // prefix -
+	precPower                   // ** (right-associative)
+	precPostfix                 // call ( ) index [ ] attr .
+)
+
+// parseExpr parses a full expression using the precedence-climbing algorithm.
 func (p *parser) parseExpr() (Expr, error) {
-	return p.parseTernary()
+	return p.parseExprPrec(0)
 }
 
-// parseTernary parses a ternary conditional expression `then if cond else
-// otherwise`. The condition is a plain or-level expression; the else branch is
-// a full expression (right-associative, so nested ternaries bind there).
-func (p *parser) parseTernary() (Expr, error) {
-	l, err := p.parseOr()
-	if err != nil {
-		return nil, err
-	}
-	if p.peek().IsKeyword("if") {
-		op := p.next()
-		cond, err := p.parseOr()
-		if err != nil {
-			return nil, err
-		}
-		if err := p.expectKeyword("else"); err != nil {
-			return nil, err
-		}
-		r, err := p.parseTernary()
-		if err != nil {
-			return nil, err
-		}
-		return &CondExpr{If: l, Cond: cond, Else: r, Src: op.Span}, nil
-	}
-	return l, nil
-}
-
-func (p *parser) parseOr() (Expr, error) {
-	l, err := p.parseAnd()
-	if err != nil {
-		return nil, err
-	}
-	for p.peek().IsKeyword("or") {
-		op := p.next()
-		r, err := p.parseAnd()
-		if err != nil {
-			return nil, err
-		}
-		l = &BinOp{Op: "or", L: l, R: r, Src: op.Span}
-	}
-	return l, nil
-}
-
-func (p *parser) parseAnd() (Expr, error) {
-	l, err := p.parseNot()
-	if err != nil {
-		return nil, err
-	}
-	for p.peek().IsKeyword("and") {
-		op := p.next()
-		r, err := p.parseNot()
-		if err != nil {
-			return nil, err
-		}
-		l = &BinOp{Op: "and", L: l, R: r, Src: op.Span}
-	}
-	return l, nil
-}
-
-func (p *parser) parseNot() (Expr, error) {
-	if p.peek().IsKeyword("not") {
-		op := p.next()
-		x, err := p.parseNot()
-		if err != nil {
-			return nil, err
-		}
-		return &UnOp{Op: "not", X: x, Src: op.Span}, nil
-	}
-	return p.parseComparison()
-}
-
-func (p *parser) parseComparison() (Expr, error) {
-	l, err := p.parseAdditive()
+// parseExprPrec parses an expression, consuming infix operators whose
+// precedence is >= minPrec. This is the core Pratt loop.
+func (p *parser) parseExprPrec(minPrec prec) (Expr, error) {
+	lhs, err := p.parsePrefix()
 	if err != nil {
 		return nil, err
 	}
 	for {
 		t := p.peek()
-		op := ""
-		if t.IsOp("==") || t.IsOp("!=") || t.IsOp("<") || t.IsOp("<=") || t.IsOp(">") || t.IsOp(">=") {
-			op = t.Text
-		} else if t.Kind == TokKeyword {
-			switch t.Text {
-			case "in":
-				op = "in"
-			case "is":
-				op = "is"
-				if p.peekNext().IsKeyword("not") {
-					op = "is not"
-				}
-			case "not":
-				if p.peekNext().IsKeyword("in") {
-					op = "not in"
-				}
+
+		// Ternary `a if b else c`: the then-part is lhs, the condition is
+		// parsed at or-level, and the else-branch is a full (right-assoc) expr.
+		if t.IsKeyword("if") {
+			if precTernary < minPrec {
+				break
 			}
-		}
-		if op == "" {
-			break
-		}
-		p.next()
-		if op == "is not" || op == "not in" {
 			p.next()
-		}
-		r, err := p.parseAdditive()
-		if err != nil {
-			return nil, err
-		}
-		l = &BinOp{Op: op, L: l, R: r, Src: t.Span}
-	}
-	return l, nil
-}
-
-func (p *parser) parseAdditive() (Expr, error) {
-	l, err := p.parseMultiplicative()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		t := p.peek()
-		if !t.IsOp("+") && !t.IsOp("-") {
-			break
-		}
-		p.next()
-		r, err := p.parseMultiplicative()
-		if err != nil {
-			return nil, err
-		}
-		l = &BinOp{Op: t.Text, L: l, R: r, Src: t.Span}
-	}
-	return l, nil
-}
-
-func (p *parser) parseMultiplicative() (Expr, error) {
-	l, err := p.parseUnary()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		t := p.peek()
-		if !t.IsOp("*") && !t.IsOp("/") && !t.IsOp("//") && !t.IsOp("%") {
-			break
-		}
-		p.next()
-		r, err := p.parseUnary()
-		if err != nil {
-			return nil, err
-		}
-		l = &BinOp{Op: t.Text, L: l, R: r, Src: t.Span}
-	}
-	return l, nil
-}
-
-func (p *parser) parseUnary() (Expr, error) {
-	if p.peek().IsOp("-") {
-		op := p.next()
-		x, err := p.parseUnary()
-		if err != nil {
-			return nil, err
-		}
-		return &UnOp{Op: "-", X: x, Src: op.Span}, nil
-	}
-	return p.parsePower()
-}
-
-// parsePower handles the `**` (power) operator, which binds tighter than
-// unary minus on the left (`-2**2 == -(2**2)`), is right-associative
-// (`2**3**2 == 2**(3**2)`), and allows a unary expression as the right
-// operand (`2**-2`). This matches Python's precedence rules.
-func (p *parser) parsePower() (Expr, error) {
-	x, err := p.parsePostfix()
-	if err != nil {
-		return nil, err
-	}
-	t := p.peek()
-	if !t.IsOp("**") {
-		return x, nil
-	}
-	p.next()
-	r, err := p.parseUnary()
-	if err != nil {
-		return nil, err
-	}
-	return &BinOp{Op: "**", L: x, R: r, Src: t.Span}, nil
-}
-
-// parseArg parses a single call argument. It recognizes a `name = value`
-// keyword argument: an identifier immediately followed by a single `=`
-// (not `==`). Everything else is parsed as a plain positional expression.
-func (p *parser) parseArg() (Expr, error) {
-	t := p.peek()
-	if t.Kind == TokIdent {
-		if tk := p.cur.peek(1); tk.Kind == TokOp && tk.Text == "=" {
-			name := t.Text
-			p.next() // ident
-			p.next() // '='
-			val, err := p.parseExpr()
+			cond, err := p.parseExprPrec(precTernary + 1)
 			if err != nil {
 				return nil, err
 			}
-			return &KeywordArg{Name: name, Value: val, Src: t.Span}, nil
+			if err := p.expectKeyword("else"); err != nil {
+				return nil, err
+			}
+			r, err := p.parseExprPrec(precTernary)
+			if err != nil {
+				return nil, err
+			}
+			lhs = &CondExpr{If: lhs, Cond: cond, Else: r, Src: t.Span}
+			continue
 		}
+
+		// Postfix operators bind tighter than every infix operator.
+		if t.IsOp("(") || t.IsOp("[") || t.IsOp(".") {
+			if precPostfix < minPrec {
+				break
+			}
+			lhs, err = p.parsePostfixOp(lhs)
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		// Binary operators.
+		op, opPrec, rightAssoc, ok := p.binaryOp(t)
+		if !ok || opPrec < minPrec {
+			break
+		}
+		p.next()
+		// Two-token comparison operators.
+		switch op {
+		case "not in":
+			// binaryOp returned "not in" only when the next token is `in`.
+			p.next()
+		case "is":
+			if p.peek().IsKeyword("not") {
+				p.next()
+				op = "is not"
+			}
+		}
+		rhsPrec := opPrec
+		if !rightAssoc {
+			rhsPrec = opPrec + 1
+		}
+		r, err := p.parseExprPrec(rhsPrec)
+		if err != nil {
+			return nil, err
+		}
+		lhs = &BinOp{Op: op, L: lhs, R: r, Src: t.Span}
 	}
-	return p.parseExpr()
+	return lhs, nil
 }
 
-func (p *parser) parsePostfix() (Expr, error) {
-	x, err := p.parseAtom()
+// parsePrefix parses a prefix (unary `not` / `-`) expression or an atom.
+func (p *parser) parsePrefix() (Expr, error) {
+	t := p.peek()
+	if t.IsKeyword("not") {
+		p.next()
+		x, err := p.parseExprPrec(precNot)
+		if err != nil {
+			return nil, err
+		}
+		return &UnOp{Op: "not", X: x, Src: t.Span}, nil
+	}
+	if t.IsOp("-") {
+		p.next()
+		x, err := p.parseExprPrec(precUnary)
+		if err != nil {
+			return nil, err
+		}
+		return &UnOp{Op: "-", X: x, Src: t.Span}, nil
+	}
+	return p.parseAtom()
+}
+
+// binaryOp reports the infix operator at token t: its text, precedence,
+// right-associativity, and whether t is a valid binary operator.
+func (p *parser) binaryOp(t Token) (op string, opPrec prec, rightAssoc, ok bool) {
+	if t.Kind == TokKeyword {
+		switch t.Text {
+		case "or":
+			return "or", precOr, false, true
+		case "and":
+			return "and", precAnd, false, true
+		case "in":
+			return "in", precCompare, false, true
+		case "is":
+			return "is", precCompare, false, true
+		case "not":
+			if p.peekNext().IsKeyword("in") {
+				return "not in", precCompare, false, true
+			}
+		}
+	} else if t.Kind == TokOp {
+		switch t.Text {
+		case "==":
+			return "==", precCompare, false, true
+		case "!=":
+			return "!=", precCompare, false, true
+		case "<":
+			return "<", precCompare, false, true
+		case "<=":
+			return "<=", precCompare, false, true
+		case ">":
+			return ">", precCompare, false, true
+		case ">=":
+			return ">=", precCompare, false, true
+		case "+":
+			return "+", precAdd, false, true
+		case "-":
+			return "-", precAdd, false, true
+		case "*":
+			return "*", precMul, false, true
+		case "/":
+			return "/", precMul, false, true
+		case "//":
+			return "//", precMul, false, true
+		case "%":
+			return "%", precMul, false, true
+		case "**":
+			return "**", precPower, true, true
+		}
+	}
+	return "", 0, false, false
+}
+
+// parseArg parses a single call argument, which may be a `name = value`
+// keyword argument or a plain positional expression.
+func (p *parser) parseArg() (Expr, error) {
+	x, err := p.parseExpr()
 	if err != nil {
 		return nil, err
 	}
-	for {
-		t := p.peek()
-		if t.IsOp("(") {
-			p.next()
-			var args []Expr
-			if !p.peek().IsOp(")") {
-				for {
-					a, err := p.parseArg()
-					if err != nil {
-						return nil, err
-					}
-					args = append(args, a)
-					if p.peek().IsOp(",") {
-						p.next()
-						continue
-					}
-					break
+	if t := p.peek(); t.IsOp("=") {
+		p.next()
+		v, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if n, ok := x.(*Name); ok {
+			return &KeywordArg{Name: n.Value, Value: v, Src: t.Span}, nil
+		}
+		return nil, p.errorf(t, "keyword argument must be a name")
+	}
+	return x, nil
+}
+
+// parsePostfixOp applies a single postfix operation (call, index, or
+// attribute access) to lhs and returns the result.
+func (p *parser) parsePostfixOp(lhs Expr) (Expr, error) {
+	t := p.peek()
+	if t.IsOp("(") {
+		op := p.next()
+		var args []Expr
+		if !p.peek().IsOp(")") {
+			for {
+				a, err := p.parseArg()
+				if err != nil {
+					return nil, err
 				}
+				args = append(args, a)
+				if p.peek().IsOp(",") {
+					p.next()
+					continue
+				}
+				break
 			}
-			if err := p.expectOp(")"); err != nil {
+		}
+		if err := p.expectOp(")"); err != nil {
+			return nil, err
+		}
+		return &Call{Fn: lhs, Args: args, Src: op.Span}, nil
+	}
+	if t.IsOp("[") {
+		op := p.next()
+		var low, high, step Expr
+		var isSlice bool
+		if !p.peek().IsOp(":") && !p.peek().IsOp("]") {
+			var err error
+			low, err = p.parseExpr()
+			if err != nil {
 				return nil, err
 			}
-			x = &Call{Fn: x, Args: args, Src: t.Span}
-			continue
 		}
-		if t.IsOp("[") {
+		if p.peek().IsOp(":") {
+			isSlice = true
 			p.next()
-			var low, high, step Expr
-			var isSlice bool
 			if !p.peek().IsOp(":") && !p.peek().IsOp("]") {
-				low, err = p.parseExpr()
+				var err error
+				high, err = p.parseExpr()
 				if err != nil {
 					return nil, err
 				}
 			}
 			if p.peek().IsOp(":") {
-				isSlice = true
 				p.next()
-				if !p.peek().IsOp(":") && !p.peek().IsOp("]") {
-					high, err = p.parseExpr()
+				if !p.peek().IsOp("]") {
+					var err error
+					step, err = p.parseExpr()
 					if err != nil {
 						return nil, err
 					}
 				}
-				if p.peek().IsOp(":") {
-					p.next()
-					if !p.peek().IsOp("]") {
-						step, err = p.parseExpr()
-						if err != nil {
-							return nil, err
-						}
-					}
-				}
 			}
-			if err := p.expectOp("]"); err != nil {
-				return nil, err
-			}
-			if isSlice {
-				x = &Slice{Obj: x, Low: low, High: high, Step: step, Src: t.Span}
-			} else {
-				x = &Index{Obj: x, Idx: low, Src: t.Span}
-			}
-			continue
 		}
-		if t.IsOp(".") {
-			p.next()
-			nt := p.peek()
-			if nt.Kind != TokIdent {
-				return nil, p.errorf(nt, "expected attribute name")
-			}
-			p.next()
-			x = &Attr{Obj: x, Name: &Name{Value: nt.Text, Src: nt.Span}, Src: t.Span}
-			continue
+		if err := p.expectOp("]"); err != nil {
+			return nil, err
 		}
-		break
+		if isSlice {
+			return &Slice{Obj: lhs, Low: low, High: high, Step: step, Src: op.Span}, nil
+		}
+		return &Index{Obj: lhs, Idx: low, Src: op.Span}, nil
 	}
-	return x, nil
+	if t.IsOp(".") {
+		op := p.next()
+		nt := p.peek()
+		if nt.Kind != TokIdent {
+			return nil, p.errorf(nt, "expected attribute name")
+		}
+		p.next()
+		return &Attr{Obj: lhs, Name: &Name{Value: nt.Text, Src: nt.Span}, Src: op.Span}, nil
+	}
+	return nil, p.errorf(t, "expected postfix operator")
 }
 
 func (p *parser) parseAtom() (Expr, error) {
@@ -1376,15 +1351,15 @@ func (p *parser) parseAtom() (Expr, error) {
 	case t.Kind == TokString:
 		p.next()
 		return &StrLit{Value: t.Str, Src: t.Span}, nil
-		case t.Kind == TokRawString:
-			p.next()
-			return &StrLit{Value: t.Str, Raw: true, Src: t.Span}, nil
-		case t.Kind == TokTripleString:
-			p.next()
-			return &StrLit{Value: t.Str, Triple: true, Src: t.Span}, nil
-		case t.Kind == TokRawTripleString:
-			p.next()
-			return &StrLit{Value: t.Str, Raw: true, Triple: true, Src: t.Span}, nil
+	case t.Kind == TokRawString:
+		p.next()
+		return &StrLit{Value: t.Str, Raw: true, Src: t.Span}, nil
+	case t.Kind == TokTripleString:
+		p.next()
+		return &StrLit{Value: t.Str, Triple: true, Src: t.Span}, nil
+	case t.Kind == TokRawTripleString:
+		p.next()
+		return &StrLit{Value: t.Str, Raw: true, Triple: true, Src: t.Span}, nil
 	case t.Kind == TokFString:
 		p.next()
 		return p.buildFString(t.FStrRaw, t.Span)
@@ -1499,14 +1474,14 @@ func (p *parser) parseGeneratorTail(elem Expr) (*Generator, error) {
 	if err := p.expectKeyword("in"); err != nil {
 		return nil, err
 	}
-	iter, err := p.parseOr()
+	iter, err := p.parseExprPrec(precOr)
 	if err != nil {
 		return nil, err
 	}
 	var cond Expr
 	if p.peek().IsKeyword("if") {
 		p.next()
-		cond, err = p.parseOr()
+		cond, err = p.parseExprPrec(precOr)
 		if err != nil {
 			return nil, err
 		}
@@ -1542,7 +1517,7 @@ func (p *parser) parseListOrComp() (Expr, error) {
 		}
 		// The iterable is an or-level expression (not a ternary): a ternary
 		// here would greedily consume the comprehension\x27s own `if` filter.
-		iter, err := p.parseOr()
+		iter, err := p.parseExprPrec(precOr)
 		if err != nil {
 			return nil, err
 		}
