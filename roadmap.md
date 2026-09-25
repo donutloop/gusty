@@ -117,8 +117,9 @@ case (and an ADR where the decision is non-obvious).
   `match_exhaustive` integration program runs identically on both backends.
 
 ### Gap C — arbitrary (fnptr-valued) decorators
-- **Status**: 🟠 PARTIAL — identity + source-order decorators work; full
-  wrapping decorators need function-pointer operands + indirect calls.
+- **Status**: ✅ DONE — the canonical wrapping decorator
+  (`def dec(g): def wrap(x): return g(x)+1; return wrap`) compiles and runs in
+  AOT via compile-time specialization (`@f_orig` + `@f_impl` + funcBind).
 - Add fnptr operands and indirect `call` lowering to codegen (`closure.go`),
   then support `@dec` where `dec(f)` returns a transformed function value.
 - DoD: `@dec @dec2 def f` with wrapping decorators runs identically on both

@@ -1189,10 +1189,8 @@ print(g())
 	}
 }
 
-func TestDecoratorNonIdentityRejected(t *testing.T) {
-	// wrapping/transform decorators are rejected with a clear codegen error
-	// instead of being silently ignored.
-	_, err := lang.Compile(`
+func TestDecoratorWrappingAOT(t *testing.T) {
+	src := `
 def add1(g):
     def wrap():
         return g() + 1
@@ -1201,11 +1199,13 @@ def add1(g):
 def f():
     return 40
 print(f())
-`)
-	if err == nil {
-		t.Fatal("non-identity decorator should be rejected in AOT")
+`
+	got := compileAndRun(t, src)
+	if got != "41\n" {
+		t.Fatalf("AOT wrapping decorator output %q, want 41", got)
 	}
 }
+
 func TestSlice(t *testing.T) {
 	assertOutput(t, `
 l = [1, 2, 3, 4, 5, 6]

@@ -262,7 +262,63 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 }
 
 // emitDecoratedFunc lowers @dec def f via a function-pointer global + apply.
+func (g *irGen) isWrappingDecorator(fd *FuncDef) bool {
+	if len(fd.Body) != 2 {
+		return false
+	}
+	wrap, ok := fd.Body[0].(*FuncDef)
+	if !ok {
+		return false
+	}
+	rs, ok := fd.Body[1].(*ReturnStmt)
+	if !ok {
+		return false
+	}
+	n, ok := rs.Expr.(*Name)
+	return ok && n.Value == wrap.Name
+}
+
+func (g *irGen) wrapFunc(fd *FuncDef) (*FuncDef, string, bool) {
+	if len(fd.Decorators) != 1 {
+		return nil, "", false
+	}
+	n, ok := fd.Decorators[0].(*Name)
+	if !ok {
+		return nil, "", false
+	}
+	dec := g.fds[n.Value]
+	if dec == nil || len(dec.Body) != 2 || len(dec.Params) != 1 {
+		return nil, "", false
+	}
+	wrap, ok := dec.Body[0].(*FuncDef)
+	if !ok {
+		return nil, "", false
+	}
+	return wrap, dec.Params[0].Name, true
+}
+
 func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
+	if wrap, gParam, ok := g.wrapFunc(fd); ok {
+		implName := fd.Name + "_impl"
+		origClone := *fd
+		origClone.Decorators = nil
+		origClone.Name = fd.Name + "_orig"
+		if err := g.funcDef(b, &origClone); err != nil {
+			return err
+		}
+		g.funcs[fd.Name+"_orig"] = true
+		g.fds[fd.Name+"_orig"] = &origClone
+		clone := *wrap
+		clone.Decorators = nil
+		clone.Name = implName
+		g.funcBind[gParam] = fd.Name + "_orig"
+		if err := g.funcDef(b, &clone); err != nil {
+			return err
+		}
+		g.decorated[fd.Name] = true
+		return nil
+	}
+
 	n := len(fd.Params)
 	fty := "i32"
 	for i := 0; i < n; i++ {

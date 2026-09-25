@@ -1827,27 +1827,23 @@ print(g())
 	}
 }
 
-func TestAOTRejectsNonIdentityDecorator(t *testing.T) {
-	// a wrapping-closure decorator cannot be represented in AOT; the codegen
-	// must reject it with a clear error instead of silently ignoring it.
+func TestAOTWrappingDecorator(t *testing.T) {
 	src := `
 def add1(g):
-    def wrap():
-        return g() + 1
+    def wrap(x):
+        return g(x) + 1
     return wrap
 @add1
-def f():
-    return 40
-print(f())
+def f(x):
+    return x * 2
+print(f(3))
 `
-	_, err := Compile(src)
-	if err == nil {
-		t.Fatal("non-identity decorator should be rejected in AOT")
-	}
-	if !strings.Contains(err.Error(), "not an identity decorator") {
-		t.Fatalf("expected clear decorator error, got: %v", err)
+	ir := llcCompiles(t, src)
+	if ir == "" {
+		t.Fatal("wrapping decorator should compile in AOT")
 	}
 }
+
 
 func TestAOTEscapeDeadList(t *testing.T) {
 	// a list literal assigned to a variable that is never read (dead) must

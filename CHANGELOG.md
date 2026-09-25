@@ -1,3 +1,14 @@
+# Round 14 — Gap C: arbitrary (fnptr-valued) wrapping decorators in AOT
+
+- The canonical wrapping decorator (`def dec(g): def wrap(x): return g(x)+1; return wrap`)
+  is now emitted in AOT via compile-time specialization: the decorator body is emitted
+  as a stub, the decorated original as `@f_orig`, and the wrapping closure as `@f_impl`
+  with the decorator's function parameter bound via `funcBind` to `@f_orig`. Decorated
+  calls dispatch to `@f_impl`. The reject path for non-identity decorators is removed.
+- Verified by JIT (`TestJITWrappingDecorator`, output 7), AOT parity
+  (`TestDecoratorWrappingAOT`, output 41), llc IR (`TestAOTWrappingDecorator`), and a
+  new `wrapping_decorator` conformance parity case.
+
 # Round L4.3 — Unicode identifiers
 
 - **Unicode identifiers (L4.3)**: the lexer now decodes UTF-8 runes and

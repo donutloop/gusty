@@ -752,7 +752,7 @@ func GenerateIR(prog *Program) (string, error) {
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
-		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -861,6 +861,7 @@ type irGen struct {
 	sym        map[string]string   // variable -> load temp
 	allocd     map[string]bool     // alloca emitted?
 	funcs      map[string]bool
+	funcBind   map[string]string
 	externs    map[string]*ExternDecl     // user-defined function names
 	fds        map[string]*FuncDef // function definitions by name (for call arg binding)
 	imports    *ImportInfo         // folded module globals for `import mod`
@@ -3367,6 +3368,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 	// `f(3)` where f was bound to a lambda: resolve to its FuncDef name.
 	if fnName != "" {
+		if b, ok := g.funcBind[fnName]; ok {
+			fnName = b
+		}
+	}
+	if fnName != "" {
 		if lamName, ok := g.lambdas[fnName]; ok {
 			fnName = lamName
 		}
@@ -5160,6 +5166,10 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		fmt.Fprintf(b, "  %%_param%d = alloca i32\n", i)
 		fmt.Fprintf(b, "  store i32 %%p%d, i32* %%_param%d\n", i, i)
 		g.gcReg(b, fmt.Sprintf("param%d", i))
+	}
+	if g.isWrappingDecorator(fd) {
+		b.WriteString("  ret i32 0\n}\n")
+		return nil
 	}
 	for _, st := range fd.Body {
 		g.gcCall(b)

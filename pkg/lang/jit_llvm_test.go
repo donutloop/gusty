@@ -97,3 +97,23 @@ print("done")
 		t.Fatalf("output = %q, want %q", res.Output, want)
 	}
 }
+func TestJITWrappingDecorator(t *testing.T) {
+	src := `
+def add1(g):
+    def wrap(x):
+        return g(x) + 1
+    return wrap
+@add1
+def f(x):
+    return x * 2
+print(f(3))
+`
+	res, err := JIT(src, 0)
+	if err != nil {
+		t.Fatalf("JIT error: %v", err)
+	}
+	if res.Output != "7\n" {
+		t.Fatalf("wrapping decorator output %q, want 7", res.Output)
+	}
+}
+
