@@ -188,8 +188,8 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		if an.loopDepth == 0 {
 			an.errorf(s.Span(), "continue outside loop")
 		}
-	case *PassStmt:
-		// no-op statement
+	case *PassStmt, *TypeAliasStmt:
+		// no-op statement (type aliases are compile-time only; L5.7)
 	case *MatchStmt:
 		subTy := an.inferExpr(s.Subject)
 		var boundAll map[string]bool

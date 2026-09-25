@@ -1,0 +1,12 @@
+type Count = int
+type Double = int
+
+def twice(c: Count):
+    return c * 2
+
+def add(a: Count, b: Double):
+    return a + b
+
+print(twice(21))
+print(add(1, 2))
+print(twice(10))

@@ -6364,8 +6364,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		info := g.loopStack[len(g.loopStack)-1]
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.continueLabel))
-	case *PassStmt:
-		// no-op statement: emit nothing
+		case *PassStmt, *TypeAliasStmt:
+			// no-op statement: type aliases are compile-time only (L5.7); emit nothing
 	case *YieldStmt:
 		// `yield expr` inside a generator function appends to the function's
 		// runtime heap list (the interpreter evaluates generators eagerly).

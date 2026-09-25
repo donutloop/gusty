@@ -43,10 +43,13 @@ type parser struct {
 	src  string
 	cur  Cursor
 	nest int // currently-open block depth (unconsumed DEDENTs); used by panic-mode recovery
+	// typeAliases records compile-time structural type aliases (`type X = T`)
+	// so later annotations resolve them structurally (L5.7).
+	typeAliases map[string]*Type
 }
 
 func newParser(src string, toks []Token) *parser {
-	return &parser{src: src, cur: *NewCursor(toks)}
+	return &parser{src: src, cur: *NewCursor(toks), typeAliases: map[string]*Type{}}
 }
 
 // The parser walks the token stream through the shared Cursor abstraction
@@ -219,6 +222,9 @@ func (p *parser) parseStmt() (Stmt, error) {
 
 	if t.IsKeyword("import") {
 		return p.parseImport()
+	}
+	if t.IsKeyword("type") {
+		return p.parseTypeAlias()
 	}
 	if t.IsKeyword("extern") {
 		return p.parseExternDecl()
@@ -550,6 +556,33 @@ func (p *parser) parseImport() (Stmt, error) {
 	p.skipNewlines()
 	return &ImportStmt{Module: name, Src: im.Span}, nil
 }
+// parseTypeAlias parses `type NAME = <type-annotation>` (L5.7). The alias is
+// compile-time and structural: it binds NAME to a structural copy of the
+// annotation type so later annotations can reference it. It has no runtime
+// effect (the interpreter/codegen treat it as a no-op statement).
+func (p *parser) parseTypeAlias() (Stmt, error) {
+	st := p.next() // 'type'
+	nameTok := p.peek()
+	if nameTok.Kind != TokIdent {
+		return nil, p.errorf(nameTok, "expected type-alias name")
+	}
+	name := nameTok.Text
+	p.next() // alias name
+	op := p.peek()
+	if !op.IsOp("=") {
+		return nil, p.errorf(op, "expected '=' after type alias name")
+	}
+	p.next() // '='
+	an, err := p.parseTypeAnnot()
+	if err != nil {
+		return nil, err
+	}
+	// Register the alias structurally: later annotations resolve it by
+	// substituting a copy of the underlying annotation type.
+	p.typeAliases[name] = an
+	return &TypeAliasStmt{Name: name, Annot: an, Src: st.Span}, nil
+}
+
 
 func (p *parser) parseReturn() (Stmt, error) {
 	rt := p.next() // 'return'
@@ -1152,11 +1185,11 @@ func (p *parser) parseTypeTerm() (*Type, error) {
 			return nil, p.errorf(p.peek(), "expected ']' in type annotation")
 		}
 		p.next()
-		return buildType(name, args, t)
+		return p.buildType(name, args, t)
 	}
 
 	// Bare name (no generic args).
-	return buildType(name, nil, t)
+	return p.buildType(name, nil, t)
 }
 
 // parseTypeList parses `[ type (, type)* ]` and returns the contained types.
@@ -1187,7 +1220,7 @@ func (p *parser) parseTypeList() ([]*Type, error) {
 }
 
 // buildType maps a parsed type name (with optional generic args) to a *Type.
-func buildType(name string, args []*Type, t Token) (*Type, error) {
+func (p *parser) buildType(name string, args []*Type, t Token) (*Type, error) {
 	switch name {
 	case "int":
 		return TInt(), nil
@@ -1226,8 +1259,55 @@ func buildType(name string, args []*Type, t Token) (*Type, error) {
 		}
 		return TSequence(args[0]), nil
 	default:
+		// Structural type alias (L5.7): `type Alias = T` expands to T.
+		// Aliases are resolved structurally (not nominally), so a reference
+		// to an alias name substitutes the underlying annotation type.
+		if aliased, ok := p.typeAliases[name]; ok {
+			if len(args) != 0 {
+				return nil, fmt.Errorf("type alias %q does not take type arguments", name)
+			}
+			return cloneType(aliased), nil
+		}
 		return nil, fmt.Errorf("unknown type annotation %q", name)
 	}
+}
+
+// cloneType returns a deep structural copy of a Type so that alias expansion
+// never aliases the registered alias's underlying annotation (which could
+// mutate if the alias were re-registered).
+func cloneType(t *Type) *Type {
+	if t == nil {
+		return nil
+	}
+	c := *t
+	if c.Elem != nil {
+		c.Elem = cloneType(c.Elem)
+	}
+	if c.Key != nil {
+		c.Key = cloneType(c.Key)
+	}
+	if c.Val != nil {
+		c.Val = cloneType(c.Val)
+	}
+	if len(c.Params) > 0 {
+		c.Params = make([]*Type, len(c.Params))
+		for i, p := range t.Params {
+			c.Params[i] = cloneType(p)
+		}
+	}
+	if len(c.Members) > 0 {
+		c.Members = make([]*Type, len(c.Members))
+		for i, m := range t.Members {
+			c.Members[i] = cloneType(m)
+		}
+	}
+	if len(c.Elems) > 0 {
+		c.Elems = make([]*Type, len(c.Elems))
+		for i, e := range t.Elems {
+			c.Elems[i] = cloneType(e)
+		}
+	}
+	return &c
 }
 
 // --- expression parsing (precedence climbing) ---

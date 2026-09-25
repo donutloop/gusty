@@ -267,8 +267,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   primitives yet), so both the interpreter and the AOT/JIT backend run async programs identically to their sync
   counterparts (conformance parity `async_basic.gy`). The cooperative event-loop runtime (coroutines, async protocols,
   a first-class `AwaitExpr`) is Phase 7 (L7.1).
-- **L5.7 Type aliases `type X = ...`** — parse alias declarations; the type
-  checker resolves them structurally (not nominal) by default.
+- **L5.7 Type aliases `type X = ...`** ✅ DONE (this round) — parse alias declarations into a `TypeAliasStmt`; the type checker resolves references structurally (not nominal) by default via parse-time substitution of a structural copy. Aliases are compile-time no-ops in the interpreter/codegen/formatter; conformance case `typealias.gy`, ADR 0159, and unit tests.
 - **L5.8 Incremental parse** — a stable parse tree keyed by spans so the LSP
   and REPL can re-parse only edited ranges (feeds incremental JIT in Phase 9).
 

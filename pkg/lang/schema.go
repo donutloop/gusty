@@ -90,6 +90,9 @@ const ASTIRSchema = `{
           "$ref": "#/definitions/passStmt"
         },
         {
+          "$ref": "#/definitions/typeAliasStmt"
+        },
+        {
           "$ref": "#/definitions/continueStmt"
         }
       ],
@@ -467,6 +470,27 @@ const ASTIRSchema = `{
     "passStmt": {
       "type": "object",
       "properties": {
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the node."
+        }
+      }
+    },
+    "typeAliasStmt": {
+      "type": "object",
+      "description": "type NAME = <type-annotation>: a compile-time structural type alias (L5.7). Has no runtime effect.",
+      "required": [
+        "name",
+        "annot"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "annot": {
+          "type": "object",
+          "description": "The structurally-resolved annotation type the alias expands to."
+        },
         "span": {
           "type": "object",
           "description": "Source span (line:col) of the node."

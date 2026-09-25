@@ -135,6 +135,12 @@ func writeStmt(sb *strings.Builder, st Stmt, depth int) {
 	case *PassStmt:
 		indent(sb, depth)
 		sb.WriteString("pass")
+	case *TypeAliasStmt:
+		indent(sb, depth)
+		sb.WriteString("type ")
+		sb.WriteString(s.Name)
+		sb.WriteString(" = ")
+		sb.WriteString(s.Annot.Name())
 	default:
 		indent(sb, depth)
 		sb.WriteString("pass")

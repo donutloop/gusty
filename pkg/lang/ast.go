@@ -197,6 +197,18 @@ type ImportStmt struct {
 func (n *ImportStmt) Span() Span { return n.Src }
 func (n *ImportStmt) stmtNode()  {}
 
+// TypeAliasStmt is `type NAME = <type-annotation>`: a compile-time structural
+// type alias. It binds NAME to the (structurally-resolved) annotation type so
+// later annotations can reference it; it has no runtime effect.
+type TypeAliasStmt struct {
+	Name  string `json:"name"`
+	Annot *Type  `json:"annot"`
+	Src   Span   `json:"span,omitempty"`
+}
+
+func (n *TypeAliasStmt) Span() Span { return n.Src }
+func (n *TypeAliasStmt) stmtNode()  {}
+
 type YieldStmt struct {
 	Expr Expr `json:"expr"`
 	Src   Span `json:"span,omitempty"`
