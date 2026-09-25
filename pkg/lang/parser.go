@@ -1153,7 +1153,8 @@ func buildType(name string, args []*Type, t Token) (*Type, error) {
 type prec int
 
 const (
-	precTernary prec = iota + 1 // a if b else c
+	precWalrus prec = iota + 1
+	precTernary // a if b else c
 	precOr                      // or
 	precAnd                     // and
 	precNot                     // prefix not
@@ -1239,7 +1240,15 @@ func (p *parser) parseExprPrec(minPrec prec) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		lhs = &BinOp{Op: op, L: lhs, R: r, Src: t.Span}
+		if op == ":=" {
+			nm, ok := lhs.(*Name)
+			if !ok {
+				return nil, fmt.Errorf("walrus operator `:=` requires a name on the left")
+			}
+			lhs = &AssignExpr{Name: nm, Value: r, Src: t.Span}
+		} else {
+			lhs = &BinOp{Op: op, L: lhs, R: r, Src: t.Span}
+		}
 	}
 	return lhs, nil
 }
@@ -1286,6 +1295,8 @@ func (p *parser) binaryOp(t Token) (op string, opPrec prec, rightAssoc, ok bool)
 		}
 	} else if t.Kind == TokOp {
 		switch t.Text {
+		case ":=":
+			return ":=", precWalrus, false, true
 		case "==":
 			return "==", precCompare, false, true
 		case "!=":

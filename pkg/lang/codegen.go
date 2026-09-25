@@ -2402,6 +2402,32 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return "0", nil
 	case *NoneLit:
 		return "0", nil
+	case *AssignExpr:
+		v, err := g.value(b, n.Value)
+		if err != nil {
+			return "", err
+		}
+		name := n.Name.Value
+		if g.isFloat(n.Value) {
+			if !g.allocd[name] {
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", name))
+				g.allocd[name] = true
+			}
+			b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", v, name))
+		} else {
+			if !g.allocd[name] {
+				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", name))
+				g.allocd[name] = true
+			}
+			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, name))
+		}
+		t := g.newTmp()
+		if g.isFloat(n.Value) {
+			b.WriteString(fmt.Sprintf("  %s = load double, double* %%_%s\n", t, name))
+		} else {
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", t, name))
+		}
+		return t, nil
 	case *Name:
 		// A module-level class name used as a value (e.g. `Alias = Point`)
 		// resolves to its class id so aliases can be stored and matched.

@@ -389,6 +389,18 @@ type CondExpr struct {
 func (n *CondExpr) Span() Span { return n.Src }
 func (n *CondExpr) exprNode()  {}
 
+// AssignExpr is the walrus operator `name := expr`: it assigns `name` to
+// `expr` in the enclosing function/module scope and yields `expr`'s value.
+type AssignExpr struct {
+	Name *Name `json:"name"`
+	Value Expr `json:"value"`
+	Src   Span `json:"span,omitempty"`
+	Ty    string `json:"inferred,omitempty"`
+}
+
+func (n *AssignExpr) Span() Span { return n.Src }
+func (n *AssignExpr) exprNode()  {}
+
 type Call struct {
 	Fn   Expr   `json:"fn"`
 	Args []Expr `json:"args"`

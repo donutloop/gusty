@@ -1090,6 +1090,13 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return 0, nil
 	case *NoneLit:
 		return 0, nil
+	case *AssignExpr:
+		v, err := e.eval(n.Value)
+		if err != nil {
+			return 0, err
+		}
+		e.Vars[n.Name.Value] = v
+		return v, nil
 	case *Name:
 		if v, ok := e.Vars[n.Value]; ok {
 			return v, nil

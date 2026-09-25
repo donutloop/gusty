@@ -637,3 +637,32 @@ for x in outer():
 print(s)
 `)
 }
+
+
+func TestParityWalrus(t *testing.T) {
+	parity(t, `
+# Walrus operator := : assign in an expression and yield the value.
+def f(x):
+    return x * 2
+if (n := 5) > 3:
+    print("n", n)
+m = 0
+if (k := f(m)) >= 0:
+    print("k", k)
+print("final", n, k)
+`)
+}
+
+func TestParityWalrusFnScope(t *testing.T) {
+	parity(t, `
+def f(x):
+    if (n := x * 2) > 0:
+        return n
+    return -1
+print(f(21))
+a = 1
+if (b := a + 4) > 0:
+    print("b", b)
+print("after", a, b)
+`)
+}

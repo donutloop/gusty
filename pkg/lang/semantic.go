@@ -341,7 +341,11 @@ func (an *SemanticAnalyzer) returnAnno() *Type {
 func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 	ty := an.inferExprTy(e)
 	if ty != nil {
-		switch n := e.(type) {
+		switch n := e.(type) {		case *AssignExpr:
+			ty := an.inferExpr(n.Value)
+			an.scope.define(n.Name.Value, ty)
+			n.Ty = ty.Name()
+
 		case *Name:
 			n.Ty = ty.Name()
 		case *IntLit:
@@ -401,6 +405,11 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 		return TStr()
 	case *NoneLit:
 		return TNone()
+	case *AssignExpr:
+		valTy := an.inferExpr(n.Value)
+		an.scope.define(n.Name.Value, valTy)
+		return valTy
+
 	case *Name:
 		t := an.scope.lookup(n.Value)
 		if t == nil {

@@ -252,7 +252,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   and match class-pattern arg lists all tolerate a trailing comma; the
   canonical formatter normalizes them away and its output re-parses cleanly.
   Covered by `pkg/lang/trailing_comma_test.go`.
-- **L5.4 Walrus operator `:=`** — assignment expressions usable inside `if`
+- **L5.4 ✅ DONE — Walrus operator (`:=`)** — assignment expressions usable inside `if`
   conditions and comprehensions (`if (n := len(x)) > 0:`); scope rules per
   Python 3.8+.
 - **L5.5 Union-type syntax `int | str`** — parse `|` in annotation position
