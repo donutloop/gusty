@@ -1348,6 +1348,17 @@ func TestIRRoundFloatVar(t *testing.T) {
 	}
 }
 
+func TestIRUnionVarIntFloatCompilesWithLLC(t *testing.T) {
+	// A union-annotated scalar variable widens to a tagged float slot; the
+	// emitted IR must still assemble cleanly (L6.3 tagged-union lowering).
+	llcCompiles(t, "x: int | float = 5\nprint(x)\n")
+}
+
+func TestIRUnionVarIntStrCompilesWithLLC(t *testing.T) {
+	// A union-annotated variable with a string member must compile cleanly.
+	llcCompiles(t, "x: int | str = \"hi\"\nprint(x)\n")
+}
+
 func TestIRRoundIntVar(t *testing.T) {
 	// round(int variable) must pass the value through (identity) rather than
 	// error "round: codegen folds only a constant integer arg".

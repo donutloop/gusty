@@ -797,6 +797,60 @@ func TestEvalLenStringVariable(t *testing.T) {
 	}
 }
 
+
+
+func TestEvalUnionVarIntStr(t *testing.T) {
+	// A union-annotated variable accepts an int member (regression: previously
+	// rejected at runtime with "expected value but got int").
+	v, _, err := EvalExpr("x: int | str = 42\nx")
+	if err != nil {
+		t.Fatalf("union int|str int member: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("union int|str int member got %d, want 42", v)
+	}
+}
+
+func TestEvalUnionVarStrMember(t *testing.T) {
+	// A union-annotated variable accepts a string member.
+	prog, err := Parse("x: int | str = \"hello\"\nx")
+	if err != nil {
+		t.Fatalf("parse union str member: %v", err)
+	}
+	ev := NewEvaluator()
+	v, err := ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("union int|str string member: %v", err)
+	}
+	if ev.strOf(v) == "" {
+		t.Fatalf("union int|str string member did not yield a string")
+	}
+}
+
+func TestEvalUnionVarIntFloat(t *testing.T) {
+	// int member of an int | float union.
+	v, _, err := EvalExpr("x: int | float = 7\nx")
+	if err != nil {
+		t.Fatalf("union int|float int member: %v", err)
+	}
+	if v != 7 {
+		t.Fatalf("union int|float int member got %d, want 7", v)
+	}
+	// float member of an int | float union.
+	prog, err := Parse("x: int | float = 2.5\nx")
+	if err != nil {
+		t.Fatalf("parse union float member: %v", err)
+	}
+	ev := NewEvaluator()
+	v, err = ev.EvalProgram(prog)
+	if err != nil {
+		t.Fatalf("union int|float float member: %v", err)
+	}
+	if f, ok := ev.floatOf(v); !ok || f != 2.5 {
+		t.Fatalf("union int|float float member did not yield 2.5")
+	}
+}
+
 func TestEvalFloatLiteral(t *testing.T) {
 	// float literals evaluate to boxed floats
 	v, _, err := EvalExpr("x = 1.5\nx")

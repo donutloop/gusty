@@ -310,6 +310,15 @@ func (e *Evaluator) checkAnnot(name string, ty *Type, val int64) error {
 	if ty == nil || ty.Kind == KindDynamic {
 		return nil
 	}
+	// Union annotation: accept if the value's runtime kind matches any member.
+	if ty.Kind == KindUnion {
+		for _, m := range ty.Members {
+			if e.checkAnnot(name, m, val) == nil {
+				return nil
+			}
+		}
+		return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got " + tyName(e.typeOfVal(val)) + " for " + name}
+	}
 	rt := e.typeOfVal(val)
 	if rt.Kind == ty.Kind {
 		return nil
@@ -344,6 +353,8 @@ func tyName(t *Type) string {
 		return "func"
 	case KindDynamic:
 		return "any"
+	case KindUnion:
+		return t.Name()
 	default:
 		return "value"
 	}
