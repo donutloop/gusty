@@ -1,0 +1,26 @@
+# Gap A (ADR 0151): a polymorphic receiver that survives many real GC
+# collections + slot reuse must dispatch on the *live* instance. Unlike
+# dispatch_gc.gy (2 allocations, no collection), this forces the 1024-slot
+# heap to fill and free/reuse slots repeatedly while two receivers stay
+# reachable, then dispatches on both. Expected: 1 + 42 = 43.
+class Animal:
+    def __init__(self):
+        self.x = 1
+    def speak(self):
+        return self.x
+class Dog(Animal):
+    def __init__(self):
+        super().__init__()
+    def speak(self):
+        return 42
+def make(kind):
+    if kind == 1:
+        return Animal()
+    return Dog()
+def f():
+    a = make(1)
+    b = make(2)
+    for i in range(2000):
+        lst = [i]
+    return a.speak() + b.speak()
+print(f())

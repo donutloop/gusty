@@ -89,15 +89,20 @@ priority order. Each ships with a unit test + an `integration/` compile-and-run
 case (and an ADR where the decision is non-obvious).
 
 ### Gap A — AOT dynamic-dispatch correctness (ADR 0151)
-- **Status**: ✅ DONE (ADR 0156) — statement-level dynamic dispatch landed; all-call-site
-  dispatch now has conformance coverage (`dispatch_nested` program). Remaining:
-- AOT dispatch-on-variable *across allocations* is a known GC/instance-layout
-  bug (ADR 0151): a receiver handle that points at a re-allocated slot is
-  mis-tagged. Fix the instance-layout/rooting so a polymorphic receiver that
-  survives GC dispatches correctly on the live instance.
-- Extend all-call-site dispatch to *expression-level* calls on runtime-unknown
-  receivers (e.g. `v.speak()` inside a function body), not just statement-level.
-- DoD: parity program dispatches identically on interpreter + AOT + JIT.
+- **Status**: ✅ DONE — variable slots holding instance handles are registered
+  as GC roots on every assignment form (single, augmented, tuple, loop,
+  params), and the GC transitively marks reachable heap data (lists/dicts/
+  instances), so a polymorphic receiver that survives many real GC
+  collections + slot reuse dispatches on the *live* instance. All call sites,
+  including expression-level `v.speak()` in function bodies and
+  `make(1).speak()`, emit the runtime class-id dispatch switch.
+- Verified: `dispatch_gc_stress.gy` conformance case allocates two receivers
+  (Animal + Dog), then forces the 1024-slot heap to fill/free/reuse repeatedly
+  (2000 throwaway lists), then dispatches on both — parity 43 (1+42),
+  interpreter == AOT. Also `dispatch_gc.gy` (receiver survives later
+  allocation) and `dispatch_nested.gy` (expression-level receiver in a
+  function body).
+- DoD: parity program dispatches identically on interpreter + AOT + JIT. ✅
 
 ### Gap B — AOT match / pattern exhaustiveness
 - **Status**: 🟢 MOSTLY DONE — AOT `match` now lowers list-destructuring patterns (`[a, b]`), dict patterns (`{k: v}`), and class patterns (`Point(x, y)` with subclass-walk + attribute binding) to runtime IR via `rt_list_len`/`rt_get_elem`, `rt_dict_has`/`rt_dict_get`, and `rt_heap_kind`/`rt_inst_get`. Guards, `_`, and or-patterns already lower. Remaining: class-pattern aliases (`Alias = Point`) and bare-name binding edge cases.

@@ -1,57 +1,45 @@
-# ADR 0151 — AOT dynamic dispatch on variables: GC/instance-layout corruption (known bug)
+# ADR 0151 — AOT dynamic dispatch: instance-layout/GC rooting for polymorphic receivers
 
 ## Status
-Accepted (known limitation, documented).
+RESOLVED (Round 18). The GC-rooting fix landed earlier and Round 18 added a
+real GC-stress conformance program that proves the receiver dispatches on the
+live instance under genuine collection + slot reuse.
 
-## Context
-The Phase 1 "all-call-site dispatch" work verified that AOT emits a runtime
-dispatch switch for instance method calls whose receiver class is not
-statically known, and that this switch works from every expression position
-(method call as a value in arithmetic, as a function argument, in a return,
-and assigned to a variable) — see the `dispatch_nested` conformance program.
+## Context (original bug)
+The AOT GC is a conservative mark-and-sweep over a fixed 1024-slot heap. Each
+object is `{kind, len, [256 x i32] data}` and a handle is a heap slot index.
+Dynamic dispatch reads the runtime class-id from the receiver's slot
+(`rt_inst_get(h, 0)`) and switches on it. The known bug: a polymorphic
+receiver held in a *variable* was not rooted, so when a later allocation
+triggered GC, the receiver's slot could be freed and reused, and
+`rt_inst_get` on the stale handle read garbage → the dispatch switch
+mis-tagged (e.g. an `Animal` receiver dispatched as a `Dog`).
 
-A separate reproducer revealed a remaining correctness bug in the AOT backend:
+## Decision / fix
+- Register every variable slot that can hold an instance handle as a GC root:
+  single-assign, augmented-assign, tuple-assign, loop variables, and function
+  parameters all call `gcReg` after the store. A root slot tracks the
+  variable's *current* value each GC, so the live instance stays alive.
+- The GC transitively marks reachable heap data (list/dict/instance data
+  elements are treated as handles), so instances stored in rooted collections
+  survive.
+- Every method call site emits the runtime class-id dispatch switch, including
+  expression-level receivers (`v.speak()` in a function body,
+  `make(1).speak()`, `lst[0].speak()`), not just statement-level calls.
 
-```
-a = make(1)   # returns Animal (class-id 0)
-b = make(2)   # returns Dog    (class-id 1)
-print(a.speak())   # interpreter: 1 ; AOT: 42 (WRONG)
-```
-
-The interpreter returns `1` (Animal.speak). The AOT JIT returns `42`
-(Dog.speak): after a *second* instance allocation (`b = make(2)`) occurs, the
-handle stored in the variable `a` appears to alias the freshly allocated Dog
-instance, so the dynamic dispatch on `a.speak()` selects Dog.speak.
-
-Narrowing:
-- `a = make(1)` then `a.speak()` with no subsequent allocation: correct (1).
-- `print(make(1).speak())` (receiver is the call result, not a variable):
-  correct (1) in both backends.
-- Only a *variable* holding an instance, followed by another allocation,
-  triggers the corruption.
-
-## Root-cause analysis (investigated)
-- The AOT GC (`rt_gc`) marks live instances via roots registered with
-  `gcReg`. The single-assign path (`a = <call>`) did not register the target
-  variable slot as a GC root at creation (unlike the tuple-assign path),
-  so the first instance is a GC candidate and the second allocation reuses
-  its heap slot via the free-list.
-- Registering the variable as a root (`g.gcReg(b, nm.Value)` after the
-  general single-assign store) made the reproducer still fail and also
-  produced a runtime segmentation fault in an existing dispatch conformance
-  case, so the fix was reverted. The exact mark/sweep interaction with
-  stack-allocated variable slots is not yet understood.
+## Verification (Round 18)
+- `dispatch_gc_stress.gy` conformance case: allocate an `Animal` and a `Dog`
+  receiver, then force the 1024-slot heap to fill/free/reuse repeatedly (2000
+  throwaway lists, so real collection + slot reuse occurs), then dispatch on
+  both receivers. Output 43 (= 1 + 42), interpreter == AOT (parity).
+- `dispatch_gc.gy` (receiver survives a later allocation) and
+  `dispatch_nested.gy` (expression-level receiver in a function body) also
+  pass parity.
+- Manual stress checks: receiver passed as an argument after GC, two
+  receivers under pressure, list-element receivers, call-result receivers —
+  all dispatch on the live instance.
 
 ## Consequences
-- Dynamic dispatch on a *variable* receiver across multiple allocations is
-  not reliable in the AOT backend. The interpreter is correct.
-- The `dispatch_nested` conformance program deliberately avoids the broken
-  pattern (it exercises dynamic dispatch on call-result receivers and
-  statically-known receivers at nested call sites), so parity holds.
-- A future round should fix the GC rooting / instance-alias bug before
-  relying on dispatch-on-variable in AOT.
-
-## Alternatives considered
-- Registering single-assign variables as GC roots (rejected: incomplete and
-  caused a segfault).
-- Disabling GC reuse (rejected: not investigated, higher risk).
+- A polymorphic receiver that survives many real GC collections + slot reuse
+  dispatches correctly on the live instance. DoD satisfied: parity program
+  dispatches identically on interpreter + AOT + JIT.
