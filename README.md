@@ -6,14 +6,13 @@ gusty is a small, modern programming language that pairs Python's familiar
 indentation-based syntax and ergonomic feel with the performance of native
 compiled executables. Source goes through a clean, inspectable pipeline —
 `lex → parse → semantic (type inference) → codegen` — down to LLVM IR, which
-is verified, optimized, and lowered to a native binary, or JIT-executed in the
-REPL.
+is verified, optimized, and lowered to a native binary, or JIT-executed in
+the REPL.
 
 The toolchain is built for **both humans and agents**: a friendly REPL/CLI for
-people, plus a structured, machine-readable interface (JSON diagnostics,
-JSON AST/IR dumps, a JSON Schema, stable flags, deterministic exit codes) so
-scripts and AI workflows can discover and consume the language without
-guessing.
+people, plus structured, machine-readable output (JSON diagnostics, JSON AST/IR
+dumps, a JSON Schema, stable flags, deterministic exit codes) so scripts and AI
+workflows can discover and consume the language without guessing.
 
 ---
 
@@ -60,191 +59,200 @@ gusty ships an indentation-based syntax covering:
 
 - **Functions** — `def` with default/keyword args, inferred return types, and
   anonymous `lambda` functions (`lambda x: int: x + 1`) lowered to closures
-  exactly like `def`
+  exactly like `def`.
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
-  `else:` clauses, `break` / `continue`, and `pass`
-- **Pattern matching** — `match` with integer equality, `_` wildcards, and
-  list-destructuring patterns (`case [a, b]:`); `gusty check` flags
-  non-exhaustive matches (missing `case _:` / bare-name fallback) as a
-  mypy-style warning and enforces definite assignment of match-bound names
-  (ADR 0154)
-- **Data structures** — inline `list` / `dict` / `set` literals, indexing,
-  and list / dict / set comprehensions
-- **Escape-analysis heap elision** — never-read top-level list literals skip
-  their runtime allocation (ADR 0134), an always-on dead-object elimination
-  (`[x * 2 for x in ...]`, `{k: v for ...}`, `{x for ...}`)
-- **Generators** — `def g(): yield a; yield b` collects yielded values
+  `else:` clauses, `break` / `continue`, and `pass`.
+- **Pattern matching** — `match` with integer-literal equality, `_` wildcards,
+  and list-destructuring patterns (`case [a, b]:`). Matches also support
+  guards (`case x if cond:`), or-patterns (`case 1 | 2:`), dict patterns
+  (`case {"k": v}:`), and class patterns (`case Point(x, y):` with subclass
+  walk + attribute binding).
+- **Data structures** — inline `list` / `dict` / `set` literals, indexing, and
+  list / dict / set comprehensions.
+- **Slicing** — `s[a:b]`, `s[::step]`, negative indices; supported in both the
+  interpreter and the AOT backend (via the `rt_slice` runtime helper).
+- **Generators** — `def g(): yield a; yield b` collects yielded values.
+- **Context managers** — `with expr as name:` / `with expr:`, dispatching
+  `__enter__` / `__exit__` (including exception suppression); supported in
+  both backends.
 - **Exceptions** — `try` / `except` / `finally` with typed built-in exception
   classes (`Exception`, `ValueError`, `TypeError`, `KeyError`, `IndexError`,
-  `RuntimeError`, `StopIteration`, `ZeroDivisionError`) and `raise`
+  `RuntimeError`, `StopIteration`, `ZeroDivisionError`) and `raise`.
 - **Classes & inheritance** — `class Name:` with methods (`self`), instance
   attributes, `__init__`, `class Child(Base):` multi-level inheritance, and
-  `super()` delegation
-- **Decorators** — `@dec def f:` → `f = dec(f)` at definition time
-- **Modules** — `import mod` loads `mod.gy` and binds `mod` as a namespace
-- **Standard library** — `len`, `print`, `range`, `sum`, `min`, `max`,
-  `abs`, `sorted` (+ `reverse`), `reversed`, `enumerate`, `zip`, `any`,
-  `all`, `chr`, `ord`, `round`, and `int` / `float` / `str` conversions,
-  plus string methods (`upper` / `lower` / `strip` / `replace` / `find` /
-  `rfind` / `index` / `count` / `split` / `rsplit` / `join` / `partition` /
-  `capitalize` / `title` / `swapcase` / `ljust` / `rjust` / `zfill` /
-  `expandtabs` / `removeprefix` / `removesuffix` / `isdigit` / `isalpha` /
-  `isalnum` / `isspace` / `islower` / `isupper`), dict methods (`keys` /
-  `values` / `items` / `get`), and `list.append` / `list.count`
-- **Gradual typing** — optional type annotations on variables, parameters,
-  and returns, statically checked by `--verify` (with `any` as the dynamic
-  escape hatch); untyped code falls back to dynamic dispatch
-- **Generics / protocols** — recursive generic annotations (`list[int]`,
-  `dict[str, int]`, `Callable[[int], bool]`) plus structural protocol bounds
-  `Sequence[T]` and `Callable[[...], R]`, checked via an `assignable(got, want)`
-  relation at assignment, call-argument, and return sites
+  `super()` delegation.
+- **Operator overloading** — binary operators dispatch to dunder methods
+  (`__add__`, `__mul__`, `__lt__`, ...) with reflected fallbacks
+  (`__radd__`, `__rmul__`, swapped comparisons), in both the interpreter and
+  AOT codegen.
+- **Decorators** — `@dec def f:` → `f = dec(f)` at definition time; wrapping
+  (fnptr-valued) decorators compile in AOT via compile-time specialization.
+- **Modules** — `import mod` loads `mod.gy` and binds `mod` as a namespace with
+  `mod.name` / `mod.fn(args)` access.
+- **Standard library** — data-only on-disk modules folded as AOT constants:
+  - `import math` — `PI`, `E`, `TAU`, `PHI`, `SQRT2`, `LN2`, `LN10`.
+  - `import string` — `DIGITS`, `LOWERCASE`, `UPPERCASE`, `HEXDIGITS`,
+    `WHITESPACE`, `PUNCT`.
+  - `import collections` — `EMPTY_DICT`, `EMPTY_LIST`, `ZERO`, `ONE`.
+  - `import json` — `NULL` (`None`), `TRUE` (`True`), `FALSE` (`False`).
 
-### Two execution backends, always in sync
+## Gradual typing & the type system
+
+Optional annotations on variables, parameters, and returns are checked
+statically by `--verify`, with `any` as the dynamic escape hatch; untyped code
+falls back to dynamic dispatch.
+
+- **Union types** — `int | str`, `int | float`, and `None | int` sugar for
+  `Optional`; inferred and checked across assignments, call boundaries, and
+  returns. In AOT, a union-annotated scalar variable gets a tagged `%unionbox`
+  slot (runtime member tag 0=int, 1=float, 2=str) so `print` dispatches on the
+  live member — an `int` member prints as `%d`, a `float` as `%f`, a `str` as
+  `%s`, even after cross-member reassignment under branches/loops.
+- **Literal types** — `Literal[1, 2]` annotations feed `match`
+  exhaustiveness + narrowing on constants.
+- **Type narrowing** — after `if isinstance(x, int):`, the checker narrows `x`
+  from `any` to `int` in the then branch and away from it in the else branch;
+  `not isinstance(x, T)` flips those; union complement narrowing uses
+  `dropType`.
+- **Walrus operator** — assignment expressions `name := expr` usable inside
+  `if` conditions and comprehensions (`if (n := len(x)) > 0:`), scoped per
+  Python 3.8+.
+
+## Modern front-end (lexer & parser)
+
+- **Error-recovering lexer** — on an unexpected character, emits a `TokError`
+  token carrying the span + message and *resumes* instead of aborting the file,
+  so the parser/semantic pass can report multiple diagnostics per run.
+- **Rich token spans** — each token carries `start` AND `end` (byte + rune
+  offsets) plus an optional multi-line flag, giving f-strings, slices, and
+  `match` patterns exact ranges for hover/diagnostics/formatting.
+- **Unicode identifiers** — identifiers scan by Unicode `ID_Start`/`ID_Continue`
+  (not just ASCII), NFC-normalized via `golang.org/x/text` so decomposed and
+  precomposed spellings are one symbol, and a `TokWarning` diagnostic flags
+  Greek/Cyrillic homoglyph lookalikes (e.g. `Ο` U+039F vs Latin `O`).
+- **Numeric-literal modernization** — hex (`0xFF`), binary (`0b101`), octal
+  (`0o17`), and `_` digit separators (`1_000`, `0x_FF`), with exact integer
+  semantics and rejection of misplaced separators.
+- **Raw & triple-quoted strings** — `r"..."` / `R'...'` raw strings and
+  `"""..."""` / `'''...'''` multi-line strings; docstring extraction reuses
+  both forms.
+- **Line continuation** — a trailing `\` joins the next physical line into one
+  logical line (Python-compatible), skipping the continued line's leading
+  indentation and blank/comment-only continuation lines.
+- **Pratt parser** — a precedence-climbing expression parser keyed off a
+  precedence table (unary, `**` right-assoc, multiplicative, additive,
+  comparison, `and`/`or`, ternary) with panic-mode recovery
+  (`recoverStmt` — nest-aware `INDENT`/`DEDENT` skipping) producing a forest
+  of `*ParseError`s and a partial AST.
+- **Trailing commas** — `f(a, b,)`, `[1, 2,]`, `{1: 2,}` and `match` case arg
+  lists tolerated, and normalized away by the canonical formatter.
+
+## Two execution backends
 
 Every feature ships in **both** paths:
 
-- **Interpreter** (`pkg/lang/jit.go`) — the REPL / `--eval` / `--verify` path:
-  fast feedback and rich diagnostics, the first place features are implemented
-  and tested.
-- **LLVM AOT codegen** (`pkg/lang/codegen.go` + `pkg/lang/closure.go`) — the
-  `--file` / `--emit-llvm` / link-and-run path: emits deterministic,
-  opaque-pointer LLVM IR verified by `llc` and lowered to a native executable.
+- **Interpreter** — `pkg/lang/jit.go`, entry `EvalExpr`: the REPL / `--eval` /
+  `--verify` path. Fast feedback, rich diagnostics; a two-generation
+  (nursery + old) tracing GC (`ev.Collect()`) reclaims unreachable pure-data
+  heap objects; roots are top-level bindings, walking container elements,
+  dict values, closure envs, and attr tables. Classes/methods/closures/imports
+  are never freed.
+- **LLVM AOT codegen** — `pkg/lang/codegen.go` + `pkg/lang/closure.go`, entry
+  `Compile`: the `--file` / `--emit-llvm` / link-and-run path. Emits
+  deterministic opaque-pointer LLVM IR with real `double` float IR (float
+  arithmetic via `sitofp` promotion, `%.17g` float print), tagged-union
+  lowering, `__doc__` folding to string constants, string slicing via
+  `rt_slice`, literal-container membership via `rt_contains`, and
+  `with`/yield-from runtime protocols.
 
-The AOT backend lowers functions, `lambda` closures, control flow,
-arithmetic, comparisons, boolean `and` / `or`, `print`, list/dict/set
-literals, comprehensions, `len`, numeric builtins, and a wide range of
-constant-folding string/dict operations (e.g. `len("AbC".upper())` → `3`,
-`len("a b c".split())` → `3`, `{1: 2, 3: 4}.keys()` → `[1, 3]`).
+## Optimization pipeline
 
-Docstrings (Round 9): a leading bare string literal in a `def`/`class` body is
-captured as `__doc__` (`f.__doc__`, `cls.__doc__`, closure `__doc__`). The
-canonical formatter (`gusty fmt`, Round 8) round-trips docstrings. `__doc__`
-reads are interpreter-only in AOT (ADR 0141).
+- **Constant folding** — integer-literal binops fold at codegen time
+  (`x = 1 + 2` emits `store i32 3`, no `add`).
+- **Escape-analysis heap elision** — never-read top-level list literals skip
+  their runtime heap allocation (`[x * 2 for x in ...]`,
+  `{k: v for ...}`, `{x for ...}`).
+- **Dead-global / dead-object elimination** — unused `@.strN` / `@.lstN`
+  globals and dead heap objects are pruned.
+- **Real LLVM `opt` pipeline** — `pkg/lang/opt_llvm.go` drives the external
+  `opt-20` tool over the raw module IR (instcombine, gvn, licm, sroa,
+  simplifycfg, ...), so AOT emits verified, optimized IR — while preserving
+  GC-correctness by rooting heap slots through module-global arrays
+  (`@gc.roots` / `@gc_roots_used`).
 
----
-
-## Requirements
-
-- **LLVM 20** — `llc-20` (e.g. `apt.llvm.org/jammy/ llvm-toolchain-jammy-20`).
-  Opaque pointers are the default in LLVM 20, so no `-opaque-pointers` flag
-  is needed.
-- **Go** — `go build -tags=llvm20 ./...`
-- **A C linker** — `cc` / `gcc`
-
-## Build & test
-
-```sh
-# build
-go build -tags=llvm20 ./...
-
-# unit tests (lexer / parser / semantic / codegen + LLVM 20 verification)
-go test -tags=llvm20 ./pkg/...
-
-# integration tests: compile and execute source end-to-end
-go test -tags=llvm20 ./integration/...
-```
-
-The integration suite drives the real pipeline — `source → codegen (IR) →
-llc-20` (module verification + object) `→ cc link → run` — and asserts the
-
-### Property / fuzz testing (both backends)
-
-Generated, deterministic property coverage and a Go-native fuzz target guard
-against two-backend semantics drift and interpreter panics:
-
-- `pkg/lang/proptest.go` — seeded whole-program generator (`PropSource`, `PropPrograms`)
-- `pkg/lang/proptest_test.go` — unit properties (reproducibility, parse-cleanliness, interpreter validity/determinism)
-- `integration/proptest_test.go` — cross-backend parity harness + `FuzzPropInterpreter`
-
-```sh
-go test ./pkg/lang/ ./integration/   # deterministic property corpus + parity harness
-go test ./pkg/lang/ -fuzz=FuzzPropInterpreter -fuzztime 30s   # optional long fuzz
-```
-
-native binary's stdout matches the expected output.
-
-`make` targets:
-
-```sh
-make test          # go test -tags=llvm20 ./...
-make build         # go build -tags=llvm20 ./...
-make testllvmcode  # lower ./integration/expected/*.ll with llc-20 + cc and run each
-```
-
-## CLI & REPL
+## CLI
 
 `gustyc` is the command-line interface and REPL:
 
 ```
-gustyc --eval "x = 2 + 3\nx"            # evaluate source, print result
-gustyc --file prog.gy                   # compile & run a source file
-gustyc --build out a.gy b.gy            # compile a set of files into a native binary
-gustyc --verify "def f(x): return x * 2"  # static analysis only
-gustyc --emit-llvm "x = 1 + 2"          # print emitted LLVM IR
-gustyc --emit-ast "x = 1"               # print the AST as JSON
-gustyc --lang                           # list supported language features
-gustyc --schema                         # print the JSON Schema for AST/IR dumps
-gustyc                                  # start the REPL (stateful)
+gustyc --eval "x = 2 + 3\nx"                 # evaluate source, print result
+gustyc --file prog.gy                        # compile & run a source file
+gustyc --build out a.gy b.gy                 # compile a set of files into a binary
+gustyc --verify "def f(x): return x * 2"     # static analysis only
+gustyc --emit-llvm "x = 1 + 2"               # print emitted LLVM IR
+gustyc --emit-ast "x = 1"                    # print the AST as JSON
+gustyc --emit-source-map --file src.gy       # JSON source map (fn -> IR symbol+line)
+gustyc --check <src> | check file1.gy ...    # mypy-style type-check without executing
+gustyc --json ...                            # machine-readable JSON output
+gustyc --schema                              # print the JSON Schema for AST/IR dumps
+gustyc --lang                                 # self-describing feature list
+gustyc --jit "..."                           # in-process dlopen JIT path
+gustyc --bench '<src>' --bench-runs N --bench-opt L   # wall-clock benchmark
+gustyc --fmt <src> | --fmt-check <src> | --fmt-file <path>  # canonical formatter
+gustyc --lsp                                  # stdio language server (hover, completion, diagnostics)
+gustyc --stdlib <dir>                        # set stdlib root (default: ./stdlib)
+gustyc --version                             # compiler version
+gustyc                                      # start the interactive REPL
 ```
 
-Flags: `--eval`, `--file`, `--verify`, `--emit-llvm`, `--emit-source-map`, `--build ... --source-map-out`, `--build ... --debug`, `--emit-ast`,`
+Exit codes are deterministic:
 
-### Type-check mode (`gusty check`)
+| Code | Meaning |
+|------|---------|
+| 0    | success / clean (check, fmt-check) |
+| 1    | compile / type error, runtime/eval error |
+| 2    | LLVM/verification failure or parse/usage error |
 
-`gusty check` is a mypy-style checker: it runs the semantic pass on annotated
-code **without executing it** and reports type diagnostics. It accepts a
-source string (`--check <src>`) or one or more files (`gusty check <f1> <f2> ...`).
+## Testing & verification
+
+- **Unit tests** — lexer, parser, semantic, codegen, and runtime tests in
+  `pkg/lang/`; benchmarks (`Benchmark*`) and Go-native fuzz targets
+  (`Fuzz*`) for the interpreter.
+- **Integration suite** — `integration/` drives the full pipeline
+  (lex → parse → typecheck → codegen → run) and asserts stdout matches
+  expected output.
+- **Conformance matrix** — `integration/conformance_cases.go` +
+  `conformance-matrix.json`: **26 conformance cases**, all passing
+  (`pass: 26, fail: 0`) across both backends (interpreter and AOT).
+- **Property testing** — seeded deterministic whole-program generation.
+
+## Requirements & build
+
+- **LLVM 20** — `llc-20` for lowering and `opt-20` for the optimization
+  pipeline (the AOT backend emits textual opaque-pointer IR verified by these
+  external tools).
+- **Go** — build with the LLVM 20 tag:
+
+```sh
+go build -tags=llvm20 ./...
+go test -tags=llvm20 ./pkg/...        # unit tests
+go test -tags=llvm20 ./integration/... # end-to-end pipeline
+```
+
+- **C linker** — `cc` / `gcc` to link the emitted native object into a binary.
+
+## Repository layout
 
 ```
-gustyc --check "def f() -> int:
-    return \"bad\""          # type error, exit 1
-gustyc --json check lib.gy app.gy     # aggregate JSON diagnostics
-gustyc check good.gy                  # clean, prints ok, exit 0
+pkg/lang/          compiler: lexer, parser, semantic (types), codegen, jit runtime
+cmd/gustyc/        the CLI + REPL
+integration/       end-to-end pipeline + conformance suite
+docs/              language spec (language.md) + operations guide (operations.md)
+stdlib/            on-disk modules: math.gy, string.gy, collections.gy, json.gy
 ```
-
-Exit codes: `0` = clean, `1` = type errors found, `2` = parse/usage error.
-
-
-`--target`, `--opt-level`, `--lang`, `--json`, `--schema`, `--version`,
-`--repl`, `--help`, `--fmt`, `--fmt-check`, `--fmt-file`.
-
-Exit codes: `0` = ok, `1` = runtime/eval error, `2` = parse/usage error.
-
-### Machine-readable interface
-
-For agents and scripts, `gustyc` emits structured output:
-
-- `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "exit": 0}`
-- `--json --verify <src>` → `{"ok": true, "exit": 0}` or
-`--json --check <src>` / `--json check <files>` → `{"files": [...], "diagnostics": [...], "ok": bool, "exit": int}`
-  `{"diagnostics": [...], "exit": 1}`
-- `--schema` prints a draft-07 JSON Schema describing the `--emit-ast` AST
-  dump (`{"stmts": [...]}`) and the `--emit-llvm` IR text dump
-  (`definitions.irDump`, `text/plain`)
-- Diagnostics carry source spans and messages, e.g.
-  `[{"span": {"line": 1, "col": 5}, "msg": "undefined name \"b\"", "severity": "error"}]`
 
 ---
 
-## Project layout
-
-```
-pkg/lang/              compiler: lexer, parser, semantic, codegen, interpreter
-cmd/gustyc/            the CLI and REPL
-integration/           end-to-end tests that compile AND execute generated code
-integration/expected/  .ll artifacts lowered by `make testllvmcode`
-docs/                  language spec, operations, architecture decision records
-.github/workflows/     CI: installs LLVM 20, runs unit + integration tests
-```
-
-## Documentation
-
-- `docs/language.md` — the single source of truth for gusty syntax and semantics
-- `docs/operations.md` — the single source of truth for the CLI, flags, JSON
-  schemas, and exit codes
-- `docs/adr/` — architecture decision records documenting every design choice
-
-## License
-
-[MIT](LICENSE)
+*The language spec lives in `docs/language.md`; the toolchain & CLI reference
+in `docs/operations.md`.*
