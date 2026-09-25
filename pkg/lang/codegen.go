@@ -2340,6 +2340,55 @@ func (g *irGen) truthyValue(b *strings.Builder, e Expr) string {
 	}
 	return g.valueText(b, e)
 }
+
+// emitDunderBinOp emits an AOT lowering of operator overloading for a binary
+// operator. When a statically-known operand is a class instance that defines a
+// dunder (or reflected) method for the operator, it emits a direct call to that
+// method and returns the result register. It returns ("", false) when no
+// overloading applies, so the caller falls back to builtin arithmetic.
+func (g *irGen) emitDunderBinOp(b *strings.Builder, n *BinOp) (string, bool) {
+	dunder := dunderForBinOp(n.Op)
+	reflected := reflectedDunder(dunder)
+	if dunder == "" {
+		return "", false
+	}
+	// The interpreter dispatches the left operand's dunder first, then a
+	// reflected method on the right operand (jit.go evalBinOp).
+	clsL := g.receiverClass(n.L)
+	if clsL != "" {
+		if fn, ok := g.resolveMethod(clsL, dunder); ok {
+			ret := g.newTmp()
+			lv, err := g.value(b, n.L)
+			if err != nil {
+				return "", false
+			}
+			rv, err := g.value(b, n.R)
+			if err != nil {
+				return "", false
+			}
+			fmt.Fprintf(b, "  %s = call i32 @%s(i32 %s, i32 %s)\n", ret, fn, lv, rv)
+			return ret, true
+		}
+	}
+	clsR := g.receiverClass(n.R)
+	if clsR != "" {
+		if fn, ok := g.resolveMethod(clsR, reflected); ok {
+			ret := g.newTmp()
+			rv, err := g.value(b, n.R)
+			if err != nil {
+				return "", false
+			}
+			lv, err := g.value(b, n.L)
+			if err != nil {
+				return "", false
+			}
+			fmt.Fprintf(b, "  %s = call i32 @%s(i32 %s, i32 %s)\n", ret, fn, rv, lv)
+			return ret, true
+		}
+	}
+	return "", false
+}
+
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	switch n := e.(type) {
 	case *IntLit:
@@ -2420,6 +2469,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return "", fmt.Errorf("codegen: unsupported attr expression")
 
 	case *BinOp:
+		// Operator overloading: dispatch dunder methods on statically-known
+		// class instances before falling back to builtin arithmetic.
+		if res, ok := g.emitDunderBinOp(b, n); ok {
+			return res, nil
+		}
 		if g.isFloat(n.L) || g.isFloat(n.R) {
 			switch n.Op {
 			case "==", "!=", "<", "<=", ">", ">=":

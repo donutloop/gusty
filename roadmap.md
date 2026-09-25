@@ -143,11 +143,18 @@ case (and an ADR where the decision is non-obvious).
   slicing by lowering to the runtime `rt_slice` helper.
 - DoD: no `interpreter-only` branch remains in codegen for a tested feature.
 
-### Gap F — AOT operator-overloading (static dispatch only)
-- **Status**: 🟠 PARTIAL — dunder dispatch is interpreter-only; AOT is static.
-- Lower `__add__`/`__sub__`/... dispatch to runtime method lookup when the
-  operand is a class instance (reuse Gap A's dispatch machinery).
-- DoD: `a + b` on user classes runs identically on both backends.
+### Gap F — AOT operator overloading (dunder dispatch)
+- **Status**: ✅ DONE (Round 16)
+- `emitDunderBinOp` in codegen.go lowers a BinOp with a statically-known class
+  operand to a direct call to the class's dunder (`__add__`/`__mul__`/`__lt__`…)
+  or reflected (`__radd__`/`__rmul__`/swapped comparisons) method, mirroring
+  jit.go's `evalBinOp` dispatch order (left dunder first, then reflected right).
+- Falls back to builtin arithmetic/comparison when no overloading applies.
+- Conformance program `integration/programs/dunder.gy` covers left/reflected
+  dispatch, `__lt__` comparisons, and non-instance fallback; interp==AOT.
+- Limitation: AOT dispatch is static (varClasses/receiverClass), so dunder only
+  fires on operands known to be instances at compile time (direct `Vec()`
+  assignment or `self` in a class body), matching the existing static-method AOT.
 
 ### Gap G — AOT `in`/`not in` on inline literal containers
 - **Status**: ✅ DONE (ADR 0156) — literal list/set/dict membership is unrolled

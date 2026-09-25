@@ -1,0 +1,30 @@
+# Operator overloading (dunder methods) in AOT: dispatch __add__/__mul__/__lt__
+# on a statically-known left operand, reflected __radd__/__rmul__ on the right,
+# and fall back to builtin arithmetic for non-instances.
+class Vec:
+    def __init__(self):
+        self.x = 0
+    def __add__(self, other):
+        return self.x + other
+    def __radd__(self, other):
+        return self.x + other
+    def __mul__(self, other):
+        return self.x * other
+    def __rmul__(self, other):
+        return self.x * other
+    def __lt__(self, other):
+        if self.x < other:
+            return 1
+        return 0
+a = Vec()
+a.x = 3
+print(a + 100)
+print(100 + a)
+print(a * 5)
+print(5 * a)
+print(a < 4)
+print(a < 2)
+c = 7
+print(c + 5)
+print(c * 2)
+print("done")
