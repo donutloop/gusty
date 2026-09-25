@@ -297,3 +297,49 @@ print(y)`))
 		t.Fatalf("mixed-union arithmetic should warn, got %v", diags2)
 	}
 }
+
+// TestNarrowIsInstanceThen verifies L6.5 type narrowing: `if isinstance(x, T)`
+// narrows x to T inside the then branch, making an annotation assignment valid.
+func TestNarrowIsInstanceThen(t *testing.T) {
+	prog := parseOrFatal(t, `x: int | str = 3
+if isinstance(x, str):
+    y: str = x
+print(x)
+`)
+	diags := Analyze(prog)
+	if hasErrorMsg(diags, "type mismatch") {
+		t.Fatalf("then-branch isinstance narrowing should make x:str, got %v", diags)
+	}
+}
+
+// TestNarrowIsInstanceElse verifies the else branch narrows x away from T:
+// after `isinstance(x, str)`, x is not str in the else branch.
+func TestNarrowIsInstanceElse(t *testing.T) {
+	prog := parseOrFatal(t, `x: int | str = 3
+if isinstance(x, str):
+    pass
+else:
+    y: str = x
+print(x)
+`)
+	diags := Analyze(prog)
+	if !hasErrorMsg(diags, "type mismatch") {
+		t.Fatalf("else-branch should narrow x away from str, got %v", diags)
+	}
+}
+
+// TestNarrowNotIsInstance verifies `if not isinstance(x, T)` flips the
+// narrowing: the then branch excludes T, the else branch includes T.
+func TestNarrowNotIsInstance(t *testing.T) {
+	prog := parseOrFatal(t, `x: int | str = 3
+if not isinstance(x, str):
+    y: str = x
+print(x)
+`)
+	diags := Analyze(prog)
+	if !hasErrorMsg(diags, "type mismatch") {
+		t.Fatalf("not-isinstance then branch should exclude str, got %v", diags)
+	}
+}
+
+

@@ -112,21 +112,26 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			an.inferExpr(s.Expr)
 		}
 	case *IfStmt:
-		an.inferExpr(s.Cond)
 		// if/elif/else bodies share the enclosing scope: assignments there
 		// flow outward (like Python), so do NOT create a child scope.
-		for _, b := range s.Then {
-			an.analyzeStmt(b)
-		}
+		//
+		// Type narrowing/refinement (L6.5): `if isinstance(x, int):` narrows
+		// `x` to `int` in the then branch and away from `int` in the else
+		// branch; `if not isinstance(x, int):` flips those. Narrowing is
+		// applied as a temporary shadow that is restored after the block so
+		// assignments inside still flow outward.
+		an.inferExpr(s.Cond)
+		pos, neg := narrowFromCond(s.Cond)
+		an.analyzeNarrowed(s.Then, pos, neg)
+		lastPos, lastNeg := pos, neg
 		for _, e := range s.Elifs {
 			an.inferExpr(e.Cond)
-			for _, b := range e.Then {
-				an.analyzeStmt(b)
-			}
+			ePos, eNeg := narrowFromCond(e.Cond)
+			an.analyzeNarrowed(e.Then, ePos, eNeg)
+			lastPos, lastNeg = ePos, eNeg
 		}
-		for _, b := range s.Else {
-			an.analyzeStmt(b)
-		}
+		// The else branch sees the negation of the (last) condition.
+		an.analyzeNarrowed(s.Else, lastNeg, lastPos)
 	case *WhileStmt:
 		an.inferExpr(s.Cond)
 		old := an.scope
@@ -1046,4 +1051,132 @@ func matchPatternNames(p Expr) map[string]bool {
 		}
 	}
 	return names
+}
+
+// ---------------------------------------------------------------------------
+// Type narrowing / refinement (L6.5)
+// ---------------------------------------------------------------------------
+
+// typeNameToType maps a type-name used as the second argument of isinstance
+// (e.g. "int", "float", "list") to the corresponding Type for narrowing. It
+// returns nil for names that are not known static types (e.g. user classes),
+// in which case no narrowing is performed.
+func typeNameToType(nm string) *Type {
+	switch nm {
+	case "int":
+		return TInt()
+	case "float":
+		return TFlt()
+	case "bool":
+		return TBool()
+	case "str", "string":
+		return TStr()
+	case "list":
+		return TList(TDyn())
+	case "dict":
+		return TDict(TDyn(), TDyn())
+	case "set":
+		return TSet(TDyn())
+	case "tuple":
+		return TTuple()
+	}
+	return nil
+}
+
+// narrowFromCond walks a boolean condition conjunctively and extracts
+// isinstance narrowing constraints. It returns two maps:
+//   - pos: variable -> type it definitely has when the condition is true.
+//   - neg: variable -> type it definitely does NOT have when true.
+// `not isinstance(x, T)` adds x to neg; `isinstance(x, T)` adds x to pos.
+// "or" and other boolean shapes are skipped (no safe narrowing).
+func narrowFromCond(cond Expr) (pos, neg map[string]*Type) {
+	pos = map[string]*Type{}
+	neg = map[string]*Type{}
+	var walk func(e Expr, flip bool)
+	walk = func(e Expr, flip bool) {
+		switch n := e.(type) {
+		case *BinOp:
+			if n.Op == "and" {
+				walk(n.L, flip)
+				walk(n.R, flip)
+			}
+			// "or" and comparisons: no safe narrowing.
+		case *UnOp:
+			if n.Op == "not" {
+				walk(n.X, !flip)
+			}
+		case *Call:
+			if fn, ok := n.Fn.(*Name); ok && fn.Value == "isinstance" && len(n.Args) >= 2 {
+				subj, ok1 := n.Args[0].(*Name)
+				tn, ok2 := n.Args[1].(*Name)
+				if ok1 && ok2 {
+					if ty := typeNameToType(tn.Value); ty != nil {
+						m := pos
+						if flip {
+							m = neg
+						}
+						m[subj.Value] = ty
+					}
+				}
+			}
+		}
+	}
+	walk(cond, false)
+	return pos, neg
+}
+
+// dropType removes `drop` from the union members of `cur`, producing the
+// complement type. If `cur` is dynamic or the complement is empty, it returns
+// dynamic (unknown), since we cannot represent "not T" precisely.
+func dropType(cur, drop *Type) *Type {
+	if cur == nil || cur.IsDyn() {
+		return TDyn()
+	}
+	out := []*Type{}
+	for _, m := range unionMembers(cur) {
+		if m.Same(drop) {
+			continue
+		}
+		out = append(out, m)
+	}
+	switch len(out) {
+	case 0:
+		return TDyn()
+	case 1:
+		return out[0]
+	default:
+		return normalizeUnion(out...)
+	}
+}
+
+// analyzeNarrowed analyzes a block of statements with variables temporarily
+// narrowed: names in `pos` are narrowed to their type, names in `neg` are
+// narrowed away from their type (complement of the current type). Narrowed
+// types are restored afterward so assignments inside still flow outward.
+func (an *SemanticAnalyzer) analyzeNarrowed(stmts []Stmt, pos, neg map[string]*Type) {
+	type save struct {
+		name string
+		ty   *Type
+	}
+	saved := []save{}
+	seen := map[string]bool{}
+	for name, ty := range pos {
+		seen[name] = true
+		saved = append(saved, save{name, an.scope.lookup(name)})
+		an.scope.define(name, ty)
+	}
+	for name, ty := range neg {
+		if seen[name] {
+			continue
+		}
+		cur := an.scope.lookup(name)
+		saved = append(saved, save{name, cur})
+		an.scope.define(name, dropType(cur, ty))
+	}
+	for _, st := range stmts {
+		an.analyzeStmt(st)
+	}
+	for _, s := range saved {
+		an.scope.define(s.name, s.ty)
+	}
 }

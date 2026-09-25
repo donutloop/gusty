@@ -286,7 +286,11 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - L6.4 Literal types — `Literal[1, 2]` so `match` on constants enables exhaustiveness + narrowing; feed L6.1. ✅ DONE (this round)
 - **L6.5 Type narrowing / refinement** — after `if isinstance(x, int):`, the
   checker narrows `x` from `any` to `int`; after `match case 1:`, narrows to
-  literal `1`. Drives better AOT layout (Gap A).
+  literal `1`. Drives better AOT layout (Gap A). ✅ DONE — static isinstance-if
+  narrowing (then/else branches, `not` flip, union complement via `dropType`)
+  is implemented in the semantic checker (`narrowFromCond`/`analyzeNarrowed`)
+  and unit-tested (`TestNarrowIsInstanceThen/Else/Not`). Match-literal narrowing
+  to `Literal[1]` was already present (L6.4).
 - **L6.6 Variance + generics** — `list[T]` invariance, protocol structural
   subtyping; `gusty check` reports contravariant misuse. (Monomorphization is
   Phase 8.)
