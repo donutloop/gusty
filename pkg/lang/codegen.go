@@ -6133,8 +6133,26 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return err
 		}
 		if n.As != nil {
-			fmt.Fprintf(b, "%%%s = alloca i32\n", n.As.Value)
-			fmt.Fprintf(b, "  store i32 %s, i32* %%%s\n", eh, n.As.Value)
+			fmt.Fprintf(b, "%%_%s = alloca i32\n", n.As.Value)
+			fmt.Fprintf(b, "  store i32 %s, i32* %%_%s\n", eh, n.As.Value)
+			// Record the `as` binding's class so instance field access (m.n) works.
+			// `__enter__` returns self, so the binding is an instance of the manager's class.
+			cls := ""
+			if call, ok := n.Expr.(*Call); ok {
+				if fn, ok2 := call.Fn.(*Name); ok2 {
+					if _, isClass := g.classInfos[fn.Value]; isClass {
+						cls = fn.Value
+					}
+				}
+			} else if name, ok := n.Expr.(*Name); ok {
+				cls = g.varClasses[name.Value]
+			}
+			if cls != "" {
+				if g.varClasses == nil {
+					g.varClasses = map[string]string{}
+				}
+				g.varClasses[n.As.Value] = cls
+			}
 		}
 		for _, s := range n.Body {
 			if err := g.stmt(b, s); err != nil {

@@ -3570,6 +3570,8 @@ func containsYield(stmts []Stmt) bool {
 		switch s := st.(type) {
 		case *YieldStmt:
 			return true
+		case *YieldFromStmt:
+			return true
 		case *IfStmt:
 			if containsYield(s.Then) {
 				return true

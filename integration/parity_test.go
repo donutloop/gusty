@@ -586,3 +586,22 @@ print(5 not in {})
 print("done")
 `)
 }
+
+func TestParityWithManagerFieldAccess(t *testing.T) {
+	parity(t, `
+class M:
+    def __init__(self):
+        self.n = 0
+    def __enter__(self):
+        return self
+    def __exit__(self, a, b, c):
+        return 0
+def f():
+    x = 0
+    with M() as m:
+        x = m.n + 1
+    return x
+print(f())
+`)
+}
+
