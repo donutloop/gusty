@@ -608,6 +608,19 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			return TInt()
 		case "super":
 			return TDyn()
+		case "float", "round", "int", "str", "chr", "ord":
+			// conversion builtins: infer args, then return the converted type.
+			for _, a := range n.Args {
+				an.inferArg(a)
+			}
+			switch name.Value {
+			case "float":
+				return TFlt()
+			case "round", "int", "ord":
+				return TInt()
+			default:
+				return TStr()
+			}
 		}
 	}
 	ft := an.inferExpr(n.Fn)

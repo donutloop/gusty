@@ -140,7 +140,12 @@ case (and an ADR where the decision is non-obvious).
 
 ### Gap E — AOT float/`__doc__`/string-slicing leftovers
 - **Status**: ✅ mostly DONE, small leftovers.
-- `float()`/`round()` paths that still fall back to interpreter-only
+- `float()`/`round()`/`int()` paths now emit real `double` IR: the semantic
+  analyzer recognizes the conversion builtins (`float`, `round`, `int`, `str`,
+  `chr`, `ord`) so they pass `verify`/`--jit`, and the AOT codegen emits a
+  real `double` for a general `float(x)` argument (via `floatValue`, which
+  `sitofp`-converts ints and passes through floats). Parity test:
+  `TestParityConversionBuiltins`. ✅ DONE.
   (`codegen.go:4449`) should emit real `double` IR.
 - `__doc__` reads are interpreter-only: emit the folded docstring constant in AOT. ✅ DONE — `def.__doc__`/`Cls.__doc__` now folds to a string constant in the AOT backend (see `case *Attr:` in `value()` + `stringVal()`), with a JIT unit test (`TestJITDocstrings`) and an integration parity test (`TestParityDocstrings`).
 - String slicing in AOT is limited to inline literals; support string *variable*

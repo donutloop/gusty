@@ -333,6 +333,25 @@ print("done")
 // (factorial), a generator consumed by a counting/summing loop, and an inline
 // comprehension read at a constant index. All fold/eval identically in AOT and
 // the interpreter.
+// TestParityConversionBuiltins checks that the AOT compiler emits real
+// conversions for float(), round(), and int() on both literals and general
+// (variable) arguments, matching the interpreter.
+func TestParityConversionBuiltins(t *testing.T) {
+	parity(t, `
+x = 7
+f = float(x)
+print(f)
+g = 2.5
+r = round(g)
+print(r)
+i = int(g)
+print(i)
+print(float(3))
+print(round(2.5))
+print(int(2.9))
+`)
+}
+
 func TestParityOopAggregation(t *testing.T) {
 	parity(t, `
 class Counter:

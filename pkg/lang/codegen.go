@@ -4982,7 +4982,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			return fmt.Sprintf("%d", int64(f)), nil
 		}
-		return "", fmt.Errorf("float: codegen folds only a constant int/string arg")
+		// General arg: emit a real double value. floatValue already converts
+		// ints to doubles (sitofp) and passes through float values, so
+		// float(x) == floatValue(x) for numeric args.
+		v := g.floatValue(b, c.Args[0])
+		if v == "" {
+			return "", fmt.Errorf("float: unsupported argument")
+		}
+		return v, nil
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}
