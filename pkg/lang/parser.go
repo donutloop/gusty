@@ -173,6 +173,40 @@ func (p *parser) recoverStmt() {
 // parseStmt parses a single statement and consumes its trailing NEWLINE(s).
 func (p *parser) parseStmt() (Stmt, error) {
 	t := p.peek()
+	// async prefix: parse async def / async for / async with as first-class
+	// syntax. Under the minimal synchronous-coroutine model (no suspension
+	// primitives yet), async constructs behave identically to their
+	// synchronous counterparts; the Async flag is informational until the
+	// Phase-7 cooperative runtime lands.
+	if t.IsKeyword("async") {
+		p.next() // 'async'
+		nt := p.peek()
+		switch {
+		case nt.IsKeyword("def"):
+			fd, err := p.parseFuncDef()
+			if err != nil {
+				return nil, err
+			}
+			fd.(*FuncDef).Async = true
+			return fd, nil
+		case nt.IsKeyword("for"):
+			fs, err := p.parseFor()
+			if err != nil {
+				return nil, err
+			}
+			fs.(*ForStmt).Async = true
+			return fs, nil
+		case nt.IsKeyword("with"):
+			ws, err := p.parseWith()
+			if err != nil {
+				return nil, err
+			}
+			ws.(*WithStmt).Async = true
+			return ws, nil
+		default:
+			return nil, p.errorf(nt, "expected 'def', 'for', or 'with' after 'async'")
+		}
+	}
 	if t.IsOp("@") {
 		return p.parseDecoratedDef()
 	}
@@ -1306,6 +1340,18 @@ func (p *parser) parseExprPrec(minPrec prec) (Expr, error) {
 // parsePrefix parses a prefix (unary `not` / `-`) expression or an atom.
 func (p *parser) parsePrefix() (Expr, error) {
 	t := p.peek()
+	// await expr: first-class syntax. Under the minimal synchronous-coroutine
+	// model a coroutine completes immediately, so `await e` reduces to `e`;
+	// the real awaitable lowering arrives with the Phase-7 cooperative
+	// runtime. This keeps await valid in both the interpreter and AOT paths.
+	if t.IsKeyword("await") {
+		p.next() // 'await'
+		x, err := p.parseExprPrec(precUnary)
+		if err != nil {
+			return nil, err
+		}
+		return x, nil
+	}
 	if t.IsKeyword("not") {
 		p.next()
 		x, err := p.parseExprPrec(precNot)

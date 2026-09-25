@@ -1,0 +1,8 @@
+async def f(x):
+    return x + 1
+print("f", f(1))
+v = await f(2)
+print("await", v)
+async def g(x):
+    return x * 2
+print("g", await g(3))

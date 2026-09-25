@@ -140,6 +140,7 @@ falls back to dynamic dispatch.
 - **Line continuation** — a trailing `\` joins the next physical line into one
   logical line (Python-compatible), skipping the continued line's leading
   indentation and blank/comment-only continuation lines.
+- **async/await + effectful syntax (L5.6)** — `async def`, `async for`, `async with`, and `await expr` parse as first-class syntax; under the minimal synchronous-coroutine model (no suspension primitives yet) they lower identically to their sync counterparts in both the AST interpreter and the LLVM AOT/JIT backends, giving exact parity (see `async_basic.gy`). The cooperative event-loop runtime is Phase 7.
 - **Pratt parser** — a precedence-climbing expression parser keyed off a
   precedence table (unary, `**` right-assoc, multiplicative, additive,
   comparison, `and`/`or`, ternary) with panic-mode recovery

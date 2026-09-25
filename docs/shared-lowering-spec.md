@@ -94,3 +94,24 @@ When adding a language construct:
    stay 19/19 green, and the artifact must record the new case as parity.
 4. If the construct is intentionally backend-only, leave `shared` false and
    document the divergence here.
+
+## async / await (L5.6, minimal synchronous-coroutine model)
+
+Both backends accept `async def`, `async for`, `async with`, and `await expr` as
+first-class syntax. `async`/`await` are lexed keywords; `async` sets the `Async`
+flag on `FuncDef`/`ForStmt`/`WithStmt`.
+
+Because the language has no suspension primitives yet (no I/O, no sleep), a
+coroutine completes immediately, so the shared lowering is:
+
+- `async def f(...)` — lowered exactly like `def f(...)` (the `Async` flag is
+  informational until Phase 7).
+- `async for x in it:` — lowered exactly like `for x in it:`.
+- `async with m as x:` — lowered exactly like `with m as x:`.
+- `await e` — reduces to `e` (awaiting an immediately-completing coroutine
+  yields its value).
+
+This gives byte-for-byte parity between the AST interpreter and the LLVM AOT/JIT
+backends (see conformance `async_basic.gy`). The cooperative event-loop runtime
+(coroutines as state machines, async iterator/context protocols, a first-class
+`AwaitExpr`) is Phase 7 (L7.1).

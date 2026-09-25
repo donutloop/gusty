@@ -136,5 +136,6 @@ var keywords = map[string]bool{
 	"None": true, "True": true, "False": true, "not": true, "and": true, "or": true,
 	"is": true,
 	"with": true, "from": true, "as": true,
+	"async": true, "await": true,
 	"break": true, "continue": true, "raise": true, "pass": true,
 }

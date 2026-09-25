@@ -100,6 +100,7 @@ func (n *WhileStmt) Span() Span { return n.Src }
 func (n *WhileStmt) stmtNode()  {}
 
 type ForStmt struct {
+	Async bool `json:"async,omitempty"`
 	Var  Expr   `json:"var"`
 	Iter Expr   `json:"iter"`
 	Body []Stmt `json:"body"`
@@ -120,6 +121,7 @@ type Param struct {
 func (n *Param) Span() Span { return n.Src }
 
 type FuncDef struct {
+	Async bool `json:"async,omitempty"`
 	Name       string   `json:"name"`
 	Params     []*Param `json:"params"`
 	ReturnAnno *Type    `json:"return_annot,omitempty"`
@@ -215,6 +217,7 @@ func (n *YieldFromStmt) stmtNode()  {}
 // WithStmt is `with expr [as name]: body`. It drives a context manager's
 // __enter__/__exit__ protocol.
 type WithStmt struct {
+	Async bool `json:"async,omitempty"`
 	Expr Expr   `json:"expr"`
 	As   *Name  `json:"as,omitempty"` // binding name, nil when no `as`
 	Body []Stmt `json:"body"`

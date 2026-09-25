@@ -261,9 +261,12 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L5.5 ✅ DONE — Union-type syntax `int | str`** — parse `|` in annotation position
   (and in `match` patterns) as a union type, not a bitwise-or; feed the
   gradual type checker.
-- **L5.6 `async`/`await` + effectful syntax** — parse `async def`,
-  `await expr`, `async for`, `async with` as first-class syntax (see
-  Phase 7 runtime); AOT lowers them to state machines.
+- **L5.6 `async`/`await` + effectful syntax** ✅ DONE (this round) — parse `async def`,
+  `await expr`, `async for`, `async with` as first-class syntax. `async`/`await` are lexed keywords; `async` sets the `Async` flag on
+  `FuncDef`/`ForStmt`/`WithStmt`; `await e` reduces to `e` under the minimal synchronous-coroutine model (no suspension
+  primitives yet), so both the interpreter and the AOT/JIT backend run async programs identically to their sync
+  counterparts (conformance parity `async_basic.gy`). The cooperative event-loop runtime (coroutines, async protocols,
+  a first-class `AwaitExpr`) is Phase 7 (L7.1).
 - **L5.7 Type aliases `type X = ...`** — parse alias declarations; the type
   checker resolves them structurally (not nominal) by default.
 - **L5.8 Incremental parse** — a stable parse tree keyed by spans so the LSP
