@@ -104,3 +104,22 @@ func TestMatchDictPatternMissingKey(t *testing.T) {
 		t.Fatalf("dict pattern missing key got %d, want 0", got)
 	}
 }
+
+// TestMatchBareNameCapture verifies a bare-name capture pattern (`case x:`)
+// binds the subject to a fresh variable and always matches (Python semantics).
+func TestMatchBareNameCapture(t *testing.T) {
+	src := "def f(v):\n    match v:\n        case 1:\n            return 10\n        case x:\n            return x\nf(1) + f(5) + f(99)"
+	got := evalStr(t, src)
+	if got != 10+5+99 {
+		t.Fatalf("bare-name capture sum = %d, want 114", got)
+	}
+}
+
+// TestMatchBareNameCaptureString verifies the captured name works in a string
+// context inside the matched branch.
+func TestMatchBareNameCaptureString(t *testing.T) {
+	src := "def classify(v):\n    match v:\n        case 1:\n            return \"one\"\n        case x:\n            return \"other:\" + str(x)\nclassify(1) == \"one\" and classify(5) == \"other:5\""
+	if got := evalStr(t, src); got != 1 {
+		t.Fatalf("bare-name capture string parity = %d, want 1", got)
+	}
+}

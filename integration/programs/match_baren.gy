@@ -1,0 +1,16 @@
+# Bare-name capture pattern in match: `case x:` binds the subject to x
+# and always matches (Python semantics), rather than comparing against an
+# existing variable. Covers literal match, capture match, and the captured
+# name used inside the matched branch.
+def f(v):
+    match v:
+        case 1:
+            return 10
+        case 2:
+            return 20
+        case x:
+            return x
+print(f(1))
+print(f(2))
+print(f(5))
+print(f(99))

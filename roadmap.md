@@ -103,6 +103,12 @@ case (and an ADR where the decision is non-obvious).
 - **Status**: 🟢 MOSTLY DONE — AOT `match` now lowers list-destructuring patterns (`[a, b]`), dict patterns (`{k: v}`), and class patterns (`Point(x, y)` with subclass-walk + attribute binding) to runtime IR via `rt_list_len`/`rt_get_elem`, `rt_dict_has`/`rt_dict_get`, and `rt_heap_kind`/`rt_inst_get`. Guards, `_`, and or-patterns already lower. Remaining: class-pattern aliases (`Alias = Point`) and bare-name binding edge cases.
 - Port interpreter pattern semantics to codegen: guards, or-patterns, dict
   patterns, class patterns (subclass walk + attribute binding).
+- ✅ DONE (Round 13): bare-name capture binding (`case x:`) now works in both
+  backends — the interpreter binds the subject to the name and always matches,
+  and codegen emits a fresh variable-slot store instead of comparing against a
+  non-existent variable. Locked in by `match_test.go` unit tests
+  (`TestMatchBareNameCapture*`) and the `match_baren` conformance program
+  (23/23 conformance cases parity).
 - **New**: exhaustiveness / irrefutability checking in `semantic.go` — a
   `match` over an `int`/enum-like subject with a `case _:` is exhaustive; a
   non-exhaustive `match` is a warning (mypy-style) and a definite-assignment

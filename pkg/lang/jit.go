@@ -2000,7 +2000,12 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 		}
 		return true, nil
 	case *Name:
-		return t.Value == "_", nil
+		// Bare-name capture pattern: bind the subject to the name and
+		// always match (Python `case x:` semantics).
+		if t.Value != "_" {
+			e.Vars[t.Value] = sub
+		}
+		return true, nil
 	case *Call:
 		// Class pattern: `case Point(x, y):` matches an instance of Point
 		// (or a subclass) and binds attributes x and y to the instance's

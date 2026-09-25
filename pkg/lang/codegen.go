@@ -5267,13 +5267,10 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) string {
 			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, sub))
 			return cmp
 		}
-		pv, err := g.value(b, p)
-		if err != nil {
-			return "0"
-		}
-		cmp := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
-		return cmp
+		// Bare-name capture pattern: bind the subject to a fresh variable
+		// slot and always match (Python `case x:` semantics).
+		g.bindPat(b, p.Value, sub)
+		return "1"
 	case *ListLit:
 		n := len(p.Elems)
 		ln := g.newTmp()
