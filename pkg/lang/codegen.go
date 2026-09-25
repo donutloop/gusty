@@ -1853,6 +1853,59 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		return "", false
 	case *StrLit:
 		return n.Value, true
+	case *Slice:
+		// compile-time string slice fold: s[a:b:c] where the source and all
+		// bounds are compile-time constants. Mirrors the interpreter's Python
+		// slice semantics via pySliceIndices.
+		src, ok := g.stringVal(n.Obj)
+		if !ok {
+			return "", false
+		}
+		low := int64(0)
+		high := int64(0)
+		step := int64(1)
+		hasLow := false
+		hasHigh := false
+		if n.Low != nil {
+			v, ok := g.foldConstInt(n.Low)
+			if !ok {
+				return "", false
+			}
+			low = v
+			hasLow = true
+		}
+		if n.High != nil {
+			v, ok := g.foldConstInt(n.High)
+			if !ok {
+				return "", false
+			}
+			high = v
+			hasHigh = true
+		}
+		if n.Step != nil {
+			v, ok := g.foldConstInt(n.Step)
+			if !ok {
+				return "", false
+			}
+			step = v
+			if step == 0 {
+				return "", false
+			}
+		}
+		length := int64(len(src))
+		start, stop, stp := pySliceIndices(low, high, step, hasLow, hasHigh, length)
+		var sb strings.Builder
+		if stp > 0 {
+			for i := start; i < stop; i += stp {
+				sb.WriteByte(src[i])
+			}
+		} else {
+			for i := start; i > stop; i += stp {
+				sb.WriteByte(src[i])
+			}
+		}
+		return sb.String(), true
+
 	case *Name:
 		if g.strVals != nil {
 			if s, ok := g.strVals[n.Value]; ok {
@@ -2429,6 +2482,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		return t, nil
 	case *Name:
+		// String variables are compile-time constants (strVals); emit their
+		// global pointer so printf/assign via value() sees the real string.
+		if sv, ok := g.strVals[n.Value]; ok {
+			return g.strConst(sv), nil
+		}
 		// A module-level class name used as a value (e.g. `Alias = Point`)
 		// resolves to its class id so aliases can be stored and matched.
 		if g.classIDs[n.Value] != 0 || g.classInfos[n.Value] != nil {
@@ -2793,6 +2851,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		return name, nil
 	case *Slice:
+		// String slices are folded at compile time via stringVal; emit the
+		// folded result's global pointer (used by print/assign via value()).
+		if _, isStr := g.stringVal(n.Obj); isStr {
+			if sv, ok := g.stringVal(n); ok {
+				return g.strConst(sv), nil
+			}
+			return "", fmt.Errorf("cannot fold string slice")
+		}
 		objReg, err := g.value(b, n.Obj)
 		if err != nil {
 			return "", err
@@ -5633,9 +5699,18 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
 				return nil
 			}
-			v, err := g.value(b, n.Value)
-			if err != nil {
-				return err
+			// String RHS: fold at compile time into strVals (strings are read back
+			// via strVals, never via the runtime slot). Emit a dummy i32 store so
+			// the generated IR is valid (the pointer would be invalid as i32).
+			var v string
+			var err error
+			if _, isStr := g.stringVal(n.Value); isStr {
+				v = "0"
+			} else {
+				v, err = g.value(b, n.Value)
+				if err != nil {
+					return err
+				}
 			}
 			// track concrete string constant values for `len(s)` and string ops
 			if sv, ok := g.stringVal(n.Value); ok {

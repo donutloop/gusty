@@ -666,3 +666,19 @@ if (b := a + 4) > 0:
 print("after", a, b)
 `)
 }
+
+func TestParityStringSlice(t *testing.T) {
+	parity(t, `
+s = "hello world"
+print(s[1:4])
+print(s[:3])
+print(s[2:])
+print(s[::2])
+print(s[-4:])
+print(s[::-1])
+t = s[1:4]
+print(t)
+print(s + "!")
+print(len(s))
+`)
+}
