@@ -605,3 +605,35 @@ print(f())
 `)
 }
 
+
+// TestParityYieldFromAcrossGC exercises yield-from of a generator whose
+// accumulator list must survive the GC emitted at statement boundaries; a
+// stale handle produced double-appends (ADR 0140 / 0151 regression).
+func TestParityYieldFromAcrossGC(t *testing.T) {
+	parity(t, `
+def gen(n):
+    for i in range(n):
+        yield i * i
+def outer():
+    yield from gen(3)
+    yield 99
+s = 0
+for x in outer():
+    s = s + x
+print(s)
+`)
+}
+
+// TestParityYieldFromLiteral verifies yield-from of a statically-known list
+// literal (no heap backing) appends each element exactly once.
+func TestParityYieldFromLiteral(t *testing.T) {
+	parity(t, `
+def outer():
+    yield 0
+    yield from [1, 2, 3]
+s = 0
+for x in outer():
+    s = s + x
+print(s)
+`)
+}

@@ -5212,6 +5212,14 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.genFuncs[g.fnName(fd)] = true
 		g.heapUsed = true
 		fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 1)\n", g.genHandle)
+		// Keep the generator's accumulator list alive across the GC emitted
+		// before the first body statement; otherwise it is collected and every
+		// yield appends into a stale/freed slot.
+		ghslot := g.newTmp()
+		ghslotName := strings.TrimPrefix(ghslot, "%")
+		fmt.Fprintf(b, "  %%_%s = alloca i32\n", ghslotName)
+		fmt.Fprintf(b, "  store i32 %s, i32* %%_%s\n", g.genHandle, ghslotName)
+		g.gcReg(b, ghslotName)
 	}
 	for i := range fd.Params {
 		if floatRet {
@@ -6144,10 +6152,31 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if g.genHandle == "" {
 			return fmt.Errorf("codegen: yield from outside a generator")
 		}
+		// A statically-known list literal has no heap backing: append each
+		// element directly instead of treating the global as a heap handle.
+		if ll, ok := n.Expr.(*ListLit); ok {
+			for _, el := range ll.Elems {
+				ev, err := g.value(b, el)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(b, "  call void @rt_append(i32 %s, i32 %s)\n", g.genHandle, ev)
+			}
+			return nil
+		}
 		hv, err := g.value(b, n.Expr)
 		if err != nil {
 			return err
 		}
+		// Keep the sub-list handle alive across the GC emitted before the
+		// append loop; otherwise the generator's freshly-returned list can be
+		// collected and the loop reads a stale handle. Store the handle into a
+		// rooted alloca slot so GC keeps the object reachable.
+		hvslot := g.newTmp()
+		hvslotName := strings.TrimPrefix(hvslot, "%")
+		fmt.Fprintf(b, "  %%_%s = alloca i32\n", hvslotName)
+		fmt.Fprintf(b, "  store i32 %s, i32* %%_%s\n", hv, hvslotName)
+		g.gcReg(b, hvslotName)
 		ln := g.newTmp()
 		fmt.Fprintf(b, "%s = call i32 @rt_list_len(i32 %s)\n", ln, hv)
 		ild := g.newLabel("yf.cond")

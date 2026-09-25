@@ -126,7 +126,8 @@ case (and an ADR where the decision is non-obvious).
   backends.
 
 ### Gap D — AOT `with` / `yield from` runtime (ADR 0140)
-- **Status**: 🟠 PARTIAL — codegen emits the `__enter__`/`__exit__` protocol and
+- **Status**: ✅ DONE (Round 17) — `with`/`yield from` pass AOT/interpreter parity.
+- Round 17 root cause: generator accumulator lists (`genHandle`) were not GC-rooted, so the GC at body-statement boundaries collected/reused them; `yield from` then read a stale handle (double-appends, wrong sums). Fix: root each generator's `genHandle` and the `yield from` sub-list in rooted alloca slots; list-literal `yield from` now unrolls instead of treating a global as a heap handle. Regression tests: `TestParityYieldFromAcrossGC`, `TestParityYieldFromLiteral`.
   a runtime yield-from loop, but execution is blocked by a pre-existing
   duplicate-function defect (ADR 0140).
 - Fix the duplicate-function lowering so the emitted protocol/loop actually
