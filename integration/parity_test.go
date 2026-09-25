@@ -565,3 +565,24 @@ print(Plain.__doc__)
 print("done")
 `)
 }
+
+func TestParityLiteralMembership(t *testing.T) {
+	parity(t, `
+x = 2
+print(x in [1, 2, 3])
+print(x in [1, 3, 5])
+print(x not in [1, 3, 5])
+print(x in [])
+print(x not in [])
+y = 4
+print(y in {1, 2, 3})
+print(y in {1, 2, 4})
+print(y in {1: 10, 2: 20, 3: 30})
+print(y in {1: 10, 4: 40})
+print(10 in [10, 20, 30])
+print(10 not in [11, 12, 13])
+print(5 in {})
+print(5 not in {})
+print("done")
+`)
+}

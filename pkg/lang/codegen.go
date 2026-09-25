@@ -1274,6 +1274,68 @@ func setLiteralElems(sl *SetLit) ([]int64, error) {
 	return elems, nil
 }
 
+
+// intMembershipValues returns the integer membership-test values of a literal
+// container expression (list/set elements, or dict keys) and whether the
+// expression is a literal container whose test values are all integer
+// constants. For `x in {k: v, ...}`, membership tests keys -- matching the
+// interpreter (dict `in` checks keys).
+func intMembershipValues(e Expr) ([]int64, bool) {
+	var elems []Expr
+	switch c := e.(type) {
+	case *ListLit:
+		elems = c.Elems
+	case *SetLit:
+		elems = c.Elems
+	case *DictLit:
+		elems = c.Keys // membership tests keys
+	default:
+		return nil, false
+	}
+	vals := make([]int64, 0, len(elems))
+	for _, el := range elems {
+		v, ok := constIntMemberVal(el)
+		if !ok {
+			return nil, false
+		}
+		vals = append(vals, v)
+	}
+	return vals, true
+}
+
+// constIntMemberVal returns the integer constant value of an expr, or ok=false.
+func constIntMemberVal(e Expr) (int64, bool) {
+	switch c := e.(type) {
+	case *IntLit:
+		return c.Value, true
+	case *NoneLit:
+		return 0, true
+	case *BoolLit:
+		if c.Value {
+			return 1, true
+		}
+		return 0, true
+	case *UnOp:
+		if c.Op == "-" {
+			if v, ok := constIntMemberVal(c.X); ok {
+				return -v, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// isStringExpr reports whether e is a string-producing expression. Literal
+// membership against a literal container must not be unrolled when the tested
+// value is a string (the comparison would be pointer-vs-int, not valid i32 IR).
+func isStringExpr(e Expr) bool {
+	switch e.(type) {
+	case *StrLit, *FString:
+		return true
+	}
+	return false
+}
+
 // stringConst resolves a string literal or a chain of `+`-concatenated string
 // literals to its concrete value. Returns (s, true) when the expression is a
 // compile-time-known string constant.
@@ -2496,14 +2558,47 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// Membership tests need runtime container access, so handle them
 		// separately from the i32 arithmetic/comparison ops.
 		if n.Op == "in" || n.Op == "not in" {
+			// Literal container (list/set/dict literal): unroll `l == elem`
+			// checks against the constant integer elements/keys. This fixes
+			// `x in [1,2,3]` where the container is a compile-time global
+			// struct, not a heap handle (the rt_contains path below indexes
+			// @heap by the struct address, which is UB).
+			if vals, ok := intMembershipValues(n.R); ok && !isStringExpr(n.L) {
+				if len(vals) == 0 {
+					// Empty container: nothing is contained.
+					if n.Op == "not in" {
+						return "1", nil
+					}
+					return "0", nil
+				}
+				acc := g.newTmp()
+				cmp := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = icmp eq i32 %s, %d\n", cmp, l, vals[0]))
+				b.WriteString(fmt.Sprintf("\t%s = or i1 false, %s\n", acc, cmp))
+				for _, v := range vals[1:] {
+					c2 := g.newTmp()
+					b.WriteString(fmt.Sprintf("\t%s = icmp eq i32 %s, %d\n", c2, l, v))
+					nacc := g.newTmp()
+					b.WriteString(fmt.Sprintf("\t%s = or i1 %s, %s\n", nacc, acc, c2))
+					acc = nacc
+				}
+				if n.Op == "not in" {
+					inv := g.newTmp()
+					b.WriteString(fmt.Sprintf("\t%s = xor i1 %s, true\n", inv, acc))
+					acc = inv
+				}
+				res := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = zext i1 %s to i32\n", res, acc))
+				return res, nil
+			}
 			// l is the value to test, r is the container handle.
 			t := g.newTmp()
-			b.WriteString(fmt.Sprintf("	%s = call i32 @rt_contains(i32 %s, i32 %s)\n", t, r, l))
+			b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains(i32 %s, i32 %s)\n", t, r, l))
 			bt := g.newTmp()
-			b.WriteString(fmt.Sprintf("	%s = icmp ne i32 %s, 0\n", bt, t))
+			b.WriteString(fmt.Sprintf("\t%s = icmp ne i32 %s, 0\n", bt, t))
 			if n.Op == "not in" {
 				nt := g.newTmp()
-				b.WriteString(fmt.Sprintf("	%s = xor i1 %s, true\n", nt, bt))
+				b.WriteString(fmt.Sprintf("\t%s = xor i1 %s, true\n", nt, bt))
 				return nt, nil
 			}
 			return bt, nil

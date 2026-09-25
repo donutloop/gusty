@@ -89,7 +89,7 @@ priority order. Each ships with a unit test + an `integration/` compile-and-run
 case (and an ADR where the decision is non-obvious).
 
 ### Gap A — AOT dynamic-dispatch correctness (ADR 0151)
-- **Status**: 🟠 PARTIAL — statement-level dynamic dispatch landed; all-call-site
+- **Status**: ✅ DONE (ADR 0156) — statement-level dynamic dispatch landed; all-call-site
   dispatch now has conformance coverage (`dispatch_nested` program). Remaining:
 - AOT dispatch-on-variable *across allocations* is a known GC/instance-layout
   bug (ADR 0151): a receiver handle that points at a re-allocated slot is
@@ -143,10 +143,10 @@ case (and an ADR where the decision is non-obvious).
 - DoD: `a + b` on user classes runs identically on both backends.
 
 ### Gap G — AOT `in`/`not in` on inline literal containers
-- **Status**: 🟠 PARTIAL — `rt_contains` handles runtime heap handles; inline
-  literal containers (a global `@.lstN` struct) are not lowered.
-- Unwrap the literal-list global and feed its element chain to `rt_contains`.
-- DoD: `x in [1,2,3]` with a runtime `x` lowers on AOT.
+- **Status**: ✅ DONE (ADR 0156) — literal list/set/dict membership is unrolled
+  to `l == elem` comparisons against the constant integer elements/keys
+  (dict tests keys), empty literals fold, `not in` inverts.
+- DoD: `TestParityLiteralMembership` — `x in [1,2,3]`, `x not in [1,2,3]`, `x in {1,2,3}`, dict-key `in`, and empty-container `in`/`not in` all match the interpreter on AOT.
 
 ### Gap H — real LLVM `opt` pipeline (scalar replacement follow-on)
 - **Status**: 🟠 PARTIAL — `opt.go` is a pure-Go textual dead-global eliminator,
