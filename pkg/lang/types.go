@@ -1,5 +1,7 @@
 package lang
 
+import "fmt"
+
 // Kind enumerates the language type kinds.
 type Kind int
 
@@ -19,6 +21,7 @@ const (
 	KindIterator
 	KindVoid
 	KindUnion // union type: value is one of several member types (int | str)
+	KindLiteral // literal type: value must equal a specific constant (Literal[1])
 	// structural protocol kinds (generics / protocols)
 	KindSequence // Sequence[T] — accepts any indexable sequence of T
 	KindCallable // Callable[[...], R] — accepts any function with matching signature
@@ -30,6 +33,7 @@ type Type struct {
 	Elem   *Type  `json:"elem,omitempty"`   // list/set element
 	Key    *Type  `json:"key,omitempty"`    // dict key
 	Val    *Type  `json:"val,omitempty"`    // dict value
+	LitVal int64  `json:"lit,omitempty"`   // literal constant value (KindLiteral)
 	Params []*Type `json:"params,omitempty"` // function params
 	Ret    *Type  `json:"ret,omitempty"`    // function return
 	ClassName string `json:"class_name,omitempty"` // class/type name
@@ -51,6 +55,7 @@ func TCallable(params []*Type, ret *Type) *Type {
 
 func TTuple(elems ...*Type) *Type { return &Type{Kind: KindTuple, Elems: elems} }
 func TVoid() *Type     { return &Type{Kind: KindVoid} }
+func TLit(v int64) *Type { return &Type{Kind: KindLiteral, LitVal: v} }
 func TUnion(members ...*Type) *Type { return &Type{Kind: KindUnion, Members: members} }
 func TList(e *Type) *Type  { return &Type{Kind: KindList, Elem: e} }
 func TDict(k, v *Type) *Type { return &Type{Kind: KindDict, Key: k, Val: v} }
@@ -102,6 +107,8 @@ func (t *Type) Name() string {
 		return "iter[" + t.Elem.Name() + "]"
 	case KindVoid:
 		return "void"
+	case KindLiteral:
+		return fmt.Sprintf("Literal[%d]", t.LitVal)
 	case KindUnion:
 		return unionName(t.Members)
 	case KindSequence:
@@ -198,6 +205,8 @@ func (t *Type) Same(o *Type) bool {
 			}
 		}
 		return t.Ret == nil || o.Ret == nil || t.Ret.Same(o.Ret)
+	case KindLiteral:
+		return t.LitVal == o.LitVal
 	default:
 		return true
 	}

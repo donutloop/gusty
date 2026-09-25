@@ -463,3 +463,13 @@ full `pkg/lang` suite passes; `go build ./...` passes.
   (call/list/dict/set/tuple/1-tuple/match-arg end-to-end values) plus a
   format round-trip re-parse check.
 - **Full suite green**; roadmap updated; commit pushed to origin/main.
+
+## Round: L6.4 Literal types
+- Added `KindLiteral` + `LitVal` to types.go; `TLit(v)` renders `Literal[v]`; `Same()` compares literal values.
+- Parser: `Literal[1]` → TLit, `Literal[1, 2]` → union of TLits.
+- Semantic: `assignable` handles Literal (int→Literal allowed at semantic, Literal→int allowed; Literal→Literal requires equal value).
+- Match exhaustiveness: subject typed Literal/union-of-literals is exhaustive iff every literal value is covered by constant patterns.
+- Match narrowing: in `case 1:`, the subject Name is shadowed with `Literal[1]` in that case's scope.
+- Runtime checkAnnot enforces Literal value on func params (Eval does NOT run the interpreter, so runtime enforcement is only reachable via the real Exec path; tests use semantic Analyze).
+- Tests: literal_test.go (parse, union, exhaustiveness covered/uncovered, union exhaustiveness, return assignability).
+- Conformance: integration/programs/match_literal.gy runs identically on both backends (TestConformance passes).

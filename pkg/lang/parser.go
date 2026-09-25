@@ -1052,6 +1052,35 @@ func (p *parser) parseTypeTerm() (*Type, error) {
 	if p.peek().IsOp("[") {
 		p.next()
 		// Callable[[A, B], R] — the first arg is itself a bracketed param list.
+		// Literal[1, 2, ...] — a literal type: parse integer constant tokens.
+		if name == "Literal" || name == "literal" {
+			var vals []int64
+			for {
+				if p.peek().Kind != TokInt {
+					return nil, p.errorf(p.peek(), "Literal[...] requires integer constants")
+				}
+				vals = append(vals, p.peek().Int)
+				p.next()
+				if p.peek().IsOp(",") {
+					p.next()
+					continue
+				}
+				break
+			}
+			if !p.peek().IsOp("]") {
+				return nil, p.errorf(p.peek(), "expected ']' in Literal[...] annotation")
+			}
+			p.next()
+			if len(vals) == 1 {
+				return TLit(vals[0]), nil
+			}
+			members := []*Type{}
+			for _, v := range vals {
+				members = append(members, TLit(v))
+			}
+			return TUnion(members...), nil
+		}
+		// Callable[[A, B], R] — the first arg is itself a bracketed param list.
 		if name == "Callable" || name == "callable" {
 			pl, err := p.parseTypeList()
 			if err != nil {

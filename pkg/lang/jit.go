@@ -307,10 +307,32 @@ func (e *Evaluator) typeOfVal(val int64) *Type {
 // annotations accept anything; otherwise the value's runtime kind must be
 // assignable to the annotation.
 func (e *Evaluator) checkAnnot(name string, ty *Type, val int64) error {
+
+	// Literal type: the runtime value must equal the annotated constant.
+	if ty.Kind == KindLiteral {
+		if val != ty.LitVal {
+			return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " for " + name}
+		}
+		return nil
+	}
 	if ty == nil || ty.Kind == KindDynamic {
 		return nil
 	}
 	// Union annotation: accept if the value's runtime kind matches any member.
+	// Literal type: the runtime value must equal the annotated constant.
+		// Literal type: the runtime value must equal the annotated constant.
+	if ty.Kind == KindLiteral {
+		if val != ty.LitVal {
+			return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " for " + name}
+		}
+		return nil
+	}
+if ty.Kind == KindLiteral {
+		if val != ty.LitVal {
+			return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " for " + name}
+		}
+		return nil
+	}
 	if ty.Kind == KindUnion {
 		for _, m := range ty.Members {
 			if e.checkAnnot(name, m, val) == nil {

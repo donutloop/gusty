@@ -186,12 +186,22 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *PassStmt:
 		// no-op statement
 	case *MatchStmt:
-		an.inferExpr(s.Subject)
+		subTy := an.inferExpr(s.Subject)
 		var boundAll map[string]bool
 		first := true
 		irrefutable := false
+		covered := map[int64]bool{}
 		for _, c := range s.Cases {
 			an.scope = newScope(an.scope)
+			// Narrow the subject inside a constant case: if the subject is a
+			// Name and the pattern is an integer constant, shadow it with the
+			// Literal[v] type in this case's scope.
+			if subj, ok := s.Subject.(*Name); ok {
+				if il, ok := c.Pattern.(*IntLit); ok {
+					covered[il.Value] = true
+					an.scope.define(subj.Value, TLit(il.Value))
+				}
+			}
 			for _, p := range append([]Expr{c.Pattern}, c.Or...) {
 				for n := range matchPatternNames(p) {
 					an.scope.define(n, TDyn())
@@ -224,6 +234,20 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 				an.analyzeStmt(b)
 			}
 			an.scope = an.scope.Parent
+		}
+		if !irrefutable {
+			if vals := literalValues(subTy); vals != nil {
+				allCovered := true
+				for _, v := range vals {
+					if !covered[v] {
+						allCovered = false
+						break
+					}
+				}
+				if allCovered {
+					irrefutable = true
+				}
+			}
 		}
 		if !irrefutable {
 			an.warnf(s.Src, "match is not exhaustive: add a wildcard `_` or always-matching binding case")
@@ -777,6 +801,43 @@ func unionMembers(t *Type) []*Type {
 // nested unions, drops KindDynamic (unknown) members, dedupes structurally
 // identical members, and collapses a single surviving member back to the
 // plain type. None is preserved so `int | None` reads as Optional sugar.
+
+// unionContains reports whether t is a member type of the union u.
+
+// literalValues returns the distinct literal constant values of a Literal type
+// or a union of Literal types, or nil if t is not a literal-valued type.
+func literalValues(t *Type) []int64 {
+	if t == nil {
+		return nil
+	}
+	if t.Kind == KindLiteral {
+		return []int64{t.LitVal}
+	}
+	if t.Kind == KindUnion {
+		vals := []int64{}
+		for _, m := range t.Members {
+			if m.Kind != KindLiteral {
+				return nil
+			}
+			vals = append(vals, m.LitVal)
+		}
+		return vals
+	}
+	return nil
+}
+
+func unionContains(t, u *Type) bool {
+	if u == nil || u.Kind != KindUnion {
+		return false
+	}
+	for _, m := range u.Members {
+		if m.Same(t) {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeUnion(members ...*Type) *Type {
 	seen := []*Type{}
 	var add func(m *Type)
@@ -875,6 +936,17 @@ func assignable(got, want *Type) bool {
 			}
 		}
 		return false
+	case KindLiteral:
+		// Literal[v] is assignable from the exact Literal[v], from a plain int
+		// (the runtime enforces the constant), or from a wider union containing it.
+		if want.Kind == KindLiteral {
+			if got.Kind == KindLiteral {
+				return got.LitVal == want.LitVal
+			}
+			return got.Kind == KindInt || unionContains(got, want)
+		}
+		// A literal value is assignable to its base kind (Literal[1] -> int).
+		return want.Kind == KindInt || unionContains(want, got)
 	default:
 		return got.Kind == want.Kind
 	}

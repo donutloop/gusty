@@ -1,0 +1,11 @@
+# Literal types feed exhaustiveness: a match over a Literal[1,2] subject
+# with both constant values covered is exhaustive (no warning), and the
+# subject is narrowed to the matching Literal inside each case.
+def classify(x: Literal[1, 2]):
+    match x:
+        case 1:
+            print("one")
+        case 2:
+            print("two")
+classify(1)
+classify(2)
