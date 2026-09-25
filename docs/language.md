@@ -462,7 +462,7 @@ match p:
 - A missing attribute, or a subject that is not an instance of the class (or a
   subclass), fails the pattern and the next case is tried.
 - Class patterns are an interpreter-side feature; the AOT/codegen backend
-  lowers `match` to expression-equality only (see `CHANGELOG.md`).
+  lowers `match` to expression-equality only (see `docs/adr/0149-class-patterns.md`).
 
 ## Expressions
 

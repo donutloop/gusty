@@ -6,8 +6,7 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`), CHANGELOG at `[Unreleased] v0.10.0`. ADRs run
-> `0001`..`0154`.
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0154`.
 
 ## Component map (state verified against the code)
 
@@ -33,10 +32,9 @@ for *what exists*, *what is next*, and *what is gap-shaped*.
 
 ### Phase 0 — hygiene
 - Version reconciled (v0.10.0 in `compile.go`, printed by CLI). ✅ DONE
-- CHANGELOG kept as one clean list; dedupe if it grows. ✅ DONE
 - **New**: renumber the duplicated ADR `0143` (standalone-type-check) to `0152`;
-  the file header, roadmap snapshot/component-map references, and CHANGELOG
-  entry now all say `0152`. ✅ DONE
+  the file header and roadmap snapshot/component-map references now all say
+  `0152`. ✅ DONE
 
 ### Phase 1 — AOT/interpreter parity
 - Floats in AOT ✅ DONE — codegen emits real `double` IR (`fadd double 0.0, <const>`),
@@ -376,7 +374,6 @@ An item is done when it ships:
   existing ADR, e.g. `0152` renumbered from the duplicated `0143`).
 - An update to `docs/language.md` and `docs/operations.md` when it changes
   user-visible syntax or CLI flags.
-- A CHANGELOG entry under `[Unreleased] v0.10.0`.
 
 ## Definition of done for gap-shaped work
 A gap is closed when the previously interpreter-only path also lowers on AOT

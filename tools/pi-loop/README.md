@@ -11,7 +11,7 @@ Every round:
 1. Loads `AGENTS.md` from the repo.
 2. Prompts the local pi agent to read it and follow its loop **strictly**:
    pick the next mission feature → implement across the stack (code, machine
-   path, tests, docs, CHANGELOG) → run tests until green → commit → push.
+   path, tests, docs) → run tests until green → commit → push.
 3. Waits for the agent turn to complete (`agent_end`).
 4. Verifies the round (`git status` / `git rev-parse HEAD`) and **persists
    progress** to `.pi-loop-state.json`.

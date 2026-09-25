@@ -103,7 +103,6 @@ exceptions, pattern matching, modules, stdlib.
 - **semantic.go**: `assignable` handles unions — `got` is assignable to a union iff assignable to any member, and a union-typed `got` is assignable iff every member is.
 - **schema.go**: documented union rendering in annotation text (`"int | str"`).
 - Verified: `x: int | str = 3` and `= "hi"` accepted; `= True` reports `expected int | str, got bool`; `list[int | str] = [1]` accepted; union `Same()` is order-independent.
-- **CHANGELOG hygiene**: removed stale `# Round` duplicate entries at the top, leaving a single clean Unreleased list; added the union entry.
 - Integration tests use only union cases that hit working codegen paths (string-through-function and mixed lists are pre-existing codegen limits, unrelated to unions).
 
 
@@ -186,9 +185,8 @@ this small Go compiler's interpreter (`pkg/lang/jit.go`) and analyzer
 - `genExpr` unrolls constant `range(...)`/`ListLit` iterables at codegen time
   (mirroring `comp()` for comprehensions), folds `Cond`, appends to `%gxN`.
 - Parity rule: keep AOT lowering identical to interpreter eager-list semantics.
-- Lesson: recent AOT features get an ADR (e.g. 0129-classes-aot), NOT a
-  versioned CHANGELOG entry — CHANGELOG only tracks milestone releases. Follow
-  that convention (ADR 0130-generators-aot, no CHANGELOG edit).
+- Lesson: recent AOT features get an ADR (e.g. 0129-classes-aot,
+  0130-generators-aot).
 - Lesson: unit tests for AOT landings live in `pkg/lang/ircheck_test.go` via
   `llcCompiles` (IR validity), plus a whole-program `integration/` test that
   actually runs. Don't cite ADR numbers you haven't verified (ADR 0088 is
@@ -318,9 +316,9 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
 - Tests: `TestEvalDocstringFunc`, `...FuncNone`, `...Class`, `...Closure`,
   `...NotFirst`, plus the fmt round-trip. Full `go test ./...` green.
 - Docs: roadmap (formatter DONE + docstrings DONE), language.md, operations.md
-  (fmt flags), CHANGELOG, README (fmt flags + docstring note).
+  (fmt flags), README (fmt flags + docstring note).
 - Round 8 hygiene: the formatter had shipped without doc updates; this round
-  back-filled roadmap/CHANGELOG/README/operations for `gusty fmt`.
+  back-filled roadmap/README/operations for `gusty fmt`.
 
 ## Round 15 — IR-level dead-heap-object elimination
 - Added `fn.deadHeapElim()` in `pkg/lang/opt.go`: an IR-level liveness +
@@ -395,7 +393,7 @@ Key gotchas: `g.write` doesn't exist — emission uses `b.WriteString(fmt.Sprint
     `Call` patterns keep expression-equality.
 - Tests: `match_test.go` (basic, subclass, non-match, missing-attr, alias).
 - Docs: `docs/language.md` match section, `docs/adr/0149-class-patterns.md`,
-  `CHANGELOG.md`, `roadmap.md` (Phase 6 row).
+  `roadmap.md` (Phase 6 row).
 - AOT/codegen `match` remains expression-equality only — documented as an
   interpreter-side feature.
 - Push still blocked: the deploy key is passphrase-protected and no token or
@@ -443,7 +441,7 @@ full `pkg/lang` suite passes; `go build ./...` passes.
   is advisory: it does not change `gusty check` exit codes (only LevelError
   does), matching mypy semantics.
 - New ADR 0154, integration suite `integration/match_exhaustiveness_check_test.go`
-  (6 tests), docs updates in language.md / operations.md / CHANGELOG / README.
+  (6 tests), docs updates in language.md / operations.md / README.
 
 ## Round 7 — L5.3: Trailing commas (parser modernization)
 

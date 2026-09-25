@@ -47,7 +47,7 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
    - LLVM IR codegen (and any new optimization pass) for lowering, mirroring the interpreter behavior.
    - `docs/help.go` (or equivalent) — one-line help per command/flag.
    - `verify/` — known-good verify case (source in, expected IR/output out).
-   - docs — `docs/language.md`, `docs/operations.md`, `CHANGELOG.md`, `README.md`, `_001_session_learnings.md`, an ADR if needed.
+   - docs — `docs/language.md`, `docs/operations.md`, `README.md`, `_001_session_learnings.md`, an ADR if needed.
 3. **Machine path** — if the feature is language/interface, make sure it is discoverable via schema/help and consumable as JSON where it makes sense (agents must not need to scrape prose or parse raw LLVM IR text blindly).
 4. Add tests for the feature before committing: unit tests for the compiler pass, and a codegen/integration test that compiles and runs (or JIT-executes) real source. When the feature is supported in both paths, cover **both** the interpreter (`jit_test.go`, `EvalExpr`) and the LLVM codegen (`integration/`, `Compile` + `llc`).
 5. Run tests before committing: full test suite must pass, and every emitted module must pass LLVM's module verifier.
@@ -59,12 +59,11 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 ## New requirements
 
 - Keep `agents.md` at the repo root; do not store prompts under `setup/prompts/`.
-- Every feature commit updates `docs/language.md` (language surface), `docs/operations.md` (CLI/agentic interface), `CHANGELOG.md`, `README.md`, `_001_session_learnings.md` (session learnings), and the ADR if relevant.
+- Every feature commit updates `docs/language.md` (language surface), `docs/operations.md` (CLI/agentic interface), `README.md`, `_001_session_learnings.md` (session learnings), and the ADR if relevant.
 - Record each cycle's decisions, discoveries, and process lessons in `_001_session_learnings.md` at the repo root; update it in the same commit as the change it documents.
 - `docs/operations.md` is the single source of truth for the CLI, flags, JSON schemas, and exit codes.
 - `docs/language.md` is the single source of truth for language syntax and semantics.
 - Always push every commit; never leave a feature unpushed.
-- Preserve the CHANGELOG as a clean single list (deduplicate if it grows).
 - Follow this document's direction on every cycle; it is the contract.
 
 ## Rules

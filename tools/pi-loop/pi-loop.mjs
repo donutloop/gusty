@@ -6,7 +6,7 @@
  * Each round:
  *   1. Prompt the pi agent to read AGENTS.md and strictly follow its loop
  *      (pick the next mission feature, implement across the stack, add the
- *      machine path, add tests, update docs + CHANGELOG, run tests, commit,
+ *      machine path, add tests, update docs, run tests, commit,
  *      push).
  *   2. Wait for the agent turn to complete (agent_end).
  *   3. Verify the round (git status / last commit) and persist progress.
