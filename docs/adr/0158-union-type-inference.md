@@ -27,14 +27,26 @@ Extend inference so unions flow through expressions:
   single member back to the plain type), `unionMembers`, `unionAllNumeric`,
   `unionAllString`, `anyFloat`.
 
-The union type remains a semantic/checker concept; AOT codegen still sees
-dynamic values (tagged-union lowering is a separate follow-on, L6.3 runtime).
+The union type was initially a semantic/checker concept; AOT codegen saw
+dynamic values (tagged-union lowering was a separate follow-on, L6.3 runtime).
+
+## Follow-on (L6.3 AOT tagged-union lowering) — DONE
+Union-annotated scalar variables (`int | float`, `int | str`) now get a tagged
+`%unionbox` slot in the AOT backend: assignment stores the runtime member tag
+(0=int, 1=float, 2=string) alongside the payload, and `print` on the variable
+dispatches on the live tag to emit `%d`/`%f`/`%s`. Cross-member reassignment
+under branches/loops therefore prints the currently-stored member correctly.
+Covered by `integration/union_aot_test.go` (linear, control-flow, and
+cross-member reassign parity).
 
 ## Consequences
 - Ternary widening makes a mixed-type conditional assignable to a union
   annotation but not to either single member (`expected int, got int | str`).
 - Numeric-union arithmetic no longer spurious-warns; mixed-union arithmetic
   still warns.
-- Unit tests added: `TestUnionInferTernary`, `TestUnionArithmetic`.
-- No runtime/codegen behavior change in this ADR; inference is a checker-only
-  improvement.
+- AOT union variables are tagged slots that dispatch on the runtime member for
+  `print`, matching the interpreter's dynamic behavior.
+- Unit tests added: `TestUnionInferTernary`, `TestUnionArithmetic`, and
+  interpreter `EvalExpr` union-member tests; AOT parity in `union_aot_test.go`.
+- Inference itself is checker-only; the runtime/codegen behavior is the
+  tagged-union lowering above.

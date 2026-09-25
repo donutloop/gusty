@@ -525,6 +525,11 @@ Annotations are recursive generic type expressions:
   (`int | float`) computes without warning; a mixed union (`int | str`) still
   warns `arithmetic on non-numeric`; `+` over a string-only union is
   concatenation.
+- **AOT tagged-union lowering** — a union-annotated scalar variable
+  (`int | float`, `int | str`) gets a tagged `%unionbox` slot: assignment stores
+  the runtime member tag (0=int, 1=float, 2=string), and `print` dispatches on
+  the live tag to emit `%d`/`%f`/`%s`. Cross-member reassignment under
+  branches/loops prints the currently-stored member, matching the interpreter.
 - `Sequence[T]` — a structural protocol bound accepting any list/set/iter/tuple/str
   whose element type is compatible with `T`.
 - `Callable[[A, B], R]` — a structural protocol bound accepting any function whose

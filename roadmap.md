@@ -282,7 +282,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L6.3 Union types** (`int | str`, `None | int` sugar for `Optional`) —
   infer/check unions through assignment + call boundaries; AOT widens to a
   tagged union layout. ✅ DONE (semantic inference: ternary widening +
-  union-aware arithmetic, ADR 0158). ✅ DONE (runtime: union-annotated variables — `int | str`, `int | float` — are accepted and evaluated by the interpreter; `checkAnnot` accepts any union member; conformance + IR tests added). ⏳ PARTIAL (AOT tagged-union lowering: single-member union assignments compile cleanly via floatVars widening; full runtime tag dispatch — printing an int member as `%d` vs a float member as `%f` after cross-member reassignment — is still planned).
+  union-aware arithmetic, ADR 0158). ✅ DONE (runtime: union-annotated variables — `int | str`, `int | float` — are accepted and evaluated by the interpreter; `checkAnnot` accepts any union member; conformance + IR tests added). ✅ DONE (AOT tagged-union lowering: union-annotated scalar variables (`int | float`, `int | str`) get a tagged `%unionbox` slot; assignment stores the runtime member tag (0=int, 1=float, 2=str); print dispatches on the tag to emit `%d`/`%f`/`%s`, so an int member prints as `%d` and a float member as `%f` even after cross-member reassignment under branches/loops).
 - **L6.4 Literal types** — `Literal[1, 2]` so `match` on constants enables
   exhaustiveness + narrowing; feed L6.1.
 - **L6.5 Type narrowing / refinement** — after `if isinstance(x, int):`, the

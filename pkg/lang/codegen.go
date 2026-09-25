@@ -914,6 +914,10 @@ type irGen struct {
 	lambdas map[string]string
 	// floatVars tracks variables whose last assignment produced a double.
 	floatVars map[string]bool
+	// unionVars holds names annotated with a union type (e.g. `int | float`);
+	// their slots are tagged so the runtime member is tracked for print dispatch.
+	unionVars map[string]bool
+	unionDecl bool
 	// floatTemps tracks temps that hold a double result (e.g. a float call).
 	floatTemps map[string]bool
 	// floatFuncs tracks user functions that return a double.
@@ -970,14 +974,110 @@ type irGen struct {
 	curModParams map[string]bool
 }
 
-// classInfo records a statically-known class: its base classes and its methods.
-type classInfo struct {
-	bases   []string
-	methods map[string]string // method name -> IR function name
-	doc     string            // class docstring (for `Cls.__doc__` in AOT)
+// markUnion records that the %unionbox type must be declared in the IR
+// preamble (lazily, so non-union modules don't emit an unused declaration).
+func (g *irGen) markUnion() {
+	if !g.unionDecl {
+		g.decls += "%unionbox = type {i32, i32, double, i8*}\n"
+		g.unionDecl = true
+	}
+}
+
+// emitUnionStore stores a value into a union-annotated scalar slot, tagging
+// the runtime member (0=int, 1=float, 2=string) for print dispatch.
+func (g *irGen) emitUnionStore(b *strings.Builder, nm string, e Expr) {
+	g.markUnion()
+	if !g.allocd[nm] {
+		fmt.Fprintf(b, "  %%_%s = alloca %%unionbox\n", nm)
+		g.allocd[nm] = true
+	}
+	if g.isFloat(e) {
+		uf := g.newTmp()
+		ut := g.newTmp()
+		fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 2\n", uf, nm)
+		fmt.Fprintf(b, "  store double %s, double* %s\n", g.floatValue(b, e), uf)
+		fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 0\n", ut, nm)
+		fmt.Fprintf(b, "  store i32 1, i32* %s\n", ut)
+		return
+	}
+	if str, ok := e.(*StrLit); ok {
+		us := g.newTmp()
+		ut := g.newTmp()
+		fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 3\n", us, nm)
+		fmt.Fprintf(b, "  store i8* %s, i8** %s\n", g.strConst(str.Value), us)
+		fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 0\n", ut, nm)
+		fmt.Fprintf(b, "  store i32 2, i32* %s\n", ut)
+		return
+	}
+	iv, _ := g.value(b, e)
+	ui := g.newTmp()
+	ut := g.newTmp()
+	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 1\n", ui, nm)
+	fmt.Fprintf(b, "  store i32 %s, i32* %s\n", iv, ui)
+	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 0\n", ut, nm)
+	fmt.Fprintf(b, "  store i32 0, i32* %s\n", ut)
+}
+
+// emitUnionPrint prints a union-annotated scalar variable, dispatching on its
+// runtime tag to emit %d, %f, or %s for the currently-stored member.
+func (g *irGen) emitUnionPrint(b *strings.Builder, nm string) {
+	g.markUnion()
+	tag := g.newTmp()
+	lt := g.newTmp()
+	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 0\n", tag, nm)
+	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", lt, tag)
+	isf := g.newTmp()
+	lf := g.newLabel("fbr")
+	ln := g.newLabel("notf")
+	lj := g.newLabel("join")
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 1\n", isf, lt)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isf, lf, ln)
+	fmt.Fprintf(b, "%s:\n", lf)
+	fv := g.newTmp()
+	uf := g.newTmp()
+	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 2\n", uf, nm)
+	fmt.Fprintf(b, "  %s = load double, double* %s\n", fv, uf)
+	fmt.Fprintf(b, "  %s\n", g.printfCall("double", fv, "%g\n"))
+	fmt.Fprintf(b, "  br label %%%s\n", lj)
+	fmt.Fprintf(b, "%s:\n", ln)
+	iss := g.newTmp()
+	ls := g.newLabel("sbr")
+	li := g.newLabel("ibr")
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 2\n", iss, lt)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", iss, ls, li)
+	fmt.Fprintf(b, "%s:\n", ls)
+	sv := g.newTmp()
+	us := g.newTmp()
+	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 3\n", us, nm)
+	fmt.Fprintf(b, "  %s = load i8*, i8** %s\n", sv, us)
+	fmt.Fprintf(b, "  %s\n", g.printfCall("i8*", sv, "%s\n"))
+	fmt.Fprintf(b, "  br label %%%s\n", lj)
+	fmt.Fprintf(b, "%s:\n", li)
+	iv := g.newTmp()
+	ui := g.newTmp()
+	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 1\n", ui, nm)
+	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", iv, ui)
+	fmt.Fprintf(b, "  %s\n", g.printfCall("i32", iv, "%d\n"))
+	fmt.Fprintf(b, "  br label %%%s\n", lj)
+	fmt.Fprintf(b, "%s:\n", lj)
+}
+
+// printfCall emits a call to @printf with the given operand type and format.
+func (g *irGen) printfCall(ty, v, format string) string {
+	name, size := g.fmtStr(format)
+	res := g.newTmp()
+	return fmt.Sprintf("%s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), %s %s)", res, size, size, name, ty, v)
 }
 
 // registerClass records a class definition (ClassDef) and emits its methods.
+type classInfo struct {
+	name    string
+	bases   []string
+	methods map[string]string // method name -> LLVM function name
+	doc     string
+}
+
+
 func (g *irGen) registerClass(cd *ClassDef) {
 	if g.classInfos == nil {
 		g.classInfos = map[string]*classInfo{}
@@ -2513,6 +2613,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return g.emitEnvLoad(b, g.envParam, off), nil
 		}
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
+		if g.unionVars[n.Value] {
+			ui := fmt.Sprintf("%%_%s.ui%d", n.Value, g.ldN)
+			b.WriteString(fmt.Sprintf("  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 1\n", ui, n.Value))
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* %s\n", ld, ui))
+			return ld, nil
+		}
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, n.Value))
 		return ld, nil
 	case *Attr:
@@ -4259,6 +4365,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// strings via Repr); integer arguments use %d\n.
 		var last string
 		for i, a := range c.Args {
+    if nm, ok := a.(*Name); ok && g.unionVars[nm.Value] {
+        g.emitUnionPrint(b, nm.Value)
+        continue
+    }
 			// print a constant string: literals and folded string-method results.
 			if _, ok := g.stringVal(a); ok {
 				fmtName, size := g.fmtStr("%s\n")
@@ -5618,6 +5728,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return nil
 		}
 		if nm, ok := n.Target.(*Name); ok {
+		// union-annotated scalar variable: tag its slot for runtime dispatch
+		if g.unionVars == nil {
+			g.unionVars = map[string]bool{}
+		}
+		if n.Annot != nil && n.Annot.Kind == KindUnion {
+			g.unionVars[nm.Value] = true
+		}
 			// escape analysis: a list literal assigned to a variable that is
 			// never read (dead) skips its heap allocation entirely.
 			if _, isList := n.Value.(*ListLit); isList && !g.inFunc && g.deadLists[nm.Value] {
@@ -5760,6 +5877,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %%h%d, i32 %s, i32 %s)\n", hs, kk, vv))
 				}
 				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
+				return nil
+			}
+			if g.unionVars[nm.Value] {
+				g.emitUnionStore(b, nm.Value, n.Value)
 				return nil
 			}
 			isFloat := g.isFloat(n.Value)
