@@ -24,6 +24,7 @@ type BuildResult struct {
 var (
 	llcCmd = "llc-20"
 	ccCmd  = "cc"
+	optCmd = "opt-20"
 )
 
 // Build compiles a set of source files into a single native executable.

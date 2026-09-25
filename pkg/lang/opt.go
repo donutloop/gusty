@@ -1202,6 +1202,28 @@ func OptimizeIR(ir string, level int) string {
 	if level <= 0 || ir == "" {
 		return ir
 	}
+	// Gap H: drive the *real* LLVM opt pipeline over the raw module IR first.
+	// It produces verified, optimized IR (constant folding, SROA, loop opt)
+	// that the textual pass cannot. It must see the raw codegen output:
+	// running it after the textual pass re-types GC heap slots (%obj) in a
+	// way that breaks the LLVM verifier. GC roots live in module-global
+	// arrays (@gc.roots), which rt_gc reads/writes, so the real optimizer
+	// keeps every live root registered.
+	optimized := runLLVMopt(ir, level)
+	if optimized != ir {
+		// opt ran and succeeded: return its output directly. The textual
+		// front-end pass must NOT run afterwards: its dce treats calls like
+		// printf as dead when their result is unused (opt marks the call
+		// site readonly), which would strip observable output.
+		return optimized
+	}
+	// opt unavailable or rejected the IR: fall back to the textual pass.
+	return optimizeTextual(ir)
+}
+
+// optimizeTextual runs the deterministic, offline textual optimizer. It is
+// the fallback used when the external `opt` tool is unavailable.
+func optimizeTextual(ir string) string {
 	m := parseModule(ir)
 	if len(m.funcs) == 0 {
 		return ir

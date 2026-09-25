@@ -99,11 +99,15 @@ else:
 `
 	out := OptimizeIR(ir, 1)
 	// 5+3=8, 8*2=16, 16>10=true => the else branch is dead.
-	if strings.Contains(out, "else:") {
-		t.Fatalf("dead branch not eliminated:\n%s", out)
+	// The folded comparison makes the else branch unreachable: both the
+	// textual pass and the real LLVM opt pipeline (Gap H) eliminate it.
+	if strings.Contains(out, "ret i32 0") {
+		t.Fatalf("dead else branch not eliminated:\n%s", out)
 	}
-	if !strings.Contains(out, "then:") {
-		t.Fatalf("live branch dropped:\n%s", out)
+	// The then-branch body folds to its constant result: with x>10 the
+	// function returns 1. The real opt pipeline folds the whole branch away.
+	if !strings.Contains(out, "ret i32 1") {
+		t.Fatalf("branch not folded to constant result:\n%s", out)
 	}
 }
 
@@ -120,7 +124,7 @@ entry:
 	out := OptimizeIR(ir, 1)
 	// c = true, z = 1, s = 7, r = 8.
 	if !strings.Contains(out, "ret i32 8") {
-		t.Fatalf("constant not propagated to ret:\n%s", out)
+		t.Fatalf("branch not folded to constant result:\n%s", out)
 	}
 }
 
@@ -168,7 +172,10 @@ entry:
 	}
 }
 
-func TestAllocaNotPromotedWithPhiNeed(t *testing.T) {
+func TestAllocaLoopFoldedByRealOpt(t *testing.T) {
+	if _, err := exec.LookPath(optCmd); err != nil {
+		t.Skipf("opt-20 not installed: %v", err)
+	}
 	// loop-carried variable needs a phi; promotion must conservatively keep it.
 	ir := `define i32 @main() {
 entry:
@@ -188,8 +195,11 @@ exit:
 }
 `
 	out := OptimizeIR(ir, 1)
-	if !strings.Contains(out, "alloca double") {
-		t.Fatalf("loop-carried alloca must not be promoted (needs phi):\n%s", out)
+	if strings.Contains(out, "alloca double") {
+		t.Fatalf("loop alloca not scalar-replaced:\n%s", out)
+	}
+	if !strings.Contains(out, "ret i32 10") {
+		t.Fatalf("induction loop not folded to constant:\n%s", out)
 	}
 }
 
@@ -225,8 +235,8 @@ b:
 }
 `
 	out := OptimizeIR(ir, 1)
-	if !strings.Contains(out, "b:") || !strings.Contains(out, "a:") {
-		t.Fatalf("reachable blocks dropped:\n%s", out)
+	if !strings.Contains(out, "ret i32 0") {
+		t.Fatalf("reachable return dropped:\n%s", out)
 	}
 }
 
@@ -294,8 +304,15 @@ func TestOptimizeRealProgram(t *testing.T) {
 	if strings.Contains(opt, "alloca") {
 		t.Fatalf("promotion did not remove alloca:\n%s", opt)
 	}
-	if !hasLine(opt, "br label %if.then") {
-		t.Fatalf("branch not folded:\n%s", opt)
+	// The dead else-branch is eliminated: the folded comparison makes the
+	// print(2) call unreachable. Both the textual front-end pass and the real
+	// LLVM opt pipeline (Gap H) remove it.
+	if strings.Contains(opt, "i32 2)") {
+		t.Fatalf("dead else branch not eliminated:\n%s", opt)
+	}
+	// The folded true-branch body (print(1)) survives as a direct call.
+	if !strings.Contains(opt, "i32 1)") {
+		t.Fatalf("folded branch body lost:\n%s", opt)
 	}
 	// print(x+2) folds to print(7).
 	if !strings.Contains(opt, "i32 7)") {
