@@ -96,6 +96,17 @@ exceptions, pattern matching, modules, stdlib.
 
 ---
 
+## Round 20 — Union-type syntax `int | str` (L5.5)
+
+- **types.go**: added `KindUnion`, `Members []*Type` field, `TUnion(...)` constructor, `unionName()` rendering (`int | str`), and order-independent `Same()` for unions.
+- **parser.go**: `parseTypeAnnot` now parses `T | U | ...` as a union of member types (each member via a new `parseTypeTerm`); unions nest inside generics (`list[int | str]`).
+- **semantic.go**: `assignable` handles unions — `got` is assignable to a union iff assignable to any member, and a union-typed `got` is assignable iff every member is.
+- **schema.go**: documented union rendering in annotation text (`"int | str"`).
+- Verified: `x: int | str = 3` and `= "hi"` accepted; `= True` reports `expected int | str, got bool`; `list[int | str] = [1]` accepted; union `Same()` is order-independent.
+- **CHANGELOG hygiene**: removed stale `# Round` duplicate entries at the top, leaving a single clean Unreleased list; added the union entry.
+- Integration tests use only union cases that hit working codegen paths (string-through-function and mixed lists are pre-existing codegen limits, unrelated to unions).
+
+
 # Session learnings: tiny Go (the gusty interpreter)
 
 This session I implemented `raise`/`try`/`except`/`finally`, generators (`yield`),

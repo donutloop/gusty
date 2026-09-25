@@ -255,7 +255,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L5.4 ✅ DONE — Walrus operator (`:=`)** — assignment expressions usable inside `if`
   conditions and comprehensions (`if (n := len(x)) > 0:`); scope rules per
   Python 3.8+.
-- **L5.5 Union-type syntax `int | str`** — parse `|` in annotation position
+- **L5.5 ✅ DONE — Union-type syntax `int | str`** — parse `|` in annotation position
   (and in `match` patterns) as a union type, not a bitwise-or; feed the
   gradual type checker.
 - **L5.6 `async`/`await` + effectful syntax** — parse `async def`,

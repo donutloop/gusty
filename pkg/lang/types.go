@@ -18,6 +18,7 @@ const (
 	KindClass
 	KindIterator
 	KindVoid
+	KindUnion // union type: value is one of several member types (int | str)
 	// structural protocol kinds (generics / protocols)
 	KindSequence // Sequence[T] — accepts any indexable sequence of T
 	KindCallable // Callable[[...], R] — accepts any function with matching signature
@@ -32,6 +33,7 @@ type Type struct {
 	Params []*Type `json:"params,omitempty"` // function params
 	Ret    *Type  `json:"ret,omitempty"`    // function return
 	ClassName string `json:"class_name,omitempty"` // class/type name
+	Members  []*Type `json:"members,omitempty"`  // union member types (int | str)
 	Elems []*Type `json:"elems,omitempty"` // tuple element types
 }
 
@@ -49,6 +51,7 @@ func TCallable(params []*Type, ret *Type) *Type {
 
 func TTuple(elems ...*Type) *Type { return &Type{Kind: KindTuple, Elems: elems} }
 func TVoid() *Type     { return &Type{Kind: KindVoid} }
+func TUnion(members ...*Type) *Type { return &Type{Kind: KindUnion, Members: members} }
 func TList(e *Type) *Type  { return &Type{Kind: KindList, Elem: e} }
 func TDict(k, v *Type) *Type { return &Type{Kind: KindDict, Key: k, Val: v} }
 func TSet(e *Type) *Type    { return &Type{Kind: KindSet, Elem: e} }
@@ -99,6 +102,8 @@ func (t *Type) Name() string {
 		return "iter[" + t.Elem.Name() + "]"
 	case KindVoid:
 		return "void"
+	case KindUnion:
+		return unionName(t.Members)
 	case KindSequence:
 		return "Sequence[" + t.Elem.Name() + "]"
 	case KindCallable:
@@ -132,6 +137,23 @@ func tupleElemNames(elems []*Type) string {
 	return out
 }
 
+// unionName renders a union type's members joined by " | ".
+func unionName(members []*Type) string {
+	if len(members) == 0 {
+		return "any"
+	}
+	out := ""
+	for i, m := range members {
+		if i > 0 { out += " | " }
+		if m == nil {
+			out += "any"
+			continue
+		}
+		out += m.Name()
+	}
+	return out
+}
+
 func (t *Type) Same(o *Type) bool {
 	if t == nil || o == nil {
 		return t == o
@@ -152,6 +174,17 @@ func (t *Type) Same(o *Type) bool {
 		return t.Elem.Same(o.Elem)
 	case KindSequence:
 		return o.Kind == KindSequence && (t.Elem == nil || o.Elem == nil || t.Elem.Same(o.Elem))
+	case KindUnion:
+		// order-independent member-set equality
+		if len(t.Members) != len(o.Members) { return false }
+		for _, m := range t.Members {
+			found := false
+			for _, om := range o.Members {
+				if m.Same(om) { found = true; break }
+			}
+			if !found { return false }
+		}
+		return true
 	case KindCallable:
 		if o.Kind != KindCallable || len(t.Params) != len(o.Params) {
 			return false

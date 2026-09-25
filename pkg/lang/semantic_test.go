@@ -188,3 +188,55 @@ func TestParseNoWarningAscii(t *testing.T) {
 		}
 	}
 }
+
+// TestUnionTypeAnnotation verifies `int | str` union annotations parse and
+// drive gradual assignability: a value assignable to any member is accepted,
+// and a value outside every member is reported.
+func TestUnionTypeAnnotation(t *testing.T) {
+	cases := []struct {
+		src      string
+		wantErr  string // if non-empty, an error diagnostic must contain this
+	}{
+		// int member accepted
+		{`x: int | str = 3
+print(x)`, ""},
+		// str member accepted
+		{`x: int | str = "hi"
+print(x)`, ""},
+		// nested union inside a generic: list[int | str]
+		{`x: list[int | str] = [1]
+print(x)`, ""},
+		// bool is outside both members -> mismatch
+		{`x: int | str = True
+print(x)`, "expected int | str, got bool"},
+		// single-member union is assignable like the plain type
+		{`x: int | int = 3
+print(x)`, ""},
+	}
+	for _, c := range cases {
+		prog := parseOrFatal(t, c.src)
+		diags := Analyze(prog)
+		if c.wantErr == "" {
+			if hasErrorMsg(diags, "type mismatch") {
+				t.Errorf("src %q: unexpected mismatch: %v", c.src, diags)
+			}
+			continue
+		}
+		if !hasErrorMsg(diags, c.wantErr) {
+			t.Errorf("src %q: expected error %q, got %v", c.src, c.wantErr, diags)
+		}
+	}
+}
+
+// TestUnionTypeName verifies the rendered union name is `int | str`.
+func TestUnionTypeName(t *testing.T) {
+	u := TUnion(TInt(), TStr())
+	if got := u.Name(); got != "int | str" {
+		t.Fatalf("union name: got %q, want %q", got, "int | str")
+	}
+	// order-independent Same
+	u2 := TUnion(TStr(), TInt())
+	if !u.Same(u2) {
+		t.Fatalf("union Same should be order-independent")
+	}
+}

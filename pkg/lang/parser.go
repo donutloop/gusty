@@ -1023,6 +1023,27 @@ func isTypeName(s string) bool {
 }
 
 func (p *parser) parseTypeAnnot() (*Type, error) {
+	// Union-type syntax: `int | str` parses as a union of member types.
+	first, err := p.parseTypeTerm()
+	if err != nil {
+		return nil, err
+	}
+	if !p.peek().IsOp("|") {
+		return first, nil
+	}
+	members := []*Type{first}
+	for p.peek().IsOp("|") {
+		p.next()
+		alt, err := p.parseTypeTerm()
+		if err != nil {
+			return nil, err
+		}
+		members = append(members, alt)
+	}
+	return TUnion(members...), nil
+}
+
+func (p *parser) parseTypeTerm() (*Type, error) {
 	t := p.peek()
 	p.next()
 	name := t.Text

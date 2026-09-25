@@ -745,6 +745,15 @@ func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
 // Callable[[...], R] act as structural bounds accepting matching concrete
 // sequence / callable types.
 func assignable(got, want *Type) bool {
+	// A union-typed `got` is assignable to `want` iff every member is.
+	if got != nil && got.Kind == KindUnion {
+		for _, m := range got.Members {
+			if !assignable(m, want) {
+				return false
+			}
+		}
+		return true
+	}
 	if got == nil || want == nil {
 		return true
 	}
@@ -756,6 +765,14 @@ func assignable(got, want *Type) bool {
 		return seqAssignable(got, want.Elem)
 	case KindCallable:
 		return callableAssignable(got, want.Params, want.Ret)
+	case KindUnion:
+		// `got` is assignable to `want` union iff assignable to any member.
+		for _, m := range want.Members {
+			if assignable(got, m) {
+				return true
+			}
+		}
+		return false
 	default:
 		return got.Kind == want.Kind
 	}

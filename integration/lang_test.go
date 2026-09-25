@@ -1349,3 +1349,15 @@ match q:
     case _:
         print(9)`, "9\n")
 }
+
+// TestUnionAnnotationRun verifies programs with `int | str` union annotations
+// compile, execute, and are gradual: a member value is accepted at runtime.
+func TestUnionAnnotationRun(t *testing.T) {
+	// int member of the union passes through a union-annotated param.
+	assertOutput(t, `def f(x: int | str):
+    return x
+print(f(3))`, "3\n")
+	// a union-annotated variable accepts an int member.
+	assertOutput(t, `x: int | str = 42
+print(x)`, "42\n")
+}

@@ -940,7 +940,7 @@ const ASTIRSchema = `{
     },
     "type": {
       "type": "string",
-      "description": "Type annotation text.",
+      "description": "Type annotation text. Union types render members joined by \" | \", e.g. \"int | str\".",
       "properties": {
         "span": {
           "type": "object",
