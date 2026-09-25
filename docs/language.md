@@ -513,6 +513,18 @@ print(strlen("hello")) # 5
 Annotations are recursive generic type expressions:
 
 - `list[T]`, `dict[K, V]`, `set[T]`, `tuple[...]`, and nested `list[list[int]]`.
+
+### Union types
+
+- A union annotation `int | str`, `int | float` accepts any value assignable
+  to a member.
+- A conditional whose branches carry different concrete types widens to their
+  normalized union: `(1 if c else "hi")` infers `int | str`, which satisfies a
+  union annotation but not either single member.
+- Arithmetic over a union widens by membership: an all-numeric union
+  (`int | float`) computes without warning; a mixed union (`int | str`) still
+  warns `arithmetic on non-numeric`; `+` over a string-only union is
+  concatenation.
 - `Sequence[T]` — a structural protocol bound accepting any list/set/iter/tuple/str
   whose element type is compatible with `T`.
 - `Callable[[A, B], R]` — a structural protocol bound accepting any function whose

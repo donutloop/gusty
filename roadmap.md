@@ -276,7 +276,8 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   reads (mypy-style) before codegen.
 - **L6.3 Union types** (`int | str`, `None | int` sugar for `Optional`) —
   infer/check unions through assignment + call boundaries; AOT widens to a
-  tagged union layout.
+  tagged union layout. ✅ DONE (semantic inference: ternary widening +
+  union-aware arithmetic, ADR 0158). ⏳ PLANNED (AOT tagged-union lowering).
 - **L6.4 Literal types** — `Literal[1, 2]` so `match` on constants enables
   exhaustiveness + narrowing; feed L6.1.
 - **L6.5 Type narrowing / refinement** — after `if isinstance(x, int):`, the

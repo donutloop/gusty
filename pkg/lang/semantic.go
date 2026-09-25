@@ -495,11 +495,13 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 		an.inferExpr(n.Cond)
 		thenTy := an.inferExpr(n.If)
 		elseTy := an.inferExpr(n.Else)
-		// the result is the branch type when both agree, else dynamic.
+		// the result is the branch type when both agree; when the branches
+		// carry different concrete types, widen to a normalized union so the
+		// type flows through assignments and call boundaries (L6.3).
 		if thenTy.Same(elseTy) {
 			return thenTy
 		}
-		return TDyn()
+		return normalizeUnion(thenTy, elseTy)
 	default:
 		return TDyn()
 	}
@@ -510,14 +512,18 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 	rt := an.inferExpr(n.R)
 	switch n.Op {
 	case "+", "-", "*", "/", "//", "%":
-		if lt.IsNum() && rt.IsNum() {
-			if lt.Kind == KindFloat || rt.Kind == KindFloat {
+		// Union-aware arithmetic (L6.3): when an operand is union-typed we
+		// widen over its members. If every member on both sides is numeric
+		// the result is numeric; if every member on both sides is a string
+		// then `+` concatenates to str.
+		if unionAllNumeric(lt) && unionAllNumeric(rt) {
+			if anyFloat(unionMembers(lt)) || anyFloat(unionMembers(rt)) {
 				return TFlt()
 			}
 			return TInt()
 		}
 		// string concatenation: "a" + "b" -> str (both operands strings)
-		if n.Op == "+" && lt.Kind == KindString && rt.Kind == KindString {
+		if n.Op == "+" && unionAllString(lt) && unionAllString(rt) {
 			return TStr()
 		}
 		if !an.inFunc {
@@ -744,6 +750,89 @@ func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
 // Dynamic types are tolerated in either position; Sequence[T] and
 // Callable[[...], R] act as structural bounds accepting matching concrete
 // sequence / callable types.
+// unionMembers returns the flattened member list of a union type (or a
+// single-element list for a plain type), so callers can reason over every
+// possible runtime value a union-typed expression can hold.
+func unionMembers(t *Type) []*Type {
+	if t == nil || t.Kind != KindUnion {
+		return []*Type{t}
+	}
+	return t.Members
+}
+
+// normalizeUnion builds a union type from the given member types: it flattens
+// nested unions, drops KindDynamic (unknown) members, dedupes structurally
+// identical members, and collapses a single surviving member back to the
+// plain type. None is preserved so `int | None` reads as Optional sugar.
+func normalizeUnion(members ...*Type) *Type {
+	seen := []*Type{}
+	var add func(m *Type)
+	add = func(m *Type) {
+		if m == nil {
+			return
+		}
+		if m.Kind == KindUnion {
+			for _, sub := range m.Members {
+				add(sub)
+			}
+			return
+		}
+		if m.IsDyn() {
+			return
+		}
+		for _, s := range seen {
+			if s.Same(m) {
+				return
+			}
+		}
+		seen = append(seen, m)
+	}
+	for _, m := range members {
+		add(m)
+	}
+	switch len(seen) {
+	case 0:
+		return TDyn()
+	case 1:
+		return seen[0]
+	default:
+		return TUnion(seen...)
+	}
+}
+
+// anyFloat reports whether any member of a union-typed value is a float type.
+// A plain float type trivially passes.
+func anyFloat(members []*Type) bool {
+	for _, m := range members {
+		if m != nil && m.Kind == KindFloat {
+			return true
+		}
+	}
+	return false
+}
+
+// unionAllNumeric reports whether every member of a union-typed value is a
+// numeric type (int or float). A plain numeric type trivially passes.
+func unionAllNumeric(t *Type) bool {
+	for _, m := range unionMembers(t) {
+		if !m.IsNum() {
+			return false
+		}
+	}
+	return true
+}
+
+// unionAllString reports whether every member of a union-typed value is a
+// string type.
+func unionAllString(t *Type) bool {
+	for _, m := range unionMembers(t) {
+		if m.Kind != KindString {
+			return false
+		}
+	}
+	return true
+}
+
 func assignable(got, want *Type) bool {
 	// A union-typed `got` is assignable to `want` iff every member is.
 	if got != nil && got.Kind == KindUnion {

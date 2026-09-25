@@ -240,3 +240,60 @@ func TestUnionTypeName(t *testing.T) {
 		t.Fatalf("union Same should be order-independent")
 	}
 }
+
+// TestUnionInferTernary verifies L6.3 union inference: a conditional
+// expression whose branches carry different concrete types widens to their
+// normalized union, so it is assignable to a union annotation but not to
+// either single member type.
+func TestUnionInferTernary(t *testing.T) {
+	// int branch vs str branch widen to int | str: accepted.
+	diags := Analyze(parseOrFatal(t, `c = 1
+x: int | str = (1 if c else "hi")
+print(x)`))
+	if hasErrorMsg(diags, "type mismatch") {
+		t.Fatalf("ternary widening should satisfy int | str, got %v", diags)
+	}
+	// Not assignable to plain int.
+	diags2 := Analyze(parseOrFatal(t, `c = 1
+x: int = (1 if c else "hi")
+print(x)`))
+	if !hasErrorMsg(diags2, "expected int, got int | str") {
+		t.Fatalf("ternary widening should not satisfy plain int, got %v", diags2)
+	}
+	// Not assignable to plain str.
+	diags3 := Analyze(parseOrFatal(t, `c = 1
+x: str = (1 if c else "hi")
+print(x)`))
+	if !hasErrorMsg(diags3, "expected str, got int | str") {
+		t.Fatalf("ternary widening should not satisfy plain str, got %v", diags3)
+	}
+	// Identical branches normalize to a single member type: assignable to it.
+	diags4 := Analyze(parseOrFatal(t, `c = 1
+x: int = (1 if c else 2)
+print(x)`))
+	if hasErrorMsg(diags4, "type mismatch") {
+		t.Fatalf("identical int branches should satisfy plain int, got %v", diags4)
+	}
+}
+
+// TestUnionArithmetic verifies L6.3 union-aware arithmetic: a union whose
+// every member is numeric widens without warning, a union mixing a
+// non-numeric member warns, and `+` over a string-only union concatenates.
+func TestUnionArithmetic(t *testing.T) {
+	// int | float union arithmetic widens: no non-numeric warning.
+	diags := Analyze(parseOrFatal(t, `c = 1
+x: int | float = (1 if c else 2.5)
+y = x * 2
+print(y)`))
+	if hasWarningMsg(diags, "arithmetic on non-numeric") {
+		t.Fatalf("numeric-union arithmetic should not warn, got %v", diags)
+	}
+	// A union that mixes a non-numeric member warns.
+	diags2 := Analyze(parseOrFatal(t, `c = 1
+x: int | str = (1 if c else "hi")
+y = x * 2
+print(y)`))
+	if !hasWarningMsg(diags2, "arithmetic on non-numeric") {
+		t.Fatalf("mixed-union arithmetic should warn, got %v", diags2)
+	}
+}
