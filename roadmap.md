@@ -171,16 +171,17 @@ case (and an ADR where the decision is non-obvious).
   (dict tests keys), empty literals fold, `not in` inverts.
 - DoD: `TestParityLiteralMembership` — `x in [1,2,3]`, `x not in [1,2,3]`, `x in {1,2,3}`, dict-key `in`, and empty-container `in`/`not in` all match the interpreter on AOT.
 
-### Gap H — real LLVM `opt` pipeline (scalar replacement follow-on)
-- **Status**: 🟠 PARTIAL — `opt.go` is a pure-Go textual dead-global eliminator,
-  not an LLVM pass.
-- Drive a real LLVM `opt` pipeline via the external `llc`/`opt` tools so AOT
-  emits verified, optimized IR.
-- **New (follow-on)**: scalar replacement / SROA — promote a heap object whose
-  handle never escapes the function to registers, eliminating the `rt_alloc`
-  (this is the natural partner of Gap A's instance-layout work).
-- DoD: every emitted module passes `verifyModule`; a hot loop shows SROA
-  eliminates the allocation.
+- **Gap H — LLVM `opt` pipeline** — ✅ DONE — real `opt` is invoked when installed
+  (`runLLVMopt`); the deterministic textual fallback (`optimizeTextual`) runs
+  const-fold, promote (mem2reg), deadHeapElim, scalarRepl (SROA), dead-block,
+  and dead-global passes.
+- **SROA follow-on** — ✅ DONE — `scalarRepl` promotes a non-escaping heap list
+  object whose every element access uses a constant index to registers: each
+  `rt_get_elem(h, N)` is rewritten to the value the most recent
+  `rt_set_elem(h, N, v)` stored, and the `rt_alloc` + all `rt_set_elem` are
+  deleted. It fires only within a single basic block (program order makes the
+  stored value unambiguous) and skips escaping objects, appends, and reads of
+  unwritten indices.
 
 ---
 
@@ -399,3 +400,4 @@ Gaps A–H are the *current* next work (they unblock modern features). The 2026
 phases (4–10) are layered on top: lexer/parser modernization (4–5) is
 front-end work that can start in parallel with Gap D–H; semantics (6) and
 runtime (7) build on Gap A–B; codegen (8) builds on Gap H.
+

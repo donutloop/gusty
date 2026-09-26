@@ -363,8 +363,13 @@ entry:
 }
 `
 	got = OptimizeIR(read, 1)
-	if !strings.Contains(got, "rt_alloc") || !strings.Contains(got, "rt_get_elem") {
-		t.Fatalf("read heap object wrongly eliminated:\n%s", got)
+	// scalarRepl promotes a read-but-non-escaping constant-index heap list to
+	// registers: the alloc + set are deleted and the read becomes a copy.
+	if strings.Contains(got, "rt_alloc") || strings.Contains(got, "rt_set_elem") || strings.Contains(got, "rt_get_elem") {
+		t.Fatalf("read heap object not scalar-replaced:\n%s", got)
+	}
+	if !strings.Contains(got, "%v = xor i32 5, 0") {
+		t.Fatalf("read not rewritten to stored value:\n%s", got)
 	}
 
 	// (4) an object that is printed must stay alive.
@@ -395,5 +400,60 @@ entry:
 	got = OptimizeIR(escape, 1)
 	if !strings.Contains(got, "rt_alloc") {
 		t.Fatalf("escaping heap object wrongly eliminated:\n%s", got)
+	}
+}
+
+func TestScalarRepl(t *testing.T) {
+	// A heap list whose handle never escapes and whose accesses all use
+	// constant indices is promoted to registers: rt_alloc + rt_set_elem are
+	// deleted and each rt_get_elem is rewritten to the stored value.
+	in := `define i32 @main() {
+entry:
+  %h = call i32 @rt_alloc(i32 1)
+  call void @rt_set_elem(i32 %h, i32 0, i32 5)
+  call void @rt_set_elem(i32 %h, i32 1, i32 7)
+  %a = call i32 @rt_get_elem(i32 %h, i32 0)
+  %b = call i32 @rt_get_elem(i32 %h, i32 1)
+  %r = add i32 %a, %b
+  ret i32 %r
+}
+`
+	out := optimizeTextual(in)
+	if strings.Contains(out, "rt_alloc") || strings.Contains(out, "rt_set_elem") {
+		t.Fatalf("heap alloc/set not scalar-replaced:\n%s", out)
+	}
+	if strings.Contains(out, "rt_get_elem") {
+		t.Fatalf("heap read not rewritten:\n%s", out)
+	}
+	if !strings.Contains(out, "%a = xor i32 5, 0") || !strings.Contains(out, "%b = xor i32 7, 0") {
+		t.Fatalf("reads not rewritten to stored values:\n%s", out)
+	}
+
+	// An escaping list (appended/returned) must be preserved.
+	esc := `define i32 @main() {
+entry:
+  %h = call i32 @rt_alloc(i32 1)
+  call void @rt_set_elem(i32 %h, i32 0, i32 5)
+  %a = call i32 @rt_get_elem(i32 %h, i32 0)
+  call void @rt_append(i32 %h, i32 %a)
+  ret i32 %a
+}
+`
+	out = optimizeTextual(esc)
+	if !strings.Contains(out, "rt_alloc") {
+		t.Fatalf("escaping list was scalar-replaced:\n%s", out)
+	}
+
+	// A read of an index that is not written before it must be left alone.
+	undef := `define i32 @main() {
+entry:
+  %h = call i32 @rt_alloc(i32 1)
+  %a = call i32 @rt_get_elem(i32 %h, i32 0)
+  ret i32 %a
+}
+`
+	out = optimizeTextual(undef)
+	if !strings.Contains(out, "rt_alloc") || !strings.Contains(out, "rt_get_elem") {
+		t.Fatalf("undefined-index read was scalar-replaced:\n%s", out)
 	}
 }

@@ -1107,6 +1107,155 @@ func (fn *irFunction) deadHeapElim() bool {
 }
 
 // ---------------------------------------------------------------------------
+
+// scalarRepl promotes heap list objects that never escape the function and
+// whose every element access uses a constant index into registers (SROA, the
+// Gap H follow-on). It rewrites each rt_get_elem(h, N) to the value that the
+// most recent rt_set_elem(h, N, v) stored, then deletes the rt_alloc and all
+// rt_set_elem instructions. It only fires within a single basic block, where
+// program order makes the stored value unambiguous.
+type heapUse struct {
+	blk *irBlock
+	in  *irInstr
+}
+
+func (fn *irFunction) scalarRepl() bool {
+	changed := false
+	var all []heapUse
+	defs := map[string]*irInstr{}
+	for _, b := range fn.blocks {
+		for _, in := range b.instrs {
+			if in.deleted {
+				continue
+			}
+			if in.def != "" {
+				defs[in.def] = in
+			}
+			all = append(all, heapUse{b, in})
+		}
+	}
+	alloc := map[string]*irInstr{}
+	for def, in := range defs {
+		if in.op == "call" && calleeTrim(in.callee) == "rt_alloc" {
+			alloc[def] = in
+		}
+	}
+	for h, al := range alloc {
+		if fn.promoteScalar(h, al, all) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+// promoteScalar rewrites one rt_alloc heap object into registers when it
+// never escapes and every element access uses a constant index (single block).
+func (fn *irFunction) promoteScalar(h string, al *irInstr, all []heapUse) bool {
+	var allocBlock *irBlock
+	var setInstrs []*irInstr
+	for _, u := range all {
+		in := u.in
+		if in == al {
+			allocBlock = u.blk
+			continue
+		}
+		if !hasReg(regsIn(in.raw), h) {
+			continue
+		}
+		if allocBlock == nil || in.op != "call" || u.blk != allocBlock {
+			return false
+		}
+		callee := calleeTrim(in.callee)
+		if callee != "rt_set_elem" && callee != "rt_get_elem" {
+			return false
+		}
+		args := callArgs(in.raw)
+		if len(args) < 2 || args[0] != "i32 "+h {
+			return false
+		}
+		if _, ok := constIdx(args[1]); !ok {
+			return false
+		}
+		if callee == "rt_set_elem" {
+			setInstrs = append(setInstrs, in)
+		}
+	}
+	if allocBlock == nil {
+		return false
+	}
+	// Rewrite reads in program order, tracking the value each index holds.
+	lastSet := map[int]string{}
+	for _, in := range allocBlock.instrs {
+		if in.deleted || in == al || in.op != "call" {
+			continue
+		}
+		callee := calleeTrim(in.callee)
+		if callee != "rt_set_elem" && callee != "rt_get_elem" {
+			continue
+		}
+		args := callArgs(in.raw)
+		if len(args) < 2 || args[0] != "i32 "+h {
+			continue
+		}
+		idx, ok := constIdx(args[1])
+		if !ok {
+			return false
+		}
+		if callee == "rt_set_elem" {
+			if len(args) < 3 {
+				return false
+			}
+			lastSet[idx] = valueArg(args[2])
+		} else {
+			v, ok := lastSet[idx]
+			if !ok {
+				return false // a read of an index not yet written
+			}
+			in.raw = fmt.Sprintf("%s = xor i32 %s, 0", in.def, v)
+		}
+	}
+	// Delete the allocation and every set (reads are now register copies).
+	al.deleted = true
+	for _, in := range setInstrs {
+		in.deleted = true
+	}
+	return true
+}
+
+// constIdx reports whether a call argument is a constant integer index.
+func constIdx(arg string) (int, bool) {
+	if !strings.HasPrefix(arg, "i32 ") {
+		return 0, false
+	}
+	tok := strings.TrimPrefix(arg, "i32 ")
+	if strings.HasPrefix(tok, "%") {
+		return 0, false
+	}
+	n, err := strconv.Atoi(tok)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// hasReg reports whether regs contains r.
+func hasReg(regs []string, r string) bool {
+	for _, reg := range regs {
+		if reg == r {
+			return true
+		}
+	}
+	return false
+}
+
+// valueArg returns the value operand (register or literal) of a call argument.
+func valueArg(arg string) string {
+	if i := strings.IndexByte(arg, ' '); i >= 0 {
+		return arg[i+1:]
+	}
+	return arg
+}
+
 // Dead-global elimination (module level)
 // ---------------------------------------------------------------------------
 
@@ -1237,7 +1386,8 @@ func optimizeTextual(ir string) string {
 			c3 := fn.dce()
 			c4 := fn.deadBlockElim()
 			c5 := fn.deadHeapElim()
-			if !(c1 || c2 || c3 || c4 || c5) {
+			c6 := fn.scalarRepl()
+			if !(c1 || c2 || c3 || c4 || c5 || c6) {
 				break
 			}
 		}
