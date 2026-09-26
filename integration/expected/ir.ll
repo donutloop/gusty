@@ -6,6 +6,10 @@
 @env_store = internal global [4096 x i32] zeroinitializer
 @env_count = internal global i32 0
 declare i32 @printf(i8*, ...)
+; gusty extern-fn ABI v1 — stable layout for tagged/union exports
+%gusty_value = type {i32, i32}
+%gusty_union = type {i32, i32, double, i8*}
+@gusty_abi_version = internal constant i32 1
 define i32 @main() {
 entry:
   store i32 1024, i32* @gc_roots_used

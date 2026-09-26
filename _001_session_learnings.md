@@ -504,3 +504,26 @@ full `pkg/lang` suite passes; `go build ./...` passes.
 - **Revert lesson**: I used `git checkout pkg/lang/jit.go` mid-debug which
   wiped my in-progress jit.go edits. Be careful with git checkout on files with
   uncommitted work; prefer saving via git stash or committing incrementally.
+
+## Round 2 — L10.2 ABI stability (versioned, documented C ABI for extern fn exports)
+
+- Added `pkg/lang/abi.go`: `ABI_VERSION = 1`, stable tag words (0..14), `ABIValue`
+  / `ABIUnion` Go structs mirroring the C layout, and `ABISchema()` returning a
+  machine-readable JSON contract (version, struct layouts, tags, marshalling,
+  IR markers).
+- Emitted a versioned ABI prelude into every generated module via `EmitABI`:
+  `%gusty_value = type {i32, i32}`, `%gusty_union = type {i32, i32, double, i8*}`,
+  and `@gusty_abi_version = internal constant i32 1` so consumers can check
+  compatibility before linking extern exports.
+- Added `gustyc --abi` to dump the ABI schema as JSON.
+- Documented the contract in `docs/abi.md` (stable layouts, fixed tag words,
+  extern marshalling rules, stability contract).
+- Tests: schema validity/version, tag-word stability, emitted-IR markers, and
+  `EmitABI` idempotence.
+- Golden-file gotcha: `integration/expected/ir.ll` does an EXACT string compare
+  against the emitted IR, so emitting a new prelude requires regenerating the
+  golden — otherwise the whole integration suite fails. Keep golden files in
+  sync whenever codegen changes the module prelude.
+- The roadmap text is stale (it lists L6.1/L6.2/L4.x/L5.x as not done though the
+  commits exist). Reconciling against `git log` is required each round to pick
+  the genuinely-next item.

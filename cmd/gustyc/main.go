@@ -58,6 +58,7 @@ func run() int {
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
+	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
 	jit := fs.Bool("jit", false, "use the in-process dlopen JIT (codegen -> llc -> cc -shared -> dlopen -> run) instead of the AST interpreter")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
@@ -97,6 +98,15 @@ func run() int {
 	}
 	if *schemaCmd {
 		fmt.Println(lang.ASTIRSchema)
+		return exitOK
+	}
+	if *abiCmd {
+		abiSchema, err := lang.ABISchema()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gustyc: abi: "+err.Error())
+			return exitErr
+		}
+		fmt.Println(abiSchema)
 		return exitOK
 	}
 

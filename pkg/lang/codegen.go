@@ -843,6 +843,7 @@ func GenerateIR(prog *Program) (string, error) {
 	}
 	out.WriteString(g.strGlobals.String())
 	out.WriteString(g.globals.String())
+	EmitABI(&g.decls)
 	out.WriteString(g.decls)
 	out.WriteString(b.String())
 	// PIC Level = 2 module flag: forces llc to emit position-independent code

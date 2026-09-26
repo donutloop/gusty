@@ -365,7 +365,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 
 - **L10.1 WASM target** — lower AOT to WebAssembly via LLVM; `gusty --target=wasm`
   for browser/edge runtimes; the scheduler (L7.1) maps to `wasm` event loop.
-- **L10.2 ABI stability** — a versioned, documented C ABI for `extern fn`
+- **L10.2 ABI stability** — a versioned, documented C ABI for `extern fn` exports (stable struct layout for unions/tagged values across releases). ✅ DONE (Round 2)
   exports (stable struct layout for unions/tagged values across releases).
 - **L10.3 Shared-library export** — `gusty --build=shared` emits a
   position-independent `.so`/`.dylib` with the stable ABI (L10.2).
