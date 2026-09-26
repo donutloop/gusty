@@ -26,6 +26,7 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--target <triple>` | target triple for codegen |
 | `--opt-level <n>` | optimization level |
 | `--build <out>` | compile the positional source files into a native binary at `<out>` |
+| `--build <out> --shared` | emit a position-independent shared library (`.so`/`.dylib`) carrying the stable extern-fn ABI (L10.3) instead of a native binary |
 | `--version` | print version |
 
 

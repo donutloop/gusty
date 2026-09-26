@@ -17,6 +17,7 @@ type BuildResult struct {
 	Objects     []string     `json:"objects"`
 	Commands    []string     `json:"commands"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
+	Shared      bool         `json:"shared"` // true when a position-independent shared library was emitted (L10.3)
 }
 
 // Toolchain binaries used by Build. They are package-level so tests can point
@@ -35,21 +36,33 @@ var (
 // links it into the binary at out. Returns the structured outcome for machine
 // consumption; on compile/link failure it returns a partial BuildResult plus
 // an error carrying the failing tool's output.
-// BuildOptions controls optional debug-symbol / source-map emission for an
-// AOT build.
+// BuildOptions controls optional debug-symbol / source-map emission and the
+// AOT build mode (executable vs position-independent shared library).
 type BuildOptions struct {
 	Debug        bool   // pass -g to llc/cc so the binary carries DWARF info
 	SourceMapOut string // write a JSON source map (source fn -> IR symbol+line)
+	Shared       bool   // emit a position-independent shared object (.so/.dylib) with the stable extern-fn ABI
 }
 
-// Build compiles with the default BuildOptions.
+// Build compiles with the default BuildOptions (native executable).
 func Build(files []string, out string, optLevel int) (*BuildResult, error) {
 	return BuildWithOptions(files, out, optLevel, nil)
 }
 
-// BuildWithOptions compiles files into the executable at out. When opts is
-// non-nil, Debug adds DWARF debug info to the binary and SourceMapOut writes a
-// JSON source map (source function -> emitted LLVM symbol + IR line).
+// BuildShared compiles files into a position-independent shared library
+// (.so/.dylib) carrying the stable gusty extern-fn ABI. It is the L10.3
+// "shared-library export" mode: the same IR/codegen/optimize pipeline as
+// Build, but linked with `cc -shared -fPIC` instead of producing a native
+// executable, so the result can be dlopen'd / linked against from any host.
+func BuildShared(files []string, out string, optLevel int) (*BuildResult, error) {
+	return BuildWithOptions(files, out, optLevel, &BuildOptions{Shared: true})
+}
+
+// BuildWithOptions compiles files into the executable (or, when opts.Shared
+// is set, a position-independent shared library) at out. When opts is non-nil,
+// Debug adds DWARF debug info to the binary, SourceMapOut writes a JSON source
+// map (source function -> emitted LLVM symbol + IR line), and Shared emits a
+// `.so`/`.dylib` carrying the stable gusty extern-fn ABI (see docs/abi.md).
 func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptions) (*BuildResult, error) {
 	prog := &Program{}
 	for _, f := range files {
@@ -107,7 +120,14 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	}
 
 	ccCmdline := []string{objPath, "-o", out, "-lm"}
-
+	ccLabel := ccCmd + " " + objPath + " -o " + out
+	if opts != nil && opts.Shared {
+		// Position-independent shared library: -fPIC + -shared. The object is
+		// already PIC (llc -relocation-model=pic); -fPIC at link is belt-and-
+		// suspenders so the .so/.dylib can be loaded at any address.
+		ccCmdline = []string{"-shared", "-fPIC", objPath, "-o", out, "-lm"}
+		ccLabel = ccCmd + " -shared -fPIC " + objPath + " -o " + out
+	}
 	if opts != nil && opts.Debug {
 		ccCmdline = append(ccCmdline, "-g")
 	}
@@ -122,8 +142,9 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		Objects:  []string{objPath},
 		Commands: []string{
 			llcCmd + " -relocation-model=pic -filetype=obj " + irPath + " -o " + objPath,
-			ccCmd + " " + objPath + " -o " + out,
+			ccLabel,
 		},
+		Shared: opts != nil && opts.Shared,
 	}, nil
 }
 

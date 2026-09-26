@@ -367,8 +367,11 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   for browser/edge runtimes; the scheduler (L7.1) maps to `wasm` event loop.
 - **L10.2 ABI stability** — a versioned, documented C ABI for `extern fn` exports (stable struct layout for unions/tagged values across releases). ✅ DONE (Round 2)
   exports (stable struct layout for unions/tagged values across releases).
-- **L10.3 Shared-library export** — `gusty --build=shared` emits a
-  position-independent `.so`/`.dylib` with the stable ABI (L10.2).
+- **L10.3 Shared-library export** — `gustyc --build <out> --shared` emits a
+  position-independent `.so`/`.dylib` with the stable ABI (`BuildShared`,
+  `cc -shared -fPIC`; object already PIC via `llc -relocation-model=pic`;
+  versioned ABI marker carried, so extern exports stay stable across
+  `dlopen`/loads). ✅ DONE (Round 3)
 - **L10.4 Benchmark harness** — `integration/` parity programs become
   benchmark cases (interp vs AOT vs JIT) so regressions surface as numbers.
 

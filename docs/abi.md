@@ -75,3 +75,22 @@ schema is emitted by `ABISchema()` in `pkg/lang/abi.go`.
 4. Extern ints marshal as plain `i32`.
 5. Extern strings marshal as `i8*` literal pointers.
 6. Tagged exports marshal through `%gusty_value`.
+
+## Shared-library export (L10.3)
+
+`gustyc --build libgusty.so --shared <file1> ...` emits a **position-independent
+shared library** (`.so` on Linux, `.dylib` on macOS) carrying the stable
+extern-fn ABI above. The same lex→parse→semantic→codegen→`opt`→`llc` pipeline as
+the native executable build is used; the only difference is the final link:
+
+```
+cc -shared -fPIC prog.o -o libgusty.so -lm
+```
+
+The object is already PIC (`llc -relocation-model=pic`); `-fPIC` at link is
+belt-and-suspenders so the `.so`/`.dylib` loads at any address. Because the
+versioned ABI marker (`@gusty_abi_version`) is emitted by codegen, extern
+exports stay ABI-stable across `dlopen`/loads and across releases.
+
+Verify: `nm -D libgusty.so` shows the exported `main`/extern entry points, and
+`dlopen` succeeds from any host process.

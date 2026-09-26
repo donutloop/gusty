@@ -59,6 +59,7 @@ func run() int {
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
 	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
+	sharedCmd := fs.Bool("shared", false, "emit a position-independent shared library (.so/.dylib) with the stable extern-fn ABI instead of a native executable (with --build)")
 	jit := fs.Bool("jit", false, "use the in-process dlopen JIT (codegen -> llc -> cc -shared -> dlopen -> run) instead of the AST interpreter")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
@@ -117,7 +118,7 @@ func run() int {
 			usage(fs)
 			return exitUsage
 		}
-		res, err := lang.BuildWithOptions(buildFiles, *buildOut, atoi(*optLevel), &lang.BuildOptions{Debug: *debugFlag, SourceMapOut: *sourceMapOut})
+		res, err := lang.BuildWithOptions(buildFiles, *buildOut, atoi(*optLevel), &lang.BuildOptions{Debug: *debugFlag, SourceMapOut: *sourceMapOut, Shared: *sharedCmd})
 		if err != nil {
 			// machine mode: still emit the (partial) BuildResult carrying
 			// diagnostics on stdout, plus a human error on stderr.
@@ -334,6 +335,7 @@ Flags:
 	fs.PrintDefaults()
 	fmt.Printf(`
 Build: gustyc --build <out> <file1> <file2> ...  # compile sources into a native binary
+Shared library export (L10.3): gustyc --build out.so --shared <file1> ...  # emit a position-independent .so/.dylib with the stable extern-fn ABI
 Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style type-check without executing
 
 Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error.
