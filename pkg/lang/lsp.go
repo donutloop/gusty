@@ -92,7 +92,9 @@ type didOpenParams struct {
 type didChangeParams struct {
 	TextDocument   textDocID `json:"textDocument"`
 	ContentChanges []struct {
-		Text string `json:"text"`
+		Range        *lspRange `json:"range,omitempty"`
+		RangeLength  *int      `json:"rangeLength,omitempty"`
+		Text         string    `json:"text"`
 	} `json:"contentChanges"`
 }
 
@@ -616,6 +618,7 @@ func typeName(t *Type) string {
 type Document struct {
 	URI     string
 	Version int
+	cache   *ParseCache
 	Text    string
 	Prog    *Program
 	Index   *docIndex
@@ -625,30 +628,19 @@ type Document struct {
 // analyze parses + semantically analyzes src and rebuilds the index.
 func (d *Document) analyze() {
 	d.Diags = nil
-	prog, err := Parse(d.Text)
-	var parseDiags []lspDiag
-	if err != nil {
-		// panic-mode recovery surfaces a forest of parse errors: report each
-		// one as a separate diagnostic and keep the partially-parsed AST so
-		// the symbol index still works.
-		if pes, ok := err.(*ParseErrors); ok {
-			parseDiags = make([]lspDiag, 0, len(pes.Errors))
-			for _, pe := range pes.Errors {
-				parseDiags = append(parseDiags, diagAt(pe.Span.Line, pe.Span.Col, 1, "parse error: "+pe.Msg))
-			}
-		} else if pe, ok := err.(*ParseError); ok {
-			parseDiags = []lspDiag{diagAt(pe.Span.Line, pe.Span.Col, 1, "parse error: "+pe.Msg)}
-		} else {
-			// lexer-level failure: no AST to index.
-			d.Diags = []lspDiag{diagAt(1, 1, 1, "parse error: "+err.Error())}
-			d.Prog = nil
-			d.Index = nil
-			return
-		}
+	if d.cache == nil {
+		d.cache, _ = NewParseCache(d.Text)
 	}
-	semDiags := Analyze(prog)
+	prog := d.cache.Program()
 	d.Prog = prog
+	d.Text = d.cache.Source()
+	var parseDiags []lspDiag
+	for _, pe := range d.cache.ParseErrors() {
+		parseDiags = append(parseDiags, diagAt(pe.Span.Line, pe.Span.Col, 1, "parse error: "+pe.Msg))
+	}
 	d.Index = buildIndex(prog, d.Text)
+	semDiags := Analyze(prog)
+	d.Diags = make([]lspDiag, 0, len(semDiags))
 	d.Diags = make([]lspDiag, 0, len(semDiags))
 	for _, sd := range semDiags {
 		sev := 3
@@ -831,7 +823,7 @@ func RunLSP(r io.Reader, w io.Writer) {
 			}
 			json.Unmarshal(req.Params, &params)
 			var init initResult
-			init.Capabilities.TextDocumentSync = 1
+			init.Capabilities.TextDocumentSync = 2
 			init.Capabilities.HoverProvider = true
 			init.Capabilities.CompletionProvider.TriggerCharacters = []string{".", "\"", "'"}
 			init.ServerInfo.Name = lspServerName
@@ -843,27 +835,44 @@ func RunLSP(r io.Reader, w io.Writer) {
 			write(rpcOK(req.ID, nil))
 		case "exit":
 			return
-		case "textDocument/didOpen":
-			var p didOpenParams
-			json.Unmarshal(req.Params, &p)
-			d := &Document{URI: p.TextDocument.URI, Version: 1, Text: p.TextDocument.Text}
-			d.analyze()
-			docs[d.URI] = d
-			publish(d)
-		case "textDocument/didChange":
-			var p didChangeParams
-			json.Unmarshal(req.Params, &p)
-			d := docs[p.TextDocument.URI]
-			if d == nil {
-				d = &Document{URI: p.TextDocument.URI}
+			case "textDocument/didOpen":
+				var p didOpenParams
+				json.Unmarshal(req.Params, &p)
+				cache, err := NewParseCache(p.TextDocument.Text)
+				d := &Document{URI: p.TextDocument.URI, Version: 1, Text: p.TextDocument.Text, cache: cache}
+				if err == nil {
+					d.analyze()
+				} else {
+					d.Diags = []lspDiag{{Range: lspRange{Start: lspPosition{Line: 0, Character: 0}, End: lspPosition{Line: 0, Character: 1}}, Severity: 1, Message: err.Error()}}
+				}
 				docs[d.URI] = d
-			}
-			d.Version++
-			if len(p.ContentChanges) > 0 {
-				d.Text = p.ContentChanges[len(p.ContentChanges)-1].Text
-			}
-			d.analyze()
-			publish(d)
+				publish(d)
+			case "textDocument/didChange":
+				var p didChangeParams
+				json.Unmarshal(req.Params, &p)
+				d := docs[p.TextDocument.URI]
+				if d != nil {
+					d.Version++
+					if len(p.ContentChanges) > 0 {
+						edits := make([]Edit, 0, len(p.ContentChanges))
+						last := p.ContentChanges[len(p.ContentChanges)-1]
+						incremental := true
+						for _, ch := range p.ContentChanges {
+							if ch.Range == nil {
+								incremental = false
+								break
+							}
+							edits = append(edits, Edit{Start: Span{Line: ch.Range.Start.Line + 1, Col: ch.Range.Start.Character + 1}, End: Span{Line: ch.Range.End.Line + 1, Col: ch.Range.End.Character + 1}, NewText: ch.Text})
+						}
+						if incremental {
+							d.cache.Update(edits)
+						} else {
+							d.cache.SetText(last.Text)
+						}
+					}
+					d.analyze()
+				}
+				publish(d)
 		case "textDocument/didClose":
 			var p textDocParam
 			json.Unmarshal(req.Params, &p)

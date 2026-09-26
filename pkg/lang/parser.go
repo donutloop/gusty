@@ -102,42 +102,15 @@ func parseProgram(src string) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	// collect error tokens (L4.1 error-recovering lexer) into diagnostics and drop them
-	var diags []Diagnostic
-	var ok []Token
-	for _, tk := range toks {
-		switch tk.Kind {
-		case TokError:
-			diags = append(diags, Diagnostic{Level: LevelError, Span: tk.Span, Msg: tk.ErrMsg})
-		case TokWarning:
-			diags = append(diags, Diagnostic{Level: LevelWarning, Span: tk.Span, Msg: tk.ErrMsg})
-		default:
-			ok = append(ok, tk)
-		}
-	}
-	p := newParser(src, ok)
-	prog := &Program{Diags: diags}
-	var parseErrs []*ParseError
-	for !p.atEOF() {
-		p.skipNewlines()
-		if p.atEOF() {
-			break
-		}
-		st, err := p.parseStmt()
-		if err != nil {
-			if pe, ok := err.(*ParseError); ok {
-				parseErrs = append(parseErrs, pe)
-			}
-			p.recoverStmt()
-			continue
-		}
-		prog.Stmts = append(prog.Stmts, st)
-	}
+	ok, diags := filterLex(toks)
+	stmts, _, _, _, _, parseErrs := parseTopLevel(ok, src, 0)
+	prog := &Program{Diags: diags, Stmts: stmts}
 	if len(parseErrs) > 0 {
 		return prog, &ParseErrors{Errors: parseErrs}
 	}
 	return prog, nil
 }
+
 
 // recoverStmt performs panic-mode error recovery: it skips tokens until the
 // parser can resume at a top-level statement boundary. It tracks INDENT/DEDENT

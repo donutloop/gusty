@@ -883,3 +883,22 @@ objects (ADR 0141).
 The compiler ships a deterministic source formatter. Docstrings are re-emitted
 as the first statement of a `def`/`class` body so formatting round-trips
 preserve them.
+
+## Incremental parsing (L5.8)
+
+The LSP and REPL avoid a full re-parse on every keystroke via a stable,
+span-keyed parse tree:
+
+- `NewParseCache(src)` lexes and parses a whole document, recording each
+  top-level statement's token and byte boundaries.
+- `ParseCache.Update(edits)` applies an edit batch, re-lexes the document,
+  and re-parses only the top-level statements affected by the edits.
+  Statements whose source region is untouched keep their AST node identity
+  (keyed by their source span) across updates.
+- `ParseCache.Program()` returns the current parse tree, `ParseErrors()`
+  returns parse diagnostics, and `Reused()` reports how many statements were
+  preserved by the most recent update.
+
+The LSP uses incremental text sync (kind 2): `textDocument/didChange`
+converts each change range into a `lang.Edit` and calls `Update`, falling
+back to a full re-parse only for whole-document replacements.

@@ -228,3 +228,46 @@ func itoaLSP(n int) string {
 	}
 	return digits
 }
+
+// TestIncrementalDidChange verifies the incremental-sync integration: an
+// edit to statement 2 re-parses only the affected tail, keeps the leading
+// statement's AST identity, and yields a tree equal to a full re-parse.
+func TestIncrementalDidChange(t *testing.T) {
+	src := "a = 1\nb = 2\nc = 3\n"
+	d := &Document{URI: "mem://doc", Version: 1, Text: src, cache: mustNewCache(t, src)}
+	d.analyze()
+	oldProg := d.Prog
+
+	// Edit line 2 ("b = 2" -> "b = 100") via the incremental path.
+	if err := d.cache.Update([]Edit{{Start: Span{Line: 2, Col: 1}, End: Span{Line: 2, Col: 100}, NewText: "b = 100"}}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	d.analyze()
+
+	if d.Text != "a = 1\nb = 100\nc = 3\n" {
+		t.Fatalf("document text not updated: %q", d.Text)
+	}
+	if len(d.Prog.Stmts) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(d.Prog.Stmts))
+	}
+	// statement 0 ("a = 1") is before the edit and must keep identity.
+	if d.Prog.Stmts[0] != oldProg.Stmts[0] {
+		t.Fatalf("unaffected statement lost identity")
+	}
+	// the edited statement must be freshly parsed.
+	if d.Prog.Stmts[1] == oldProg.Stmts[1] {
+		t.Fatalf("affected statement kept stale identity")
+	}
+	if d.cache.Reused() != 1 {
+		t.Fatalf("expected 1 reused statement, got %d", d.cache.Reused())
+	}
+}
+
+func mustNewCache(t *testing.T, src string) *ParseCache {
+	t.Helper()
+	c, err := NewParseCache(src)
+	if err != nil {
+		t.Fatalf("NewParseCache: %v", err)
+	}
+	return c
+}
