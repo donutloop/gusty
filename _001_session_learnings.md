@@ -703,3 +703,50 @@ full `pkg/lang` suite passes; `go build ./...` passes.
   → exit 5 with exactly one named regression and a suggestion, generous baseline
   → clean, `--bench-baseline-update` artifact, missing baseline → exit 1,
   `--bench-dir`).
+
+## Cycle: assigned containers are heap handles (Gap I.3, ADR 0163)
+
+**What happened.** The LLVM module verifier (added as L8.2) was switched on inside
+`Build`, and within minutes it had found three codegen bugs that no test in the repo
+could see, all in "assign a container" territory:
+
+1. `ys = [x * 2 for x in [1, 2]]` emitted `store i32 @.lst1, i32* %_ys` — the
+   constant-folded comprehension global stored as an integer. `llc` rejects it
+   (`global variable reference must have pointer type`). Same program with a literal was
+   fine, so the rule "a container value is never an i32 scalar" had only been applied at
+   call sites (ADR 0161), not at bindings.
+2. `xs = []` at module scope allocated no slot and rooted nothing, so a later
+   `xs.append(i)` stored through an undefined `%_xs`.
+3. `funcDef` resets per-body codegen state but module-level code did not, so a parameter
+   named `xs` could make module code reuse the *function's* alloca — a genuinely
+   order-dependent miscompile.
+
+**Lessons.**
+- *Verify with the real tool, at the stage that owns the artifact.* Every one of these
+  was "IR that only `llc` notices, reported at link time". Running `opt -passes=verify`
+  as a pipeline stage turned them into compiler-bug reports with the verifier's own words
+  (`LLVM rejected the module; this is a compiler bug, not a source error`).
+- *A fix at one boundary is not a fix at the concept boundary.* ADR 0161 fixed containers
+  crossing call boundaries; the same invariant had to be applied to bindings, module scope,
+  and GC rooting. Ask "where else does this representation leak?" before declaring a class
+  of bug closed.
+- *Constant folding needs a de-folding path.* A folded value is only ever legal in
+  contexts that read it structurally. Anything that stores it, passes it or prints it must
+  be able to materialise it again — the fix keeps the global (indexing still folds) and
+  copies it back to the heap at the store.
+- *Whole-program inference must be order-independent.* The parameter-kind fixed point
+  merged same-named parameters in Go map order; now it merges in sorted (function, index)
+  order. Determinism is part of the CLI contract for agents, not a nicety.
+- *Flaky codegen tests are a signal, not noise.* The same program alternating between
+  "verifies" and "undefined value %_xs" pointed straight at the leaked per-body state.
+
+**Coverage added.** `programs/folded_lists.gy` in the conformance corpus; unit cases in
+`pkg/lang/folded_lists_test.go` (folded store, literal-shape parity, fold preserved,
+rebind frees the old slot) and `heapargs_test.go` (module container rooted; parameter
+slots do not leak into `main`); integration cases in
+`integration/folded_lists_test.go` for both backends.
+
+**Found and deferred.** Gap J.1 — multi-argument `print` emits one line per argument in
+*both* backends, so parity hides it (the corpus only mixes strings and values inside
+f-strings). Gap J.2 — set/dict comprehension assignment does not lower in AOT and the
+interpreter prints sets as `<set>`.

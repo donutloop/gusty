@@ -305,3 +305,38 @@ print(total(xs))
 		t.Errorf("main reads the _xs slot without declaring it:\n%s", mainPart)
 	}
 }
+
+// TestModuleContainerDefinitionIsRooted covers the GC-correctness half of
+// module-level containers: `xs = []` at module scope must give the variable an
+// entry-block slot *and* a gc.roots entry. Otherwise a later `xs.append(i)`
+// stores through a slot that never existed, and rt_gc cannot see the live handle
+// (a collection would recycle a container that is still in use).
+func TestModuleContainerDefinitionIsRooted(t *testing.T) {
+	res, err := Compile("xs = []\nfor i in range(3):\n    xs.append(i * 2)\nprint(len(xs))\n")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "%_xs = alloca i32") {
+		t.Errorf("module-level `xs = []` must allocate its slot:\n%s", res.IR)
+	}
+	if !strings.Contains(res.IR, "store i32* %_xs, i32** %gc.slot") {
+		t.Errorf("the module-level container must be a GC root:\n%s", res.IR)
+	}
+	if strings.Count(res.IR, "%_xs = alloca") != 1 {
+		t.Errorf("the slot must be emitted exactly once, got %d:\n%s", strings.Count(res.IR, "%_xs = alloca"), res.IR)
+	}
+}
+
+// TestFunctionParamSlotsDoNotLeakIntoMain: a parameter named like a module
+// variable must not make module-level code reuse the function's alloca (that
+// emits `%_x` references outside the block that allocated it).
+func TestFunctionParamSlotsDoNotLeakIntoMain(t *testing.T) {
+	res, err := Compile("def total(xs) -> int:\n    t = 0\n    for x in xs:\n        t = t + x\n    return t\n\nxs = [1, 2, 3]\nprint(total(xs))\n")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	mustVerifyWithLLC(t, res.IR)
+	if strings.Count(res.IR, "%_xs = alloca") != 2 {
+		t.Errorf("expected one slot in total() and one in main, got:\n%s", res.IR)
+	}
+}

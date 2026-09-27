@@ -950,8 +950,15 @@ def with_default(xs=[7, 8]) -> int:
 print(with_default())                  # default argument
 ```
 
-How it works in the AOT backend:
+How it works in the AOT backend (ADR 0161, ADR 0163):
 
+- **At a binding** an assigned container is a live heap object, whatever its shape —
+  a literal, a comprehension (`ys = [x * 2 for x in [1, 2]]`), a generator call, or a
+  variable. A comprehension that the compiler constant-folded into a global is copied
+  into the heap rather than stored as a global, so `print`, `len`, indexing, iteration
+  and passing it to a function all see the same container the interpreter would. At
+  module scope the definition also gives the variable its slot and its `gc.roots`
+  entry, which is what a later `xs.append(i)` stores through.
 - **At the call site** a container *literal* is materialised into the runtime
   heap (`rt_alloc` + `rt_set_elem` / `rt_set_add` / `rt_dict_put`) and passed by
   handle. A literal that the compiler constant-folded into a global is copied

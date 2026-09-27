@@ -42,14 +42,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"ctrl_a", "ctrl_b", "ctrl_c",
 		"data_a", "data_b", "data_c",
 		"features_a", "features_b",
-	"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "wrapping_decorator", "dunder",
+		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "wrapping_decorator", "dunder",
 		"async_basic",
-	"async_for",
-	"async_multi",
+		"async_for",
+		"async_multi",
 		"typealias",
 		"variance",
 		"heap_containers",
-}
+		"folded_lists",
+	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
 		cases = append(cases, lang.ConformanceCase{

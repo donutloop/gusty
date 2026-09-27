@@ -205,6 +205,16 @@ case (and an ADR where the decision is non-obvious).
 diff
   asserted in the matrix).
 
+- **Gap I.3 — assigned containers are heap handles (AOT)** — ✅ DONE (ADR 0163).
+  The same class of bug at the *binding* site, all three surfaced by the L8.2 module
+  verifier: assigning a constant-folded comprehension emitted `store i32 @.lst1, i32*
+  %_ys` (rejected by LLVM) and printed an address; module-level `xs = []` left the
+  variable without a slot, so `xs.append(i)` referenced an undefined `%_xs` and `rt_gc`
+  could not see the handle; and `funcDef`'s per-body state leaked into `main`, letting a
+  parameter's alloca be reused by module code. Assignments now materialise folded lists
+  (`rt_alloc`/`rt_set_elem`), module definitions allocate + root their slot, module code
+  starts a fresh binding scope, and the parameter-kind fixed point merges in sorted order
+  (determinism). Covered by `programs/folded_lists.gy` plus unit/integration cases.
 - **Gap I.2 — strings inside runtime containers (AOT)** — 🟥 FOUND
   The heap stores i32 slots, so a `list[str]`/`dict[str, int]` element cannot
   hold an `i8*` string global (`rt_set_elem(i32 %h, i32 1, i32 @.str1)`). The
@@ -463,3 +473,14 @@ phases (4–10) are layered on top: lexer/parser modernization (4–5) is
 front-end work that can start in parallel with Gap D–H; semantics (6) and
 runtime (7) build on Gap A–B; codegen (8) builds on Gap H.
 
+- **Gap J.1 — multi-argument `print` separator** — 🟥 FOUND (both backends).
+  `print("a =", 1)` emits one line per argument (`a =` / `1`) where Python joins them
+  with a space (`a = 1`). Interpreter and AOT agree, so parity/conformance stay green —
+  the bug is invisible to the corpus, which only mixes a string and a value inside f-strings.
+  Fix needs `print(*args, sep=" ", end="\n")` semantics in both backends plus an update to
+  the affected conformance expectations.
+- **Gap J.2 — set/dict comprehension assignment and printing (AOT)** — 🟥 FOUND.
+  `sa = {x for x in [3, 1, 2]}` / `da = {k: k * 2 for k in [1, 2]}` at module scope do not
+  lower (`len of a non-string variable` for the dict case), and the interpreter prints a
+  set as `<set>` instead of `{1, 2, 3}`. Needs the ADR 0163 binding rule extended to set and
+  dict comprehensions and an `rt_print_set`/`rt_print_dict` display form.

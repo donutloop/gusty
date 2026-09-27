@@ -1,0 +1,20 @@
+def total(xs) -> int:
+    t = 0
+    for x in xs:
+        t = t + x
+    return t
+
+ys = [x * 2 for x in [1, 2, 3]]
+print(ys)
+print(len(ys))
+print(ys[1])
+print(total(ys))
+
+zs = [i * i for i in range(5)]
+print(zs)
+print(total(zs))
+print(zs[3])
+
+ws = [1, 2, 3]
+print(ws)
+print(total(ws))

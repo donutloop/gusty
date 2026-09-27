@@ -813,6 +813,12 @@ func GenerateIR(prog *Program) (string, error) {
 	}
 
 	b.WriteString("define i32 @main() {\nentry:\n")
+	// Module-level code is its own variable-binding scope. funcDef resets these
+	// per body; without a reset here, an alloca emitted for a function parameter
+	// named `xs` would make `xs = [1, 2]` in main skip its own alloca and store
+	// through the (out-of-scope) `%_xs` register inside the function.
+	g.allocd = map[string]bool{}
+	g.gcRootSeen = map[string]bool{}
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
 	}
@@ -5794,6 +5800,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if _, isList := n.Value.(*ListLit); isList && !g.inFunc && g.deadLists[nm.Value] {
 				return nil
 			}
+			// A module-level container variable needs its slot + GC root before
+			// anything mutates it; the empty-literal init (`xs = []`) is where that
+			// happens, because the literal path below only stores a fresh handle.
+			if ll, isList := n.Value.(*ListLit); isList && !g.inFunc && len(ll.Elems) == 0 {
+				// Module-level `xs = []`: give the variable its slot and GC root up
+				// front, the way a non-empty literal does, so a later `xs.append(i)`
+				// (which only stores through the slot) has somewhere to write and
+				// rt_gc can see the live handle.
+				_ = ll
+				g.emitModuleContainerList(b, nm.Value, "%_"+nm.Value)
+			}
 			// `f = lambda ...` binds the generated lambda FuncDef to the variable.
 			if lam, ok := n.Value.(*Lambda); ok {
 				name, err := g.emitLambda(b, lam)
@@ -5979,6 +5996,32 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 							g.listVars[nm.Value] = true
 						}
 					}
+				}
+				// A constant-folded comprehension lowers to a compile-time list
+				// global (@.lstN). That is not an i32: storing it directly emits IR
+				// LLVM's verifier rejects ("global variable reference must have
+				// pointer type"), and print/len/append would read an address instead
+				// of the container. Copy the folded elements into a runtime heap list
+				// and track the target as a list, exactly as the literal path above.
+				if ln, folded := g.staticLists[v]; folded {
+					if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
+						g.heapSeq++
+						fs := g.heapSeq
+						b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
+						b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+					}
+					g.listVars[nm.Value] = true
+					if !g.allocd[nm.Value] {
+						b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
+						g.gcReg(b, nm.Value)
+						g.allocd[nm.Value] = true
+					}
+					h, herr := g.heapListFrom(b, ln)
+					if herr != nil {
+						return herr
+					}
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", h, nm.Value))
+					return nil
 				}
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
 				if g.floatVars != nil {

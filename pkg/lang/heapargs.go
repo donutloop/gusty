@@ -326,17 +326,31 @@ func heapArgKinds(prog *Program) map[string]map[int]int {
 	// (`def doubled(xs): return total(xs)`), so a parameter that is known to be
 	// a container must also make the *variable* `xs` a container. Re-classify
 	// until nothing changes; a handful of rounds covers any real call chain.
+	// The merge order is fixed (functions, then parameter indices) so two
+	// functions whose same-named parameters disagree cannot classify
+	// nondeterministically from Go map iteration order.
 	for pass := 0; pass < 8; pass++ {
-		for fn, m := range out {
+		fns := make([]string, 0, len(out))
+		for fn := range out {
+			fns = append(fns, fn)
+		}
+		sort.Strings(fns)
+		for _, fn := range fns {
 			fd := funcs[fn]
 			if fd == nil {
 				continue
 			}
-			for i, k := range m {
+			m := out[fn]
+			idxs := make([]int, 0, len(m))
+			for i := range m {
+				idxs = append(idxs, i)
+			}
+			sort.Ints(idxs)
+			for _, i := range idxs {
 				if i >= len(fd.Params) || nonContainer[fd.Params[i].Name] {
 					continue
 				}
-				varKinds[fd.Params[i].Name] = k
+				varKinds[fd.Params[i].Name] = m[i]
 			}
 		}
 		before := snapshotKinds(out)
@@ -575,4 +589,22 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit) (string, error) {
 		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
 	}
 	return h, nil
+}
+
+// emitModuleContainerList gives a module-level container variable the one thing
+// the per-function parameter path cannot give it: a slot in main's entry block
+// plus a GC root. Without it, a container defined at module scope and later
+// mutated (`xs = []` then `xs.append(i)`) has no `%_xs` for the mutation path to
+// store into, and rt_gc never sees the handle, so a collection could recycle a
+// live container. `decl` is the alloca name (`%_xs`).
+func (g *irGen) emitModuleContainerList(b *strings.Builder, name string, decl string) {
+	if name == "" || g.allocd[name] {
+		return
+	}
+	g.heapUsed = true
+	g.listVars[name] = true
+	b.WriteString(fmt.Sprintf("  %s = alloca i32\n", decl))
+	b.WriteString(fmt.Sprintf("  store i32 0, i32* %s\n", decl))
+	g.gcRegKey(b, "main."+name, name)
+	g.allocd[name] = true
 }

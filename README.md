@@ -137,7 +137,10 @@ gustyc --bench-suite --bench-baseline benchmarks/baseline.json   # regression ga
   the AOT backend materialises container literals into the runtime heap and
   infers each parameter's container kind from annotations, defaults and call
   sites (forwarding included), so `for x in xs`, `len(xs)`, `xs[i]` and
-  `xs.append(v)` work on parameters exactly as on variables.
+  `xs.append(v)` work on parameters exactly as on variables. Binding one is the
+  same story (ADR 0163): `ys = [x * 2 for x in [1, 2]]` — even constant-folded,
+  even at module scope — yields a rooted heap handle, so `print`, `len`, indexing,
+  iteration and calls all see the container, not a folded global's address.
 - **Benchmark suite + regression gate** — `gustyc --bench-suite` measures a
   corpus on both backends and prints (or `--json`-emits) a stable artifact;
   `--bench-baseline` gates a run against a saved baseline, so "the compiler got
