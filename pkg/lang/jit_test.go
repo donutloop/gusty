@@ -797,8 +797,6 @@ func TestEvalLenStringVariable(t *testing.T) {
 	}
 }
 
-
-
 func TestEvalUnionVarIntStr(t *testing.T) {
 	// A union-annotated variable accepts an int member (regression: previously
 	// rejected at runtime with "expected value but got int").
@@ -1053,28 +1051,49 @@ func TestSumBuiltin(t *testing.T) {
 }
 
 func TestEvalMultiArgPrint(t *testing.T) {
-	// multi-argument print writes each argument to stdout on its own line.
+	// print(*args, sep=" ", end="\n") — Python semantics, matched by the AOT
+	// backend (ADR 0165).
 	out := captureStdout(t, "print(1, 2)")
-	if out != "1\n2\n" {
-		t.Fatalf("print(1, 2) stdout %q, want 1\\n2\\n", out)
+	if out != "1 2\n" {
+		t.Fatalf("print(1, 2) stdout %q, want \"1 2\\n\"", out)
 	}
 	out = captureStdout(t, "x = 7\nprint(x, x + 1)")
-	if out != "7\n8\n" {
-		t.Fatalf("print(x, x+1) stdout %q, want 7\\n8\\n", out)
+	if out != "7 8\n" {
+		t.Fatalf("print(x, x+1) stdout %q, want \"7 8\\n\"", out)
 	}
-	// string-literal arguments print the raw string, one per line.
+	out = captureStdout(t, "print(\"a =\", 42)")
+	if out != "a = 42\n" {
+		t.Fatalf("print(\"a =\", 42) stdout %q, want \"a = 42\\n\"", out)
+	}
+	out = captureStdout(t, "print()")
+	if out != "\n" {
+		t.Fatalf("print() stdout %q, want a blank line", out)
+	}
+	out = captureStdout(t, "print(1, 2, 3, sep=\", \")")
+	if out != "1, 2, 3\n" {
+		t.Fatalf("sep stdout %q, want \"1, 2, 3\\n\"", out)
+	}
+	out = captureStdout(t, "print(\"a\", end=\":\")\nprint(\"b\")")
+	if out != "a:b\n" {
+		t.Fatalf("end stdout %q, want \"a:b\\n\"", out)
+	}
 	out = captureStdout(t, "print(\"hi\")")
 	if out != "hi\n" {
 		t.Fatalf("print(\"hi\") stdout %q, want hi\\n", out)
 	}
 	out = captureStdout(t, "print(1, \"hi\", 2)")
-	if out != "1\nhi\n2\n" {
-		t.Fatalf("mixed print stdout %q, want 1\\nhi\\n2\\n", out)
+	if out != "1 hi 2\n" {
+		t.Fatalf("mixed print stdout %q, want \"1 hi 2\\n\"", out)
 	}
-	// zero-argument print() writes nothing.
+	// zero-argument print() writes only the terminator.
 	out = captureStdout(t, "print()")
-	if out != "" {
-		t.Fatalf("print() stdout %q, want empty", out)
+	if out != "\n" {
+		t.Fatalf("print() stdout %q, want a blank line", out)
+	}
+	// a container argument prints via the same Repr the AOT renderer produces.
+	out = captureStdout(t, "xs = [1, 2]\nprint(\"xs =\", xs)")
+	if out != "xs = [1, 2]\n" {
+		t.Fatalf("container print stdout %q, want \"xs = [1, 2]\\n\"", out)
 	}
 }
 
@@ -1314,7 +1333,7 @@ print(f"hello {s}!")`)
 
 func TestEvalAugmentedAssignment(t *testing.T) {
 	cases := []struct {
-		src string
+		src  string
 		want int64
 	}{
 		{"x = 1\nx += 2\nx", 3},
@@ -1344,9 +1363,11 @@ func TestEvalAugmentedAttr(t *testing.T) {
 	}
 }
 
-
 func TestTupleUnpack(t *testing.T) {
-	tests := []struct{ src string; want int64 }{
+	tests := []struct {
+		src  string
+		want int64
+	}{
 		{"a, b = 1, 2\na", 1},
 		{"a, b = 1, 2\nb", 2},
 		{"a = 1\nb = 2\na, b = b, a\na", 2},
@@ -1366,8 +1387,6 @@ func TestTupleUnpack(t *testing.T) {
 		}
 	}
 }
-
-
 
 func TestEvalPower(t *testing.T) {
 	// integer power: 2 ** 3 == 8

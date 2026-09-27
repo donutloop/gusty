@@ -1,18 +1,8 @@
-acc
-15
-acc2
-20
-acc3
-30
-while
-100
-while2
-20
-cls
-2
-0
-3
-nested
-9
-cont
-14
+acc 15
+acc2 20
+acc3 30
+while 100
+while2 20
+cls 2 0 3
+nested 9
+cont 14

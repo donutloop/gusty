@@ -74,19 +74,31 @@ func assertOutput(t *testing.T, src, want string) {
 }
 
 func TestExecMultiArgPrint(t *testing.T) {
-	// multi-argument print mirrors the interpreter: each argument is written
-	// to stdout on its own line, one printf per argument.
-	assertOutput(t, "print(1, 2)", "1\n2\n")
-	assertOutput(t, "print(1, 2, 3)", "1\n2\n3\n")
+	// print(*args, sep=" ", end="\n") — Python's separator/terminator
+	// semantics, identical on the interpreter and the AOT backend (ADR 0165).
+	// Arguments are joined with a single space and the line ends with one
+	// newline; `sep`/`end` override them.
+	assertOutput(t, "print(1, 2)", "1 2\n")
+	assertOutput(t, "print(1, 2, 3)", "1 2 3\n")
 	// mixed literals and runtime variables.
-	assertOutput(t, "x = 7\nprint(x, x + 1)", "7\n8\n")
-	assertOutput(t, "print(1 + 2, 3 + 4)", "3\n7\n")
-	// string-literal arguments use a %s\n format, mirroring the interpreter's Repr.
+	assertOutput(t, "x = 7\nprint(x, x + 1)", "7 8\n")
+	assertOutput(t, "print(1 + 2, 3 + 4)", "3 7\n")
 	assertOutput(t, "print(\"hi\")", "hi\n")
-	assertOutput(t, "print(1, \"hi\", 2)", "1\nhi\n2\n")
-	// zero-argument print() writes nothing, matching the interpreter.
-	assertOutput(t, "print()", "")
-	assertOutput(t, "x = 1\nprint(x)\nprint()\nprint(2)", "1\n2\n")
+	assertOutput(t, "print(1, \"hi\", 2)", "1 hi 2\n")
+	assertOutput(t, "print(\"a =\", 42)", "a = 42\n")
+	// zero-argument print() writes just the terminator: a blank line.
+	assertOutput(t, "print()", "\n")
+	assertOutput(t, "x = 1\nprint(x)\nprint()\nprint(2)", "1\n\n2\n")
+	// sep / end.
+	assertOutput(t, "print(1, 2, 3, sep=\", \")", "1, 2, 3\n")
+	assertOutput(t, "print(\"a\", \"b\", sep=\"-\")", "a-b\n")
+	assertOutput(t, "print(\"no newline\", end=\"\")", "no newline")
+	assertOutput(t, "print(\"a\", end=\":\")\nprint(\"b\")", "a:b\n")
+	assertOutput(t, "print(\"a\", 1, sep=\"%\")", "a%1\n") // a literal % in sep is text, not a printf directive
+	// containers print via their runtime renderer inside a joined line.
+	assertOutput(t, "xs = [1, 2]\nprint(\"xs =\", xs)", "xs = [1, 2]\n")
+	assertOutput(t, "xs = [1]\nys = [2]\nprint(xs, ys, sep=\"|\")", "[1]|[2]\n")
+	assertOutput(t, "m = {1: 2}\nprint(\"m =\", m)", "m = {1: 2}\n")
 }
 
 func TestExecPrintArithmetic(t *testing.T) {
@@ -467,7 +479,7 @@ func TestExecStringInClassMethod(t *testing.T) {
 	// stream (g.globals held both globals and method bodies), producing
 	// malformed IR that failed the llc step. String constants are now emitted
 	// into a dedicated builder at the top of the module.
-	assertOutput(t, "class A:\n    def m(self):\n        print(\"inside method\")\n        return 42\na = A()\nprint(\"r\", a.m())", "r\ninside method\n42\n")
+	assertOutput(t, "class A:\n    def m(self):\n        print(\"inside method\")\n        return 42\na = A()\nprint(\"r\", a.m())", "r inside method\n42\n")
 }
 
 func TestExecForOverGeneratorList(t *testing.T) {
@@ -520,7 +532,7 @@ func TestExecPrintStrFloat(t *testing.T) {
 	assertOutput(t, `print(str(3.5))`, "3.5\n")
 	assertOutput(t, `print(str(2))`, "2\n")
 	assertOutput(t, `print(str(1.0 + 2.0))`, "3\n")
-	assertOutput(t, `print(1, str(3.5), 2)`, "1\n3.5\n2\n")
+	assertOutput(t, `print(1, str(3.5), 2)`, "1 3.5 2\n")
 }
 
 func TestExecDictKeysValues(t *testing.T) {
@@ -1071,7 +1083,6 @@ func TestExecRuntimeListAppend(t *testing.T) {
 	assertOutput(t, "x = [1, 2]\nx.append(3)\nprint(x)", "[1, 2, 3]\n")
 }
 
-
 func TestExecImportModuleGlobalsAndCrossCalls(t *testing.T) {
 	dir := t.TempDir()
 	// A module with a global constant, a helper function, and a function that
@@ -1087,9 +1098,6 @@ func TestExecImportModuleGlobalsAndCrossCalls(t *testing.T) {
 	defer os.Chdir(old)
 	assertOutput(t, "import calc\nprint(calc.total(1, 2))", "23\n")
 }
-
-
-
 
 func TestExecRuntimeListAppendTwo(t *testing.T) {
 	assertOutput(t, "x = [1]\nx.append(2)\nx.append(3)\nprint(x)", "[1, 2, 3]\n")

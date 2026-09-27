@@ -1,10 +1,5 @@
-calc
-21
-scaled
-42
-main
-30
-addcall
-35
-mulcall
-60
+calc 21
+scaled 42
+main 30
+addcall 35
+mulcall 60

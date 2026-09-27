@@ -243,13 +243,7 @@ print(f(["a", "b"]))
 // TestHeapContainerConformanceProgram runs the checked-in conformance program.
 func TestHeapContainerConformanceProgram(t *testing.T) {
 	src := readProgram(t, "heap_containers.gy")
-	want := readWant(t, "heap_containers.want")
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter:\n got %q\nwant %q", got, want)
-	}
-	if got := runAOT(t, src); got != want {
-		t.Errorf("AOT:\n got %q\nwant %q", got, want)
-	}
+	checkBackendParityWant(t, runInterp(t, src), runAOT(t, src), "heap_containers.want")
 }
 
 // TestAOTHeapContainerParamScopeDoesNotLeak pins the scoping rule: a container

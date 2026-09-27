@@ -50,6 +50,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"variance",
 		"heap_containers",
 		"folded_lists",
+		"print_args",
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {

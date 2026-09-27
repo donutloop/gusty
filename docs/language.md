@@ -193,8 +193,40 @@ targets, int Attr targets).
 
 ### Expression statements
 
-Any expression on its own line. `print(...)` is a builtin call that writes to
-stdout.
+Any expression on its own line.
+
+### `print(*args, sep=" ", end="\n")`
+
+`print` is the builtin that writes to stdout, with Python's separator and
+terminator semantics — identical in the interpreter and the AOT backend
+(ADR 0165):
+
+```python
+print("n =", 42)              # n = 42
+print(1, 2, 3)                # 1 2 3
+print()                       # a blank line
+print("csv", 1, 2, sep=", ")  # csv, 1, 2, 3
+print("tick", end="!")        # tick! (line left open)
+print("a", "b", sep="|", end="?")   # a|b?  — `end` replaces the newline entirely
+```
+
+- Arguments are rendered the way `str()`/`repr()` renders them and joined with
+  `sep`; `end` is written once, after the last argument. An argument whose own
+  evaluation prints (a call that prints) keeps its place in the line, and both
+  backends interleave it identically.
+- `sep` and `end` must be keyword arguments; any other keyword is an error
+  (`print got an unexpected keyword argument "junk"`). In the AOT backend they
+  must be compile-time string constants — the compiler says so
+  (`print's sep must be a compile-time string constant`) rather than emitting IR
+  that only LLVM's verifier would reject.
+- A `%` inside `sep`/`end` is literal text, not a `printf` directive.
+- Containers print through their runtime renderer inside the joined line:
+  `print("xs =", [1, 2])` → `xs = [1, 2]`, and a set renders `{1, 2}` (the empty
+  set as `set()`), matching Python rather than `<set>`.
+- Under the hood an argument's `printf` format carries **no** newline; only the
+  terminator does. That is what makes `end=""` mean "no line break" for every
+  argument kind, including the runtime container printers
+  (`rt_print_list`/`rt_dict_print`/`rt_set_print` take the newline as a flag).
 
 ### `pass` (no-op)
 

@@ -37,21 +37,21 @@ type Evaluator struct {
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
 type obj struct {
-	kind  string           // "class" | "instance" | "method" | "list" | "superproxy"
-	class string           // class name (instance/method)
-	attrs map[string]int64 // instance attrs or class method-handle ids
-	env   map[string]int64 // captured enclosing scope (kind=closure)
-	fn    *FuncDef         // method body (kind=method)
-	mname string           // method name (kind=method)
-	recv  int64            // bound receiver id (0 = unbound)
-	base  int64            // base class id (kind=class) for inheritance
-	elems []int64          // list elements (kind=list)
-	dvals []int64          // dict values parallel to elems keys (kind=dict)
-	sval  string           // string value (kind=str)
-	fval  float64          // float value (kind=float)
-	doc   string           // __doc__ string (def/class/closure objects)
-	args  []int64          // bound arg values for coroutine
-	result int64          // memoized coroutine result (0 = not yet run)
+	kind   string           // "class" | "instance" | "method" | "list" | "superproxy"
+	class  string           // class name (instance/method)
+	attrs  map[string]int64 // instance attrs or class method-handle ids
+	env    map[string]int64 // captured enclosing scope (kind=closure)
+	fn     *FuncDef         // method body (kind=method)
+	mname  string           // method name (kind=method)
+	recv   int64            // bound receiver id (0 = unbound)
+	base   int64            // base class id (kind=class) for inheritance
+	elems  []int64          // list elements (kind=list)
+	dvals  []int64          // dict values parallel to elems keys (kind=dict)
+	sval   string           // string value (kind=str)
+	fval   float64          // float value (kind=float)
+	doc    string           // __doc__ string (def/class/closure objects)
+	args   []int64          // bound arg values for coroutine
+	result int64            // memoized coroutine result (0 = not yet run)
 }
 
 // tag returns the canonical %obj kind tag for this heap object. Both the
@@ -71,7 +71,6 @@ func (e *Evaluator) tagOfVal(v int64) ValueTag {
 	}
 	return TagInt
 }
-
 
 // setLoopVar binds a for-loop variable (a Name, or a Tuple of Names) to a value.
 // For a Tuple, the value must be a list/tuple object whose length matches.
@@ -263,6 +262,16 @@ func (e *Evaluator) Repr(id int64) string {
 				parts = append(parts, fmt.Sprintf("%v: %s", k, e.Repr(o.dvals[i])))
 			}
 			return "{" + strings.Join(parts, ", ") + "}"
+		case "set":
+			// Python renders a set as {e1, e2} and the empty set as set().
+			if len(o.elems) == 0 {
+				return "set()"
+			}
+			parts := make([]string, 0, len(o.elems))
+			for _, el := range o.elems {
+				parts = append(parts, e.Repr(el))
+			}
+			return "{" + strings.Join(parts, ", ") + "}"
 		default:
 			return "<" + o.kind + ">"
 		}
@@ -325,14 +334,14 @@ func (e *Evaluator) checkAnnot(name string, ty *Type, val int64) error {
 	}
 	// Union annotation: accept if the value's runtime kind matches any member.
 	// Literal type: the runtime value must equal the annotated constant.
-		// Literal type: the runtime value must equal the annotated constant.
+	// Literal type: the runtime value must equal the annotated constant.
 	if ty.Kind == KindLiteral {
 		if val != ty.LitVal {
 			return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " for " + name}
 		}
 		return nil
 	}
-if ty.Kind == KindLiteral {
+	if ty.Kind == KindLiteral {
 		if val != ty.LitVal {
 			return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " for " + name}
 		}
@@ -847,41 +856,41 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					return 0, err
 				}
 			}
-	case *WithStmt:
-		m, err := e.eval(s.Expr)
-		if err != nil {
-			return 0, err
-		}
-		ent, err := e.callDunder(m, "__enter__", nil)
-		if err != nil {
-			return 0, err
-		}
-		if s.As != nil {
-			e.Vars[s.As.Value] = ent
-		}
-		_, bodyErr := e.evalBody(s.Body)
-		if bodyErr != nil {
-			if ee, ok := bodyErr.(*EvalError); ok {
-				sup, err2 := e.callDunder(m, "__exit__", []int64{int64(len(ee.ExnType)), 0, 0})
+		case *WithStmt:
+			m, err := e.eval(s.Expr)
+			if err != nil {
+				return 0, err
+			}
+			ent, err := e.callDunder(m, "__enter__", nil)
+			if err != nil {
+				return 0, err
+			}
+			if s.As != nil {
+				e.Vars[s.As.Value] = ent
+			}
+			_, bodyErr := e.evalBody(s.Body)
+			if bodyErr != nil {
+				if ee, ok := bodyErr.(*EvalError); ok {
+					sup, err2 := e.callDunder(m, "__exit__", []int64{int64(len(ee.ExnType)), 0, 0})
+					if err2 != nil {
+						return 0, err2
+					}
+					if sup != 0 {
+						return 0, nil
+					}
+					return 0, bodyErr
+				}
+				_, err2 := e.callDunder(m, "__exit__", []int64{0, 0, 0})
 				if err2 != nil {
 					return 0, err2
 				}
-				if sup != 0 {
-					return 0, nil
-				}
 				return 0, bodyErr
 			}
-			_, err2 := e.callDunder(m, "__exit__", []int64{0, 0, 0})
-			if err2 != nil {
-				return 0, err2
+			_, err = e.callDunder(m, "__exit__", []int64{0, 0, 0})
+			if err != nil {
+				return 0, err
 			}
-			return 0, bodyErr
-		}
-		_, err = e.callDunder(m, "__exit__", []int64{0, 0, 0})
-		if err != nil {
-			return 0, err
-		}
-		continue
+			continue
 		case *WhileStmt:
 			completed := true
 			for {
@@ -948,15 +957,15 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							}
 						} else {
 							for _, el := range o.elems {
-							if s.Async {
-								if co := e.heap[el]; co != nil && co.kind == "coro" {
-									rv, aerr := e.runCoro(el)
-									if aerr != nil {
-										return 0, aerr
+								if s.Async {
+									if co := e.heap[el]; co != nil && co.kind == "coro" {
+										rv, aerr := e.runCoro(el)
+										if aerr != nil {
+											return 0, aerr
+										}
+										el = rv
 									}
-									el = rv
 								}
-							}
 								if err := e.setLoopVar(s.Var, el); err != nil {
 									return 0, err
 								}
@@ -1139,19 +1148,19 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 			last = v
 			continue
-	case *YieldFromStmt:
-		if e.yieldList != 0 {
-			gl, ok := e.heap[e.yieldList]
-			if ok {
-				elems, err := e.evalIterable(s.Expr)
-				if err != nil {
-					return 0, err
+		case *YieldFromStmt:
+			if e.yieldList != 0 {
+				gl, ok := e.heap[e.yieldList]
+				if ok {
+					elems, err := e.evalIterable(s.Expr)
+					if err != nil {
+						return 0, err
+					}
+					gl.elems = append(gl.elems, elems...)
+					continue
 				}
-				gl.elems = append(gl.elems, elems...)
-				continue
 			}
-		}
-		return 0, &EvalError{Msg: "yield from outside a generator"}
+			return 0, &EvalError{Msg: "yield from outside a generator"}
 		case *RaiseStmt:
 			// raise Exception("msg") / raise ValueError("msg") etc.
 			if s.Expr == nil {
@@ -1702,7 +1711,6 @@ func (e *Evaluator) contains(container, v int64) (bool, error) {
 	}
 	return false, nil
 }
-
 
 // dunderForBinOp returns the dunder method name for a binary operator, if any.
 func dunderForBinOp(op string) string {
@@ -2925,7 +2933,6 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 	return 0, &EvalError{Msg: "no such dict method " + name}
 }
 
-
 // callDunder calls a dunder (__enter__/__exit__) method on an instance handle.
 func (e *Evaluator) callDunder(self int64, name string, args []int64) (int64, error) {
 	o := e.heap[self]
@@ -3020,7 +3027,8 @@ func (e *Evaluator) importModule(mod string) error {
 	savedVars := e.Vars
 	savedFuncs := e.funcs
 	e.Vars = map[string]int64{}
-	e.funcs = map[string]*FuncDef{}; e.externs = map[string]*ExternDecl{}
+	e.funcs = map[string]*FuncDef{}
+	e.externs = map[string]*ExternDecl{}
 	_, err = e.EvalProgram(prog)
 	if err != nil {
 		e.Vars, e.funcs = savedVars, savedFuncs
@@ -3057,7 +3065,6 @@ func maxHeapID(heap map[int64]*obj) int64 {
 	}
 	return maxID
 }
-
 
 func (e *Evaluator) runCoro(cid int64) (int64, error) {
 	co := e.heap[cid]
@@ -3196,9 +3203,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 		}
 		if ed, ok2 := e.externs[name.Value]; ok2 {
-		return e.callExtern(ed, n.Args)
-	}
-	if fd, ok2 := e.funcs[name.Value]; ok2 {
+			return e.callExtern(ed, n.Args)
+		}
+		if fd, ok2 := e.funcs[name.Value]; ok2 {
 			argVals := make([]int64, len(fd.Params))
 			argSet := make([]bool, len(fd.Params))
 			pos := 0
@@ -3258,13 +3265,13 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				argVals[i] = dv
 				argSet[i] = true
 			}
-		if fd.Async {
-			cid := e.allocObj("coro")
-			co := e.heap[cid]
-			co.fn = fd
-			co.args = argVals
-			return cid, nil
-		}
+			if fd.Async {
+				cid := e.allocObj("coro")
+				co := e.heap[cid]
+				co.fn = fd
+				co.args = argVals
+				return cid, nil
+			}
 			saved := e.Vars
 			e.Vars = map[string]int64{}
 			for i, p := range fd.Params {
@@ -3277,11 +3284,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			prevRet := e.curRet
 			e.curRet = fd.ReturnAnno
-				caller := e.fnName
-				callSite := e.cur
-				savedFn := e.fnName
-				e.fnName = fd.Name
-				defer func() { e.fnName = savedFn }()
+			caller := e.fnName
+			callSite := e.cur
+			savedFn := e.fnName
+			e.fnName = fd.Name
+			defer func() { e.fnName = savedFn }()
 			if containsYield(fd.Body) {
 				genH := e.allocObj("list")
 				prev := e.yieldList
@@ -3323,13 +3330,45 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 		}
 		switch name.Value {
 		case "print":
+			// print(*args, sep=" ", end="\n") — Python's separator/terminator
+			// semantics, matched exactly by the AOT backend (ADR 0165).
+			sep, end := " ", "\n"
+			// Arguments are written as they are evaluated, separator first: an
+			// argument whose evaluation itself prints must interleave exactly as
+			// the AOT backend lowers it (the compiler emits the same order).
+			// Keyword arguments are resolved first: `print(a, b, sep="-")` must
+			// see its separator before the first separator is written.
+			positional := make([]Expr, 0, len(n.Args))
 			for _, a := range n.Args {
+				kw, isKw := a.(*KeywordArg)
+				if !isKw {
+					positional = append(positional, a)
+					continue
+				}
+				if kw.Name != "sep" && kw.Name != "end" {
+					return 0, &EvalError{Msg: fmt.Sprintf("print got an unexpected keyword argument %q", kw.Name)}
+				}
+				kv, err := e.eval(kw.Value)
+				if err != nil {
+					return 0, err
+				}
+				if kw.Name == "sep" {
+					sep = e.Repr(kv)
+				} else {
+					end = e.Repr(kv)
+				}
+			}
+			for i, a := range positional {
+				if i > 0 {
+					fmt.Fprint(os.Stdout, sep)
+				}
 				v, err := e.eval(a)
 				if err != nil {
 					return 0, err
 				}
-				fmt.Println(e.Repr(v))
+				fmt.Fprint(os.Stdout, e.Repr(v))
 			}
+			fmt.Fprint(os.Stdout, end)
 			return 0, nil
 		case "len":
 			if len(n.Args) != 1 {
@@ -3651,9 +3690,9 @@ type Frame struct {
 }
 
 type EvalError struct {
-	Msg     string
-	ExnType string
-	ExnMsg  string
+	Msg       string
+	ExnType   string
+	ExnMsg    string
 	Traceback []Frame `json:"traceback,omitempty"`
 }
 
@@ -3809,4 +3848,3 @@ func (e *Evaluator) callExtern(ed *ExternDecl, args []Expr) (int64, error) {
 		return 0, fmt.Errorf("extern function %q is not available in the interpreter", ed.Name)
 	}
 }
-

@@ -480,28 +480,45 @@ phases (4–10) are layered on top: lexer/parser modernization (4–5) is
 front-end work that can start in parallel with Gap D–H; semantics (6) and
 runtime (7) build on Gap A–B; codegen (8) builds on Gap H.
 
-- **Gap J.1 — multi-argument `print` separator** — 🟥 FOUND (both backends).
-  `print("a =", 1)` emits one line per argument (`a =` / `1`) where Python joins them
-  with a space (`a = 1`). Interpreter and AOT agree, so parity/conformance stay green —
-  the bug is invisible to the corpus, which only mixes a string and a value inside f-strings.
-  Fix needs `print(*args, sep=" ", end="\n")` semantics in both backends plus an update to
-  the affected conformance expectations.
-- **Gap J.4 — `opt` fallback is silent** — 🟥 FOUND.
-  `OptimizeIR` runs the real `opt` pipeline and, on any failure (tool missing, IR
-  rejected), returns the unoptimised module with no signal — a machine cannot tell
-  "optimised at -O2" from "the optimiser was unavailable". Verification now checks
-  whatever ships, but the pipeline should report whether the real passes ran (a field on
-  the build/emit result plus a warning), so `--opt-level=2` never quietly means `-O0`.
+## Gap J — found while closing earlier gaps (2026-09-27)
 
+Surfaced by the L8.2 module verifier and by writing both-backend print coverage.
+Each is a concrete, reproducible defect with the shape to fix it.
+
+- **Gap J.1 — multi-argument `print` separator** — ✅ DONE (ADR 0165).
+  `print` is now Python's `print(*args, sep=" ", end="\n")` in both backends:
+  `print("a =", 1)` writes `a = 1` (it used to write `a =` and `1` on separate lines,
+  which parity could never see because both backends did it). `sep`/`end` are honoured
+  for every argument kind — the runtime container printers (`rt_print_list`,
+  `rt_dict_print`, `rt_set_print`) take the newline as a flag instead of baking it into
+  the format — a `%` in `sep` is literal text, `print()` writes a blank line, and an
+  argument that prints during its own evaluation interleaves identically per backend.
+  Non-constant `sep`/`end` in AOT is an actionable diagnostic, not bad IR. Goldens were
+  regenerated with the new `go test ./integration -run TestCLIBuild -args -update` path,
+  and `programs/print_args.gy` joins the conformance corpus.
+- **Gap J.2 — set/dict comprehension assignment (AOT)** — 🟨 PARTIAL.
+  Fixed by ADR 0165: the interpreter now renders a set as `{1, 2}` (and `set()` when
+  empty) instead of `<set>`, matching `rt_set_print`, so a set prints the same on both
+  backends. Still open: `sa = {x for x in [3, 1, 2]}` / `da = {k: k * 2 for k in [1, 2]}`
+  at module scope do not lower (`len of a non-string variable` for the dict case) — needs
+  the ADR 0163 binding rule extended to set and dict comprehensions. `{x for x in [...]
+  if ...}` is also a parser gap today (it parses the `if` as a conditional expression and
+  demands `else`).
 - **Gap J.3 — the exit-code table is aspirational** — 🟥 FOUND.
   `docs/operations.md` documents `3 = runtime error` and `4 = usage error`, but the CLI
   never emits either: usage, parse and front-end failures all return `2`, and a program
   that traps still exits `1`. Fix by implementing the contract (runtime failures exit 3)
   or by documenting the truth; agents currently cannot branch on "the program crashed"
   separately from "the compiler failed".
-
-- **Gap J.2 — set/dict comprehension assignment and printing (AOT)** — 🟥 FOUND.
-  `sa = {x for x in [3, 1, 2]}` / `da = {k: k * 2 for k in [1, 2]}` at module scope do not
-  lower (`len of a non-string variable` for the dict case), and the interpreter prints a
-  set as `<set>` instead of `{1, 2, 3}`. Needs the ADR 0163 binding rule extended to set and
-  dict comprehensions and an `rt_print_set`/`rt_print_dict` display form.
+- **Gap J.4 — `opt` fallback is silent** — 🟥 FOUND.
+  `OptimizeIR` runs the real `opt` pipeline and, on any failure (tool missing, IR
+  rejected), returns the unoptimised module with no signal — a machine cannot tell
+  "optimised at -O2" from "the optimiser was unavailable". Verification now checks
+  whatever ships, but the pipeline should report whether the real passes ran (a field on
+  the build/emit result plus a warning), so `--opt-level=2` never quietly means `-O0`.
+- **Gap J.5 — string arguments to user functions (AOT)** — 🟥 FOUND.
+  `def shout(msg): ...` called as `shout("hi")` emits `call i32 @shout(i32 @.str1)`, which
+  LLVM rejects (`global variable reference must have pointer type`) — the L8.2 verifier now
+  reports it during `--build`, but codegen should refuse it up front the way it refuses
+  strings inside containers, and the real fix is the string heap kind of Gap I.2 (an `i8*`
+  is not an `i32` slot). Same root cause, wider blast radius.

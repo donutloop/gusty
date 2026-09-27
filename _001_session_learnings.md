@@ -790,3 +790,45 @@ is exactly the failure mode this stage exists to remove.
   feature I confirmed the published table (`3` runtime, `4` usage) is aspirational — the
   CLI never emits either. Recorded as Gap J.3 (with J.4: `OptimizeIR`'s silent `opt`
   fallback, and J.1/J.2 found while testing containers).
+
+## Cycle: Gap J.1 — `print(*args, sep=" ", end="\n")` (ADR 0165)
+
+**What happened.** Both backends printed one argument per line, so
+`print("a =", 1)` produced two lines. Interpreter and AOT agreed exactly, so parity,
+conformance, benchmarks and every golden stayed green: the harness compares the
+backends against *each other*, never against Python, and the corpus only mixes a
+string with a value inside f-strings. Fixed in both backends, with `sep`/`end`
+honoured for every argument kind.
+
+**The design lever that made it cheap.** The newline had been baked into every
+argument's `printf` format (`"%d\n"`, `"%s\n"`, and `}\0a` inside the dict/set
+printers). Moving the terminator to the call — bare formats, plus an `i32 %nl` flag on
+`rt_print_list`/`rt_dict_print`/`rt_set_print` — is what made separator/terminator
+support a small change instead of a runtime rewrite. "Don't bake what a caller should
+own into a shared renderer."
+
+**Traps hit on the way.**
+- *Keyword order.* My first interpreter version wrote each argument as it went and
+  read `sep` when it met the keyword, so `print(a, b, sep="-")` still used the default:
+  keyword arguments must be resolved before anything is written.
+- *Evaluation interleaving is observable.* Printing all parts after evaluating them
+  changed the output of `print("got", f())` when `f` prints. Writing each argument as
+  it is evaluated, separator first, restores byte-identical behaviour with the AOT
+  lowering order. Parity is about *order*, not just content.
+- *Two printfs of test expectation churn were actually signal*: the set rendering
+  (`<set>` in the interpreter vs `{1}` from `rt_set_print`) and the union-print
+  double newline (`emitUnionPrint` had `%d\n` formats I had not parameterised).
+- *A wrong test expectation is still worth writing down.* I asserted
+  `print("a","b",sep="|",end="?")` should end with a newline; Python says `end`
+  replaces it entirely. The test caught my own expectation, not the compiler.
+
+**Process upgrade.** Goldens now regenerate deliberately:
+`go test -tags=llvm20 ./integration -run TestCLIBuild -args -update`, and
+`checkBackendParityWant` refuses to record a golden unless the interpreter and AOT
+already agree — so a golden can never freeze a one-sided behaviour again.
+
+**Found while writing the corpus.** Gap J.5: `shout("hi")` (string argument to a user
+function) emits `call i32 @shout(i32 @.str1)` — LLVM rejects it, and the L8.2 verifier
+now says so during `--build`; the real fix is Gap I.2's string heap kind. Gap J.2
+re-scoped: interpreter set rendering is fixed, set/dict comprehension *assignment* in
+AOT is still open, and `{x for x in [...] if ...}` turns out to be a parser gap too.

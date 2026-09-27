@@ -1,0 +1,16 @@
+n = 41
+print("n =", n + 1)
+print("a", 1, "b", 2)
+print()
+print("csv", 1, 2, 3, sep=", ")
+print("tick", end="!")
+print("tock")
+xs = [1, 2, 3]
+print("xs =", xs)
+m = {1: 2}
+print("m =", m, "len", len(xs))
+def twice(v):
+    print("<<", v, ">>")
+    return v + v
+
+print("got", twice(21))

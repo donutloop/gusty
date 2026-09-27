@@ -129,6 +129,12 @@ falls back to dynamic dispatch.
   stable `code` (`type.variance.invariant`, `type.variance.contravariant`, …) plus
   an actionable `suggestion`; the whole model is machine-readable via
   `gustyc --variance`.
+- **`print` behaves like Python's** — `print("n =", 42)` writes `n = 42`, not two
+  lines: arguments are joined with `sep=" "` and terminated by `end="\n"` (both
+  honoured for every argument kind, including runtime containers, whose printers
+  take the newline as a flag rather than baking it in). Interpreter and AOT agree
+  byte-for-byte, including how an argument that prints interleaves with its line
+  (ADR 0165).
 - **Containers are references everywhere** — pass a `list`, `dict` or `set` to a
   function as a literal, variable, keyword argument, default, comprehension or
   generator result and the callee sees the same live object on both backends:

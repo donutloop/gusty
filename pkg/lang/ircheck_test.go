@@ -225,52 +225,67 @@ func TestIRModuloCompilesWithLLC(t *testing.T) {
 }
 
 func TestIRZeroArgPrintCompilesWithLLC(t *testing.T) {
-	// zero-argument print() writes nothing: no printf calls.
+	// print(*args, sep=" ", end="\n"): with no arguments only the terminator is
+	// written, so print() is a blank line — exactly one printf ("\n").
 	res, err := Compile("print()")
 	if err != nil {
 		t.Fatalf("compile zero-arg print: %v", err)
 	}
-	if strings.Count(res.IR, "call i32 (i8*, ...) @printf") != 0 {
-		t.Fatalf("print() should emit no printf calls, got:\n%s", res.IR)
+	if n := strings.Count(res.IR, "call i32 (i8*, ...) @printf"); n != 1 {
+		t.Fatalf("print() should emit just the terminator printf, got %d, \n%s", n, res.IR)
+	}
+	if !strings.Contains(res.IR, `c"\0A\00"`) {
+		t.Fatalf("print() should write the newline terminator, got:\n%s", res.IR)
 	}
 }
 
 func TestIRMultiArgPrintCompilesWithLLC(t *testing.T) {
-	// multi-argument print emits one printf per argument (each on its own
-	// line), mirroring the interpreter's print.
+	// print(1, 2) lowers to: value, separator, value, terminator — four printfs,
+	// and no argument format carries its own newline (the terminator does, so
+	// `sep`/`end` stay honoured). See ADR 0165.
 	res, err := Compile("print(1, 2)")
 	if err != nil {
 		t.Fatalf("compile multi-arg print: %v", err)
 	}
-	if strings.Count(res.IR, "call i32 (i8*, ...) @printf") != 2 {
-		t.Fatalf("print(1, 2) should emit 2 printf calls, got:\n%s", res.IR)
+	if n := strings.Count(res.IR, "call i32 (i8*, ...) @printf"); n != 4 {
+		t.Fatalf("print(1, 2) should emit value+sep+value+terminator (4 printfs), got %d:\n%s", n, res.IR)
+	}
+	if strings.Count(res.IR, `c"%d\00"`) != 2 {
+		t.Fatalf("print(1, 2) should emit two bare %%d formats, got:\n%s", res.IR)
+	}
+	if !strings.Contains(res.IR, `c" \00"`) {
+		t.Fatalf("the default separator should be a space global, got:\n%s", res.IR)
 	}
 	res, err = Compile("x = 7\nprint(x, x + 1)")
 	if err != nil {
 		t.Fatalf("compile multi-arg print: %v", err)
 	}
-	if strings.Count(res.IR, "call i32 (i8*, ...) @printf") != 2 {
-		t.Fatalf("print(x, x+1) should emit 2 printf calls, got:\n%s", res.IR)
+	if n := strings.Count(res.IR, "call i32 (i8*, ...) @printf"); n != 4 {
+		t.Fatalf("print(x, x+1) should emit 4 printf calls, got %d:\n%s", n, res.IR)
 	}
-	// string-literal arguments use a %%s\n format (not %%d\n).
+	// a string argument uses a %s format without an embedded newline.
 	res, err = Compile("print(\"hi\")")
 	if err != nil {
 		t.Fatalf("compile string print: %v", err)
 	}
-	// the newline in the format global is emitted as \0A in IR.
-	if strings.Contains(res.IR, "%d\\0A") {
-		t.Fatalf("print(\"hi\") should use %%s format, got:\n%s", res.IR)
+	if !strings.Contains(res.IR, `c"%s\00"`) {
+		t.Fatalf("print(\"hi\") should use a bare %%s format, got:\n%s", res.IR)
 	}
-	if !strings.Contains(res.IR, "%s\\0A") {
-		t.Fatalf("print(\"hi\") should use %%s format, got:\n%s", res.IR)
-	}
-	// mixed integer + string args: one %%d and one %%s format.
+	// mixed integer + string args: one %%d and one %%s format, neither with \n.
 	res, err = Compile("print(1, \"hi\")")
 	if err != nil {
 		t.Fatalf("compile mixed print: %v", err)
 	}
-	if !strings.Contains(res.IR, "%d\\0A") || !strings.Contains(res.IR, "%s\\0A") {
-		t.Fatalf("mixed print should emit %%d and %%s formats, got:\n%s", res.IR)
+	if !strings.Contains(res.IR, `c"%d\00"`) || !strings.Contains(res.IR, `c"%s\00"`) {
+		t.Fatalf("mixed print should emit bare %%d and %%s formats, got:\n%s", res.IR)
+	}
+	// sep/end are honoured as literals: a %% in sep is escaped, not a directive.
+	res, err = Compile("print(1, 2, sep=\"%\")")
+	if err != nil {
+		t.Fatalf("compile sep print: %v", err)
+	}
+	if !strings.Contains(res.IR, `c"%%\00"`) {
+		t.Fatalf("a literal %% in sep must be escaped for printf, got:\n%s", res.IR)
 	}
 }
 
@@ -758,8 +773,9 @@ func TestIRPrintStrFloatIsValid(t *testing.T) {
 	// (which llc rejects with "global variable reference must have pointer
 	// type"). llcCompiles aborts if the module fails to verify.
 	ir := llcCompiles(t, `print(str(3.5))`)
-	// The emitted format constant is c"%s\0A\00" (newline as \0A escape).
-	if !strings.Contains(ir, `%s\0A`) && !strings.Contains(ir, `%s\n`) {
+	// The format constant is a bare c"%s\00"; the newline comes from print's
+	// terminator, so the argument format itself must not carry one.
+	if !strings.Contains(ir, `c"%s\00"`) {
 		t.Fatalf("print(str(3.5)) should emit a %%s printf, got:\n%s", ir)
 	}
 	llcCompiles(t, `print(str(1.0 + 2.0))`) // foldable float expression
@@ -1373,7 +1389,7 @@ func TestIRPrintChrConst(t *testing.T) {
 	// not a %d printf fed the array (llc: global variable reference must have
 	// pointer type). llcCompiles aborts if the module fails to verify.
 	ir := llcCompiles(t, "print(chr(65))")
-	if !strings.Contains(ir, "%s\\0A") && !strings.Contains(ir, "%s\\n") {
+	if !strings.Contains(ir, `c"%s\00"`) {
 		t.Fatalf("print(chr(65)) should emit a %%s printf, got:\n%s", ir)
 	}
 }
@@ -1405,10 +1421,9 @@ func TestIRImportModuleGlobals(t *testing.T) {
 	llcCompiles(t, src)
 }
 
-
 func TestIRImportModuleFunctions(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(dir + "/lib.gy", []byte("def f(x):\n    return x * 2\n"), 0o600)
+	os.WriteFile(dir+"/lib.gy", []byte("def f(x):\n    return x * 2\n"), 0o600)
 	old, _ := os.Getwd()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
@@ -1425,7 +1440,6 @@ func TestIRImportModuleFunctions(t *testing.T) {
 		t.Fatalf("expected a call to @lib$f in IR:\n%s", res.IR)
 	}
 }
-
 
 func TestIRImportNestedModules(t *testing.T) {
 	dir := t.TempDir()
@@ -1855,7 +1869,6 @@ print(f(3))
 	}
 }
 
-
 func TestAOTEscapeDeadList(t *testing.T) {
 	// a list literal assigned to a variable that is never read (dead) must
 	// skip its rt_alloc heap allocation (escape analysis / dead-object elim).
@@ -1921,15 +1934,12 @@ print(f"val={n}")`)
 	llcCompiles(t, `print(f"{1 + 2}")`)
 }
 
-
 func TestCodegenTupleUnpack(t *testing.T) {
 	// tuple assignment: a, b = 1, 2
 	llcCompiles(t, "a, b = 1, 2\nprint(a + b)")
 	// tuple swap
 	llcCompiles(t, "a = 1\nb = 2\na, b = b, a\nprint(a + b)")
 }
-
-
 
 func TestIRPowerInt(t *testing.T) {
 	// Non-literal integer operands lower to @llvm.pow.f64 (converted to double).
@@ -1941,7 +1951,6 @@ func TestIRPowerInt(t *testing.T) {
 		t.Fatalf("IR missing fptosi result conversion:\n%s", ir)
 	}
 }
-
 
 func TestIRPowerConst(t *testing.T) {
 	// Integer-literal power folds at compile time, so no rt_pow is emitted.

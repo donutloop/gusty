@@ -4,11 +4,20 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+// updateWant rewrites a golden under expected/ from the observed output. Goldens
+// encode reviewed behaviour (the exact stdout of a native build, or emitted IR),
+// so they are regenerated deliberately after an intentional semantics change and
+// never by hand-copying output.
+//
+//	go test -tags=llvm20 ./integration -run TestCLIBuild -args -update
+var updateWant = flag.Bool("update", false, "rewrite integration golden files under expected/ from the observed output")
 
 // buildCLI compiles the actual gustyc binary once per test binary and returns
 // its path. This lets the whole-program tests drive the real CLI command
@@ -41,6 +50,39 @@ func readProgram(t *testing.T, name string) string {
 		t.Fatalf("read program %s: %v", name, err)
 	}
 	return string(b)
+}
+
+// checkWant compares got against the golden expected/<name> and reports a clear
+// mismatch, or rewrites the golden when the suite runs with -update. Goldens are
+// regenerated deliberately after an intentional semantics change:
+//
+//	go test -tags=llvm20 ./integration -run TestCLIBuild -args -update
+func checkWant(t *testing.T, name, got string) {
+	t.Helper()
+	if *updateWant {
+		if err := os.WriteFile(filepath.Join("expected", name), []byte(got), 0o644); err != nil {
+			t.Fatalf("write golden %s: %v", name, err)
+		}
+		t.Logf("updated expected/%s", name)
+		return
+	}
+	if want := readWant(t, name); got != want {
+		t.Errorf("expected/%s mismatch:\n got:\n%q\nwant:\n%q", name, got, want)
+	}
+}
+
+// checkBackendParityWant asserts the interpreter and the AOT pipeline agree on a
+// program (the parity contract) and then compares that shared output against the
+// golden expected/<name>. With -update the golden is rewritten from the AOT run
+// after the backends have been shown to agree, so a golden can never encode a
+// one-sided behaviour.
+func checkBackendParityWant(t *testing.T, interpOut, aotOut, name string) {
+	t.Helper()
+	if interpOut != aotOut {
+		t.Errorf("backends disagree on %s:\n interpreter: %q\n AOT:       %q", name, interpOut, aotOut)
+		return
+	}
+	checkWant(t, name, aotOut)
 }
 
 // readWant returns the exact expected stdout for a whole-program test, checked
@@ -95,9 +137,7 @@ func TestCLIBuildWholeProgram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built binary: %v", err)
 	}
-	if string(got) != readWant(t, "whole.txt") {
-		t.Errorf("built binary output = %q, want 16 (sum 1..3 + double(5))", got)
-	}
+	checkWant(t, "whole.txt", string(got))
 
 	// The CLI's JSON mode emits a machine-readable build result.
 	js := exec.Command(bin, "--json", "--build", out, a, b)
@@ -169,9 +209,7 @@ func TestCLIBuildSingleFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built binary: %v", err)
 	}
-	if string(got) != readWant(t, "single.txt") {
-		t.Errorf("output = %q, want 3 (0+1+2)", got)
-	}
+	checkWant(t, "single.txt", string(got))
 }
 
 // TestCLIBuildFString verifies f-strings with runtime integer/float
@@ -192,9 +230,7 @@ func TestCLIBuildFString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built fstr program: %v", err)
 	}
-	if string(got) != readWant(t, "fstr.txt") {
-		t.Errorf("output = %q, want %q", got, readWant(t, "fstr.txt"))
-	}
+	checkWant(t, "fstr.txt", string(got))
 }
 
 // TestCLIBuildFloatFunction verifies a user function that returns a float
@@ -214,9 +250,7 @@ func TestCLIBuildFloatFunction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built floatfn: %v", err)
 	}
-	if string(got) != readWant(t, "floatfn.txt") {
-		t.Errorf("output = %q, want %q", got, readWant(t, "floatfn.txt"))
-	}
+	checkWant(t, "floatfn.txt", string(got))
 }
 
 // TestCLIBuildOptLevel verifies --opt-level is honored end-to-end: the CLI
@@ -238,9 +272,7 @@ func TestCLIBuildOptLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run built binary: %v", err)
 	}
-	if string(got) != readWant(t, "sq.txt") {
-		t.Errorf("output = %q, want 49", got)
-	}
+	checkWant(t, "sq.txt", string(got))
 }
 
 // TestCLIBuildMissingFile verifies a nonexistent source file fails with a
@@ -367,9 +399,7 @@ func TestCLIBuildRebuildOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run rebuilt binary: %v", err)
 	}
-	if string(got) != readWant(t, "rebuild.txt") {
-		t.Errorf("output = %q, want 42", got)
-	}
+	checkWant(t, "rebuild.txt", string(got))
 }
 
 // TestCLIBuildAllFeatures drives the whole gustyc program against a large
@@ -393,9 +423,7 @@ func TestCLIBuildAllFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run all-features binary: %v", err)
 	}
-	if string(got) != readWant(t, "features.txt") {
-		t.Errorf("all-features output mismatch:\n got:\n%s\nwant:\n%s", got, readWant(t, "features.txt"))
-	}
+	checkWant(t, "features.txt", string(got))
 }
 
 // Large multi-file programs. Each file is big (many statements); the tests
@@ -404,7 +432,7 @@ func TestCLIBuildAllFeatures(t *testing.T) {
 
 // buildWant runs `gustyc --build` over files, then runs the produced binary
 // and asserts its stdout equals want.
-func buildWant(t *testing.T, bin string, files []string, want string) {
+func buildWant(t *testing.T, bin string, files []string, wantName string) {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "prog")
 	args := append([]string{"--build", out}, files...)
@@ -416,9 +444,7 @@ func buildWant(t *testing.T, bin string, files []string, want string) {
 	if err != nil {
 		t.Fatalf("run built binary: %v", err)
 	}
-	if string(got) != want {
-		t.Errorf("output mismatch:\n got:\n%s\nwant:\n%s", got, want)
-	}
+	checkWant(t, wantName, string(got))
 }
 
 // TestCLIBuildLargeMath builds a large 3-file math program (functions defined
@@ -431,7 +457,7 @@ func TestCLIBuildLargeMath(t *testing.T) {
 		writeSrc(t, dir, "mathlib.gy", readProgram(t, "math_lib.gy")),
 		writeSrc(t, dir, "calc.gy", readProgram(t, "math_calc.gy")),
 		writeSrc(t, dir, "main.gy", readProgram(t, "math_main.gy")),
-	}, readWant(t, "math.txt"))
+	}, "math.txt")
 }
 
 // TestCLIBuildLargeControl builds a large 3-file control-flow program (loops,
@@ -444,7 +470,7 @@ func TestCLIBuildLargeControl(t *testing.T) {
 		writeSrc(t, dir, "ctrl_a.gy", readProgram(t, "ctrl_a.gy")),
 		writeSrc(t, dir, "ctrl_b.gy", readProgram(t, "ctrl_b.gy")),
 		writeSrc(t, dir, "ctrl_c.gy", readProgram(t, "ctrl_c.gy")),
-	}, readWant(t, "ctrl.txt"))
+	}, "ctrl.txt")
 }
 
 // TestCLIBuildLargeData builds a large 3-file data program (list/dict/set
@@ -457,7 +483,7 @@ func TestCLIBuildLargeData(t *testing.T) {
 		writeSrc(t, dir, "data_a.gy", readProgram(t, "data_a.gy")),
 		writeSrc(t, dir, "data_b.gy", readProgram(t, "data_b.gy")),
 		writeSrc(t, dir, "data_c.gy", readProgram(t, "data_c.gy")),
-	}, readWant(t, "data.txt"))
+	}, "data.txt")
 }
 
 // TestCLIEmitsExpectedIR drives the whole gustyc program's `--emit-llvm` path
@@ -472,7 +498,5 @@ func TestCLIEmitsExpectedIR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gustyc --emit-llvm: %v", err)
 	}
-	if string(got) != readWant(t, "ir.ll") {
-		t.Errorf("emitted IR mismatch:\n got:\n%s\nwant:\n%s", got, readWant(t, "ir.ll"))
-	}
+	checkWant(t, "ir.ll", string(got))
 }

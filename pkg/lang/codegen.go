@@ -103,7 +103,7 @@ entry:
 @.fmti = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtnl = private unnamed_addr constant [2 x i8] c"\0A\00"
 
-define internal void @rt_print_list(i32 %h) {
+define internal void @rt_print_list(i32 %h, i32 %nl) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -131,14 +131,19 @@ cont:
   br label %loop
 done:
   call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
   call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
   ret void
 }
 
 @.fmtdopen = private unnamed_addr constant [2 x i8] c"{\00"
 @.fmtditem = private unnamed_addr constant [7 x i8] c"%d: %d\00"
 @.fmtdsep = private unnamed_addr constant [3 x i8] c", \00"
-@.fmtdclose = private unnamed_addr constant [3 x i8] c"}\0a\00"
+@.fmtdclose = private unnamed_addr constant [2 x i8] c"}\00"
 
 define internal void @rt_dict_put(i32 %h, i32 %k, i32 %v) {
 entry:
@@ -247,7 +252,7 @@ entry:
   ret i32 %len
 }
 
-define internal void @rt_dict_print(i32 %h) {
+define internal void @rt_dict_print(i32 %h, i32 %nl) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -277,7 +282,13 @@ cont:
   %next = phi i32 [ %i1, %body ], [ %i1, %sep ]
   br label %check
 done:
-  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtdclose, i32 0, i32 0))
+  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
   ret void
 }
 
@@ -285,7 +296,7 @@ done:
 @.fmtsopen = private unnamed_addr constant [2 x i8] c"{\00"
 @.fmtsitem = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtssep = private unnamed_addr constant [3 x i8] c", \00"
-@.fmtsclose = private unnamed_addr constant [3 x i8] c"}\0a\00"
+@.fmtsclose = private unnamed_addr constant [2 x i8] c"}\00"
 
 define internal void @rt_set_add(i32 %h, i32 %v) {
 entry:
@@ -324,7 +335,7 @@ entry:
   ret i32 %len
 }
 
-define internal void @rt_set_print(i32 %h) {
+define internal void @rt_set_print(i32 %h, i32 %nl) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
@@ -350,7 +361,13 @@ cont:
   %next = phi i32 [ %i1, %body ], [ %i1, %sep ]
   br label %check
 done:
-  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsclose, i32 0, i32 0))
+  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
   ret void
 }
 
@@ -1037,8 +1054,10 @@ func (g *irGen) emitUnionStore(b *strings.Builder, nm string, e Expr) {
 }
 
 // emitUnionPrint prints a union-annotated scalar variable, dispatching on its
-// runtime tag to emit %d, %f, or %s for the currently-stored member.
-func (g *irGen) emitUnionPrint(b *strings.Builder, nm string) {
+// runtime tag to emit %d, %f, or %s for the currently-stored member. `nl` is the
+// terminator written after the value ("\n" standalone, "" inside a print argument
+// whose terminator comes from the call's `end`).
+func (g *irGen) emitUnionPrint(b *strings.Builder, nm, nl string) {
 	g.markUnion()
 	tag := g.newTmp()
 	lt := g.newTmp()
@@ -1055,7 +1074,7 @@ func (g *irGen) emitUnionPrint(b *strings.Builder, nm string) {
 	uf := g.newTmp()
 	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 2\n", uf, nm)
 	fmt.Fprintf(b, "  %s = load double, double* %s\n", fv, uf)
-	fmt.Fprintf(b, "  %s\n", g.printfCall("double", fv, "%g\n"))
+	fmt.Fprintf(b, "  %s\n", g.printfCall("double", fv, "%g"+nl))
 	fmt.Fprintf(b, "  br label %%%s\n", lj)
 	fmt.Fprintf(b, "%s:\n", ln)
 	iss := g.newTmp()
@@ -1068,14 +1087,14 @@ func (g *irGen) emitUnionPrint(b *strings.Builder, nm string) {
 	us := g.newTmp()
 	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 3\n", us, nm)
 	fmt.Fprintf(b, "  %s = load i8*, i8** %s\n", sv, us)
-	fmt.Fprintf(b, "  %s\n", g.printfCall("i8*", sv, "%s\n"))
+	fmt.Fprintf(b, "  %s\n", g.printfCall("i8*", sv, "%s"+nl))
 	fmt.Fprintf(b, "  br label %%%s\n", lj)
 	fmt.Fprintf(b, "%s:\n", li)
 	iv := g.newTmp()
 	ui := g.newTmp()
 	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 1\n", ui, nm)
 	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", iv, ui)
-	fmt.Fprintf(b, "  %s\n", g.printfCall("i32", iv, "%d\n"))
+	fmt.Fprintf(b, "  %s\n", g.printfCall("i32", iv, "%d"+nl))
 	fmt.Fprintf(b, "  br label %%%s\n", lj)
 	fmt.Fprintf(b, "%s:\n", lj)
 }
@@ -4407,28 +4426,57 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	}
 	switch fnName {
 	case "print", "printf":
+		// print(*args, sep=" ", end="\n") — Python's separator/terminator
+		// semantics, identical on both backends (ADR 0165). An argument is
+		// written WITHOUT its own terminator; `sep` is emitted between arguments
+		// and `end` after the last one. So print("a =", n) is one line, print()
+		// is a blank line, and print(x, end="") keeps the line open.
+		sep, end := " ", "\n"
+		var last string
+		// emitText writes a literal string (the separator / terminator). `%` is
+		// doubled so printf treats it as text, not as a directive.
+		emitText := func(text string) {
+			name, size := g.fmtStr(strings.ReplaceAll(text, "%", "%%"))
+			t := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0))\n", t, size, size, name))
+			last = t
+		}
+		args := make([]Expr, 0, len(c.Args))
 		for _, a := range c.Args {
-			if _, ok := a.(*KeywordArg); ok {
-				return "", fmt.Errorf("codegen: %s does not accept keyword arguments", fnName)
+			kw, isKw := a.(*KeywordArg)
+			if !isKw {
+				args = append(args, a)
+				continue
+			}
+			sl, isStr := kw.Value.(*StrLit)
+			if !isStr {
+				return "", fmt.Errorf("codegen: print's %s must be a compile-time string constant (the interpreter accepts any expression)", kw.Name)
+			}
+			switch kw.Name {
+			case "sep":
+				sep = sl.Value
+			case "end":
+				end = sl.Value
+			default:
+				return "", fmt.Errorf("codegen: print got an unexpected keyword argument %q", kw.Name)
 			}
 		}
-		if len(c.Args) < 1 {
-			// zero-argument print() matches the interpreter: writes nothing.
-			return g.newTmp(), nil
+		if len(args) < 1 {
+			// print() writes just the terminator: a blank line, like Python.
+			emitText(end)
+			return last, nil
 		}
-		// multi-argument print mirrors the interpreter: each argument is
-		// written to stdout on its own line, one printf per argument.
-		// String-literal arguments use a %s\n format (the interpreter prints
-		// strings via Repr); integer arguments use %d\n.
-		var last string
-		for i, a := range c.Args {
+		for i, a := range args {
+			if i > 0 {
+				emitText(sep)
+			}
 			if nm, ok := a.(*Name); ok && g.unionVars[nm.Value] {
-				g.emitUnionPrint(b, nm.Value)
+				g.emitUnionPrint(b, nm.Value, "")
 				continue
 			}
 			// print a constant string: literals and folded string-method results.
 			if _, ok := g.stringVal(a); ok {
-				fmtName, size := g.fmtStr("%s\n")
+				fmtName, size := g.fmtStr("%s")
 				v, err := g.value(b, a)
 				if err != nil {
 					return "", err
@@ -4466,7 +4514,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						}
 					}
 				}
-				fmtName, size := g.fmtStr(fmtLit + "\n")
+				fmtName, size := g.fmtStr(fmtLit)
 				t := g.newTmp()
 				callArgs := fmt.Sprintf("i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0)", size, size, fmtName)
 				if len(operands) > 0 {
@@ -4481,14 +4529,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					g.heapSeq++
 					hs := g.heapSeq
 					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %%h%d)\n", hs))
+					b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %%h%d, i32 0)\n", hs))
 					continue
 				}
 				if g.runtimeSets[nm.Value] {
 					g.heapSeq++
 					hs := g.heapSeq
 					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %%h%d)\n", hs))
+					b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %%h%d, i32 0)\n", hs))
 					continue
 				}
 			}
@@ -4499,7 +4547,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						if err != nil {
 							return "", err
 						}
-						fmt.Fprintf(b, "  call void @rt_print_list(i32 %s)\n", h)
+						fmt.Fprintf(b, "  call void @rt_print_list(i32 %s, i32 0)\n", h)
 						continue
 					}
 				}
@@ -4508,12 +4556,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-				b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %%h%d)\n", hs))
+				b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %%h%d, i32 0)\n", hs))
 				continue
 			}
 			var t string
 			if g.isFloat(a) {
-				fmtName, size := g.fmtStr("%.17g\n")
+				fmtName, size := g.fmtStr("%.17g")
 				fv := g.floatValue(b, a)
 				t = g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
@@ -4525,17 +4573,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// a generator result is a runtime heap list handle: print it
 				// as a list rather than an int.
 				if g.listOperands[v] {
-					b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %s)\n", v))
+					b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %s, i32 0)\n", v))
 					continue
 				}
-				fmtName, size := g.fmtStr("%d\n")
+				fmtName, size := g.fmtStr("%d")
 				t := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i32 %s)\n", t, size, size, fmtName, v))
 			}
-			if i == len(c.Args)-1 {
+			if i == len(args)-1 {
 				last = t
 			}
 		}
+		emitText(end)
 		return last, nil
 	case "len":
 		// len(string-constant) -> compile-time character count; otherwise
