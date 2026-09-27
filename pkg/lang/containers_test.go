@@ -195,3 +195,22 @@ func TestContainerCopyIsADiagnosticNotMiscompile(t *testing.T) {
 		}
 	}
 }
+
+// TestStringConstantsEscapeQuotes: a '"' in the payload used to terminate the LLVM string
+// literal early, and the module failed to verify with a nonsense array length. Traceback
+// frames (which contain quotes) hit it first, but any program string with a quote did.
+func TestStringConstantsEscapeQuotes(t *testing.T) {
+	res, err := Compile("print(\"say \\\"hi\\\"\")\n")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "\\22") {
+		t.Errorf("a double quote must be escaped as \\22 in the IR:\n%s", res.IR)
+	}
+	if strings.Contains(res.IR, `c"say "hi""`) {
+		t.Errorf("an unescaped quote leaked into the IR literal:\n%s", res.IR)
+	}
+	if v, err := VerifyModuleIR(res.IR, 0); err != nil || !v.OK {
+		t.Errorf("module with a quoted string must verify: %v %v", v.Errors, err)
+	}
+}

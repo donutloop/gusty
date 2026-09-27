@@ -1085,6 +1085,9 @@ type irGen struct {
 	runtimeDicts map[string]bool
 	runtimeSets  map[string]bool
 	heapUsed     bool
+	// curFnSrc is the source-level name of the function being lowered, for the
+	// traceback frame; empty means module level, which renders as <module>.
+	curFnSrc string
 	// raiseUsed is set by any raise site (a `raise` statement, or a
 	// compiler-generated one such as an out-of-bounds item assignment). It gates
 	// rt_die, which reports an uncaught exception on stderr before main exits 1.
@@ -1493,7 +1496,14 @@ func (g *irGen) strConst(s string) string {
 	g.strIdx++
 	name := fmt.Sprintf("@.str%d", g.strIdx)
 	esc := strings.ReplaceAll(s, "\\", "\\\\")
+	// A raw '"' inside the payload would terminate the LLVM string literal early and the
+	// module fails to verify with a nonsense array length ("got type '[7 x i8]' but
+	// expected '[31 x i8]'"). This bit me via a traceback frame (`  File "prog", …`), but
+	// any program string containing a double quote hit it too.
+	esc = strings.ReplaceAll(esc, "\"", "\\22")
 	esc = strings.ReplaceAll(esc, "\n", "\\0A")
+	esc = strings.ReplaceAll(esc, "\t", "\\09")
+	esc = strings.ReplaceAll(esc, "\r", "\\0D")
 	// Array size is the decoded byte count: the raw string length (newlines
 	// and backslashes are single bytes) plus one trailing null.
 	g.strGlobals.WriteString(fmt.Sprintf("%s = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n", name, len(s)+1, esc))
@@ -2840,7 +2850,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		badL, okL, endL := g.newLabel("item.bad"), g.newLabel("item.ok"), g.newLabel("item.end")
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 		b.WriteString(fmt.Sprintf("%s:\n", badL))
-		g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range")
+		g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", ix.Span())
 		b.WriteString(fmt.Sprintf("%s:\n", okL))
 		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, v))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
@@ -3562,7 +3572,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					}
 					keyOp = kv
 				}
-				g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp)
+				g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Span())
 				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
@@ -3578,7 +3588,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
-				g.checkIndexRead(b, fmt.Sprintf("%%h%d", hs), idxOp)
+				g.checkIndexRead(b, fmt.Sprintf("%%h%d", hs), idxOp, n.Span())
 				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %s)\n", hs, hs, idxOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
@@ -4392,9 +4402,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 			b.WriteString(fmt.Sprintf("%s:\n", badL))
 			if len(c.Args) == 1 {
-				g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop index out of range")
+				g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop index out of range", c.Span())
 			} else {
-				g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop from empty list")
+				g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop from empty list", c.Span())
 			}
 			b.WriteString(fmt.Sprintf("%s:\n", okL))
 			ret := g.newTmp()
@@ -5910,6 +5920,7 @@ declare i64 @strlen(i8*)
 ; the uncaught path can report what it was. A raise that never ran leaves it null and
 ; rt_die prints a generic line. The block is emitted only for programs that can raise.
 @exn_msg = internal global i8* null
+@exn_frame = internal global i8* null
 
 @.rt_die.hdr = private unnamed_addr constant [36 x i8] c"Traceback (most recent call last):\0A\00"
 @.rt_die.none = private unnamed_addr constant [26 x i8] c"gusty: uncaught exception\00"
@@ -5917,16 +5928,25 @@ declare i64 @strlen(i8*)
 
 define internal void @rt_die(i8* %msg) {
 entry:
+  %nlpre = getelementptr inbounds [2 x i8], [2 x i8]* @.rt_die.nl, i32 0, i32 0
   %hdr = getelementptr inbounds [36 x i8], [36 x i8]* @.rt_die.hdr, i32 0, i32 0
   %hlen = call i64 @strlen(i8* %hdr)
   call i64 @write(i32 2, i8* %hdr, i64 %hlen)
+  %fp = load i8*, i8** @exn_frame
+  %hasframe = icmp ne i8* %fp, null
+  br i1 %hasframe, label %withframe, label %withoutframe
+withframe:
+  %flen = call i64 @strlen(i8* %fp)
+  call i64 @write(i32 2, i8* %fp, i64 %flen)
+  call i64 @write(i32 2, i8* %nlpre, i64 1)
+  br label %withoutframe
+withoutframe:
   %isnull = icmp eq i8* %msg, null
   %none = getelementptr inbounds [26 x i8], [26 x i8]* @.rt_die.none, i32 0, i32 0
   %m = select i1 %isnull, i8* %none, i8* %msg
   %len = call i64 @strlen(i8* %m)
   call i64 @write(i32 2, i8* %m, i64 %len)
-  %nl = getelementptr inbounds [2 x i8], [2 x i8]* @.rt_die.nl, i32 0, i32 0
-  call i64 @write(i32 2, i8* %nl, i64 1)
+  call i64 @write(i32 2, i8* %nlpre, i64 1)
   ret void
 }
 `
@@ -5934,7 +5954,7 @@ entry:
 // setExn records a raise: the flag, the exception code, and a "<Type>: <message>"
 // string for the uncaught path. Every raise site goes through here so the report can
 // never disagree with the code the handler matches on.
-func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string) {
+func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Span) {
 	g.raiseUsed = true
 	b.WriteString("  store i32 1, i32* @exn_flag\n")
 	b.WriteString(fmt.Sprintf("  store i32 %d, i32* @exn_code\n", code))
@@ -5944,17 +5964,42 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string) {
 	}
 	if text == "" {
 		b.WriteString("  store i8* null, i8** @exn_msg\n")
-		return
+	} else {
+		b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_msg\n", g.strConst(text)))
 	}
-	b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_msg\n", g.strConst(text)))
+	// The interpreter prints one frame per stack level; the compiled report prints the
+	// raise site's own frame, which is the line that answers "where". Full call stacks
+	// need the debug line tables of L8.5 (roadmap Gap K.8).
+	if frame := g.raiseFrame(sp); frame != "" {
+		b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_frame\n", g.strConst(frame)))
+	} else {
+		b.WriteString("  store i8* null, i8** @exn_frame\n")
+	}
+}
+
+// raiseFrame renders one traceback frame the way the interpreter does, e.g.
+//
+//	File "prog", line 12, in area
+//
+// for a raise at line 12 inside `area` (or <module> at top level). An empty span yields
+// no frame rather than a fabricated line 0.
+func (g *irGen) raiseFrame(sp Span) string {
+	if sp.IsZero() {
+		return ""
+	}
+	fn := "<module>"
+	if g.curFnSrc != "" {
+		fn = g.curFnSrc
+	}
+	return fmt.Sprintf("  File \"prog\", line %d, in %s", sp.Line, fn)
 }
 
 // raiseTo records a raise of an exception the *machine* detected (an out-of-range
 // index, a missing key) and transfers to the innermost handler, or out of the function
 // to the uncaught path. The interpreter raises the same typed errors, so `except
 // IndexError:` works on both backends.
-func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string) {
-	g.setExn(b, code, typeName, msg)
+func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string, sp Span) {
+	g.setExn(b, code, typeName, msg, sp)
 	if len(g.handlerStack) > 0 {
 		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
 	} else {
@@ -5964,7 +6009,7 @@ func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string) {
 
 // checkIndexRead emits the bounds test for a heap-list read: `xs[i]` used to load
 // whatever sat at that slot and print 0, where Python raises IndexError.
-func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string) {
+func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string, sp Span) {
 	ln := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
 	hi := g.newTmp()
@@ -5979,13 +6024,13 @@ func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string) {
 	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range")
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
 // checkKeyRead emits the membership test for a heap-dict read: `d[k]` for a missing
 // key used to return 0, where Python raises KeyError.
-func (g *irGen) checkKeyRead(b *strings.Builder, h, key string) {
+func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, sp Span) {
 	ok := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has(i32 %s, i32 %s)\n", ok, h, key))
 	isZero := g.newTmp()
@@ -5994,7 +6039,7 @@ func (g *irGen) checkKeyRead(b *strings.Builder, h, key string) {
 	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isZero, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found")
+	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found", sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
@@ -6015,7 +6060,7 @@ func (g *irGen) raiseStmt(b *strings.Builder, rs *RaiseStmt) error {
 		code = exnCode(n.Value)
 		typeName = n.Value
 	}
-	g.setExn(b, code, typeName, msg)
+	g.setExn(b, code, typeName, msg, rs.Span())
 	if len(g.handlerStack) > 0 {
 		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
 	} else {
@@ -6188,6 +6233,10 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	prevRaise := g.funcRaiseExit
 	prevHandlers := g.handlerStack
 	g.handlerStack = nil
+	// The traceback frame names the function the raise is written in.
+	prevFnSrc := g.curFnSrc
+	g.curFnSrc = fd.Name
+	defer func() { g.curFnSrc = prevFnSrc }()
 	g.funcRaiseExit = g.fnName(fd) + ".raiseexit"
 	g.closures = map[string]*closureInfo{}
 	// A function body is its own variable-binding scope: slot/allocation state and

@@ -114,11 +114,15 @@ previously looked successful to a script:
 
 ```
 Traceback (most recent call last):
+  File "prog", line 3, in boom
 IndexError: index out of range
 ```
 
-The interpreter adds one `  File "prog", line N, in fn` frame per stack frame; the AOT
-report carries no line info without `--debug`. stdout stays clean, so
+The frame line names the file, the line of the raise, and the enclosing function
+(`<module>` at top level), and both backends agree on it: the interpreter prints one frame
+per stack level (so a raise inside a called function shows the call site too), while the
+compiled report shows the raise site's own frame — the call-stack frames need the line
+tables of L8.5 (roadmap Gap K.8). The last line is identical on both. stdout stays clean, so
 `prog 2>/dev/null | ...` sees only program output. With `--json` the eval path emits
 `{"error": ..., "traceback": ..., "exit": 1}` on stdout. Runtime errors are typed
 (`IndexError` / `KeyError` / `TypeError` / …), so `except IndexError:` catches them on

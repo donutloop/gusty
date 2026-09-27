@@ -584,8 +584,11 @@ for i in range(n):
   1
   ```
 
-  The interpreter adds a `File "prog", line N, in fn` frame per stack frame; the AOT
-  report has no line info unless built with `--debug` (Gap H.5).
+  Both backends agree on the frame line for the raise itself —
+  `  File "prog", line 3, in boom` — where `boom` is the enclosing function
+  (`<module>` at top level). The interpreter prints one such frame per stack level; the
+  compiled report shows the raise site's own frame until the call-stack line tables of
+  L8.5 land.
 - One deliberate divergence: an assignment whose *target kind* is known statically to be
   impossible (`s[0] = "z"` on a string, `s[0] = 1` on a set) is a compile-time diagnostic
   in the AOT backend (ADR 0166) and a catchable `TypeError` in the interpreter.

@@ -1074,3 +1074,39 @@ test, not more care.**
 - `python3` is installed here: `python3 prog.py` gives the oracle for free. The container
   program matched Python on every line except our `1`/`0` booleans, which is documented
   language behaviour, not a bug.
+
+## Cycle: Gap K.8 (part 1) — tracebacks name a line, and the parser is where it starts
+
+**What happened.** Adding the frame line to the compiled report exposed that **`raise`
+statements had no span at all**: the parser built `&RaiseStmt{Expr: ex}` and never filled
+`Src`, so the *interpreter's* traceback said `File "prog", line 0, in boom`. Nobody noticed
+because every try/except test caught its exception before printing one. A report whose line
+number is fabricated is worse than no report — it is trusted.
+
+**Also found: `strConst` did not escape `"`.** A frame contains quotes, the emitted LLVM
+literal ended early, and the verifier complained
+`constant expression type mismatch: got type '[7 x i8]' but expected '[31 x i8]'` — an error
+message that points nowhere near the cause. Any program string with a double quote had the
+same bug; the traceback was just the first string in this repo that needed one. Now the
+emitter escapes `\`, `"`, newline, tab, CR.
+
+**Decisions (ADR 0171).**
+- Statements carry the line they were written at, or the parser has lied. Every AST node
+  that can fail at runtime must answer "which line".
+- Raise sites store a **pre-rendered** frame string in a new `@exn_frame` global; `rt_die`
+  prints header / frame / exception line. No printf, no varargs in the raise path, and the
+  verifier checks the literal's length for me.
+- An unknown span prints **no** frame rather than `line 0`.
+- The compiled report shows the raise site's own frame; caller frames still need L8.5, and
+  Gap K.8 stays 🟨 PARTIAL rather than being closed on a technicality.
+
+**Process notes.**
+- My first version of the new integration test failed on *both* backends and told me more
+  than the fix did: the interpreter's frames were wrong too. When a test fails on the
+  reference path as well, the reference path is the bug — do not weaken the assertion.
+- I wrote a `FinalizeTracebackOf` test helper before checking that `EvalExpr` already calls
+  `ev.FinalizeTraceback(err)`. Read the entry point you are calling *before* writing
+  scaffolding around it; the helper is gone and the test is shorter.
+- `gofmt -l` flags `pkg/lang/parser.go` for pre-existing blank-line drift. I checked
+  `gofmt -d` to confirm my edit was clean instead of "fixing" unrelated formatting — that
+  check takes five seconds and keeps diffs reviewable.

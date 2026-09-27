@@ -261,3 +261,64 @@ func TestStaticallyImpossibleAssignmentsAreDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+// TestTracebackFramesNameTheRaiseSite (roadmap Gap K.8): the compiled report carries the
+// frame the interpreter's last frame carries — file, line and function — so "where did it
+// fail" has the same answer whichever backend ran the program. The interpreter prints one
+// frame per stack level; the AOT prints the raise site's own frame until the DWARF line
+// tables of L8.5 land.
+func TestTracebackFramesNameTheRaiseSite(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		// the frame line both backends must print for the raise site itself
+		wantFrame string
+	}{
+		{
+			"raise inside a function",
+			"def boom():\n    raise ValueError(\"boom\")\n\nboom()\n",
+			`  File "prog", line 2, in boom`,
+		},
+		{
+			"raise at module level",
+			"print(\"first\")\nraise ValueError(\"boom\")\n",
+			`  File "prog", line 2, in <module>`,
+		},
+		{
+			"machine-detected error in a function",
+			"def boom():\n    xs = [1]\n    xs[5] = 2\n\nboom()\n",
+			`  File "prog", line 3, in boom`,
+		},
+		{
+			"out-of-range pop names its line",
+			"xs = [1, 2, 3]\nys = xs.pop()\nprint(xs.pop(9))\n",
+			`  File "prog", line 3, in <module>`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ri := interpRun(t, tc.src)
+			if !strings.Contains(ri.stderr, tc.wantFrame) {
+				t.Errorf("interpreter stderr must contain the frame %q, got %q", tc.wantFrame, ri.stderr)
+			}
+			ra := aotRun(t, tc.src)
+			if !strings.Contains(ra.stderr, tc.wantFrame) {
+				t.Errorf("AOT stderr must contain the frame %q, got %q", tc.wantFrame, ra.stderr)
+			}
+			// The exception line is the last line on both, and identical.
+			lastI := lastLine(ri.stderr)
+			lastA := lastLine(ra.stderr)
+			if lastI != lastA {
+				t.Errorf("final report line differs: interpreter %q vs AOT %q", lastI, lastA)
+			}
+		})
+	}
+}
+
+func lastLine(s string) string {
+	t := strings.TrimRight(s, "\n")
+	if i := strings.LastIndex(t, "\n"); i >= 0 {
+		return t[i+1:]
+	}
+	return t
+}

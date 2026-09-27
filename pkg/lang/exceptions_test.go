@@ -258,3 +258,44 @@ func TestDictMembershipScansEveryKey(t *testing.T) {
 		t.Errorf("membership module must verify: %v %v", v.Errors, err)
 	}
 }
+
+// TestRaiseStatementCarriesItsLine: the parser used to build RaiseStmt without a span, so
+// every traceback said `File "prog", line 0` — a report that answers "where" with nothing,
+// on both backends.
+func TestRaiseStatementCarriesItsLine(t *testing.T) {
+	prog, err := Parse("print(1)\nraise ValueError(\"x\")\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var rs *RaiseStmt
+	for _, st := range prog.Stmts {
+		if r, ok := st.(*RaiseStmt); ok {
+			rs = r
+		}
+	}
+	if rs == nil {
+		t.Fatalf("no RaiseStmt parsed")
+	}
+	if rs.Span().Line != 2 {
+		t.Errorf("raise span = %+v, want line 2", rs.Span())
+	}
+	// and the interpreter reports that line, not line 0
+	_, err = evalCapture(t, "print(1)\nraise ValueError(\"x\")\n")
+	if err == nil {
+		t.Fatalf("the raise should have propagated")
+	}
+	ee, ok := err.(*EvalError)
+	if !ok {
+		t.Fatalf("want *EvalError, got %T", err)
+	}
+	if len(ee.Traceback) == 0 {
+		t.Fatalf("no traceback frames recorded")
+	}
+	tb := ee.RenderTraceback()
+	if !strings.Contains(tb, "line 2, in <module>") {
+		t.Errorf("traceback should name line 2, got %q", tb)
+	}
+	if strings.Contains(tb, "line 0") {
+		t.Errorf("a frame claims line 0: %q", tb)
+	}
+}

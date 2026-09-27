@@ -615,10 +615,20 @@ Each is a concrete, reproducible defect with the shape to fix it.
   dict's later keys. Covered by `integration/uncaught_exception_test.go` (reports, exit
   codes, clean stdout, catchability on both backends, statically-impossible assignments)
   plus new membership cases in `integration/dict_iteration_test.go`.
-- **Gap K.8 — AOT tracebacks have no source location** — ⏳ PLANNED.
-  The compiled report prints the exception line but no `File "prog", line N, in fn` frame,
-  so the two backends' reports differ whenever `--debug` is off. Fix by emitting DWARF
-  line tables (L8.5) and having the raise sites carry a source span in `@exn_msg`.
+- **Gap K.8 — tracebacks had no usable source location** — 🟨 PARTIAL (ADR 0171).
+  Two bugs, one of them predating the AOT report entirely:
+  - **the parser never gave `raise` a span**, so every traceback — interpreter included —
+    said `File "prog", line 0`. `RaiseStmt` now carries the `raise` keyword's position.
+  - the compiled report printed no frame at all. Raise sites now emit a pre-rendered
+    frame into a new `@exn_frame` global (`  File "prog", line 3, in boom`) and `rt_die`
+    prints it under the header, so the AOT's innermost frame matches the interpreter's.
+  Found on the way: **`strConst` did not escape `"`**, so a double quote in any program
+  string ended the LLVM literal early and the module failed to verify with a nonsense
+  array length ("got type '[7 x i8]' but expected '[31 x i8]'") — a traceback frame, which
+  contains quotes, was the first thing to trip it. Quotes are now `\22` (tabs/CR too).
+  Still open: the AOT report shows only the raise site's own frame, where the interpreter
+  prints one frame per stack level. Doing it properly needs the call-stack line tables of
+  L8.5 (or an explicit frame stack pushed at each call site).
 - **Gap K.7 — `--build` could fail with no stated reason** — ✅ DONE. The error branch
   printed the diagnostics *or* the failure line, never both, so a build that died in
   codegen while the program also carried warnings exited 1 showing only warnings; and the

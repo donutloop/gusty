@@ -238,13 +238,17 @@ func (p *parser) parseStmt() (Stmt, error) {
 		return p.parseWith()
 	}
 	if t.IsKeyword("raise") {
+		// Keep the `raise` keyword's position: a traceback frame is only useful if the
+		// statement carries the line it was written on. Without it both backends printed
+		// `File "prog", line 0`, which answers "where" with nothing.
+		sp := t.Span
 		p.next()
 		var ex Expr
 		if !p.atNewline() && !p.atEOF() {
 			ex, _ = p.parseExpr()
 		}
 		p.skipNewlines()
-		return &RaiseStmt{Expr: ex}, nil
+		return &RaiseStmt{Expr: ex, Src: sp}, nil
 	}
 	if t.IsKeyword("return") {
 		return p.parseReturn()
