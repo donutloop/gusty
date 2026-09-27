@@ -232,7 +232,7 @@ print(f(["a", "b"]))
 		t.Fatalf("expected a compile error for strings in a runtime container")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "strings inside runtime containers") {
+	if !strings.Contains(msg, "runtime container element") || !strings.Contains(msg, "AOT backend yet") {
 		t.Errorf("unexpected error text: %v", err)
 	}
 	if !strings.Contains(msg, "interpreter") {

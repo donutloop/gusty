@@ -231,7 +231,7 @@ func TestHeapContainerArgumentStringElementIsDiagnostic(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected an unsupported-container diagnostic")
 	}
-	if !strings.Contains(err.Error(), "strings inside runtime containers") {
+	if !strings.Contains(err.Error(), "runtime container element") || !strings.Contains(err.Error(), "AOT backend yet") {
 		t.Errorf("unexpected error: %v", err)
 	}
 	// ... and the message says where it does work.

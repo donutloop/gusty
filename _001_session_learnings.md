@@ -1271,3 +1271,35 @@ every registration path needs its clearing path (same lesson as containers-as-he
 - Interpreter void-return semantics lived in **three** duplicated call paths (`callFunc` plus two
   inline copies in `evalCall`). Fixing one and seeing the tests still fail was the signal. That
   duplication is a real defect: it is where the next semantic divergence will come from.
+
+## Cycle: Gap I.2 (interim) — ten ways to make valid code look like a compiler bug
+
+**What happened.** A probe table over "put a string in a container" showed **ten** shapes
+emitting IR that LLVM rejected (`rt_set_elem(i32 %h, i32 0, i32 @.str1)`), so the exit-code
+contract told users their two-line program was a *compiler bug* (exit 2). The existing guard
+(`heapElem` rejecting `*StrLit`/`*FString`) had three holes: it missed folded strings
+(`str(42)`), string variables, and — the actual path for `xs = ["a","b"]` — the
+materialise-assigned-literal site that called `value()` directly instead of `heapElem`.
+
+**Now:** one predicate (`irGen.rejectRuntimeString`: literal / folded string / string-bound
+variable) applied at every container-slot write, with `heapElem` as the choke point. All ten
+shapes fail as compile diagnostics (exit 1) naming the backend that works and the roadmap
+entry; int containers still compile and verify.
+
+**Lessons.**
+- **A guard at one boundary is not a guard at the concept boundary.** The container rule lived
+  in a type switch on two AST nodes while the operation ("write into a heap slot") had four
+  call sites. The fix is a predicate over *meaning* ("is this a string?") plus one choke point
+  per *operation*. When I harden a rule, I should enumerate the operations, not the syntax.
+- **Table-driven probes find the whole class.** Writing the ten-shape probe took two minutes
+  and immediately produced a list; my earlier single-case check would have shipped four of them.
+- **Diagnostics are user-visible contracts.** Two old messages ("dict literal keys must be
+  constant integers") were terse status lines; tests asserted their exact text, so improving
+  wording meant editing the assertions. Fine — but the assertion should check *properties*
+  (names the working backend, no verifier verdict leaked), which is what the new test does.
+- **Deferred the real fix deliberately, with the design written down.** An interned string
+  table (`rt_str_intern(i8*) -> i32`, `@str_tab`, per-container element kind, `HeapStr` param
+  kind) unlocks strings in lists/dicts/sets, Python-quoted reprs, and string function args
+  (Gap J.5) at once — but it touches the value model, so it is its own cycle. The roadmap entry
+  now contains that plan so the next cycle doesn't rediscover it. Shipping "honest refusal"
+  first is still a real improvement: exit 1 with instructions beats exit 2 blaming the compiler.

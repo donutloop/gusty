@@ -1586,7 +1586,7 @@ func dictLiteralKeys(dl *DictLit) ([]int64, error) {
 	for i, k := range dl.Keys {
 		il, ok := k.(*IntLit)
 		if !ok {
-			return nil, fmt.Errorf("dict literal keys must be constant integers")
+			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer keys only; the interpreter supports string and other keys (a compiled string needs the runtime string table, roadmap Gap I.2)")
 		}
 		keys[i] = il.Value
 	}
@@ -1600,7 +1600,7 @@ func dictLiteralVals(dl *DictLit) ([]int64, error) {
 	for i, v := range dl.Vals {
 		il, ok := v.(*IntLit)
 		if !ok {
-			return nil, fmt.Errorf("dict literal values must be constant integers")
+			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer values only; the interpreter supports string and other values (a compiled string needs the runtime string table, roadmap Gap I.2)")
 		}
 		vals[i] = il.Value
 	}
@@ -1674,6 +1674,39 @@ func constIntMemberVal(e Expr) (int64, bool) {
 // isStringExpr reports whether e is a string-producing expression. Literal
 // membership against a literal container must not be unrolled when the tested
 // value is a string (the comparison would be pointer-vs-int, not valid i32 IR).
+// runtimeStringErr is the ADR 0166 rule applied to strings in runtime containers. Strings
+// are compile-time constants in this backend (@.strN globals) while container slots hold i32
+// handles, so a string operand lowers to a global fed to an i32 parameter — LLVM rejects it
+// ("global variable reference must have pointer type") and the exit-code contract then calls
+// valid user code a compiler bug (exit 2). Refusing with a clear message is the honest
+// alternative; the interpreter supports strings in containers, and the plan for AOT is an
+// interned string table (roadmap Gap I.2).
+func runtimeStringErr(slot, op string) error {
+	return fmt.Errorf("codegen: cannot %s a string as a runtime %s in the AOT backend yet; the interpreter supports it — a compiled container slot holds an int/bool value, and strings need the runtime string table (roadmap Gap I.2)", op, slot)
+}
+
+// rejectRuntimeString reports whether e would put (or look up) a string in a heap container
+// slot. It covers every way codegen knows a value is a string: a literal/interpolated
+// literal, a folded string expression (str(x), s.upper(), concatenation), and a variable
+// bound to a string.
+func (g *irGen) rejectRuntimeString(e Expr, slot, op string) error {
+	if e == nil {
+		return nil
+	}
+	if isStringExpr(e) {
+		return runtimeStringErr(slot, op)
+	}
+	if _, ok := g.stringVal(e); ok {
+		return runtimeStringErr(slot, op)
+	}
+	if nm, ok := e.(*Name); ok && g.strVals != nil {
+		if _, isStr := g.strVals[nm.Value]; isStr {
+			return runtimeStringErr(slot, op)
+		}
+	}
+	return nil
+}
+
 func isStringExpr(e Expr) bool {
 	switch e.(type) {
 	case *StrLit, *FString:
@@ -2875,15 +2908,24 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	if err != nil {
 		return err
 	}
+	if err := g.rejectRuntimeString(ix.Idx, "dict key", "store"); err != nil {
+		return err
+	}
 	key, err := g.value(b, ix.Idx)
 	if err != nil {
 		return err
 	}
 	switch {
 	case g.runtimeDicts[nm.Value]:
+		if err := g.rejectRuntimeString(val, "dict value", "store"); err != nil {
+			return err
+		}
 		b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
 		return nil
 	case g.listVars[nm.Value]:
+		if err := g.rejectRuntimeString(val, "list element", "store"); err != nil {
+			return err
+		}
 		// Bounds are checked so an out-of-range index raises IndexError through the
 		// same exception path `raise` uses, instead of writing past the elements.
 		ln := g.newTmp()
@@ -4419,6 +4461,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if len(c.Args) != 1 {
 					return "", fmt.Errorf("codegen: %s() takes exactly 1 argument", attr.Name.Value)
 				}
+				if err := g.rejectRuntimeString(c.Args[0], "set element", "add"); err != nil {
+					return "", err
+				}
 				av, err := g.value(b, c.Args[0])
 				if err != nil {
 					return "", err
@@ -4502,6 +4547,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
+			}
+			if err := g.rejectRuntimeString(c.Args[0], "list element", "append"); err != nil {
+				return "", err
 			}
 			av, err := g.value(b, c.Args[0])
 			if err != nil {
@@ -6954,7 +7002,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 1)\n", hs))
 				for i, el := range lit.Elems {
-					ev, err := g.value(b, el)
+					// heapElem, not value(): an assigned container literal is still a
+					// runtime container, and a string element must be refused rather than
+					// emitted as `rt_set_elem(i32 %h, i32 0, i32 @.str1)` — a global in an
+					// i32 parameter, which LLVM rejects (ADR 0166, roadmap Gap I.2).
+					ev, err := g.heapElem(b, el)
 					if err != nil {
 						return err
 					}
@@ -6992,6 +7044,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 3)\n", hs))
 				for _, el := range sl.Elems {
+					if err := g.rejectRuntimeString(el, "set element", "add"); err != nil {
+						return err
+					}
 					ev, err := g.value(b, el)
 					if err != nil {
 						return err

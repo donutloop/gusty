@@ -567,9 +567,12 @@ func (g *irGen) heapArg(b *strings.Builder, e Expr) (handle string, ok bool, err
 // backend and the heap stores i32 slots, so a string element would produce IR
 // the verifier rejects — report it as the unsupported case it is instead.
 func (g *irGen) heapElem(b *strings.Builder, e Expr) (string, error) {
-	switch e.(type) {
-	case *StrLit, *FString:
-		return "", fmt.Errorf("codegen: strings inside runtime containers are not supported by the AOT backend yet (the interpreter supports them)")
+	// Every value that goes into a heap container slot passes here, so this is the
+	// choke point for the ADR 0166 rule: a string would be emitted as an @.strN global
+	// fed to an i32 parameter, which LLVM rejects — turning valid user code into what the
+	// exit-code contract calls a compiler bug (roadmap Gap I.2).
+	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
+		return "", err
 	}
 	return g.value(b, e)
 }

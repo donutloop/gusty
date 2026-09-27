@@ -215,15 +215,35 @@ diff
   (`rt_alloc`/`rt_set_elem`), module definitions allocate + root their slot, module code
   starts a fresh binding scope, and the parameter-kind fixed point merges in sorted order
   (determinism). Covered by `programs/folded_lists.gy` plus unit/integration cases.
-- **Gap I.2 — strings inside runtime containers (AOT)** — 🟥 FOUND
-  The heap stores i32 slots, so a `list[str]`/`dict[str, int]` element cannot
-  hold an `i8*` string global (`rt_set_elem(i32 %h, i32 1, i32 @.str1)`). The
-  compiler now *reports* this instead of emitting unverifiable IR:
-  `codegen: strings inside runtime containers are not supported by the AOT
-  backend yet (the interpreter supports them)`, surfaced as
-  `{"ok": false, "phase": "compile", ...}` under `--emit-llvm --json`.
-  Remaining work: a string heap kind (interned `i8*` table + a tag), after which
-  these shapes join the conformance matrix.
+- **Gap I.2 — strings inside runtime containers (AOT)** — 🟨 PARTIAL (diagnostics hardened).
+  The heap stores i32 slots, so a `list[str]`/`dict[str, int]` element cannot hold an `i8*`
+  string global (`rt_set_elem(i32 %h, i32 1, i32 @.str1)` — "global variable reference must
+  have pointer type"). Ten shapes still reached LLVM and were reported as a *compiler bug*
+  (exit 2) for perfectly ordinary code — `xs = ["a", "b"]` is a two-line program:
+  assigned string list literal, string list + `len`, `xs.append("s")`, `xs[0] = "s"`,
+  `{"a"}` set literal, `s.add("s")`, `d["k"] = 1`, `d[1] = "s"`, a folded `str(42)` element,
+  and a string-variable element. They all now fail the ADR 0166 way, before the verifier:
+  `codegen: cannot store a string as a runtime container element in the AOT backend yet; the
+  interpreter supports it — a compiled container slot holds an int/bool value, and strings
+  need the runtime string table (roadmap Gap I.2)`.
+  - `irGen.rejectRuntimeString` recognises a string three ways (literal/interpolated literal,
+    a folded string expression such as `str(x)` or `s.upper()`, and a variable bound to a
+    string), and `heapElem` is the single choke point every container slot write passes
+    through — plus the materialise-assigned-literal path, which called `value()` directly and
+    was the hole that let `xs = ["a", "b"]` emit the bad `rt_set_elem`.
+  - dict literal key/value refusals are now actionable too (they used to read
+    `dict literal keys must be constant integers`).
+  - covered by `TestStringInContainerIsADiagnosticNotAnInvalidModule` (10 shapes, asserts the
+    diagnostic names the working backend and never leaks a verifier verdict) and
+    `TestIntContainersStillBuild` (the guard must not become a blanket refusal).
+  Remaining work — the design, so the next cycle does not have to rediscover it: an **interned
+  string table** in the runtime. `rt_str_intern(i8*) -> i32` dedupes by `strcmp` into
+  `@str_tab`, `rt_str_ptr(i32) -> i8*` reads it back; container slots then hold the i32 index.
+  Containers need an element kind (the existing per-variable `listVars`/`runtimeDicts`/
+  `runtimeSets` maps gain a "elements are interned strings" flag, and `heapargs` param kinds a
+  `HeapStr`), which gives: printing (`rt_print_list_str` renders `'a'`, matching Python's repr
+  — that also closes the unquoted-string half of Gap L.2), indexing, iteration, membership, and
+  string parameters to user functions (Gap J.5) by passing the interned index.
   Note: `Callable` parameters called through the parameter (`def apply(f, x):
   return f(x)`) are likewise unsupported in AOT (`codegen: unsupported call "f"`)
   — the L6.6 Callable surface is therefore checker-only for now.
