@@ -1353,3 +1353,27 @@ compiles, runs, and prints `['a', 'b']` on both backends.
 
 Still refused, on purpose: an element whose string comes from a `str`-typed *parameter* has no
 compile-time text to intern, and reports the ADR 0166 diagnostic naming the interpreter.
+
+## The most obvious invocation was a silent no-op (`gustyc prog.gy`)
+
+While wiring up string containers I typed `gustyc prog.gy` out of habit and got the usage
+banner with exit 0 — no compile, no run, no error. The usage line had always read
+`gustyc [flags] [<src>]` and `docs/operations.md` called `--file` "alias for a positional
+source", but no branch in `run()` read a positional argument any more.
+
+- **Fix:** a single positional naming an existing file becomes `--file` (identical behaviour,
+  `--json` output and exit codes included); anything else is evaluated as source text, like
+  `--eval`; and a name ending in `.gy` that does not exist is a usage error (exit 4) saying
+  `no such file`.
+- **Why the third rule:** without it, `gustyc prog.gy` from the wrong directory evaluated the
+  *text* `prog.gy` and failed with a runtime `undefined name prog` — exit 3 blaming the user's
+  program for a shell mistype. A missing file is a CLI problem, and the exit-code table says
+  usage problems are 4.
+- **The lesson about advertised interfaces:** everything in this repo is tested — 39
+  conformance programs, exit-code contracts, JSON schemas — and yet the single most natural
+  invocation was broken, because every CLI test passed a flag first (`--file`, `--eval`,
+  `--version`) and none passed a bare path. Tests written as a list of flags cover the flags,
+  not the shape of the command line. The new tests run `gustyc prog.gy`, `prog.gy --json`, and
+  a mistyped path, i.e. the way people actually type.
+- **Parity check as a test:** the fix asserts the positional and its documented alias `--file`
+  produce byte-identical output and the same exit code, so the two can't drift again.

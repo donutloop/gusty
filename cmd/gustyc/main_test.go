@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -673,5 +674,111 @@ func TestCLIBuildCarriesVerifierVerdict(t *testing.T) {
 	}
 	if res2.Verification != nil {
 		t.Errorf("--no-verify must skip the stage entirely: %s", out2)
+	}
+}
+
+var combinedBinOnce sync.Once
+var combinedBinPath string
+var combinedBinErr error
+
+func combinedBin(t *testing.T) string {
+	t.Helper()
+	combinedBinOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "gustyc-combined")
+		if err != nil {
+			combinedBinErr = err
+			return
+		}
+		bin := filepath.Join(dir, "gustyc")
+		cmd := exec.Command("go", "build", "-tags=llvm20", "-o", bin, "./cmd/gustyc")
+		cmd.Dir = "../.." // the package directory is not the module root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			combinedBinErr = fmt.Errorf("build CLI: %v: %s", err, out)
+			return
+		}
+		combinedBinPath = bin
+	})
+	if combinedBinErr != nil {
+		t.Fatal(combinedBinErr)
+	}
+	return combinedBinPath
+}
+
+// cliCombined runs the CLI and returns stdout+stderr together with the exit code.
+func cliCombined(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command(combinedBin(t), args...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	return out.String(), code
+}
+
+// The usage line has always advertised `gustyc [flags] [<src>]` and --file is documented as
+// its alias, but a positional argument reached no branch at all: the CLI printed the usage
+// text and exited 0 without compiling anything.
+func TestCLIPositionalSourcePathRuns(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p1.gy")
+	if err := os.WriteFile(src, []byte("print(21 * 2)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code := cliCombined(t, src)
+	if code != 0 {
+		t.Fatalf("positional source exit = %d, want 0 (output %q)", code, out)
+	}
+	if !strings.Contains(out, "42") {
+		t.Errorf("positional source did not run the program: %q", out)
+	}
+	// and it agrees with its documented alias
+	outFile, codeFile := cliCombined(t, "--file", src)
+	if codeFile != code || outFile != out {
+		t.Errorf("positional and --file differ: %q/%d vs %q/%d", out, code, outFile, codeFile)
+	}
+}
+
+func TestCLIPositionalSourceWithTrailingFlags(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p2.gy")
+	if err := os.WriteFile(src, []byte("x = 7\nprint(x)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// flags after the program are the agent habit that flag.Parse used to swallow
+	out, code := cliCombined(t, src, "--json")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (output %q)", code, out)
+	}
+	if !strings.Contains(out, "result") {
+		t.Errorf("--json after a positional produced no JSON: %q", out)
+	}
+}
+
+// A mistyped path must not be read as a program: `gustyc prog.gy` in the wrong directory used
+// to fail with a *runtime* "undefined name prog", blaming the user's code for a shell mistake.
+func TestCLIMissingSourceFileIsAUsageError(t *testing.T) {
+	out, code := cliCombined(t, filepath.Join(t.TempDir(), "absent.gy"))
+	if code != 4 {
+		t.Errorf("missing .gy path exit = %d, want 4 (output %q)", code, out)
+	}
+	if !strings.Contains(out, "no such file") {
+		t.Errorf("missing file should say so: %q", out)
+	}
+}
+
+// A positional that is not a path at all is source text, the way `--eval` is.
+func TestCLIPositionalSourceTextEvaluates(t *testing.T) {
+	out, code := cliCombined(t, "print(6 * 7)")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (output %q)", code, out)
+	}
+	if !strings.Contains(out, "42") {
+		t.Errorf("source text did not evaluate: %q", out)
 	}
 }

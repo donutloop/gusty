@@ -177,6 +177,25 @@ func run() int {
 		return exitOK
 	}
 
+	// `gustyc prog.gy` is the most obvious way to run this compiler, and the usage line has
+	// always advertised `[<src>]` (with --file documented as its alias) — but a positional
+	// argument reached no branch at all and fell through to the usage text, exiting 0 without
+	// compiling anything. A positional naming a file on disk is exactly --file; anything else
+	// is source text, like --eval.
+	if fs.NArg() == 1 && *file == "" && *emitLLVMF == "" && *buildOut == "" {
+		if st, statErr := os.Stat(fs.Arg(0)); statErr == nil && !st.IsDir() {
+			*file = fs.Arg(0)
+		} else if strings.HasSuffix(fs.Arg(0), ".gy") {
+			// A .gy name that does not exist is a mistyped path, not a program. Reading it
+			// as source produced "undefined name prog" for `gustyc prog.gy` in the wrong
+			// directory — a runtime error blaming the user's code for a shell mistake.
+			fmt.Fprintf(os.Stderr, "gustyc: no such file: %s\n", fs.Arg(0))
+			return exitUsage
+		} else if *evalSrc == "" && !*repl && !*jit {
+			*evalSrc = fs.Arg(0)
+		}
+	}
+
 	if *buildOut != "" {
 		buildFiles := fs.Args()
 		if len(buildFiles) == 0 {

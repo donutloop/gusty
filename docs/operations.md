@@ -151,6 +151,21 @@ Compile/link errors return diagnostics and exit code 1; missing sources or no
 positional files are a usage error (exit 4). A semantic error in any source
 file aborts the build before any toolchain step runs.
 
+### A bare program: `gustyc prog.gy`
+
+```
+gustyc prog.gy            # same as --file prog.gy: compile and run it
+gustyc "print(6 * 7)"     # not a path: evaluated as source, like --eval
+gustyc prog.gy --json     # flags may follow the program
+```
+
+A single positional argument is the source to run — a file that exists is compiled and
+executed (identical to `--file`, including `--json` output and exit codes), and anything else
+is treated as source text. A name ending in `.gy` that does **not** exist is a usage error
+(exit `4`) saying `no such file`, rather than being compiled as a program and failing with a
+runtime `undefined name prog` — a shell mistype should not be reported as a bug in the user's
+code.
+
 **Runtime failures (both backends).** An exception that escapes the program is reported on
 **stderr** and exits non-zero — never exit 0 with silence, which is how a trapped program
 previously looked successful to a script:
