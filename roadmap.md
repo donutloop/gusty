@@ -629,10 +629,31 @@ Each is a concrete, reproducible defect with the shape to fix it.
   diagnostic an agent can match (documented in `docs/operations.md` § Codegen
   capability messages) instead of IR that only the L8.2 verifier would notice. Covered
   by `pkg/lang/string_args_test.go` + `integration/string_args_test.go`.
-  Still open: the real fix, which is the same string representation Gap I.2 needs —
-  string-typed parameters (annotation/defaults/call sites, like the container-kind
-  inference in `heapargs.go`), an `i8*` slot in the callee, and runtime helpers for
-  print/strlen/compare, with the unsupported uses reported as diagnostics.
+  Still open: the real fix, now unblocked by Gap I.2 — the interned string table exists
+  (`rt_str_intern2` / `rt_str_ptr` / `rt_str_repr_ptr`), so a string parameter only needs the
+  call site to pass the interned index and the callee to know the parameter is a string
+  (`paramDecls` already carries `str` annotations, the same channel the container-kind
+  inference uses). With that: `print(s)`, `len(s)`, `s == "x"`, storing it in a container and
+  passing it on all work, while concatenation and string methods need buffer allocation and
+  stay actionable refusals.
+
+## Gap M — CLI shapes the tests never typed (found 2026-07-29)
+
+- **Gap M.1 — `gustyc prog.gy` was a silent no-op** — ✅ DONE.
+  The usage line advertises `gustyc [flags] [<src>]` and `docs/operations.md` called `--file`
+  "alias for a positional source", but no branch in `run()` read a positional argument: the
+  command printed the usage banner and exited **0** without compiling anything. Every CLI test
+  passed a flag first (`--file`, `--eval`, `--version`); none passed a bare path, so the single
+  most natural invocation was untested. Now a positional naming an existing file is `--file`
+  (asserted byte-identical to its documented alias, `--json` envelope and exit codes included),
+  anything else is evaluated as source text like `--eval`, and a `.gy` name that does not exist
+  is a usage error (exit 4) saying `no such file` — reading it as a program had turned a
+  mistyped path into a runtime `undefined name prog`, blaming the user's code for a shell
+  mistake. Covered by `TestCLIPositionalSourcePathRuns`,
+  `TestCLIPositionalSourceWithTrailingFlags`, `TestCLIPositionalSourceTextEvaluates`,
+  `TestCLIMissingSourceFileIsAUsageError`.
+  - **Standing rule for future cycles:** the CLI is tested by *shapes of command lines*, not
+    only by flags — bare path, path + trailing flags, missing path, and stdin.
 
 ## Gap K — truthiness (found writing the L9.6 corpus, 2026-09-27)
 
