@@ -3127,6 +3127,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if off, ok := g.envCaptures[n.Value]; ok && g.envMode {
 			return g.emitEnvLoad(b, g.envParam, off), nil
 		}
+		// An unbound name would emit a load from a slot that was never allocated, and
+		// LLVM's module verifier would reject it — which the exit-code contract then
+		// reports as a *compiler bug* for what is an ordinary typo (roadmap Gap K.10).
+		// The checker catches this today; this is the safety net that keeps the next
+		// checker hole from surfacing as "input module is broken" (ADR 0166).
+		if !g.nameIsBound(n.Value) {
+			return "", fmt.Errorf("codegen: undefined name %q (no binding for it; assign it before use) — the interpreter reports the same error", n.Value)
+		}
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
 		if g.unionVars[n.Value] {
 			ui := fmt.Sprintf("%%_%s.ui%d", n.Value, g.ldN)
@@ -5206,12 +5214,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// write one; `list()`/`dict()` are the matching spellings (roadmap Gap K.3).
 		// Lowering to the corresponding empty literal keeps one allocation path.
 		if len(c.Args) > 1 {
-			return "", fmt.Errorf("codegen: %s() takes at most 1 argument", c.Fn)
+			return "", fmt.Errorf("codegen: %s() takes at most 1 argument", calleeName(c))
 		}
 		if len(c.Args) == 1 {
 			// Copying another container is a loop over its elements; the interpreter
 			// supports it, so say which backend does rather than miscompile (ADR 0166).
-			return "", fmt.Errorf("codegen: %s(<container>) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with %s() and add elements", c.Fn, c.Fn)
+			return "", fmt.Errorf("codegen: %s(<container>) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with %s() and add elements", calleeName(c), calleeName(c))
 		}
 		// Allocate a fresh heap container. Lowering to an empty literal instead would
 		// hand back a compile-time global (@.set1), and `s = set()` would then store that
@@ -5975,6 +5983,83 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 	} else {
 		b.WriteString("  store i8* null, i8** @exn_frame\n")
 	}
+}
+
+// calleeName renders a call's callee as the source text the user wrote, so diagnostics
+// name `list(...)` rather than dumping the AST node (`&{list {2 7} fn() -> list[any]}`).
+func calleeName(c *Call) string {
+	if n, ok := c.Fn.(*Name); ok {
+		return n.Value
+	}
+	return "<expression>"
+}
+
+// nameIsBound reports whether nm names something codegen has actually allocated or
+// predeclared, so a reference to it can be lowered. Everything here is a name that can
+// legally appear as a value without a visible alloca: parameters, captured env slots,
+// container handles, folded constants, module globals, classes, and predeclared names.
+func (g *irGen) nameIsBound(nm string) bool {
+	if g.allocd[nm] || g.funcs[nm] {
+		return true
+	}
+	if _, ok := g.params[nm]; ok {
+		return true
+	}
+	if _, ok := g.funcBind[nm]; ok {
+		return true
+	}
+	if _, ok := g.externs[nm]; ok {
+		return true
+	}
+	if g.listVars[nm] || g.runtimeDicts[nm] || g.runtimeSets[nm] {
+		return true
+	}
+	if g.strVals != nil {
+		if _, ok := g.strVals[nm]; ok {
+			return true
+		}
+	}
+	if g.floatVars != nil && g.floatVars[nm] {
+		return true
+	}
+	if g.unionVars[nm] || g.classIDs[nm] != 0 || g.classInfos[nm] != nil {
+		return true
+	}
+	if _, ok := g.constBindings[nm]; ok {
+		return true
+	}
+	if g.envCaptures != nil {
+		if _, ok := g.envCaptures[nm]; ok {
+			return true
+		}
+	}
+	if g.curModGlobals != nil {
+		if _, ok := g.curModGlobals[nm]; ok {
+			return true
+		}
+	}
+	if g.curModParams != nil {
+		if _, ok := g.curModParams[nm]; ok {
+			return true
+		}
+	}
+	if g.imports != nil {
+		// `import mod` binds `mod` as a value-ish name (mod.var / mod.fn()).
+		for mod := range g.imports.Globals {
+			if mod == nm {
+				return true
+			}
+		}
+		for mod := range g.imports.Funcs {
+			if mod == nm {
+				return true
+			}
+		}
+	}
+	if isExnClass(nm) || isPredeclaredName(nm) {
+		return true
+	}
+	return false
 }
 
 // raiseFrame renders one traceback frame the way the interpreter does, e.g.
@@ -7420,6 +7505,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if n.As != nil {
 			fmt.Fprintf(b, "%%_%s = alloca i32\n", n.As.Value)
 			fmt.Fprintf(b, "  store i32 %s, i32* %%_%s\n", eh, n.As.Value)
+			// Record the slot like every other binding does: the unbound-name guard
+			// (nameIsBound) consults allocd, and `with M() as m: … m.n` was rejected as
+			// "undefined name m" because this path allocated without registering.
+			g.allocd[n.As.Value] = true
 			// Record the `as` binding's class so instance field access (m.n) works.
 			// `__enter__` returns self, so the binding is an instance of the manager's class.
 			cls := ""

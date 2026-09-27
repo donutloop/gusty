@@ -106,6 +106,15 @@ func Analyze(prog *Program) []Diagnostic {
 	an.scope.define("set", TFunc(nil, TSet(TDyn())))
 	an.scope.define("list", TFunc(nil, TList(TDyn())))
 	an.scope.define("dict", TFunc(nil, TDict(TDyn(), TDyn())))
+	// Every built-in call name must be predeclared, or `print(sum(xs))` is rejected as an
+	// undefined name even though both backends implement `sum`. The names come from one
+	// table (pkg/lang/predeclared.go) shared with the codegen guard; names the checker
+	// already gave a precise type above keep it.
+	for _, nm := range predeclaredCallables() {
+		if an.scope.lookup(nm) == nil {
+			an.scope.define(nm, TFunc(nil, TDyn()))
+		}
+	}
 	for _, st := range prog.Stmts {
 		an.analyzeStmt(st)
 	}
@@ -894,12 +903,25 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			return an.inferUserCall(fd, n)
 		}
 		switch name.Value {
-		case "range":
-			return TIter(TInt())
-		case "print":
-			return TVoid()
-		case "len":
-			return TInt()
+		case "range", "print", "len":
+			// Builtins must analyse their arguments like any other call. `print` used to
+			// return straight away, so `print(undefined_thing)` at module level passed the
+			// checker and codegen emitted a load from a slot that does not exist — LLVM
+			// then rejected the module, and the exit-code contract (correctly) called that
+			// a compiler bug for what was an ordinary typo (roadmap Gap K.10). A name that
+			// is not bound must be reported here, in the front end, with a span.
+			for _, a := range n.Args {
+				an.inferArg(a)
+			}
+			// (inferArg unpacks keyword arguments such as print's sep= / end=)
+			switch name.Value {
+			case "range":
+				return TIter(TInt())
+			case "print":
+				return TVoid()
+			default:
+				return TInt()
+			}
 		case "super":
 			return TDyn()
 		case "float", "round", "int", "str", "chr", "ord":

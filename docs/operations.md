@@ -65,6 +65,13 @@ non-zero — earlier versions returned no result at all for codegen and `llc` fa
 the diagnostics were unreachable for scripts while being printed for humans (roadmap Gap
 K.7). Never scrape stderr for the reason: read `verification`/`diagnostics` from the JSON.
 
+**A source typo is a compile error, never a verifier failure.** `print(undefined_thing)`
+reports `error at 1:7: undefined name "undefined_thing"` and exits `1`; it must not reach LLVM
+as a dangling slot, which would exit `2` and blame the compiler (roadmap Gap K.10). Built-in
+names come from one table (`pkg/lang/predeclared.go`) shared by the checker, the codegen
+unbound-name guard and LSP completion, so a real built-in (`sum`, `enumerate`, `zip`, …) is
+never "undefined" and a name that is not bound is never lowered.
+
 The produced binary is a real native executable: `./prog` runs the program
 (its `print` output goes to stdout).
 

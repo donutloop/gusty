@@ -521,7 +521,26 @@ Each is a concrete, reproducible defect with the shape to fix it.
     instead of printing nothing and leaving the agent to scrape stderr prose.
   - pinned by `TestCLIExitCodeContract` (drives the real binary through every row),
     `TestBuildExitCodeClassifiesVerifierRejection` and `TestExitCodesAreDistinctAndDocumented`.
-- **Gap K.10 — `print(<undefined name>)` reaches LLVM** — 🟥 FOUND.
+- **Gap K.10 — `print(<undefined name>)` reached LLVM** — ✅ DONE.
+  `print(undefined_thing)` at module level passed the checker (its arguments were not
+  analysed), codegen emitted a load from the non-existent slot `%_undefined_thing`, and
+  LLVM's verifier rejected the module — so the exit-code contract reported an ordinary typo
+  as a *compiler bug* (exit 2). Fixed at three levels:
+  - the checker analyses the arguments of `print` / `len` / `range` (including `sep=`/`end=`),
+    so `error at 1:7: undefined name "undefined_thing"` is a front-end error and exit **1**;
+  - **one** built-in name table (`pkg/lang/predeclared.go`) is now predeclared by the
+    checker, consulted by the codegen guard and used for LSP completion — `sum`, `enumerate`,
+    `zip`, `round` and friends had worked in both backends while being unknown to the
+    checker, which is why `print(sum(xs))` failed to compile;
+  - codegen refuses a name it has no binding for with an actionable diagnostic instead of a
+    dangling load (ADR 0166). The guard immediately found three bindings that allocated a
+    slot without registering it (`with … as m:` among them).
+  `type` is a reserved word, so `type(x)` is not a call here; it is gone from the built-in
+  table and from LSP completions, which used to suggest source that would not parse.
+  Tests: `TestUndefinedNameInBuiltinCallIsAFrontEndError`,
+  `TestUndefinedNameBuildIsADiagnosticNotAnInvalidModule`,
+  `TestBuiltinsArePredeclaredInTheChecker`, `TestPredeclaredTableCoversTheLSPList`,
+  `TestWithAsTargetIsBound`, `TestCLIBuildTypoIsACompileErrorNotACompilerBug`.
   `print(undefined_thing)` at module level passes the checker (its arguments are not
   analysed), codegen emits a reference to the non-existent slot `%_undefined_thing`, and
   LLVM's verifier rejects the module — so the user is told (correctly, by the contract)

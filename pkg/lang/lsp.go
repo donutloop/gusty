@@ -728,7 +728,7 @@ func hoverAt(doc *Document, p lspPosition) *hoverResult {
 var builtins = []string{
 	"print", "range", "min", "max", "abs", "len", "int", "float", "str",
 	"list", "dict", "set", "sorted", "reversed", "ord", "chr", "input",
-	"isinstance", "type", "super", "Exception", "True", "False", "None",
+	"isinstance", "super", "Exception", "True", "False", "None",
 }
 
 func kindOf(s lspSymbol) int {

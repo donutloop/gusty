@@ -468,6 +468,35 @@ func TestCLIExitCodeContract(t *testing.T) {
 	}
 }
 
+// TestCLIBuildTypoIsACompileErrorNotACompilerBug is the exit-code consequence of
+// Gap K.10: `print(undefined_thing)` used to slip past the checker, reach LLVM as a load
+// from a slot that does not exist, and be reported as "LLVM rejected the module we emitted"
+// (exit 2, a compiler bug) for what is an ordinary typo.
+func TestCLIBuildTypoIsACompileErrorNotACompilerBug(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+	src := writeSrc(t, dir, "typo.gy", "total = 0\nprint(undefined_thing)\n")
+	cmd := exec.Command(bin, "--build="+filepath.Join(dir, "out"), src)
+	out, err := cmd.CombinedOutput()
+	code := 1
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run: %v\n%s", err, out)
+	}
+	if code != 1 {
+		t.Errorf("a typo must exit 1 (compile error), got %d\n%s", code, out)
+	}
+	text := string(out)
+	if !strings.Contains(text, "undefined name") || !strings.Contains(text, "undefined_thing") {
+		t.Errorf("the report should name the undefined identifier, got:\n%s", text)
+	}
+	if strings.Contains(text, "module is broken") || strings.Contains(text, "verifier") {
+		t.Errorf("a source typo must not be reported as an LLVM/verifier failure:\n%s", text)
+	}
+}
+
 // TestCLIBuildDuplicateFunction verifies that two files defining the same
 // top-level function produce a build error (duplicate symbol) rather than a
 // silently broken binary.

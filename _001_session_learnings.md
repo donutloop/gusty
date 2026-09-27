@@ -1150,3 +1150,42 @@ contract test I also got one expectation wrong (`--eval` of an undefined name is
 failure, since the interactive path doesn't run the checker) — the fix was to test the
 checker-gating modes (`--check`, `--build`) for exit 1 and keep exit 3 for `--eval`, not to
 make the numbers agree artificially.
+
+## Cycle: Gap K.10 — a typo is a source error, so it must die in the front end
+
+**What happened.** Fixing the exit-code contract made a lying bug visible: `print(undefined_thing)`
+passed the checker (print's arguments were never analysed), codegen emitted
+`load i32, i32* %_undefined_thing` for a slot that did not exist, LLVM rejected the module —
+and the contract correctly reported the user's typo as a *compiler bug* (exit 2).
+
+**Fixed at three levels, not one.** The checker now analyses builtin-call arguments; codegen
+refuses an unbound name with an actionable message (ADR 0166); and the built-in names moved to
+**one table** (`pkg/lang/predeclared.go`) that the checker predeclares, the codegen guard
+consults and the LSP offers in completions.
+
+**The most interesting finding.** `print(sum(xs))` did not compile — while `sum` worked in
+*both* backends. The checker had never predeclared it, so it was "undefined name" at analysis
+time. Three lists existed independently: the checker's predeclarations, the LSP's `builtins`,
+and codegen's dispatch. Drift between them was invisible to the parity harness (both backends
+agreed — they both failed). A single table plus
+`TestPredeclaredTableCoversTheLSPList`/`TestBuiltinsArePredeclaredInTheChecker` turns that
+class of drift into a test failure.
+
+**The guard found real bugs, not false alarms.** Adding `nameIsBound` surfaced bindings that
+allocated a slot without registering it — `with … as m:` was rejected as "undefined name m".
+That is the guard doing its job: it encodes the invariant *"every name you can read has a slot
+you allocated"*, and code that violated it had only worked by luck.
+
+**Two smaller lessons.**
+- **Reserved words are not builtins.** `type` sat in the LSP completion list although
+  `type(x)` never parses — the editor suggested source that would not compile. Drop it from
+  both lists; assert parseability of every predeclared callable in the test so this stays true.
+- **Diagnostics can leak the AST.** The container-copy refusal printed
+  `&{list {%!s(int=2) %!s(int=7)} fn() -> list[any]}(<container>) …` because it formatted a
+  `*Name` node with `%s`. `calleeName(c)` now renders what the user wrote. Nobody checks the
+  shape of an error message until a user pastes one; render names, not nodes.
+
+**Process note.** My probe loop was broken twice before I found it: `--check` is *stdin*-only
+(`gustyc --check file.gy` reads stdin, ignores the path, and exits 4), so every "parse error"
+in the first sweep was an artefact of feeding it nothing. When a probe reports the same failure
+for all 40 cases, distrust the probe first.

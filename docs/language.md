@@ -801,6 +801,23 @@ the annotation surface.
 
 ## Builtins
 
+Names are resolved by the checker before codegen runs. Every built-in call name comes from
+one table (`pkg/lang/predeclared.go`), which the checker predeclares, the language server
+offers in completions, and the AOT codegen consults before lowering a bare name — so a real
+built-in is never reported as "undefined", and a name that is *not* bound is a front-end
+error with a span rather than an invalid LLVM module:
+
+    print(undefined_thing)
+    → error at 1:7: undefined name "undefined_thing"        (exit 1, both backends)
+
+If a built-in exists in the language but cannot be lowered yet, codegen refuses with an
+actionable message naming the backend that does support it (ADR 0166), e.g.
+`list(<container>) copies are not supported in the AOT backend yet; the interpreter supports
+them — build the container with list() and add elements`.
+
+`type` is a reserved word (annotations), so `type(x)` is not a call in this grammar and is
+not offered in completions.
+
 - `print(x, ...)` — writes each argument to stdout on its own line via
   `printf`. Multi-argument `print` mirrors the interpreter: one `printf` per
   argument. String arguments (literals, folded string calls like `str(7)`,
