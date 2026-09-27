@@ -917,6 +917,62 @@ is truly full (more live collections than slots), `rt_alloc` returns a -1
 sentinel instead of writing out of bounds, so pathological programs can't
 corrupt memory. See ADR 0009.
 
+## Containers across function boundaries (AOT)
+
+A list, dict or set is a *reference*: passing one to a function must give the
+callee the same live object the interpreter would (see ADR 0161). Both backends
+agree, so all of these print the same thing under `--eval` and `--file`:
+
+```python
+def total(xs) -> int:
+    n = 0
+    for x in xs:          # iterates the handle, not a range
+        n = n + x
+    return n
+
+def head(xs) -> int:
+    return xs[0]
+
+def size(s: set[int]) -> int:
+    return len(s)
+
+nums: list[int] = [1, 2, 3]
+print(total(nums))                     # variable argument
+print(total([4, 5, 6]))                # literal argument
+print(total(xs=[1]))                   # keyword argument
+print(head(nums))                      # indexing a parameter
+print(size({1, 2, 3}))                 # set parameter
+print(total([x * 2 for x in [1, 2]]))  # comprehension argument
+
+def with_default(xs=[7, 8]) -> int:
+    return len(xs)
+
+print(with_default())                  # default argument
+```
+
+How it works in the AOT backend:
+
+- **At the call site** a container *literal* is materialised into the runtime
+  heap (`rt_alloc` + `rt_set_elem` / `rt_set_add` / `rt_dict_put`) and passed by
+  handle. A literal that the compiler constant-folded into a global is copied
+  into the heap instead of being passed as a global.
+- **In the callee** a parameter is typed as a container by a whole-module
+  inference: its annotation (`list[T]`, `set[T]`, `dict[K, V]`, `Sequence[T]`,
+  `Iterator[T]`), its default value, or *any* call site that hands it a
+  container. Knowledge propagates along call chains, so a function that merely
+  forwards its parameter (`def doubled(xs): return total(xs)`) is enough to make
+  `total`'s parameter a container too. A container parameter is rooted for the
+  GC like any local.
+- Without that inference the old codegen silently treated the handle as an
+  integer and compiled `for x in xs` into a `0..handle` range loop — the same
+  program, different answers per backend.
+- **Limitation:** heap slots are `i32`, so a *string* cannot yet be an element
+  of a runtime container in AOT (`list[str]`, `dict[str, int]`). The compiler
+  reports it — `strings inside runtime containers are not supported by the AOT
+  backend yet (the interpreter supports them)` — rather than emitting IR that
+  `llc` rejects. Roadmap item Gap I.2; strings in inline-folded containers and
+  in the interpreter are unaffected.
+
 ## `with` context managers
 
 - `with expr as name:` binds `name` to `expr.__enter__()` for the body; `with expr:`

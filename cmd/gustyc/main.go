@@ -175,7 +175,7 @@ func run() int {
 		return runCheck("", fs.Args()[1:], *jsonOut)
 	}
 	if *emitLLVMF != "" {
-		return emitLLVM(*emitLLVMF, *target, *optLevel)
+		return emitLLVM(*emitLLVMF, *target, *optLevel, *jsonOut)
 	}
 	if *emitSourceMapF != "" {
 		return emitSourceMap(*emitSourceMapF)
@@ -292,10 +292,10 @@ func atoi(s string) int {
 	return n
 }
 
-func emitLLVM(src, target, opt string) int {
+func emitLLVM(src, target, opt string, jsonOut bool) int {
 	res, err := lang.Compile(src)
 	if err != nil {
-		return reportParseErr(err)
+		return reportCompileErr(err, jsonOut)
 	}
 	if target != "" {
 		fmt.Printf("; target = %s\n", target)
@@ -323,6 +323,19 @@ func emitAST(src string) int {
 	}
 	fmt.Println(res.ASTJSON)
 	return exitOK
+}
+
+// reportCompileErr reports a compilation failure. Humans get a one-line message
+// on stderr; with --json an agent gets the same failure as a structured object
+// on stdout — same shape as the other machine-readable failure modes:
+//
+//	{"ok": false, "phase": "compile", "error": "...", "exit": N}
+func reportCompileErr(err error, jsonOut bool) int {
+	if jsonOut {
+		fmt.Printf(`{"ok": false, "phase": "compile", "error": %q, "exit": %d}`+"\n", err.Error(), exitUsage)
+		return exitUsage
+	}
+	return reportParseErr(err)
 }
 
 func reportParseErr(err error) int {

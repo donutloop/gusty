@@ -129,6 +129,13 @@ falls back to dynamic dispatch.
   stable `code` (`type.variance.invariant`, `type.variance.contravariant`, …) plus
   an actionable `suggestion`; the whole model is machine-readable via
   `gustyc --variance`.
+- **Containers are references everywhere** — pass a `list`, `dict` or `set` to a
+  function as a literal, variable, keyword argument, default, comprehension or
+  generator result and the callee sees the same live object on both backends:
+  the AOT backend materialises container literals into the runtime heap and
+  infers each parameter's container kind from annotations, defaults and call
+  sites (forwarding included), so `for x in xs`, `len(xs)`, `xs[i]` and
+  `xs.append(v)` work on parameters exactly as on variables.
 
 ## Modern front-end (lexer & parser)
 

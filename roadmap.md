@@ -183,21 +183,37 @@ case (and an ADR where the decision is non-obvious).
   stored value unambiguous) and skips escaping objects, appends, and reads of
   unwritten indices.
 
-- **Gap I — AOT heap-handle lowering for list arguments + string elements** — 🟥
-  FOUND (discovered while writing the L6.6 parity program; verified pre-existing
-  at HEAD, so it was NOT introduced by the variance work). Two shapes emit IR
-  that `llc-20` rejects, so they are interpreter-only today:
-  - passing a list literal to a function parameter:
-    `def total(xs): ...` then `total([1, 2, 3])` emits
-    `call i32 @total(i32 @.lst1)` — a global variable reference where a pointer
-    is required (`llc-20: global variable reference must have pointer type`);
-    the call signature/argument must use the `%obj*` (or `ptr`) heap-handle type
-    like every other list boundary.
-  - a string element stored into a heap list at module scope:
-    `xs: list[int] = [1, "a"]` emits `call void @rt_set_elem(i32 %h4, i32 1,
-    i32 @.str1)` — the string global is passed as `i32`.
-  DoD: both shapes compile+run under `llc-20` and join the conformance matrix
-  (`integration/programs/*.gy`), with the interpreter/AOT stdout diff asserted.
+- **Gap I.1 — AOT heap containers across function boundaries** — ✅ DONE
+  (ADR 0161). A list/dict/set is an i32 handle into the runtime heap; getting
+  one through a call boundary needed both halves fixed, and each had a
+  different failure mode:
+  - *call site*: a container literal was lowered to its compile-time global and
+    passed as `i32` (`call i32 @total(i32 @.lst1)`), which `llc-20` rejects with
+    "global variable reference must have pointer type". Literal arguments are
+    now materialised with `rt_alloc`/`rt_set_elem`/`rt_set_add`/`rt_dict_put`
+    and passed by handle — including globals produced by constant-folded
+    comprehensions.
+  - *callee*: a parameter was an unknown-shape integer, so `for x in xs`
+    silently compiled into a `0..handle` range loop (wrong answers, no error).
+    A whole-module inference (`pkg/lang/heapargs.go`) now types each parameter
+    as list/dict/set from its annotation, its default, or any call site —
+    propagated to a fixed point so forwarding calls
+    (`def doubled(xs): return total(xs)`) work — and the body uses
+    `rt_list_len`/`rt_get_elem`/`rt_dict_get` accordingly.
+  Covered by `pkg/lang/heapargs_test.go`, `integration/heap_args_test.go`, and
+  the `programs/heap_containers.gy` conformance case (interpreter/AOT stdout
+diff
+  asserted in the matrix).
+
+- **Gap I.2 — strings inside runtime containers (AOT)** — 🟥 FOUND
+  The heap stores i32 slots, so a `list[str]`/`dict[str, int]` element cannot
+  hold an `i8*` string global (`rt_set_elem(i32 %h, i32 1, i32 @.str1)`). The
+  compiler now *reports* this instead of emitting unverifiable IR:
+  `codegen: strings inside runtime containers are not supported by the AOT
+  backend yet (the interpreter supports them)`, surfaced as
+  `{"ok": false, "phase": "compile", ...}` under `--emit-llvm --json`.
+  Remaining work: a string heap kind (interned `i8*` table + a tag), after which
+  these shapes join the conformance matrix.
   Note: `Callable` parameters called through the parameter (`def apply(f, x):
   return f(x)`) are likewise unsupported in AOT (`codegen: unsupported call "f"`)
   — the L6.6 Callable surface is therefore checker-only for now.

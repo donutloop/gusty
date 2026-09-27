@@ -48,6 +48,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 	"async_multi",
 		"typealias",
 		"variance",
+		"heap_containers",
 }
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {

@@ -189,8 +189,28 @@ Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
 - `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "exit": 0}`
 - `--json --verify <src>` → `{"ok": true, "exit": 0}` or `{"diagnostics": [...], "exit": 1}`
 - parse/runtime errors → `{"error": "...", "exit": 2}` (exit 1 for runtime)
+- `--json --emit-llvm <src>` / `--json --emit-ast <src>` on a compilation
+  failure → `{"ok": false, "phase": "compile", "error": "<message>", "exit": 2}`
+  (the human path prints `gustyc: <message>` on stderr; the exit code is the
+  same either way, so an agent never has to parse stderr prose)
 
 Diagnostics serialize their `Msg`/`Span` fields for schema-driven tooling.
+
+## Codegen capability messages (AOT)
+
+When the LLVM backend cannot lower something that the language allows, it fails
+as a *compile* error naming the limitation — never as IR that `llc` rejects.
+Match these messages rather than scraping diagnostics prose:
+
+| Message substring | Meaning | Workaround |
+|---|---|---|
+| `strings inside runtime containers are not supported by the AOT backend yet` | a `list[str]` / `dict[str, int]` element would have to store an `i8*` in an `i32` heap slot (roadmap Gap I.2) | run the program on the interpreter (`--eval`, `--file`), or keep container elements numeric |
+| `unsupported call "` | a call the AOT backend cannot lower, e.g. calling through a `Callable` parameter (`def apply(f, x): return f(x)`) | interpreter path, or dispatch on a class with methods |
+
+Every container that crosses a function boundary is passed as a runtime heap
+handle (see `docs/language.md` § Containers across function boundaries); the
+parameter kinds are inferred from annotations, defaults and call sites, so no
+extra syntax is required at the call site.
 
 ## Optimization: constant folding
 

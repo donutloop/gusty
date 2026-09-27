@@ -1,0 +1,45 @@
+# heap_containers.gy — heap containers crossing function boundaries.
+#
+# A list is a reference value: it must survive being passed to a function,
+# whether it arrives as a literal, a variable, a keyword argument, a default, a
+# comprehension or a generator. This program is run by BOTH the interpreter and
+# the LLVM AOT pipeline; the two must agree byte-for-byte.
+def total(xs) -> int:
+    n = 0
+    for x in xs:
+        n = n + x
+    return n
+
+
+def head(xs) -> int:
+    return xs[0]
+
+
+def count(xs) -> int:
+    return len(xs)
+
+
+def scale(xs, k) -> int:
+    t = 0
+    for x in xs:
+        t = t + x * k
+    return t
+
+
+def size(s: set[int]) -> int:
+    return len(s)
+
+
+def doubled(xs) -> int:
+    return total(xs) * 2
+
+
+nums: list[int] = [1, 2, 3]
+print(total(nums))
+print(total([4, 5, 6]))
+print(head(nums))
+print(count([1, 2, 7]))
+print(scale(nums, 3))
+print(size({5, 6, 7}))
+print(doubled(nums))
+print(total([x * 2 for x in [1, 2, 3]]))

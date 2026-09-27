@@ -594,3 +594,63 @@ full `pkg/lang` suite passes; `go build ./...` passes.
   `TestVarianceClassContainers` guard. Lesson: when adding a rule that delegates
   to an existing structural predicate, test the predicate itself for the new type
   kind — the rule can be correct and still never fire.
+
+## Round: Gap I.1 — heap containers across function boundaries (ADR 0161)
+
+- **Deliverable**: `list`/`dict`/`set` now cross AOT call boundaries as runtime
+  heap handles — literal arguments are materialised with
+  `rt_alloc`/`rt_set_elem`/`rt_set_add`/`rt_dict_put`, and a whole-module
+  inference (`pkg/lang/heapargs.go`) types each parameter as a container from its
+  annotation, its default, or any call site, so `for x in xs`, `len(xs)`, `xs[i]`,
+  `xs.append(v)` and `print(xs)` behave identically on both backends. Closes the
+  first half of roadmap Gap I; strings-in-containers stays as Gap I.2.
+- **One bug was loud, the other was silent.** The call-site bug failed loudly
+  (`llc-20: global variable reference must have pointer type`), but the callee bug
+  was a *silent miscompile*: an untracked parameter turned `for x in xs` into a
+  `0..handle` range loop and printed plausible garbage. Lesson: treat a verifier
+  error at a boundary as evidence of a *second* bug on the far side of that
+  boundary — the representation change has to be understood by both producer and
+  consumer, or fixing the crash converts a loud failure into a quiet one.
+- **Capability inference beats capability annotation.** Requiring
+  `def total(xs: list[int])` for AOT would have made the compiled backend
+  strictly weaker than the interpreter for code that already runs. The
+  witnesses that made annotation unnecessary cost ~10 lines each: annotations,
+  defaults (`def total(xs=[1,2])` with every call omitting `xs`), keyword
+  arguments, comprehensions, generator calls, and — the one that only appeared
+  once I wrote a *forwarding* test — parameter-to-parameter propagation
+  (`def doubled(xs): return total(xs)`).
+- **Fixed point, but bounded and guarded.** Single-pass inference said
+  `total`'s parameter was an integer in the forwarding case; feeding inferred
+  parameter kinds back into the variable-kind map and re-walking until stable
+  fixed it. The guard matters as much as the loop: a name ever assigned a plain
+  value is excluded, so a scalar `xs` elsewhere in the module cannot be dragged
+  into container treatment by a same-named parameter. Bounding the loop (8
+  rounds) keeps a pathological call graph from spinning.
+- **Folded literals hide in more than one place.** Fixing `total([1,2,3])` was
+  not enough: `total([x*2 for x in [1,2,3]])` still emitted `i32 @.lst1` because
+  the *constant-folded comprehension* path builds its list global directly,
+  bypassing `emitList`. Recording each list global in `staticLists` (name →
+  literal) and heap-copying at the call site made both paths correct. Lesson:
+  when normalising a value representation, enumerate every producer of the old
+  form (`grep` for the name-minting counter, here `lstIdx`) — not just the
+  canonical emitter.
+- **Root keys must be per site, not per name.** `gcReg` deduplicated by alloca
+  name, so two functions each with a parameter `xs` registered only one root.
+  Split out `gcRegKey(b, key, allocaName)` and keyed container parameters by
+  `fn + "." + name`. Same class of bug as the earlier `%_param%d` reuse: any
+  module-level dedup map keyed by a *local* name is suspect.
+- **Turn "emits broken IR" into "emits a message".** Strings cannot live in an
+  `i32` heap slot, so the container-element path now reports
+  `strings inside runtime containers are not supported by the AOT backend yet
+  (the interpreter supports them)` and, under `--json`,
+  `{"ok": false, "phase": "compile", "error": …}` on stdout. Documented as a
+  message table in `docs/operations.md` so agents match strings instead of
+  scraping `llc` output — the capability gap is part of the interface.
+- **Tests**: `pkg/lang/heapargs_test.go` (17-row inference table, literal-only
+  classifier, determinism, call-site/callee IR shapes, string-element diagnostic,
+  per-function rooting, scalar-parameter non-regression) +
+  `integration/heap_args_test.go` (13 programs asserted on **both** backends,
+  verifier-green suite, CLI-visible diagnostic) + `programs/heap_containers.gy`
+  in the conformance matrix (32 cases, 0 failures).
+- **Process**: `go test -tags=llvm20 ./...` green, `go vet ./...` clean,
+  gofmt clean; roadmap Gap I split into I.1 (done) / I.2 (strings).
