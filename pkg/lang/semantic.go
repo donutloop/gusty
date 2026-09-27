@@ -44,6 +44,42 @@ type SemanticAnalyzer struct {
 	inFunc     bool
 	loopDepth  int
 	inferring  map[string]bool
+	definite   map[string]bool
+	locals     map[string]bool
+	branchDef  map[string]bool
+}
+
+func (an *SemanticAnalyzer) markDefinite(nm string) {
+	if an.definite == nil {
+		an.definite = map[string]bool{}
+	}
+	an.definite[nm] = true
+}
+func (an *SemanticAnalyzer) markLocal(nm string) {
+	if an.locals == nil {
+		an.locals = map[string]bool{}
+	}
+	an.locals[nm] = true
+}
+func copyDefinite(m map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for n := range m {
+		out[n] = true
+	}
+	return out
+}
+func intersectDef(dst, src map[string]bool) {
+	for n := range dst {
+		if !src[n] {
+			delete(dst, n)
+		}
+	}
+}
+func (an *SemanticAnalyzer) isDefinite(nm string) bool {
+	if an.locals == nil || !an.locals[nm] {
+		return true
+	}
+	return an.definite != nil && an.definite[nm]
 }
 
 // Analyze runs semantic analysis and type inference on prog.
@@ -123,15 +159,19 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		an.inferExpr(s.Cond)
 		pos, neg := narrowFromCond(s.Cond)
 		an.analyzeNarrowed(s.Then, pos, neg)
+		defAfter := copyDefinite(an.branchDef)
 		lastPos, lastNeg := pos, neg
 		for _, e := range s.Elifs {
 			an.inferExpr(e.Cond)
 			ePos, eNeg := narrowFromCond(e.Cond)
 			an.analyzeNarrowed(e.Then, ePos, eNeg)
+			intersectDef(defAfter, an.branchDef)
 			lastPos, lastNeg = ePos, eNeg
 		}
 		// The else branch sees the negation of the (last) condition.
 		an.analyzeNarrowed(s.Else, lastNeg, lastPos)
+		intersectDef(defAfter, an.branchDef)
+		an.definite = defAfter
 	case *WhileStmt:
 		an.inferExpr(s.Cond)
 		old := an.scope
@@ -302,6 +342,10 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	}
 	if n, ok := as.Target.(*Name); ok {
 		an.scope.define(n.Value, valTy)
+		an.markDefinite(n.Value)
+		if an.inFunc {
+			an.markLocal(n.Value)
+		}
 	}
 	if t, ok := as.Target.(*Tuple); ok {
 		var elemTypes []*Type
@@ -337,6 +381,10 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 	}
 	an.funcs[fd.Name] = fd
 	an.inFunc = true
+	outerDefinite := copyDefinite(an.definite)
+	outerLocals := copyDefinite(an.locals)
+	an.definite = map[string]bool{}
+	an.locals = map[string]bool{}
 	old := an.scope
 	fscope := newScope(old)
 	// define the function itself in the outer scope
@@ -350,6 +398,8 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 			pt = TDyn()
 		}
 		fscope.define(p.Name, pt)
+		an.markDefinite(p.Name)
+		an.markLocal(p.Name)
 	}
 	for _, st := range fd.Body {
 		an.analyzeStmt(st)
@@ -357,6 +407,8 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 	an.scope = old
 	an.curFn = nil
 	an.inFunc = false
+	an.definite = outerDefinite
+	an.locals = outerLocals
 }
 
 // inferExpr returns the inferred type of an expression.
@@ -370,7 +422,8 @@ func (an *SemanticAnalyzer) returnAnno() *Type {
 func (an *SemanticAnalyzer) inferExpr(e Expr) *Type {
 	ty := an.inferExprTy(e)
 	if ty != nil {
-		switch n := e.(type) {		case *AssignExpr:
+		switch n := e.(type) {
+		case *AssignExpr:
 			ty := an.inferExpr(n.Value)
 			an.scope.define(n.Name.Value, ty)
 			n.Ty = ty.Name()
@@ -450,6 +503,9 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 			}
 			an.errorf(n.Span(), "undefined name %q", n.Value)
 			return TDyn()
+		}
+		if !an.isDefinite(n.Value) {
+			an.warnf(n.Span(), "possibly unbound: %q is not definitely assigned on all paths", n.Value)
 		}
 		return t
 	case *BinOp:
@@ -1087,6 +1143,7 @@ func typeNameToType(nm string) *Type {
 // isinstance narrowing constraints. It returns two maps:
 //   - pos: variable -> type it definitely has when the condition is true.
 //   - neg: variable -> type it definitely does NOT have when true.
+//
 // `not isinstance(x, T)` adds x to neg; `isinstance(x, T)` adds x to pos.
 // "or" and other boolean shapes are skipped (no safe narrowing).
 func narrowFromCond(cond Expr) (pos, neg map[string]*Type) {
@@ -1154,6 +1211,7 @@ func dropType(cur, drop *Type) *Type {
 // narrowed away from their type (complement of the current type). Narrowed
 // types are restored afterward so assignments inside still flow outward.
 func (an *SemanticAnalyzer) analyzeNarrowed(stmts []Stmt, pos, neg map[string]*Type) {
+	defBefore := copyDefinite(an.definite)
 	type save struct {
 		name string
 		ty   *Type
@@ -1176,6 +1234,8 @@ func (an *SemanticAnalyzer) analyzeNarrowed(stmts []Stmt, pos, neg map[string]*T
 	for _, st := range stmts {
 		an.analyzeStmt(st)
 	}
+	an.branchDef = copyDefinite(an.definite)
+	an.definite = defBefore
 	for _, s := range saved {
 		an.scope.define(s.name, s.ty)
 	}

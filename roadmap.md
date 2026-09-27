@@ -279,7 +279,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L6.1 Exhaustiveness checking for `match`** — prove a `match` covers all
   subject shapes (int ranges, unions, wildcard); warn on non-exhaustive;
   this is the semantic half of Gap B.
-- **L6.2 Definite-assignment analysis** — track which names are definitely
+- **L6.2 Definite-assignment analysis** ✅ DONE — warn which names are definitely
   assigned on every path through `if`/`match`/`try`; warn on possibly-unbound
   reads (mypy-style) before codegen.
 - **L6.3 Union types** (`int | str`, `None | int` sugar for `Optional`) —

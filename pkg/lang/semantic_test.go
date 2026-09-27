@@ -129,7 +129,6 @@ def f(x):
 	}
 }
 
-
 func TestAnalyzeSurfacesLexRecoveryDiagnostics(t *testing.T) {
 	// L4.1: the parser collects TokError tokens (lexer recovery) into prog.Diags,
 	// and Analyze prepends them so the CLI/LSP report every lex error per run.
@@ -194,8 +193,8 @@ func TestParseNoWarningAscii(t *testing.T) {
 // and a value outside every member is reported.
 func TestUnionTypeAnnotation(t *testing.T) {
 	cases := []struct {
-		src      string
-		wantErr  string // if non-empty, an error diagnostic must contain this
+		src     string
+		wantErr string // if non-empty, an error diagnostic must contain this
 	}{
 		// int member accepted
 		{`x: int | str = 3
@@ -342,4 +341,28 @@ print(x)
 	}
 }
 
+func TestDefiniteAssignment(t *testing.T) {
+	// A name assigned only on one path is possibly unbound.
+	src := "def f(flag):\n    if flag:\n        x = 1\n    return x\n"
+	prog := parseOrFatal(t, src)
+	diags := Analyze(prog)
+	if !hasWarningMsg(diags, "possibly unbound") {
+		t.Fatalf("expected a possibly-unbound warning, got %v", diags)
+	}
 
+	// A name assigned in both branches is definite.
+	src2 := "def f(flag):\n    if flag:\n        x = 1\n    else:\n        x = 2\n    return x\n"
+	prog2 := parseOrFatal(t, src2)
+	diags2 := Analyze(prog2)
+	if hasWarningMsg(diags2, "possibly unbound") {
+		t.Fatalf("unexpected possibly-unbound warning: %v", diags2)
+	}
+
+	// A name assigned before the branch is definite.
+	src3 := "def f():\n    x = 1\n    return x\n"
+	prog3 := parseOrFatal(t, src3)
+	diags3 := Analyze(prog3)
+	if hasWarningMsg(diags3, "possibly unbound") {
+		t.Fatalf("unexpected possibly-unbound warning: %v", diags3)
+	}
+}
