@@ -6,7 +6,11 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0160`.
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0180`. `go test -tags=llvm20 ./...`
+> is green (857 test functions over `pkg/lang` + `integration`). Conformance
+> corpus: 50 programs under `integration/programs/`, 41 matrix cases, all
+> `parity: true`. **The current plan is Phase 11 — the value model** (below);
+> it is motivated by a CPython-oracle probe whose findings are recorded there.
 
 ## Component map (state verified against the code)
 
@@ -503,6 +507,141 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   `suggestion`) so a slowdown surfaces as a number with its own exit code (5).
   See ADR 0162, `docs/benchmark.md`.
 
+### Phase 11 — one tagged value model: nested data, real tuples, code-point strings (2026)
+
+**Goal: a *value* is one thing everywhere.** Every divergence still found by
+probing against CPython, and every remaining invalid-module / crash /
+"unsupported" defect in the compiled backend, has the same root: an AOT value
+is an **untagged `i32`** — a handle, an interned string index, or a compile-time
+global name — so it cannot say *what it is*. It cannot nest, it cannot mix kinds,
+it cannot carry `True` vs `1`, and the moment the compiler must decide, it either
+guesses (wrong answer) or refuses (an `llc` rejection the exit-code contract then
+blames on the compiler). Phase 11 fixes the representation **once**, and absorbs
+the representation-shaped half of Gaps J.2, J.6, L.2, N.2, P.1 and P.2 instead of
+patching each symptom.
+
+**Why now (measured, `gustyc` at `b704a14`, corpus green).** Parity compares the
+backends to *each other*; the CPython oracle exists in only two files
+(`integration/escapes_test.go`, `integration/division_test.go`), so a construct
+*both* backends get wrong is invisible to CI. Each row below was run through
+`--interp`, `--aot` and `python3` on the same source, today:
+
+| program | CPython | `--interp` | `--aot` |
+|---|---|---|---|
+| `print(True)` | `True` | `1` | `1` |
+| `print([1, "a"])` | `[1, 'a']` | `[1, 'a']` ✅ | refused (Gap J.6 diagnostic) |
+| `m = [[1,2],[3,4]]` / `print(m[0][1])` | `2` | `2` | `index requires an inline list/dict/set literal` |
+| `d = {"a": [1,2]}` / `print(d["a"][1])` | `2` | `2` | same refusal |
+| `xs = []` / `xs.append([1,2])` | ok | ok | **invalid IR**: `call void @rt_append(i32 %h2, i32 @.lst1)` |
+| `sa = {x for x in [3,1,2]}` | `{1, 2, 3}` | `{3, 1, 2}` | **invalid IR**: `store i32 @.set1, i32* %_sa` (Gap J.2) |
+| `print(sorted([3,1,2]))` | `[1, 2, 3]` | ✅ | **invalid IR**: `printf(... , i32 @.lst1)` |
+| `t = (1,2,3)` / `print(t[1]); print(t)` | `2` / `(1, 2, 3)` | `2` / `[1, 2, 3]` | `unsupported expression *lang.Tuple` |
+| `xs = [1,2,3]` / `print(xs[-1])` | `3` | `IndexError` | `IndexError` |
+| `print([1,2,3][-1])` | `3` | `IndexError` | **Go panic** in `irGen.value` (`codegen.go:4314`) |
+| `print("abc"[-1])` | `c` | `IndexError` | `string index out of range` |
+| `len("café")` / `"héllo"[1]` | `4` / `é` | `5` / `195` | `5` / `195` (Gap N.2) |
+| `for c in "aé": print(c)` | `a`,`é` | ✅ | **invalid IR**: `store i32 @.str1, i32* %_c` |
+| `def f(x): return x*2` / `print(f(0.1))` | `0.2` | `0.2` | `0` (Gap P.1) |
+| `print(-7 // 2)` / `x=8; x/=2; print(x)` | `-4` / `4.0` | ✅ | `-3` / `4` (Gap P.1) |
+| `print(-3.5 % 2.0)` | `0.5` | `-1.5` | `-1.5` (Gap P.2 — **both** backends) |
+| `import math; print(math.PI)` | `3.141592653589793` | ✅ | `3` (stdlib constants fold to int) |
+| `def apply(f, xs): … f(x)` | works | works | `unsupported call "f"` (ADR 0161 note) |
+| `class B(A)` / `A.__init__(self, x)` | `3` | `3` | **SIGSEGV** in the JIT (cgo) |
+| `def m(self): return "hi"` (called) | `hi` | `hi` | **invalid IR**: `ret i32 @.str1` |
+
+**Items (each: ADR + unit test + `integration/` program, per the Definition of
+done).** All ⏳ PLANNED. Order is dependency order — L11.1 is the keystone; do not
+start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
+
+- **L11.1 — Tagged value word (both backends)** ⏳ PLANNED — one value shape on
+  both sides: the interpreter's `value.go` tag set and a compiled `rt_value`
+  (`{i64 payload, i64 tag}`, or a boxed slot with a parallel tag word) become the
+  *same* enum, generated from one table so the two cannot drift (mirror the
+  single-source-of-truth rule of `predeclared.go` / `exceptions.go`). Containers
+  store tagged words, not bare handles ⇒ **per-element tagging** falls out:
+  heterogeneous `[1, "a"]`, nested `[[1,2],[3,4]]`, `d["a"][1]`,
+  `xs.append([1,2])`, `{'k': True}` all lower, print, index and iterate. The
+  compile-time element-kind maps (`listElemStr`/`listElemInt`/`setElem*`/
+  `dictKey*`/`dictVal*`, ADR 0175) become a *property of the object* read from the
+  tag, so the ADR 0175 refusal retires and the `@estr[h]` per-object flags
+  (ADR 0174) collapse into the tag. Kills the whole `store i32 @.strN` /
+  `ret i32 @.str1` / `rt_append(i32, i32 @.lstN)` / `store i32 @.setN` invalid-IR
+  family at the source. DoD: `programs/nested_data.gy` + `programs/heterogeneous.gy`
+  byte-identical on both backends *and* equal to CPython; no
+  `i32 @\.(str|lst|dict|set)` ever appears in an argument or store position
+  (extend `runtime_ir_test.go` to assert it module-wide). Pairs with L7.2/L7.3 —
+  a tag is what makes precise rooting and NaN-boxing well-defined.
+- **L11.2 — `str()` vs `repr()` are one function per backend (closes Gap L.2)**
+  ⏳ PLANNED — `print(True)` is `1` today; bools, `True`/`False`, `None`, quoting
+  and the empty-set `set()` rule are decided in two places (Go `Repr`, IR
+  `@rt_print_value`). Make it one shared, context-correct pair (`str` for
+  `print`/f-strings, `repr` inside containers), pinned by a table test that runs
+  every value form through both backends + CPython.
+- **L11.3 — Tuples are values, not syntax sugar** ⏳ PLANNED — `TupleLit` has no
+  AOT lowering at all (`unsupported expression *lang.Tuple`, so
+  `def pair(): return (1, 2)` cannot compile), and the interpreter prints a tuple
+  as `[1, 2, 3]`. Ship the tuple type in both backends: immutable, indexable,
+  unpackable, hashable as a dict key, printed `(1, 2)`/`(1,)`/`()`. Feeds the
+  covariant `tuple[...]` rule of L6.6, which today only has a checker to talk to.
+- **L11.4 — Python-shaped indexing: negatives, bounds, one rule** ⏳ PLANNED —
+  `xs[-1]` raises `IndexError` on **both** backends where Python answers `3`,
+  `"abc"[-1]` fails compilation, and a literal `[-1]` **panics the compiler**
+  (`pkg/lang/codegen.go:4314`). One normalisation (`i < 0 ⇒ i + len`) shared by
+  read, write, `pop`, `index`, slicing and `for`, with bounds checks emitted at
+  the same place the ADR 0168 checks already live. Fix the `docs/language.md`
+  heading claiming "negative indices ✅ DONE" — it is true of slicing only.
+- **L11.5 — Code-point strings (closes Gap N.2)** ⏳ PLANNED — `len("café")` is 5,
+  `"héllo"[1]` is the byte `195`, and `for c in s` at module scope emits an
+  invalid `store i32 @.str1`. Decide the representation **once for both backends**
+  (the gap's own rule: a half-migration is worse than the divergence): UTF-8 bytes
+  + a decode/measure helper shared by `len`, `s[i]`, `s[i:j]`, `for c in s`, the
+  interned table and the printers; `len` counts code points, `s[i]` returns a
+  one-code-point string. Extend `TestStringLengthIsBytesForNow` into the oracle
+  test it will become.
+- **L11.6 — Numeric truth in the compiled backend (closes Gaps P.1 + P.2)**
+  ⏳ PLANNED — floored `//` on negative ints (`-7 // 2` → `-4`), `x /= 2` yields
+  `4.0`, float-through-untyped-parameter keeps its float (`f(0.1)` → `0.2`) via a
+  float-parameter inference in exactly ADR 0174's shape, Python-floored `%` on
+  floats (`-3.5 % 2.0` → `0.5`, wrong on *both* backends today), `floor`/`ceil`
+  return `int`, and **stdlib constants keep their type** — `print(math.PI)` prints
+  `3` compiled today, because on-disk data-only modules fold to `int`. Settle the
+  `--bench`/golden expectations in the same commit.
+- **L11.7 — Functions are values that compile** ⏳ PLANNED — `def apply(f, xs):
+  … f(x)` and `lambda` through a parameter are `unsupported call "f"` in AOT, so
+  `Callable[[P…],R]` (L6.6) is checker-only and `map`/`filter`/`sorted(key=)` are
+  unreachable. Ship the fnptr/indirect-call lowering, then make `sorted`,
+  `enumerate`, `zip`, `reversed`, `min/max(key=)` real language surface instead of
+  `unsupported call "enumerate"`, and list them in `--lang`.
+- **L11.8 — Refusal is part of the model, and so is its exit code** ⏳ PLANNED —
+  no tested shape may leave the compiler as an `llc` rejection, a Go panic, or a
+  SIGSEGV: the ADR 0166 diagnostic is the *only* exit for what does not lower.
+  Add the missing capability diagnostics (`nested container literal`,
+  `tuple literal`, `sorted(...)`, `enumerate(...)`), and close the contract
+  asymmetry found today: an `llc` rejection is exit **2** through `--build` but
+  exit **1** through `--aot`/the JIT, so the same compiler bug is reported two
+  ways. Extend `TestCLIExitCodeContract` to drive the JIT leg as well as `--build`.
+- **L11.9 — The corpus is the spec: CPython is the oracle everywhere** ⏳ PLANNED —
+  the conformance harness (41 cases) still asserts backend-vs-backend only, which
+  is exactly why rows like `print(True)`, `xs[-1]`, `len("café")`,
+  `print(math.PI)` sit in a green build. Promote the `pythonOutput` helper out of
+  `escapes_test.go` into the harness, require every `integration/programs/*.gy` to
+  match CPython on **both** legs, record the oracle output in
+  `conformance-matrix.json` (`python_stdout`, `oracle_match`), and add the Phase 11
+  rows above as new programs. Until this lands, no Phase 11 item may be marked
+  DONE on parity alone.
+
+**Machine path (AGENTS.md, non-negotiable).** The tag enum is exposed as
+`gustyc --schema` → `valueTag` and named in `--lang` (`values: tagged int/float/bool/str/None/list/dict/set/tuple/instance/function`) so an
+agent can ask what a value *is* instead of inferring it from output; each new
+refusal gets a stable `Diagnostic.Code` (`lower.unsupported.<shape>`) and appears
+in `--json`; the exit-code table in `docs/operations.md` stays the implementation
+for both legs.
+
+**Sequencing.** Phase 11 sits *before* the remaining L7/L8 items that assume a
+representation: L7.2 (precise roots), L7.3 (tagged pointers/NaN-boxing), L8.1
+(monomorphization) and L8.4 (SROA on heap objects) all read the tag — do them
+after L11.1. L11.9 should land first (it is the harness that proves the rest).
+
 ---
 
 ## Definition of done per item
@@ -523,10 +662,14 @@ A gap is closed when the previously interpreter-only path also lowers on AOT
 `interpreter-only`/`not lowered` comment remains in `codegen.go` for it.
 
 ## Sequencing note
-Gaps A–H are the *current* next work (they unblock modern features). The 2026
-phases (4–10) are layered on top: lexer/parser modernization (4–5) is
-front-end work that can start in parallel with Gap D–H; semantics (6) and
-runtime (7) build on Gap A–B; codegen (8) builds on Gap H.
+Gaps A–H are closed; the 2026 phases (4–10) are largely closed too. The
+**current** next work is **Phase 11 (the value model)** — its L11.9 harness first,
+then L11.1 (the tagged value word), because L7.2/L7.3/L8.1/L8.4 all assume it.
+The still-open gap-shaped items (Gap J.2, Gap K.8 part 2 — full AOT tracebacks,
+Gap M.2 — flipping `--file` to the compiled backend, Gaps N.2, P.1, P.2) are
+absorbed by Phase 11 where they are representation decisions, and stay their own
+work where they are not (K.8 needs L8.5's line tables; M.2 flips only once the
+Phase 11 oracle gate is green through the compiled leg).
 
 ## Gap J — found while closing earlier gaps (2026-09-27)
 

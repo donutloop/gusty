@@ -1677,3 +1677,51 @@ CPython first. A test updated to match output you did not verify is a test delet
 live in `TestKnownAOTDivisionGaps`, asserting Python's answer, the interpreter's
 (correct) answer, *and* the compiled backend's current wrong one — so the day
 someone fixes it, the test tells them to delete the allowance.
+
+## Planning cycle — the value model is the bottleneck (Phase 11 added to `roadmap.md`)
+
+**Why this cycle exists.** Before picking work, I re-measured the project rather than
+trusting the docs: `go test -tags=llvm20 ./...` (green, 857 test functions), the
+conformance matrix (41 cases, all `parity: true`), ADRs `0001`..`0180`, version
+`0.10.0`. Then I ran ~30 short programs through `--interp`, `--aot` and `python3` on
+the *same* source. The corpus says "everything works"; the oracle says twenty shapes
+do not.
+
+**Parity is not correctness.** The conformance harness compares the two backends to
+*each other*, and CPython appears in only two test files (`escapes_test.go`,
+`division_test.go`). Everything both backends agree on is invisible to CI:
+`print(True)` → `1`, `xs[-1]` → `IndexError`, `len("café")` → `5`,
+`-3.5 % 2.0` → `-1.5`. That is why L11.9 (oracle everywhere) leads the phase — a
+green harness that cannot see a wrong answer is not a gate.
+
+**One root, many symptoms.** The failures are not twenty bugs. An AOT value is an
+untagged `i32`, so it cannot say what it is — cannot nest (`m[0][1]` refused), cannot
+mix kinds (`[1, "a"]` refused), cannot tell `True` from `1`, and cannot carry a
+string in a container slot without the compiler guessing. Each guess that fails
+comes out as `store i32 @.set1, i32* %_sa` — an `llc` rejection the exit-code
+contract then labels a *compiler bug* for a two-line program. Fix the
+representation once (L11.1) and the Gaps J.2 / J.6 / L.2 / N.2 / P.1 tail goes with
+it; patch the symptoms and it comes back through the next shape.
+
+**Two findings I would not have believed without running them.** A literal
+`print([1,2,3][-1])` **panics the compiler** (`irGen.value`, `codegen.go:4314`) while
+the variable form raises — so the crash depends on whether the list is written inline.
+And `A.__init__(self, x)` in a subclass **SIGSEGVs** under `--aot` where
+`super().__init__(x)` works. Both are reachable from code a beginner writes.
+
+**Exit-code asymmetry.** An `llc` rejection exits **2** through `--build` but **1**
+through `--aot`/the JIT (`{"exit":1}` for `store i32 @.set1`). Same bug, two answers
+for the same script — `TestCLIExitCodeContract` drives only the `--build` leg, so it
+could never see this. (Also: `print(math.PI)` compiled prints `3`: data-only stdlib
+modules fold float constants to `int`.)
+
+**Process lesson — the committed binary rots.** My first probe run used the checked-in
+`./gustyc` (built before ADR 0179/0180), which reported `--aot` as an unknown flag and
+`1/2` → `0`. A rebuild (`go build -tags=llvm20`) changed a dozen answers. Any
+measurement is against a *rebuilt* binary or it is a measurement of history.
+
+**Docs drift is a fact-gathering hazard.** `docs/operations.md` still calls classes,
+closures, decorators, generators and `try`/`except` "interpreter-only" (they are all
+lowered), and `docs/language.md` advertises "negative indices ✅ DONE" where the truth
+is *slicing only*. Both mislead the next cycle's planning, and both are now corrected
+in the Phase 11 items that own them.
