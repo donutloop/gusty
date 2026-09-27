@@ -750,3 +750,43 @@ slots do not leak into `main`); integration cases in
 *both* backends, so parity hides it (the corpus only mixes strings and values inside
 f-strings). Gap J.2 — set/dict comprehension assignment does not lower in AOT and the
 interpreter prints sets as `<set>`.
+
+## Cycle: L8.2 — verification is a pipeline stage (ADR 0164)
+
+**Decision.** `VerifyModuleIR` (new `pkg/lang/verify_llvm.go`) runs
+`opt -passes=verify` (+ the requested `-O` pipeline) and falls back to
+`llc -filetype=null`; `Build` verifies the module it is about to link and carries the
+verdict in `BuildResult.verification`; `gustyc --verify-llvm <src> [--json]` exposes the
+stage alone, with `--no-verify` to opt out. A Go-side validator and a cgo `LLVMVerifyModule`
+binding were both rejected: the first would drift from LLVM's real rules, the second breaks
+the "textual IR + pinned external tools" toolchain rule.
+
+**Why the structured verdict matters more than the check.** The check existed all along —
+inside `llc`. What was missing was a *stage*: attributing a bad module to codegen instead of
+to the link step, and a record an agent can branch on (`ok`/`tool`/`skipped`/`pipeline`/
+`errors`/`note`/`toolchain`) instead of stderr containing a `/tmp/gusty-build-…` path that
+differs every run. `skipped` is deliberately separate from `ok`: no toolchain must never
+look like a pass.
+
+**Payoff, same day.** Turning verification on inside `Build` found three real codegen bugs
+in container binding (folded comprehension stored as an `i32`; module container without a
+slot/GC root; `funcDef` state leaking into `main`) — see the Gap I.3 entry above. Two of
+them were miscompilations that only ever showed up as `llc` errors in the link step, which
+is exactly the failure mode this stage exists to remove.
+
+**Process notes.**
+- Normalise tool output before it reaches JSON: strip the binary name and temp path to
+  `prog.ll:line:col: error: …`, drop the echoed source line and caret, cap the list.
+  Otherwise every consumer learns to regex against machine-specific paths.
+- Value-taking CLI flags swallow the next argv: `--verify-llvm --json "src"` compiled the
+  program `--json` (yes: `-(-json)` parses). The CLI now rejects a source that starts with
+  `-` as a usage error instead.
+- Flags that look like one thing and do another erode trust: `--verify` runs the front end,
+  so the IR check got an honest name (`--verify-llvm`) and the docs table was corrected.
+- Keep `Compile` free of process spawns. The REPL/`--eval`/benchmark paths call it
+  constantly; verification belongs to `Build` (which already spawns `llc`/`cc`) and to the
+  explicit command.
+- Documented-but-unimplemented contracts are debt: while documenting exit codes for this
+  feature I confirmed the published table (`3` runtime, `4` usage) is aspirational — the
+  CLI never emits either. Recorded as Gap J.3 (with J.4: `OptimizeIR`'s silent `opt`
+  fallback, and J.1/J.2 found while testing containers).

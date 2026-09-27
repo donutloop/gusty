@@ -129,8 +129,6 @@ falls back to dynamic dispatch.
   stable `code` (`type.variance.invariant`, `type.variance.contravariant`, …) plus
   an actionable `suggestion`; the whole model is machine-readable via
   `gustyc --variance`.
-gustyc --bench-suite --bench-runs 5                   # corpus on both backends (interpreter vs AOT)
-gustyc --bench-suite --bench-baseline benchmarks/baseline.json   # regression gate (exit 5 = slower than baseline)
 - **Containers are references everywhere** — pass a `list`, `dict` or `set` to a
   function as a literal, variable, keyword argument, default, comprehension or
   generator result and the callee sees the same live object on both backends:
@@ -141,6 +139,14 @@ gustyc --bench-suite --bench-baseline benchmarks/baseline.json   # regression ga
   same story (ADR 0163): `ys = [x * 2 for x in [1, 2]]` — even constant-folded,
   even at module scope — yields a rooted heap handle, so `print`, `len`, indexing,
   iteration and calls all see the container, not a folded global's address.
+- **The verifier is a pipeline stage (L8.2)** — the AOT backend emits textual IR, so
+  `Build` runs LLVM's own module verifier (`opt -passes=verify`, `llc -filetype=null`
+  fallback) over the module it is about to link and reports the verdict in
+  `BuildResult.verification`; `gustyc --verify-llvm <src>` exposes it as a
+  machine-readable record (`ok`/`tool`/`skipped`/`pipeline`/`errors`/`note`) so an
+  agent can tell "the compiler emitted bad IR" apart from "my program is wrong" —
+  without scraping `llc` output. A missing toolchain is reported as `skipped`, never
+  as a pass. Turning it on is how Gap I.3 was found.
 - **Benchmark suite + regression gate** — `gustyc --bench-suite` measures a
   corpus on both backends and prints (or `--json`-emits) a stable artifact;
   `--bench-baseline` gates a run against a saved baseline, so "the compiler got

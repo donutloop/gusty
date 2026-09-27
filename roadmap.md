@@ -397,9 +397,16 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L8.1 Generic monomorphization** — instantiate `list[T]`/`dict[K,V]` per
   concrete type at compile time (no runtime generics), enabling scalar
   replacement (Gap H) and boxing elimination (L7.3).
-- **L8.2 `verifyModule`-driven pipeline** — every emitted module runs the real
-  LLVM verifier + `opt` passes through the external `llc`/`opt` tools
-  (extends Gap H).
+- **L8.2 `verifyModule`-driven pipeline** — ✅ DONE (ADR 0164). Verification is a
+  pipeline stage, not a side effect of linking: `VerifyModuleIR` runs
+  `opt -passes=verify` (plus the requested `-O` pipeline, following `--opt-level`)
+  and falls back to `llc -filetype=null` when `opt` is absent. `Build` verifies the
+  module it is about to link and carries the verdict in `BuildResult.verification`;
+  `gustyc --verify-llvm <src>` exposes it (human line, or `--json` →
+  `irVerification`: `ok`/`tool`/`skipped`/`pipeline`/`errors`/`note`/`toolchain`),
+  with `--no-verify` to opt out. A missing toolchain is `skipped`, never `ok`.
+  Finding: switching this on inside `Build` immediately exposed three container
+  codegen bugs (Gap I.3, ADR 0163) that no test could see.
 - **L8.3 Autovectorization** — annotate loop/array IR so LLVM vectorizes hot
   numeric loops; add a `--report=vector` output showing which loops vectorize.
 - **L8.4 SROA/scalar-replacement** — promote non-escaping heap objects to
@@ -479,6 +486,20 @@ runtime (7) build on Gap A–B; codegen (8) builds on Gap H.
   the bug is invisible to the corpus, which only mixes a string and a value inside f-strings.
   Fix needs `print(*args, sep=" ", end="\n")` semantics in both backends plus an update to
   the affected conformance expectations.
+- **Gap J.4 — `opt` fallback is silent** — 🟥 FOUND.
+  `OptimizeIR` runs the real `opt` pipeline and, on any failure (tool missing, IR
+  rejected), returns the unoptimised module with no signal — a machine cannot tell
+  "optimised at -O2" from "the optimiser was unavailable". Verification now checks
+  whatever ships, but the pipeline should report whether the real passes ran (a field on
+  the build/emit result plus a warning), so `--opt-level=2` never quietly means `-O0`.
+
+- **Gap J.3 — the exit-code table is aspirational** — 🟥 FOUND.
+  `docs/operations.md` documents `3 = runtime error` and `4 = usage error`, but the CLI
+  never emits either: usage, parse and front-end failures all return `2`, and a program
+  that traps still exits `1`. Fix by implementing the contract (runtime failures exit 3)
+  or by documenting the truth; agents currently cannot branch on "the program crashed"
+  separately from "the compiler failed".
+
 - **Gap J.2 — set/dict comprehension assignment and printing (AOT)** — 🟥 FOUND.
   `sa = {x for x in [3, 1, 2]}` / `da = {k: k * 2 for k in [1, 2]}` at module scope do not
   lower (`len of a non-string variable` for the dict case), and the interpreter prints a

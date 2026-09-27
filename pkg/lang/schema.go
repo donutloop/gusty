@@ -1139,6 +1139,20 @@ const ASTIRSchema = `{
         }
       }
     },
+    "irVerification": {
+      "type": "object",
+      "required": ["ok", "tool", "skipped"],
+      "description": "LLVM module-verifier verdict for an emitted module (L8.2, --verify-llvm and BuildResult.verification). ok is true only when the verifier ran and accepted the module; skipped marks a missing toolchain, which is never reported as a pass.",
+      "properties": {
+        "ok": { "type": "boolean", "description": "true when LLVM accepted the module." },
+        "tool": { "type": "string", "description": "Binary that decided the verdict (opt-20, or llc-20 -filetype=null as fallback)." },
+        "skipped": { "type": "boolean", "description": "true when no verification toolchain was found; the module is then unverified, not verified." },
+        "pipeline": { "type": "array", "items": { "type": "string" }, "description": "Pass pipelines that ran, e.g. [\"verify\", \"-O2\"]." },
+        "errors": { "type": "array", "items": { "type": "string" }, "description": "Verifier diagnostics, normalised to stable text (no temp paths), capped to keep JSON small." },
+        "note": { "type": "string", "description": "Machine-matchable guidance, e.g. that a rejection is a compiler bug rather than a source error." },
+        "toolchain": { "type": "string", "description": "Pinned LLVM version the backend targets, e.g. \"LLVM 20\"." }
+      }
+    },
     "type": {
       "type": "string",
       "description": "Type annotation text. Union types render members joined by \" | \", e.g. \"int | str\".",

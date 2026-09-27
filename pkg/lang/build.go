@@ -18,6 +18,10 @@ type BuildResult struct {
 	Commands    []string     `json:"commands"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
 	Shared      bool         `json:"shared"` // true when a position-independent shared library was emitted (L10.3)
+	// Verification is the LLVM module-verifier verdict for the linked module
+	// (L8.2). nil means it was not run; .Skipped distinguishes "no toolchain"
+	// from "verified", so an unverified build is never reported as verified.
+	Verification *IRVerification `json:"verification,omitempty"`
 }
 
 // Toolchain binaries used by Build. They are package-level so tests can point
@@ -42,6 +46,11 @@ type BuildOptions struct {
 	Debug        bool   // pass -g to llc/cc so the binary carries DWARF info
 	SourceMapOut string // write a JSON source map (source fn -> IR symbol+line)
 	Shared       bool   // emit a position-independent shared object (.so/.dylib) with the stable extern-fn ABI
+	// NoVerify skips the LLVM module-verifier stage (L8.2). Verification is on by
+	// default: the module that gets linked is the module LLVM checks, and a
+	// verifier failure here names the compiler stage that produced it instead of
+	// surfacing as an `llc` failure inside a link step.
+	NoVerify bool
 }
 
 // Build compiles with the default BuildOptions (native executable).
@@ -89,6 +98,20 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	}
 	ir = OptimizeIR(ir, optLevel)
 
+	// L8.2: verify the module that is about to be linked with LLVM's own module
+	// verifier (opt -passes=verify, falling back to llc -filetype=null). Doing it
+	// here rather than letting llc notice later attributes a codegen bug to
+	// codegen, and the verdict travels with the build result for tooling.
+	var verification *IRVerification
+	if opts == nil || !opts.NoVerify {
+		v, verr := VerifyModuleIR(ir, optLevel)
+		verification = v
+		if verr != nil {
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Verification: v},
+				fmt.Errorf("build: %w", verr)
+		}
+	}
+
 	if opts != nil && opts.SourceMapOut != "" {
 		sm, err := GenerateSourceMap(prog, ir)
 		if err != nil {
@@ -113,7 +136,6 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 
 	llcCmdline := []string{"-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath}
 
-
 	if outLL, err := exec.Command(llcCmd, llcCmdline...).CombinedOutput(); err != nil {
 		return &BuildResult{Output: out, IR: ir},
 			fmt.Errorf("build: llc: %v\n%s", err, outLL)
@@ -137,14 +159,15 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	}
 
 	return &BuildResult{
-		Output:   out,
-		IR:       ir,
-		Objects:  []string{objPath},
+		Output:  out,
+		IR:      ir,
+		Objects: []string{objPath},
 		Commands: []string{
 			llcCmd + " -relocation-model=pic -filetype=obj " + irPath + " -o " + objPath,
 			ccLabel,
 		},
-		Shared: opts != nil && opts.Shared,
+		Shared:       opts != nil && opts.Shared,
+		Verification: verification,
 	}, nil
 }
 

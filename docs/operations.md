@@ -22,7 +22,10 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--eval <src>` | compile-and-run source from argv |
 | `--emit-llvm` | print the emitted LLVM IR |
 | `--emit-ast` | print the JSON AST dump |
-| `--verify` | run `llvm::verifyModule` equivalent (llc compile) |
+| `--verify <src>` | run the front end (lex + parse + semantic analysis) and report diagnostics, without executing |
+| `--verify-llvm <src>` | compile `<src>` and report LLVM's module-verifier verdict for the emitted module (L8.2) |
+| `--verify-llvm-file <path>` | same, reading the program from a file |
+| `--no-verify` | with `--build`, skip the module-verifier stage (it runs by default) |
 | `--target <triple>` | target triple for codegen |
 | `--opt-level <n>` | optimization level |
 | `--build <out>` | compile the positional source files into a native binary at `<out>` |
@@ -42,8 +45,11 @@ into a single native executable. Pipeline:
 1. read + parse each file, merge the statement lists into one program
 2. semantic analysis over the merged program
 3. LLVM IR codegen + optimization (dead-global elimination at `--opt-level=1`; always-on escape analysis skips dead heap list-literal allocations, ADR 0134)
-4. `llc-20` verifies/lowers the module to an object file
-5. `cc` links it into the binary at `<out>`
+4. **module verification** (L8.2): `opt-20 -passes=verify` (plus the requested
+   `-O` pipeline) accepts the module, falling back to `llc-20 -filetype=null` when
+   `opt` is unavailable. Override with `--no-verify`.
+5. `llc-20` lowers the module to an object file
+6. `cc` links it into the binary at `<out>`
 
 The produced binary is a real native executable: `./prog` runs the program
 (its `print` output goes to stdout).
@@ -51,8 +57,38 @@ The produced binary is a real native executable: `./prog` runs the program
 Structured machine-readable outcome (with `--json`):
 
 ```json
-{"output": "prog", "ir": "...", "objects": ["..."], "commands": ["llc ...", "cc ..."], "diagnostics": []}
+{"output": "prog", "ir": "...", "objects": ["..."], "commands": ["llc ...", "cc ..."], "diagnostics": [],
+ "verification": {"ok": true, "tool": "/usr/bin/opt-20", "skipped": false, "pipeline": ["verify"], "toolchain": "LLVM 20"}}
 ```
+
+### Module verification (`irVerification`, L8.2)
+
+The AOT backend emits *textual* IR, so the only trustworthy statement that a
+module is well-formed is LLVM's own module verifier. It is a pipeline stage of its
+own rather than a side effect of linking, so a codegen bug is attributed to the
+compiler stage that produced it and reported in the verifier's own words.
+
+```console
+$ gustyc --verify-llvm --json 'print(1)'
+{"ok":true,"tool":"/usr/bin/opt-20","skipped":false,"pipeline":["verify"],"toolchain":"LLVM 20"}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `ok` | the verifier ran **and** accepted the module |
+| `tool` | which binary decided (`opt-20`, or `llc-20 -filetype=null` as fallback) |
+| `skipped` | no verification toolchain was found — an unverified module is never reported as verified |
+| `pipeline` | passes that ran, e.g. `["verify"]` or `["verify", "-O2"]` (follows `--opt-level`) |
+| `errors` | verifier diagnostics, normalised to `prog.ll:line:col: error: …` (no temp paths, capped at 8 lines) |
+| `note` | machine-matchable guidance; a rejection says `LLVM rejected the module; this is a compiler bug, not a source error` |
+| `toolchain` | pinned LLVM version, e.g. `LLVM 20` |
+
+A rejected module exits `1` (a compiler bug, not a source error — fix the codegen
+or report it); a missing toolchain exits `0` with `skipped: true`, because the
+build legitimately proceeded without it. The same record is embedded in
+`BuildResult` as `verification` (see above), and the human `--build` output prints
+a `verified by <tool> (<pipeline>)` line. Schema: `gustyc --schema` →
+`irVerification`.
 
 Compile/link errors return diagnostics and exit code 1; missing sources or no
 positional files are a usage error (exit 2). A semantic error in any source
@@ -190,6 +226,9 @@ Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
 - `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "exit": 0}`
 - `--json --verify <src>` → `{"ok": true, "exit": 0}` or `{"diagnostics": [...], "exit": 1}`
 - parse/runtime errors → `{"error": "...", "exit": 2}` (exit 1 for runtime)
+- `--json --verify-llvm <src>` → the `irVerification` record, e.g.
+  `{"ok":true,"tool":"/usr/bin/opt-20","skipped":false,"pipeline":["verify"],"toolchain":"LLVM 20"}`
+  (see [Module verification](#module-verification-irverification-l82))
 - `--json --emit-llvm <src>` / `--json --emit-ast <src>` on a compilation
   failure → `{"ok": false, "phase": "compile", "error": "<message>", "exit": 2}`
   (the human path prints `gustyc: <message>` on stderr; the exit code is the

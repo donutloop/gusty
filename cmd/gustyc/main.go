@@ -69,6 +69,9 @@ func run() int {
 	target := fs.String("target", "", "target triple for codegen")
 	optLevel := fs.String("opt-level", "0", "optimization level")
 	buildOut := fs.String("build", "", "output binary path for a multi-file build (sources are the positional args)")
+	noVerify := fs.Bool("no-verify", false, "skip LLVM's module verifier during --build (on by default, L8.2)")
+	verifyLLVMF := fs.String("verify-llvm", "", "compile a source string and report LLVM's module-verifier verdict")
+	verifyLLVMFile := fs.String("verify-llvm-file", "", "compile a source file and report LLVM's module-verifier verdict")
 	debugFlag := fs.Bool("debug", false, "pass -g to llc/cc so the binary carries DWARF debug info")
 	sourceMapOut := fs.String("source-map-out", "", "write a JSON source map (source fn -> IR symbol+line) to this path")
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
@@ -144,7 +147,7 @@ func run() int {
 			usage(fs)
 			return exitUsage
 		}
-		res, err := lang.BuildWithOptions(buildFiles, *buildOut, atoi(*optLevel), &lang.BuildOptions{Debug: *debugFlag, SourceMapOut: *sourceMapOut, Shared: *sharedCmd})
+		res, err := lang.BuildWithOptions(buildFiles, *buildOut, atoi(*optLevel), &lang.BuildOptions{Debug: *debugFlag, SourceMapOut: *sourceMapOut, Shared: *sharedCmd, NoVerify: *noVerify})
 		if err != nil {
 			// machine mode: still emit the (partial) BuildResult carrying
 			// diagnostics on stdout, plus a human error on stderr.
@@ -172,10 +175,18 @@ func run() int {
 			fmt.Println(string(b))
 		} else {
 			fmt.Printf("built %s (%d source files, %d object file(s))\n", res.Output, len(buildFiles), len(res.Objects))
+			if v := res.Verification; v != nil {
+				switch {
+				case v.OK:
+					fmt.Printf("  verified by %s (%s)\n", v.Tool, strings.Join(v.Pipeline, " + "))
+				case v.Skipped:
+					fmt.Printf("  NOT verified: %s\n", v.Note)
+				}
+			}
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
@@ -191,6 +202,18 @@ func run() int {
 	}
 	if *emitLLVMF != "" {
 		return emitLLVM(*emitLLVMF, *target, *optLevel, *jsonOut)
+	}
+	if *verifyLLVMF != "" || *verifyLLVMFile != "" {
+		// A value-taking flag followed by another flag swallows it: `--verify-llvm
+		// --json "src"` would compile the string "--json" instead. Catch it as the
+		// usage error it is rather than compiling nonsense.
+		for _, v := range []string{*verifyLLVMF, *verifyLLVMFile} {
+			if strings.HasPrefix(v, "-") {
+				fmt.Fprintf(os.Stderr, "gustyc: %s expects a source, not %q — pass it last or use --flag=<source>\n", "--verify-llvm", v)
+				return exitUsage
+			}
+		}
+		return verifyLLVMMode(*verifyLLVMF, *verifyLLVMFile, atoi(*optLevel), *jsonOut)
 	}
 	if *emitSourceMapF != "" {
 		return emitSourceMap(*emitSourceMapF)
@@ -380,6 +403,8 @@ Build: gustyc --build <out> <file1> <file2> ...  # compile sources into a native
 Shared library export (L10.3): gustyc --build out.so --shared <file1> ...  # emit a position-independent .so/.dylib with the stable extern-fn ABI
 Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style type-check without executing
 Variance: gustyc --variance  # JSON variance table (list/set/dict invariant, Sequence covariant, Callable params contravariant)
+Verify IR: gustyc --verify-llvm <src> [--json]         # LLVM module-verifier verdict for the emitted module (L8.2)
+           gustyc --build out src.gy --no-verify        # skip verification (it runs by default in --build)
 Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus on both backends
             gustyc --bench-dir integration/programs        # benchmark the parity programs too
             gustyc --bench-suite --bench-baseline-update benchmarks/baseline.json   # record a baseline
@@ -389,7 +414,9 @@ Diagnostic codes (--check --json): type.mismatch, type.variance.invariant,
 type.variance.covariant, type.variance.contravariant, type.variance.nominal,
 type.callable.arity, type.union.members — see docs/operations.md.
 
-Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error.
+Exit codes: 0 = ok, 1 = compile/link/runtime error (incl. a module the LLVM verifier
+rejects — that is a compiler bug, not your program), 2 = parse/usage error,
+5 = benchmark regression. See docs/operations.md for the full contract.
 `)
 }
 
@@ -624,4 +651,44 @@ func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, 
 		fmt.Printf("  baseline written: %s\n", updatePath)
 	}
 	return code
+}
+
+// verifyLLVMMode compiles a program and asks LLVM's own module verifier about the
+// result (L8.2). The verdict is a structured record so a caller can branch on it
+// without scraping tool output: {"ok","tool","skipped","pipeline","errors","note",
+// "toolchain"}. A missing toolchain is reported as skipped, never as a pass.
+func verifyLLVMMode(src, file string, optLevel int, jsonOut bool) int {
+	s, err := srcOrFile(src, file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitErr
+	}
+	res, cerr := lang.Compile(s)
+	if cerr != nil {
+		return reportCompileErr(cerr, jsonOut)
+	}
+	ver, verr := lang.VerifyModuleIR(res.IR, optLevel)
+	if jsonOut {
+		b, jerr := json.Marshal(ver)
+		if jerr != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
+			return exitErr
+		}
+		fmt.Println(string(b))
+	} else if ver.OK {
+		fmt.Printf("module verified by %s (%s)\n", ver.Tool, strings.Join(ver.Pipeline, " + "))
+	} else if ver.Skipped {
+		fmt.Printf("not verified: %s\n", ver.Note)
+	} else {
+		for _, l := range ver.Errors {
+			fmt.Fprintf(os.Stderr, "gustyc: %s: %s\n", ver.Tool, l)
+		}
+		if ver.Note != "" {
+			fmt.Fprintf(os.Stderr, "gustyc: %s\n", ver.Note)
+		}
+	}
+	if verr != nil {
+		return exitErr
+	}
+	return exitOK
 }

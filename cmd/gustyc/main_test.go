@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
 var (
@@ -495,5 +497,91 @@ func TestCLIBenchDir(t *testing.T) {
 	}
 	if strings.Contains(out, `"name": "notes"`) {
 		t.Errorf("non-.gy file was benchmarked:\n%s", out)
+	}
+}
+
+// --- L8.2: the LLVM module verifier as a CLI stage --------------------------
+
+type irVerificationReport struct {
+	OK        bool     `json:"ok"`
+	Tool      string   `json:"tool"`
+	Skipped   bool     `json:"skipped"`
+	Pipeline  []string `json:"pipeline"`
+	Errors    []string `json:"errors"`
+	Note      string   `json:"note"`
+	Toolchain string   `json:"toolchain"`
+}
+
+func TestCLIVerifyLLVMJSON(t *testing.T) {
+	out, code := benchCLI(t, "--json", "--verify-llvm", "def f(x) -> int:\n    return x * 2\n\nprint(f(3))\n")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", code, out)
+	}
+	var rep irVerificationReport
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("json: %v\n%s", err, out)
+	}
+	if !rep.OK || rep.Skipped {
+		t.Errorf("verdict = %+v, want ok", rep)
+	}
+	if rep.Tool == "" || len(rep.Pipeline) == 0 {
+		t.Errorf("the report must name the tool and pipeline: %+v", rep)
+	}
+	if !strings.Contains(rep.Toolchain, lang.PinnedLLVMVersion) {
+		t.Errorf("toolchain = %q, want it to name LLVM %s", rep.Toolchain, lang.PinnedLLVMVersion)
+	}
+}
+
+func TestCLIVerifyLLVMHuman(t *testing.T) {
+	out, code := benchCLI(t, "--verify-llvm", "xs = [i * 2 for i in range(3)]\nprint(xs)\n")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", code, out)
+	}
+	if !strings.Contains(out, "verified") {
+		t.Errorf("human output should say the module was verified:\n%s", out)
+	}
+}
+
+// TestCLIVerifyLLVMRejectsFlagAsSource: a value-taking flag followed by another
+// flag would otherwise compile the string "--json" as a program.
+func TestCLIVerifyLLVMRejectsFlagAsSource(t *testing.T) {
+	_, code := benchCLI(t, "--verify-llvm", "--json", "print(1)")
+	if code != exitUsage {
+		t.Errorf("exit = %d, want %d (usage)", code, exitUsage)
+	}
+}
+
+func TestCLIBuildCarriesVerifierVerdict(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p.gy")
+	if err := os.WriteFile(src, []byte("def add(a, b) -> int:\n    return a + b\n\nprint(add(2, 3))\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code := benchCLI(t, "--build", filepath.Join(dir, "p"), "--json", src)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", code, out)
+	}
+	var res struct {
+		Verification *irVerificationReport `json:"verification"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("json: %v\n%s", err, out)
+	}
+	if res.Verification == nil || !res.Verification.OK {
+		t.Errorf("a build must report the verifier verdict: %s", out)
+	}
+
+	out2, code2 := benchCLI(t, "--build", filepath.Join(dir, "p2"), "--no-verify", "--json", src)
+	if code2 != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", code2, out2)
+	}
+	var res2 struct {
+		Verification *irVerificationReport `json:"verification"`
+	}
+	if err := json.Unmarshal([]byte(out2), &res2); err != nil {
+		t.Fatalf("json: %v\n%s", err, out2)
+	}
+	if res2.Verification != nil {
+		t.Errorf("--no-verify must skip the stage entirely: %s", out2)
 	}
 }
