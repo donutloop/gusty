@@ -1266,7 +1266,6 @@ func isGlobalLine(line string) bool {
 	return !strings.HasPrefix(t, "declare ") && strings.Contains(t, " = ")
 }
 
-
 // fnName extracts a function's name from its define line
 // ("define i32 @main() {" -> "main"). Returns "" if malformed.
 func fnName(sig string) string {
@@ -1435,8 +1434,17 @@ func (m *irModule) serialize() string {
 // Every pass operates over the parsed IR/CFG, and the result is re-serialized
 // as textual IR that remains valid for llvm-as/llc.
 func OptimizeIR(ir string, level int) string {
+	out, _ := OptimizeIRReport(ir, level)
+	return out
+}
+
+// OptimizeIRReport is OptimizeIR plus an honest account of whether the *real* LLVM
+// optimizer ran. A build that fell back to the textual pass used to be indistinguishable
+// from an optimized one (roadmap Gap J.4); callers put this report on BuildResult and in
+// --json output.
+func OptimizeIRReport(ir string, level int) (string, *Optimization) {
 	if level <= 0 || ir == "" {
-		return ir
+		return ir, nil
 	}
 	// Gap H: drive the *real* LLVM opt pipeline over the raw module IR first.
 	// It produces verified, optimized IR (constant folding, SROA, loop opt)
@@ -1445,16 +1453,22 @@ func OptimizeIR(ir string, level int) string {
 	// way that breaks the LLVM verifier. GC roots live in module-global
 	// arrays (@gc.roots), which rt_gc reads/writes, so the real optimizer
 	// keeps every live root registered.
-	optimized := runLLVMopt(ir, level)
-	if optimized != ir {
+	optimized, rep := runLLVMopt(ir, level)
+	if rep != nil && rep.Applied {
 		// opt ran and succeeded: return its output directly. The textual
 		// front-end pass must NOT run afterwards: its dce treats calls like
 		// printf as dead when their result is unused (opt marks the call
 		// site readonly), which would strip observable output.
-		return optimized
+		return optimized, rep
 	}
-	// opt unavailable or rejected the IR: fall back to the textual pass.
-	return optimizeTextual(ir)
+	// opt unavailable or rejected the IR: fall back to the textual pass, and record it.
+	if rep == nil {
+		// Applied means "the real LLVM optimizer ran" — the textual pass is a fallback,
+		// never a success of the pipeline, so an agent reading `applied` is never misled.
+		rep = &Optimization{Tool: "gusty-textual", Level: level, Pipeline: "textual", Applied: false, Fallback: "textual",
+			Note: "the LLVM optimizer did not run; only gusty's textual pass was applied"}
+	}
+	return optimizeTextual(ir), rep
 }
 
 // optimizeTextual runs the deterministic, offline textual optimizer. It is

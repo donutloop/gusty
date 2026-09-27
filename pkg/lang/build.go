@@ -22,6 +22,10 @@ type BuildResult struct {
 	// (L8.2). nil means it was not run; .Skipped distinguishes "no toolchain"
 	// from "verified", so an unverified build is never reported as verified.
 	Verification *IRVerification `json:"verification,omitempty"`
+	// Optimization says whether the *real* LLVM optimizer ran. nil means none was
+	// requested (level 0). A non-nil report with Applied=false means the build
+	// silently fell back to the textual pass — which used to be invisible (Gap J.4).
+	Optimization *Optimization `json:"optimization,omitempty"`
 }
 
 // Toolchain binaries used by Build. They are package-level so tests can point
@@ -103,7 +107,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		// rather than repeating the stage twice.
 		return &BuildResult{Output: out, Diagnostics: diags}, fmt.Errorf("build: %w", err)
 	}
-	ir = OptimizeIR(ir, optLevel)
+	ir, optRep := OptimizeIRReport(ir, optLevel)
 
 	// L8.2: verify the module that is about to be linked with LLVM's own module
 	// verifier (opt -passes=verify, falling back to llc -filetype=null). Doing it
@@ -114,7 +118,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		v, verr := VerifyModuleIR(ir, optLevel)
 		verification = v
 		if verr != nil {
-			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Verification: v},
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Verification: v, Optimization: optRep},
 				fmt.Errorf("build: %w", verr)
 		}
 	}
@@ -122,10 +126,10 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	if opts != nil && opts.SourceMapOut != "" {
 		sm, err := GenerateSourceMap(prog, ir)
 		if err != nil {
-			return &BuildResult{Output: out, IR: ir, Diagnostics: diags}, fmt.Errorf("build: source map: %w", err)
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep}, fmt.Errorf("build: source map: %w", err)
 		}
 		if err := os.WriteFile(opts.SourceMapOut, sm, 0o644); err != nil {
-			return &BuildResult{Output: out, IR: ir, Diagnostics: diags}, fmt.Errorf("build: write source map: %w", err)
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep}, fmt.Errorf("build: write source map: %w", err)
 		}
 	}
 
@@ -144,7 +148,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	llcCmdline := []string{"-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath}
 
 	if outLL, err := exec.Command(llcCmd, llcCmdline...).CombinedOutput(); err != nil {
-		return &BuildResult{Output: out, IR: ir, Diagnostics: diags},
+		return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep},
 			fmt.Errorf("build: llc: %v\n%s", err, outLL)
 	}
 
@@ -161,7 +165,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		ccCmdline = append(ccCmdline, "-g")
 	}
 	if outCC, err := exec.Command(ccCmd, ccCmdline...).CombinedOutput(); err != nil {
-		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}},
+		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}, Optimization: optRep},
 			fmt.Errorf("build: cc: %v\n%s", err, outCC)
 	}
 
@@ -175,6 +179,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		},
 		Shared:       opts != nil && opts.Shared,
 		Verification: verification,
+		Optimization: optRep,
 	}, nil
 }
 

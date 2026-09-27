@@ -1189,3 +1189,39 @@ you allocated"*, and code that violated it had only worked by luck.
 (`gustyc --check file.gy` reads stdin, ignores the path, and exits 4), so every "parse error"
 in the first sweep was an artefact of feeding it nothing. When a probe reports the same failure
 for all 40 cases, distrust the probe first.
+
+## Cycle: Gap J.4 — every stage of the pipeline has to testify for itself
+
+**What happened.** `OptimizeIR` ran the real `opt` pipeline and swallowed every error: missing
+tool, rejected IR, empty output — all returned the unoptimized module and the build still said
+"built". `--opt-level=2` silently meant `-O0`. Same class as K.7 (failed build must say why) and
+L8.2 (verification is a stage, not a side effect).
+
+**Now:** `OptimizeIRReport` returns `Optimization{tool, pipeline, level, applied, fallback,
+note, error}`; it rides on `BuildResult.Optimization`, on every post-stage failure result, into
+`--build --json`, the schema (`--schema` → `optimization`) and human output
+(`optimized by opt-20 (-O2)` / `NOT LLVM-optimized: <note>`).
+
+**Design rule worth keeping.** Define the boolean so the *fallback can never claim success*:
+`applied` means "the real LLVM optimizer ran", and the textual pass sets `applied: false,
+fallback: "textual"`. My first version set `applied: true` for the textual pass, which would
+have made the field exactly as useless as the missing one.
+
+**The bug that fell out of the test.** Writing `--build out src.gy --opt-level=2` in the
+integration test failed with `open --opt-level=2: no such file or directory`: Go's `flag`
+package stops at the first positional, so any flag typed after the source file became a
+filename. `reorderFlags` hoists flag tokens to the front, consuming the next token as the
+value only for non-bool flags written `--flag value` — so `--eval --help` still evaluates the
+text `--help` instead of printing usage, and unknown `--flags` still reach the flag package's
+own "flag provided but not defined". Agents type flags last; a CLI that only accepts them
+first is a trap.
+
+**Process notes.**
+- Three of my patches to `codegen.go` aborted mid-script because an earlier `assert` failed
+  *before* `open(...,'w')`, so **nothing** was written — including the parts that had matched.
+  Patch scripts should apply-then-write once at the end and print what they matched; I wasted
+  several rounds re-discovering which half of an edit had landed.
+- My all-caps "probe" loops keep producing uniform results from a broken harness (`--check` is
+  stdin-only, so 40/40 "parse errors"). Uniform output across cases = suspect the probe first.
+- Distinguishing "the tool ran and changed nothing" from "the tool never ran" needed an explicit
+  report; `optimized != ir` was a heuristic that could not tell them apart.

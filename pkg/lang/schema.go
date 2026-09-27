@@ -1153,6 +1153,20 @@ const ASTIRSchema = `{
         "toolchain": { "type": "string", "description": "Pinned LLVM version the backend targets, e.g. \"LLVM 20\"." }
       }
     },
+    "optimization": {
+      "type": "object",
+      "required": ["applied", "tool", "pipeline", "level"],
+      "description": "What the optimization stage actually did (BuildResult.optimization, --build --json). Absent when no optimization was requested (--opt-level 0). applied is true only when the real LLVM optimizer ran, so a build that fell back to the textual pass is never mistaken for an optimized one (roadmap Gap J.4).",
+      "properties": {
+        "applied": { "type": "boolean", "description": "true when the real LLVM opt pipeline ran on this module." },
+        "tool": { "type": "string", "description": "Optimizer that ran (opt-20), or gusty-textual when only the textual pass ran." },
+        "pipeline": { "type": "string", "description": "Pipeline requested, e.g. \"-O2\", or \"textual\" / \"none\"." },
+        "level": { "type": "integer", "description": "Optimization level the build asked for." },
+        "fallback": { "type": "string", "description": "What ran instead of the real optimizer, e.g. \"textual\"; empty when none was needed." },
+        "note": { "type": "string", "description": "Machine-matchable explanation of why the real optimizer did not run." },
+        "error": { "type": "string", "description": "Optimizer failure text, when the tool exists but failed or rejected the module." }
+      }
+    },
     "type": {
       "type": "string",
       "description": "Type annotation text. Union types render members joined by \" | \", e.g. \"int | str\".",

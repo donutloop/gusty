@@ -117,7 +117,10 @@ func run() int {
 	fmtCheck := fs.Bool("fmt-check", false, "verify a source is already canonical; exit 0 if canonical, 1 if not (with --json: machine report)")
 	stdlibDir := fs.String("stdlib", "", "standard-library root directory (default: GUSTY_STDLIB_DIR or a discovered ./stdlib)")
 	fmtFile := fs.String("fmt-file", "", "path to a source file to format/check (alternative to --file with --fmt)")
-	if perr := fs.Parse(os.Args[1:]); perr != nil {
+	// Flags are accepted after positional args too: `gustyc --build out src.gy
+	// --opt-level=2` is what people and agents actually type, and Go's flag package stops
+	// at the first positional, turning the trailing flag into a source filename.
+	if perr := fs.Parse(reorderFlags(fs, os.Args[1:])); perr != nil {
 		if perr == flag.ErrHelp {
 			return exitOK // --help was handled by the flag package
 		}
@@ -218,6 +221,18 @@ func run() int {
 					fmt.Printf("  verified by %s (%s)\n", v.Tool, strings.Join(v.Pipeline, " + "))
 				case v.Skipped:
 					fmt.Printf("  NOT verified: %s\n", v.Note)
+				}
+			}
+			// Gap J.4: an unoptimized build used to be indistinguishable from an optimized
+			// one. Say which pipeline actually ran.
+			if o := res.Optimization; o != nil {
+				if o.Applied {
+					fmt.Printf("  optimized by %s (%s)\n", o.Tool, o.Pipeline)
+				} else {
+					fmt.Printf("  NOT LLVM-optimized: %s\n", o.Note)
+					if o.Err != "" {
+						fmt.Printf("    %s\n", o.Err)
+					}
 				}
 			}
 		}
@@ -516,6 +531,40 @@ expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >=
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
 variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
 `, lang.Version)
+}
+
+// reorderFlags moves flag tokens to the front so the flag package sees all of them,
+// while keeping each flag's value attached. A value-taking flag in `--flag value` form
+// owns the following token, so `--eval --help` still means "evaluate the text --help"
+// rather than "print usage". Tokens the FlagSet does not define are still handed to the
+// flag package, which produces its own "flag provided but not defined" error.
+func reorderFlags(fs *flag.FlagSet, args []string) []string {
+	flags := make([]string, 0, len(args))
+	rest := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") || a == "-" || a == "--" {
+			rest = append(rest, a)
+			continue
+		}
+		name := strings.TrimLeft(a, "-")
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name = name[:eq]
+		}
+		f := fs.Lookup(name)
+		if f == nil {
+			flags = append(flags, a)
+			continue
+		}
+		flags = append(flags, a)
+		if _, isBool := f.Value.(interface{ IsBoolFlag() bool }); !isBool && !strings.Contains(a, "=") {
+			if i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+		}
+	}
+	return append(flags, rest...)
 }
 
 func isTTY() bool {

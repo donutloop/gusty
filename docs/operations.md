@@ -111,6 +111,42 @@ build legitimately proceeded without it. The same record is embedded in
 a `verified by <tool> (<pipeline>)` line. Schema: `gustyc --schema` →
 `irVerification`.
 
+### Optimization report
+
+`--build` also says what the **optimizer** did, so an un-optimized build is never
+mistaken for an optimized one (roadmap Gap J.4). `BuildResult.optimization` is absent when
+nothing was requested (`--opt-level 0`); otherwise:
+
+| field | meaning |
+|---|---|
+| `applied` | `true` only when the **real LLVM optimizer** ran on this module |
+| `tool` | `opt-20`, or `gusty-textual` when only gusty's textual pass ran |
+| `pipeline` | `-O1` / `-O2` / `-O3`, or `textual` / `none` |
+| `level` | the level the build asked for |
+| `fallback` | what ran instead of the real optimizer, e.g. `textual` |
+| `note` | why the real optimizer did not run (missing toolchain, rejected the module, …) |
+| `error` | the optimizer's own failure text, when it exists but failed |
+
+Human output pairs the build line with `optimized by opt-20 (-O2)` or
+`NOT LLVM-optimized: <note>`. A missing optimizer is not a build failure — exit stays `0` —
+but it is now visible in both output paths instead of being silent. Schema:
+`gustyc --schema` → `optimization`.
+
+### Flags anywhere on the command line
+
+Flags may appear before *or after* positional source paths:
+
+```
+gustyc --build out src.gy --opt-level=2 --json     # works
+```
+
+Go's `flag` package stops at the first positional, which used to turn the trailing
+`--opt-level=2` into a source file named `--opt-level=2`. `reorderFlags` moves flag tokens
+front while keeping each flag's value attached, so `--eval --help` still evaluates the text
+`--help` rather than printing usage. Unrecognised `--flags` are still reported by the flag
+package as a usage error (exit `4`). To pass a file whose name really begins with `--`, write
+`./--weird.gy`.
+
 Compile/link errors return diagnostics and exit code 1; missing sources or no
 positional files are a usage error (exit 4). A semantic error in any source
 file aborts the build before any toolchain step runs.

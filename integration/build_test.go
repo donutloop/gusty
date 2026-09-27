@@ -468,6 +468,65 @@ func TestCLIExitCodeContract(t *testing.T) {
 	}
 }
 
+// TestCLIBuildReportsOptimization is Gap J.4: an un-optimized build used to be
+// indistinguishable from an optimized one. The report must reach both human and JSON output,
+// and flags after the source file must work (Go's flag package stops at the first
+// positional, so `--build out src.gy --opt-level=2` used to fail on a file named
+// "--opt-level=2").
+func TestCLIBuildReportsOptimization(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "gustyc")
+	buildCLI(t, bin)
+	src := writeSrc(t, dir, "opt.gy", "def add(a, b):\n    return a + b\n\nprint(add(2, 3))\n")
+
+	// flags after the positional source (this used to be a hard failure)
+	outPath := filepath.Join(dir, "opt-bin")
+	human, code := cliRunCode(t, "--build="+outPath, src, "--opt-level=2")
+	if code != 0 {
+		t.Fatalf("trailing --opt-level must work, got exit %d\n%s", code, human)
+	}
+	if !strings.Contains(human, "optimized by") || !strings.Contains(human, "-O2") {
+		t.Errorf("human output should name the optimizer and pipeline, got:\n%s", human)
+	}
+	if _, err := os.Stat(outPath); err != nil {
+		t.Fatalf("binary should exist: %v", err)
+	}
+
+	jsonOut, code := cliRunCode(t, "--json", "--build="+outPath, src, "--opt-level=2")
+	if code != 0 {
+		t.Fatalf("--json build failed: %d\n%s", code, jsonOut)
+	}
+	var rep struct {
+		Optimization *struct {
+			Tool     string
+			Pipeline string
+			Level    int
+			Applied  bool
+			Fallback string
+			Note     string
+		} `json:"optimization"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &rep); err != nil {
+		t.Fatalf("payload: %v\n%s", err, jsonOut)
+	}
+	if rep.Optimization == nil {
+		t.Fatalf("--opt-level=2 payload must carry an optimization report, got %s", jsonOut)
+	}
+	o := rep.Optimization
+	if !o.Applied || o.Pipeline != "-O2" || o.Level != 2 || o.Tool == "" {
+		t.Errorf("optimization report = %+v, want applied -O2 level 2 with a tool name", o)
+	}
+
+	// level 0 asks for nothing: no report, and no claim of optimization
+	plain, code := cliRunCode(t, "--json", "--build="+outPath, src)
+	if code != 0 {
+		t.Fatalf("plain build failed: %d\n%s", code, plain)
+	}
+	if strings.Contains(plain, `"optimization"`) {
+		t.Errorf("a level-0 build should not claim an optimization stage: %s", plain)
+	}
+}
+
 // TestCLIBuildTypoIsACompileErrorNotACompilerBug is the exit-code consequence of
 // Gap K.10: `print(undefined_thing)` used to slip past the checker, reach LLVM as a load
 // from a slot that does not exist, and be reported as "LLVM rejected the module we emitted"

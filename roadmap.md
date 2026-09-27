@@ -548,12 +548,26 @@ Each is a concrete, reproducible defect with the shape to fix it.
   undefined_thing` is caught properly, which localises the hole to the print argument path.
   Fix by analysing print's arguments in the checker, and (per ADR 0166) making codegen
   refuse an unbound name with an actionable diagnostic instead of emitting a dangling slot.
-- **Gap J.4 — `opt` fallback is silent** — 🟥 FOUND.
-  `OptimizeIR` runs the real `opt` pipeline and, on any failure (tool missing, IR
-  rejected), returns the unoptimised module with no signal — a machine cannot tell
-  "optimised at -O2" from "the optimiser was unavailable". Verification now checks
-  whatever ships, but the pipeline should report whether the real passes ran (a field on
-  the build/emit result plus a warning), so `--opt-level=2` never quietly means `-O0`.
+- **Gap J.4 — `opt` fallback was silent** — ✅ DONE.
+  `OptimizeIR` ran the real `opt` pipeline and, on any failure (tool missing, IR rejected),
+  returned the unoptimized module with no signal, so a machine could not tell "optimized at
+  -O2" from "the optimizer was unavailable" — `--opt-level=2` quietly meant `-O0`. The stage
+  now reports itself:
+  - `OptimizeIRReport` returns an `Optimization` record (`tool`, `pipeline`, `level`,
+    `applied`, `fallback`, `note`, `error`); `applied` is true **only** when the real LLVM
+    optimizer ran, so the textual pass is never counted as a success;
+  - it travels on `BuildResult.Optimization` (`"optimization"` in `--build --json`) and every
+    failure result after that stage, and human output prints `optimized by opt-20 (-O2)` or
+    `NOT LLVM-optimized: <note>`;
+  - schema: `gustyc --schema` → `optimization` (no level requested ⇒ no report, so a
+    level-0 build never claims an optimization stage).
+  Found while testing it: **flags after positional args were broken** — Go's `flag` package
+  stops at the first positional, so `gustyc --build out src.gy --opt-level=2` tried to open a
+  file called `--opt-level=2`. `reorderFlags` now hoists flag tokens to the front while keeping
+  each flag's value attached (`--eval --help` still evaluates the text `--help`).
+  Tests: `TestOptimizationReportWhenOptToolIsMissing`, `…WhenOptToolIsAbsent`,
+  `…AbsentWhenNotRequested`, `…WhenOptRuns`, `TestBuildCarriesOptimizationReport`,
+  `TestCLIBuildReportsOptimization`.
 - **Gap J.5 — string arguments to user functions (AOT)** — 🟨 PARTIAL.
   `def shout(msg): ...` called as `shout("hi")` emitted `call i32 @shout(i32 @.str1)`,
   which LLVM rejects (`global variable reference must have pointer type`). Codegen now

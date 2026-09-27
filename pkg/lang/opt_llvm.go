@@ -15,29 +15,58 @@ package lang
 // the build never fails if the `opt` tool is missing.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // runLLVMopt invokes the external LLVM `opt` tool on the module IR at the
 // requested optimization level and returns the optimized textual IR. It is
 // purely defensive: on any error (tool missing, IR rejected, I/O failure) it
 // returns ir unchanged so the caller's pipeline always produces valid output.
-func runLLVMopt(ir string, level int) string {
-	if level <= 0 || ir == "" || optCmd == "" {
-		return ir
+// Optimization reports what the optimization stage actually did. The build used to say
+// "built" with no hint that the real LLVM pipeline had been skipped because `opt-20` was
+// missing, so a script could not tell an optimized binary from an unoptimized one — the
+// same class of silent substitution that verification had before L8.2 (roadmap Gap J.4).
+type Optimization struct {
+	Tool     string `json:"tool"`
+	Pipeline string `json:"pipeline"`
+	Level    int    `json:"level"`
+	Applied  bool   `json:"applied"`
+	// Fallback names what ran instead when the real pipeline did not ("textual").
+	Fallback string `json:"fallback,omitempty"`
+	Note     string `json:"note,omitempty"`
+	Err      string `json:"error,omitempty"`
+}
+
+func runLLVMopt(ir string, level int) (string, *Optimization) {
+	if level <= 0 || ir == "" {
+		return ir, nil // nothing asked for: not a skipped step, an absent one
 	}
+	if optCmd == "" {
+		return ir, &Optimization{
+			Tool: "opt", Level: level, Pipeline: "none", Applied: false,
+			Fallback: "textual",
+			Note:     "no LLVM opt toolchain found; the textual pass ran instead, so this module is NOT LLVM-optimized",
+		}
+	}
+	rep := &Optimization{Tool: optCmd, Level: level, Pipeline: "none", Applied: false}
 	dir, err := os.MkdirTemp("", "gusty-opt-")
 	if err != nil {
-		return ir
+		rep.Err = err.Error()
+		rep.Fallback = "textual"
+		return ir, rep
 	}
 	defer os.RemoveAll(dir)
 
 	inPath := filepath.Join(dir, "prog.ll")
 	outPath := filepath.Join(dir, "prog.opt.ll")
 	if err := os.WriteFile(inPath, []byte(ir), 0o600); err != nil {
-		return ir
+		rep.Err = err.Error()
+		rep.Fallback = "textual"
+		return ir, rep
 	}
 
 	// Level -> real LLVM pipeline. -O1 is the conservative default for
@@ -50,17 +79,29 @@ func runLLVMopt(ir string, level int) string {
 	case level == 2:
 		pipeline = "-O2"
 	}
+	rep.Pipeline = pipeline
 
 	out, err := exec.Command(optCmd, pipeline, "-S", inPath, "-o", outPath).CombinedOutput()
 	if err != nil {
-		// Defensive: never fail the build because opt is unavailable.
-		return ir
+		// Never fail the build because opt is unavailable — but say so. When the tool
+		// exists and still rejects our module, that is a compiler bug worth reading about.
+		rep.Err = fmt.Sprintf("%v: %s", err, strings.TrimSpace(string(out)))
+		rep.Fallback = "textual"
+		if !strings.Contains(rep.Err, "executable file not found") && !strings.Contains(rep.Err, "no such file") {
+			rep.Note = "the LLVM optimizer rejected the emitted module; the textual pass ran instead"
+		} else {
+			rep.Note = "the LLVM optimizer is not installed; the textual pass ran instead, so this module is NOT LLVM-optimized"
+		}
+		return ir, rep
 	}
-	_ = out
 
 	data, err := os.ReadFile(outPath)
 	if err != nil || len(data) == 0 {
-		return ir
+		rep.Err = "no optimizer output"
+		rep.Fallback = "textual"
+		rep.Note = "the LLVM optimizer produced no output; the textual pass ran instead"
+		return ir, rep
 	}
-	return string(data)
+	rep.Applied = true
+	return string(data), rep
 }
