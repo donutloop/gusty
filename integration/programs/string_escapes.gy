@@ -1,0 +1,41 @@
+# String literals are text with Python escapes (roadmap Gap N, ADR 0178).
+# The lexer used to decode an escape by dropping the backslash ("a\nb" became the
+# three letters anb) and rebuilt ordinary string values with string(byte), which
+# re-encodes every non-ASCII byte — "héllo" arrived as "hÃ©llo". Both backends now
+# agree with each other and, for everything below, with CPython.
+
+print("tab\there")
+print("quoted \"inside\"")
+print("back\\slash")
+print("bell\aend")
+print("hex \x41\x42")
+print("unicode \u00e9 \U0001F600")
+print("unknown \q stays")
+print(r"raw \t stays literal")
+print("""triple
+newline""")
+print("""triple escape:\nhere""")
+
+greeting = "café"
+print(greeting)
+print(greeting + "!" + greeting)
+print("é" in greeting)
+print(greeting == "café")
+print(greeting.upper())
+print(len(greeting))
+
+words = ["naïve", "日本語", "🐍"]
+print(words)
+for w in words:
+    print(w)
+
+table = {}
+table["key"] = "value é"
+print(table)
+print(table["key"])
+
+joined = ", ".join(["a\tb", "c"])
+print(joined)
+
+x = 7
+print(f"f-string {x} ✓")

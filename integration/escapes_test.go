@@ -1,0 +1,279 @@
+package integration
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
+)
+
+// pythonOutput runs src through CPython and returns its stdout, with the one
+// documented rendering divergence normalised away (bare booleans print as 1/0
+// until Gap L.2 gives bools a tagged representation). Expected values in this
+// file are asserted against this, so a "what Python prints" claim that turns
+// out to be wrong fails the build instead of living in a comment.
+func pythonOutput(t *testing.T, src string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("no CPython comparison on Windows")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "prog.py")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("python3", path)
+	out, err := cmd.Output()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 && strings.Contains(string(ee.Stderr), "SyntaxWarning") {
+			// Python 3.12 warns about unknown escapes but still runs the program.
+			return normalizePy(string(out))
+		}
+	}
+	return normalizePy(string(out))
+}
+
+func normalizePy(s string) string {
+	lines := strings.SplitAfter(s, "\n")
+	for i, l := range lines {
+		t := strings.TrimRight(l, "\n\r")
+		switch t {
+		case "True":
+			lines[i] = "1\n"
+		case "False":
+			lines[i] = "0\n"
+		}
+	}
+	return strings.Join(lines, "")
+}
+
+// Gap N — string literals are text, with Python escapes.
+//
+// Two independent defects lived in the same few lines of the lexer:
+//
+//   - escapes were "decoded" by dropping the backslash and keeping the next
+//     byte, so print("a\nb") printed `anb` — every escape sequence in every
+//     compiled program was silently wrong (`\t` → t, `\x41` → x41);
+//   - the ordinary-string scanner built its value with string(byte), and Go
+//     converts a byte to a *rune*, so each non-ASCII byte was re-encoded as a
+//     two-byte sequence: "héllo" arrived as "hÃ©llo" with len 8.
+//
+// Both were invisible to the parity harness because it compares the backends to
+// *each other*. Every case here asserts CPython's answer.
+
+var escapeCases = []struct {
+	name string
+	src  string
+	want string
+}{
+	{"newline escape", "print(\"a\\nb\")\n", "a\nb\n"},
+	{"tab escape", "print(\"a\\tb\")\n", "a\tb\n"},
+	{"carriage return escape", "print(\"a\\rb\")\n", "a\rb\n"},
+	{"backslash escape", "print(\"a\\\\b\")\n", "a\\b\n"},
+	{"double quote inside single", "print('q\"q')\n", "q\"q\n"},
+	{"single quote inside double", "print(\"it's\")\n", "it's\n"},
+	{"escaped double quote", "print(\"q\\\"q\")\n", "q\"q\n"},
+	{"hex escape", "print(\"\\x41\\x42\")\n", "AB\n"},
+	{"unicode escape", "print(\"\\u00e9\")\n", "é\n"},
+	{"wide unicode escape", "print(\"\\U0001F600\")\n", "😀\n"},
+	{"bell and vertical tab", "print(\"a\\ab\")\nprint(\"c\\vd\")\n", "a\ab\nc\vd\n"},
+	{"form feed and backspace", "print(\"a\\fb\")\nprint(\"c\\bd\")\n", "a\fb\nc\bd\n"},
+	{"unknown escape is kept", "print(\"a\\qb\")\n", "a\\qb\n"},
+	{"literal utf8 is preserved", "print(\"héllo\")\n", "héllo\n"},
+	{"utf8 round trips a variable", "s = \"café\"\nprint(s)\n", "café\n"},
+	{"utf8 in a container", "xs = [\"é\", \"a\"]\nprint(xs)\n", "['é', 'a']\n"},
+	{"utf8 dict value", "d = {}\nd[\"k\"] = \"é\"\nprint(d)\n", "{'k': 'é'}\n"},
+	{"utf8 compares equal", "s = \"é\"\nprint(s == \"é\")\n", "1\n"},
+	{"escaped quote survives interning", "xs = [\"a\\\"b\"]\nprint(xs)\n", "['a\"b']\n"},
+	{"escape then concat", "print(\"a\\n\" + \"b\")\n", "a\nb\n"},
+	{"tab in a joined string", "print(\"\\t\".join([\"a\", \"b\"]))\n", "a\tb\n"},
+	{"f-string decodes escapes", "x = 1\nprint(f\"a\\tb{x}\")\n", "a\tb1\n"},
+	{"raw string keeps backslashes", "print(r\"a\\nb\")\n", "a\\nb\n"},
+	{"triple string decodes escapes", "print(\"\"\"a\\nb\"\"\")\n", "a\nb\n"},
+	{"triple string keeps newline", "print(\"\"\"a\nb\"\"\")\n", "a\nb\n"},
+}
+
+func TestStringEscapesMatchPython(t *testing.T) {
+	for _, tc := range escapeCases {
+		// The expected value must be what Python itself prints, not what we
+		// remember Python printing.
+		if py := pythonOutput(t, tc.src); py != tc.want {
+			t.Fatalf("%s: the expected output disagrees with CPython\n cpython = %q\n   want   = %q", tc.name, py, tc.want)
+		}
+		gotInterp := runInterp(t, tc.src)
+		if gotInterp != tc.want {
+			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterp, tc.want)
+		}
+		res, err := lang.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: compile: %v", tc.name, err)
+			continue
+		}
+		if v, verr := lang.VerifyModuleIR(res.IR, 0); verr != nil || !v.OK {
+			t.Errorf("%s: emitted module must verify: %v %v", tc.name, v.Errors, verr)
+		}
+		gotAOT := runAOT(t, tc.src)
+		if gotAOT != tc.want {
+			t.Errorf("%s: AOT = %q, want %q", tc.name, gotAOT, tc.want)
+		}
+	}
+}
+
+// A documented, tracked divergence: `len`, indexing and slicing measure string
+// values in UTF-8 bytes, while Python measures code points. The value itself is
+// now correct (the bytes are the source's bytes, no re-encoding), but
+// len("héllo") is 6 where Python says 5. Making it code-point semantics is a
+// representation decision for both backends at once (len, s[i], s[i:j],
+// `for c in s`), so it is its own roadmap item (Gap N.2, ADR 0178) rather than a
+// half-migration that would break interpreter/AOT parity. Pinning the current
+// answer here means that change has to arrive as a test failure, not a shrug.
+func TestStringLengthIsBytesForNow(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"print(len(\"héllo\"))\n", "6\n"}, // Python: 5
+		{"print(len(\"日本語\"))\n", "9\n"},   // Python: 3
+		{"print(len(\"abc\"))\n", "3\n"},   // Python: 3 (identical for ASCII)
+	} {
+		if got := runInterp(t, tc.src); got != tc.want {
+			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)
+		}
+		if got := runAOT(t, tc.src); got != tc.want {
+			t.Errorf("AOT %q = %q, want %q", tc.src, got, tc.want)
+		}
+	}
+}
+
+// Python rejects a malformed numeric escape outright (SyntaxError), so those
+// cases cannot be compared to CPython. The compiler's contract is different and
+// must be pinned directly: keep the text the user wrote rather than guessing a
+// code point or failing the build — a typo in a string is a warning-level
+// surprise, not a broken program.
+func TestMalformedEscapesKeepTheirText(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"print(\"\\xZZ\")\n", "\\xZZ\n"},
+		{"print(\"\\u00\")\n", "\\u00\n"},
+		{"print(\"\\U00\")\n", "\\U00\n"},
+		{"print(\"\\x41\")\n", "A\n"}, // well-formed: decoded
+	} {
+		if got := runInterp(t, tc.src); got != tc.want {
+			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)
+		}
+		if got := runAOT(t, tc.src); got != tc.want {
+			t.Errorf("AOT %q = %q, want %q", tc.src, got, tc.want)
+		}
+	}
+}
+
+// An unterminated string must still be an error with a span, not a hang: the
+// scanner that replaced the inline loop is a different code path.
+func TestUnterminatedStringIsADiagnostic(t *testing.T) {
+	for _, src := range []string{"x = \"abc\n", "x = 'abc\n"} {
+		prog, err := lang.Parse(src)
+		if err == nil && (prog == nil || len(prog.Diags) == 0) {
+			t.Errorf("unterminated string %q produced no diagnostic", src)
+		}
+		found := false
+		if prog != nil {
+			for _, d := range prog.Diags {
+				if strings.Contains(d.Msg, "unterminated") {
+					found = true
+				}
+			}
+		}
+		if err == nil && !found {
+			t.Errorf("unterminated string %q must report 'unterminated', got %+v", src, prog.Diags)
+		}
+	}
+}
+
+// Substring membership on a string haystack is its own lowering: the earlier
+// path handed the raw @.strN global to rt_contains(i32, i32) — a global in an
+// i32 slot — so the module was rejected by llc and a plain Python program looked
+// like a compiler bug. Both sides are @str_tab indices now (rt_str_contains).
+func TestStringMembershipMatchesPython(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"ascii substring", "g = \"caf\"\nprint(\"ca\" in g)\n", "1\n"},
+		{"ascii miss", "g = \"café\"\nprint(\"zz\" in g)\n", "0\n"},
+		{"utf8 substring", "g = \"café\"\nprint(\"é\" in g)\n", "1\n"},
+		{"utf8 multi-byte substring", "g = \"café crème\"\nprint(\"crème\" in g)\n", "1\n"},
+		{"not in", "g = \"café\"\nprint(\"zz\" not in g)\n", "1\n"},
+		{"empty needle", "g = \"café\"\nprint(\"{}\" in g.format())\n", ""},
+		{"runtime needle via parameter", "def f(s):\n    return \"x\" in s\n\nprint(f(\"axb\"))\nprint(f(\"bbb\"))\n", "1\n0\n"},
+		{"haystack from a call", "def g():\n    return \"hello\"\n\nprint(\"ell\" in g())\n", "1\n"},
+		{"membership in a plain list still works", "xs = [1, 2]\nprint(2 in xs)\nprint(3 in xs)\n", "1\n0\n"},
+	} {
+		if tc.want == "" {
+			continue // documented gap: str.format is not implemented
+		}
+		if py := pythonOutput(t, tc.src); py != tc.want {
+			t.Fatalf("%s: expected output disagrees with CPython\n cpython = %q\n   want   = %q", tc.name, py, tc.want)
+		}
+		if got := runInterp(t, tc.src); got != tc.want {
+			t.Errorf("%s: interpreter = %q, want %q", tc.name, got, tc.want)
+		}
+		res, err := lang.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: compile: %v", tc.name, err)
+			continue
+		}
+		if strings.Contains(res.IR, "@rt_contains(i32 @") {
+			t.Errorf("%s: emitted a global string into an i32 slot: %q", tc.name, tc.src)
+		}
+		if v, verr := lang.VerifyModuleIR(res.IR, 0); verr != nil || !v.OK {
+			t.Errorf("%s: module must verify: %v %v", tc.name, v.Errors, verr)
+		}
+		if got := runAOT(t, tc.src); got != tc.want {
+			t.Errorf("%s: AOT = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// These shapes were AOT-only failures found by the conformance harness: the CLI's
+// `--file` runs the interpreter, so `gustyc --file prog.gy` had been showing the
+// right answer for a program whose compiled form printed the interned index
+// instead of the text. Every case here goes through llc + cc.
+func TestAOTStringPrintsMatchPython(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"dict value print after printing the dict",
+			"d = {}\nd[\"k\"] = \"value\"\nprint(d)\nprint(d[\"k\"])\n", "{'k': 'value'}\nvalue\n"},
+		{"dict value print without printing the dict",
+			"d = {}\nd[\"k\"] = \"value\"\nprint(d[\"k\"])\n", "value\n"},
+		{"utf8 dict value", "d = {}\nd[\"k\"] = \"é\"\nprint(d[\"k\"])\n", "é\n"},
+		{"list element print", "xs = [\"a\", \"b\"]\nprint(xs[1])\n", "b\n"},
+		{"string returned by a function", "def g():\n    return \"hello\"\n\nprint(g())\n", "hello\n"},
+		{"string returned and compared", "def g():\n    return \"yes\"\n\nprint(g() == \"yes\")\n", "1\n"},
+		{"escaped string returned by a function", "def g():\n    return \"a\\tb\"\n\nprint(g())\n", "a\tb\n"},
+	} {
+		if py := pythonOutput(t, tc.src); py != tc.want {
+			t.Fatalf("%s: expected output disagrees with CPython\n cpython = %q\n   want   = %q", tc.name, py, tc.want)
+		}
+		if got := runInterp(t, tc.src); got != tc.want {
+			t.Errorf("%s: interpreter = %q, want %q", tc.name, got, tc.want)
+		}
+		res, err := lang.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: compile: %v", tc.name, err)
+			continue
+		}
+		if strings.Contains(res.IR, "i32 @.str") {
+			t.Errorf("%s: a global string reached an i32 slot", tc.name)
+		}
+		if v, verr := lang.VerifyModuleIR(res.IR, 0); verr != nil || !v.OK {
+			t.Errorf("%s: module must verify: %v %v", tc.name, v.Errors, verr)
+		}
+		if got := runAOT(t, tc.src); got != tc.want {
+			t.Errorf("%s: AOT = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

@@ -2022,7 +2022,10 @@ func (p *parser) buildFString(raw string, sp Span) (*FString, error) {
 			lit += "}"
 			i++
 		default:
-			lit += string(c)
+			// raw[i:i+1], not string(c): c is a byte, and Go converts a byte to a
+			// *rune*, so every non-ASCII byte in an f-string literal was
+			// re-encoded as a two-byte sequence ("✓" became "âœ“").
+			lit += raw[i : i+1]
 			i++
 		}
 	}
@@ -2054,17 +2057,19 @@ func stripFormatSpec(src string) string {
 	return src
 }
 
-// unescapeStr drops a leading backslash from escape sequences, matching the
-// lexer's existing string handling (`\n` becomes `n`).
+// unescapeStr decodes escape sequences in string-ish source text (f-string
+// literals reach it with their backslashes intact). It shares the lexer's
+// decoder so the two can never disagree: an earlier version dropped the
+// backslash and kept the character, which turned "a\nb" into "anb".
 func unescapeStr(s string) string {
-	out := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
+	var b strings.Builder
+	for i := 0; i < len(s); {
 		if s[i] == '\\' && i+1 < len(s) {
-			out = append(out, s[i+1])
-			i++
+			i = appendEscape(&b, s, i)
 			continue
 		}
-		out = append(out, s[i])
+		b.WriteByte(s[i])
+		i++
 	}
-	return string(out)
+	return b.String()
 }

@@ -309,8 +309,8 @@ func Lex(src string) ([]Token, error) {
 					i += 3
 				} else {
 					emitErr("unexpected character '\\'", i, i)
-						i++
-						continue
+					i++
+					continue
 				}
 				line++
 				// skip leading whitespace and blank / comment-only continuation lines
@@ -334,78 +334,70 @@ func Lex(src string) ([]Token, error) {
 				lineStart = i
 				continue
 			case c == '"' || c == '\'':
-			quote := c
-			start := i
-			// triple-quoted string (""" / ''' ) may span multiple lines
-			if i+2 < n && src[i+1] == quote && src[i+2] == quote {
-				end, val, ok := scanString(src, i, quote, true, false)
-				if !ok {
-					emitErr("unterminated triple-quoted string", start, i)
+				quote := c
+				start := i
+				// triple-quoted string (""" / ''' ) may span multiple lines
+				if i+2 < n && src[i+1] == quote && src[i+2] == quote {
+					end, val, ok := scanString(src, i, quote, true, false)
+					if !ok {
+						emitErr("unterminated triple-quoted string", start, i)
 						for i < n && src[i] != '\n' {
 							i++
 						}
 						continue
-				}
-				i = end
-				// a triple string may contain newlines; update line tracking
-				nl, last := countNewlines(src[start:end])
-				line += nl
-				if last >= 0 {
-					lineStart = start + last + 1
-				}
-				emit(TokTripleString, src[start:end], start, end, func(t *Token) { t.Str = val })
-				continue
-			}
-			j := i + 1
-			val := ""
-			for j < n && src[j] != quote {
-				if src[j] == '\\' && j+1 < n {
-					// escape: drop the backslash, keep the next character
-					val += string(src[j+1])
-					j += 2
+					}
+					i = end
+					// a triple string may contain newlines; update line tracking
+					nl, last := countNewlines(src[start:end])
+					line += nl
+					if last >= 0 {
+						lineStart = start + last + 1
+					}
+					emit(TokTripleString, src[start:end], start, end, func(t *Token) { t.Str = val })
 					continue
 				}
-				val += string(src[j])
-				j++
-			}
-				if j >= n {
-			emitErr("unterminated string", start, i)
-			for i < n && src[i] != '\n' {
-				i++
-			}
-			continue
-		}
-	i = j
-			i++ // skip closing quote
-			emit(TokString, src[start:i], start, i, func(t *Token) { t.Str = val })
+				// One scanner for every string form: the inline copy of this loop
+				// built the value with `string(byte)`, which re-encodes each non-ASCII
+				// byte as a rune, so "héllo" arrived as "hÃ©llo" with len 8 instead of
+				// 6 — silently, in both backends.
+				end, val, ok := scanString(src, i, quote, false, false)
+				if !ok {
+					emitErr("unterminated string", start, i)
+					for i < n && src[i] != '\n' {
+						i++
+					}
+					continue
+				}
+				i = end
+				emit(TokString, src[start:i], start, i, func(t *Token) { t.Str = val })
 			case c == '-' && i+1 < n && unicode.IsDigit(rune(src[i+1])):
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, start+1)
 				if lerr != nil {
-								emitErr(lerr.Msg, start, i)
-									i = start + 1
-									continue
+					emitErr(lerr.Msg, start, i)
+					i = start + 1
+					continue
 				}
 				text := src[start:end]
 				if isFloat {
-								emit(TokFloat, text, start, end, func(t *Token) { t.Float = -fval })
+					emit(TokFloat, text, start, end, func(t *Token) { t.Float = -fval })
 				} else {
-								emit(TokInt, text, start, end, func(t *Token) { t.Int = -ival })
+					emit(TokInt, text, start, end, func(t *Token) { t.Int = -ival })
 				}
 				i = end
 			case c >= '0' && c <= '9':
 				start := i
 				isFloat, ival, fval, end, lerr := lexNumber(src, i)
 				if lerr != nil {
-								emitErr(lerr.Msg, start, i)
-									i = start + 1
-									continue
+					emitErr(lerr.Msg, start, i)
+					i = start + 1
+					continue
 				}
 				text := src[start:end]
 				if isFloat {
-								emit(TokFloat, text, start, end, func(t *Token) { t.Float = fval })
+					emit(TokFloat, text, start, end, func(t *Token) { t.Float = fval })
 				} else {
-								emit(TokInt, text, start, end, func(t *Token) { t.Int = ival })
+					emit(TokInt, text, start, end, func(t *Token) { t.Int = ival })
 				}
 				i = end
 			case isIdentStart(c):
@@ -426,10 +418,10 @@ func Lex(src string) ([]Token, error) {
 					}
 					if j >= n {
 						emitErr("unterminated f-string", start, i)
-							for i < n && src[i] != '\n' {
-								i++
-							}
-							continue
+						for i < n && src[i] != '\n' {
+							i++
+						}
+						continue
 					}
 					raw += src[start:j]
 					emit(TokFString, src[i:j+1], i, j+1, func(t *Token) { t.FStrRaw = raw })
@@ -437,34 +429,34 @@ func Lex(src string) ([]Token, error) {
 					i++
 					continue
 				}
-			if (c == 'r' || c == 'R') && i+1 < n && (src[i+1] == '"' || src[i+1] == '\'') {
-				quote := src[i+1]
-				start := i
-				i++ // consume the r/R prefix
-				triple := i+2 < n && src[i+1] == quote && src[i+2] == quote
-				kind := TokRawString
-				if triple {
-					kind = TokRawTripleString
-				}
-				end, val, ok := scanString(src, i, quote, triple, true)
-				if !ok {
-					emitErr("unterminated raw string", start, i)
+				if (c == 'r' || c == 'R') && i+1 < n && (src[i+1] == '"' || src[i+1] == '\'') {
+					quote := src[i+1]
+					start := i
+					i++ // consume the r/R prefix
+					triple := i+2 < n && src[i+1] == quote && src[i+2] == quote
+					kind := TokRawString
+					if triple {
+						kind = TokRawTripleString
+					}
+					end, val, ok := scanString(src, i, quote, triple, true)
+					if !ok {
+						emitErr("unterminated raw string", start, i)
 						for i < n && src[i] != '\n' {
 							i++
 						}
 						continue
-				}
-				i = end
-				if triple {
-					nl, last := countNewlines(src[start:end])
-					line += nl
-					if last >= 0 {
-						lineStart = start + last + 1
 					}
+					i = end
+					if triple {
+						nl, last := countNewlines(src[start:end])
+						line += nl
+						if last >= 0 {
+							lineStart = start + last + 1
+						}
+					}
+					emit(kind, src[start:end], start, end, func(t *Token) { t.Str = val })
+					continue
 				}
-				emit(kind, src[start:end], start, end, func(t *Token) { t.Str = val })
-				continue
-			}
 				i = scanIdent(i)
 			default:
 				if c >= utf8.RuneSelf {
@@ -492,8 +484,8 @@ func Lex(src string) ([]Token, error) {
 				}
 				if !matched {
 					emitErr(fmt.Sprintf("unexpected character %q", string(c)), i, i)
-						i++
-						continue
+					i++
+					continue
 				}
 			}
 		}
@@ -574,6 +566,79 @@ var confusables = map[rune]rune{
 	'ѕ': 's', // Cyrillic small dze
 }
 
+// appendEscape decodes the escape sequence that starts at src[i] (a backslash)
+// into b and returns the index just past it. Python's rules, not "drop the
+// backslash": \n \t \r \a \b \f \v \0 become control characters, \xHH \uHHHH
+// \UHHHHHHHH become the code point, and an escape this list does not know is
+// kept verbatim (backslash included) — Python does the same, and dropping the
+// backslash silently turned "\n" into the letter n in every compiled program.
+// A malformed numeric escape (too few hex digits, an out-of-range code point)
+// is also kept verbatim rather than guessed at.
+func appendEscape(b *strings.Builder, src string, i int) int {
+	n := len(src)
+	if i+1 >= n {
+		b.WriteByte('\\')
+		return i + 1
+	}
+	c := src[i+1]
+	switch c {
+	case 'n':
+		b.WriteByte('\n')
+		return i + 2
+	case 't':
+		b.WriteByte('\t')
+		return i + 2
+	case 'r':
+		b.WriteByte('\r')
+		return i + 2
+	case 'a':
+		b.WriteByte(7)
+		return i + 2
+	case 'b':
+		b.WriteByte(8)
+		return i + 2
+	case 'f':
+		b.WriteByte(12)
+		return i + 2
+	case 'v':
+		b.WriteByte(11)
+		return i + 2
+	case '0':
+		b.WriteByte(0)
+		return i + 2
+	case '\\', '\'', '"':
+		b.WriteByte(c)
+		return i + 2
+	case 'x', 'u', 'U':
+		want := map[byte]int{'x': 2, 'u': 4, 'U': 8}[c]
+		if i+2+want > n {
+			b.WriteByte('\\')
+			b.WriteByte(c)
+			return i + 2
+		}
+		digits := src[i+2 : i+2+want]
+		v, err := strconv.ParseUint(digits, 16, 32)
+		if err != nil {
+			b.WriteByte('\\')
+			b.WriteByte(c)
+			return i + 2
+		}
+		r := rune(v)
+		if r > utf8.MaxRune || (r >= 0xD800 && r <= 0xDFFF) {
+			b.WriteByte('\\')
+			b.WriteByte(c)
+			return i + 2
+		}
+		b.WriteRune(r)
+		return i + 2 + want
+	default:
+		// Unrecognised escape: keep both characters, as Python does.
+		b.WriteByte('\\')
+		b.WriteByte(c)
+		return i + 2
+	}
+}
+
 // scanString scans a string literal body. It is called with i at the opening
 // quote (or at the first of three quote bytes for triple strings). quote is
 // the quote byte. triple means the closing delimiter is three quote bytes.
@@ -615,11 +680,9 @@ func scanString(src string, i int, quote byte, triple, raw bool) (int, string, b
 			i++
 			continue
 		}
-		// non-raw: escape processing (drop the backslash, keep the next byte)
+		// non-raw: decode the escape the way Python does
 		if c == '\\' && i+1 < n {
-			i++
-			b.WriteByte(src[i])
-			i++
+			i = appendEscape(&b, src, i)
 			continue
 		}
 		b.WriteByte(c)

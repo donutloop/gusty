@@ -1038,10 +1038,34 @@ calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
 
 ### string methods
 
+**Escape sequences** are decoded the way Python decodes them (ADR 0178): `\n`,
+`\t`, `\r`, `\a`, `\b`, `\f`, `\v`, `\0`, `\\`, `\'`, `\"`, hex `\x41` → `A`,
+`\u00e9` → `é`, `\U0001F600` → `😀`. An escape this list does not know (`\q`)
+is kept **verbatim**, backslash included — Python does the same, and dropping the
+backslash (which an earlier lexer did) silently rewrote every `"a\nb"` to `anb`.
+A malformed numeric escape (`\xZZ`, a truncated `\u00`, a surrogate, a code
+point past Unicode) is likewise kept as written rather than guessed at. Raw
+strings `r"..."` keep backslashes; triple-quoted strings decode escapes and may
+contain literal newlines. All three forms share one decoder, as do f-string
+literal parts.
+
+**String values are UTF-8 text, measured in bytes.** A literal's value is the
+source's own bytes (`"café"` is 5 bytes, and `print` round-trips it), so
+non-ASCII text survives lexing, containers, interning, and printing. Length,
+indexing, and slicing measure **bytes**, not code points, in both backends:
+`len("café")` is 5 where CPython says 4, and `"héllo"[1]` yields the byte 195.
+That is a tracked divergence, not an accident — code-point semantics are a
+representation decision for `len`, `s[i]`, `s[i:j]` and `for c in s` in both
+backends at once, and a half-migration would break interpreter/AOT parity
+(roadmap Gap N.2).
+
 String equality `==` / `!=` compares contents in both paths (`"abc" == "abc"`
 is 1, `"abc" == "abd"` is 0), constant-folded in the codegen.
 String indexing `"abc"[1]` returns the char code (98 for 'b') in both the
 interpreter and the AOT codegen (constant-folded).
+Substring membership `"cat" in s` is a substring test, not container membership;
+in the AOT backend both sides are interned table indices and the scan runs in
+`@rt_str_contains`.
 `.split()` (space-separated) folds to the substring count in the codegen
 (`len("a b c".split())` -> 3). Boxed strings support Python-style methods:
 

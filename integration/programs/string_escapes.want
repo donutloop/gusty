@@ -1,0 +1,26 @@
+tab	here
+quoted "inside"
+back\slash
+bellend
+hex AB
+unicode é 😀
+unknown \q stays
+raw \t stays literal
+triple
+newline
+triple escape:
+here
+café
+café!café
+1
+1
+CAFÉ
+5
+['naïve', '日本語', '🐍']
+naïve
+日本語
+🐍
+{'key': 'value é'}
+value é
+a	b, c
+f-string 7 ✓

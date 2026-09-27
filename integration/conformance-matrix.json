@@ -446,6 +446,19 @@
     },
     {
       "case": {
+        "id": "programs/string_escapes",
+        "name": "string_escapes.gy",
+        "source": "# String literals are text with Python escapes (roadmap Gap N, ADR 0178).\n# The lexer used to decode an escape by dropping the backslash (\"a\\nb\" became the\n# three letters anb) and rebuilt ordinary string values with string(byte), which\n# re-encodes every non-ASCII byte — \"héllo\" arrived as \"hÃ©llo\". Both backends now\n# agree with each other and, for everything below, with CPython.\n\nprint(\"tab\\there\")\nprint(\"quoted \\\"inside\\\"\")\nprint(\"back\\\\slash\")\nprint(\"bell\\aend\")\nprint(\"hex \\x41\\x42\")\nprint(\"unicode \\u00e9 \\U0001F600\")\nprint(\"unknown \\q stays\")\nprint(r\"raw \\t stays literal\")\nprint(\"\"\"triple\nnewline\"\"\")\nprint(\"\"\"triple escape:\\nhere\"\"\")\n\ngreeting = \"café\"\nprint(greeting)\nprint(greeting + \"!\" + greeting)\nprint(\"é\" in greeting)\nprint(greeting == \"café\")\nprint(greeting.upper())\nprint(len(greeting))\n\nwords = [\"naïve\", \"日本語\", \"🐍\"]\nprint(words)\nfor w in words:\n    print(w)\n\ntable = {}\ntable[\"key\"] = \"value é\"\nprint(table)\nprint(table[\"key\"])\n\njoined = \", \".join([\"a\\tb\", \"c\"])\nprint(joined)\n\nx = 7\nprint(f\"f-string {x} ✓\")\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
+      "aot_ok": true,
+      "aot_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
+      "parity": true
+    },
+    {
+      "case": {
         "id": "programs/string_params",
         "name": "string_params.gy",
         "source": "# Strings across a function boundary, compiled through LLVM (roadmap Gap J.5).\n# A string argument is interned into the runtime string table and the callee receives the\n# index, so a parameter can be printed, measured, compared, forwarded, and stored in a\n# container. The rendering below is what CPython prints for the same program.\ndef greet(name):\n    print(\"hello\", name)\n\n\ndef echo(s):\n    return s\n\n\ndef size(s):\n    return len(s)\n\n\ndef is_yes(s):\n    return s == \"yes\"\n\n\ndef eq2(a, b):\n    return a == b\n\n\ndef shout(msg):\n    print(msg)\n\n\ndef fill(out, v):\n    out.append(v)\n\n\ndef put(d, k, v):\n    d[k] = v\n\n\ndef ins(s, v):\n    s.add(v)\n\n\ndef wrap(s):\n    echo(s)\n    print(s)\n\n\ngreet(\"ada\")\nshout(\"hi\")\ngreet(name=\"keyword\")\nprint(echo(\"yo\"))\nprint(size(\"abcd\"))\nprint(size(\"\"))\nprint(is_yes(\"yes\"))\nprint(is_yes(\"no\"))\nprint(eq2(\"x\", \"x\"))\nprint(eq2(\"x\", \"y\"))\n\nnames = []\nfill(names, \"one\")\nfill(names, \"two\")\nprint(names)\nprint(names[1])\n\ncounts = {}\nput(counts, \"k\", 1)\nput(counts, \"j\", 2)\nprint(counts)\nprint(counts[\"j\"])\n\nmembers = set()\nins(members, \"q\")\nins(members, \"r\")\nprint(members)\nprint(len(members))\n\nfor n in names:\n    print(n)\n\nfwd = \"forwarded\"\nshout(fwd)\nwrap(fwd)\n",
@@ -523,6 +536,6 @@
       "parity": true
     }
   ],
-  "pass": 40,
+  "pass": 41,
   "fail": 0
 }

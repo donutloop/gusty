@@ -1544,3 +1544,56 @@ features that were.
 failed parse exposed `Analyze(nil)` on the lexer-failure path (a segfault in the
 first test run), and my first `checkParseErrors` called `err.Error()` on a nil
 error. Whenever a call moves out of an error branch, the nil case becomes real.
+
+## Gap N — string literals were bytes and escapes were letters (ADR 0178)
+
+**The parity harness cannot see a front-end bug.** It compares the interpreter to
+the AOT backend, and both share the lexer — so `print("a\nb")` printing `anb`,
+and `"héllo"` printing `hÃ©llo` with `len` 8, passed every test ever written.
+The only oracle that matters is CPython, and now the tests *execute* it:
+`pythonOutput(t, src)` fails the build when a hard-coded expectation disagrees
+with what Python actually prints. A claim about Python that lives in a comment is
+a hypothesis; run it.
+
+**`len` was neither bytes nor characters — that is the tell.** `len("héllo") == 8`
+matches no sane model (6 bytes, 5 runes). Whenever a number matches no
+representation, stop: something is being re-encoded. Here it was
+`val += string(src[j])` on a `byte`: Go converts a byte to a *rune*, so every
+non-ASCII byte became two bytes (`é` → `Ã©`). The same gotcha lived in
+`buildFString` (`lit += string(c)`), found by looking for the pattern rather than
+the symptom.
+
+**Half-decoding is worse than not decoding.** The old rule — "drop the backslash,
+keep the next character" — made every escape silently wrong in every program,
+and the parser's `unescapeStr` documented it as if it were intended. One
+`appendEscape` now implements Python's rules and is shared by the lexer, the
+triple/raw scanners and the f-string path: one decoder means the string forms can
+never disagree, which was an actual failure mode (`r"a\nb"` vs `"a\nb"`).
+
+**Deleting the duplicate was the fix, not patching it.** The bug lived in a
+second, hand-copied ordinary-string scanner next to `scanString`. Rewriting the
+call site to use `scanString` removed the class of bug (two scanners drifting
+apart) instead of keeping it latent.
+
+**Fixing the front end exposed what the CLI was hiding.** `gustyc --file` runs
+the *interpreter*, so every "compiled" probe this session was interpreted; the
+conformance harness (real `llc` + `cc`) is what caught three AOT-only defects:
+`in` on a string emitted a global into an i32 slot, `def g(): return "hi"` emitted
+`ret i32 @.str1`, and `print(d["k"])` printed the interned **index** (`6`). Two
+lessons: probe through the path users believe is compiled, and make the backend
+explicit (recorded as Gap M.2 — the CLI must *say* which backend ran).
+
+**A wrong answer that looks plausible is the worst kind.** `print(d["k"])` → `6`
+was a valid integer from a valid-looking program. The runtime `@estr` flags cover
+printing the whole container; per-position `dictValStr` covers printing one
+element. Both were needed, and only the second was missing.
+
+**Keep the divergence you cannot fix honest.** Byte-vs-code-point `len` stayed
+(parity across backends is worth more than one Python detail), but
+`TestStringLengthIsBytesForNow` records *both* answers — ours and Python's — so
+the migration has to arrive as a failing test, not a shrug. Roadmap Gap N.2.
+
+**Beware the raw-string trap (again).** An IR comment containing backticks around
+`"cat" in greeting` terminated the Go raw string literal and broke the build —
+the exact hazard already written down. Keep IR comments backtick-free, and use
+`;` not `//`.

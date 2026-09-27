@@ -56,6 +56,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"container_methods",
 		"none_values",
 		"string_containers",
+		"string_escapes",
 		"string_params",
 	}
 

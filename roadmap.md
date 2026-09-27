@@ -853,3 +853,71 @@ Each is a concrete, reproducible defect with the shape to fix it.
   (37 cases), and — after the second time this cycle — `pkg/lang/runtime_ir_test.go`, which
   scans the embedded runtime IR for `//` comments, stray backticks, unbalanced `define`
   blocks, and duplicate helper definitions.
+
+## Gap N — string literals were bytes and escapes were letters (found 2026-08-03)
+
+- **Status**: ✅ DONE (ADR 0178), one divergence left open below.
+- **Found by**: probing the surface the suite never typed — a program with a
+  non-ASCII string. The parity harness compares the backends to *each other*, and
+  both share the front end, so a front-end bug is invisible unless a program
+  asserts **Python's** answer.
+- **What was wrong**:
+  - escapes were "decoded" by dropping the backslash and keeping the next byte:
+    `print("a\nb")` printed `anb`, `"tab\there"` printed `tabhere`, `"\x41"`
+    printed `x41` — in every program, both backends, silently;
+  - the ordinary-string scanner built its value with `val += string(src[j])`, and
+    Go converts a `byte` to a **rune**, so each non-ASCII byte was re-encoded:
+    `"héllo"` became `hÃ©llo`, with `len` reporting 8 — neither Python's 5 nor the
+    6 bytes it actually occupies.
+- **Fixed**: one `appendEscape` decoder implements Python's rules (`\n \t \r \a \b
+  \f \v \0 \\ \' \"`, `\xHH`, `\uHHHH`, `\UHHHHHHHH`; unknown and malformed
+  escapes kept verbatim), shared by `scanString` and the parser's `unescapeStr`;
+  the duplicated ordinary-string scanner is deleted so the `string(byte)` class of
+  bug cannot come back; f-string literal parts accumulate bytes instead of runes.
+- **Three AOT-only defects surfaced behind it** (each was invalid IR or a wrong
+  answer, found by the conformance harness — not by `gustyc --file`, which runs
+  the interpreter):
+  - `"é" in greeting` lowered to `rt_contains(i32 @.str14, …)`, a global in an
+    i32 slot, rejected by `llc` → fixed with `@rt_str_contains`, an IR substring
+    scan over interned indices (no libc `strstr`: the `strlen` redeclaration trap
+    of ADR 0173);
+  - `def g(): return "hello"` emitted `ret i32 @.str1` → a string-returning
+    function now returns its `@str_tab` index;
+  - `print(d["k"])` printed the interned **index** (`6`) once the dict had not
+    been printed first → `printsAsInternedStr` now knows a dict's values are
+    interned.
+- **Tests**: `pkg/lang/escapes_test.go` (decoder unit tests, every string form,
+  UTF-8 byte preservation), `integration/escapes_test.go` (28 escape cases +
+  membership + AOT print cases, each expectation cross-checked by running
+  CPython on the same source), and `programs/string_escapes.gy` as the 41st
+  conformance program.
+- **Standing rule from this gap**: integration expectations must be *derived*
+  from CPython (`pythonOutput(t, src)`), not remembered. A claim about what
+  Python prints that turns out to be wrong now breaks the build.
+
+### Gap N.2 — strings measure bytes, not code points (OPEN)
+
+`len("café")` is 5 (bytes) where CPython says 4, `"héllo"[1]` returns the byte
+`195` rather than `"é"`, and `for c in s` walks bytes. This is documented in
+`docs/language.md` and pinned by `TestStringLengthIsBytesForNow`, which records
+both answers. Code-point semantics are a **representation decision for both
+backends at once** — `len`, `s[i]`, `s[i:j]`, `for c in s`, the interned table,
+and the container printers all agree on bytes today — so a half-migration (one
+backend only) is worse than the divergence. Do it as one change, or as a tagged
+string representation alongside Gap L.2.
+
+## Gap M.2 — `gustyc --file` runs the interpreter (found 2026-08-03)
+
+`docs/language.md` and `AGENTS.md` describe `--file` as the AOT path, but
+`evalSrcOrFile` runs the **evaluator** unless `--jit` is passed. Consequence:
+every manual "compiled this program" probe through the CLI has been an
+interpreter run, and AOT-only bugs hide behind the default path — three of them
+(invalid IR in `in` on a string, `ret i32 @.str`, `print(d["k"])` printing an
+index) survived behind exactly that. Needed:
+
+- say which backend ran: the human banner and the `--json` payload gain
+  `"backend": "interpreter" | "jit" | "aot"`, so an agent never infers it;
+- explicit `--aot` / `--interp` switches with `--file`, and `--aot` as the
+  default for `--build` (unchanged);
+- flip the `--file` default only once the conformance matrix is green through it,
+  so "it ran" never again means "the interpreter ran it".

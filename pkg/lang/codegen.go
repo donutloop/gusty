@@ -221,6 +221,50 @@ entry:
   %p = load i8*, i8** %slot
   ret i8* %p
 }
+; rt_str_contains tests substring membership of two interned strings: needle and
+; haystack are both @str_tab indices, never raw pointers.
+; reaches here when the haystack is a string value rather than a container, and a string value
+; is a @str_tab index (ADR 0173). The earlier path handed the raw @.strN global to
+; rt_contains(i32, i32), which is not valid IR — a global in an i32 slot — so the module died
+; in llc and the failure looked like a compiler bug (ADR 0166). The scan is written in IR
+; rather than calling libc strstr, which would need a second declaration of a libc symbol the
+; runtime may already declare with a different signature (the strlen lesson, ADR 0173).
+define internal i32 @rt_str_contains(i32 %hay, i32 %needle) {
+entry:
+  %hp = call i8* @rt_str_ptr(i32 %hay)
+  %np = call i8* @rt_str_ptr(i32 %needle)
+  %n0 = load i8, i8* %np
+  %empty = icmp eq i8 %n0, 0
+  br i1 %empty, label %hit, label %outer
+outer:
+  %i = phi i32 [ 0, %entry ], [ %inext, %nomatch ]
+  %ih = getelementptr i8, i8* %hp, i32 %i
+  %hc = load i8, i8* %ih
+  %done = icmp eq i8 %hc, 0
+  br i1 %done, label %miss, label %inner
+inner:
+  %j = phi i32 [ 0, %outer ], [ %jnext, %innercont ]
+  %ij = add i32 %i, %j
+  %hjp = getelementptr i8, i8* %hp, i32 %ij
+  %hjc = load i8, i8* %hjp
+  %njp = getelementptr i8, i8* %np, i32 %j
+  %njc = load i8, i8* %njp
+  %nst = icmp eq i8 %njc, 0
+  br i1 %nst, label %hit, label %cmp
+cmp:
+  %same = icmp eq i8 %hjc, %njc
+  br i1 %same, label %innercont, label %nomatch
+innercont:
+  %jnext = add i32 %j, 1
+  br label %inner
+nomatch:
+  %inext = add i32 %i, 1
+  br label %outer
+hit:
+  ret i32 1
+miss:
+  ret i32 0
+}
 
 ; rt_str_len measures an interned string: len(s) where s is a parameter or an element read
 ; out of a container has no compile-time text to fold, unlike a literal (Gap J.5). It counts
@@ -3910,6 +3954,41 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				b.WriteString(fmt.Sprintf("\t%s = zext i1 %s to i32\n", res, acc))
 				return res, nil
 			}
+			// A string haystack: `"cat" in greeting` is substring membership, not
+			// container membership. Both sides must be @str_tab indices — handing the
+			// raw @.strN global to rt_contains(i32, i32) emitted a global in an i32
+			// slot, which is invalid IR, so the module died in llc and a plain Python
+			// program looked like a compiler bug (ADR 0166).
+			if hay, ok := g.stringVal(n.R); ok {
+				hn := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", hn, g.strConst(hay), g.strConst(pyReprString(hay))))
+				sc := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_str_contains(i32 %s, i32 %s)\n", sc, hn, l))
+				bt := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = icmp ne i32 %s, 0\n", bt, sc))
+				g.markI1(bt)
+				if n.Op == "not in" {
+					inv := g.newTmp()
+					b.WriteString(fmt.Sprintf("\t%s = xor i1 %s, true\n", inv, bt))
+					g.markI1(inv)
+					return g.asBoolI32(b, inv), nil
+				}
+				return g.asBoolI32(b, bt), nil
+			}
+			if g.printsAsInternedStr(n.R) {
+				sc := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_str_contains(i32 %s, i32 %s)\n", sc, r, l))
+				bt := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = icmp ne i32 %s, 0\n", bt, sc))
+				g.markI1(bt)
+				if n.Op == "not in" {
+					inv := g.newTmp()
+					b.WriteString(fmt.Sprintf("\t%s = xor i1 %s, true\n", inv, bt))
+					g.markI1(inv)
+					return g.asBoolI32(b, inv), nil
+				}
+				return g.asBoolI32(b, bt), nil
+			}
 			// l is the value to test, r is the container handle.
 			t := g.newTmp()
 			b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains(i32 %s, i32 %s)\n", t, r, l))
@@ -6741,7 +6820,12 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		}
 	case *Index:
 		if nm, ok := v.Obj.(*Name); ok {
-			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value]
+			// Elements of a string list/set and the values of a string dict are both
+			// @str_tab indices; printing one must show its text, not the index. The
+			// dict case was missing, so `d["k"] = "v"; print(d["k"])` printed the
+			// integer index whenever the whole dict had not been printed first (the
+			// runtime @estr flag only covers printing the container itself).
+			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value]
 		}
 	}
 	return false
@@ -8307,6 +8391,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			fv := g.floatValue(b, n.Expr)
 			b.WriteString(fmt.Sprintf("  ret double %s\n", fv))
 			return nil
+		}
+		if g.strFuncs[g.curFunc] {
+			// A function known to yield a string returns its @str_tab index: callers
+			// read the result as an index (that is what makes print(f("x")) show text,
+			// ADR 0174), so returning the raw @.strN global here put a global in an
+			// i32 slot and llc rejected the module — a plain `def g(): return "hi"`
+			// looked like a compiler bug (ADR 0166).
+			if txt, ok := g.stringVal(n.Expr); ok {
+				it := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", it, g.strConst(txt), g.strConst(pyReprString(txt))))
+				b.WriteString(fmt.Sprintf("  ret i32 %s\n", it))
+				return nil
+			}
 		}
 		v, err := g.value(b, n.Expr)
 		if err != nil {
