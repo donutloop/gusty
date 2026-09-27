@@ -28,6 +28,10 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--build <out>` | compile the positional source files into a native binary at `<out>` |
 | `--build <out> --shared` | emit a position-independent shared library (`.so`/`.dylib`) carrying the stable extern-fn ABI (L10.3) instead of a native binary |
 | `--version` | print version |
+| `--lang` | list the supported language surface (self-describing) |
+| `--schema` | print the machine-readable JSON schema for the AST/IR/diagnostic dumps |
+| `--abi` | print the versioned extern-fn C ABI schema as JSON |
+| `--variance` | print the generic variance table as JSON (L6.6) |
 
 
 ## Building a binary from multiple files
@@ -80,8 +84,36 @@ Diagnostics carry source spans and messages. The machine-readable path is a
 JSON array of diagnostics:
 
 ```json
-[{"span": {"line": 1, "col": 5}, "msg": "undefined name \"b\"", "severity": "error"}]
+[{"level": "error", "span": {"line": 1, "col": 5}, "msg": "undefined name \"b\"",
+  "code": "", "suggestion": ""}]
 ```
+
+| Field | Meaning |
+|-------|---------|
+| `level` | `info` \| `warning` \| `error` (only `error` changes the exit code) |
+| `span` | `{line, col}` of the offending token |
+| `msg` | human-readable message (wording may improve) |
+| `code` | **stable** rule identifier — branch on this, not on `msg` |
+| `suggestion` | actionable fix for the violated rule (may be empty) |
+
+### Diagnostic codes (stable)
+
+The variance + generics rules (L6.6) report these codes from `--check`,
+`--verify`, `--json`, and the LSP:
+
+| Code | Rule |
+|------|------|
+| `type.mismatch` | plain kind mismatch (`expected int, got str`) |
+| `type.variance.invariant` | `list[T]` / `set[T]` / `dict[K, V]` type arguments must match exactly |
+| `type.variance.covariant` | `Sequence[T]` / `iter[T]` / `tuple[...]` elements may be widened, not narrowed |
+| `type.variance.contravariant` | a callable must accept everything the destination will pass |
+| `type.variance.nominal` | a class annotation accepts only that class or a subclass |
+| `type.callable.arity` | callable / tuple arity mismatch |
+| `type.union.members` | no union member accepts the value |
+
+The full table (which constructor is invariant/covariant/contravariant, and
+why) is machine-readable: `gustyc --variance` prints it, and
+`gustyc --schema` declares both the `diagnostic` and `varianceRule` shapes.
 
 ## Exit codes (deterministic)
 
@@ -129,6 +161,14 @@ are enforced with a `type mismatch` error; `any` accepts anything) are
 implemented in the interpreter used by `--eval` and the REPL; they are not
 yet lowered by the AOT LLVM backend. They are fully represented in the JSON
 AST dump (`--emit-ast`) with no schema change.
+
+**Variance rules are static (L6.6).** The invariant/covariant/contravariant
+rules run in the semantic checker (`--check`, `--verify`, the LSP), not in the
+backends. The interpreter additionally enforces *nominal class annotations* at
+runtime (`a: Animal` rejects a `Rock`, accepts `Dog`/`Puppy`) and treats the
+read-only protocols structurally (`Sequence[T]` accepts any container, a tuple
+annotation accepts the runtime list representation); the AOT backend treats
+annotations as static-only, as it does for the rest of the annotation surface.
 
 ## CLI / REPL
 
@@ -277,11 +317,17 @@ result.
 
 Annotations are recursive generic expressions: `list[int]`,
 `dict[str, int]`, `tuple[int, str]`, `list[list[int]]`,
-`Callable[[int, str], bool]`, and structural protocol bounds `Sequence[T]`.
-Assignment to a protocol bound checks the structural `assignable(got, want)`
-relation: `Sequence[int] = [1, 2]` and `Sequence[int] = (1, 2)` pass; `str`
-is `Sequence[str]` (not `Sequence[int]`), and an `int`/`dict` is not a
-sequence, so those are rejected.
+`Callable[[int, str], bool]`, structural protocol bounds `Sequence[T]` /
+`Iterator[T]`, and bare class names (`a: Animal`) for nominal class types.
+Assignment, call arguments and returns are checked by the structural
+`subType(got, want)` relation, which implements the variance table
+(`gustyc --variance`): `list`/`set`/`dict` invariant, `Sequence`/`iter`/`tuple`
+covariant, `Callable` parameters contravariant + return covariant, classes
+nominal over the declared base chain. `Sequence[int] = [1, 2]` and
+`Sequence[int] = (1, 2)` pass; `str` is `Sequence[str]` (not `Sequence[int]`),
+and an `int`/`dict` is not a sequence, so those are rejected. Each rejection
+carries a stable `code` and a `suggestion` (see the code table above), so an
+agent can branch on the rule rather than the message text:
 
 **Match exhaustiveness (ADR 0154).** A `match` with only refutable (literal)
 cases and no irrefutable case (`case _:` or a bare-name `case y:`) is

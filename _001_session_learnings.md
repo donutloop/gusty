@@ -527,3 +527,70 @@ full `pkg/lang` suite passes; `go build ./...` passes.
 - The roadmap text is stale (it lists L6.1/L6.2/L4.x/L5.x as not done though the
   commits exist). Reconciling against `git log` is required each round to pick
   the genuinely-next item.
+
+## Round: L6.6 Variance + generics (ADR 0160)
+
+- **Deliverable**: one structural subtyping relation implementing a declared
+  variance table — `list[T]`/`set[T]`/`dict[K,V]` invariant, `Sequence[T]` /
+  `iter[T]` / `tuple[...]` covariant, `Callable[[P...], R]` contravariant in the
+  parameters + covariant return, user classes nominal over the base chain — with
+  `gusty check` reporting contravariant misuse, plus the machine path
+  (`Diagnostic.Code`, `gustyc --variance`, `--schema` definitions).
+- **Before this round the checker was only kind-deep**: `assignable` fell through
+  to `got.Kind == want.Kind`, so `list[str]` satisfied `list[int]`, a
+  `fn(Dog) -> int` satisfied `Callable[[Animal], int]`, and `a: Animal` was a
+  *parse error* (`buildType` only knew builtin + alias names). Class annotations
+  now resolve via a token pre-scan (`scanClassNames`), so a class can be named in
+  an annotation anywhere in the module, before or after its declaration.
+- **Function symbols had no signature**: `analyzeFunc` defined the function name
+  as `TFunc(nil, ret)`, so passing a named function to a `Callable` bound always
+  took the "no parameter information -> accept anything" path and contravariance
+  was unobservable. Carrying the declared parameter annotations is the change
+  that makes the rule reportable. Lesson: when a rule is "never observed", check
+  whether the *inputs* to the check were ever recorded.
+- **Fresh literals need a covariant escape hatch**, otherwise the sound rules
+  reject idiomatic code: `x: list[int | str] = [1]` must pass (nothing aliases the
+  new object, mypy does the same via contextual inference) while
+  `x: list[int] = ["a"]` still fails. Implemented as `freshContainer` +
+  `freshContainerViolation` keyed on the *expression*, not the type — so
+  `bindParams` now also returns the argument expressions (`map[int]Expr`), which
+  is what let argument checking keep element fidelity without re-inferring (a
+  second `inferExpr` would have duplicated "undefined name" diagnostics).
+- **Message-compat discipline paid off**: rebuilding diagnostics around
+  `Violation` kept the old prefixes exactly (`type mismatch: expected X, got Y`,
+  `argument "f": ...`, `return type mismatch: ...`) and only *appended* the rule
+  clause, so the pre-existing semantic/jit/check assertions stayed green. New
+  machine fields are additive (`code`, existing `suggestion`).
+- **Go gotcha**: a `switch n := e.(type)` where no case uses `n` is a compile
+  error ("declared and not used") — use `switch e.(type)`.
+- **Go gotcha 2**: the JSON-Schema blob in `schema.go` is a raw string literal —
+  a backtick inside an added `description` silently terminates it and yields
+  "syntax error: unexpected code after top level declaration". Validate with
+  `json.loads` on the extracted literal (cheap python check) after editing.
+- **Two real AOT bugs found while building the parity program** (verified
+  pre-existing by stashing my diff and re-running: `git stash -u` then build):
+  a list literal passed to a function parameter emits `call i32 @f(i32 @.lst1)`,
+  and a string element in a module-scope list literal emits
+  `rt_set_elem(i32 %h4, i32 1, i32 @.str1)` — both rejected by `llc-20`
+  ("global variable reference must have pointer type"). Recorded as **Gap I** in
+  `roadmap.md`; the parity program stays inside the supported surface
+  (nominal class annotations, covariant `Sequence`, invariant list/dict).
+  Calling through a `Callable`-annotated parameter is also AOT-unsupported
+  (`unsupported call "f"`), so the Callable half of L6.6 is checker-only.
+- **Roadmap reconciliation again required**: L5.1 (Pratt) and L5.8 were already
+  implemented but still listed as planned, so the genuinely-next item was L6.6.
+  Verified by reading `parseExprPrec`/`prec` rather than trusting the checklist.
+- **Tests**: `pkg/lang/variance_test.go` (rules, codes+suggestions, fresh-literal
+  covariance, pre-declared classes, runtime nominal check, gradual-typing
+  guardrail, schema/code cross-check) + `integration/variance_check_test.go`
+  (parity of `programs/variance.gy`, per-rule CLI `--check --json` codes,
+  `--variance` self-description). `go test ./...` green; conformance matrix
+  regenerated with the new `variance` case.
+- **`Type.Same` had no `KindClass` case**, so it fell through to the `default:
+  return true` branch — any two class types were "identical". That silently
+  defeated the new invariance check (`list[Dog].Same(list[Animal])` was true, so
+  `list[Dog]` flowed to `list[Animal]` even with the rule in place). Added
+  `case KindClass: return t.ClassName == o.ClassName` + the
+  `TestVarianceClassContainers` guard. Lesson: when adding a rule that delegates
+  to an existing structural predicate, test the predicate itself for the new type
+  kind — the rule can be correct and still never fire.

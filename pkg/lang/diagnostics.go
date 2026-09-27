@@ -11,9 +11,14 @@ const (
 
 // Diagnostic is a JSON-serializable compiler diagnostic.
 type Diagnostic struct {
-	Level      Level  `json:"level"`
-	Span       Span   `json:"span"`
-	Msg        string `json:"msg"`
+	Level Level  `json:"level"`
+	Span  Span   `json:"span"`
+	Msg   string `json:"msg"`
+	// Code is a stable, machine-readable rule identifier (e.g.
+	// "type.variance.invariant", "type.variance.contravariant"). It is empty for
+	// diagnostics that carry no rule, so agents can branch on the rule instead of
+	// matching on message prose. See docs/operations.md for the code table.
+	Code       string `json:"code,omitempty"`
 	Suggestion string `json:"suggestion,omitempty"`
 }
 

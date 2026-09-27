@@ -46,10 +46,27 @@ type parser struct {
 	// typeAliases records compile-time structural type aliases (`type X = T`)
 	// so later annotations resolve them structurally (L5.7).
 	typeAliases map[string]*Type
+	// classNames records the declared classes of the module (pre-scanned from the
+	// token stream) so an annotation may name a user class — `a: Animal` — which
+	// the checker then treats nominally (L6.6).
+	classNames map[string]bool
 }
 
 func newParser(src string, toks []Token) *parser {
-	return &parser{src: src, cur: *NewCursor(toks), typeAliases: map[string]*Type{}}
+	return &parser{src: src, cur: *NewCursor(toks), typeAliases: map[string]*Type{}, classNames: scanClassNames(toks)}
+}
+
+// scanClassNames pre-scans the token stream for `class NAME` declarations so an
+// annotation can name a user class no matter where it is declared (L6.6). It
+// reads tokens only — it never consumes the parser's cursor.
+func scanClassNames(toks []Token) map[string]bool {
+	names := map[string]bool{}
+	for i := 0; i+1 < len(toks); i++ {
+		if toks[i].IsKeyword("class") && toks[i+1].Kind == TokIdent {
+			names[toks[i+1].Text] = true
+		}
+	}
+	return names
 }
 
 // The parser walks the token stream through the shared Cursor abstraction
@@ -1231,6 +1248,11 @@ func (p *parser) buildType(name string, args []*Type, t Token) (*Type, error) {
 			return nil, fmt.Errorf("Sequence requires 1 type argument")
 		}
 		return TSequence(args[0]), nil
+	case "Iterator", "Iterator[T]", "Iterable", "iterable":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("Iterator requires 1 type argument")
+		}
+		return TIter(args[0]), nil
 	default:
 		// Structural type alias (L5.7): `type Alias = T` expands to T.
 		// Aliases are resolved structurally (not nominally), so a reference
@@ -1240,6 +1262,14 @@ func (p *parser) buildType(name string, args []*Type, t Token) (*Type, error) {
 				return nil, fmt.Errorf("type alias %q does not take type arguments", name)
 			}
 			return cloneType(aliased), nil
+		}
+		// A user-declared class: nominal class type (L6.6). An instance may flow
+		// to such a position only if it is that class or a subclass of it.
+		if p.classNames[name] {
+			if len(args) != 0 {
+				return nil, fmt.Errorf("class %q does not take type arguments", name)
+			}
+			return TClass(name), nil
 		}
 		return nil, fmt.Errorf("unknown type annotation %q", name)
 	}

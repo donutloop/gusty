@@ -118,6 +118,17 @@ falls back to dynamic dispatch.
 - **Walrus operator** — assignment expressions `name := expr` usable inside
   `if` conditions and comprehensions (`if (n := len(x)) > 0:`), scoped per
   Python 3.8+.
+- **Variance + generics (L6.6)** — one subtyping relation implements a declared
+  variance table: `list[T]` / `set[T]` / `dict[K, V]` are **invariant** (they are
+  writable), `Sequence[T]` / `iter[T]` / `tuple[...]` are **covariant** (read-only,
+  so an element type may widen), `Callable[[P...], R]` is **contravariant** in its
+  parameters and covariant in its return, and user classes are **nominal** —
+  `a: Animal` accepts a `Dog` because the declared base chain says so. A freshly
+  built container literal may widen its element type to the destination
+  (`x: list[int | str] = [1]`). Every rejection names its rule and carries a
+  stable `code` (`type.variance.invariant`, `type.variance.contravariant`, …) plus
+  an actionable `suggestion`; the whole model is machine-readable via
+  `gustyc --variance`.
 
 ## Modern front-end (lexer & parser)
 
@@ -198,6 +209,7 @@ gustyc --check <src> | check file1.gy ...    # mypy-style type-check without exe
 gustyc --json ...                            # machine-readable JSON output
 gustyc --schema                              # print the JSON Schema for AST/IR dumps
 gustyc --lang                                 # self-describing feature list
+gustyc --variance                             # JSON variance table (list/dict invariant, Sequence covariant, Callable params contravariant)
 gustyc --jit "..."                           # in-process dlopen JIT path
 gustyc --bench '<src>' --bench-runs N --bench-opt L   # wall-clock benchmark
 gustyc --fmt <src> | --fmt-check <src> | --fmt-file <path>  # canonical formatter

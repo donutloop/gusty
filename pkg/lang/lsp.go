@@ -650,7 +650,7 @@ func (d *Document) analyze() {
 		case LevelWarning:
 			sev = 2
 		}
-		d.Diags = append(d.Diags, diagAt(sd.Span.Line, sd.Span.Col, sev, sd.Msg))
+		d.Diags = append(d.Diags, diagAtCode(sd.Span.Line, sd.Span.Col, sev, sd.Msg, sd.Code, sd.Suggestion))
 	}
 	// prepend the panic-mode parse-error forest so parse and semantic
 	// diagnostics are both surfaced.
@@ -664,6 +664,18 @@ func diagAt(line, col, sev int, msg string) lspDiag {
 		Message:  msg,
 		Source:   "gusty",
 	}
+}
+
+// diagAtCode builds a diagnostic carrying the stable rule `code` (so an editor
+// or agent can branch on it) and folds the checker's suggestion into the
+// message (L6.6 variance rules).
+func diagAtCode(line, col, sev int, msg, code, suggestion string) lspDiag {
+	if suggestion != "" {
+		msg += " — hint: " + suggestion
+	}
+	d := diagAt(line, col, sev, msg)
+	d.Code = code
+	return d
 }
 
 // ---------------------------------------------------------------------------

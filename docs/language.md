@@ -532,13 +532,86 @@ Annotations are recursive generic type expressions:
   branches/loops prints the currently-stored member, matching the interpreter.
 - `Sequence[T]` — a structural protocol bound accepting any list/set/iter/tuple/str
   whose element type is compatible with `T`.
+- `Iterator[T]` / `Iterable[T]` — a lazy producer of `T` (same spelling as
+  `Sequence[T]`'s read-only role; produced by `range`, generator expressions
+  and `yield from`).
 - `Callable[[A, B], R]` — a structural protocol bound accepting any function whose
   arity, parameter kinds, and return type match; a bare `fn` reference is accepted.
+- `Animal` (a bare class name) — a NOMINAL class type. `a: Animal` accepts an
+  instance of `Animal` or of any subclass, and the class hierarchy is visible
+  even when the annotation appears before the `class` declaration.
 
-The type checker uses a structural `assignable(got, want)` relation at assignment,
-call-argument, and return checks: concrete kinds keep exact-kind equality, `any`
-tolerates anything in either position, and protocol kinds recurse on element/
-param/return shape.
+### Variance (L6.6)
+
+Every generic constructor declares a variance for each of its type parameters.
+`gustyc --variance` prints the table as JSON; the checker implements exactly
+that table.
+
+| constructor | variance | why |
+|---|---|---|
+| `list[T]` | **invariant** in `T` | lists are writable through every alias |
+| `set[T]` | **invariant** in `T` | sets support add/remove |
+| `dict[K, V]` | **invariant** in `K` and `V` | dicts support insertion/overwrite |
+| `tuple[...]` | **covariant** (arity fixed) | tuples are immutable |
+| `Sequence[T]` | **covariant** in `T` | read-only: elements only flow out |
+| `Iterator[T]` | **covariant** in `T` | a producer accepts nothing back |
+| `Callable[[P...], R]` | **contravariant** in `P`, **covariant** in `R` | a handler is substitutable only if it accepts everything the destination will pass |
+| `class C` | **nominal** | a value reaches a class position only as that class or a subclass |
+
+In practice:
+
+```python
+class Animal:
+    def speak(self):
+        return 1
+class Dog(Animal):
+    def speak(self):
+        return 2
+
+def feed(a: Animal) -> int:      # nominal: any Animal or subclass
+    return a.speak()
+
+def count_animals(xs: Sequence[Animal]) -> int:   # covariant: read Dogs as Animals
+    return len(xs)
+
+def handle(f: Callable[[Animal], int]) -> int:    # contravariant: f must take ANY Animal
+    return f(Animal())
+
+dogs: list[Dog] = [Dog()]
+print(count_animals(dogs))       # OK  — covariance widens
+print(feed(Dog()))               # OK  — nominal subclass
+print(handle(feed))              # OK  — feed accepts every Animal
+```
+
+and the unsound directions are rejected with a named rule, a stable code and a
+suggestion:
+
+```python
+cats: list[Cat] = [Cat()]
+animals: list[Animal] = cats     # type.variance.invariant — use Sequence[Animal]
+handle(dog_only)                 # type.variance.contravariant — widen dog_only's parameter
+dogs: list[Dog] = [Dog()]
+count_dogs(dogs)                 # OK — covariance widens
+all_animals: list[Animal] = [Animal()]
+count_dogs(all_animals)          # type.variance.covariant — a base is not a Dog
+```
+
+A *freshly built* container literal is an exception to invariance: nothing
+aliases the new object yet, so its element type may widen to the destination —
+`x: list[int | str] = [1]` is accepted (mypy-style contextual inference), while a
+genuinely wrong element (`x: list[int] = ["a"]`) is still rejected.
+
+The type checker uses a structural `subType(got, want)` relation at assignment,
+call-argument, and return checks (with `assignable` as its boolean front-end):
+concrete kinds keep exact-kind equality, `any` tolerates anything in either
+position, protocol kinds recurse on element/param/return shape, and class kinds
+walk the declared base chain. Every rejection carries a `code` (see
+`docs/operations.md`) and an actionable `suggestion`.
+
+The interpreter enforces the same annotation rules at runtime for nominal class
+parameters (`a: Animal` rejects a `Rock`), so a violation fails fast in the
+REPL; the AOT backend treats annotations as static-only, exactly like the rest of
+the annotation surface.
 - Arithmetic on non-numeric operands reports a diagnostic (suppressed inside
   untyped function bodies, which fall back to dynamic dispatch).
 

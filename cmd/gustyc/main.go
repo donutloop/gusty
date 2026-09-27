@@ -10,6 +10,7 @@
 //	--target <triple>   target triple for codegen (informational)
 //	--opt-level <n>     optimization level (informational)
 //	--lang              list supported language features (self-describing)
+//	--variance          print the generic variance table as JSON (L6.6)
 //	--version           print version
 //	--repl              start an interactive REPL (default when stdin is a TTY)
 //	--help              show usage
@@ -58,6 +59,7 @@ func run() int {
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
 	schemaCmd := fs.Bool("schema", false, "print the machine-readable JSON schema for the AST/IR dumps")
+	varianceCmd := fs.Bool("variance", false, "print the generic variance table as JSON (list/set/dict invariant, Sequence/iter/tuple covariant, Callable parameters contravariant, classes nominal)")
 	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
 	sharedCmd := fs.Bool("shared", false, "emit a position-independent shared library (.so/.dylib) with the stable extern-fn ABI instead of a native executable (with --build)")
 	jit := fs.Bool("jit", false, "use the in-process dlopen JIT (codegen -> llc -> cc -shared -> dlopen -> run) instead of the AST interpreter")
@@ -108,6 +110,15 @@ func run() int {
 			return exitErr
 		}
 		fmt.Println(abiSchema)
+		return exitOK
+	}
+	if *varianceCmd {
+		doc, err := lang.VarianceJSON()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gustyc: variance: "+err.Error())
+			return exitErr
+		}
+		fmt.Println(doc)
 		return exitOK
 	}
 
@@ -337,6 +348,11 @@ Flags:
 Build: gustyc --build <out> <file1> <file2> ...  # compile sources into a native binary
 Shared library export (L10.3): gustyc --build out.so --shared <file1> ...  # emit a position-independent .so/.dylib with the stable extern-fn ABI
 Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style type-check without executing
+Variance: gustyc --variance  # JSON variance table (list/set/dict invariant, Sequence covariant, Callable params contravariant)
+
+Diagnostic codes (--check --json): type.mismatch, type.variance.invariant,
+type.variance.covariant, type.variance.contravariant, type.variance.nominal,
+type.callable.arity, type.union.members — see docs/operations.md.
 
 Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error.
 `)
@@ -347,6 +363,7 @@ func listLang() {
 statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, match, try/except/finally, raise, class, import
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
+variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
 `, lang.Version)
 }
 

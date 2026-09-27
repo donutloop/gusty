@@ -12,6 +12,11 @@ package lang
 //
 // Node kinds use a `kind` discriminator where present; otherwise the node is
 // identified by its required field names (Go's default struct JSON tags).
+//
+// The document also describes the other structured outputs an agent consumes:
+// `definitions.diagnostic` (the `code`/`suggestion` fields carried by
+// --verify/--check JSON) and `definitions.varianceRule` (one row of the
+// self-describing variance table printed by `gustyc --variance`).
 const ASTIRSchema = `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gusty.local/schema/ast-ir.json",
@@ -959,6 +964,93 @@ const ASTIRSchema = `{
         "inferred": {
           "type": "string",
           "description": "Inferred static type name (e.g. \"int\", \"list[int]\")."
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "level",
+        "msg"
+      ],
+      "description": "One diagnostic from --verify / --check / --json. 'code' is a STABLE rule identifier agents can branch on instead of matching on 'msg' prose; 'suggestion' is the actionable fix for the violated rule.",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "span": {
+          "type": "object",
+          "description": "Source span (line:col) of the diagnostic."
+        },
+        "msg": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string",
+          "description": "Stable rule code (L6.6 variance + generics, and the classic mismatch cases).",
+          "enum": [
+            "type.mismatch",
+            "type.variance.invariant",
+            "type.variance.covariant",
+            "type.variance.contravariant",
+            "type.variance.nominal",
+            "type.callable.arity",
+            "type.union.members"
+          ]
+        },
+        "suggestion": {
+          "type": "string"
+        }
+      }
+    },
+    "varianceRule": {
+      "type": "object",
+      "required": [
+        "constructor",
+        "params",
+        "variance",
+        "rationale",
+        "code"
+      ],
+      "description": "One row of the self-describing variance table (gustyc --variance): a generic constructor, its type parameters, the declared variance of each, and the diagnostic code the checker emits when the rule is broken.",
+      "properties": {
+        "constructor": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "variance": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "invariant",
+              "covariant",
+              "contravariant",
+              "nominal"
+            ]
+          }
+        },
+        "mutable": {
+          "type": "boolean"
+        },
+        "read_only": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
         }
       }
     },

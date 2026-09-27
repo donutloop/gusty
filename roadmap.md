@@ -6,7 +6,7 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0154`.
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0160`.
 
 ## Component map (state verified against the code)
 
@@ -183,6 +183,25 @@ case (and an ADR where the decision is non-obvious).
   stored value unambiguous) and skips escaping objects, appends, and reads of
   unwritten indices.
 
+- **Gap I — AOT heap-handle lowering for list arguments + string elements** — 🟥
+  FOUND (discovered while writing the L6.6 parity program; verified pre-existing
+  at HEAD, so it was NOT introduced by the variance work). Two shapes emit IR
+  that `llc-20` rejects, so they are interpreter-only today:
+  - passing a list literal to a function parameter:
+    `def total(xs): ...` then `total([1, 2, 3])` emits
+    `call i32 @total(i32 @.lst1)` — a global variable reference where a pointer
+    is required (`llc-20: global variable reference must have pointer type`);
+    the call signature/argument must use the `%obj*` (or `ptr`) heap-handle type
+    like every other list boundary.
+  - a string element stored into a heap list at module scope:
+    `xs: list[int] = [1, "a"]` emits `call void @rt_set_elem(i32 %h4, i32 1,
+    i32 @.str1)` — the string global is passed as `i32`.
+  DoD: both shapes compile+run under `llc-20` and join the conformance matrix
+  (`integration/programs/*.gy`), with the interpreter/AOT stdout diff asserted.
+  Note: `Callable` parameters called through the parameter (`def apply(f, x):
+  return f(x)`) are likewise unsupported in AOT (`codegen: unsupported call "f"`)
+  — the L6.6 Callable surface is therefore checker-only for now.
+
 ---
 
 ## New work — modern 2026 language-design roadmap
@@ -238,10 +257,11 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 
 **Goal: a fast, error-tolerant Pratt parser with a modern syntax surface.**
 
-- **L5.1 Pratt / precedence-climbing parser** — replace the recursive
-  expression parser with a Pratt loop keyed off a precedence table (unary,
-  `**` right-assoc, multiplicative, additive, comparison, `and`/`or`, ternary).
-  Keeps current semantics; makes new operators one-line additions.
+- **L5.1 Pratt / precedence-climbing parser** ✅ DONE — `parseExprPrec` in
+  `pkg/lang/parser.go` is a precedence-climbing loop over a `prec` table (unary,
+  `**` right-assoc, multiplicative, additive, comparison, `and`/`or`, ternary);
+  new operators are one table entry + one `binaryOp` case. Covered by
+  `pkg/lang/parser_pratt_test.go` (associativity + precedence rendering).
 - **L5.2 Panic-mode error recovery** — on a parse error, skip to the next
   statement/block boundary and keep parsing, producing a forest of
   `ParseError`s (not just the first). Feeds the LSP + `gusty check`. ✅ DONE
@@ -294,9 +314,25 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   is implemented in the semantic checker (`narrowFromCond`/`analyzeNarrowed`)
   and unit-tested (`TestNarrowIsInstanceThen/Else/Not`). Match-literal narrowing
   to `Literal[1]` was already present (L6.4).
-- **L6.6 Variance + generics** — `list[T]` invariance, protocol structural
-  subtyping; `gusty check` reports contravariant misuse. (Monomorphization is
-  Phase 8.)
+- **L6.6 Variance + generics** ✅ DONE (ADR 0160) — one structural subtyping
+  relation (`subType` in `pkg/lang/variance.go`) implements a declared variance
+  table: `list[T]`/`set[T]`/`dict[K, V]` **invariant** (writable containers),
+  `Sequence[T]`/`iter[T]`/`tuple[...]` **covariant** (read-only, element type may
+  widen, arity fixed), `Callable[[P...], R]` **contravariant** in parameters +
+  covariant return, user classes **nominal** over the declared base chain
+  (`ClassIndex`, filled by a statement-tree pre-pass so annotations may name a
+  class before its declaration). Protocol structural subtyping covers
+  `Sequence`/`Callable`; a *freshly built* container literal is checked
+  covariantly (`x: list[int | str] = [1]` is accepted, `x: list[int] = ["a"]` is
+  not). `gusty check` **reports contravariant misuse** (and every other rule)
+  with a stable `Diagnostic.Code` (`type.variance.invariant` /
+  `.covariant` / `.contravariant` / `.nominal`, `type.callable.arity`,
+  `type.union.members`) plus an actionable `Suggestion`; `gustyc --variance`
+  prints the machine-readable table and `--schema` declares the `diagnostic` /
+  `varianceRule` shapes. Function symbols now carry their declared parameter
+  annotations (`TFunc(annots, ret)`), which is what makes contravariant
+  substitution observable. Unit tests: `pkg/lang/variance_test.go`; parity +
+  machine path: `integration/variance_check_test.go`, `programs/variance.gy`.
 - **L6.7 Call-graph + reachability** ✅ DONE — compute a module call graph so
   dead-global elimination (`opt.go`) is precise and `__doc__` folding is
   reachable-driven.

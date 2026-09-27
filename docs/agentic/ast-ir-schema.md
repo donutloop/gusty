@@ -100,3 +100,56 @@ Canonical kind tags (value.go):
 | 12  | closure    | heap handle                    |
 | 13  | exn        | heap handle                    |
 | 14  | module     | heap handle                    |
+
+## Diagnostics: stable rule codes
+
+Every diagnostic the checker emits (`--verify`, `--check`, `--json`, the LSP)
+carries a machine-readable `code` beside `msg`, so an agent branches on the rule
+instead of pattern-matching prose:
+
+```json
+{
+  "level": "error",
+  "span": { "line": 5, "col": 5 },
+  "msg": "argument \"xs\": expected list[int], got list[str] — list[int] is invariant in T: str is not int",
+  "code": "type.variance.invariant",
+  "suggestion": "the destination can WRITE through this container, so the type arguments must match — use the same T, drop the type argument, or take a read-only Sequence[T] view (covariant)"
+}
+```
+
+| `code` | rule |
+|--------|------|
+| `type.mismatch` | plain kind mismatch (`expected int, got str`) |
+| `type.variance.invariant` | `list[T]` / `set[T]` / `dict[K, V]` type arguments must match exactly |
+| `type.variance.covariant` | `Sequence[T]` / `iter[T]` / `tuple[...]` elements may be widened, not narrowed |
+| `type.variance.contravariant` | a callable must accept everything the destination will pass |
+| `type.variance.nominal` | a class annotation accepts only that class or a subclass |
+| `type.callable.arity` | callable / tuple arity mismatch |
+| `type.union.members` | no union member accepts the value |
+
+`code` is stable; `msg` wording may improve. Both the `diagnostic` shape (with
+its code enum) and the `varianceRule` shape are declared in `gustyc --schema`.
+
+## Variance table (self-describing)
+
+`gustyc --variance` prints the variance model the checker implements, as JSON:
+
+```json
+{
+  "schema_version": "1.0",
+  "language_version": "0.10.0",
+  "generated_by": "gustyc --variance",
+  "rules": [
+    {
+      "constructor": "list[T]", "params": ["T"], "variance": ["invariant"],
+      "mutable": true, "read_only": "Sequence[T]", "code": "type.variance.invariant",
+      "rationale": "lists are mutable through every alias, so a widened element type would let a write through one name corrupt another"
+    }
+  ]
+}
+```
+
+An agent planning a compilation reads this table instead of guessing which
+substitutions are legal: `params[i]` pairs with `variance[i]`, `mutable` says
+why, `read_only` names the covariant alternative to suggest, and `code` is the
+diagnostic emitted when the rule is broken.

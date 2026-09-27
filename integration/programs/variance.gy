@@ -1,0 +1,34 @@
+# Variance + generics (L6.6): nominal class annotations accept subclass
+# instances, read-only Sequence annotations accept any container, and invariant
+# list/dict annotations keep their element types — identical on both backends.
+
+class Animal:
+    def speak(self):
+        return 1
+
+class Dog(Animal):
+    def speak(self):
+        return 2
+
+class Puppy(Dog):
+    def speak(self):
+        return 3
+
+# a nominal base-class annotation accepts instances of the class and subclasses
+def feed(a: Animal) -> int:
+    return a.speak()
+
+print(feed(Animal()))
+print(feed(Dog()))
+print(feed(Puppy()))
+
+# annotated containers keep working (list[T] is invariant in T)
+vals: list[int] = [10, 20]
+print(vals[0] + vals[1])
+
+# an untyped (dynamic) element list stays gradual: no variance diagnostics
+mixed: list[int] = [1, 2]
+print(len(mixed))
+
+d: dict[int, int] = {1: 41}
+print(len(d) + d[1])

@@ -30,6 +30,9 @@ type Evaluator struct {
 	yieldList   int64  // list handle accumulating yields (0 = not in generator)
 	curClass    string // class name of the method currently executing (for super())
 	curSelf     int64  // receiver of the method currently executing (for super())
+	// classList records the declared base chain (L6.6) so a nominal class
+	// annotation (`a: Animal`) can also be enforced for subclass instances.
+	classList *ClassIndex
 }
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
@@ -343,6 +346,48 @@ if ty.Kind == KindLiteral {
 		}
 		return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got " + tyName(e.typeOfVal(val)) + " for " + name}
 	}
+	// Nominal class annotation (L6.6): the value must be an instance of the
+	// annotated class or of one of its subclasses, walking the base chain.
+	if ty.Kind == KindClass {
+		if o, ok := e.heap[val]; ok && o.kind == "instance" {
+			if e.classList.Less(o.class, ty.ClassName) {
+				return nil
+			}
+			return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got " + o.class + " for " + name}
+		}
+		return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got a non-instance value for " + name}
+	}
+	// Read-only protocol annotations are checked structurally by the checker, not
+	// by the heap: a Sequence[T] annotation accepts any container value and a
+	// Callable annotation any callable value — the element/signature rules are
+	// static (see `gusty check`, L6.6).
+	if ty.Kind == KindSequence {
+		switch e.typeOfVal(val).Kind {
+		case KindList, KindTuple, KindSet, KindString, KindIterator, KindSequence:
+			return nil
+		}
+		return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got " + tyName(e.typeOfVal(val)) + " for " + name}
+	}
+	// An iterator is a dynamic producer (range/generators/yield-from are not all
+	// heap objects), so an Iterator[T] annotation is static-only at runtime.
+	if ty.Kind == KindIterator {
+		return nil
+	}
+	if ty.Kind == KindCallable {
+		if rt := e.typeOfVal(val); rt.Kind == KindFunc || rt.Kind == KindCallable {
+			return nil
+		}
+		return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got " + tyName(e.typeOfVal(val)) + " for " + name}
+	}
+	// Tuples are heap lists in this runtime, so a tuple annotation accepts a
+	// list-shaped value (arity + element types are static-only, see `gusty check`).
+	if ty.Kind == KindTuple {
+		switch e.typeOfVal(val).Kind {
+		case KindTuple, KindList:
+			return nil
+		}
+		return &EvalError{Msg: "type mismatch: expected " + tyName(ty) + " but got " + tyName(e.typeOfVal(val)) + " for " + name}
+	}
 	rt := e.typeOfVal(val)
 	if rt.Kind == ty.Kind {
 		return nil
@@ -373,8 +418,19 @@ func tyName(t *Type) string {
 		return "dict"
 	case KindSet:
 		return "set"
+	case KindTuple:
+		return "tuple"
+	case KindIterator:
+		return "iterator"
 	case KindFunc:
 		return "func"
+	case KindClass:
+		if t.ClassName != "" {
+			return t.ClassName
+		}
+		return "class"
+	case KindSequence, KindCallable:
+		return t.Name()
 	case KindDynamic:
 		return "any"
 	case KindUnion:
@@ -519,7 +575,7 @@ func NewEvaluator() *Evaluator {
 	// integer literal values (which are stored raw in lists, dict keys, vars).
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
-	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, nextID: 1 << 20, fnName: "<module>"}
+	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: 1 << 20, fnName: "<module>"}
 }
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
@@ -626,6 +682,15 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			e.classIDs[s.Name] = classID
 			cls := e.heap[classID]
 			cls.doc = s.Doc
+			// Record the declared base chain so nominal class annotations accept
+			// subclass instances at runtime (L6.6).
+			var baseNames []string
+			for _, b := range s.Bases {
+				if b != nil {
+					baseNames = append(baseNames, b.Value)
+				}
+			}
+			e.classList.Declare(s.Name, baseNames)
 			// inheritance: the first base (if any) becomes the base class;
 			// methods/attrs missing on the subclass resolve up the base chain.
 			if len(s.Bases) > 0 {

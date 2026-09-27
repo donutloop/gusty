@@ -41,12 +41,17 @@ type SemanticAnalyzer struct {
 	externs    map[string]*ExternDecl
 	exceptions map[string]bool
 	classes    map[string]bool
-	inFunc     bool
-	loopDepth  int
-	inferring  map[string]bool
-	definite   map[string]bool
-	locals     map[string]bool
-	branchDef  map[string]bool
+	// classList records the declared base chain so nominal subtyping (and the
+	// covariant/contravariant rules that reach into class-typed arguments) can
+	// walk it. It is filled by a pre-pass so a subclass may be referenced before
+	// its declaration site (L6.6).
+	classList *ClassIndex
+	inFunc    bool
+	loopDepth int
+	inferring map[string]bool
+	definite  map[string]bool
+	locals    map[string]bool
+	branchDef map[string]bool
 }
 
 func (an *SemanticAnalyzer) markDefinite(nm string) {
@@ -84,7 +89,10 @@ func (an *SemanticAnalyzer) isDefinite(nm string) bool {
 
 // Analyze runs semantic analysis and type inference on prog.
 func Analyze(prog *Program) []Diagnostic {
-	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: map[string]bool{"Exception": true}}
+	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: map[string]bool{"Exception": true}, classList: NewClassIndex()}
+	// Pre-pass: record every class (with its bases) before analyzing, so class
+	// annotations and nominal subtyping work regardless of declaration order.
+	an.indexClasses(prog.Stmts)
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
@@ -114,6 +122,170 @@ func (an *SemanticAnalyzer) warnf(sp Span, msg string, args ...interface{}) {
 	an.Diags = append(an.Diags, Diagnostic{Level: LevelWarning, Span: sp, Msg: msg})
 }
 
+// indexClasses walks the statement tree (including nested blocks) recording
+// class names and their bases into the analyzer's ClassIndex.
+func (an *SemanticAnalyzer) indexClasses(stmts []Stmt) {
+	for _, st := range stmts {
+		switch s := st.(type) {
+		case *ClassDef:
+			var bases []string
+			for _, b := range s.Bases {
+				if b != nil {
+					bases = append(bases, b.Value)
+					an.classes[b.Value] = true
+				}
+			}
+			an.classes[s.Name] = true
+			an.classList.Declare(s.Name, bases)
+			an.indexClasses(s.Body)
+		case *FuncDef:
+			an.indexClasses(s.Body)
+		case *IfStmt:
+			an.indexClasses(s.Then)
+			for _, e := range s.Elifs {
+				an.indexClasses(e.Then)
+			}
+			an.indexClasses(s.Else)
+		case *WhileStmt:
+			an.indexClasses(s.Body)
+			an.indexClasses(s.Else)
+		case *ForStmt:
+			an.indexClasses(s.Body)
+			an.indexClasses(s.Else)
+		case *WithStmt:
+			an.indexClasses(s.Body)
+		case *TryStmt:
+			an.indexClasses(s.Body)
+			for _, e := range s.Excepts {
+				an.indexClasses(e.Body)
+			}
+			an.indexClasses(s.Finally)
+		case *MatchStmt:
+			for _, c := range s.Cases {
+				an.indexClasses(c.Body)
+			}
+		}
+	}
+}
+
+// flowCheckAt is the shared body of the flow diagnostics: `got` (the inferred
+// type of the optional expression `e`) must flow into `want`.
+//
+// A freshly built container literal is checked COVARIANTLY element by element:
+// nothing aliases the new object yet, so its element type may widen to the
+// destination's — `x: list[int | str] = [1]` is fine, exactly like mypy's
+// contextual inference. Any other value is a pre-existing object, so the full
+// invariant / covariant / contravariant rules apply (subType).
+func (an *SemanticAnalyzer) flowCheckAt(sp Span, e Expr, got, want *Type, ctxPrefix string) bool {
+	if want == nil || want.IsDyn() || got == nil || got.IsDyn() {
+		return true
+	}
+	report := func(v *Violation) bool {
+		msg := ctxPrefix + ": expected " + want.Name() + ", got " + got.Name()
+		if v.Kind != RuleKindMismatch {
+			msg += " — " + v.Msg
+		}
+		an.Diags = append(an.Diags, Diagnostic{Level: LevelError, Span: sp, Msg: msg, Code: v.Code, Suggestion: v.Suggestion})
+		return false
+	}
+	if freshContainer(e, want) {
+		if v := freshContainerViolation(an.classList, e, want); v != nil {
+			return report(v)
+		}
+		return true
+	}
+	if v := subType(an.classList, got, want); v != nil {
+		return report(v)
+	}
+	return true
+}
+
+// freshContainer reports whether `e` builds a brand-new container whose type
+// arguments are still free (a literal whose kind matches the destination).
+func freshContainer(e Expr, want *Type) bool {
+	if want == nil {
+		return false
+	}
+	switch e.(type) {
+	case *ListLit:
+		return want.Kind == KindList
+	case *SetLit:
+		return want.Kind == KindSet
+	case *DictLit:
+		return want.Kind == KindDict
+	}
+	return false
+}
+
+// constType returns the type of a constant literal expression, nil otherwise.
+func constType(e Expr) *Type {
+	switch e.(type) {
+	case *IntLit:
+		return TInt()
+	case *FloatLit:
+		return TFlt()
+	case *StrLit:
+		return TStr()
+	case *BoolLit:
+		return TBool()
+	case *NoneLit:
+		return TNone()
+	}
+	return nil
+}
+
+// freshContainerViolation checks a fresh container literal's elements against
+// the destination's type arguments — the covariant position of an object that
+// has no other aliases yet.
+func freshContainerViolation(ci *ClassIndex, e Expr, want *Type) *Violation {
+	why := func(pos, got, want string) *Violation {
+		return &Violation{Kind: RuleCovariant, Code: CodeVarianceCovariant,
+			Msg:        want + " is covariant in " + pos + " for a freshly built literal: " + got + " is not " + want,
+			Suggestion: "give the literal " + want + " items, or annotate the destination with the narrower element type"}
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		if want.Kind != KindList || want.Elem == nil || want.Elem.IsDyn() {
+			return nil
+		}
+		for _, el := range n.Elems {
+			et := constType(el)
+			if et == nil {
+				continue // unknown element: gradual typing tolerates it
+			}
+			if subType(ci, et, want.Elem) != nil {
+				return why("T", et.Name(), want.Name())
+			}
+		}
+	case *SetLit:
+		if want.Kind != KindSet || want.Elem == nil || want.Elem.IsDyn() {
+			return nil
+		}
+		for _, el := range n.Elems {
+			if et := constType(el); et != nil && subType(ci, et, want.Elem) != nil {
+				return why("T", et.Name(), want.Name())
+			}
+		}
+	case *DictLit:
+		if want.Kind != KindDict {
+			return nil
+		}
+		for i, k := range n.Keys {
+			if want.Key != nil && !want.Key.IsDyn() {
+				if kt := constType(k); kt != nil && subType(ci, kt, want.Key) != nil {
+					return why("K", kt.Name(), want.Name())
+				}
+			}
+			if i < len(n.Vals) && want.Val != nil && !want.Val.IsDyn() {
+				if vt := constType(n.Vals[i]); vt != nil && subType(ci, vt, want.Val) != nil {
+					return why("V", vt.Name(), want.Name())
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	switch s := st.(type) {
 	case *AssignStmt:
@@ -139,8 +311,8 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *ReturnStmt:
 		if s.Expr != nil {
 			ty := an.inferExpr(s.Expr)
-			if ra := an.returnAnno(); ra != nil && ty != nil && ty.Kind != KindDynamic && ty.Kind != KindVoid && !assignable(ty, ra) {
-				an.errorf(s.Span(), "return type mismatch: expected %s, got %s", ra.Name(), ty.Name())
+			if ty != nil && ty.Kind != KindDynamic && ty.Kind != KindVoid {
+				an.flowCheckAt(s.Span(), s.Expr, ty, an.returnAnno(), "return type mismatch")
 			}
 		}
 	case *RaiseStmt:
@@ -333,8 +505,8 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	valTy := an.inferExpr(as.Value)
 	// Static gradual typing: report an annotation/inferred-type mismatch.
-	if as.Annot != nil && valTy != nil && valTy.Kind != KindDynamic && as.Annot.Kind != KindDynamic && !assignable(valTy, as.Annot) {
-		an.errorf(as.Span(), "type mismatch: expected %s, got %s", as.Annot.Name(), valTy.Name())
+	if as.Annot != nil && valTy != nil && valTy.Kind != KindDynamic && as.Annot.Kind != KindDynamic {
+		an.flowCheckAt(as.Span(), as.Value, valTy, as.Annot, "type mismatch")
 	}
 	if as.Annot != nil {
 		// gradual typing: annotation overrides inferred type
@@ -387,8 +559,20 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 	an.locals = map[string]bool{}
 	old := an.scope
 	fscope := newScope(old)
-	// define the function itself in the outer scope
-	ft := TFunc(nil, fd.ReturnAnno)
+	// define the function itself in the outer scope. Carry the DECLARED parameter
+	// annotations into the function type, so passing a named function to a
+	// Callable[[...], R] bound is checked by the variance rules: parameters
+	// CONTRAVARIANTLY, the return covariantly (L6.6). An unannotated parameter is
+	// dynamic, so untyped code stays gradual (no diagnostics).
+	var ptys []*Type
+	for _, p := range fd.Params {
+		if p.Annot != nil {
+			ptys = append(ptys, p.Annot)
+		} else {
+			ptys = append(ptys, TDyn())
+		}
+	}
+	ft := TFunc(ptys, fd.ReturnAnno)
 	old.define(fd.Name, ft)
 	an.scope = fscope
 	an.curFn = fd
@@ -661,7 +845,9 @@ func (an *SemanticAnalyzer) inferReturn(fd *FuncDef, argTypes []*Type) *Type {
 func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 	if name, ok := n.Fn.(*Name); ok {
 		if an.classes[name.Value] {
-			return TDyn()
+			// A constructor call yields an instance of that class, so the nominal
+			// class type flows to annotations (L6.6).
+			return TClass(name.Value)
 		}
 		if ed, ok2 := an.externs[name.Value]; ok2 {
 			// extern (FFI) call: arity + arg type check; return type comes from the
@@ -672,9 +858,7 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			}
 			for i, p := range ed.Params {
 				at := an.inferExpr(n.Args[i])
-				if !assignable(at, p.Annot) {
-					an.errorf(n.Args[i].Span(), "argument %d of extern function %q: expected %s, got %s", i+1, name.Value, typeName(p.Annot), typeName(at))
-				}
+				an.flowCheckAt(n.Args[i].Span(), n.Args[i], at, p.Annot, fmt.Sprintf("argument %d of extern function %q", i+1, name.Value))
 			}
 			if ed.ReturnAnno != nil {
 				return ed.ReturnAnno
@@ -735,7 +919,7 @@ func (an *SemanticAnalyzer) inferArg(a Expr) *Type {
 // inferUserCall infers the result type of a call to a user-defined function,
 // binding positional and keyword arguments to parameters and filling defaults.
 func (an *SemanticAnalyzer) inferUserCall(fd *FuncDef, n *Call) *Type {
-	provided, err := an.bindParams(fd.Params, n)
+	provided, argExprs, err := an.bindParams(fd.Params, n)
 	if err != nil {
 		an.errorf(n.Span(), "%s", err)
 	}
@@ -749,7 +933,9 @@ func (an *SemanticAnalyzer) inferUserCall(fd *FuncDef, n *Call) *Type {
 			argTypes[i] = nil
 		}
 	}
-	// mypy-style: check each statically-typed argument against its annotation.
+	// mypy-style: check each statically-typed argument against its annotation,
+	// applying the variance rules — a fresh container literal is covariant, an
+	// existing container invariant, a callable contravariant in its parameters.
 	for i, p := range fd.Params {
 		if p.Annot == nil || p.Annot.Kind == KindDynamic {
 			continue
@@ -758,17 +944,16 @@ func (an *SemanticAnalyzer) inferUserCall(fd *FuncDef, n *Call) *Type {
 		if got == nil || got.IsDyn() {
 			continue
 		}
-		if !assignable(got, p.Annot) {
-			an.errorf(n.Span(), "argument %q: expected %s, got %s", p.Name, p.Annot.Name(), got.Name())
-		}
+		an.flowCheckAt(n.Span(), argExprs[i], got, p.Annot, fmt.Sprintf("argument %q", p.Name))
 	}
 	return an.inferReturn(fd, argTypes)
 }
 
 // bindParams maps a call's positional + keyword arguments onto parameter
 // indices (by position or name). It reports arity and keyword-name errors.
-func (an *SemanticAnalyzer) bindParams(params []*Param, n *Call) (map[int]*Type, error) {
+func (an *SemanticAnalyzer) bindParams(params []*Param, n *Call) (map[int]*Type, map[int]Expr, error) {
 	provided := map[int]*Type{}
+	exprs := map[int]Expr{}
 	pos := 0
 	seenKw := false
 	for _, a := range n.Args {
@@ -782,27 +967,29 @@ func (an *SemanticAnalyzer) bindParams(params []*Param, n *Call) (map[int]*Type,
 				}
 			}
 			if found < 0 {
-				return provided, fmt.Errorf("unknown keyword argument %q", kw.Name)
+				return provided, exprs, fmt.Errorf("unknown keyword argument %q", kw.Name)
 			}
 			if _, dup := provided[found]; dup {
-				return provided, fmt.Errorf("multiple values for argument %q", kw.Name)
+				return provided, exprs, fmt.Errorf("multiple values for argument %q", kw.Name)
 			}
 			provided[found] = an.inferArg(kw)
+			exprs[found] = kw.Value
 			continue
 		}
 		if seenKw {
-			return provided, fmt.Errorf("positional argument after keyword argument")
+			return provided, exprs, fmt.Errorf("positional argument after keyword argument")
 		}
 		if pos >= len(params) {
-			return provided, fmt.Errorf("too many arguments")
+			return provided, exprs, fmt.Errorf("too many arguments")
 		}
 		if _, dup := provided[pos]; dup {
-			return provided, fmt.Errorf("multiple values for argument %q", params[pos].Name)
+			return provided, exprs, fmt.Errorf("multiple values for argument %q", params[pos].Name)
 		}
 		provided[pos] = an.inferArg(a)
+		exprs[pos] = a
 		pos++
 	}
-	return provided, nil
+	return provided, exprs, nil
 }
 
 func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {
@@ -966,116 +1153,6 @@ func unionAllString(t *Type) bool {
 		}
 	}
 	return true
-}
-
-func assignable(got, want *Type) bool {
-	// A union-typed `got` is assignable to `want` iff every member is.
-	if got != nil && got.Kind == KindUnion {
-		for _, m := range got.Members {
-			if !assignable(m, want) {
-				return false
-			}
-		}
-		return true
-	}
-	if got == nil || want == nil {
-		return true
-	}
-	if got.IsDyn() || want.IsDyn() {
-		return true
-	}
-	switch want.Kind {
-	case KindSequence:
-		return seqAssignable(got, want.Elem)
-	case KindCallable:
-		return callableAssignable(got, want.Params, want.Ret)
-	case KindUnion:
-		// `got` is assignable to `want` union iff assignable to any member.
-		for _, m := range want.Members {
-			if assignable(got, m) {
-				return true
-			}
-		}
-		return false
-	case KindLiteral:
-		// Literal[v] is assignable from the exact Literal[v], from a plain int
-		// (the runtime enforces the constant), or from a wider union containing it.
-		if want.Kind == KindLiteral {
-			if got.Kind == KindLiteral {
-				return got.LitVal == want.LitVal
-			}
-			return got.Kind == KindInt || unionContains(got, want)
-		}
-		// A literal value is assignable to its base kind (Literal[1] -> int).
-		return want.Kind == KindInt || unionContains(want, got)
-	default:
-		return got.Kind == want.Kind
-	}
-}
-
-// seqAssignable reports whether `got` is a sequence of element type compatible
-// with the Sequence bound's element type.
-func seqAssignable(got *Type, elem *Type) bool {
-	if elem == nil || elem.IsDyn() {
-		return true
-	}
-	switch got.Kind {
-	case KindList, KindSet, KindIterator:
-		if got.Elem == nil || got.Elem.IsDyn() {
-			return true
-		}
-		return got.Elem.Kind == elem.Kind || got.Elem.Same(elem)
-	case KindTuple:
-		// A heterogeneous tuple is Sequence[T] only when every element is T.
-		for _, e := range got.Elems {
-			if e == nil || e.IsDyn() {
-				continue
-			}
-			if e.Kind != elem.Kind && !e.Same(elem) {
-				return false
-			}
-		}
-		return true
-	case KindString:
-		// str is Sequence[str].
-		return elem.Kind == KindString
-	case KindSequence:
-		return got.Elem == nil || got.Elem.IsDyn() || got.Elem.Kind == elem.Kind
-	default:
-		return false
-	}
-}
-
-// callableAssignable reports whether `got` (a func/callable type) matches a
-// Callable bound with the given parameter and return types.
-func callableAssignable(got *Type, wantParams []*Type, wantRet *Type) bool {
-	if got.Kind != KindFunc && got.Kind != KindCallable {
-		return false
-	}
-	// A function-name reference carries no parameter info (empty Params), so
-	// under gradual typing it is assignable to any Callable bound: arity and
-	// param kinds cannot be checked. Explicitly-typed funcs with params must
-	// match arity and kinds.
-	if len(got.Params) == 0 {
-		return true
-	}
-	if len(got.Params) != len(wantParams) {
-		return false
-	}
-	for i, gp := range got.Params {
-		wp := wantParams[i]
-		if gp == nil || wp == nil || gp.IsDyn() || wp.IsDyn() {
-			continue
-		}
-		if gp.Kind != wp.Kind && !assignable(gp, wp) {
-			return false
-		}
-	}
-	// Return is covariant: got's return must be assignable to the bound's.
-	if got.Ret == nil || wantRet == nil || got.Ret.IsDyn() || wantRet.IsDyn() {
-		return true
-	}
-	return assignable(got.Ret, wantRet)
 }
 
 // matchPatternNames returns the set of pattern-bound names (non-wildcard)

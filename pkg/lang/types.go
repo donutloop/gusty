@@ -20,7 +20,7 @@ const (
 	KindClass
 	KindIterator
 	KindVoid
-	KindUnion // union type: value is one of several member types (int | str)
+	KindUnion   // union type: value is one of several member types (int | str)
 	KindLiteral // literal type: value must equal a specific constant (Literal[1])
 	// structural protocol kinds (generics / protocols)
 	KindSequence // Sequence[T] — accepts any indexable sequence of T
@@ -29,49 +29,54 @@ const (
 
 // Type is a value type. Gradual typing: KindDynamic means "any".
 type Type struct {
-	Kind   Kind   `json:"kind"`
-	Elem   *Type  `json:"elem,omitempty"`   // list/set element
-	Key    *Type  `json:"key,omitempty"`    // dict key
-	Val    *Type  `json:"val,omitempty"`    // dict value
-	LitVal int64  `json:"lit,omitempty"`   // literal constant value (KindLiteral)
-	Params []*Type `json:"params,omitempty"` // function params
-	Ret    *Type  `json:"ret,omitempty"`    // function return
-	ClassName string `json:"class_name,omitempty"` // class/type name
-	Members  []*Type `json:"members,omitempty"`  // union member types (int | str)
-	Elems []*Type `json:"elems,omitempty"` // tuple element types
+	Kind      Kind    `json:"kind"`
+	Elem      *Type   `json:"elem,omitempty"`       // list/set element
+	Key       *Type   `json:"key,omitempty"`        // dict key
+	Val       *Type   `json:"val,omitempty"`        // dict value
+	LitVal    int64   `json:"lit,omitempty"`        // literal constant value (KindLiteral)
+	Params    []*Type `json:"params,omitempty"`     // function params
+	Ret       *Type   `json:"ret,omitempty"`        // function return
+	ClassName string  `json:"class_name,omitempty"` // class/type name
+	Members   []*Type `json:"members,omitempty"`    // union member types (int | str)
+	Elems     []*Type `json:"elems,omitempty"`      // tuple element types
 }
 
 // singleton constructors
-func TInt() *Type      { return &Type{Kind: KindInt} }
-func TFlt() *Type      { return &Type{Kind: KindFloat} }
-func TBool() *Type     { return &Type{Kind: KindBool} }
-func TStr() *Type      { return &Type{Kind: KindString} }
-func TNone() *Type     { return &Type{Kind: KindNone} }
-func TDyn() *Type      { return &Type{Kind: KindDynamic} }
+func TInt() *Type             { return &Type{Kind: KindInt} }
+func TFlt() *Type             { return &Type{Kind: KindFloat} }
+func TBool() *Type            { return &Type{Kind: KindBool} }
+func TStr() *Type             { return &Type{Kind: KindString} }
+func TNone() *Type            { return &Type{Kind: KindNone} }
+func TDyn() *Type             { return &Type{Kind: KindDynamic} }
 func TSequence(e *Type) *Type { return &Type{Kind: KindSequence, Elem: e} }
 func TCallable(params []*Type, ret *Type) *Type {
 	return &Type{Kind: KindCallable, Params: params, Ret: ret}
 }
 
-func TTuple(elems ...*Type) *Type { return &Type{Kind: KindTuple, Elems: elems} }
-func TVoid() *Type     { return &Type{Kind: KindVoid} }
-func TLit(v int64) *Type { return &Type{Kind: KindLiteral, LitVal: v} }
+func TTuple(elems ...*Type) *Type   { return &Type{Kind: KindTuple, Elems: elems} }
+func TVoid() *Type                  { return &Type{Kind: KindVoid} }
+func TLit(v int64) *Type            { return &Type{Kind: KindLiteral, LitVal: v} }
 func TUnion(members ...*Type) *Type { return &Type{Kind: KindUnion, Members: members} }
-func TList(e *Type) *Type  { return &Type{Kind: KindList, Elem: e} }
-func TDict(k, v *Type) *Type { return &Type{Kind: KindDict, Key: k, Val: v} }
-func TSet(e *Type) *Type    { return &Type{Kind: KindSet, Elem: e} }
+func TList(e *Type) *Type           { return &Type{Kind: KindList, Elem: e} }
+func TDict(k, v *Type) *Type        { return &Type{Kind: KindDict, Key: k, Val: v} }
+func TSet(e *Type) *Type            { return &Type{Kind: KindSet, Elem: e} }
 func TFunc(params []*Type, ret *Type) *Type {
 	return &Type{Kind: KindFunc, Params: params, Ret: ret}
 }
 func TIter(e *Type) *Type { return &Type{Kind: KindIterator, Elem: e} }
 
-func (t *Type) IsInt() bool     { return t != nil && t.Kind == KindInt }
-func (t *Type) IsFloat() bool   { return t != nil && t.Kind == KindFloat }
-func (t *Type) IsBool() bool    { return t != nil && t.Kind == KindBool }
-func (t *Type) IsString() bool  { return t != nil && t.Kind == KindString }
-func (t *Type) IsNone() bool    { return t != nil && t.Kind == KindNone }
-func (t *Type) IsDyn() bool     { return t == nil || t.Kind == KindDynamic }
-func (t *Type) IsNum() bool     { return t != nil && (t.Kind == KindInt || t.Kind == KindFloat) }
+// TClass builds a nominal class type (a user-declared `class Name`). Class
+// types are nominal: a value reaches such a position only if it is that class
+// or a subclass of it (see ClassIndex.Less).
+func TClass(name string) *Type { return &Type{Kind: KindClass, ClassName: name} }
+
+func (t *Type) IsInt() bool    { return t != nil && t.Kind == KindInt }
+func (t *Type) IsFloat() bool  { return t != nil && t.Kind == KindFloat }
+func (t *Type) IsBool() bool   { return t != nil && t.Kind == KindBool }
+func (t *Type) IsString() bool { return t != nil && t.Kind == KindString }
+func (t *Type) IsNone() bool   { return t != nil && t.Kind == KindNone }
+func (t *Type) IsDyn() bool    { return t == nil || t.Kind == KindDynamic }
+func (t *Type) IsNum() bool    { return t != nil && (t.Kind == KindInt || t.Kind == KindFloat) }
 
 // Name renders a human-readable type name.
 func (t *Type) Name() string {
@@ -100,9 +105,21 @@ func (t *Type) Name() string {
 	case KindSet:
 		return "set[" + t.Elem.Name() + "]"
 	case KindFunc:
-		return "fn"
+		// Render a known signature (fn(Dog) -> int) so diagnostics name the actual
+		// callable; a bare/unannotated fn value still renders as "fn".
+		if len(t.Params) == 0 && (t.Ret == nil || t.Ret.Kind == KindVoid) {
+			return "fn"
+		}
+		name := "fn(" + callableParamNames(t.Params) + ")"
+		if t.Ret != nil && t.Ret.Kind != KindVoid {
+			name += " -> " + t.Ret.Name()
+		}
+		return name
 	case KindClass:
-		return "class:" + t.ClassName
+		if t.ClassName == "" {
+			return "any"
+		}
+		return t.ClassName // renders as the declared class name (round-trips in `gusty fmt`)
 	case KindIterator:
 		return "iter[" + t.Elem.Name() + "]"
 	case KindVoid:
@@ -124,7 +141,9 @@ func (t *Type) Name() string {
 func callableParamNames(params []*Type) string {
 	out := ""
 	for i, p := range params {
-		if i > 0 { out += ", " }
+		if i > 0 {
+			out += ", "
+		}
 		if p == nil {
 			out += "any"
 			continue
@@ -138,7 +157,9 @@ func callableParamNames(params []*Type) string {
 func tupleElemNames(elems []*Type) string {
 	out := ""
 	for i, e := range elems {
-		if i > 0 { out += ", " }
+		if i > 0 {
+			out += ", "
+		}
 		out += e.Name()
 	}
 	return out
@@ -151,7 +172,9 @@ func unionName(members []*Type) string {
 	}
 	out := ""
 	for i, m := range members {
-		if i > 0 { out += " | " }
+		if i > 0 {
+			out += " | "
+		}
 		if m == nil {
 			out += "any"
 			continue
@@ -171,9 +194,18 @@ func (t *Type) Same(o *Type) bool {
 	switch t.Kind {
 	case KindList:
 		return t.Elem.Same(o.Elem)
+	case KindClass:
+		// nominal: the class name is the type identity
+		return t.ClassName == o.ClassName
 	case KindTuple:
-		if len(t.Elems) != len(o.Elems) { return false }
-		for i := range t.Elems { if !t.Elems[i].Same(o.Elems[i]) { return false } }
+		if len(t.Elems) != len(o.Elems) {
+			return false
+		}
+		for i := range t.Elems {
+			if !t.Elems[i].Same(o.Elems[i]) {
+				return false
+			}
+		}
 		return true
 	case KindDict:
 		return t.Key.Same(o.Key) && t.Val.Same(o.Val)
@@ -183,13 +215,20 @@ func (t *Type) Same(o *Type) bool {
 		return o.Kind == KindSequence && (t.Elem == nil || o.Elem == nil || t.Elem.Same(o.Elem))
 	case KindUnion:
 		// order-independent member-set equality
-		if len(t.Members) != len(o.Members) { return false }
+		if len(t.Members) != len(o.Members) {
+			return false
+		}
 		for _, m := range t.Members {
 			found := false
 			for _, om := range o.Members {
-				if m.Same(om) { found = true; break }
+				if m.Same(om) {
+					found = true
+					break
+				}
 			}
-			if !found { return false }
+			if !found {
+				return false
+			}
 		}
 		return true
 	case KindCallable:
