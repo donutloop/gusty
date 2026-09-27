@@ -167,10 +167,12 @@ func TestCLIJIT(t *testing.T) {
 	}
 }
 
-// TestCLIJITJSON verifies the JSON output mode captures the JIT stdout.
+// TestCLIJITJSON verifies the JSON output mode captures the JIT stdout, and names
+// the backend that produced it (Gap M.2: an agent that asked for AOT must be able
+// to see that it got AOT rather than inferring it from the flag list).
 func TestCLIJITJSON(t *testing.T) {
 	got := cli(t, "--jit", "--json", "--eval", "print(2 + 3)\n")
-	if got != `{"output": "5\n", "exit": 0}`+"\n" {
+	if got != `{"output": "5\n", "backend": "aot", "exit": 0}`+"\n" {
 		t.Fatalf("jit json output = %q", got)
 	}
 }
@@ -782,5 +784,106 @@ func TestCLIPositionalSourceTextEvaluates(t *testing.T) {
 	}
 	if !strings.Contains(out, "42") {
 		t.Errorf("source text did not evaluate: %q", out)
+	}
+}
+
+// Gap M.2 — the CLI must say which backend ran a program. `--file` quietly used the AST
+// interpreter, so "I ran this program compiled" could mean "I interpreted it", and AOT-only
+// bugs hid behind the default path.
+func TestCLIReportsWhichBackendRan(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p.gy")
+	if err := os.WriteFile(src, []byte("print(6 * 7)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, code := cliCombined(t, "--json", "--file", src)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (%s)", code, got)
+	}
+	if !strings.Contains(got, `"backend": "interpreter"`) {
+		t.Errorf("`--file` must report the interpreter as its backend: %s", got)
+	}
+
+	got, code = cliCombined(t, "--json", "--aot", "--eval", "print(6 * 7)")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (%s)", code, got)
+	}
+	if !strings.Contains(got, `"backend": "aot"`) {
+		t.Errorf("`--aot` must report the compiled backend: %s", got)
+	}
+	if !strings.Contains(got, `"output": "42`) {
+		t.Errorf("`--aot --json` should capture program output: %s", got)
+	}
+
+	// --jit remains the same backend under its original name.
+	got, _ = cliCombined(t, "--json", "--jit", "--eval", "print(1)")
+	if !strings.Contains(got, `"backend": "aot"`) {
+		t.Errorf("--jit is the compiled backend: %s", got)
+	}
+}
+
+// --show-backend is the human-visible form of the same fact, and it must not
+// contaminate program output: stdout stays the program's, per ADR 0169.
+func TestCLIShowBackendGoesToStderr(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p.gy")
+	if err := os.WriteFile(src, []byte("print(1 + 1)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := combinedBin(t)
+	cmd := exec.Command(bin, "--file", src)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if stdout.String() != "2\n" {
+		t.Fatalf("stdout without --show-backend = %q, want \"2\\n\"", stdout.String())
+	}
+
+	cmd = exec.Command(bin, "--file", src, "--show-backend")
+	stdout, stderr = bytes.Buffer{}, bytes.Buffer{}
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if stdout.String() != "2\n" {
+		t.Errorf("program output changed: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "backend interpreter") {
+		t.Errorf("--show-backend must announce the backend on stderr, got %q", stderr.String())
+	}
+}
+
+// Contradictory backend requests are a usage error, not a coin flip.
+func TestCLIAotAndInterpContradict(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p.gy")
+	if err := os.WriteFile(src, []byte("print(1)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][]string{{"--aot", "--interp"}, {"--jit", "--interp"}} {
+		args := append([]string{}, pair...)
+		got, code := cliCombined(t, append(args, "--file", src)...)
+		if code != 4 {
+			t.Errorf("%v --file: exit = %d, want 4 (usage) — output %q", pair, code, got)
+		}
+		if !strings.Contains(got, "backend") {
+			t.Errorf("%v: the error should name the contradiction, got %q", pair, got)
+		}
+	}
+}
+
+// --interp is an explicit statement of the default, and must still work.
+func TestCLIExplicitInterpBackendRuns(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "p.gy")
+	if err := os.WriteFile(src, []byte("xs = []\nxs.append(3)\nprint(xs[0])\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, code := cliCombined(t, "--interp", "--file", src)
+	if code != 0 || !strings.HasSuffix(strings.TrimSpace(got), "3") {
+		t.Fatalf("--interp run failed: exit=%d out=%q", code, got)
 	}
 }

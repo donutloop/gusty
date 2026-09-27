@@ -915,9 +915,14 @@ interpreter run, and AOT-only bugs hide behind the default path — three of the
 (invalid IR in `in` on a string, `ret i32 @.str`, `print(d["k"])` printing an
 index) survived behind exactly that. Needed:
 
-- say which backend ran: the human banner and the `--json` payload gain
-  `"backend": "interpreter" | "jit" | "aot"`, so an agent never infers it;
-- explicit `--aot` / `--interp` switches with `--file`, and `--aot` as the
-  default for `--build` (unchanged);
-- flip the `--file` default only once the conformance matrix is green through it,
-  so "it ran" never again means "the interpreter ran it".
+- ✅ DONE (ADR 0179): the `--json` payload carries `"backend": "interpreter" |
+  "aot"` on every execution result (result line, runtime-error line, captured
+  output), so an agent never infers the engine from the flag list; `--aot` (alias
+  of `--jit`) and `--interp` select it explicitly, and asking for both is a usage
+  error (exit 4) that names the contradiction rather than silently choosing;
+  `--show-backend` prints the human answer on stderr, leaving stdout the program's
+  (ADR 0169).
+- ⏳ OPEN: flip the `--file` default to the compiled backend — but only once the
+  conformance matrix is green through it, so "it ran" never again means "the
+  interpreter ran it". Until then, AOT-only bugs need `--aot` or the harness to
+  show themselves, which is how three of them (ADR 0178) survived manual use.

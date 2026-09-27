@@ -1597,3 +1597,37 @@ the migration has to arrive as a failing test, not a shrug. Roadmap Gap N.2.
 `"cat" in greeting` terminated the Go raw string literal and broke the build —
 the exact hazard already written down. Keep IR comments backtick-free, and use
 `;` not `//`.
+
+## Gap M.2 — the CLI must say which backend ran (ADR 0179)
+
+**An undocumented default is a bug generator.** `--file` ran the interpreter while
+two docs said it was the AOT path, so every manual "I compiled this" probe this
+session was an interpreter run — and three genuine AOT defects (invalid IR for `in`
+on a string, `ret i32 @.str`, `print(d["k"])` printing an interned index) stayed
+hidden behind it, visible only to the harness that really runs `llc` + `cc`.
+A default that contradicts the docs is not a small doc bug; it silently routes all
+your evidence to the wrong path.
+
+**Report the facts about the tool, not just the program.** Every execution payload
+now carries `"backend"`, so an agent that asked for AOT can *see* it got AOT
+instead of inferring it from the flag list it passed. Inference from inputs is how
+the ambiguity was born.
+
+**Contradictions must be errors, never precedence.** `--aot --interp` exits 4 and
+names both flags. Silently resolving that (last flag wins, or "safest wins")
+recreates the exact unanswerability being fixed.
+
+**Keep the human answer off stdout.** `--show-backend` writes to stderr: a test
+asserts stdout stays exactly `2\n` with and without the flag, because the moment
+tool chatter enters program output, every piped program in the corpus breaks
+(ADR 0169).
+
+**When a contract changes, tighten the test rather than deleting it.**
+`TestCLIJITJSON` asserted the exact JSON shape; the new field made it fail. The
+assertion now includes `"backend": "aot"` — same strictness, updated contract, so
+the shape stays pinned for the next change too.
+
+**Defer the risky half explicitly.** Flipping `--file` to AOT by default would
+turn "works (interpreted)" into "fails (AOT-unsupported)" for unknown programs.
+Recorded as Gap M.2's open step, gated on the conformance matrix passing through
+the compiled path — a migration needs its evidence before it flips a default.

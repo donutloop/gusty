@@ -18,8 +18,11 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 
 | Flag | Meaning |
 |------|---------|
-| `--file <path>` | compile a source file |
+| `--file <path>` | run a source file (with the interpreter unless `--aot`/`--jit` is given; the payload says which) |
 | `--eval <src>` | compile-and-run source from argv |
+| `--aot` | run through the compiled LLVM backend (alias of `--jit`) |
+| `--interp` | run through the AST interpreter explicitly; conflicts with `--aot`/`--jit` (usage error, exit 4) |
+| `--show-backend` | print `gustyc: backend <interpreter\|aot>` on stderr (stdout stays the program's) |
 | `--emit-llvm` | print the emitted LLVM IR |
 | `--emit-ast` | print the JSON AST dump |
 | `--verify <src>` | run the front end (lex + parse + semantic analysis) and report diagnostics, without executing |
@@ -378,7 +381,11 @@ no `range` (full text) to force a clean re-parse.
 
 `gustyc --json` emits machine-readable JSON on stdout:
 
-- `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "exit": 0}`
+- `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "type": "int", "backend": "interpreter", "exit": 0}`
+- every execution result carries `"backend"`: `"interpreter"` or `"aot"`. It is a fact
+  about the run, not something to infer from the flag list — `--file` without
+  `--aot` reports `"backend": "interpreter"` (roadmap Gap M.2). Captured-output
+  runs (the compiled backend) report `{"output": "42\n", "backend": "aot", "exit": 0}`.
 - `--json --verify <src>` → `{"ok": true, "exit": 0}` or `{"diagnostics": [...], "exit": 1}`
 - parse errors → `{"ok": false, "phase": "parse", "error": "1:7: unexpected token",
   "errors": [{"line": 1, "col": 7, "msg": "unexpected token"}], "exit": 1}` — the spans

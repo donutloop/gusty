@@ -108,6 +108,9 @@ func run() int {
 	abiCmd := fs.Bool("abi", false, "print the versioned gusty extern-fn C ABI schema (JSON)")
 	sharedCmd := fs.Bool("shared", false, "emit a position-independent shared library (.so/.dylib) with the stable extern-fn ABI instead of a native executable (with --build)")
 	jit := fs.Bool("jit", false, "use the in-process dlopen JIT (codegen -> llc -> cc -shared -> dlopen -> run) instead of the AST interpreter")
+	aot := fs.Bool("aot", false, "run through the compiled LLVM backend (alias of --jit); --file defaults to the interpreter, so say so explicitly")
+	interp := fs.Bool("interp", false, "run through the AST interpreter explicitly (the default; conflicts with --aot/--jit)")
+	showBackend := fs.Bool("show-backend", false, "print which backend executed the program (stderr; --json reports it in the payload)")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
 	lsp := fs.Bool("lsp", false, "run the language server over stdio (LSP)")
@@ -299,7 +302,24 @@ func run() int {
 		return benchMode(*benchSrc, *benchFile, *benchRuns, *benchOpt, *jsonOut)
 	}
 	if *evalSrc != "" || *file != "" {
-		return evalSrcOrFile(*evalSrc, *file, *jsonOut, *jit)
+		// Which backend ran used to be invisible: --file quietly used the AST
+		// interpreter, so "I compiled this program" could mean "I interpreted it",
+		// and AOT-only bugs hid behind the default path (roadmap Gap M.2). The
+		// choice is now explicit on the command line and explicit in the output.
+		if (*aot || *jit) && *interp {
+			fmt.Fprintln(os.Stderr, "gustyc: --aot/--jit and --interp contradict each other; choose one backend")
+			return exitUsage
+		}
+		backend := backendInterpreter
+		if *aot || *jit {
+			backend = backendJIT
+		}
+		src := *evalSrc
+		if *showBackend {
+			// Program output stays on stdout; this is a statement about the tool.
+			fmt.Fprintf(os.Stderr, "gustyc: backend %s\n", backend)
+		}
+		return evalSrcOrFile(src, *file, *jsonOut, backend)
 	}
 	usage(fs)
 	return exitUsage
@@ -316,25 +336,34 @@ func srcOrFile(src, file string) (string, error) {
 	return string(b), nil
 }
 
-func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
+// Backend names the execution engine that ran a program. It travels with every
+// machine-readable result so an agent never has to infer it from flags.
+type backend string
+
+const (
+	backendInterpreter backend = "interpreter"
+	backendJIT         backend = "aot"
+)
+
+func evalSrcOrFile(src, file string, jsonOut bool, backend backend) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
 		// Nothing to run: the CLI was used wrongly (no source, unreadable file).
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		return exitUsage
 	}
-	if jitMode {
+	if backend == backendJIT {
 		res, err := lang.JIT(s, 0)
 		if err != nil {
 			if jsonOut {
-				fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitCompileError)
+				fmt.Printf("{\"error\": %q, \"backend\": %q, \"exit\": %d}\n", err.Error(), backend, exitCompileError)
 			} else {
 				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 			}
 			return exitCompileError
 		}
 		if jsonOut {
-			fmt.Printf("{\"output\": %q, \"exit\": 0}\n", res.Output)
+			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": 0}\n", res.Output, backend)
 		} else {
 			fmt.Print(res.Output)
 		}
@@ -354,7 +383,7 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 			tb = ee.RenderTraceback()
 		}
 		if jsonOut {
-			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"exit\": %d}\n", err.Error(), tb, exitRuntime)
+			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"backend\": %q, \"exit\": %d}\n", err.Error(), tb, backend, exitRuntime)
 		} else if tb != "" {
 			// Tracebacks are diagnostics, not program output: they belong on stderr so
 			// `prog 2>/dev/null | ...` sees only what the program printed (the AOT
@@ -380,10 +409,12 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 	}
 	isNone := ev.IsNone(v)
 	if jsonOut {
+		// The backend is part of the result, not an inference from the flag list:
+		// an agent that asked for AOT must be able to *see* it got AOT (Gap M.2).
 		if !finalExpr || isNone {
-			fmt.Printf("{\"result\": null, \"type\": %q, \"exit\": 0}\n", ev.TypeOf(v))
+			fmt.Printf("{\"result\": null, \"type\": %q, \"backend\": %q, \"exit\": 0}\n", ev.TypeOf(v), backend)
 		} else {
-			fmt.Printf("{\"result\": %q, \"type\": %q, \"exit\": 0}\n", ev.Repr(v), ev.TypeOf(v))
+			fmt.Printf("{\"result\": %q, \"type\": %q, \"backend\": %q, \"exit\": 0}\n", ev.Repr(v), ev.TypeOf(v), backend)
 		}
 	} else if finalExpr && !isNone {
 		fmt.Println(ev.Repr(v))
