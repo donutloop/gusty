@@ -1,0 +1,77 @@
+def sign(n):
+    if n > 0:
+        return 1
+    elif n:
+        return -1
+    else:
+        return 0
+
+print(sign(3))
+print(sign(-2))
+print(sign(0))
+
+a = 1
+b = 2
+if a and b < 9:
+    print(11)
+else:
+    print(12)
+
+if a > b or b > 9:
+    print(13)
+else:
+    print(14)
+
+if not a:
+    print(15)
+else:
+    print(16)
+
+zero = 0.0
+if zero:
+    print(17)
+else:
+    print(18)
+
+half = 0.5
+if half:
+    print(19)
+else:
+    print(20)
+
+empty_list = []
+if empty_list:
+    print(21)
+else:
+    print(22)
+
+full_list = [1, 2]
+if full_list:
+    print(23)
+else:
+    print(24)
+
+empty_text = ""
+if empty_text:
+    print(25)
+else:
+    print(26)
+
+empty_map = {}
+if empty_map:
+    print(27)
+else:
+    print(28)
+
+print(1 if a else 2)
+print(1 if 0 else 2)
+
+count = 0
+while full_list:
+    count = count + 1
+    if count >= 4:
+        full_list = []
+
+print(count)
+kept = [i for i in range(6) if i]
+print(kept)

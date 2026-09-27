@@ -320,6 +320,42 @@ In the AOT path, a constant condition folds to the taken branch, and a runtime
 condition (a comparison, or `and`/`or`) lowers to an LLVM `select i1 cond,
 i32 then, i32 else`, so the ternary is allocation-free and needs no blocks.
 
+## Truthiness
+
+Every place that tests a value — `if`/`elif`/`else`, `while`, the ternary
+condition, `and`/`or`/`not`, a comprehension's `if` clause, a `match` guard — uses
+the same rule, and both backends implement it identically:
+
+| Value | Truth |
+|---|---|
+| `0`, `0.0`, `-0.0` | false |
+| `False`, `None` | false |
+| `""` | false |
+| `[]`, `{}`, an empty set | false |
+| anything else (including any other number, string, container or object) | true |
+
+```py
+if count:                 # int truthiness — 0 is false
+    print("have some")
+while buffer:             # a container is true while it has elements
+    print(len(buffer))
+    buffer = []
+if not (a > b) or flag:
+    print("ok")
+label = "yes" if text else "no"
+```
+
+Booleans are values, not just tests: `a and b`, `x in xs` and `not x` produce `1`
+or `0`, so they can be printed, stored (`flag = a < b`) and re-tested.
+
+How each backend gets there is an implementation detail, but a load-bearing one
+(ADR 0167): in IR a value is either an `i32` or the `i1` result of a comparison, and
+neither may be fed to the other's instruction, so conditions go through a
+normalising helper (`truthOperand`) and containers/strings are tested by *length*
+(`rt_list_len` / `rt_dict_len` / `rt_set_len`, or the compile-time length of a
+literal) rather than by handle. In the interpreter a condition asks the heap object
+behind a handle, never the handle itself.
+
 ### Dicts & sets (LLVM codegen)
 
 The AOT path also lowers **inline dict and set literals** with constant-key

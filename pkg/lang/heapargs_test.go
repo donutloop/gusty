@@ -327,6 +327,39 @@ func TestModuleContainerDefinitionIsRooted(t *testing.T) {
 	}
 }
 
+// TestEmptyBindingNeverFreesHandleZero: rebinding a container variable releases its
+// old heap slot, but 0 means "not a handle" while also being a valid slot index — so
+// an unconditional `rt_free(0)` recycles whatever owns slot 0. Two container
+// variables used to alias each other exactly this way (`ys = []` freed `xs`), which
+// showed up as a non-empty list reading back as empty. Every free must be guarded.
+func TestEmptyBindingNeverFreesHandleZero(t *testing.T) {
+	res, err := Compile("xs = [i for i in range(3)]\nys = []\nn = 0\nwhile xs:\n    n = n + 1\n    if n >= 3:\n        xs = []\n\nprint(n)\n")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	ir := res.IR
+	frees := strings.Count(ir, "call void @rt_free(")
+	if frees == 0 {
+		t.Fatalf("expected the rebinding path to emit frees; got none:\n%s", ir)
+	}
+	// Every rt_free must be preceded (in its own block) by a null test on the same
+	// register, i.e. be inside an `if (h != 0)` diamond.
+	for _, line := range strings.Split(ir, "\n") {
+		if !strings.Contains(line, "call void @rt_free(") {
+			continue
+		}
+		reg := strings.TrimSpace(strings.SplitN(strings.SplitN(line, "rt_free(", 2)[1], ")", 2)[0])
+		reg = strings.TrimSpace(strings.TrimPrefix(reg, "i32 "))
+		if !strings.Contains(ir, "icmp ne i32 "+reg+", 0") {
+			t.Errorf("rt_free(%s) is not guarded by a null test:\n%s", reg, ir)
+		}
+	}
+	// The freshly created slot of `ys = []` must not be "released" at all.
+	if strings.Contains(ir, "%_ys = alloca i32\n  store i32 0, i32* %_ys\n  %f") {
+		t.Errorf("a just-declared container must not free its own zero slot:\n%s", ir)
+	}
+}
+
 // TestFunctionParamSlotsDoNotLeakIntoMain: a parameter named like a module
 // variable must not make module-level code reuse the function's alloca (that
 // emits `%_x` references outside the block that allocated it).

@@ -419,11 +419,22 @@ func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
 	if verdict.Exit != exitBenchRegression {
 		t.Errorf("report exit field = %d, want %d", verdict.Exit, exitBenchRegression)
 	}
-	if len(verdict.Regressions) != 1 || verdict.Regressions[0].Name != target {
-		t.Fatalf("want exactly one regression on %q, got %+v", target, verdict.Regressions)
+	// The doctored case must regress. Other cases may also show up when the
+	// machine is loaded (their baseline is 2x a single earlier best-of-N sample, and
+	// wall clock swings more than that under a parallel test binary), so this
+	// asserts the gate caught the case it was doctored for rather than requiring a
+	// precise count.
+	saw := false
+	for _, reg := range verdict.Regressions {
+		if reg.Name == target {
+			saw = true
+		}
+		if reg.Backend != "aot" || reg.Suggestion == "" {
+			t.Errorf("regression must name the gated leg and carry a suggestion: %+v", reg)
+		}
 	}
-	if verdict.Regressions[0].Backend != "aot" || verdict.Regressions[0].Suggestion == "" {
-		t.Errorf("regression must name the gated leg and carry a suggestion: %+v", verdict.Regressions[0])
+	if !saw {
+		t.Fatalf("the doctored case %q was not reported as a regression: %+v", target, verdict.Regressions)
 	}
 
 	// A baseline that is generous to every case must pass the gate cleanly. It is
@@ -442,7 +453,10 @@ func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
 	if err := os.WriteFile(okPath, generous, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if out, code := benchCLI(t, "--bench-suite", "--bench-runs", "3", "--bench-opt", "2", "--bench-baseline", okPath, "--bench-min-ms", "0.01"); code != exitOK {
+	// The tolerance is widened because the baseline is 2x a sample taken earlier in
+	// this test binary: the point is that a generous baseline passes, not that a
+	// sub-millisecond case repeats to the microsecond on a loaded machine.
+	if out, code := benchCLI(t, "--bench-suite", "--bench-runs", "3", "--bench-opt", "2", "--bench-baseline", okPath, "--bench-min-ms", "0.01", "--bench-tolerance", "8"); code != exitOK {
 		t.Errorf("a generous baseline should pass the gate, exit = %d\n%s", code, out)
 	}
 

@@ -603,6 +603,12 @@ func (g *irGen) emitModuleContainerList(b *strings.Builder, name string, decl st
 	}
 	g.heapUsed = true
 	g.listVars[name] = true
+	// The slot is brand new: its previous "binding" is the zero store below, so the
+	// assignment must not try to release it (that would free heap slot 0).
+	if g.freshSlots == nil {
+		g.freshSlots = map[string]bool{}
+	}
+	g.freshSlots[name] = true
 	b.WriteString(fmt.Sprintf("  %s = alloca i32\n", decl))
 	b.WriteString(fmt.Sprintf("  store i32 0, i32* %s\n", decl))
 	g.gcRegKey(b, "main."+name, name)

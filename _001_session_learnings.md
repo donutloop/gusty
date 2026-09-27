@@ -865,3 +865,50 @@ as a compiler-bug report so a missed path is never blamed on the program.
 strategy: the parity harness only compares the backends with each other, so programs that
 stress an unlowerable shape are the ones that find gaps — and each gap now needs a listed
 message row in `docs/operations.md` plus a test, which is what keeps the catalogue honest.
+
+## Cycle: Gap K.1 — truthiness (ADR 0167)
+
+**What happened.** Building a both-backend corpus (for L9.6) hit the most ordinary
+code in the language and fell over: `if count:`, `while total:`, `if a and b:`,
+`if a < b or b > 9:`, `print(not x)`, `1 if x else 2` all failed to *compile* in AOT,
+and `if 0.0:` / `if [1]:` gave opposite answers per backend. Fixed in both paths, with
+`integration/truthiness_test.go` (38 cases × both backends, asserted against Python's
+answer) and `programs/truthiness.gy` in the conformance corpus (35/35 parity).
+
+**The core lesson: an assumption about representation is a bug, wherever it sits.**
+Values are `i32`, predicates are `i1`. The condition paths assumed `i32`, so any
+condition whose operand was a comparison (`and`/`or`, `not`, `elif`, membership) emitted
+IR LLVM rejects. Fixing one call site would have been pointless — the same assumption
+lived in six places. Now there is one way across the boundary (`asI1` / `asBoolI32` /
+`truthOperand`), with `i1Vals` tracking which registers are predicates so the tight
+path (`if a < b and b < 9:` → two `icmp` + `and i1`) stays tight instead of paying a
+`zext` + re-test that `-O0` will not fold away.
+
+**Testing the representation instead of the value** was the other half, and it was wrong
+in *both* directions: the interpreter's `cond != 0` made `0.0`, `""`, `[]` truthy (heap
+values are handles), while AOT's handle test made a non-empty list false. Truthiness is
+about the value, so the interpreter asks the heap object (`Evaluator.truthy`) and AOT
+asks the length (`rt_list_len`/`rt_dict_len`/`rt_set_len`, or the compile-time length of
+a literal).
+
+**Corpus-writing is the highest-yield bug finder here.** The parity harness compares the
+backends with each other, so it cannot see a bug both share, and cannot see a shape no
+program exercises. Writing programs against *Python's* answer (not "whatever both
+backends do") is what surfaced:
+- `ys = []` freeing heap slot **0** unconditionally: `0` doubles as "not a handle" and as
+  slot 0's index, so declaring one container recycled an unrelated list. Every `rt_free`
+  is now guarded (`if (h != 0) rt_free(h)`), with `freshSlots` skipping the "release the
+  previous binding" step for the slot a statement has just created.
+- `for k in d:` iterates nothing in AOT (Gap K.2), and `xs.pop()` / `set()` do not exist
+  (Gap K.3) — the reason the truthiness tests must rebind `xs = []` to end a `while xs:`.
+
+**Process notes.**
+- A test that fails under parallel load is a defect: `TestCLIBenchSuiteBaselineAndGate`
+  demanded *exactly one* regression from a doctored baseline, so an unrelated noisy case
+  turned it red. It now asserts the doctored case is reported and widens the tolerance on
+  the clean-baseline leg via `--bench-tolerance`, keeping the test about the gate.
+- When a golden/test expectation and reality disagree, check which one is wrong before
+  typing: two of my new cases failed because the *expected output* was wrong (a missing
+  `print(n)`), not the compiler.
+- `VerifyModuleIR` in a unit test catches the i1/i32 class immediately — five of these
+  bugs predate today and were invisible to every existing test.

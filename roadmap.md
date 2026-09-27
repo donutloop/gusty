@@ -529,3 +529,40 @@ Each is a concrete, reproducible defect with the shape to fix it.
   string-typed parameters (annotation/defaults/call sites, like the container-kind
   inference in `heapargs.go`), an `i8*` slot in the callee, and runtime helpers for
   print/strlen/compare, with the unsupported uses reported as diagnostics.
+
+## Gap K — truthiness (found writing the L9.6 corpus, 2026-09-27)
+
+- **Gap K.1 — truthiness was wrong or uncompilable on both backends** — ✅ DONE (ADR 0167).
+  `if count:` (an integer condition) failed to compile at all — the backend fed an `i32`
+  to `br i1` — and `if a and b:`, `if a < b or b > 9:`, `while total:`, `print(not x)`,
+  `1 if x else 2` and `elif <int>:` all failed the same way, because a condition operand
+  was assumed to be an `i32` while comparisons produce an `i1`. On the other side,
+  `if 0.0:` was *true* in the interpreter (a float is a handle, and a handle is nonzero),
+  and in AOT a non-empty list or dict was *false* (`if xs:` tested the handle word). Now:
+  conditions normalise `i1`/`i32` through one helper (`truthOperand`, also used by `elif`,
+  `and`/`or`, `not`, the ternary and membership results), containers and strings test
+  their length (`rt_list_len`/`rt_dict_len`/`rt_set_len`, or the compile-time length of a
+  literal), boolean operators yield the interpreter's `i32` 0/1, and the interpreter asks
+  the heap object behind a handle (`Evaluator.truthy`) at every condition site — `if`,
+  `elif`, `while`, `and`/`or`, `not`, ternary, comprehension filters and `match` guards.
+  Covered by `integration/truthiness_test.go` (38 cases checked against Python's answer on
+  both backends + module verification) and `programs/truthiness.gy` in the conformance
+  corpus.
+  **Found on the way and fixed in the same change:** rebinding a container variable freed
+  its previous handle unconditionally, and `0` — the value of a raw int/bool/None and of a
+  freshly declared container — is also a legal heap slot index, so `ys = []` recycled
+  slot 0 out from under an unrelated list (observed as `xs = [i for i in range(3)]` later
+  reading as empty). Every free is now guarded (`if (h != 0) rt_free(h)`), pinned by
+  `TestEmptyBindingNeverFreesHandleZero`.
+- **Gap K.2 — `for k in d:` over a dict yields nothing in AOT** — 🟥 FOUND.
+  `d = {1: 2, 3: 4}` / `for k in d: print(k)` prints the keys on the interpreter and
+  nothing in the native binary, with no error — the parity harness cannot see it because
+  it compares backends against each other only when a case exercises the shape. Needs a
+  key iterator over the runtime dict (the interpreter's key order is insertion order).
+- **Gap K.3 — `list.pop` and the `set()` constructor are missing** — 🟥 FOUND.
+  `xs.pop()` is `no such list method pop` in the interpreter and unsupported in AOT, so
+  the natural way to empty a container in a `while xs:` loop does not exist (the
+  truthiness tests have to rebind to `[]` instead); `set()` fails as
+  `unsupported call for eval` although `{1, 2}` literals and the `set` annotation work.
+  Both are ordinary Python that the language claims to support — implement in the
+  interpreter first, then mirror in codegen, with a conformance program per ADR 0165/0167.

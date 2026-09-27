@@ -978,6 +978,15 @@ type irGen struct {
 	// runtime heap container handle (see heapargs.go). Inferred once, before any
 	// IR is emitted.
 	heapArgs map[string]map[int]int
+	// freshSlots records variables whose heap slot was created by the statement
+	// currently being lowered, so the "release the previous binding" step is
+	// skipped for them (see emitFreeOld).
+	freshSlots map[string]bool
+	// i1Vals records SSA registers whose LLVM type is i1 — comparison results and
+	// boolean-logic results. Truthiness tests need it: feeding an i1 to
+	// `icmp ne i32 …, 0` (or an i32 to `br i1`) is the classic way a module stops
+	// verifying, and the old code assumed every condition operand was an i32.
+	i1Vals map[string]bool
 	// listOperands records IR operands known to be runtime heap list handles
 	// (generator function results and generator expression results), so
 	// print/indexing can treat them as lists.
@@ -2532,12 +2541,211 @@ func (g *irGen) floatEval(e Expr) (float64, bool) {
 // truthyValue emits an i32 0/1 for a condition, using float != 0.0
 // for float expressions (fcmp one + zext) instead of truncated ints.
 func (g *irGen) truthyValue(b *strings.Builder, e Expr) string {
+	v, err := g.truthOperandErr(b, e)
+	if err != nil {
+		// Mirrors valueText: an un-lowerable condition is reported by the enclosing
+		// statement path, which still has the error.
+		return g.asI1(b, "0")
+	}
+	return v
+}
+
+// --- i1 / i32 truthiness normalisation -------------------------------------
+//
+// Conditions in this language accept any value (`if count:`, `if flag and ready:`,
+// `while total:`), and a value in IR is either an i32 (integers, booleans stored
+// as 0/1) or an i1 (the result of a comparison or boolean-logic instruction).
+// Mixing the two — `icmp ne i32 %cmp, 0` on an i1, or `br i1 %count` on an i32 —
+// is a verifier failure, so every consumer of a condition goes through these
+// helpers instead of assuming a representation.
+
+// markI1 records that reg holds an i1 and returns reg, so emission sites can wrap
+// the register inline.
+func (g *irGen) markI1(reg string) string {
+	if g.i1Vals == nil {
+		g.i1Vals = map[string]bool{}
+	}
+	g.i1Vals[reg] = true
+	return reg
+}
+
+// i1Reg reports whether reg was produced by a comparison / boolean-logic
+// instruction and is therefore already an i1.
+func (g *irGen) i1Reg(reg string) bool { return g.i1Vals[reg] }
+
+// asI1 normalises any scalar value to an i1 predicate usable by br/select/and/or:
+// comparison results pass straight through, everything else is tested against zero.
+func (g *irGen) asI1(b *strings.Builder, v string) string {
+	switch v {
+	case "true":
+		return "true"
+	case "false":
+		return "false"
+	}
+	if g.i1Reg(v) {
+		return v
+	}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", t, v))
+	return g.markI1(t)
+}
+
+// asBoolI32 renders a boolean-producing expression the way the interpreter stores
+// booleans — an i32 0/1 — so `not x`, `a and b`, `x in xs` can be printed, stored
+// in a variable and tested again instead of leaking a bare i1 into an i32 slot.
+func (g *irGen) asBoolI32(b *strings.Builder, v string) string {
+	p := g.asI1(b, v)
+	switch p {
+	case "true":
+		return "1"
+	case "false":
+		return "0"
+	}
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", t, p))
+	return t
+}
+
+// truthOperand is the condition-side helper: float falsiness goes through fcmp, a
+// comparison emits its predicate directly, everything else goes through asI1.
+func (g *irGen) truthOperand(b *strings.Builder, e Expr) string {
+	v, err := g.truthOperandErr(b, e)
+	if err != nil {
+		// Mirrors valueText: a condition that cannot be lowered is reported by the
+		// enclosing statement path, not here.
+		return g.asI1(b, "0")
+	}
+	return v
+}
+
+func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
+	// Strings and containers test their *content*, never their representation: a
+	// string is an i8* and a container is a compile-time struct or a heap handle,
+	// so `if xs:` on a handle would be true even for [] and testing the string
+	// pointer is not even valid IR. Empty is false, non-empty is true.
+	if sv, ok := g.stringVal(e); ok {
+		return constI1(sv != ""), nil
+	}
+	if n, ok := g.listArgLen(e); ok {
+		return constI1(n != 0), nil
+	}
+	if fn, ok := g.heapContainerLenFn(e); ok {
+		v, err := g.value(b, e)
+		if err != nil {
+			return "", err
+		}
+		n := g.newTmp()
+		fmt.Fprintf(b, "  %s = call i32 @%s(i32 %s)\n", n, fn, v)
+		p := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, n)
+		return g.markI1(p), nil
+	}
 	if g.isFloat(e) {
 		t := g.newTmp()
 		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, g.floatValue(b, e))
-		return t
+		return g.markI1(t), nil
 	}
-	return g.valueText(b, e)
+	// `if a < b and b < 9:` would otherwise pay for a zext and a re-test per
+	// comparison; emit the predicate itself and use it directly.
+	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" && !g.isFloat(n.L) && !g.isFloat(n.R) {
+		l, err := g.value(b, n.L)
+		if err != nil {
+			return "", err
+		}
+		r, err := g.value(b, n.R)
+		if err != nil {
+			return "", err
+		}
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = %s i32 %s, %s\n", t, cmpI1Op(n.Op), l, r)
+		return g.markI1(t), nil
+	}
+	v, err := g.value(b, e)
+	if err != nil {
+		return "", err
+	}
+	return g.asI1(b, v), nil
+}
+
+// emitFreeOld releases the container handle a variable currently holds, if it
+// holds one at all.
+//
+// Heap handles share a word with raw values (ints, bools, None), and 0 means "not a
+// handle" — but 0 is also a valid heap slot index. Freeing it unconditionally
+// releases whatever object owns slot 0, so an unrelated list could be recycled out
+// from under its own variable (observed as a non-empty list reading back as empty).
+func (g *irGen) emitFreeOld(b *strings.Builder, name string) {
+	if g.freshSlots[name] {
+		// The slot was created by this same statement, so its "previous binding"
+		// is the zero store that created it — nothing to release.
+		delete(g.freshSlots, name)
+		return
+	}
+	g.heapSeq++
+	fs := g.heapSeq
+	h := fmt.Sprintf("%%f%d", fs)
+	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", h, name))
+	g.emitFree(b, h)
+}
+
+// emitFree emits `if (h != 0) rt_free(h)` for a possibly-null handle.
+func (g *irGen) emitFree(b *strings.Builder, h string) {
+	doIt := g.newLabel("free.do")
+	skip := g.newLabel("free.skip")
+	ok := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", ok, h))
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", ok, doIt, skip))
+	b.WriteString(fmt.Sprintf("%s:\n", doIt))
+	b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %s)\n", h))
+	b.WriteString(fmt.Sprintf("  br label %%%s\n", skip))
+	b.WriteString(fmt.Sprintf("%s:\n", skip))
+}
+
+// constI1 renders a compile-time truth value as an LLVM i1 constant.
+func constI1(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
+}
+
+// heapContainerLenFn returns the runtime helper that reports a container
+// variable's length, when the expression names a known runtime container.
+func (g *irGen) heapContainerLenFn(e Expr) (string, bool) {
+	nm, ok := e.(*Name)
+	if !ok {
+		return "", false
+	}
+	// The container maps are keyed by the written name (see listVars/dicts/sets).
+	switch {
+	case g.listVars[nm.Value]:
+		return "rt_list_len", true
+	case g.runtimeDicts[nm.Value]:
+		return "rt_dict_len", true
+	case g.runtimeSets[nm.Value]:
+		return "rt_set_len", true
+	}
+	return "", false
+}
+
+// cmpI1Op maps a comparison operator to its LLVM predicate instruction, or "" when
+// the operator is not a comparison.
+func cmpI1Op(op string) string {
+	switch op {
+	case "==", "is":
+		return "icmp eq"
+	case "!=", "is not":
+		return "icmp ne"
+	case "<":
+		return "icmp slt"
+	case "<=":
+		return "icmp sle"
+	case ">":
+		return "icmp sgt"
+	case ">=":
+		return "icmp sge"
+	}
+	return ""
 }
 
 // emitDunderBinOp emits an AOT lowering of operator overloading for a binary
@@ -2833,15 +3041,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// zero-extended back to an i32 0/1 — mirroring the interpreter (which
 		// evaluates both operands and returns a boolean).
 		if n.Op == "and" || n.Op == "or" {
-			lt := g.newTmp()
-			rt := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", lt, l))
-			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", rt, r))
+			// `and`/`or` test the *truth* of each operand — which may be an integer,
+			// a float, or the i1 result of a comparison — then combine the two
+			// predicates and zero-extend back to the interpreter's i32 0/1 boolean.
+			lt := g.truthOperand(b, n.L)
+			rt := g.truthOperand(b, n.R)
 			if n.Op == "and" {
 				b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", t, lt, rt))
 			} else {
 				b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", t, lt, rt))
 			}
+			g.markI1(t)
 			res := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, t))
 			return res, nil
@@ -2887,12 +3097,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains(i32 %s, i32 %s)\n", t, r, l))
 			bt := g.newTmp()
 			b.WriteString(fmt.Sprintf("\t%s = icmp ne i32 %s, 0\n", bt, t))
+			g.markI1(bt)
 			if n.Op == "not in" {
 				nt := g.newTmp()
 				b.WriteString(fmt.Sprintf("\t%s = xor i1 %s, true\n", nt, bt))
-				return nt, nil
+				g.markI1(nt)
+				return g.asBoolI32(b, nt), nil
 			}
-			return bt, nil
+			return g.asBoolI32(b, bt), nil
 		}
 		var op string
 		switch n.Op {
@@ -2936,10 +3148,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return "", fmt.Errorf("codegen: unsupported operator %q", n.Op)
 		}
 		if strings.HasPrefix(op, "icmp") {
+			// A comparison is a *value* (printable, storable, passable), so it
+			// returns the interpreter's i32 0/1; the i1 predicate stays internal
+			// (tracked in i1Vals) so a condition can use it without re-testing.
 			b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
-		} else {
-			b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
+			g.markI1(t)
+			res := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, t))
+			return res, nil
 		}
+		b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
 		return t, nil
 	case *UnOp:
 		x, err := g.value(b, n.X)
@@ -2956,7 +3174,19 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 			b.WriteString(fmt.Sprintf("  %s = sub i32 0, %s\n", t, x))
 		case "not":
-			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", t, x))
+			// `not` yields a boolean *value* (printable, storable), so it returns the
+			// interpreter's i32 0/1 rather than a bare i1.
+			p := g.asI1(b, x)
+			if p == "true" {
+				return "0", nil
+			}
+			if p == "false" {
+				return "1", nil
+			}
+			notP := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = xor i1 %s, true\n", notP, p))
+			g.markI1(notP)
+			return g.asBoolI32(b, notP), nil
 		default:
 			return "", fmt.Errorf("codegen: unsupported unary %q", n.Op)
 		}
@@ -5901,10 +6131,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hs := g.heapSeq
 				// heap slot reuse: rebinding a list var frees its old heap slot so rt_alloc can recycle it.
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
-					g.heapSeq++
-					fs := g.heapSeq
-					b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+					g.emitFreeOld(b, nm.Value)
 				}
 				g.listVars[nm.Value] = true
 				if !g.allocd[nm.Value] {
@@ -5925,10 +6152,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			// list var rebound to a non-list value: free its heap slot (GC-correctness).
 			if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
-				g.heapSeq++
-				fs := g.heapSeq
-				b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
-				b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+				g.emitFreeOld(b, nm.Value)
 				g.listVars[nm.Value] = false
 				g.runtimeDicts[nm.Value] = false
 				g.runtimeSets[nm.Value] = false
@@ -5944,10 +6168,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.heapUsed = true
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
-					g.heapSeq++
-					fs := g.heapSeq
-					b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+					g.emitFreeOld(b, nm.Value)
 					g.listVars[nm.Value] = false
 					g.runtimeDicts[nm.Value] = false
 					g.runtimeSets[nm.Value] = false
@@ -5996,10 +6217,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.heapUsed = true
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
-					g.heapSeq++
-					fs := g.heapSeq
-					b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+					g.emitFreeOld(b, nm.Value)
 					g.listVars[nm.Value] = false
 					g.runtimeDicts[nm.Value] = false
 					g.runtimeSets[nm.Value] = false
@@ -6077,10 +6295,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// and track the target as a list, exactly as the literal path above.
 				if ln, folded := g.staticLists[v]; folded {
 					if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
-						g.heapSeq++
-						fs := g.heapSeq
-						b.WriteString(fmt.Sprintf("  %%f%d = load i32, i32* %%_%s\n", fs, nm.Value))
-						b.WriteString(fmt.Sprintf("  call void @rt_free(i32 %%f%d)\n", fs))
+						g.emitFreeOld(b, nm.Value)
 					}
 					g.listVars[nm.Value] = true
 					if !g.allocd[nm.Value] {
@@ -6187,7 +6402,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// elif branches
 		for i, e := range els {
 			b.WriteString(fmt.Sprintf("%s:\n", e.condL))
-			ec, err := g.value(b, e.e.Cond)
+			ec, err := g.truthOperandErr(b, e.e.Cond)
 			if err != nil {
 				return err
 			}

@@ -61,6 +61,28 @@ func (o *obj) tag() ValueTag {
 	return objKindTag(o.kind)
 }
 
+// truthy implements Python truthiness for a runtime value: every number is false at
+// zero (0, 0.0, -0.0), strings and containers are false when empty, None and False
+// are false, and any other value — including a live object handle — is true.
+//
+// Conditions must go through this and never test `v != 0` directly: heap values are
+// handles, so a raw handle test makes `if 0.0:`, `if "":` and `if []:` all true,
+// which is both wrong and different from what the AOT backend compiles.
+func (e *Evaluator) truthy(v int64) bool {
+	if o, ok := e.heap[v]; ok {
+		switch o.kind {
+		case "float":
+			return o.fval != 0
+		case "str":
+			return o.sval != ""
+		case "list", "set", "dict":
+			return len(o.elems) > 0
+		}
+		return true
+	}
+	return v != 0
+}
+
 // tagOfVal returns the canonical %obj kind tag for a runtime value. Heap
 // values map their obj.kind; plain ints/bools/None are raw i64s in the
 // interpreter today, so they report the immediate tag (the %obj payload word
@@ -757,7 +779,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				return 0, err
 			}
 			taken := false
-			if cond != 0 {
+			if e.truthy(cond) {
 				rv, err := e.evalBody(s.Then)
 				if err != nil {
 					return 0, err
@@ -770,7 +792,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					if err != nil {
 						return 0, err
 					}
-					if ec != 0 {
+					if e.truthy(ec) {
 						rv, err := e.evalBody(eif.Then)
 						if err != nil {
 							return 0, err
@@ -811,7 +833,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					if err != nil {
 						return 0, err
 					}
-					if gv == 0 {
+					if !e.truthy(gv) {
 						matched = false
 					}
 				}
@@ -898,7 +920,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				if err != nil {
 					return 0, err
 				}
-				if cond == 0 {
+				if !e.truthy(cond) {
 					break
 				}
 				rv, err := e.evalBody(s.Body)
@@ -1244,7 +1266,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			}
 			return -v, nil
 		case "not":
-			if v == 0 {
+			if !e.truthy(v) {
 				return 1, nil
 			}
 			return 0, nil
@@ -1358,7 +1380,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		if cond != 0 {
+		if e.truthy(cond) {
 			return e.eval(n.If)
 		}
 		return e.eval(n.Else)
@@ -1577,7 +1599,7 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			if cv == 0 {
+			if !e.truthy(cv) {
 				continue
 			}
 		}
@@ -2044,12 +2066,12 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return 0, nil
 	case "and":
-		if l != 0 && r != 0 {
+		if e.truthy(l) && e.truthy(r) {
 			return 1, nil
 		}
 		return 0, nil
 	case "or":
-		if l != 0 || r != 0 {
+		if e.truthy(l) || e.truthy(r) {
 			return 1, nil
 		}
 		return 0, nil
