@@ -1054,6 +1054,91 @@ const ASTIRSchema = `{
         }
       }
     },
+    "benchReport": {
+      "type": "object",
+      "required": ["total_ms", "mean_ms", "best_ms"],
+      "description": "Wall-clock summary of one backend over the run set (milliseconds).",
+      "properties": {
+        "total_ms": { "type": "number" },
+        "mean_ms": { "type": "number" },
+        "best_ms": { "type": "number" }
+      }
+    },
+    "benchCaseResult": {
+      "type": "object",
+      "required": ["name", "interpreter", "aot", "speedup"],
+      "description": "One benchmark case measured on both execution backends. error is non-empty when the case could not be measured; the row is kept so a suite never silently shrinks.",
+      "properties": {
+        "name": { "type": "string" },
+        "interpreter": { "$ref": "#/definitions/benchReport" },
+        "aot": { "$ref": "#/definitions/benchReport" },
+        "speedup": { "type": "number", "description": "interpreter best_ms / aot best_ms; > 1 means the compiled artifact is faster." },
+        "error": { "type": "string" }
+      }
+    },
+    "benchSuite": {
+      "type": "object",
+      "required": ["schema_version", "generated_by", "runs", "opt_level", "cases", "totals"],
+      "description": "Deterministic benchmark artifact (--bench-suite): cases sorted by name, plus totals. Diff two runs to see a slowdown as a number.",
+      "properties": {
+        "schema_version": { "type": "string" },
+        "generated_by": { "type": "string" },
+        "runs": { "type": "integer" },
+        "opt_level": { "type": "integer" },
+        "cases": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/benchCaseResult" }
+        },
+        "totals": {
+          "type": "object",
+          "required": ["cases", "ran", "failed", "interpreter_total_ms", "aot_total_ms", "geomean_speedup"],
+          "properties": {
+            "cases": { "type": "integer" },
+            "ran": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "interpreter_total_ms": { "type": "number" },
+            "aot_total_ms": { "type": "number" },
+            "geomean_speedup": { "type": "number" }
+          }
+        }
+      }
+    },
+    "benchRegression": {
+      "type": "object",
+      "required": ["name", "backend", "baseline_ms", "current_ms", "ratio", "suggestion"],
+      "description": "One regression-gate violation (--bench-baseline): a case slower than its baseline by more than the tolerance, above the noise floor.",
+      "properties": {
+        "name": { "type": "string" },
+        "backend": { "type": "string", "enum": ["aot", "interpreter"] },
+        "baseline_ms": { "type": "number" },
+        "current_ms": { "type": "number" },
+        "ratio": { "type": "number" },
+        "suggestion": { "type": "string" }
+      }
+    },
+    "benchBaseline": {
+      "type": "object",
+      "required": ["schema_version", "cases"],
+      "description": "Committed reference measurement written by --bench-baseline-update.",
+      "properties": {
+        "schema_version": { "type": "string" },
+        "generated_by": { "type": "string" },
+        "runs": { "type": "integer" },
+        "opt_level": { "type": "integer" },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "interpreter_best_ms", "aot_best_ms"],
+            "properties": {
+              "name": { "type": "string" },
+              "interpreter_best_ms": { "type": "number" },
+              "aot_best_ms": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
     "type": {
       "type": "string",
       "description": "Type annotation text. Union types render members joined by \" | \", e.g. \"int | str\".",

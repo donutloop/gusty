@@ -2,10 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+)
+
+var (
+	suiteBinOnce sync.Once
+	suiteBin     string
+	suiteBinErr  error
 )
 
 // cli runs `go run -tags=llvm20 ./cmd/gustyc` with args and returns stdout.
@@ -90,7 +100,6 @@ func TestCLIEmitLLVMOptLevel(t *testing.T) {
 		t.Fatalf("emit-llvm produced no main():\n%s", ir0)
 	}
 }
-
 
 func TestCLIEmitLLVMIndexCallElems(t *testing.T) {
 	// Element access into list-producing call expressions in the AOT codegen:
@@ -234,5 +243,257 @@ func TestCheckFilesSubcommand(t *testing.T) {
 	}
 	if !strings.Contains(out, "argument") {
 		t.Fatalf("expected argument-mismatch diagnostic, out=%s", out)
+	}
+}
+
+// --- benchmark suite + regression gate (L10.4) -----------------------------
+
+// cliExit runs the CLI and returns (stdout, exit code) without failing, so the
+// gate's dedicated exit code can be asserted.
+
+// suiteBinPath builds the CLI once per test binary and returns its path. Exit codes
+// must be observed through a real binary: `go run` reports 1 for any failing
+// program, which would hide the gate's dedicated exit code.
+func suiteBinPath(t *testing.T) string {
+	t.Helper()
+	suiteBinOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "gusty-cli-")
+		if err != nil {
+			suiteBinErr = fmt.Errorf("temp dir: %w", err)
+			return
+		}
+		suiteBin = filepath.Join(dir, "gustyc")
+		cmd := exec.Command("go", "build", "-tags=llvm20", "-o", suiteBin, "./cmd/gustyc")
+		cmd.Dir = "../.."
+		if out, err := cmd.CombinedOutput(); err != nil {
+			suiteBinErr = fmt.Errorf("build gustyc: %v\n%s", err, out)
+		}
+	})
+	if suiteBinErr != nil {
+		t.Fatalf("%v", suiteBinErr)
+	}
+	return suiteBin
+}
+
+// benchCLI runs the built CLI and returns (stdout, exit code).
+func benchCLI(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command(suiteBinPath(t), args...)
+	cmd.Dir = "../.."
+	out, err := cmd.Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if ok := errors.As(err, &ee); ok {
+			return string(out), ee.ExitCode()
+		}
+		t.Fatalf("gustyc %v: %v", args, err)
+	}
+	return string(out), 0
+}
+
+func TestCLIBenchSuiteJSON(t *testing.T) {
+	out, code := benchCLI(t, "--bench-suite", "--bench-runs", "1", "--bench-opt", "1", "--json")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", code, out)
+	}
+	var rep struct {
+		SchemaVersion string `json:"schema_version"`
+		Runs          int    `json:"runs"`
+		OptLevel      int    `json:"opt_level"`
+		Cases         []struct {
+			Name        string `json:"name"`
+			Interpreter struct {
+				BestMs float64 `json:"best_ms"`
+			} `json:"interpreter"`
+			AOT struct {
+				BestMs float64 `json:"best_ms"`
+			} `json:"aot"`
+			Speedup float64 `json:"speedup"`
+			Error   string  `json:"error"`
+		} `json:"cases"`
+		Totals struct {
+			Cases          int     `json:"cases"`
+			Ran            int     `json:"ran"`
+			Failed         int     `json:"failed"`
+			GeomeanSpeedup float64 `json:"geomean_speedup"`
+		} `json:"totals"`
+		Regressions []any `json:"regressions"`
+		NewCases    []any `json:"new_cases"`
+		Exit        int   `json:"exit"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("suite is not valid JSON: %v\n%s", err, out)
+	}
+	if rep.SchemaVersion != "1.0" || rep.Runs != 1 || rep.OptLevel != 1 {
+		t.Errorf("suite header wrong: %+v", rep)
+	}
+	if rep.Totals.Cases == 0 || rep.Totals.Ran != rep.Totals.Cases {
+		t.Errorf("not every case measured: %+v", rep.Totals)
+	}
+	for _, c := range rep.Cases {
+		if c.Error != "" {
+			t.Errorf("corpus case %q failed: %s", c.Name, c.Error)
+		}
+		if c.AOT.BestMs <= 0 || c.Interpreter.BestMs <= 0 {
+			t.Errorf("case %q reported no timings: %+v", c.Name, c)
+		}
+	}
+	if rep.Exit != 0 {
+		t.Errorf("report exit field = %d, want 0", rep.Exit)
+	}
+}
+
+func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
+	dir := t.TempDir()
+
+	// Measure once and build a synthetic baseline from the observation: every
+	// case gets 2x its measured time (so it can never trip the gate), except the
+	// heaviest case which gets a near-zero time (so it must trip). That makes the
+	// assertion about the *gate*, not about machine noise.
+	out, code := benchCLI(t, "--bench-suite", "--bench-runs", "3", "--bench-opt", "2", "--json")
+	if code != 0 {
+		t.Fatalf("suite run exit = %d\n%s", code, out)
+	}
+	var measured struct {
+		Cases []struct {
+			Name string `json:"name"`
+			AOT  struct {
+				BestMs float64 `json:"best_ms"`
+			} `json:"aot"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal([]byte(out), &measured); err != nil {
+		t.Fatalf("suite JSON: %v", err)
+	}
+	type bc struct {
+		Name  string  `json:"name"`
+		AOTMs float64 `json:"aot_best_ms"`
+	}
+	target, best := "", 0.0
+	cases := []bc{}
+	for _, c := range measured.Cases {
+		if c.AOT.BestMs <= 0 {
+			continue
+		}
+		if c.AOT.BestMs > best {
+			best, target = c.AOT.BestMs, c.Name
+		}
+		cases = append(cases, bc{Name: c.Name, AOTMs: c.AOT.BestMs * 2})
+	}
+	if target == "" {
+		t.Skip("no case measured a positive AOT time")
+	}
+	for i := range cases {
+		if cases[i].Name == target {
+			cases[i].AOTMs = 0.02
+		}
+	}
+	bad, err := json.Marshal(map[string]any{"schema_version": "1.0", "cases": cases})
+	if err != nil {
+		t.Fatal(err)
+	}
+	badPath := dir + "/doctored.json"
+	if err := os.WriteFile(badPath, bad, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, code := benchCLI(t, "--bench-suite", "--bench-runs", "3", "--bench-opt", "2",
+		"--bench-baseline", badPath, "--bench-min-ms", "0.01", "--json")
+	if code != exitBenchRegression {
+		t.Errorf("doctored baseline exit = %d, want %d (exitBenchRegression)", code, exitBenchRegression)
+	}
+	var verdict struct {
+		Exit        int `json:"exit"`
+		Regressions []struct {
+			Name       string  `json:"name"`
+			Backend    string  `json:"backend"`
+			Ratio      float64 `json:"ratio"`
+			Suggestion string  `json:"suggestion"`
+		} `json:"regressions"`
+	}
+	if err := json.Unmarshal([]byte(got), &verdict); err != nil {
+		t.Fatalf("gate JSON: %v\n%s", err, got)
+	}
+	if verdict.Exit != exitBenchRegression {
+		t.Errorf("report exit field = %d, want %d", verdict.Exit, exitBenchRegression)
+	}
+	if len(verdict.Regressions) != 1 || verdict.Regressions[0].Name != target {
+		t.Fatalf("want exactly one regression on %q, got %+v", target, verdict.Regressions)
+	}
+	if verdict.Regressions[0].Backend != "aot" || verdict.Regressions[0].Suggestion == "" {
+		t.Errorf("regression must name the gated leg and carry a suggestion: %+v", verdict.Regressions[0])
+	}
+
+	// A baseline that is generous to every case must pass the gate cleanly. It is
+	// built from this run's own measurements (x2) rather than from a second
+	// measurement: best-of-N wall clock still swings ~2x for sub-millisecond
+	// cases, so a self-vs-self comparison would make the test about scheduler
+	// noise instead of about the gate.
+	for i := range cases {
+		cases[i].AOTMs = measured.Cases[i].AOT.BestMs * 2
+	}
+	generous, err := json.Marshal(map[string]any{"schema_version": "1.0", "cases": cases})
+	if err != nil {
+		t.Fatal(err)
+	}
+	okPath := dir + "/generous.json"
+	if err := os.WriteFile(okPath, generous, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := benchCLI(t, "--bench-suite", "--bench-runs", "3", "--bench-opt", "2", "--bench-baseline", okPath, "--bench-min-ms", "0.01"); code != exitOK {
+		t.Errorf("a generous baseline should pass the gate, exit = %d\n%s", code, out)
+	}
+
+	// --bench-baseline-update writes a well-formed baseline artifact.
+	basePath := dir + "/baseline.json"
+	if _, code := benchCLI(t, "--bench-suite", "--bench-runs", "1", "--bench-opt", "1", "--bench-baseline-update", basePath); code != 0 {
+		t.Fatalf("baseline write exit = %d", code)
+	}
+	raw, err := os.ReadFile(basePath)
+	if err != nil {
+		t.Fatalf("baseline not written: %v", err)
+	}
+	var written struct {
+		SchemaVersion string `json:"schema_version"`
+		Runs          int    `json:"runs"`
+		Cases         []struct {
+			Name  string  `json:"name"`
+			AOTMs float64 `json:"aot_best_ms"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &written); err != nil {
+		t.Fatalf("baseline JSON malformed: %v\n%s", err, raw)
+	}
+	if written.SchemaVersion != "1.0" || len(written.Cases) == 0 || written.Runs != 1 {
+		t.Errorf("baseline artifact wrong: %+v", written)
+	}
+	for _, c := range written.Cases {
+		if c.AOTMs <= 0 {
+			t.Errorf("baseline case %q has no time", c.Name)
+		}
+	}
+
+	// A missing baseline is a tooling error (1), not a regression.
+	if _, code := benchCLI(t, "--bench-suite", "--bench-runs", "1", "--bench-opt", "1", "--bench-baseline", dir+"/nope.json"); code != exitErr {
+		t.Errorf("missing baseline exit = %d, want %d", code, exitErr)
+	}
+}
+
+func TestCLIBenchDir(t *testing.T) {
+	dir := t.TempDir()
+	prog := dir + "/hot.gy"
+	if err := os.WriteFile(prog, []byte("s = 0\nfor i in range(2000):\n    s = s + (i * 7) % 101\nprint(s)\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(dir+"/notes.txt", []byte("not a program"), 0o600)
+	out, code := benchCLI(t, "--bench-dir", dir, "--bench-runs", "1", "--bench-opt", "1", "--json")
+	if code != 0 {
+		t.Fatalf("exit = %d\n%s", code, out)
+	}
+	if !strings.Contains(out, `"name": "hot"`) {
+		t.Errorf("directory case not measured:\n%s", out)
+	}
+	if strings.Contains(out, `"name": "notes"`) {
+		t.Errorf("non-.gy file was benchmarked:\n%s", out)
 	}
 }

@@ -15,7 +15,8 @@
 //	--repl              start an interactive REPL (default when stdin is a TTY)
 //	--help              show usage
 //
-// Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error.
+// Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error,
+// 5 = benchmark regression (--bench-baseline gate, see docs/operations.md).
 package main
 
 import (
@@ -32,6 +33,13 @@ import (
 const exitOK = 0
 const exitErr = 1
 const exitUsage = 2
+
+// exitBenchRegression is returned by the benchmark gate when a measured case is
+// slower than its baseline by more than --bench-tolerance. It is distinct from
+// the compile/verify/runtime codes so CI can tell "the compiler got slower"
+// apart from "the program is broken".
+const exitBenchRegression = 5
+
 const exitNotCanonical = 1
 
 func main() {
@@ -44,6 +52,13 @@ func run() int {
 	benchFile := fs.String("bench-file", "", "benchmark a source file")
 	benchRuns := fs.Int("bench-runs", 3, "runs per backend for benchmarks")
 	benchOpt := fs.Int("bench-opt", 2, "AOT optimization level for benchmarks")
+	benchSuite := fs.Bool("bench-suite", false, "benchmark the built-in corpus (interpreter vs AOT)")
+	benchDir := fs.String("bench-dir", "", "benchmark every *.gy in a directory (e.g. integration/programs)")
+	benchBaseline := fs.String("bench-baseline", "", "path to a baseline JSON to gate against")
+	benchBaselineUpdate := fs.String("bench-baseline-update", "", "write the measured suite as a baseline JSON to this path")
+	benchTolerance := fs.Float64("bench-tolerance", lang.DefaultBenchTolerance, "slowdown multiplier above which a case is a regression")
+	benchMinMs := fs.Float64("bench-min-ms", lang.DefaultBenchMinMs, "ignore baseline times below this many ms (noise floor)")
+	benchGate := fs.String("bench-gate", lang.BenchGateAOT, "which leg the regression gate watches: aot, interpreter or both")
 	evalSrc := fs.String("eval", "", "evaluate a source string")
 	file := fs.String("file", "", "read and evaluate a source file")
 	verify := fs.String("verify", "", "parse + analyze a source string")
@@ -160,7 +175,7 @@ func run() int {
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
@@ -182,6 +197,9 @@ func run() int {
 	}
 	if *emitASTF != "" {
 		return emitAST(*emitASTF)
+	}
+	if *benchSuite || *benchDir != "" || *benchBaselineUpdate != "" {
+		return benchSuiteMode(*benchSuite, *benchDir, *benchBaseline, *benchBaselineUpdate, *benchRuns, *benchOpt, *benchTolerance, *benchMinMs, *benchGate, *jsonOut)
 	}
 	if *benchSrc != "" || *benchFile != "" {
 		return benchMode(*benchSrc, *benchFile, *benchRuns, *benchOpt, *jsonOut)
@@ -362,6 +380,10 @@ Build: gustyc --build <out> <file1> <file2> ...  # compile sources into a native
 Shared library export (L10.3): gustyc --build out.so --shared <file1> ...  # emit a position-independent .so/.dylib with the stable extern-fn ABI
 Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style type-check without executing
 Variance: gustyc --variance  # JSON variance table (list/set/dict invariant, Sequence covariant, Callable params contravariant)
+Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus on both backends
+            gustyc --bench-dir integration/programs        # benchmark the parity programs too
+            gustyc --bench-suite --bench-baseline-update benchmarks/baseline.json   # record a baseline
+            gustyc --bench-suite --bench-baseline benchmarks/baseline.json          # gate (exit 5 = slower than baseline)
 
 Diagnostic codes (--check --json): type.mismatch, type.variance.invariant,
 type.variance.covariant, type.variance.contravariant, type.variance.nominal,
@@ -504,4 +526,102 @@ func benchMode(src, file string, runs, opt int, jsonOut bool) int {
 		fmt.Printf("  speedup (interp best / aot best): %.2fx\n", res.Speedup)
 	}
 	return exitOK
+}
+
+// benchSuiteReport is the machine-readable artifact of a suite run: the suite
+// itself plus the gate verdict. Embedded so the suite keys stay at top level.
+type benchSuiteReport struct {
+	*lang.BenchSuite
+	Regressions []lang.BenchRegression `json:"regressions"`
+	NewCases    []lang.BenchNewCase    `json:"new_cases"`
+	Exit        int                    `json:"exit"`
+}
+
+// benchSuiteMode measures a corpus (built-in, or every *.gy in --bench-dir) on
+// both backends, optionally gates it against a baseline, and reports.
+//
+// Exit codes: 0 when clean, 5 (exitBenchRegression) when the gate fires, 1 on a
+// tooling error (bad baseline path, unreadable directory).
+func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, opt int, tolerance, minMs float64, gate string, jsonOut bool) int {
+	cases := []lang.BenchCase{}
+	if useCorpus {
+		cases = append(cases, lang.BenchCorpus()...)
+	}
+	if dir != "" {
+		fromDir, err := lang.BenchDir(dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+			return exitErr
+		}
+		if len(fromDir) == 0 {
+			fmt.Fprintf(os.Stderr, "gustyc: bench: no .gy files in %s\n", dir)
+			return exitErr
+		}
+		cases = append(cases, fromDir...)
+	}
+	if len(cases) == 0 {
+		fmt.Fprintf(os.Stderr, "gustyc: bench: nothing to measure (pass --bench-suite or --bench-dir)\n")
+		return exitUsage
+	}
+
+	suite := lang.BenchmarkSuite(cases, runs, opt)
+
+	code := exitOK
+	regressions := []lang.BenchRegression{}
+	newCases := []lang.BenchNewCase{}
+	if baselinePath != "" {
+		base, err := lang.LoadBenchBaseline(baselinePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+			return exitErr
+		}
+		regressions, newCases = lang.CompareBenchSuite(suite, base, tolerance, minMs, gate)
+		if len(regressions) > 0 {
+			code = exitBenchRegression
+		}
+	}
+	if updatePath != "" {
+		if err := lang.SaveBenchBaseline(updatePath, lang.BaselineFromSuite(suite)); err != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: bench: write baseline: %v\n", err)
+			return exitErr
+		}
+	}
+
+	if jsonOut {
+		out, err := json.MarshalIndent(benchSuiteReport{BenchSuite: suite, Regressions: regressions, NewCases: newCases, Exit: code}, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", err)
+			return exitErr
+		}
+		fmt.Println(string(out))
+		return code
+	}
+
+	fmt.Printf("benchmark suite: %d cases, %d runs, AOT opt=%d\n", suite.Totals.Cases, suite.Runs, suite.OptLevel)
+	fmt.Printf("  %-22s %10s %10s %8s\n", "case", "interp ms", "aot ms", "speedup")
+	for _, c := range suite.Cases {
+		if c.Error != "" {
+			fmt.Printf("  %-22s %10s %10s %8s   %s\n", c.Name, "-", "-", "-", c.Error)
+			continue
+		}
+		fmt.Printf("  %-22s %10.3f %10.3f %7.2fx\n", c.Name, c.Interpreter.BestMs, c.AOT.BestMs, c.Speedup)
+	}
+	fmt.Printf("  %-22s %10.3f %10.3f %7.2fx  (geomean)\n", "TOTAL", suite.Totals.InterpreterMs, suite.Totals.AOTMs, suite.Totals.GeomeanSpeedup)
+	if baselinePath != "" {
+		fmt.Printf("  gate: %s leg=%s (tolerance %.2fx, noise floor %.2f ms)\n", baselinePath, gate, tolerance, minMs)
+		for _, r := range regressions {
+			fmt.Printf("  REGRESSION %s/%s: %.2f ms -> %.2f ms (%.2fx)\n", r.Name, r.Backend, r.BaselineMs, r.CurrentMs, r.Ratio)
+			fmt.Printf("            %s\n", r.Suggestion)
+		}
+		for _, n := range newCases {
+			fmt.Printf("  new case %s: %s\n", n.Name, n.Suggestion)
+		}
+		if len(regressions) == 0 {
+			fmt.Printf("  gate: clean, no regressions\n")
+		}
+	}
+	if updatePath != "" {
+		fmt.Printf("  baseline written: %s\n", updatePath)
+	}
+	return code
 }

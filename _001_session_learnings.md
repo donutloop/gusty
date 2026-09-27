@@ -654,3 +654,52 @@ full `pkg/lang` suite passes; `go build ./...` passes.
   in the conformance matrix (32 cases, 0 failures).
 - **Process**: `go test -tags=llvm20 ./...` green, `go vet ./...` clean,
   gofmt clean; roadmap Gap I split into I.1 (done) / I.2 (strings).
+
+## Round: L10.4 — benchmark suite + regression gate (ADR 0162)
+
+- **Deliverable**: `gustyc --bench-suite` (+ `--bench-dir`, `--bench-baseline`,
+  `--bench-baseline-update`, `--bench-gate`, `--bench-tolerance`,
+  `--bench-min-ms`) measures a corpus on the interpreter and the AOT backend,
+  emits a versioned JSON artifact, and gates a run against a saved baseline with
+  a dedicated exit code (5). New in `pkg/lang/bench_suite.go`; schema definitions
+  `benchSuite`/`benchCaseResult`/`benchReport`/`benchRegression`/`benchBaseline`.
+- **A benchmark that measures nothing looks exactly like a fast compiler.** The
+  first corpus case (`for i in range(100000): s = s + i`) reported `0.000 ms` for
+  AOT: LLVM turns a constant-bounded additive loop into a closed form, so the
+  case was measuring the optimiser's algebra. Every corpus case now does
+  *opaque* work (heap list append/iteration, class dispatch, recursion, modulo),
+  and `TestBenchCorpusLowers` fails if a shipped case stops running on either
+  backend. Lesson: assert the *work happens*, not just that the number is stable.
+- **Best-of-N is the only statistic that survives a shared machine.** Gating on
+  the mean, or on the interpreter leg, produced "regressions" of 1.4–1.7x on
+  unmodified code (GC and allocation churn). Gating the AOT leg with
+  best-of-N + tolerance 1.5 + a 0.25 ms noise floor was stable across repeated
+  runs, and still caught a doctored 65x regression.
+- **Refuse to conclude rather than lie.** The noise floor is the part of the
+  design that decides whether the gate is trusted: a sub-millisecond baseline is
+  measuring the scheduler, so it is excluded (documented, `--bench-min-ms`).
+  Likewise a case missing from the baseline is reported as `new_cases`, never as
+  a failure — otherwise adding a benchmark becomes a two-file edit that people
+  do off-list.
+- **Exit codes are an interface, and `go run` breaks them.** Adding
+  `exitBenchRegression = 5` was only observable in tests after switching to a
+  built binary: `go run` reports exit status 1 for any failing program, so the
+  first gate test "failed" with a misleading exit 1. CLI tests that assert exit
+  codes must exec a real binary (`suiteBinPath`, built once per test binary into
+  an `os.MkdirTemp` dir — `t.TempDir()` inside a `sync.Once` hands later tests a
+  deleted path).
+- **Timings are configuration, not source.** Deliberately did not commit a
+  baseline: a machine-specific baseline fails on every other machine and gets
+  muted. Baselines are generated with `--bench-baseline-update`.
+- **Program stdout must be silenced while measuring** — corpus programs print, and
+  a terminal write is not the quantity under test (`silenceStdout` around the
+  measurement only; restoring it before reporting was a visible-output bug in the
+  first draft).
+- **Tests**: `pkg/lang/bench_suite_test.go` (corpus lowers on both backends,
+  `BenchDir` filtering/sorting, row-preserving failures, sorted+deterministic
+  artifact, gate maths: clean/within-tolerance/over-tolerance/noise-floor/
+  missing-row/failed-case, baseline round-trip, self-consistent corpus gate run)
+  and `cmd/gustyc/main_test.go` (`--bench-suite --json` shape, doctored baseline
+  → exit 5 with exactly one named regression and a suggestion, generous baseline
+  → clean, `--bench-baseline-update` artifact, missing baseline → exit 1,
+  `--bench-dir`).

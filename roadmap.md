@@ -430,8 +430,13 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   `cc -shared -fPIC`; object already PIC via `llc -relocation-model=pic`;
   versioned ABI marker carried, so extern exports stay stable across
   `dlopen`/loads). ✅ DONE (Round 3)
-- **L10.4 Benchmark harness** — `integration/` parity programs become
-  benchmark cases (interp vs AOT vs JIT) so regressions surface as numbers.
+- **L10.4 Benchmark harness** ✅ DONE — `gustyc --bench-suite` measures a corpus
+  (built-in, or every `*.gy` in `--bench-dir`, so the `integration/` parity
+  programs become benchmark cases) on both execution backends and emits a
+  versioned JSON artifact; `--bench-baseline` gates a run against a saved
+  baseline (best-of-N on the AOT leg, tolerance + noise floor, per-regression
+  `suggestion`) so a slowdown surfaces as a number with its own exit code (5).
+  See ADR 0162, `docs/benchmark.md`.
 
 ---
 

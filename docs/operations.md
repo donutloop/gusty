@@ -124,6 +124,7 @@ why) is machine-readable: `gustyc --variance` prints it, and
 | 2 | LLVM/llc verification failure |
 | 3 | runtime error |
 | 4 | usage error |
+| 5 | benchmark regression (`--bench-baseline` gate fired; see `docs/benchmark.md`) |
 
 ## Emitted IR
 
@@ -193,6 +194,24 @@ Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
   failure → `{"ok": false, "phase": "compile", "error": "<message>", "exit": 2}`
   (the human path prints `gustyc: <message>` on stderr; the exit code is the
   same either way, so an agent never has to parse stderr prose)
+- `--json --bench-suite` (optionally with `--bench-baseline <path>`) → the
+  benchmark suite artifact plus the gate verdict:
+  `{"schema_version","generated_by","runs","opt_level","cases":[...],"totals":{...},"regressions":[...],"new_cases":[...],"exit":N}`
+  — see `docs/benchmark.md` and the `benchSuite` / `benchRegression` /
+  `benchBaseline` definitions in `--schema`.
+
+### Benchmark suite flags (L10.4)
+
+| Flag | Meaning |
+|------|---------|
+| `--bench-suite` | measure the built-in corpus on both backends |
+| `--bench-dir <dir>` | measure every `*.gy` in a directory (the parity programs become benchmark cases) |
+| `--bench-baseline <path>` | gate the run against a saved baseline; exit 5 on a regression |
+| `--bench-baseline-update <path>` | write the measured suite as a baseline artifact |
+| `--bench-gate aot\|interpreter\|both` | which leg the gate watches (default `aot`) |
+| `--bench-tolerance <f>` | slowdown multiplier that trips the gate (default 1.5) |
+| `--bench-min-ms <f>` | noise floor in ms; sub-floor baselines are never gated (default 0.25) |
+| `--bench-runs <n>` / `--bench-opt <n>` | runs per backend (best-of-N wins) / AOT opt level |
 
 Diagnostics serialize their `Msg`/`Span` fields for schema-driven tooling.
 
