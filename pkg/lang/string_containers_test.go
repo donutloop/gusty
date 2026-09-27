@@ -105,3 +105,79 @@ print(s)
 		}
 	}
 }
+
+// Gap J.6 — dict/set literals with string contents build heap objects, and a container that
+// would hold both strings and numbers is reported instead of misprinted.
+func TestStringLiteralsBuildHeapContainers(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"dict literal string keys", "d = {\"a\": 1}\nprint(len(d))\n"},
+		{"dict literal string values", "d = {1: \"a\"}\nprint(len(d))\n"},
+		{"set literal strings", "s = {\"a\", \"b\"}\nprint(len(s))\n"},
+		{"bare dict literal", "print(len({\"a\": 1}))\n"},
+	}
+	for _, tc := range cases {
+		res, err := Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: must compile: %v", tc.name, err)
+			continue
+		}
+		if !contains(res.IR, "rt_str_intern2") {
+			t.Errorf("%s: string contents should intern:\n%s", tc.name, res.IR)
+		}
+		if !contains(res.IR, "rt_mark_estr") {
+			t.Errorf("%s: the object should record that it holds strings:\n%s", tc.name, res.IR)
+		}
+		if contains(res.IR, "i32 @.str") {
+			t.Errorf("%s: no string pointer may sit in an i32 slot:\n%s", tc.name, res.IR)
+		}
+		if v, verr := VerifyModuleIR(res.IR, 0); verr != nil || !v.OK {
+			t.Errorf("%s: module must verify: %v %v", tc.name, v.Errors, verr)
+		}
+	}
+}
+
+// TestLiteralNeedsHeapAndMixedKinds pins the two predicates the lowering decides with, so a
+// future change to either is caught where the decision is made.
+func TestLiteralNeedsHeapAndMixedKinds(t *testing.T) {
+	mustHeap := []string{`xs = ["a"]`, `d = {"a": 1}`, `d = {1: "a"}`, `s = {"a"}`}
+	for _, src := range mustHeap {
+		e := parseExprForTest(t, src)
+		if !literalNeedsHeap(e) {
+			t.Errorf("%s should need the heap path", src)
+		}
+		if literalMixedKinds(e) {
+			t.Errorf("%s is homogeneous and must not be refused", src)
+		}
+	}
+	mixed := []string{`xs = [1, "a"]`, `s = {1, "a"}`, `d = {"a": 1, "b": "c"}`}
+	for _, src := range mixed {
+		e := parseExprForTest(t, src)
+		if !literalMixedKinds(e) {
+			t.Errorf("%s mixes kinds and must be reported", src)
+		}
+	}
+	uniform := []string{`xs = [1, 2]`, `d = {1: 2}`, `s = {1, 2}`}
+	for _, src := range uniform {
+		e := parseExprForTest(t, src)
+		if literalNeedsHeap(e) {
+			t.Errorf("%s should stay on the static global path", src)
+		}
+	}
+}
+
+// parseExprForTest extracts the value expression of a single `x = <expr>` assignment.
+func parseExprForTest(t *testing.T, src string) Expr {
+	t.Helper()
+	prog, err := Parse(src)
+	if err != nil {
+		t.Fatalf("parse %q: %v", src, err)
+	}
+	as, ok := prog.Stmts[0].(*AssignStmt)
+	if !ok {
+		t.Fatalf("%q did not parse to an assignment", src)
+	}
+	return as.Value
+}

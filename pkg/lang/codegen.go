@@ -1232,7 +1232,7 @@ func GenerateIR(prog *Program) (string, error) {
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, internedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -1376,6 +1376,13 @@ type irGen struct {
 	setElemStr  map[string]bool
 	dictKeyStr  map[string]bool
 	dictValStr  map[string]bool
+	// The same four facts for numbers. A compiled container records one element kind, so a
+	// container that has held both must be reported rather than printed through the wrong
+	// table (roadmap Gap J.6).
+	listElemInt map[string]bool
+	setElemInt  map[string]bool
+	dictKeyInt  map[string]bool
+	dictValInt  map[string]bool
 	// internedVars records names bound to an interned-string index (element reads and loop
 	// variables over string containers), so print renders the text rather than the index.
 	internedVars map[string]bool
@@ -3240,12 +3247,10 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		if err != nil {
 			return err
 		}
-		if vIsStr {
-			g.dictValStr[nm.Value] = true
-		}
-		if kIsStr {
-			g.dictKeyStr[nm.Value] = true
-		}
+		// Item assignment overwrites, so the new element's kind is the truth at that slot:
+		// d[k] = "s" after d[k] = 1 leaves a string-valued dict (Gap J.6).
+		g.replaceElemKind(nm.Value, "dict value", vIsStr)
+		g.replaceElemKind(nm.Value, "dict key", kIsStr)
 		b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
 		if kIsStr || vIsStr {
 			bits := 0
@@ -3265,9 +3270,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		if serr != nil {
 			return serr
 		}
-		if sIsStr {
-			g.listElemStr[nm.Value] = true
-		}
+		g.replaceElemKind(nm.Value, "list", sIsStr)
 		v = sv
 		// Bounds are checked so an out-of-range index raises IndexError through the
 		// same exception path `raise` uses, instead of writing past the elements.
@@ -3350,6 +3353,7 @@ func (g *irGen) beginScope() func() {
 	savedList, savedDict, savedSet, savedFresh := g.listVars, g.runtimeDicts, g.runtimeSets, g.freshSlots
 	savedNone := g.noneVars
 	savedLStr, savedSStr, savedKStr, savedVStr, savedInt := g.listElemStr, g.setElemStr, g.dictKeyStr, g.dictValStr, g.internedVars
+	savedLNum, savedSNum, savedKNum, savedVNum := g.listElemInt, g.setElemInt, g.dictKeyInt, g.dictValInt
 	g.allocd = map[string]bool{}
 	g.gcRootSeen = map[string]bool{}
 	g.listVars = map[string]bool{}
@@ -3361,6 +3365,10 @@ func (g *irGen) beginScope() func() {
 	g.setElemStr = map[string]bool{}
 	g.dictKeyStr = map[string]bool{}
 	g.dictValStr = map[string]bool{}
+	g.listElemInt = map[string]bool{}
+	g.setElemInt = map[string]bool{}
+	g.dictKeyInt = map[string]bool{}
+	g.dictValInt = map[string]bool{}
 	g.internedVars = map[string]bool{}
 	return func() {
 		g.allocd, g.gcRootSeen = savedAlloc, savedRoots
@@ -3369,6 +3377,8 @@ func (g *irGen) beginScope() func() {
 		g.noneVars = savedNone
 		g.listElemStr, g.setElemStr = savedLStr, savedSStr
 		g.dictKeyStr, g.dictValStr, g.internedVars = savedKStr, savedVStr, savedInt
+		g.listElemInt, g.setElemInt = savedLNum, savedSNum
+		g.dictKeyInt, g.dictValInt = savedKNum, savedVNum
 	}
 }
 
@@ -4023,18 +4033,38 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return "", fmt.Errorf("codegen: f-string requires a constant expression (AOT backend)")
 	case *ListLit:
 		// inline list literal: emit a dedicated global struct and return its name.
+		if literalNeedsHeap(n) {
+			if literalMixedKinds(n) {
+				return "", mixedKindErr("list")
+			}
+			return g.heapListFrom(b, n, "")
+		}
 		name, err := g.emitList(n)
 		if err != nil {
 			return "", err
 		}
 		return name, nil
 	case *DictLit:
+		// A literal with string keys or values cannot be the static {count, keys, vals}
+		// global — that layout is i32-only — so build a heap dict and intern (Gap J.6).
+		if literalNeedsHeap(n) {
+			if literalMixedKinds(n) {
+				return "", mixedKindErr("dict")
+			}
+			return g.heapDictFrom(b, n, "")
+		}
 		name, err := g.emitDict(n)
 		if err != nil {
 			return "", err
 		}
 		return name, nil
 	case *SetLit:
+		if literalNeedsHeap(n) {
+			if literalMixedKinds(n) {
+				return "", mixedKindErr("set")
+			}
+			return g.heapSetFrom(b, n, "")
+		}
 		name, err := g.emitSet(n)
 		if err != nil {
 			return "", err
@@ -4887,8 +4917,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if err != nil {
 					return "", err
 				}
-				if interned {
-					g.setElemStr[nm.Value] = true
+				if err := g.recordElemKind(nm.Value, "set", interned); err != nil {
+					return "", err
 				}
 				g.heapSeq++
 				hs := g.heapSeq
@@ -4980,8 +5010,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			if interned {
-				g.listElemStr[nm.Value] = true
+			if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
+				return "", err
 			}
 			g.heapSeq++
 			hs := g.heapSeq
@@ -5829,6 +5859,43 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				t = g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
 			} else {
+				// A container literal whose elements are strings builds a heap object (the static
+				// global layout is i32-only), so print it with the runtime printers rather than
+				// as the integer handle it happens to be (roadmap Gap J.6).
+				if literalNeedsHeap(a) {
+					if literalMixedKinds(a) {
+						noun := "list"
+						switch a.(type) {
+						case *SetLit:
+							noun = "set"
+						case *DictLit:
+							noun = "dict"
+						}
+						return "", mixedKindErr(noun)
+					}
+					g.heapUsed = true
+					switch lit := a.(type) {
+					case *ListLit:
+						h, err := g.heapListFrom(b, lit, "")
+						if err != nil {
+							return "", err
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %s, i32 0)\n", h))
+					case *SetLit:
+						h, err := g.heapSetFrom(b, lit, "")
+						if err != nil {
+							return "", err
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %s, i32 0)\n", h))
+					case *DictLit:
+						h, err := g.heapDictFrom(b, lit, "")
+						if err != nil {
+							return "", err
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %s, i32 0)\n", h))
+					}
+					continue
+				}
 				v, err := g.value(b, a)
 				if err != nil {
 					return "", err
@@ -5953,6 +6020,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// len of a list literal is the element count; no element lowering needed.
 			return fmt.Sprintf("%d", len(lit.Elems)), nil
 		case *DictLit:
+			// A dict literal with strings is a heap object (its keys/values are interned),
+			// so measure it through the runtime like any other dict (Gap J.6).
+			if literalNeedsHeap(lit) {
+				h, err := g.heapDictFrom(b, lit, "")
+				if err != nil {
+					return "", err
+				}
+				v := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_len(i32 %s)\n", v, h))
+				return v, nil
+			}
 			name, err := g.emitDict(lit)
 			if err != nil {
 				return "", err
@@ -5962,6 +6040,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32], [%d x i32]}, {i32, [%d x i32], [%d x i32]}* %s, i32 0, i32 0)\n", v, n, n, n, n, name))
 			return v, nil
 		case *SetLit:
+			if literalNeedsHeap(lit) {
+				h, err := g.heapSetFrom(b, lit, "")
+				if err != nil {
+					return "", err
+				}
+				v := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_set_len(i32 %s)\n", v, h))
+				return v, nil
+			}
 			name, err := g.emitSet(lit)
 			if err != nil {
 				return "", err
@@ -7549,8 +7636,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if interned {
-						g.listElemStr[nm.Value] = true
+					if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
+						return err
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, ev))
 				}
@@ -7590,8 +7677,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if interned {
-						g.setElemStr[nm.Value] = true
+					if err := g.recordElemKind(nm.Value, "set", interned); err != nil {
+						return err
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, ev))
 				}
@@ -7649,11 +7736,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if kIsStr {
-						g.dictKeyStr[nm.Value] = true
+					if err := g.recordElemKind(nm.Value, "dict key", kIsStr); err != nil {
+						return err
 					}
-					if vIsStr {
-						g.dictValStr[nm.Value] = true
+					if err := g.recordElemKind(nm.Value, "dict value", vIsStr); err != nil {
+						return err
 					}
 					bits := 0
 					if kIsStr {

@@ -639,17 +639,118 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	g.heapUsed = true
 	h := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
+	bits := 0
 	for i, el := range ln.Elems {
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
 		}
-		if interned && name != "" {
-			g.listElemStr[name] = true
+		if interned {
+			bits |= 1
+			if name != "" {
+				g.listElemStr[name] = true
+			}
 		}
 		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
 	}
+	if bits != 0 {
+		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
+	}
 	return h, nil
+}
+
+// heapDictFrom builds a heap dict from a literal, interning any string keys or values and
+// recording on the object which positions hold interned strings (rt_mark_estr), so
+// {"a": 1} and {1: "v"} build and print like the interpreter renders them (Gap J.6).
+func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (string, error) {
+	g.heapUsed = true
+	h := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapDict)
+	bits := 0
+	for i := range dl.Keys {
+		kk, kIsStr, err := g.heapElemKind(b, dl.Keys[i])
+		if err != nil {
+			return "", err
+		}
+		vv, vIsStr, err := g.heapElemKind(b, dl.Vals[i])
+		if err != nil {
+			return "", err
+		}
+		if kIsStr {
+			bits |= 2
+			if name != "" {
+				g.dictKeyStr[name] = true
+			}
+		}
+		if vIsStr {
+			bits |= 4
+			if name != "" {
+				g.dictValStr[name] = true
+			}
+		}
+		fmt.Fprintf(b, "  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, kk, vv)
+	}
+	if bits != 0 {
+		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
+	}
+	return h, nil
+}
+
+// heapSetFrom builds a heap set from a literal, interning string members.
+func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string, error) {
+	g.heapUsed = true
+	h := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapSet)
+	bits := 0
+	for _, el := range sl.Elems {
+		v, interned, err := g.heapElemKind(b, el)
+		if err != nil {
+			return "", err
+		}
+		if interned {
+			bits |= 1
+			if name != "" {
+				g.setElemStr[name] = true
+			}
+		}
+		fmt.Fprintf(b, "  call void @rt_set_add(i32 %s, i32 %s)\n", h, v)
+	}
+	if bits != 0 {
+		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
+	}
+	return h, nil
+}
+
+// literalNeedsHeap reports whether a container literal cannot be a compile-time global struct
+// because some element is a string: the static {i32, [n x i32]} layout has no representation
+// for one, so the heap path (which interns) must build it instead (roadmap Gap J.6).
+func literalNeedsHeap(e Expr) bool {
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if isStringExpr(el) {
+				return true
+			}
+		}
+	case *SetLit:
+		for _, el := range n.Elems {
+			if isStringExpr(el) {
+				return true
+			}
+		}
+	case *DictLit:
+		for _, k := range n.Keys {
+			if isStringExpr(k) {
+				return true
+			}
+		}
+		for _, v := range n.Vals {
+			if isStringExpr(v) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // emitModuleContainerList gives a module-level container variable the one thing
@@ -724,4 +825,115 @@ func (g *irGen) applyStrFill(fn string, idx int, arg Expr) {
 	if bits&EstrDictValue != 0 {
 		g.dictValStr[nm.Value] = true
 	}
+}
+
+// literalMixedKinds reports a container literal that holds both strings and non-strings.
+// A compiled container's slots are i32 words and the element kind is recorded once per
+// container (or once per dict side), so a heterogeneous list would print its integers through
+// the string table — `[1, "a"]` rendered as [(null), 'a']. Misprinting is worse than refusing,
+// so this is a compile diagnostic (ADR 0166); Python's heterogeneous lists need per-element
+// tagging, which is a representation change rather than a printer fix.
+func literalMixedKinds(e Expr) bool {
+	anyStr, anyOther := false, false
+	classify := func(x Expr) {
+		if _, ok := stringConstOf(x); ok {
+			anyStr = true
+			return
+		}
+		anyOther = true
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			classify(el)
+		}
+	case *SetLit:
+		for _, el := range n.Elems {
+			classify(el)
+		}
+	case *DictLit:
+		keyStr, keyOther, valStr, valOther := false, false, false, false
+		for _, k := range n.Keys {
+			if _, ok := stringConstOf(k); ok {
+				keyStr = true
+			} else {
+				keyOther = true
+			}
+		}
+		for _, v := range n.Vals {
+			if _, ok := stringConstOf(v); ok {
+				valStr = true
+			} else {
+				valOther = true
+			}
+		}
+		return (keyStr && keyOther) || (valStr && valOther)
+	}
+	return anyStr && anyOther
+}
+
+// stringConstOf resolves a compile-time-known string (literal, interpolated literal, or a
+// folded string expression) — the same question heapElemKind asks before interning.
+func stringConstOf(e Expr) (string, bool) {
+	if sl, ok := e.(*StrLit); ok {
+		return sl.Value, true
+	}
+	if s, ok := stringConst(e); ok {
+		return s, true
+	}
+	return "", false
+}
+
+// mixedKindErr is the diagnostic every mixed-container site reports.
+func mixedKindErr(what string) error {
+	return fmt.Errorf("codegen: a compiled %s holds either strings or numbers, not both; the interpreter allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)", what)
+}
+
+// recordElemKind notes that a container variable holds strings (isStr) or numbers in a given
+// position, and refuses the case where it has already been told the opposite. The compiled
+// container records one element kind per position, so mixing would print an integer through the
+// string table — an honest diagnostic beats that (roadmap Gap J.6, ADR 0166).
+func (g *irGen) recordElemKind(name, slot string, isStr bool) error {
+	strMap, numMap, label := g.kindMapsFor(slot)
+	if isStr {
+		if numMap[name] {
+			return mixedKindErr(label)
+		}
+		strMap[name] = true
+		return nil
+	}
+	if strMap[name] {
+		return mixedKindErr(label)
+	}
+	numMap[name] = true
+	return nil
+}
+
+func (g *irGen) kindMapsFor(slot string) (map[string]bool, map[string]bool, string) {
+	switch slot {
+	case "set":
+		return g.setElemStr, g.setElemInt, "set"
+	case "dict key":
+		return g.dictKeyStr, g.dictKeyInt, "dict key"
+	case "dict value":
+		return g.dictValStr, g.dictValInt, "dict value"
+	default:
+		return g.listElemStr, g.listElemInt, "list"
+	}
+}
+
+// replaceElemKind is recordElemKind for item assignment (`xs[0] = "s"`, `d[k] = v`), which
+// *overwrites* a slot rather than growing the container. The old element is gone, so the new
+// element's kind is the truth at that position: `xs = [1]` then `xs[0] = "s"` leaves a list
+// holding one string, and printing it must show ['s'] rather than be refused as "mixed"
+// (roadmap Gap J.6). Growing a container with a different kind (append/add) stays an error.
+func (g *irGen) replaceElemKind(name, slot string, isStr bool) {
+	strMap, numMap, _ := g.kindMapsFor(slot)
+	if isStr {
+		numMap[name] = false
+		strMap[name] = true
+		return
+	}
+	strMap[name] = false
+	numMap[name] = true
 }

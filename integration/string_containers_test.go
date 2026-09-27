@@ -120,3 +120,89 @@ func TestIntContainersStillBuild(t *testing.T) {
 		}
 	}
 }
+
+// Gap J.6 — dict and set *literals* with string contents, and the rule for containers that try
+// to hold both strings and numbers.
+var containerLiteralCases = []struct {
+	name string
+	src  string
+	want string
+}{
+	{"dict literal string keys", "d = {\"a\": 1, \"b\": 2}\nprint(d)\n", "{'a': 1, 'b': 2}\n"},
+	{"dict literal string values", "d = {1: \"a\", 2: \"b\"}\nprint(d)\n", "{1: 'a', 2: 'b'}\n"},
+	{"dict literal both strings", "d = {\"k\": \"v\"}\nprint(d)\n", "{'k': 'v'}\n"},
+	{"bare dict literal prints", "print({\"a\": 1})\n", "{'a': 1}\n"},
+	{"bare set literal prints", "print({\"a\", \"b\"})\n", "{'a', 'b'}\n"},
+	{"bare list literal prints", "print([\"a\", \"b\"])\n", "['a', 'b']\n"},
+	{"len of a dict literal", "print(len({\"a\": 1, \"b\": 2}))\n", "2\n"},
+	{"len of a set literal", "print(len({\"a\", \"b\"}))\n", "2\n"},
+	{"dict literal indexed by its key", "d = {\"a\": 7}\nprint(d[\"a\"])\n", "7\n"},
+	{"empty dict literal", "d = {}\nprint(d)\nprint(len(d))\n", "{}\n0\n"},
+}
+
+func TestContainerLiteralsMatchPython(t *testing.T) {
+	for _, tc := range containerLiteralCases {
+		if got := runInterp(t, tc.src); got != tc.want {
+			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterpHint(got), tc.want)
+		}
+		res, err := lang.Compile(tc.src)
+		if err != nil {
+			t.Errorf("%s: compile: %v", tc.name, err)
+			continue
+		}
+		if v, verr := lang.VerifyModuleIR(res.IR, 0); verr != nil || !v.OK {
+			t.Errorf("%s: module must verify: %v %v", tc.name, v.Errors, verr)
+			continue
+		}
+		if got := compileAndRun(t, tc.src); got != tc.want {
+			t.Errorf("%s: AOT = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func gotInterpHint(got string) string { return got }
+
+// A compiled container records one element kind, so a container that *grows* with both strings
+// and numbers is reported instead of printing its integers through the string table — `[1, "a"]`
+// used to render as [(null), 'a']. Item assignment overwrites, so it stays allowed.
+var mixedContainerCases = []string{
+	"print([1, \"a\"])\n",
+	"xs = [1, \"a\"]\nprint(xs)\n",
+	"xs = [1]\nxs.append(\"a\")\nprint(xs)\n",
+	"xs = [\"a\"]\nxs.append(1)\nprint(xs)\n",
+	"s = {1}\ns.add(\"a\")\nprint(s)\n",
+	"print({\"a\": 1, \"b\": \"c\"})\n",
+}
+
+func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
+	for _, src := range mixedContainerCases {
+		res, err := lang.Compile(src)
+		if err == nil {
+			t.Errorf("%q must be refused (it used to print (null)); got IR", src)
+			continue
+		}
+		if !strings.Contains(err.Error(), "holds either strings or numbers") {
+			t.Errorf("%q: unexpected diagnostic: %v", src, err)
+		}
+		if !strings.Contains(err.Error(), "interpreter") {
+			t.Errorf("%q: should name the backend that works: %v", src, err)
+		}
+		if res != nil {
+			// nothing usable was emitted, and it must not be an invalid module
+			_ = res
+		}
+	}
+}
+
+// Item assignment replaces an element, so the container's kind follows the new element rather
+// than colliding with the old one: `xs = [1]` then `xs[0] = "s"` is a list holding one string.
+func TestItemAssignmentReplacesElementKind(t *testing.T) {
+	src := "xs = [1]\nxs[0] = \"s\"\nprint(xs)\n"
+	want := "['s']\n"
+	if got := runInterp(t, src); got != want {
+		t.Errorf("interpreter = %q, want %q", got, want)
+	}
+	if got := compileAndRun(t, src); got != want {
+		t.Errorf("AOT = %q, want %q", got, want)
+	}
+}

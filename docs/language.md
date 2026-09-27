@@ -1262,11 +1262,15 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
   a parameter (`s.upper()`), arithmetic or ordering on a string, and a parameter used as both a
   string and a number. Each names the interpreter, which supports all four; see
   § Strings across a function boundary.
-- Strings are ordinary container elements too — `list[str]`, `dict[str, int]`, `set` of strings —
-  in the interpreter and in the compiled backend (ADR 0173), including printing them the way
-  Python renders `repr`. One shape is still compiled-backend-only-refused: a *dict literal*
-  written with string keys or values (`{"a": 1}`) — build it with item assignment
-  (`d = {}; d["a"] = 1`), which works, or run it on the interpreter.
+- Strings are ordinary container elements in both backends (ADR 0173, ADR 0175): lists,
+  dictionaries and sets of strings, written as literals (`["a"]`, `{"a": 1}`, `{"a", "b"}`) or
+  built with `append` / `add` / item assignment, and printed the way Python renders `repr`.
+- **One element kind per container.** A compiled container records whether its elements (and,
+  for dicts, its keys and values separately) are strings or numbers, so a container that *grows*
+  with both is reported — `xs = [1]; xs.append("a")` — rather than printing its integers through
+  the string table. Item assignment is not growth: `xs = [1]` then `xs[0] = "s"` replaces the
+  element and the list prints as `['s']`. Python's heterogeneous lists need per-element tagging,
+  which is a representation change rather than a printer fix (roadmap Gap J.6).
 
 ## `with` context managers
 

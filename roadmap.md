@@ -649,17 +649,32 @@ Each is a concrete, reproducible defect with the shape to fix it.
     `pkg/lang/string_args_test.go` (IR invariants, mixed call sites not guessed at, deterministic
     inference), and the new conformance program `string_params.gy`.
 
-- **Gap J.6 — dict/set *literals* with string keys or values (AOT)** — ⏳ PLANNED.
-  `d = {}; d["a"] = 1` compiles and prints `{'a': 1}` (Gap I.2/J.5), and `s = {"a"}` works, but
-  a dict written as a literal with strings — `d = {"a": 1}` — still refuses:
-  `a compiled dict literal holds constant integer keys only`. The heap-dict literal lowering is
-  already routed through `heapElemKind` (so it stores the interned index and records the key/value
-  kinds), but an earlier constant-folding pass calls `dictLiteralKeys`/`dictLiteralVals` and
-  rejects the program before that lowering runs. The fix is to let those two helpers admit string
-  constants (returning the foldable text) and let the heap path decide, keeping ADR 0166's rule
-  for anything not statically known. `print({"a"})` (a bare set literal, not assigned) reaches
-  `setLiteralElems` the same way. Until then the workaround is item assignment, and
-  `docs/language.md` says so.
+- **Gap J.6 — dict/set literals with strings, and mixed-kind containers** — ✅ DONE (ADR 0175).
+  Three shapes probing found, none of them tested: `d = {"a": 1}` was refused by the
+  `dictLiteralKeys`/`dictLiteralVals` constant-int checks even though the heap lowering that can
+  intern sits below them (`print({"a"})` hit the same wall in `setLiteralElems`);
+  `print({"a": 1})` printed `0`, the handle, via `%d`; and `print([1, "a"])` printed
+  `[(null), 'a']` — a plausible-looking wrong answer, because the printer applied the string table
+  to an element that was an integer.
+  - `literalNeedsHeap` chooses the lowering: all-constant-integer literals keep the compile-time
+    global struct, anything with a string is built as a heap object by `heapListFrom` /
+    `heapDictFrom` / `heapSetFrom`, which intern and stamp the object's `@estr` flags
+    (`heapListFrom stamps too, so every builder is consistent`).
+  - `len({"a": 1})` measures the heap object (`rt_dict_len`/`rt_set_len`); bare literals print
+    through the runtime printers, never `%d`.
+  - **One element kind per position**: the per-scope maps gained number twins
+    (`listElemInt`/`setElemInt`/`dictKeyInt`/`dictValInt`, saved/restored in `beginScope`) and
+    `recordElemKind` refuses a container that has held the other kind there —
+    `a compiled list holds either strings or numbers, not both; the interpreter allows mixing`.
+    Growth (`append`, `add`) collides; **replacement does not**: `replaceElemKind` lets
+    `xs = [1]` then `xs[0] = "s"` leave a list printing `['s']`, the interpreter's answer, which is
+    what the first draft of the guard wrongly refused.
+  - Covered by `TestContainerLiteralsMatchPython` (10 shapes × both backends × CPython),
+    `TestMixedContainersAreADiagnosticNotAMisprint` (6 shapes),
+    `TestItemAssignmentReplacesElementKind`, `TestStringLiteralsBuildHeapContainers`, and
+    `TestLiteralNeedsHeapAndMixedKinds` (pins the two deciding predicates).
+  Remaining for true Python semantics: heterogeneous containers need per-element tagging — a
+  representation change, not a printer fix — so they stay a diagnostic rather than a guess.
 
 ## Gap M — CLI shapes the tests never typed (found 2026-07-29)
 

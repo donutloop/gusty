@@ -1418,3 +1418,38 @@ parameters carry a string index.
   Gap I.2's tests, applied to `string_args_test.go` on both sides. One CLI test had to change its
   source: its warning (`1 + "a"`) is now itself a codegen failure, so the warning and the failure
   were no longer independent facts; it uses a non-exhaustive `match` warning instead.
+
+## Gap J.6 — literals intern, containers are homogeneous, and replacement is not growth
+
+Probing (not the test suite) found three wrong answers in the container story I had just
+finished: `d = {"a": 1}` refused by an up-front constant-int check, `print({"a": 1})` printing
+`0`, and `print([1, "a"])` printing `[(null), 'a']`.
+
+- **The worst bug is the plausible one.** `[(null), 'a']` compiles, verifies, exits 0 — it is a
+  *number-shaped* wrong answer. The element kind was recorded once per container, so the printer
+  applied the string table to the integer `1`. Any guard at a boundary is only as good as the
+  concept boundary it sits on: the rule is about the *container's contents*, so it needs a
+  predicate on contents (`literalNeedsHeap`, `literalMixedKinds`) plus enforcement at each
+  *operation* (build, append, add, store, print, len).
+- **Two lowerings, chosen by a predicate, not by an error.** The heap dict builder that can intern
+  already existed; `dictLiteralKeys` was rejecting string keys before it could be reached. The fix
+  is a decision (`all-constant-int → static global`, `any string → heap object`), not another
+  refusal. Same for `print` (runtime printer, never `%d`) and `len` (runtime length, not the static
+  count field).
+- **Growth vs replacement is the distinction that made the guard correct.** The first version
+  refused any container that held both kinds and immediately broke Gap I.2's own conformance case
+  (`xs = [1]` then `xs[0] = "s"`, which the interpreter prints as `['s']`). Item assignment
+  overwrites a slot, so the new element's kind *is* the truth there (`replaceElemKind`);
+  `append`/`add` grow, so mixing there is reported (`recordElemKind`). A guard written before you
+  know which operation it guards is a bug generator.
+- **Refusing beats guessing at print time.** "Render small indices as ints" would have made
+  `[1, 'a']` look right and silently misrendered a real string whose index is small. Heterogeneous
+  containers need per-element tagging — a representation change — so the honest state is exit 1
+  with a message that names the interpreter and the reason.
+- **Every per-scope fact belongs in `beginScope`.** The four new number maps are saved/restored
+  with the rest, which is why nested functions and a helper's body cannot corrupt the caller's
+  view of a container.
+- **The suite's blind spot again:** all three bugs were in shapes no test had typed — a dict
+  *literal* with string keys, a bare container literal in `print`, a mixed list. Tests written as
+  a list of features cover the features, not the combinations; the probe loop (many shapes × both
+  backends × CPython) is what found them, and each finding became a regression test.
