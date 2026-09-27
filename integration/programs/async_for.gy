@@ -1,0 +1,4 @@
+async def f(x):
+    return x * 2
+async for v in [f(1), f(2), f(3)]:
+    print(v)

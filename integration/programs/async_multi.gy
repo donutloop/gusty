@@ -1,0 +1,6 @@
+async def f(x):
+    return x + 1
+a = f(10)
+b = f(20)
+print(await a)
+print(await b)

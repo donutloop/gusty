@@ -3187,6 +3187,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return g.comp(b, n)
 	case *Generator:
 		return g.genExpr(b, n)
+		case *AwaitExpr:
+			// await e: codegen runs eagerly; await reduces to evaluating e.
+			return g.value(b, n.Expr)
 	case *Call:
 		return g.call(b, n)
 	case *KeywordArg:

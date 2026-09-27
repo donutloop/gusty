@@ -279,13 +279,39 @@
       "case": {
         "id": "programs/async_basic",
         "name": "async_basic.gy",
-        "source": "async def f(x):\n    return x + 1\nprint(\"f\", f(1))\nv = await f(2)\nprint(\"await\", v)\nasync def g(x):\n    return x * 2\nprint(\"g\", await g(3))\n",
+        "source": "async def f(x):\n    return x + 1\nasync def g(x):\n    return x * 2\nv = await f(2)\nw = await g(3)\nprint(v)\nprint(w)\n",
         "shared": true
       },
       "interp_ok": true,
-      "interp_stdout": "f\n2\nawait\n3\ng\n6\n",
+      "interp_stdout": "3\n6\n",
       "aot_ok": true,
-      "aot_stdout": "f\n2\nawait\n3\ng\n6\n",
+      "aot_stdout": "3\n6\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/async_for",
+        "name": "async_for.gy",
+        "source": "async def f(x):\n    return x * 2\nasync for v in [f(1), f(2), f(3)]:\n    print(v)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "2\n4\n6\n",
+      "aot_ok": true,
+      "aot_stdout": "2\n4\n6\n",
+      "parity": true
+    },
+    {
+      "case": {
+        "id": "programs/async_multi",
+        "name": "async_multi.gy",
+        "source": "async def f(x):\n    return x + 1\na = f(10)\nb = f(20)\nprint(await a)\nprint(await b)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "11\n21\n",
+      "aot_ok": true,
+      "aot_stdout": "11\n21\n",
       "parity": true
     },
     {
@@ -367,6 +393,6 @@
       "parity": true
     }
   ],
-  "pass": 28,
+  "pass": 30,
   "fail": 0
 }

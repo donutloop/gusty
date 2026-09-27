@@ -305,9 +305,14 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 
 **Goal: a deterministic async core + memory-safety hardening.**
 
-- **L7.1 Async runtime (`async`/`await`)** — a small cooperative scheduler
-  (event loop) in the interpreter and AOT; `async for`/`async with` lower to
-  generator state machines; deterministic, no GIL-style races.
+- **L7.1 Async runtime (`async`/`await`)** ✅ DONE — cooperative async in the
+  interpreter: `async def` returns a *coroutine object* (deferred thunk; the
+  body does not run at call time), `await` runs it to completion (deterministic,
+  race-free), and `async for` awaits each coroutine element. AOT keeps eager
+  semantics; parity holds because awaited async calls run once to completion in
+  both backends (codegen `await` evaluates its operand). `async with` remains
+  eager (`__enter__`/`__exit__`); mid-body suspension and `__aenter__`/`__aexit__`
+  protocols are future work.
 - **L7.2 Precise stack roots** — replace conservative mark-and-sweep with
   precise rooting: the GC knows exactly which stack slots/registers hold
   handles (fixes Gap A's instance-layout bug at the root cause).

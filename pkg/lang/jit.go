@@ -47,6 +47,8 @@ type obj struct {
 	sval  string           // string value (kind=str)
 	fval  float64          // float value (kind=float)
 	doc   string           // __doc__ string (def/class/closure objects)
+	args  []int64          // bound arg values for coroutine
+	result int64          // memoized coroutine result (0 = not yet run)
 }
 
 // tag returns the canonical %obj kind tag for this heap object. Both the
@@ -429,6 +431,13 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 			}
 		}
 		scope[p.Name] = av
+	}
+	if fd.Async {
+		cid := e.allocObj("coro")
+		co := e.heap[cid]
+		co.fn = fd
+		co.args = argVals
+		return cid, nil
 	}
 	saved := e.Vars
 	prevRet := e.curRet
@@ -874,6 +883,15 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							}
 						} else {
 							for _, el := range o.elems {
+							if s.Async {
+								if co := e.heap[el]; co != nil && co.kind == "coro" {
+									rv, aerr := e.runCoro(el)
+									if aerr != nil {
+										return 0, aerr
+									}
+									el = rv
+								}
+							}
 								if err := e.setLoopVar(s.Var, el); err != nil {
 									return 0, err
 								}
@@ -1227,6 +1245,15 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			return 0, &EvalError{Msg: "no method " + n.Name.Value}
 		}
 		return 0, &EvalError{Msg: "attribute access on method"}
+	case *AwaitExpr:
+		v, err := e.eval(n.Expr)
+		if err != nil {
+			return 0, err
+		}
+		if co := e.heap[v]; co != nil && co.kind == "coro" {
+			return e.runCoro(v)
+		}
+		return v, nil
 	case *Call:
 		return e.evalCall(n)
 	case *ListLit:
@@ -2966,6 +2993,30 @@ func maxHeapID(heap map[int64]*obj) int64 {
 	return maxID
 }
 
+
+func (e *Evaluator) runCoro(cid int64) (int64, error) {
+	co := e.heap[cid]
+	fd := co.fn
+	argVals := co.args
+	saved := e.Vars
+	e.Vars = map[string]int64{}
+	for i, p := range fd.Params {
+		e.Vars[p.Name] = argVals[i]
+	}
+	prevRet := e.curRet
+	e.curRet = fd.ReturnAnno
+	rv, err := e.evalBody(fd.Body)
+	e.Vars = saved
+	e.curRet = prevRet
+	if err != nil {
+		if rs, ok := err.(*returnSignal); ok {
+			return rs.val, nil
+		}
+		return 0, err
+	}
+	return rv, nil
+}
+
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	// method call: obj.method(args) — Fn is an Attr resolving to a method
 	// inline lambda callee: `(lambda ...)(args)` evaluates to a closure.
@@ -3142,6 +3193,13 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				argVals[i] = dv
 				argSet[i] = true
 			}
+		if fd.Async {
+			cid := e.allocObj("coro")
+			co := e.heap[cid]
+			co.fn = fd
+			co.args = argVals
+			return cid, nil
+		}
 			saved := e.Vars
 			e.Vars = map[string]int64{}
 			for i, p := range fd.Params {

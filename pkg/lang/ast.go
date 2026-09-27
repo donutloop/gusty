@@ -392,6 +392,15 @@ type UnOp struct {
 func (n *UnOp) Span() Span { return n.Src }
 func (n *UnOp) exprNode()  {}
 
+// AwaitExpr is an `await e` expression: it schedules/awaits a coroutine.
+type AwaitExpr struct {
+	Expr Expr `json:"expr"`
+	Src  Span `json:"span,omitempty"`
+}
+
+func (n *AwaitExpr) Span() Span    { return n.Src }
+func (n *AwaitExpr) exprNode()     {}
+
 // CondExpr is a ternary conditional expression `then if cond else otherwise`.
 type CondExpr struct {
 	If   Expr `json:"if"`   // value when cond is truthy

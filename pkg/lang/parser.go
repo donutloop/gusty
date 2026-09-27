@@ -1403,7 +1403,7 @@ func (p *parser) parsePrefix() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return x, nil
+		return &AwaitExpr{Expr: x, Src: x.Span()}, nil
 	}
 	if t.IsKeyword("not") {
 		p.next()

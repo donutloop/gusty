@@ -66,8 +66,12 @@ func TestParseAwait(t *testing.T) {
 	if !ok {
 		t.Fatalf("stmt is %T, want *AssignStmt", prog.Stmts[0])
 	}
-	if _, ok := as.Value.(*Call); !ok {
-		t.Errorf("await desugared RHS is %T, want *Call", as.Value)
+	aw, ok := as.Value.(*AwaitExpr)
+	if !ok {
+		t.Errorf("await parsed RHS is %T, want *AwaitExpr", as.Value)
+	}
+	if _, ok := aw.Expr.(*Call); !ok {
+		t.Errorf("await operand is %T, want *Call", aw.Expr)
 	}
 }
 
@@ -76,4 +80,59 @@ func TestParseAsyncBad(t *testing.T) {
 	if _, err := Parse("async return 1"); err == nil {
 		t.Errorf("expected error for 'async return 1'")
 	}
+}
+
+
+func TestAsyncCoroAwait(t *testing.T) {
+	src := `async def f(x):
+    return x + 1
+v = await f(2)
+v`
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("EvalExpr: %v", err)
+	}
+	if v != 3 {
+		t.Errorf("await f(2) = %v, want 3", v)
+	}
+}
+
+func TestAsyncAwaitPlain(t *testing.T) {
+	v, _, err := EvalExpr("await 5")
+	if err != nil {
+		t.Fatalf("EvalExpr: %v", err)
+	}
+	if v != 5 {
+		t.Errorf("await 5 = %v, want 5", v)
+	}
+}
+
+func TestAsyncCoroDeferred(t *testing.T) {
+	// calling an async def does NOT run the body; it returns a coroutine
+	src := `async def f():
+    return 7
+c = f()
+c`
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("EvalExpr: %v", err)
+	}
+	// c is a coro handle, not the result 7
+	if v == 7 {
+		t.Errorf("async call ran eagerly; want deferred coroutine")
+	}
+}
+
+
+func TestAsyncForCoro(t *testing.T) {
+	src := `async def f(x):
+    return x * 2
+async for v in [f(1), f(2), f(3)]:
+    print(v)
+`
+	v, _, err := EvalExpr(src)
+	if err != nil {
+		t.Fatalf("EvalExpr: %v", err)
+	}
+	_ = v
 }
