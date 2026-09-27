@@ -1032,3 +1032,45 @@ exceptions in the interpreter (`except IndexError:` could not catch them — whi
   existing one. `grep` the IR strings first; the verifier only says "invalid redefinition".
 - `--json` is my debugger: it showed `verification.errors` when the human output only
   printed warnings (that became Gap K.7, fixed in its own commit).
+
+## Cycle: Gap K.3 — pop, set(), and the set/list/dict methods
+
+**What happened.** `xs.pop()` was `no such list method pop` in the interpreter and
+`string method pop on non-constant string` in the AOT (method dispatch is a chain of
+per-receiver-kind cases, and heap sets had no branch, so `.pop` fell through to strings).
+`set()` was `unsupported call for eval`, and — worse — `s.add(1)` was `attribute access on
+method`, so the constructor I had just added produced a value nothing could grow. `{}` being
+the empty dict (ADR 0168) had left the language with **no way to write an empty set**.
+
+**Decisions (ADR 0170).** `pop` returns the popped element (unlike `append`, which returns
+the handle for the REPL — an expression's value is what the program uses); `rt_pop` shifts
+the tail left and shrinks the length because the existing `rt_set_elem` appends; the
+constructors emit `rt_alloc(kind)` rather than lowering to an empty literal — the empty
+literal gets constant-folded to a global and I reproduced the ADR 0163 bug
+(`store i32 @.set1, i32* %_s`) before the verifier told me; `discard` is silent, `remove`
+raises `KeyError`; `print(set())` is `set()` in AOT too (it printed `{}`, which is a dict);
+`list(xs)`-style copies stay an honest AOT diagnostic.
+
+**The lesson I keep needing to learn — four times now, all in embedded IR strings:**
+- `//` inside an LLVM-IR raw string → "expected top-level entity"
+- a backtick inside the raw string → the Go literal ends mid-comment → syntax error miles
+  away, or IR leaking into Go
+- a second `rt_dict_has` → "invalid redefinition of function"
+- adding a branch *before* a loop header without updating the loop `phi`'s incoming block →
+  "input module is broken"
+So `pkg/lang/runtime_ir_test.go` now scans every embedded IR block for `//`/`#` comments,
+stray backticks, unbalanced `define` blocks, and duplicate helper definitions. I verified it
+fires by planting a `//` comment. **When I make the same mistake four times, the fix is a
+test, not more care.**
+
+**Other notes.**
+- `set`/`list`/`dict` were not just unimplemented, they were **unbound names in the
+  checker** — the failure happened before codegen, which is why `set()` looked like a
+  codegen gap and was actually four layers deep (parser-side builtin table, checker, both
+  runtimes).
+- I again nearly misread parity: the CLI `--eval` path echoes the final value, so
+  `interp="...|0"` vs `aot="..."` is not a mismatch. The library `runInterp` has no echo —
+  use the harness, not the CLI, for stdout comparisons.
+- `python3` is installed here: `python3 prog.py` gives the oracle for free. The container
+  program matched Python on every line except our `1`/`0` booleans, which is documented
+  language behaviour, not a bug.

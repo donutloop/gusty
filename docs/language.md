@@ -409,6 +409,43 @@ Before this was implemented, `d[1] = 2` did not work at all: the parser accepted
 statement, consumed `= 2`, and threw it away, so the program ran as if the line were
 absent — on both backends, with no diagnostic.
 
+### Container methods
+
+```py
+xs = [1, 2, 3]
+print(xs.pop())        # 3   — removes and returns the last element
+print(xs.pop(0))       # 1   — removes and returns index i
+print(xs.pop(-1))      # 2   — negative counts from the end
+
+ys = [4, 5, 6]
+while ys:              # draining a container: the idiom pop() exists for
+    print(ys.pop())
+
+s = set()              # the empty set has no literal; `{}` is an empty DICT
+print(s)               # set()
+s.add(1)
+s.add(1)
+print(len(s))          # 1
+s.discard(1)           # silent if absent …
+s.remove(1)            # … remove() raises KeyError instead
+
+d = dict()             # same as {}
+d[1] = 9
+lst = list()           # []
+lst.append(7)
+```
+
+- `xs.pop()` on an empty list raises `IndexError: pop from empty list`; `xs.pop(i)` with a
+  bad index raises `IndexError: pop index out of range`. Both are real exceptions, so
+  `except IndexError:` catches them on either backend. In AOT the bounds test is emitted
+  around the removal (the new `rt_pop` shifts the tail left and shrinks the length).
+- `set()` / `list()` / `dict()` construct empty containers. `s.add` / `s.discard` /
+  `s.remove` / `s.clear` are the set methods; `remove` raises `KeyError` where `discard`
+  is silent, matching Python.
+- **AOT limitation:** the one-argument copy forms `list(xs)` / `set(xs)` / `dict(d)` are a
+  compile-time diagnostic naming the interpreter as the working backend (ADR 0166). Build
+  the container with the empty constructor and add elements.
+
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other

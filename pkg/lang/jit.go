@@ -2906,6 +2906,35 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 		}
 		o.elems = append(o.elems, v)
 		return recv, nil
+	case "pop":
+		// l.pop() removes and returns the last element; l.pop(i) removes and returns
+		// element i (negative counts from the end), like Python. This is how a program
+		// drains a container in a `while xs:` loop — without it the natural idiom
+		// simply did not exist (roadmap Gap K.3).
+		if len(args) > 1 {
+			return 0, exnError("TypeError", "pop() takes at most 1 argument")
+		}
+		o = e.heap[recv]
+		idx := int64(len(o.elems) - 1)
+		if len(args) == 1 {
+			v, err := e.eval(args[0])
+			if err != nil {
+				return 0, err
+			}
+			idx = v
+			if idx < 0 {
+				idx += int64(len(o.elems))
+			}
+		}
+		if len(o.elems) == 0 {
+			return 0, exnError("IndexError", "pop from empty list")
+		}
+		if idx < 0 || idx >= int64(len(o.elems)) {
+			return 0, exnError("IndexError", "pop index out of range")
+		}
+		v := o.elems[idx]
+		o.elems = append(o.elems[:idx], o.elems[idx+1:]...)
+		return v, nil
 	case "count":
 		// l.count(value) -> number of occurrences of value in l.
 		if len(args) != 1 {
@@ -2924,6 +2953,52 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 		return cnt, nil
 	}
 	return 0, &EvalError{Msg: "no such list method " + name}
+}
+
+// callSetMethod dispatches builtin set methods. `add` is what makes `set()` usable at
+// all — without it the empty-set constructor produced a value nothing could grow
+// (roadmap Gap K.3).
+func (e *Evaluator) callSetMethod(recv int64, name string, args []Expr) (int64, error) {
+	o := e.heap[recv]
+	switch name {
+	case "add":
+		if len(args) != 1 {
+			return 0, exnError("TypeError", "add() takes exactly 1 argument")
+		}
+		v, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		for _, x := range o.elems {
+			if x == v {
+				return recv, nil // sets are a set: adding twice is a no-op
+			}
+		}
+		o.elems = append(o.elems, v)
+		return recv, nil
+	case "discard", "remove":
+		if len(args) != 1 {
+			return 0, exnError("TypeError", name+"() takes exactly 1 argument")
+		}
+		v, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		for i, x := range o.elems {
+			if x == v {
+				o.elems = append(o.elems[:i], o.elems[i+1:]...)
+				return recv, nil
+			}
+		}
+		if name == "remove" {
+			return 0, exnError("KeyError", "remove(): element not in set")
+		}
+		return recv, nil // discard is silent about absence, like Python
+	case "clear":
+		o.elems = nil
+		return recv, nil
+	}
+	return 0, exnError("TypeError", "no such set method "+name)
 }
 
 // callDictMethod dispatches builtin dict methods: d.keys() and d.values()
@@ -3190,6 +3265,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 		}
 		if o, ok := e.heap[recv]; ok && o.kind == "dict" {
 			return e.callDictMethod(recv, attr.Name.Value, n.Args)
+		}
+		if o, ok := e.heap[recv]; ok && o.kind == "set" {
+			return e.callSetMethod(recv, attr.Name.Value, n.Args)
 		}
 		// resolve the attribute/method reference via eval
 		mID, err := e.eval(n.Fn)
@@ -3747,6 +3825,62 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return 0, err
 			}
 			return e.allocStr(e.Repr(av)), nil
+		case "set", "list":
+			// Empty constructors, and copies of another container. `{}` is already the
+			// empty dict, but the empty *set* has no literal (Python renders it set()),
+			// so `set()` is the only way to write one (roadmap Gap K.3).
+			kind := n.Fn.(*Name).Value
+			h := e.allocObj(kind)
+			if len(n.Args) == 0 {
+				return h, nil
+			}
+			if len(n.Args) != 1 {
+				return 0, exnError("TypeError", kind+"() takes at most 1 argument")
+			}
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			o := e.heap[av]
+			if o == nil || (o.kind != "list" && o.kind != "set" && o.kind != "dict") {
+				return 0, exnError("TypeError", kind+"() takes a list, set or dict")
+			}
+			dst := e.heap[h]
+			for _, el := range o.elems {
+				if kind == "set" {
+					dup := false
+					for _, x := range dst.elems {
+						if x == el {
+							dup = true
+						}
+					}
+					if dup {
+						continue
+					}
+				}
+				dst.elems = append(dst.elems, el)
+			}
+			return h, nil
+		case "dict":
+			if len(n.Args) > 1 {
+				return 0, exnError("TypeError", "dict() takes at most 1 argument")
+			}
+			h := e.allocObj("dict")
+			if len(n.Args) == 0 {
+				return h, nil
+			}
+			av, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			o := e.heap[av]
+			if o == nil || o.kind != "dict" {
+				return 0, exnError("TypeError", "dict() copies another dict")
+			}
+			dst := e.heap[h]
+			dst.elems = append(dst.elems, o.elems...)
+			dst.dvals = append(dst.dvals, o.dvals...)
+			return h, nil
 		}
 	}
 	return 0, &EvalError{Msg: "unsupported call for eval"}

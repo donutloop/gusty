@@ -1,0 +1,51 @@
+xs = [1, 2, 3]
+print(xs.pop())
+print(xs)
+print(xs.pop(0))
+print(xs)
+
+ys = [4, 5, 6]
+t = 0
+
+while ys:
+    t = t + ys.pop()
+
+print(t)
+print(len(ys))
+
+s = set()
+print(s)
+s.add(1)
+s.add(2)
+s.add(1)
+print(len(s))
+print(2 in s)
+
+for v in s:
+    print(v * 10)
+
+s.discard(1)
+print(len(s))
+
+d = dict()
+d[1] = 9
+d[2] = 8
+print(d[1])
+print(len(d))
+
+lst = list()
+lst.append(7)
+lst.append(8)
+print(lst)
+print(lst.pop())
+
+try:
+    xs.pop(99)
+except IndexError:
+    print("caught pop")
+
+try:
+    empty = []
+    empty.pop()
+except IndexError:
+    print("caught empty pop")

@@ -99,6 +99,13 @@ func Analyze(prog *Program) []Diagnostic {
 	an.scope.define("min", TFunc([]*Type{TList(TInt())}, TInt()))
 	an.scope.define("max", TFunc([]*Type{TList(TInt())}, TInt()))
 	an.scope.define("abs", TFunc([]*Type{TInt()}, TInt()))
+	// Container constructors: `set()`, `list()`, `dict()` (roadmap Gap K.3). `{}` is the
+	// empty dict literal and `{1, 2}` a set literal, but the empty set has no literal, so
+	// `set()` is the only way to write one. They were unbound names, which made the most
+	// ordinary container program fail the checker.
+	an.scope.define("set", TFunc(nil, TSet(TDyn())))
+	an.scope.define("list", TFunc(nil, TList(TDyn())))
+	an.scope.define("dict", TFunc(nil, TDict(TDyn(), TDyn())))
 	for _, st := range prog.Stmts {
 		an.analyzeStmt(st)
 	}

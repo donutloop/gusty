@@ -630,10 +630,27 @@ Each is a concrete, reproducible defect with the shape to fix it.
   `docs/operations.md` § Failure output contract; pinned by
   `TestCLIBuildFailureStatesItsReason` and `TestCLIBuildFailureJSONCarriesDiagnosticsOnFailure`.
   The gap was found by a build that failed this way and said nothing.
-- **Gap K.3 — `list.pop` and the `set()` constructor are missing** — 🟥 FOUND.
-  `xs.pop()` is `no such list method pop` in the interpreter and unsupported in AOT, so
-  the natural way to empty a container in a `while xs:` loop does not exist (the
-  truthiness tests have to rebind to `[]` instead); `set()` fails as
-  `unsupported call for eval` although `{1, 2}` literals and the `set` annotation work.
-  Both are ordinary Python that the language claims to support — implement in the
-  interpreter first, then mirror in codegen, with a conformance program per ADR 0165/0167.
+- **Gap K.3 — `list.pop`, `set()`, and the set/list/dict methods were missing** — ✅ DONE
+  (ADR 0170). `xs.pop()` was `no such list method pop` in the interpreter and fell through
+  to the *string* method path in AOT (`string method pop on non-constant string`), so the
+  natural way to drain a container in a `while xs:` loop did not exist — the truthiness
+  tests had to rebind to `[]` instead. `set()` failed as `unsupported call for eval`, and
+  `s.add(1)` as `attribute access on method`, so even the empty-set constructor produced a
+  value nothing could grow. Now, identically on both backends:
+  - `xs.pop()` removes and returns the last element, `xs.pop(i)` removes index `i`
+    (negative counts from the end); empty → `IndexError: pop from empty list`, bad index →
+    `IndexError: pop index out of range` (checked in the emitted code, via a new `rt_pop`
+    that shifts the tail left and shrinks the length — `rt_set_elem`-style appends could
+    not express removal);
+  - `set()` / `list()` / `dict()` construct empty containers (`rt_alloc` per kind), and
+    `s.add` / `s.discard` / `s.clear` grow and shrink a heap set (`rt_set_add`,
+    `rt_set_discard`, `rt_set_clear`); `remove` raises `KeyError` where `discard` is silent,
+    like Python. `set`/`list`/`dict` were also unbound names in the *checker*;
+  - printing an empty set is `set()` in AOT too (the interpreter already matched Python;
+    `{}` would have been a dict).
+  `list(xs)`/`set(xs)`/`dict(d)` copies are a documented AOT diagnostic naming the
+  interpreter as the working backend (ADR 0166), not a miscompile. Covered by
+  `pkg/lang/containers_test.go`, the new `programs/container_methods.gy` conformance case
+  (37 cases), and — after the second time this cycle — `pkg/lang/runtime_ir_test.go`, which
+  scans the embedded runtime IR for `//` comments, stray backticks, unbalanced `define`
+  blocks, and duplicate helper definitions.

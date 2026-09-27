@@ -95,6 +95,36 @@ entry:
   ret i32 %v
 }
 
+; rt_pop removes element %i and returns it, shifting the tail left and shrinking the
+; length. The caller bounds-checks (an out-of-range index raises IndexError), and the
+; index is already normalised for negatives.
+define internal i32 @rt_pop(i32 %h, i32 %i) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  %ip = getelementptr [256 x i32], [256 x i32]* %ep, i32 0, i32 %i
+  %v = load i32, i32* %ip
+  %last = sub i32 %len, 1
+  br label %shift
+shift:
+  %j = phi i32 [ %i, %entry ], [ %jnext, %shiftdo ]
+  %more = icmp slt i32 %j, %last
+  br i1 %more, label %shiftdo, label %done
+shiftdo:
+  %src = add i32 %j, 1
+  %sp = getelementptr [256 x i32], [256 x i32]* %ep, i32 0, i32 %src
+  %sv = load i32, i32* %sp
+  %dp = getelementptr [256 x i32], [256 x i32]* %ep, i32 0, i32 %j
+  store i32 %sv, i32* %dp
+  %jnext = add i32 %j, 1
+  br label %shift
+done:
+  store i32 %last, i32* %lp
+  ret i32 %v
+}
+
 define internal void @rt_append(i32 %h, i32 %v) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -303,6 +333,7 @@ fin:
 }
 
 
+@.fmtemptyset = private unnamed_addr constant [6 x i8] c"set()\00"
 @.fmtsopen = private unnamed_addr constant [2 x i8] c"{\00"
 @.fmtsitem = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtssep = private unnamed_addr constant [3 x i8] c", \00"
@@ -337,6 +368,57 @@ add:
   ret void
 }
 
+; rt_set_discard removes a value if present and shifts the tail left; removing an absent
+; value is a no-op (that is what distinguishes discard from remove).
+define internal void @rt_set_clear(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  store i32 0, i32* %lp
+  ret void
+}
+
+define internal void @rt_set_discard(i32 %h, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  ; Computed here so it dominates the done block, which is reachable both when the
+  ; value is absent (scan -> done) and after the shift loop.
+  %last = sub i32 %len, 1
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %scan
+scan:
+  %i = phi i32 [ 0, %entry ], [ %inext, %step ]
+  %more = icmp slt i32 %i, %len
+  br i1 %more, label %body, label %done
+body:
+  %p = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
+  %x = load i32, i32* %p
+  %hit = icmp eq i32 %x, %v
+  br i1 %hit, label %remove, label %step
+step:
+  %inext = add i32 %i, 1
+  br label %scan
+remove:
+  br label %shift
+shift:
+  %j = phi i32 [ %i, %remove ], [ %jnext, %shiftdo ]
+  %go = icmp slt i32 %j, %last
+  br i1 %go, label %shiftdo, label %done
+shiftdo:
+  %src = add i32 %j, 1
+  %sp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %src
+  %sv = load i32, i32* %sp
+  %dpp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %j
+  store i32 %sv, i32* %dpp
+  %jnext = add i32 %j, 1
+  br label %shift
+done:
+  store i32 %last, i32* %lp
+  ret void
+}
+
 define internal i32 @rt_set_len(i32 %h) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -351,10 +433,27 @@ entry:
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  ; Python renders the empty set as set(), not {} (which is a dict); the interpreter's
+  ; Repr already does this, so the compiled renderer must agree or printing an empty set
+  ; differs between the backends.
+  %isEmpty = icmp eq i32 %len, 0
+  br i1 %isEmpty, label %empty, label %open
+empty:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
+  %wantnl0 = icmp ne i32 %nl, 0
+  br i1 %wantnl0, label %eol0, label %fin0
+eol0:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin0
+fin0:
+  ret void
+open:
   %r1 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
   br label %check
 check:
-  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  ; the phi's incoming block follows the new predecessor: entry no longer reaches check
+  ; directly now that the empty case branches away first
+  %i = phi i32 [ 0, %open ], [ %next, %cont ]
   %c = icmp slt i32 %i, %len
   br i1 %c, label %body, label %done
 body:
@@ -4214,6 +4313,94 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString("\n")
 			return phi, nil
 		}
+		if nm, ok := attr.Obj.(*Name); ok && g.runtimeSets[nm.Value] {
+			// Set methods on a heap set: without `add` the `set()` constructor produced
+			// a value nothing could grow (roadmap Gap K.3).
+			switch attr.Name.Value {
+			case "add", "discard":
+				if len(c.Args) != 1 {
+					return "", fmt.Errorf("codegen: %s() takes exactly 1 argument", attr.Name.Value)
+				}
+				av, err := g.value(b, c.Args[0])
+				if err != nil {
+					return "", err
+				}
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
+				fn := "rt_set_add"
+				if attr.Name.Value == "discard" {
+					fn = "rt_set_discard"
+				}
+				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s)\n", fn, hs, av))
+				return "", nil
+			case "clear":
+				if len(c.Args) != 0 {
+					return "", fmt.Errorf("codegen: clear() takes no arguments")
+				}
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
+				b.WriteString(fmt.Sprintf("  call void @rt_set_clear(i32 %%h%d)\n", hs))
+				return "", nil
+			}
+		}
+		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "pop" {
+			// xs.pop() removes and returns the last element; xs.pop(i) removes index i
+			// (negative counts from the end). The bounds test is emitted around the
+			// removal so an out-of-range index raises IndexError through the same
+			// exception path a `raise` uses (roadmap Gap K.3).
+			if len(c.Args) > 1 {
+				return "", fmt.Errorf("codegen: pop() takes at most 1 argument (xs.pop(), xs.pop(i))")
+			}
+			g.heapSeq++
+			hs := g.heapSeq
+			h := fmt.Sprintf("%%h%d", hs)
+			b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", h, "_"+nm.Value))
+			n := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", n, h))
+			idx := g.newTmp()
+			badL, okL := g.newLabel("pop.bad"), g.newLabel("pop.ok")
+			var bad string
+			if len(c.Args) == 1 {
+				iv, err := g.value(b, c.Args[0])
+				if err != nil {
+					return "", err
+				}
+				neg := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", neg, iv))
+				g.markI1(neg)
+				adj := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", adj, iv, n))
+				b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", idx, neg, adj, iv))
+				hi := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = icmp sge i32 %s, %s\n", hi, idx, n))
+				g.markI1(hi)
+				lo := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", lo, idx))
+				g.markI1(lo)
+				bad = g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
+				g.markI1(bad)
+			} else {
+				// No index: the last element, and an empty list is the error case.
+				b.WriteString(fmt.Sprintf("  %s = sub i32 %s, 1\n", idx, n))
+				bad = g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", bad, n))
+				g.markI1(bad)
+			}
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
+			b.WriteString(fmt.Sprintf("%s:\n", badL))
+			if len(c.Args) == 1 {
+				g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop index out of range")
+			} else {
+				g.raiseTo(b, exnCode("IndexError"), "IndexError", "pop from empty list")
+			}
+			b.WriteString(fmt.Sprintf("%s:\n", okL))
+			ret := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_pop(i32 %s, i32 %s)\n", ret, h, idx))
+			return ret, nil
+		}
 		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
@@ -5003,6 +5190,36 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		emitText(end)
 		return last, nil
+	case "set", "list", "dict":
+		// Container constructors. `{}` is already the empty dict and `{1, 2}` a set,
+		// but the empty *set* has no literal at all, so `set()` is the only way to
+		// write one; `list()`/`dict()` are the matching spellings (roadmap Gap K.3).
+		// Lowering to the corresponding empty literal keeps one allocation path.
+		if len(c.Args) > 1 {
+			return "", fmt.Errorf("codegen: %s() takes at most 1 argument", c.Fn)
+		}
+		if len(c.Args) == 1 {
+			// Copying another container is a loop over its elements; the interpreter
+			// supports it, so say which backend does rather than miscompile (ADR 0166).
+			return "", fmt.Errorf("codegen: %s(<container>) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with %s() and add elements", c.Fn, c.Fn)
+		}
+		// Allocate a fresh heap container. Lowering to an empty literal instead would
+		// hand back a compile-time global (@.set1), and `s = set()` would then store that
+		// global into the variable slot — the folded-global bug this repo has been bitten
+		// by before (ADR 0163). rt_alloc zeroes the length in both the fresh and the
+		// recycled path, so the handle it returns is an empty container.
+		g.heapSeq++
+		hs := g.heapSeq
+		kind := 3 // set
+		switch c.Fn.(*Name).Value {
+		case "list":
+			kind = 1
+		case "dict":
+			kind = 2
+		}
+		g.heapUsed = true
+		b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, kind))
+		return fmt.Sprintf("%%h%d", hs), nil
 	case "len":
 		// len(string-constant) -> compile-time character count; otherwise
 		// len(list/dict/set) loads the count field (i32 0) of the inline
