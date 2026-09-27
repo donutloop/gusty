@@ -518,7 +518,40 @@ for i in range(n):
 - `raise ValueError("msg")` raises a typed exception carrying a class name and an
   optional message. Built-in exception classes: `Exception`, `ValueError`, `TypeError`,
   `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`. A bare
-  `raise` raises `Exception`.
+  `raise` raises `Exception`. `raise IndexError` (the class itself, no call) raises that
+  class with no message, and a class derived from an exception is raisable too:
+  `class MyError(Exception):` then `raise MyError("x")` / `except MyError:`.
+- **Runtime errors are typed exceptions, so they are catchable.** A list index out of
+  range (read *or* write) raises `IndexError`, a missing dict key raises `KeyError`, and
+  assigning to a string index or set element raises `TypeError` — on both backends:
+
+  ```py
+  xs = [1]
+  try:
+      xs[5] = 2
+  except IndexError:
+      print("caught")
+  ```
+
+  (The interpreter used to abort on these instead of unwinding, and the AOT used to read
+  back whatever memory sat at that slot.)
+- **An uncaught exception is reported and fails the process, identically on both
+  backends.** The report goes to **stderr**, so `prog 2>/dev/null` sees only what the
+  program printed, and the exit status is non-zero, so a script cannot mistake a trapped
+  program for a successful one:
+
+  ```console
+  $ gusty prog.gy; echo $?
+  Traceback (most recent call last):
+  IndexError: index out of range
+  1
+  ```
+
+  The interpreter adds a `File "prog", line N, in fn` frame per stack frame; the AOT
+  report has no line info unless built with `--debug` (Gap H.5).
+- One deliberate divergence: an assignment whose *target kind* is known statically to be
+  impossible (`s[0] = "z"` on a string, `s[0] = 1` on a set) is a compile-time diagnostic
+  in the AOT backend (ADR 0166) and a catchable `TypeError` in the interpreter.
 - `except ValueError:` catches exactly the raised class; `except Exception:` (or a bare
   `except:`) catches any exception. A raised exception that no clause matches propagates
   to the caller as an `*EvalError` carrying the class name (`ExnType`) and message

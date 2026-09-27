@@ -1,0 +1,56 @@
+package lang
+
+// Built-in exception classes, defined once for all three front ends.
+//
+// The interpreter, the checker, and the AOT codegen each used to keep their own
+// notion of what an exception class is: `isExnClass` (interpreter) listed eight
+// names, `exnCode` (codegen) numbered them, and the checker's `exceptions` map was
+// declared but never populated — so `raise ValueError("boom")` was a perfectly good
+// interpreter program that failed AOT compilation with `undefined name "ValueError"`.
+// They now share one list, and the numeric codes are part of it: the code is what
+// `@exn_code` carries across the raise boundary, and `except IndexError:` matches on it.
+var exnClasses = []struct {
+	name string
+	code int
+}{
+	{"Exception", 0},
+	{"ValueError", 1},
+	{"TypeError", 2},
+	{"KeyError", 3},
+	{"IndexError", 4},
+	{"RuntimeError", 5},
+	{"StopIteration", 6},
+	{"ZeroDivisionError", 7},
+}
+
+// isExnClass reports whether name is a built-in exception constructor. `except E:`
+// and `raise E("msg")` accept these, and user classes derive their own.
+func isExnClass(name string) bool {
+	for _, c := range exnClasses {
+		if c.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// exnClassCode returns the runtime code for an exception class name.
+func exnClassCode(name string) int {
+	for _, c := range exnClasses {
+		if c.name == name {
+			return c.code
+		}
+	}
+	return 0 // matches Python's "uncaught exception of unknown type" default
+}
+
+// builtinExceptions returns the built-in exception names as a name set, for the
+// checker's name table. Keeping it derived from exnClasses means a new exception
+// class is added in exactly one place.
+func builtinExceptions() map[string]bool {
+	m := make(map[string]bool, len(exnClasses))
+	for _, c := range exnClasses {
+		m[c.name] = true
+	}
+	return m
+}

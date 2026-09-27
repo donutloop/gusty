@@ -287,7 +287,10 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 		if jsonOut {
 			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"exit\": %d}\n", err.Error(), tb, exitErr)
 		} else if tb != "" {
-			fmt.Println(tb)
+			// Tracebacks are diagnostics, not program output: they belong on stderr so
+			// `prog 2>/dev/null | ...` sees only what the program printed (the AOT
+			// backend writes its uncaught-exception report to fd 2 as well).
+			fmt.Fprintln(os.Stderr, tb)
 		} else {
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		}

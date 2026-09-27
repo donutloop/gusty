@@ -750,11 +750,16 @@ entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lf = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lf
+  ; A dict stores [key, value] pairs, so scanning keys means walking the flat element
+  ; array two words at a time up to 2*count. The bound used to be the entry count, which
+  ; scanned only the first ceil(count/2) slots: "3 in {1: 2, 3: 4}" was false in the
+  ; compiled binary, and a dict read for any later key raised KeyError.
+  %limit = mul i32 %len, 2
   %arr = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
   br label %header
 header:
   %i = phi i32 [ 0, %entry ], [ %next, %cont ]
-  %ok = icmp slt i32 %i, %len
+  %ok = icmp slt i32 %i, %limit
   br i1 %ok, label %loop, label %miss
 loop:
   %p = getelementptr [256 x i32], [256 x i32]* %arr, i32 0, i32 %i
@@ -871,10 +876,25 @@ func GenerateIR(prog *Program) (string, error) {
 	g.gcCall(&b)
 	b.WriteString("  ret i32 0\n")
 	b.WriteString("main.raiseexit:\n")
-	b.WriteString("  ret i32 0\n}\n")
+	// An uncaught exception used to fall off the end of main and exit 0 printing
+	// nothing, so a program that raised looked like a program that succeeded to any
+	// script that ran it. Report it on stderr and exit non-zero, like the interpreter.
+	if g.raiseUsed {
+		b.WriteString("  %exn.m = load i8*, i8** @exn_msg\n")
+		b.WriteString("  call void @rt_die(i8* %exn.m)\n")
+		b.WriteString("  ret i32 1\n")
+	} else {
+		b.WriteString("  ret i32 0\n")
+	}
+	b.WriteString("}\n")
 	// assemble output
 	var out strings.Builder
 	g.emitEnvGlobals()
+	// Container reads raise as well (IndexError / KeyError), so the raise runtime
+	// travels with the heap runtime, not only with an explicit `raise`.
+	if g.raiseUsed || g.heapUsed {
+		g.globals.WriteString(raiseRuntimeIR)
+	}
 	if g.heapUsed {
 		g.globals.WriteString(heapRuntimeIR)
 	}
@@ -961,11 +981,15 @@ type irGen struct {
 	// floatFuncs tracks user functions that return a double.
 	floatFuncs map[string]bool
 	// curFunc tracks the user function currently being emitted.
-	curFunc       string
-	listVars      map[string]bool
-	runtimeDicts  map[string]bool
-	runtimeSets   map[string]bool
-	heapUsed      bool
+	curFunc      string
+	listVars     map[string]bool
+	runtimeDicts map[string]bool
+	runtimeSets  map[string]bool
+	heapUsed     bool
+	// raiseUsed is set by any raise site (a `raise` statement, or a
+	// compiler-generated one such as an out-of-bounds item assignment). It gates
+	// rt_die, which reports an uncaught exception on stderr before main exits 1.
+	raiseUsed     bool
 	heapSeq       int
 	handlerStack  []string
 	funcRaiseExit string
@@ -2717,13 +2741,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		badL, okL, endL := g.newLabel("item.bad"), g.newLabel("item.ok"), g.newLabel("item.end")
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
 		b.WriteString(fmt.Sprintf("%s:\n", badL))
-		b.WriteString("  store i32 1, i32* @exn_flag\n")
-		b.WriteString(fmt.Sprintf("  store i32 %d, i32* @exn_code\n", exnCode("IndexError")))
-		if len(g.handlerStack) > 0 {
-			b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
-		} else {
-			b.WriteString("  br label %" + g.funcRaiseExit + "\n")
-		}
+		g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range")
 		b.WriteString(fmt.Sprintf("%s:\n", okL))
 		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, v))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
@@ -3445,6 +3463,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					}
 					keyOp = kv
 				}
+				g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp)
 				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
@@ -3460,6 +3479,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
+				g.checkIndexRead(b, fmt.Sprintf("%%h%d", hs), idxOp)
 				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %s)\n", hs, hs, idxOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
@@ -5656,36 +5676,129 @@ func (g *irGen) emitLambda(b *strings.Builder, lam *Lambda) (string, error) {
 }
 
 func exnCode(name string) int {
-	switch name {
-	case "ValueError":
-		return 1
-	case "TypeError":
-		return 2
-	case "KeyError":
-		return 3
-	case "IndexError":
-		return 4
-	case "RuntimeError":
-		return 5
-	case "StopIteration":
-		return 6
-	case "ZeroDivisionError":
-		return 7
-	default:
-		return 0
+	// The canonical list (and its codes) lives in exceptions.go, shared with the
+	// interpreter's isExnClass and the checker's name table.
+	return exnClassCode(name)
+}
+
+// raiseRuntimeIR reports an uncaught exception the way the interpreter does — a
+// traceback header and the exception line — on stderr (fd 2, via write so it links on
+// every platform without depending on a libc `stderr` symbol) before main returns 1.
+const raiseRuntimeIR = `
+declare i64 @write(i32, i8*, i64)
+declare i64 @strlen(i8*)
+
+; @exn_msg travels with the flag: a raise statement and a compiler-generated raise
+; (an out-of-bounds item assignment) both store a "<Type>: <message>" string here, so
+; the uncaught path can report what it was. A raise that never ran leaves it null and
+; rt_die prints a generic line. The block is emitted only for programs that can raise.
+@exn_msg = internal global i8* null
+
+@.rt_die.hdr = private unnamed_addr constant [36 x i8] c"Traceback (most recent call last):\0A\00"
+@.rt_die.none = private unnamed_addr constant [26 x i8] c"gusty: uncaught exception\00"
+@.rt_die.nl = private unnamed_addr constant [2 x i8] c"\0A\00"
+
+define internal void @rt_die(i8* %msg) {
+entry:
+  %hdr = getelementptr inbounds [36 x i8], [36 x i8]* @.rt_die.hdr, i32 0, i32 0
+  %hlen = call i64 @strlen(i8* %hdr)
+  call i64 @write(i32 2, i8* %hdr, i64 %hlen)
+  %isnull = icmp eq i8* %msg, null
+  %none = getelementptr inbounds [26 x i8], [26 x i8]* @.rt_die.none, i32 0, i32 0
+  %m = select i1 %isnull, i8* %none, i8* %msg
+  %len = call i64 @strlen(i8* %m)
+  call i64 @write(i32 2, i8* %m, i64 %len)
+  %nl = getelementptr inbounds [2 x i8], [2 x i8]* @.rt_die.nl, i32 0, i32 0
+  call i64 @write(i32 2, i8* %nl, i64 1)
+  ret void
+}
+`
+
+// setExn records a raise: the flag, the exception code, and a "<Type>: <message>"
+// string for the uncaught path. Every raise site goes through here so the report can
+// never disagree with the code the handler matches on.
+func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string) {
+	g.raiseUsed = true
+	b.WriteString("  store i32 1, i32* @exn_flag\n")
+	b.WriteString(fmt.Sprintf("  store i32 %d, i32* @exn_code\n", code))
+	text := typeName
+	if msg != "" {
+		text = typeName + ": " + msg
 	}
+	if text == "" {
+		b.WriteString("  store i8* null, i8** @exn_msg\n")
+		return
+	}
+	b.WriteString(fmt.Sprintf("  store i8* %s, i8** @exn_msg\n", g.strConst(text)))
+}
+
+// raiseTo records a raise of an exception the *machine* detected (an out-of-range
+// index, a missing key) and transfers to the innermost handler, or out of the function
+// to the uncaught path. The interpreter raises the same typed errors, so `except
+// IndexError:` works on both backends.
+func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string) {
+	g.setExn(b, code, typeName, msg)
+	if len(g.handlerStack) > 0 {
+		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
+	} else {
+		b.WriteString("  br label %" + g.funcRaiseExit + "\n")
+	}
+}
+
+// checkIndexRead emits the bounds test for a heap-list read: `xs[i]` used to load
+// whatever sat at that slot and print 0, where Python raises IndexError.
+func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string) {
+	ln := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
+	hi := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp sge i32 %s, %s\n", hi, idx, ln))
+	g.markI1(hi)
+	lo := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", lo, idx))
+	g.markI1(lo)
+	bad := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
+	g.markI1(bad)
+	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
+	b.WriteString(fmt.Sprintf("%s:\n", badL))
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range")
+	b.WriteString(fmt.Sprintf("%s:\n", okL))
+}
+
+// checkKeyRead emits the membership test for a heap-dict read: `d[k]` for a missing
+// key used to return 0, where Python raises KeyError.
+func (g *irGen) checkKeyRead(b *strings.Builder, h, key string) {
+	ok := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has(i32 %s, i32 %s)\n", ok, h, key))
+	isZero := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", isZero, ok))
+	g.markI1(isZero)
+	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isZero, badL, okL))
+	b.WriteString(fmt.Sprintf("%s:\n", badL))
+	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found")
+	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
 // raiseStmt compiles `raise Exception("msg")` / `raise ValueError("msg")`.
 func (g *irGen) raiseStmt(b *strings.Builder, rs *RaiseStmt) error {
-	code := 0
+	code, typeName, msg := 0, "", ""
 	if c, ok := rs.Expr.(*Call); ok {
 		if n, ok2 := c.Fn.(*Name); ok2 {
 			code = exnCode(n.Value)
+			typeName = n.Value
+			if len(c.Args) > 0 {
+				if sl, ok3 := c.Args[0].(*StrLit); ok3 {
+					msg = sl.Value // `raise ValueError("boom")` -> "ValueError: boom"
+				}
+			}
 		}
+	} else if n, ok := rs.Expr.(*Name); ok {
+		code = exnCode(n.Value)
+		typeName = n.Value
 	}
-	b.WriteString("  store i32 1, i32* @exn_flag\n")
-	b.WriteString(fmt.Sprintf("  store i32 %d, i32* @exn_code\n", code))
+	g.setExn(b, code, typeName, msg)
 	if len(g.handlerStack) > 0 {
 		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
 	} else {

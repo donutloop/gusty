@@ -80,6 +80,23 @@ var containerIterCases = []struct {
 		"def up(n):\n    k = 0\n\n    while k < n:\n        yield k\n        k = k + 1\n\nt = 0\nfor v in up(4):\n    t = t + v\n\nprint(t)\n",
 		"6\n",
 	},
+	// rt_dict_has walks the flat [key, value] array; its bound used to be the entry
+	// count, so only the first ceil(count/2) keys were ever found.
+	{
+		"membership for a later key",
+		"d = {1: 2, 3: 4, 5: 6}\nprint(5 in d)\nprint(9 in d)\n",
+		"1\n0\n",
+	},
+	{
+		"lookup of a later key",
+		"d = {1: 2, 3: 4, 5: 6}\nprint(d[5])\n",
+		"6\n",
+	},
+	{
+		"every value reachable by key after mutation",
+		"d = {}\nfor i in range(5):\n    d[i] = i * i\n\nprint(d[4])\nprint(3 in d)\nprint(9 in d)\n",
+		"16\n1\n0\n",
+	},
 	// Two container loops that reuse the same variable name: the loop variable's
 	// slot must be allocated in the block that branches into the loop, because an
 	// alloca inside the body block does not dominate the blocks after the loop

@@ -989,3 +989,46 @@ diagnostics that humans got.
   that some message exists.
 - Quick repro for next time the CLI seems silent: `--json --build=…` and read
   `.verification.errors`; and run `opt-20 -passes=verify` on `--emit-llvm` output.
+
+## Cycle: Gap K.6 — an uncaught exception must report and fail
+
+**What happened.** `xs = [1,2,3]` + `xs[9] = 5` exited 1 with a traceback on the
+interpreter and **exit 0 printing nothing** compiled. Four stacked defects: the raise-exit
+block was `ret i32 0` and there was no message global to print; the checker's `exceptions`
+map was **declared but never populated**, so `raise ValueError("boom")` was an interpreter
+program that failed AOT with `undefined name "ValueError"`; runtime errors were not
+exceptions in the interpreter (`except IndexError:` could not catch them — while the AOT
+*did*, an inversion worth writing down); and the interpreter wrote tracebacks to stdout.
+
+**Decisions (ADR 0169).**
+- Report on **fd 2 via `write(2, …)`**, not `printf`, and not `fprintf(stderr, …)`:
+  `stderr` is a glibc *symbol*, a macOS macro, a Windows text macro — the fd is the only
+  stream that means the same thing everywhere. Exit 1 from main.
+- `@exn_msg` travels with the flag through ONE helper (`setExn`/`raiseTo`), so the printed
+  text can never disagree with the code `except IndexError:` matches on.
+- Checks live at the **read site**, not inside `rt_get_elem`/`rt_dict_get`: iteration calls
+  those helpers with in-range indexes, and a flag set by a helper nobody tests leaks into
+  the next `checkExn` after a user call.
+- One exception table (`pkg/lang/exceptions.go`) for interpreter + codegen + checker. The
+  bug class "two front ends disagree about whether a builtin exists" is now structurally
+  impossible for exception classes.
+
+**Bugs the new checks exposed (all invisible to the parity harness).**
+- AOT **reads** were unchecked: `xs[5]` printed `0`, `d[missing]` printed `0`.
+- `rt_dict_has` walked the flat `[key, value]` array by 2 but bounded the walk by the
+  *entry count*, so only the first ⌈count/2⌉ keys were ever found: `3 in {1: 2, 3: 4}` was
+  false in compiled binaries, and `d[k]` for a later key raised KeyError once reads were
+  checked. Nothing had ever asked a compiled program about a dict's later keys.
+
+**Process notes.**
+- Writing the *test table* first keeps paying off: `TestRuntimeErrorsAreCatchableOnBothBackends`
+  asserted Python's answer and immediately failed four cases that "both backends agree"
+  tests would have blessed.
+- Two self-inflicted 20-minute losses, both the same lesson: **LLVM-IR comments are `;`,
+  not `//`, and a backtick inside a Go raw string ends the literal.** Both times the module
+  verifier said it in one line ("expected top-level entity", "invalid redefinition") — run
+  `opt-20 -passes=verify` on `--emit-llvm` output before reading the code.
+- Duplicate runtime helper: I added a second `rt_dict_has` before searching for the
+  existing one. `grep` the IR strings first; the verifier only says "invalid redefinition".
+- `--json` is my debugger: it showed `verification.errors` when the human output only
+  printed warnings (that became Gap K.7, fixed in its own commit).

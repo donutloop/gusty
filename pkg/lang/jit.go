@@ -136,7 +136,7 @@ func (e *Evaluator) storeIndex(ix *Index, val int64) error {
 	}
 	o := e.heap[objV]
 	if o == nil {
-		return &EvalError{Msg: "cannot assign to an index of a non-container"}
+		return exnError("TypeError", "cannot assign to an index of a non-container")
 	}
 	switch o.kind {
 	case "dict":
@@ -151,16 +151,16 @@ func (e *Evaluator) storeIndex(ix *Index, val int64) error {
 		return nil
 	case "list":
 		if idx < 0 || idx >= int64(len(o.elems)) {
-			return &EvalError{Msg: "index out of range"}
+			return exnError("IndexError", "index out of range")
 		}
 		o.elems[idx] = val
 		return nil
 	case "set":
-		return &EvalError{Msg: "cannot assign to a set element"}
+		return exnError("TypeError", "cannot assign to a set element")
 	case "str":
-		return &EvalError{Msg: "strings are immutable"}
+		return exnError("TypeError", "strings are immutable")
 	}
-	return &EvalError{Msg: "cannot assign to an index of this value"}
+	return exnError("TypeError", "cannot assign to an index of this value")
 }
 
 // resolveClassID returns the heap id of the class bound to name, if any.
@@ -278,16 +278,6 @@ func (e *Evaluator) exnInfo(id int64) (string, string) {
 		return o.class, o.sval
 	}
 	return "Exception", e.Repr(id)
-}
-
-// isExnClass reports whether name is a built-in exception constructor.
-func isExnClass(name string) bool {
-	switch name {
-	case "Exception", "ValueError", "TypeError", "KeyError", "IndexError",
-		"RuntimeError", "StopIteration", "ZeroDivisionError":
-		return true
-	}
-	return false
 }
 
 // floatOf returns the float value of a heap handle (kind=float), with a
@@ -1243,6 +1233,12 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			if s.Expr == nil {
 				return 0, exnError("Exception", "raised")
 			}
+			// `raise IndexError` (the class itself, not a call) raises that class with
+			// no message, like Python. Evaluating the name would be an undefined-name
+			// error, because built-in exception classes are not bindings.
+			if n, ok := s.Expr.(*Name); ok && isExnClass(n.Value) {
+				return 0, exnError(n.Value, n.Value)
+			}
 			v, err := e.eval(s.Expr)
 			if err != nil {
 				return 0, err
@@ -1456,7 +1452,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		switch o.kind {
 		case "list":
 			if idx < 0 || idx >= int64(len(o.elems)) {
-				return 0, &EvalError{Msg: "index out of range"}
+				return 0, exnError("IndexError", "index out of range")
 			}
 			return o.elems[idx], nil
 		case "dict":
@@ -1465,21 +1461,21 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 					return o.dvals[i], nil
 				}
 			}
-			return 0, &EvalError{Msg: "key not found"}
+			return 0, exnError("KeyError", "key not found")
 		case "set":
 			for _, el := range o.elems {
 				if el == idx {
 					return el, nil
 				}
 			}
-			return 0, &EvalError{Msg: "not in set"}
+			return 0, exnError("KeyError", "not in set")
 		case "str":
 			if idx < 0 || idx >= int64(len(o.sval)) {
-				return 0, &EvalError{Msg: "string index out of range"}
+				return 0, exnError("IndexError", "string index out of range")
 			}
 			return int64(o.sval[idx]), nil
 		default:
-			return 0, &EvalError{Msg: "cannot index this value"}
+			return 0, exnError("TypeError", "cannot index this value")
 		}
 
 	case *Slice:
@@ -3840,7 +3836,14 @@ func (e *EvalError) RenderTraceback() string {
 	for _, f := range e.Traceback {
 		out += fmt.Sprintf("  File \"prog\", line %d, in %s\n", f.Line, f.Name)
 	}
-	out += e.Msg
+	// Python's last line is `ValueError: boom`, and so is ours: the type is what an
+	// `except IndexError:` matched on, so dropping it made the report less specific
+	// than the raise that produced it.
+	if e.ExnType != "" && e.Msg != e.ExnType {
+		out += e.ExnType + ": " + e.Msg
+	} else {
+		out += e.Msg
+	}
 	return out
 }
 

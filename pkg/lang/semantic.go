@@ -89,7 +89,7 @@ func (an *SemanticAnalyzer) isDefinite(nm string) bool {
 
 // Analyze runs semantic analysis and type inference on prog.
 func Analyze(prog *Program) []Diagnostic {
-	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: map[string]bool{"Exception": true}, classList: NewClassIndex()}
+	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: builtinExceptions(), classList: NewClassIndex()}
 	// Pre-pass: record every class (with its bases) before analyzing, so class
 	// annotations and nominal subtyping work regardless of declaration order.
 	an.indexClasses(prog.Stmts)
@@ -129,11 +129,20 @@ func (an *SemanticAnalyzer) indexClasses(stmts []Stmt) {
 		switch s := st.(type) {
 		case *ClassDef:
 			var bases []string
+			exceptDerived := false
 			for _, b := range s.Bases {
 				if b != nil {
 					bases = append(bases, b.Value)
 					an.classes[b.Value] = true
+					if an.exceptions[b.Value] {
+						exceptDerived = true
+					}
 				}
+			}
+			// A class derived from an exception is itself raisable: `raise MyError("x")`
+			// and `except MyError:` must resolve.
+			if exceptDerived {
+				an.exceptions[s.Name] = true
 			}
 			an.classes[s.Name] = true
 			an.classList.Declare(s.Name, bases)

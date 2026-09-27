@@ -108,6 +108,22 @@ Compile/link errors return diagnostics and exit code 1; missing sources or no
 positional files are a usage error (exit 2). A semantic error in any source
 file aborts the build before any toolchain step runs.
 
+**Runtime failures (both backends).** An exception that escapes the program is reported on
+**stderr** and exits non-zero — never exit 0 with silence, which is how a trapped program
+previously looked successful to a script:
+
+```
+Traceback (most recent call last):
+IndexError: index out of range
+```
+
+The interpreter adds one `  File "prog", line N, in fn` frame per stack frame; the AOT
+report carries no line info without `--debug`. stdout stays clean, so
+`prog 2>/dev/null | ...` sees only program output. With `--json` the eval path emits
+`{"error": ..., "traceback": ..., "exit": 1}` on stdout. Runtime errors are typed
+(`IndexError` / `KeyError` / `TypeError` / …), so `except IndexError:` catches them on
+both backends — see `docs/language.md` § Exceptions.
+
 
 ## Debug symbols / source maps (AOT)
 

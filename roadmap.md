@@ -586,15 +586,39 @@ Each is a concrete, reproducible defect with the shape to fix it.
   when there were no elements, so `d = {}` then `d[k] = v` failed with `not in set` on
   the interpreter while the AOT emitted dict code for the same source. `{}` now parses to
   an empty `DictLit` (`{1, 2}` is still a set), pinned by `TestEmptyBracesIsAnEmptyDict`.
-- **Gap K.6 — unhandled exceptions report nothing in AOT** — 🟥 FOUND.
-  `xs = [1]` / `xs[5] = 2` raises `index out of range` and exits 1 on the interpreter,
-  but the AOT binary takes the raise-exit path and exits **0 printing nothing**, so a
-  trapped program looks like a success to a script. Related: `raise IndexError("boom")`
-  does not compile at all (`undefined name "IndexError"` — exception classes are not
-  registered as names), and there is no message global alongside `@exn_code`, so the
-  raise path cannot print what it caught. Fix by giving the raise-exit path a report
-  (message + nonzero exit, honouring the Gap J.3 exit-code contract) and registering the
-  builtin exception classes for both paths.
+- **Gap K.6 — unhandled exceptions reported nothing in AOT** — ✅ DONE.
+  `xs = [1]` / `xs[5] = 2` raised on the interpreter and exited 1, while the AOT binary
+  took the raise-exit path and exited **0 printing nothing**: to a script, a trapped
+  program had succeeded. Four defects were underneath it:
+  - the raise-exit block was `ret i32 0`, and there was no message global beside
+    `@exn_code`, so the raise path *could not* say what it was reporting. Now `@exn_msg`
+    travels with the flag (`rt_die` writes a traceback header + `IndexError: index out of
+    range` to fd 2 via `write`, and main returns 1). The block is emitted only for
+    programs that can raise, so clean programs' IR is byte-identical.
+  - the checker's `exceptions` map was **declared but never populated**, so
+    `raise ValueError("boom")` was a valid interpreter program that failed AOT
+    compilation with `undefined name "ValueError"`. The class list, its codes, and the
+    checker's name table now come from one place (`pkg/lang/exceptions.go`), and a class
+    derived from an exception is itself raisable.
+  - **runtime errors were not exceptions** in the interpreter: an out-of-range read or
+    write aborted instead of unwinding, so `except IndexError:` never ran (AOT caught it,
+    the interpreter did not — an inversion worth remembering). Reads are now checked too:
+    the AOT used to load whatever sat at the slot and print `0` for `xs[5]` / `d[missing]`;
+    they raise `IndexError` / `KeyError` via `checkIndexRead` / `checkKeyRead`.
+  - the interpreter printed its traceback to **stdout**, mixing diagnostics with program
+    output; both backends now use stderr, and the report names the class
+    (`ValueError: boom`), matching Python's last line.
+  Found while fixing this: **`rt_dict_has` scanned `i < count` while walking the flat
+  [key, value] array two words at a time**, so only the first ⌈count/2⌉ keys were ever
+  found — `3 in {1: 2, 3: 4}` was false in compiled binaries and `d[k]` for a later key
+  raised KeyError. It was invisible because nothing ever asked a compiled program about a
+  dict's later keys. Covered by `integration/uncaught_exception_test.go` (reports, exit
+  codes, clean stdout, catchability on both backends, statically-impossible assignments)
+  plus new membership cases in `integration/dict_iteration_test.go`.
+- **Gap K.8 — AOT tracebacks have no source location** — ⏳ PLANNED.
+  The compiled report prints the exception line but no `File "prog", line N, in fn` frame,
+  so the two backends' reports differ whenever `--debug` is off. Fix by emitting DWARF
+  line tables (L8.5) and having the raise sites carry a source span in `@exn_msg`.
 - **Gap K.7 — `--build` could fail with no stated reason** — ✅ DONE. The error branch
   printed the diagnostics *or* the failure line, never both, so a build that died in
   codegen while the program also carried warnings exited 1 showing only warnings; and the
