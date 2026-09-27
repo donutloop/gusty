@@ -157,13 +157,16 @@ func run() int {
 					fmt.Println(string(b))
 				}
 			}
-			if res != nil && len(res.Diagnostics) > 0 {
+			// Print the failure reason *and* any diagnostics. Printing one or the other
+			// (the old behaviour) meant a build that failed for a codegen/verification
+			// reason while the program also carried source warnings exited 1 with no
+			// stated reason at all — only --json carried the truth (roadmap Gap K.7).
+			if res != nil {
 				for _, d := range res.Diagnostics {
 					fmt.Fprintln(os.Stderr, d)
 				}
-			} else {
-				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 			}
+			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 			return exitErr
 		}
 		if *jsonOut {

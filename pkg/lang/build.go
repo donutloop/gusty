@@ -94,7 +94,14 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 
 	ir, err := GenerateIR(prog)
 	if err != nil {
-		return nil, fmt.Errorf("build: codegen: %w", err)
+		// Carry the source diagnostics even though codegen failed: a build that
+		// dies in codegen while the program also carries warnings must show both,
+		// in the human output and in --json (roadmap Gap K.7).
+		// GenerateIR's own message already begins with "codegen:", so the prefix here
+		// is just "build:" — the human line reads
+		//   gustyc: build: codegen: unsupported call "enumerate"
+		// rather than repeating the stage twice.
+		return &BuildResult{Output: out, Diagnostics: diags}, fmt.Errorf("build: %w", err)
 	}
 	ir = OptimizeIR(ir, optLevel)
 
@@ -115,10 +122,10 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	if opts != nil && opts.SourceMapOut != "" {
 		sm, err := GenerateSourceMap(prog, ir)
 		if err != nil {
-			return &BuildResult{}, fmt.Errorf("build: source map: %w", err)
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags}, fmt.Errorf("build: source map: %w", err)
 		}
 		if err := os.WriteFile(opts.SourceMapOut, sm, 0o644); err != nil {
-			return &BuildResult{}, fmt.Errorf("build: write source map: %w", err)
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags}, fmt.Errorf("build: write source map: %w", err)
 		}
 	}
 
@@ -137,7 +144,7 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	llcCmdline := []string{"-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath}
 
 	if outLL, err := exec.Command(llcCmd, llcCmdline...).CombinedOutput(); err != nil {
-		return &BuildResult{Output: out, IR: ir},
+		return &BuildResult{Output: out, IR: ir, Diagnostics: diags},
 			fmt.Errorf("build: llc: %v\n%s", err, outLL)
 	}
 

@@ -293,6 +293,80 @@ func benchCLI(t *testing.T, args ...string) (string, int) {
 	return string(out), 0
 }
 
+// benchCLICombined is benchCLI with stderr merged, for assertions about what the
+// human sees: diagnostics and the failure line both go to stderr.
+func benchCLICombined(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command(suiteBinPath(t), args...)
+	cmd.Dir = "../.."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		var ee *exec.ExitError
+		if ok := errors.As(err, &ee); ok {
+			return string(out), ee.ExitCode()
+		}
+		t.Fatalf("gustyc %v: %v", args, err)
+	}
+	return string(out), 0
+}
+
+// TestCLIBuildFailureStatesItsReason (roadmap Gap K.7): a build that fails while the
+// program also carries warnings used to print the warnings and exit 1 without ever
+// saying what failed — the error was only reachable through --json.
+func TestCLIBuildFailureStatesItsReason(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/prog.gy"
+	// A warning (non-numeric arithmetic) plus a codegen refusal (unsupported call).
+	if err := os.WriteFile(src, []byte("x = 1 + \"a\"\nprint(x)\nprint(enumerate([1, 2]))\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, code := benchCLICombined(t, "--build="+dir+"/prog", src)
+	if code == exitOK {
+		t.Fatalf("the build should fail (unsupported call)\n%s", out)
+	}
+	if !strings.Contains(out, "warning at") {
+		t.Errorf("the source warning should still be shown:\n%s", out)
+	}
+	if !strings.Contains(out, "gustyc:") || !strings.Contains(out, "unsupported call") {
+		t.Errorf("the failure reason must be printed alongside diagnostics, got:\n%s", out)
+	}
+	// The stage name appears once: GenerateIR's message already says "codegen:", so
+	// Build must not add a second one.
+	if strings.Contains(out, "codegen: codegen:") {
+		t.Errorf("the failure line repeats its stage prefix:\n%s", out)
+	}
+}
+
+// TestCLIBuildFailureJSONCarriesDiagnosticsOnFailure is the machine half: the partial
+// BuildResult must travel with the error, so a script sees the diagnostics and the
+// reason together.
+func TestCLIBuildFailureJSONCarriesDiagnosticsOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/prog.gy"
+	if err := os.WriteFile(src, []byte("x = 1 + \"a\"\nprint(x)\nprint(enumerate([1, 2]))\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, code := benchCLI(t, "--json", "--build="+dir+"/prog", src)
+	if code == exitOK {
+		t.Fatalf("the build should fail\n%s", out)
+	}
+	var rep struct {
+		Diagnostics []struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+		} `json:"diagnostics"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("failed build should still print the partial result as JSON: %v\n%s", err, out)
+	}
+	if len(rep.Diagnostics) == 0 {
+		t.Fatalf("partial result should carry the source diagnostics: %s", out)
+	}
+	if rep.Diagnostics[0].Level != "warning" || !strings.Contains(rep.Diagnostics[0].Msg, "arithmetic") {
+		t.Errorf("unexpected diagnostics: %+v", rep.Diagnostics)
+	}
+}
+
 func TestCLIBenchSuiteJSON(t *testing.T) {
 	out, code := benchCLI(t, "--bench-suite", "--bench-runs", "1", "--bench-opt", "1", "--json")
 	if code != 0 {

@@ -51,6 +51,20 @@ into a single native executable. Pipeline:
 5. `llc-20` lowers the module to an object file
 6. `cc` links it into the binary at `<out>`
 
+**Failure output contract.** A failed build always prints *both* halves of the story on
+stderr — every source diagnostic (warnings included) *and* the line saying what failed:
+
+```
+warning at 1:7: arithmetic on non-numeric operands (int, str)
+gustyc: build: codegen: unsupported call "enumerate"
+```
+
+and it exits `1`. With `--json` the same information arrives together in the *partial*
+`BuildResult` on stdout (`diagnostics`, `ir`, `verification`) even though the exit code is
+non-zero — earlier versions returned no result at all for codegen and `llc` failures, so
+the diagnostics were unreachable for scripts while being printed for humans (roadmap Gap
+K.7). Never scrape stderr for the reason: read `verification`/`diagnostics` from the JSON.
+
 The produced binary is a real native executable: `./prog` runs the program
 (its `print` output goes to stdout).
 

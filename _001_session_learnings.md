@@ -967,3 +967,25 @@ code after the loop, so `for k in d:` followed by `for k in m:` failed the verif
 
 **State.** Suite green; conformance corpus 36/36 at parity; gaps K.2/K.4/K.5 closed,
 K.3/K.6/K.7 recorded for the next cycles.
+
+## Cycle: Gap K.7 — a failed build must say why
+
+**What happened.** I lost ~20 minutes to a `--build` that printed two warnings and exited
+1. The real reason (`verification.ok=false`, "input module is broken") was only in `--json`,
+because the CLI's error branch printed diagnostics **or** the error, and `Build`'s
+codegen/`llc`/source-map failure paths returned `nil` results, so scripts lost the
+diagnostics that humans got.
+
+**Lessons.**
+- **Symmetry of failure output is a contract, not polish.** The rule now: every failure
+  prints *all* diagnostics *and* the reason, exits non-zero, and the same information
+  arrives in the partial `BuildResult` under `--json`. Documented as "Failure output
+  contract" in `docs/operations.md`. This is exactly the agent-facing promise — *don't
+  scrape stderr* — being kept, and I had been violating it while using the tool myself.
+- **My first test for this was written against the wrong string**: the actual line was
+  `gustyc: build: codegen: codegen: unsupported call …` (doubled stage prefix, because
+  `Build` added `build: codegen:` on top of `GenerateIR`'s own `codegen:`). Two fixes, one
+  test asserting the *absence* of the repeat — assert the shape of the message, not just
+  that some message exists.
+- Quick repro for next time the CLI seems silent: `--json --build=…` and read
+  `.verification.errors`; and run `opt-20 -passes=verify` on `--emit-llvm` output.

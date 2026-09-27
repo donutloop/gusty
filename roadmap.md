@@ -595,12 +595,17 @@ Each is a concrete, reproducible defect with the shape to fix it.
   raise path cannot print what it caught. Fix by giving the raise-exit path a report
   (message + nonzero exit, honouring the Gap J.3 exit-code contract) and registering the
   builtin exception classes for both paths.
-- **Gap K.7 — `--build` can fail with no stated reason** — 🟥 FOUND.
-  When a build failed while the program also carried warnings, the CLI printed the
-  diagnostics and exited 1 without ever printing the failure itself: the error branch
-  printed the error *only when there were no diagnostics*. `--json` did carry the reason
-  (in `verification`), so a human saw an unexplained failure and only a machine could
-  tell what happened. Fix: always print the failure line, diagnostics or not.
+- **Gap K.7 — `--build` could fail with no stated reason** — ✅ DONE. The error branch
+  printed the diagnostics *or* the failure line, never both, so a build that died in
+  codegen while the program also carried warnings exited 1 showing only warnings; and the
+  failure paths in `Build` returned no result at all for codegen/`llc`/source-map errors,
+  so `--json` lost the diagnostics too. Now every failure path returns the partial
+  `BuildResult` (diagnostics, IR, verification) and the CLI always prints the reason:
+  `warning at 1:7: …` then `gustyc: build: codegen: unsupported call "enumerate"`, exit 1
+  (the stage prefix is no longer doubled either). Contract documented in
+  `docs/operations.md` § Failure output contract; pinned by
+  `TestCLIBuildFailureStatesItsReason` and `TestCLIBuildFailureJSONCarriesDiagnosticsOnFailure`.
+  The gap was found by a build that failed this way and said nothing.
 - **Gap K.3 — `list.pop` and the `set()` constructor are missing** — 🟥 FOUND.
   `xs.pop()` is `no such list method pop` in the interpreter and unsupported in AOT, so
   the natural way to empty a container in a `while xs:` loop does not exist (the
