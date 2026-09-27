@@ -1110,3 +1110,43 @@ emitter escapes `\`, `"`, newline, tab, CR.
 - `gofmt -l` flags `pkg/lang/parser.go` for pre-existing blank-line drift. I checked
   `gofmt -d` to confirm my edit was clean instead of "fixing" unrelated formatting — that
   check takes five seconds and keeps diffs reviewable.
+
+## Cycle: Gap J.3 — the exit-code table had to become the implementation
+
+**What happened.** `docs/operations.md` promised `3 = runtime`, `4 = usage`; the CLI emitted
+neither. Parse/usage/front-end all returned `2` — the *same code as an LLVM module
+rejection* — and a trapped program shared `1` with a compile error. So the documented
+distinctions an agent was told to branch on did not exist.
+
+**Now implemented:** 1 compile error · 2 LLVM rejected the module *we* emitted (compiler
+bug) · 3 the program ran and trapped · 4 CLI usage error · 5 benchmark regression.
+
+**Findings worth keeping.**
+- **`flag.ExitOnError` exits with Go's own status `2`.** That silently collided with my
+  verification code. A CLI that owns its exit codes must use `ContinueOnError` and classify
+  the parse failure itself.
+- `reportCompileErr` was labelling compile failures as *usage* errors in the `--json`
+  payload (`"exit": 4`) — the kind of drift that happens when one constant (`exitErr`) means
+  three things. Splitting the constants made each site a decision rather than a habit.
+- `--json --eval '<unparsable>'` printed **no payload at all**: the machine path only
+  existed on stderr. Now parse failures come back as
+  `{"ok":false,"phase":"parse","error":"1:1: …","errors":[{line,col,msg}],"exit":1}` —
+  spans included, because making an agent regex `gustyc: parse error at 1:7: …` is not a
+  machine interface.
+- The docs' JSON examples were stale in the same direction as the table (`"exit": 2` for a
+  compile failure). Docs drift and code drift usually; audit both together.
+
+**Found on the way (Gap K.10, still open).** `print(undefined_thing)` at module level passes
+the checker — its arguments are not analysed — so codegen emits a reference to a slot that
+does not exist, LLVM rejects the module, and the contract correctly says *compiler bug*
+(exit 2) for what is an ordinary typo. `x = undefined_thing` **is** caught, which localises
+the hole to the print-argument path. Fix: analyse print's args, and make codegen refuse an
+unbound name with an actionable message (ADR 0166) rather than emitting a dangling slot.
+
+**Process note.** Writing `TestCLIExitCodeContract` as a table over the *documented* rows is
+what surfaced both the `reportCompileErr` mislabel and Gap K.10: the doc says one thing, the
+binary says another, and the test is the only place they have to meet. When I wrote the
+contract test I also got one expectation wrong (`--eval` of an undefined name is a *runtime*
+failure, since the interactive path doesn't run the checker) — the fix was to test the
+checker-gating modes (`--check`, `--build`) for exit 1 and keep exit 3 for `--eval`, not to
+make the numbers agree artificially.

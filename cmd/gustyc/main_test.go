@@ -564,8 +564,10 @@ func TestCLIBenchSuiteBaselineAndGate(t *testing.T) {
 	}
 
 	// A missing baseline is a tooling error (1), not a regression.
-	if _, code := benchCLI(t, "--bench-suite", "--bench-runs", "1", "--bench-opt", "1", "--bench-baseline", dir+"/nope.json"); code != exitErr {
-		t.Errorf("missing baseline exit = %d, want %d", code, exitErr)
+	if _, code := benchCLI(t, "--bench-suite", "--bench-runs", "1", "--bench-opt", "1", "--bench-baseline", dir+"/nope.json"); code != exitUsage {
+		// A missing/corrupt baseline is a bad argument, not a slow program and not a
+		// compiler bug (docs/operations.md § Exit codes).
+		t.Errorf("missing baseline exit = %d, want %d (usage error)", code, exitUsage)
 	}
 }
 

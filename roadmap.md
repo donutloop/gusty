@@ -504,12 +504,31 @@ Each is a concrete, reproducible defect with the shape to fix it.
   the ADR 0163 binding rule extended to set and dict comprehensions. `{x for x in [...]
   if ...}` is also a parser gap today (it parses the `if` as a conditional expression and
   demands `else`).
-- **Gap J.3 — the exit-code table is aspirational** — 🟥 FOUND.
-  `docs/operations.md` documents `3 = runtime error` and `4 = usage error`, but the CLI
-  never emits either: usage, parse and front-end failures all return `2`, and a program
-  that traps still exits `1`. Fix by implementing the contract (runtime failures exit 3)
-  or by documenting the truth; agents currently cannot branch on "the program crashed"
-  separately from "the compiler failed".
+- **Gap J.3 — the exit-code table was aspirational** — ✅ DONE.
+  The docs promised `3 = runtime error` and `4 = usage error`; the CLI emitted neither.
+  Parse, usage and front-end failures all returned `2` — the same code as an LLVM module
+  rejection — and a trapped program shared `1` with a compile error, so a script could not
+  tell "my program crashed" from "the compiler broke" from "I forgot a flag". Now the table
+  is the implementation: **1** compile error (parse/analysis/codegen/llc/cc), **2** LLVM
+  rejected the module *we* emitted (compiler bug, per ADR 0164/0166), **3** the program ran
+  and trapped, **4** CLI usage error (bad flags, no source, unreadable file, empty
+  `--bench-dir`, missing baseline), **5** benchmark regression.
+  - the flag parser used `flag.ExitOnError`, whose own status is `2`; it is
+    `ContinueOnError` now so a bad command line says `4`.
+  - `reportCompileErr` labelled compile failures as usage errors (`exit: 4` in the JSON
+    payload); they are `1`, and `--json` parse failures now emit
+    `{"ok":false,"phase":"parse","error":"1:1: …","errors":[{line,col,msg}],"exit":1}`
+    instead of printing nothing and leaving the agent to scrape stderr prose.
+  - pinned by `TestCLIExitCodeContract` (drives the real binary through every row),
+    `TestBuildExitCodeClassifiesVerifierRejection` and `TestExitCodesAreDistinctAndDocumented`.
+- **Gap K.10 — `print(<undefined name>)` reaches LLVM** — 🟥 FOUND.
+  `print(undefined_thing)` at module level passes the checker (its arguments are not
+  analysed), codegen emits a reference to the non-existent slot `%_undefined_thing`, and
+  LLVM's verifier rejects the module — so the user is told (correctly, by the contract)
+  that this is a *compiler bug* (exit 2) when they wrote an ordinary typo. `x =
+  undefined_thing` is caught properly, which localises the hole to the print argument path.
+  Fix by analysing print's arguments in the checker, and (per ADR 0166) making codegen
+  refuse an unbound name with an actionable diagnostic instead of emitting a dangling slot.
 - **Gap J.4 — `opt` fallback is silent** — 🟥 FOUND.
   `OptimizeIR` runs the real `opt` pipeline and, on any failure (tool missing, IR
   rejected), returns the unoptimised module with no signal — a machine cannot tell

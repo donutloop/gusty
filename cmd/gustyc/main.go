@@ -15,8 +15,10 @@
 //	--repl              start an interactive REPL (default when stdin is a TTY)
 //	--help              show usage
 //
-// Exit codes: 0 = ok, 1 = runtime/eval error, 2 = parse/usage error,
-// 5 = benchmark regression (--bench-baseline gate, see docs/operations.md).
+// Exit codes (docs/operations.md § Exit codes): 0 = ok, 1 = compile error
+// (parse/analysis/codegen/link), 2 = LLVM rejected the module we emitted (a
+// compiler bug, not a source error), 3 = the program ran and trapped,
+// 4 = CLI usage error, 5 = benchmark regression (--bench-baseline gate).
 package main
 
 import (
@@ -30,9 +32,30 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
+// Exit codes are the CLI's ABI for scripts and agents (docs/operations.md
+// § Exit codes). Each failure *class* has its own code so a caller can branch
+// without scraping stderr: a program that trapped is not the same event as a
+// compiler that failed, and a wrongly-used CLI is neither.
 const exitOK = 0
-const exitErr = 1
-const exitUsage = 2
+
+// exitCompileError: the program never ran — parse, analysis, codegen, or the
+// native toolchain (llc/cc) rejected it. Diagnostics were emitted.
+const exitCompileError = 1
+
+// exitIRVerify: LLVM's own module verifier rejected the module we emitted.
+// That is a compiler bug, not a source error, so it must be distinguishable
+// from "your program has an error in it" (see ADR 0164/0166).
+const exitIRVerify = 2
+
+// exitRuntime: the program compiled and ran, then trapped (an uncaught
+// exception, a failed built-in). Previously this shared code 1 with compile
+// errors, so a script could not tell "my program crashed" from "the compiler
+// broke" — the whole point of an exit status (roadmap Gap J.3).
+const exitRuntime = 3
+
+// exitUsage: the CLI itself was used wrongly — unknown/missing flags, no input,
+// an unreadable source file, an empty benchmark directory.
+const exitUsage = 4
 
 // exitBenchRegression is returned by the benchmark gate when a measured case is
 // slower than its baseline by more than --bench-tolerance. It is distinct from
@@ -47,7 +70,11 @@ func main() {
 }
 
 func run() int {
-	fs := flag.NewFlagSet("gustyc", flag.ExitOnError)
+	// ContinueOnError rather than ExitOnError: the flag package's own exit status is 2,
+	// which in this CLI means "LLVM rejected our module". A wrongly-typed command line is
+	// a usage error (4), so the parse failure has to be handled here to say that
+	// (roadmap Gap J.3).
+	fs := flag.NewFlagSet("gustyc", flag.ContinueOnError)
 	benchSrc := fs.String("bench", "", "benchmark a source program through both backends (interpreter + AOT JIT)")
 	benchFile := fs.String("bench-file", "", "benchmark a source file")
 	benchRuns := fs.Int("bench-runs", 3, "runs per backend for benchmarks")
@@ -90,7 +117,14 @@ func run() int {
 	fmtCheck := fs.Bool("fmt-check", false, "verify a source is already canonical; exit 0 if canonical, 1 if not (with --json: machine report)")
 	stdlibDir := fs.String("stdlib", "", "standard-library root directory (default: GUSTY_STDLIB_DIR or a discovered ./stdlib)")
 	fmtFile := fs.String("fmt-file", "", "path to a source file to format/check (alternative to --file with --fmt)")
-	fs.Parse(os.Args[1:])
+	if perr := fs.Parse(os.Args[1:]); perr != nil {
+		if perr == flag.ErrHelp {
+			return exitOK // --help was handled by the flag package
+		}
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", perr)
+		usage(fs)
+		return exitUsage
+	}
 
 	if *stdlibDir != "" {
 		lang.SetStdlibDir(*stdlibDir)
@@ -125,7 +159,7 @@ func run() int {
 		abiSchema, err := lang.ABISchema()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "gustyc: abi: "+err.Error())
-			return exitErr
+			return exitCompileError
 		}
 		fmt.Println(abiSchema)
 		return exitOK
@@ -134,7 +168,7 @@ func run() int {
 		doc, err := lang.VarianceJSON()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "gustyc: variance: "+err.Error())
-			return exitErr
+			return exitCompileError
 		}
 		fmt.Println(doc)
 		return exitOK
@@ -167,13 +201,13 @@ func run() int {
 				}
 			}
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-			return exitErr
+			return buildExitCode(res)
 		}
 		if *jsonOut {
 			b, jerr := json.Marshal(res)
 			if jerr != nil {
 				fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
-				return exitErr
+				return exitCompileError
 			}
 			fmt.Println(string(b))
 		} else {
@@ -222,7 +256,7 @@ func run() int {
 		return emitSourceMap(*emitSourceMapF)
 	}
 	if *emitASTF != "" {
-		return emitAST(*emitASTF)
+		return emitAST(*emitASTF, *jsonOut)
 	}
 	if *benchSuite || *benchDir != "" || *benchBaselineUpdate != "" {
 		return benchSuiteMode(*benchSuite, *benchDir, *benchBaseline, *benchBaselineUpdate, *benchRuns, *benchOpt, *benchTolerance, *benchMinMs, *benchGate, *jsonOut)
@@ -251,18 +285,19 @@ func srcOrFile(src, file string) (string, error) {
 func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
+		// Nothing to run: the CLI was used wrongly (no source, unreadable file).
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-		return exitErr
+		return exitUsage
 	}
 	if jitMode {
 		res, err := lang.JIT(s, 0)
 		if err != nil {
 			if jsonOut {
-				fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitErr)
+				fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitCompileError)
 			} else {
 				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 			}
-			return exitErr
+			return exitCompileError
 		}
 		if jsonOut {
 			fmt.Printf("{\"output\": %q, \"exit\": 0}\n", res.Output)
@@ -274,7 +309,7 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 	ev := lang.NewEvaluator()
 	prog, err := lang.Parse(s)
 	if err != nil {
-		return reportParseErr(err)
+		return reportParseErr(err, jsonOut)
 	}
 	v, err := ev.EvalProgram(prog)
 	if err != nil {
@@ -285,7 +320,7 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 			tb = ee.RenderTraceback()
 		}
 		if jsonOut {
-			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"exit\": %d}\n", err.Error(), tb, exitErr)
+			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"exit\": %d}\n", err.Error(), tb, exitRuntime)
 		} else if tb != "" {
 			// Tracebacks are diagnostics, not program output: they belong on stderr so
 			// `prog 2>/dev/null | ...` sees only what the program printed (the AOT
@@ -294,7 +329,10 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 		} else {
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		}
-		return exitErr
+		// The front end accepted the program and it ran; this is a runtime failure,
+		// which is exactly the class an agent needs to tell apart from its own
+		// program being malformed (exit 1) or the CLI being mis-invoked (exit 4).
+		return exitRuntime
 	}
 	if jsonOut {
 		fmt.Printf("{\"result\": %q, \"type\": %q, \"exit\": 0}\n", ev.Repr(v), ev.TypeOf(v))
@@ -310,18 +348,18 @@ func verifySrc(src string, jsonOut bool) int {
 		if jsonOut {
 			fmt.Printf("{\"error\": %q, \"exit\": %d}\n", err.Error(), exitUsage)
 		}
-		return reportParseErr(err)
+		return reportParseErr(err, jsonOut)
 	}
 	diags := lang.Analyze(prog)
 	if len(diags) > 0 {
 		if jsonOut {
-			emitDiagnosticsJSON(diags, exitErr)
+			emitDiagnosticsJSON(diags, exitCompileError)
 		} else {
 			for _, d := range diags {
 				fmt.Fprintf(os.Stderr, "%v\n", d)
 			}
 		}
-		return exitErr
+		return exitCompileError
 	}
 	if jsonOut {
 		fmt.Println(`{"ok": true, "exit": 0}`)
@@ -357,16 +395,16 @@ func emitSourceMap(src string) int {
 	sm, err := lang.EmitSourceMap(src)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gustyc: emit-source-map: %v\n", err)
-		return exitErr
+		return exitCompileError
 	}
 	fmt.Println(string(sm))
 	return exitOK
 }
 
-func emitAST(src string) int {
+func emitAST(src string, jsonOut bool) int {
 	res, err := lang.Compile(src)
 	if err != nil {
-		return reportParseErr(err)
+		return reportParseErr(err, jsonOut)
 	}
 	fmt.Println(res.ASTJSON)
 	return exitOK
@@ -379,22 +417,67 @@ func emitAST(src string) int {
 //	{"ok": false, "phase": "compile", "error": "...", "exit": N}
 func reportCompileErr(err error, jsonOut bool) int {
 	if jsonOut {
-		fmt.Printf(`{"ok": false, "phase": "compile", "error": %q, "exit": %d}`+"\n", err.Error(), exitUsage)
-		return exitUsage
+		fmt.Printf(`{"ok": false, "phase": "compile", "error": %q, "exit": %d}`+"\n", err.Error(), exitCompileError)
+		return exitCompileError
 	}
-	return reportParseErr(err)
+	return reportParseErr(err, jsonOut)
 }
 
-func reportParseErr(err error) int {
-	if pes, ok := err.(*lang.ParseErrors); ok {
+// buildExitCode classifies a failed build for the exit status. A module that LLVM itself
+// rejected is a compiler bug, not a source error: exit 2 separates "gusty produced bad IR"
+// from "your program is wrong" (docs/operations.md § Exit codes). Everything else — parse,
+// analysis, a codegen refusal, llc/cc — is exit 1. Extracted so the rule is testable
+// without manufacturing an invalid module on purpose.
+func buildExitCode(res *lang.BuildResult) int {
+	if res != nil && res.Verification != nil && !res.Verification.OK && !res.Verification.Skipped {
+		return exitIRVerify
+	}
+	return exitCompileError
+}
+
+// reportParseErr reports a front-end rejection. A program that does not parse is a
+// compile error (exit 1), not a usage error (exit 4): the CLI was invoked correctly, the
+// *program* is what is wrong. Conflating them meant a script could not tell "my source
+// has a typo" from "I forgot the --file flag" (roadmap Gap J.3).
+func reportParseErr(err error, jsonOut bool) int {
+	pes, isForest := err.(*lang.ParseErrors)
+	if jsonOut {
+		// The machine path gets the same information as the human path, in the shape
+		// every other machine-readable failure uses, and with the spans: an agent
+		// should never have to parse `gustyc: parse error at 1:7: …` prose off stderr
+		// to find out where its program stopped parsing.
+		type pos struct {
+			Line int    `json:"line"`
+			Col  int    `json:"col"`
+			Msg  string `json:"msg"`
+		}
+		list := []pos{}
+		first := err.Error()
+		if isForest {
+			for _, pe := range pes.Errors {
+				list = append(list, pos{Line: pe.Span.Line, Col: pe.Span.Col, Msg: pe.Msg})
+			}
+			if len(list) > 0 {
+				first = fmt.Sprintf("%d:%d: %s", list[0].Line, list[0].Col, list[0].Msg)
+			}
+		}
+		b, jerr := json.Marshal(map[string]any{
+			"ok": false, "phase": "parse", "error": first, "errors": list, "exit": exitCompileError,
+		})
+		if jerr == nil {
+			fmt.Println(string(b))
+		}
+		return exitCompileError
+	}
+	if isForest {
 		// panic-mode recovery surfaces a forest of parse errors: print each.
 		for _, pe := range pes.Errors {
 			fmt.Fprintf(os.Stderr, "gustyc: parse error at %d:%d: %s\n", pe.Span.Line, pe.Span.Col, pe.Msg)
 		}
-		return exitUsage
+		return exitCompileError
 	}
 	fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-	return exitUsage
+	return exitCompileError
 }
 
 func usage(fs *flag.FlagSet) {
@@ -420,9 +503,9 @@ Diagnostic codes (--check --json): type.mismatch, type.variance.invariant,
 type.variance.covariant, type.variance.contravariant, type.variance.nominal,
 type.callable.arity, type.union.members — see docs/operations.md.
 
-Exit codes: 0 = ok, 1 = compile/link/runtime error (incl. a module the LLVM verifier
-rejects — that is a compiler bug, not your program), 2 = parse/usage error,
-5 = benchmark regression. See docs/operations.md for the full contract.
+Exit codes: 0 = ok, 1 = compile error (parse/analysis/codegen/link), 2 = LLVM rejected
+the module gusty emitted (a compiler bug, not your program), 3 = the program ran and
+trapped, 4 = CLI usage error, 5 = benchmark regression. See docs/operations.md.
 `)
 }
 
@@ -459,18 +542,18 @@ func runFmt(src string, check bool, file string, jsonOut bool) int {
 		b, err := os.ReadFile(file)
 		if err != nil {
 			if jsonOut {
-				fmt.Printf(`{"ok": false, "error": %q, "exit": %d}`+"\n", err.Error(), exitErr)
+				fmt.Printf(`{"ok": false, "error": %q, "exit": %d}`+"\n", err.Error(), exitCompileError)
 			}
-			return exitErr
+			return exitCompileError
 		}
 		input = string(b)
 	}
 	f, err := lang.FormatSrc(input)
 	if err != nil {
 		if jsonOut {
-			fmt.Printf(`{"ok": false, "error": %q, "exit": %d}`+"\n", err.Error(), exitErr)
+			fmt.Printf(`{"ok": false, "error": %q, "exit": %d}`+"\n", err.Error(), exitCompileError)
 		}
-		return exitErr
+		return exitCompileError
 	}
 	if check {
 		canonical := f == input || f == strings.TrimRight(input, "\n")
@@ -512,7 +595,7 @@ func runCheck(src string, files []string, jsonOut bool) int {
 		b, jerr := json.Marshal(res)
 		if jerr != nil {
 			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
-			return exitErr
+			return exitCompileError
 		}
 		fmt.Println(string(b))
 	} else {
@@ -532,7 +615,7 @@ func benchMode(src, file string, runs, opt int, jsonOut bool) int {
 	src, err := srcOrFile(src, file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-		return exitErr
+		return exitUsage
 	}
 	res, err := lang.Benchmark(src, runs, opt)
 	if err != nil {
@@ -540,13 +623,13 @@ func benchMode(src, file string, runs, opt int, jsonOut bool) int {
 			fmt.Fprintf(os.Stderr, "bench: %v\n", d)
 		}
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-		return exitErr
+		return exitCompileError
 	}
 	if jsonOut {
 		out, jerr := json.MarshalIndent(res, "", "  ")
 		if jerr != nil {
 			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
-			return exitErr
+			return exitCompileError
 		}
 		fmt.Println(string(out))
 	} else {
@@ -584,11 +667,11 @@ func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, 
 		fromDir, err := lang.BenchDir(dir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-			return exitErr
+			return exitUsage
 		}
 		if len(fromDir) == 0 {
 			fmt.Fprintf(os.Stderr, "gustyc: bench: no .gy files in %s\n", dir)
-			return exitErr
+			return exitUsage
 		}
 		cases = append(cases, fromDir...)
 	}
@@ -605,8 +688,9 @@ func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, 
 	if baselinePath != "" {
 		base, err := lang.LoadBenchBaseline(baselinePath)
 		if err != nil {
+			// A missing/corrupt baseline is a bad argument, not a slow program.
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-			return exitErr
+			return exitUsage
 		}
 		regressions, newCases = lang.CompareBenchSuite(suite, base, tolerance, minMs, gate)
 		if len(regressions) > 0 {
@@ -616,7 +700,7 @@ func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, 
 	if updatePath != "" {
 		if err := lang.SaveBenchBaseline(updatePath, lang.BaselineFromSuite(suite)); err != nil {
 			fmt.Fprintf(os.Stderr, "gustyc: bench: write baseline: %v\n", err)
-			return exitErr
+			return exitUsage
 		}
 	}
 
@@ -624,7 +708,7 @@ func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, 
 		out, err := json.MarshalIndent(benchSuiteReport{BenchSuite: suite, Regressions: regressions, NewCases: newCases, Exit: code}, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", err)
-			return exitErr
+			return exitCompileError
 		}
 		fmt.Println(string(out))
 		return code
@@ -667,7 +751,7 @@ func verifyLLVMMode(src, file string, optLevel int, jsonOut bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
-		return exitErr
+		return exitUsage
 	}
 	res, cerr := lang.Compile(s)
 	if cerr != nil {
@@ -678,7 +762,7 @@ func verifyLLVMMode(src, file string, optLevel int, jsonOut bool) int {
 		b, jerr := json.Marshal(ver)
 		if jerr != nil {
 			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
-			return exitErr
+			return exitCompileError
 		}
 		fmt.Println(string(b))
 	} else if ver.OK {
@@ -694,7 +778,9 @@ func verifyLLVMMode(src, file string, optLevel int, jsonOut bool) int {
 		}
 	}
 	if verr != nil {
-		return exitErr
+		// LLVM rejected the module *we* produced. Distinct from a compile error so a
+		// caller can report "compiler bug" instead of "your program is wrong".
+		return exitIRVerify
 	}
 	return exitOK
 }

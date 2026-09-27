@@ -105,7 +105,7 @@ a `verified by <tool> (<pipeline>)` line. Schema: `gustyc --schema` →
 `irVerification`.
 
 Compile/link errors return diagnostics and exit code 1; missing sources or no
-positional files are a usage error (exit 2). A semantic error in any source
+positional files are a usage error (exit 4). A semantic error in any source
 file aborts the build before any toolchain step runs.
 
 **Runtime failures (both backends).** An exception that escapes the program is reported on
@@ -124,7 +124,7 @@ per stack level (so a raise inside a called function shows the call site too), w
 compiled report shows the raise site's own frame — the call-stack frames need the line
 tables of L8.5 (roadmap Gap K.8). The last line is identical on both. stdout stays clean, so
 `prog 2>/dev/null | ...` sees only program output. With `--json` the eval path emits
-`{"error": ..., "traceback": ..., "exit": 1}` on stdout. Runtime errors are typed
+`{"error": ..., "traceback": ..., "exit": 3}` on stdout. Runtime errors are typed
 (`IndexError` / `KeyError` / `TypeError` / …), so `except IndexError:` catches them on
 both backends — see `docs/language.md` § Exceptions.
 
@@ -187,14 +187,31 @@ why) is machine-readable: `gustyc --variance` prints it, and
 
 ## Exit codes (deterministic)
 
-| Code | Meaning |
-|------|---------|
-| 0 | success |
-| 1 | compile error (diagnostics emitted) |
-| 2 | LLVM/llc verification failure |
-| 3 | runtime error |
-| 4 | usage error |
-| 5 | benchmark regression (`--bench-baseline` gate fired; see `docs/benchmark.md`) |
+Every failure *class* has its own code, so a script or agent can branch on what happened
+without scraping stderr. These are the codes the binary emits — `TestCLIExitCodeContract`
+asserts each row.
+
+| Code | Meaning | Emitted by |
+|------|---------|-----------|
+| 0 | success | any mode |
+| 1 | **compile error** — the program never ran: parse, analysis, a codegen refusal, or `llc`/`cc` failed. Diagnostics were emitted | `--eval`, `--check`, `--verify`, `--build`, `--emit-*`, `--fmt-check` |
+| 2 | **LLVM rejected the module we emitted** — a compiler bug, not a source error (see ADR 0164/0166) | `--build` (when the verifier stage rejects), `--verify-llvm` |
+| 3 | **runtime error** — the program compiled and ran, then trapped (an uncaught exception, a failed built-in) | `--eval`, `--file`, `--repl` |
+| 4 | **usage error** — bad/unknown flags, no source given, unreadable file, empty `--bench-dir`, missing baseline file | any mode |
+| 5 | **benchmark regression** (`--bench-baseline` gate fired; see `docs/benchmark.md`) | `--bench-*` |
+
+Two distinctions this table exists to make:
+
+- **1 vs 3** — "my program is malformed" and "my program crashed" are different events, and
+  before this they shared code 1 (and usage errors shared 2 with LLVM rejections), so
+  neither could be handled separately (roadmap Gap J.3).
+- **1 vs 2** — a source error and a compiler bug must never look alike. Codegen refuses what
+  it cannot lower (1, with an actionable message); only LLVM's own verifier saying *no* to
+  what we produced is 2.
+
+`--eval` is the interactive path: it parses and runs without the checker, so an undefined
+name there is an execution failure (3), not a front-end one (1) — `--check`/`--build` are
+the modes where the checker gates.
 
 ## Emitted IR
 
@@ -259,12 +276,15 @@ Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
 
 - `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "exit": 0}`
 - `--json --verify <src>` → `{"ok": true, "exit": 0}` or `{"diagnostics": [...], "exit": 1}`
-- parse/runtime errors → `{"error": "...", "exit": 2}` (exit 1 for runtime)
+- parse errors → `{"ok": false, "phase": "parse", "error": "1:7: unexpected token",
+  "errors": [{"line": 1, "col": 7, "msg": "unexpected token"}], "exit": 1}` — the spans
+  are in the payload, so no agent has to parse `gustyc: parse error at 1:7: …` off stderr
+- runtime errors → `{"error": "...", "traceback": "...", "exit": 3}`
 - `--json --verify-llvm <src>` → the `irVerification` record, e.g.
   `{"ok":true,"tool":"/usr/bin/opt-20","skipped":false,"pipeline":["verify"],"toolchain":"LLVM 20"}`
   (see [Module verification](#module-verification-irverification-l82))
 - `--json --emit-llvm <src>` / `--json --emit-ast <src>` on a compilation
-  failure → `{"ok": false, "phase": "compile", "error": "<message>", "exit": 2}`
+  failure → `{"ok": false, "phase": "compile", "error": "<message>", "exit": 1}`
   (the human path prints `gustyc: <message>` on stderr; the exit code is the
   same either way, so an agent never has to parse stderr prose)
 - `--json --bench-suite` (optionally with `--bench-baseline <path>`) → the

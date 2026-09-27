@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -51,6 +52,25 @@ func cliBin(t *testing.T) string {
 }
 
 // cliRun runs the cached CLI with args and returns stdout+stderr combined.
+// cliRunCode runs the CLI and returns stdout plus the process exit code (0 when it
+// succeeded), for assertions about the documented exit-code contract.
+func cliRunCode(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command(cliBin(t), args...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	runErr := cmd.Run()
+	code := 0
+	if runErr != nil {
+		ee, ok := runErr.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("gustyc %v: %v", args, runErr)
+		}
+		code = ee.ExitCode()
+	}
+	return out.String(), code
+}
+
 func cliRun(t *testing.T, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(cliBin(t), args...)
@@ -356,11 +376,95 @@ func TestCLIBuildExitCodes(t *testing.T) {
 	} else if code := exitCode(t, err); code != 1 {
 		t.Errorf("compile error exit = %d, want 1", code)
 	}
-	// usage error (no sources) -> 2
+	// usage error (no sources) -> 4
 	if err := exec.Command(bin, "--build", filepath.Join(dir, "u")).Run(); err == nil {
 		t.Fatalf("no-sources build should exit non-zero")
-	} else if code := exitCode(t, err); code != 2 {
-		t.Errorf("usage error exit = %d, want 2", code)
+	} else if code := exitCode(t, err); code != 4 {
+		t.Errorf("usage error exit = %d, want 4 (docs/operations.md § Exit codes)", code)
+	}
+}
+
+// TestCLIExitCodeContract pins the documented table (docs/operations.md
+// § Exit codes): each failure *class* has its own code, so a script can tell "my program
+// is wrong" (1) from "my program crashed" (3) from "I invoked the CLI badly" (4) — the
+// distinction agents were told to rely on and could not (roadmap Gap J.3).
+func TestCLIExitCodeContract(t *testing.T) {
+	bin := cliBin(t)
+	dir := t.TempDir()
+	badSrc := filepath.Join(dir, "bad_semantics.gy")
+	// A call to an undefined function: the checker rejects it, so --build must fail
+	// before any toolchain runs (exit 1), not emit IR that LLVM then refuses (exit 2).
+	if err := os.WriteFile(badSrc, []byte("print(nope_such_function(1))\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{"success", []string{"--eval", "print(1 + 1)"}, 0},
+		{"compile error: does not parse", []string{"--eval", "x = 1 +"}, 1},
+		// A front-end rejection is exit 1 wherever the checker runs: --check reports the
+		// diagnostic and --build refuses the program before any toolchain step.
+		{"compile error: checker rejects", []string{"--check", "x: int = \"text\""}, 1},
+		{"compile error: build refuses", []string{"--build", filepath.Join(dir, "b"), badSrc}, 1},
+		// `--eval` is the interactive path: it parses and runs, so an undefined name is
+		// an *execution* failure (3), not a front-end one — no diagnostics were emitted.
+		{"runtime error: undefined name under --eval", []string{"--eval", "print(undefined_thing)"}, 3},
+		{"runtime error: uncaught exception", []string{"--eval", "raise ValueError(\"boom\")"}, 3},
+		{"runtime error: out of range", []string{"--eval", "xs = [1]\nprint(xs[5])"}, 3},
+		{"usage error: unknown flag", []string{"--definitely-not-a-flag"}, 4},
+		{"usage error: --build without sources", []string{"--build", filepath.Join(dir, "o")}, 4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := exec.Command(bin, tc.args...).Run()
+			code := 0
+			if err != nil {
+				ee, ok := err.(*exec.ExitError)
+				if !ok {
+					t.Fatalf("run: %v", err)
+				}
+				code = ee.ExitCode()
+			}
+			if code != tc.want {
+				t.Errorf("gustyc %v: exit = %d, want %d", tc.args, code, tc.want)
+			}
+		})
+	}
+	// The machine path carries the same classification as the exit status, in the
+	// documented payload shapes — including structured parse spans, so no caller has to
+	// scrape `gustyc: parse error at 1:7: …` prose off stderr.
+	pOut, pCode := cliRunCode(t, "--json", "--eval", "x = 1 +")
+	if pCode != 1 {
+		t.Errorf("--json parse failure exit = %d, want 1\n%s", pCode, pOut)
+	}
+	var parseRep struct {
+		OK     bool `json:"ok"`
+		Phase  string
+		Exit   int
+		Errors []struct {
+			Line int `json:"line"`
+			Col  int `json:"col"`
+			Msg  string
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(pOut), &parseRep); err != nil {
+		t.Fatalf("--json parse failure payload: %v\n%s", err, pOut)
+	}
+	if parseRep.OK || parseRep.Exit != 1 || parseRep.Phase != "parse" {
+		t.Errorf("parse payload = %+v, want ok=false phase=parse exit=1", parseRep)
+	}
+	if len(parseRep.Errors) == 0 || parseRep.Errors[0].Line != 1 {
+		t.Errorf("parse payload should carry spans with line/col, got %+v", parseRep.Errors)
+	}
+
+	rtOut, rtCode := cliRunCode(t, "--json", "--eval", "raise ValueError(\"boom\")")
+	if rtCode != 3 {
+		t.Errorf("--json runtime exit = %d, want 3\n%s", rtCode, rtOut)
+	}
+	if !strings.Contains(rtOut, "\"exit\": 3") {
+		t.Errorf("--json runtime payload should report exit 3, got %s", rtOut)
 	}
 }
 
