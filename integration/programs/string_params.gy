@@ -1,0 +1,80 @@
+# Strings across a function boundary, compiled through LLVM (roadmap Gap J.5).
+# A string argument is interned into the runtime string table and the callee receives the
+# index, so a parameter can be printed, measured, compared, forwarded, and stored in a
+# container. The rendering below is what CPython prints for the same program.
+def greet(name):
+    print("hello", name)
+
+
+def echo(s):
+    return s
+
+
+def size(s):
+    return len(s)
+
+
+def is_yes(s):
+    return s == "yes"
+
+
+def eq2(a, b):
+    return a == b
+
+
+def shout(msg):
+    print(msg)
+
+
+def fill(out, v):
+    out.append(v)
+
+
+def put(d, k, v):
+    d[k] = v
+
+
+def ins(s, v):
+    s.add(v)
+
+
+def wrap(s):
+    echo(s)
+    print(s)
+
+
+greet("ada")
+shout("hi")
+greet(name="keyword")
+print(echo("yo"))
+print(size("abcd"))
+print(size(""))
+print(is_yes("yes"))
+print(is_yes("no"))
+print(eq2("x", "x"))
+print(eq2("x", "y"))
+
+names = []
+fill(names, "one")
+fill(names, "two")
+print(names)
+print(names[1])
+
+counts = {}
+put(counts, "k", 1)
+put(counts, "j", 2)
+print(counts)
+print(counts["j"])
+
+members = set()
+ins(members, "q")
+ins(members, "r")
+print(members)
+print(len(members))
+
+for n in names:
+    print(n)
+
+fwd = "forwarded"
+shout(fwd)
+wrap(fwd)

@@ -158,6 +158,11 @@ entry:
 ; character chosen the way Python chooses it). Containers store the index; printing inside a
 ; container uses the repr slot, printing a single value uses the raw text.
 @str_repr_tab = internal global [256 x i8*] zeroinitializer
+; Per-object element-kind flags, indexed by heap handle: bit 0 = elements are interned
+; strings, bit 1 = dict keys are, bit 2 = dict values are. Whether a container holds strings
+; is a property of the *object*, not of the variable — a helper can fill a list its caller
+; created — so the printers read this instead of trusting a static guess (Gap I.2/J.5).
+@estr = internal global [1024 x i32] zeroinitializer
 declare i32 @strcmp(i8*, i8*)
 
 ; Strings are compile-time globals, so a container slot cannot hold one directly (it is an
@@ -199,11 +204,43 @@ full:
   ret i32 %last
 }
 
+; rt_mark_estr records which positions of a container hold interned strings. It ORs, because a
+; dict can gain string keys and later string values.
+define internal void @rt_mark_estr(i32 %h, i32 %bits) {
+entry:
+  %slot = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %old = load i32, i32* %slot
+  %both = or i32 %old, %bits
+  store i32 %both, i32* %slot
+  ret void
+}
+
 define internal i8* @rt_str_ptr(i32 %i) {
 entry:
   %slot = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %i
   %p = load i8*, i8** %slot
   ret i8* %p
+}
+
+; rt_str_len measures an interned string: len(s) where s is a parameter or an element read
+; out of a container has no compile-time text to fold, unlike a literal (Gap J.5). It counts
+; bytes directly rather than calling strlen, because another runtime helper already declares
+; strlen with an i64 return and LLVM keys declarations by name.
+define internal i32 @rt_str_len(i32 %i) {
+entry:
+  %p = call i8* @rt_str_ptr(i32 %i)
+  br label %scan
+scan:
+  %n = phi i32 [ 0, %entry ], [ %nnext, %step ]
+  %at = getelementptr i8, i8* %p, i32 %n
+  %ch = load i8, i8* %at
+  %done = icmp eq i8 %ch, 0
+  br i1 %done, label %fin, label %step
+step:
+  %nnext = add i32 %n, 1
+  br label %scan
+fin:
+  ret i32 %n
 }
 
 define internal i8* @rt_str_repr_ptr(i32 %i) {
@@ -467,6 +504,14 @@ entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
+  ; Whether the elements are interned strings is read from the object, not from a static
+  ; guess: a helper like "def fill(out, v): out.append(v)" can fill a list its caller created,
+  ; and the caller's scope has no idea what the callee stored (Gap J.5).
+  %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %flags = load i32, i32* %fsp
+  %eb = and i32 %flags, 1
+  %isStr = icmp ne i32 %eb, 0
+  %istr = zext i1 %isStr to i32
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
   br label %loop
 loop:
@@ -479,11 +524,11 @@ body:
   %e = load i32, i32* %ep
   br i1 %is0, label %first, label %sep
 first:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %e)
+  call void @rt_print_value(i32 %e, i32 %istr, i32 1)
   br label %cont
 sep:
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %e)
+  call void @rt_print_value(i32 %e, i32 %istr, i32 1)
   br label %cont
 cont:
   %i1 = add i32 %i, 1
@@ -611,43 +656,20 @@ entry:
   ret i32 %len
 }
 
+; rt_dict_print asks the object which of its positions hold interned strings and delegates:
+; bit 1 = keys, bit 2 = values. A static map cannot answer that question when the dict was
+; filled inside a helper that received it as a parameter (roadmap Gap J.5).
 define internal void @rt_dict_print(i32 %h, i32 %nl) {
 entry:
-  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
-  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
-  %len = load i32, i32* %lp
-  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
-  %r1 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
-  br label %check
-check:
-  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
-  %c = icmp slt i32 %i, %len
-  br i1 %c, label %body, label %done
-body:
-  %idx = mul i32 %i, 2
-  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx
-  %k = load i32, i32* %kp
-  %idx2 = add i32 %idx, 1
-  %vp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx2
-  %v = load i32, i32* %vp
-  %r2 = call i32 (i8*, ...) @printf(i8* getelementptr ([7 x i8], [7 x i8]* @.fmtditem, i32 0, i32 0), i32 %k, i32 %v)
-  %i1 = add i32 %i, 1
-  %c1 = icmp slt i32 %i1, %len
-  br i1 %c1, label %sep, label %cont
-sep:
-  %r3 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtdsep, i32 0, i32 0))
-  br label %cont
-cont:
-  %next = phi i32 [ %i1, %body ], [ %i1, %sep ]
-  br label %check
-done:
-  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdclose, i32 0, i32 0))
-  %wantnl = icmp ne i32 %nl, 0
-  br i1 %wantnl, label %eol, label %fin
-eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
-  br label %fin
-fin:
+  %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %flags = load i32, i32* %fsp
+  %kb = and i32 %flags, 2
+  %ksb = icmp ne i32 %kb, 0
+  %ksi = zext i1 %ksb to i32
+  %vb = and i32 %flags, 4
+  %vsb = icmp ne i32 %vb, 0
+  %vsi = zext i1 %vsb to i32
+  call void @rt_dict_print_s(i32 %h, i32 %nl, i32 %ksi, i32 %vsi)
   ret void
 }
 
@@ -752,6 +774,13 @@ entry:
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  ; members are interned strings when the object says so (see rt_mark_estr), not when a
+  ; static guess in this scope said so (roadmap Gap J.5)
+  %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %flags = load i32, i32* %fsp
+  %mb = and i32 %flags, 1
+  %msb = icmp ne i32 %mb, 0
+  %mstr = zext i1 %msb to i32
   ; Python renders the empty set as set(), not {} (which is a dict); the interpreter's
   ; Repr already does this, so the compiled renderer must agree or printing an empty set
   ; differs between the backends.
@@ -778,7 +807,7 @@ check:
 body:
   %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
   %ev = load i32, i32* %kp
-  %r2 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsitem, i32 0, i32 0), i32 %ev)
+  call void @rt_print_value(i32 %ev, i32 %mstr, i32 1)
   %i1 = add i32 %i, 1
   %c1 = icmp slt i32 %i1, %len
   br i1 %c1, label %sep, label %cont
@@ -1203,7 +1232,7 @@ func GenerateIR(prog *Program) (string, error) {
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, internedVars: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, internedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -1350,18 +1379,28 @@ type irGen struct {
 	// internedVars records names bound to an interned-string index (element reads and loop
 	// variables over string containers), so print renders the text rather than the index.
 	internedVars map[string]bool
-	funcs        map[string]bool
-	funcBind     map[string]string
-	externs      map[string]*ExternDecl // user-defined function names
-	fds          map[string]*FuncDef    // function definitions by name (for call arg binding)
-	imports      *ImportInfo            // folded module globals for `import mod`
-	params       map[string]string      // current function params: name -> register
-	fmtIdx       int
-	strIdx       int
-	tmp          int
-	label        int
-	ldN          int
-	loopStack    []loopInfo
+	// strParamOf maps a function name to the parameter indices that receive strings; the
+	// callee marks them in internedVars and the caller interns the argument (Gap J.5).
+	strParamOf map[string]map[int]bool
+	// strFuncs names the functions that return a string, so `print(echo("yo"))` prints text
+	// and `xs.append(make_key())` stores an interned element rather than a raw index.
+	strFuncs map[string]bool
+	// strFillOf reports, per function and container parameter, which positions the body fills
+	// with strings; a call site transfers that onto the caller's own variable so printing an
+	// element later does not show a raw @str_tab index (Gap J.5).
+	strFillOf map[string]map[int]int
+	funcs     map[string]bool
+	funcBind  map[string]string
+	externs   map[string]*ExternDecl // user-defined function names
+	fds       map[string]*FuncDef    // function definitions by name (for call arg binding)
+	imports   *ImportInfo            // folded module globals for `import mod`
+	params    map[string]string      // current function params: name -> register
+	fmtIdx    int
+	strIdx    int
+	tmp       int
+	label     int
+	ldN       int
+	loopStack []loopInfo
 
 	closures    map[string]*closureInfo
 	envMode     bool
@@ -3208,6 +3247,16 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 			g.dictKeyStr[nm.Value] = true
 		}
 		b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		if kIsStr || vIsStr {
+			bits := 0
+			if kIsStr {
+				bits |= 2 // dict keys are interned strings
+			}
+			if vIsStr {
+				bits |= 4 // dict values are interned strings
+			}
+			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits))
+		}
 		return nil
 	case g.listVars[nm.Value]:
 		// A string element is stored as its @str_tab index (Gap I.2), like every other
@@ -3638,6 +3687,61 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// `x in xs` compares against the words stored in the container, so a string needle
 		// must become its @str_tab index: passing @.strN to rt_contains(i32, i32) is the
 		// shape LLVM rejects (roadmap Gap I.2).
+		// Arithmetic on a value that is really an index into the string table would compute a
+		// number from an address-like word (`s + 1` on a string parameter returned 1, where the
+		// interpreter raises TypeError). Refuse it as a compile diagnostic instead (Gap J.5).
+		switch n.Op {
+		case "+", "-", "*", "/", "//", "%", "**", "<", ">", "<=", ">=":
+			isStrOperand := func(e Expr) bool {
+				if _, ok := g.stringVal(e); ok {
+					return true
+				}
+				return g.printsAsInternedStr(e)
+			}
+			if (isStrOperand(n.L) || isStrOperand(n.R)) && n.Op != "+" {
+				return "", fmt.Errorf("codegen: operator %q on a string is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic and ordering on it have no meaning", n.Op)
+			}
+			if n.Op == "+" && (isStrOperand(n.L) || isStrOperand(n.R)) {
+				if _, ok := g.stringVal(n.L); ok {
+					if _, ok2 := g.stringVal(n.R); ok2 {
+						break // both constant: folded below
+					}
+				}
+				return "", fmt.Errorf("codegen: concatenating a runtime string is not supported in the AOT backend yet; the interpreter supports it — building a new string needs a buffer allocation (roadmap Gap J.5)")
+			}
+		}
+		// `s == "yes"` where s is a string parameter, a container element, or the result of a
+		// string-returning call compares @str_tab indices: interning makes equal content the
+		// same index, so this is content equality without a character loop (roadmap Gap J.5).
+		// The literal side becomes its index; the interned side is already one.
+		if n.Op == "==" || n.Op == "!=" {
+			internSide := func(e Expr) (string, bool) {
+				txt, ok := g.stringVal(e)
+				if !ok {
+					return "", false
+				}
+				g.heapUsed = true
+				t := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", t, g.strConst(txt), g.strConst(pyReprString(txt))))
+				return t, true
+			}
+			litSide, otherSide := Expr(nil), Expr(nil)
+			if _, ok := g.stringVal(n.L); ok && g.printsAsInternedStr(n.R) {
+				litSide, otherSide = n.L, n.R
+			} else if _, ok := g.stringVal(n.R); ok && g.printsAsInternedStr(n.L) {
+				litSide, otherSide = n.R, n.L
+			}
+			if litSide != nil {
+				if iv, ok := internSide(litSide); ok {
+					if litSide == n.L {
+						l = iv
+					} else {
+						r = iv
+					}
+				}
+				_ = otherSide
+			}
+		}
 		if n.Op == "in" || n.Op == "not in" {
 			if needle, ok := g.stringVal(n.L); ok {
 				g.heapUsed = true
@@ -4794,6 +4898,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					fn = "rt_set_discard"
 				}
 				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s)\n", fn, hs, av))
+				if interned {
+					// The object, not the variable, records that its members are strings: a helper
+					// that fills a container it was handed would otherwise leave the caller's print
+					// rendering raw indices (roadmap Gap J.5).
+					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 1)\n", hs))
+				}
 				return "", nil
 			case "clear":
 				if len(c.Args) != 0 {
@@ -4877,6 +4987,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			hs := g.heapSeq
 			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
 			b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %%h%d, i32 %s)\n", hs, av))
+			if interned {
+				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 1)\n", hs))
+			}
 			return "", nil
 		}
 
@@ -5339,6 +5452,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				}
 				return h, nil
 			}
+			// A string argument to a string parameter becomes its @str_tab index: the
+			// parameter is an i32 slot, and `call i32 @f(i32 @.strN)` is what LLVM rejects
+			// (Gap J.5). A forwarded string (already an index) passes straight through.
+			if idx >= 0 && g.strParamOf[fnName][idx] {
+				if nm, ok := a.(*Name); ok && g.internedVars[nm.Value] {
+					return g.value(b, a)
+				}
+				if txt, ok := g.stringVal(a); ok {
+					g.heapUsed = true
+					t := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", t, g.strConst(txt), g.strConst(pyReprString(txt))))
+					return t, nil
+				}
+			}
 			if err := strArgCheck(a, idx); err != nil {
 				return "", err
 			}
@@ -5353,6 +5480,24 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return g.heapListFrom(b, ln, "")
 			}
 			return v, nil
+		}
+		// A helper that fills a container it was handed tells the caller what its elements are:
+		// `def fill(out, v): out.append(v)` called as `fill(names, "one")` is what makes
+		// `print(names[1])` render text instead of the raw string-table index (Gap J.5).
+		if fills := g.strFillOf[fnName]; len(fills) > 0 {
+			fillPos := 0
+			for _, a := range c.Args {
+				if kw, ok := a.(*KeywordArg); ok {
+					for i, p := range fd.Params {
+						if p.Name == kw.Name {
+							g.applyStrFill(fnName, i, kw.Value)
+						}
+					}
+					continue
+				}
+				g.applyStrFill(fnName, fillPos, a)
+				fillPos++
+			}
 		}
 		provided := make([]bool, n)
 		pos := 0
@@ -5768,6 +5913,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if sv, ok := g.strVals[lit.Value]; ok {
 					return fmt.Sprintf("%d", len(sv)), nil
 				}
+			}
+			// An interned string (parameter, container element, loop variable) has no
+			// compile-time text: measure it through the runtime table (Gap J.5).
+			if g.internedVars[lit.Value] {
+				g.heapUsed = true
+				v, err := g.value(b, lit)
+				if err != nil {
+					return "", err
+				}
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = call i32 @rt_str_len(i32 %s)\n", t, v)
+				return t, nil
 			}
 			if g.listVars[lit.Value] {
 				g.heapSeq++
@@ -6489,6 +6646,12 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 	switch v := e.(type) {
 	case *Name:
 		return g.internedVars[v.Value]
+	case *Call:
+		// echo("yo") returns an index into @str_tab; printing it must show the text
+		// (roadmap Gap J.5).
+		if nm, ok := v.Fn.(*Name); ok {
+			return g.strFuncs[nm.Value]
+		}
 	case *Index:
 		if nm, ok := v.Obj.(*Name); ok {
 			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value]
@@ -6969,6 +7132,14 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	// runtime container inside the body (see heapargs.go). The registration is
 	// scoped to this body: undo it when the body is done.
 	defer g.declareHeapParams(b, g.fnName(fd), fd, func(i int) string { return fmt.Sprintf("%%p%d", i) })()
+	// A parameter whose arguments are strings arrives as an index into the runtime string
+	// table, so inside the body it behaves exactly like an element read from a string
+	// container: print shows the text, len measures it, == compares content (Gap J.5).
+	for i, p := range fd.Params {
+		if g.strParamOf[g.fnName(fd)][i] {
+			g.internedVars[p.Name] = true
+		}
+	}
 	isGen := containsYield(fd.Body)
 	if isGen {
 		g.genIdx++
@@ -7467,15 +7638,34 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 2)\n", hs))
 				for i := range dl.Keys {
-					kk, err := g.value(b, dl.Keys[i])
+					// Keys and values go through the container-word rule: a string becomes its
+					// @str_tab index and the dict's key/value kinds record which side did, so
+					// {"a": 1} and {1: "v"} both build and print like the interpreter does.
+					kk, kIsStr, err := g.heapElemKind(b, dl.Keys[i])
 					if err != nil {
 						return err
 					}
-					vv, err := g.value(b, dl.Vals[i])
+					vv, vIsStr, err := g.heapElemKind(b, dl.Vals[i])
 					if err != nil {
 						return err
+					}
+					if kIsStr {
+						g.dictKeyStr[nm.Value] = true
+					}
+					if vIsStr {
+						g.dictValStr[nm.Value] = true
+					}
+					bits := 0
+					if kIsStr {
+						bits |= 2
+					}
+					if vIsStr {
+						bits |= 4
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %%h%d, i32 %s, i32 %s)\n", hs, kk, vv))
+					if bits != 0 {
+						b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, bits))
+					}
 				}
 				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
 				return nil

@@ -1377,3 +1377,44 @@ source", but no branch in `run()` read a positional argument any more.
   a mistyped path, i.e. the way people actually type.
 - **Parity check as a test:** the fix asserts the positional and its documented alias `--file`
   produce byte-identical output and the same exit code, so the two can't drift again.
+
+## Gap J.5 done — strings cross a function boundary (ADR 0174)
+
+`shout("hi")` compiled to `call i32 @shout(i32 @.str1)`. With Gap I.2's interned table the
+representation problem was already solved; the rest was making the compiler *know* which
+parameters carry a string index.
+
+- **The call site decides, the callee is told.** `strArgKinds` infers string parameters from
+  annotations, defaults and call sites, to a fixed point in sorted order. Deciding inside the
+  callee (by looking at its body) would print an integer argument through the string table: the
+  argument's type is known where the argument is written.
+- **Equality became free.** Interning makes equal text the same index, so `s == "yes"` is an
+  integer test, not a character loop — a case where the representation choice paid for itself
+  twice.
+- **Three facts, not one.** Printing `echo("yo")` needed "this function returns a string";
+  `print(names[1])` after `fill(names, "one")` needed "this helper fills the container parameter
+  at these positions"; and printing the whole container needed the *object's own* runtime flag
+  (`@estr[h]`, set by `rt_mark_estr` at every store). Each of the three fixed a different wrong
+  output that the previous one left behind — element reads, whole-container prints, and
+  cross-function mutation are three separate consumers of one idea.
+- **A container's element kind is a property of the object.** A static map cannot express "the
+  caller's list holds strings" when a helper appended to it. The runtime flag is the honest
+  answer; the static maps remain only where a compile-time decision is unavoidable (element
+  reads, loop variables).
+- **Whole-program inference keyed by name is whole-program coupling.** `heapArgKinds` recorded
+  "variable `s` is a set" globally, so `def ins(s, v): s.add(v)` silently vetoed `echo(s)`'s
+  string parameter in an unrelated function — my string analysis looked broken but the bug was
+  in the container one. `heapASTWalker` now carries the enclosing function as a scope. This is
+  the second time (after `5232142`) that a per-name table needed to become per-function-per-name;
+  the next such analysis should start scoped.
+- **`len` could not call `strlen`.** The runtime already declares `strlen` returning `i64` and
+  LLVM keys declarations by name, so a second declaration failed the module — the fix was a
+  byte-counting loop, which also keeps the runtime self-contained.
+- **Silent miscompilation is what the guards are for.** `s + 1` on a string parameter *compiled*
+  and returned `index + 1`, where the interpreter raises `TypeError`. Now an operator on a string
+  is a compile diagnostic. Likewise `f("a")` plus `f(7)` used to print `str` then `(null)`; the
+  inference records negative evidence and refuses instead of guessing.
+- **Expectations that were written for a refusal get inverted, not deleted** — same lesson as
+  Gap I.2's tests, applied to `string_args_test.go` on both sides. One CLI test had to change its
+  source: its warning (`1 + "a"`) is now itself a codegen failure, so the warning and the failure
+  were no longer independent facts; it uses a non-exhaustive `match` warning instead.

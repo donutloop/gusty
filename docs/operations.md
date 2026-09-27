@@ -380,7 +380,9 @@ Match these messages rather than scraping diagnostics prose:
 |---|---|---|
 | `strings inside runtime containers are not supported by the AOT backend yet` | a `list[str]` / `dict[str, int]` element would have to store an `i8*` in an `i32` heap slot (roadmap Gap I.2) | run the program on the interpreter (`--eval`, `--file`), or keep container elements numeric |
 | `unsupported call "` | a call the AOT backend cannot lower, e.g. calling through a `Callable` parameter (`def apply(f, x): return f(x)`) | interpreter path, or dispatch on a class with methods |
-| `strings are not supported as function arguments in the AOT backend yet` | a string is an `i8*` constant, so passing one to a user function would emit `call i32 @f(i32 @.str1)`, which LLVM rejects (roadmap Gap J.5 / I.2). The message names the offending parameter | run the program on the interpreter, or pass numbers/containers and format the text at the call site |
+| `concatenating a runtime string is not supported in the AOT backend yet` | building a new string (`s + "!"` where a side is not a compile-time constant) needs a buffer allocation the compiled runtime does not have; passing the string itself is fine (ADR 0174) | run it on the interpreter, or concatenate the constant parts and pass the result |
+| `operator "<op>" on a string is not supported in the AOT backend` | arithmetic or ordering on a compiled string would compute with its string-table index, where the interpreter raises `TypeError` (ADR 0174) | check the value before the operation, or run it on the interpreter |
+| `string method <name> on non-constant string` | a method that would build a new string (`upper`, `strip`, …) needs an allocator; `len`, `==` and container use of a string parameter are supported | run it on the interpreter, or compare/measure instead |
 
 Every container that crosses a function boundary is passed as a runtime heap
 handle (see `docs/language.md` § Containers across function boundaries); the

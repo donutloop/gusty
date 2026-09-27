@@ -620,22 +620,46 @@ Each is a concrete, reproducible defect with the shape to fix it.
   Tests: `TestOptimizationReportWhenOptToolIsMissing`, `…WhenOptToolIsAbsent`,
   `…AbsentWhenNotRequested`, `…WhenOptRuns`, `TestBuildCarriesOptimizationReport`,
   `TestCLIBuildReportsOptimization`.
-- **Gap J.5 — string arguments to user functions (AOT)** — 🟨 PARTIAL.
-  `def shout(msg): ...` called as `shout("hi")` emitted `call i32 @shout(i32 @.str1)`,
-  which LLVM rejects (`global variable reference must have pointer type`). Codegen now
-  refuses it up front with a message naming the parameter —
-  `strings are not supported as function arguments in the AOT backend yet (parameter
-  "name" of greet); the interpreter supports them` — so the failure is a compile
-  diagnostic an agent can match (documented in `docs/operations.md` § Codegen
-  capability messages) instead of IR that only the L8.2 verifier would notice. Covered
-  by `pkg/lang/string_args_test.go` + `integration/string_args_test.go`.
-  Still open: the real fix, now unblocked by Gap I.2 — the interned string table exists
-  (`rt_str_intern2` / `rt_str_ptr` / `rt_str_repr_ptr`), so a string parameter only needs the
-  call site to pass the interned index and the callee to know the parameter is a string
-  (`paramDecls` already carries `str` annotations, the same channel the container-kind
-  inference uses). With that: `print(s)`, `len(s)`, `s == "x"`, storing it in a container and
-  passing it on all work, while concatenation and string methods need buffer allocation and
-  stay actionable refusals.
+- **Gap J.5 — string arguments to user functions (AOT)** — ✅ DONE (ADR 0174).
+  `shout("hi")` emitted `call i32 @shout(i32 @.str1)` — a global pointer in an i32 parameter,
+  rejected by LLVM, reported as a compiler bug for a two-line program. Strings already live in
+  the interned table (Gap I.2), so the argument is interned at the call site and the callee
+  receives the index; `strArgKinds` (`pkg/lang/strargs.go`) infers which parameters receive
+  strings from a `str` annotation, a string default, or a call site that passes one, to a fixed
+  point in sorted order like the container-parameter inference. A marked parameter joins
+  `internedVars`, so print/len/`==`/membership/container-store all reuse the I.2 paths, and
+  comparison is an index test rather than a character loop because interning makes equal text
+  the same index.
+  - Three facts travel with it: `strReturningFuncs` (so `print(echo("yo"))` prints text and
+    `xs.append(make_key())` records an interned element), `stringFillingParams` (so a helper that
+    fills a container its caller created — `def fill(out, v): out.append(v)` — tells the caller
+    what `names[1]` is), and per-object runtime flags `@estr[h]` set by `rt_mark_estr` and read by
+    the printers, because whether a container holds strings is a property of the *object*.
+  - `len(s)` counts bytes in IR rather than calling `strlen`: the runtime already declares
+    `strlen` returning `i64`, and LLVM keys declarations by name.
+  - **Found on the way:** `heapArgKinds`' variable-kind table was keyed by bare name, so
+    `def ins(s, v): s.add(v)` made every variable named `s` a set program-wide and silently
+    vetoed `echo`'s string parameter. `heapASTWalker` now carries the enclosing function as a
+    scope (same disease as the parameter-kind leak fixed in `5232142`).
+  - Still refused, as diagnostics naming the interpreter: concatenating a runtime string, string
+    methods on a parameter, arithmetic/ordering on a string (which used to *compile* and return
+    `index + 1` where the interpreter raises `TypeError`), and a parameter used as both string and
+    number — printing `7` through the string table gave `(null)`, worse than a diagnostic.
+  - Covered by `integration/string_args_test.go` (14 programs × both backends × CPython),
+    `pkg/lang/string_args_test.go` (IR invariants, mixed call sites not guessed at, deterministic
+    inference), and the new conformance program `string_params.gy`.
+
+- **Gap J.6 — dict/set *literals* with string keys or values (AOT)** — ⏳ PLANNED.
+  `d = {}; d["a"] = 1` compiles and prints `{'a': 1}` (Gap I.2/J.5), and `s = {"a"}` works, but
+  a dict written as a literal with strings — `d = {"a": 1}` — still refuses:
+  `a compiled dict literal holds constant integer keys only`. The heap-dict literal lowering is
+  already routed through `heapElemKind` (so it stores the interned index and records the key/value
+  kinds), but an earlier constant-folding pass calls `dictLiteralKeys`/`dictLiteralVals` and
+  rejects the program before that lowering runs. The fix is to let those two helpers admit string
+  constants (returning the foldable text) and let the heap path decide, keeping ADR 0166's rule
+  for anything not statically known. `print({"a"})` (a bare set literal, not assigned) reaches
+  `setLiteralElems` the same way. Until then the workaround is item assignment, and
+  `docs/language.md` says so.
 
 ## Gap M — CLI shapes the tests never typed (found 2026-07-29)
 

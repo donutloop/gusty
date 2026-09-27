@@ -317,8 +317,10 @@ func benchCLICombined(t *testing.T, args ...string) (string, int) {
 func TestCLIBuildFailureStatesItsReason(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/prog.gy"
-	// A warning (non-numeric arithmetic) plus a codegen refusal (unsupported call).
-	if err := os.WriteFile(src, []byte("x = 1 + \"a\"\nprint(x)\nprint(enumerate([1, 2]))\n"), 0o600); err != nil {
+	// A warning (a non-exhaustive match) plus a codegen refusal (unsupported call). The
+	// previous source mixed in `1 + "a"`, which is now refused by codegen as well, so the
+	// warning and the failure would no longer have been independent facts.
+	if err := os.WriteFile(src, []byte("n = 3\nmatch n:\n    case 1:\n        print(\"one\")\nprint(enumerate([1, 2]))\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out, code := benchCLICombined(t, "--build="+dir+"/prog", src)

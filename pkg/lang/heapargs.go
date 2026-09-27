@@ -80,8 +80,14 @@ func heapKindOfAnnotation(t *Type) int {
 // heapASTWalker walks every statement and expression of a program, reporting
 // calls to named functions and container assignments to named variables.
 type heapASTWalker struct {
-	call   func(fn string, args []Expr)
-	assign func(target string, value Expr, annot *Type)
+	// scope is the name of the function whose body is being walked ("" for module level). It
+	// is threaded through the callbacks so a variable's kind can be resolved per function:
+	// `def ins(s, v): s.add(v)` and `def echo(s): return s` both have a parameter called `s`,
+	// and a name-keyed table let the first one's set-ness leak onto the second's string (the
+	// call `echo(s)` then looked like it passed a set).
+	scope  string
+	call   func(scope, fn string, args []Expr)
+	assign func(scope, target string, value Expr, annot *Type)
 }
 
 func (w heapASTWalker) stmts(ss []Stmt) {
@@ -102,7 +108,7 @@ func (w heapASTWalker) stmt(s Stmt) {
 		w.expr(n.Expr)
 	case *AssignStmt:
 		if nm, ok := n.Target.(*Name); ok && w.assign != nil {
-			w.assign(nm.Value, n.Value, n.Annot)
+			w.assign(w.scope, nm.Value, n.Value, n.Annot)
 		}
 		w.expr(n.Value)
 	case *AugAssignStmt:
@@ -153,7 +159,11 @@ func (w heapASTWalker) stmt(s Stmt) {
 		for _, p := range n.Params {
 			w.expr(p.Default)
 		}
-		w.stmts(n.Body)
+		// The body is a fresh variable scope: a copy of the walker carries the function name
+		// down, so names inside do not describe the module-level ones (or another function's).
+		inner := w
+		inner.scope = n.Name
+		inner.stmts(n.Body)
 	case *ClassDef:
 		w.stmts(n.Body)
 	}
@@ -164,7 +174,7 @@ func (w heapASTWalker) expr(e Expr) {
 	case nil:
 	case *Call:
 		if nm, ok := n.Fn.(*Name); ok && w.call != nil {
-			w.call(nm.Value, n.Args)
+			w.call(w.scope, nm.Value, n.Args)
 		}
 		w.expr(n.Fn)
 		for _, a := range n.Args {
@@ -261,16 +271,17 @@ func heapArgKinds(prog *Program) map[string]map[int]int {
 	// list parameter named `xs` cannot drag an unrelated scalar `xs` along.
 	varKinds := map[string]int{}
 	nonContainer := map[string]bool{}
-	w.assign = func(target string, value Expr, annot *Type) {
+	w.assign = func(scope, target string, value Expr, annot *Type) {
+		key := scopeKey(scope, target)
 		if k := heapKindOfAnnotation(annot); k != HeapNone {
-			varKinds[target] = k
+			varKinds[key] = k
 			return
 		}
-		if k := heapKindOfExpr(value, varKinds, genFuncs); k != HeapNone {
-			varKinds[target] = k
+		if k := heapKindOfExpr(value, varKinds, genFuncs, scope); k != HeapNone {
+			varKinds[key] = k
 			return
 		}
-		nonContainer[target] = true
+		nonContainer[key] = true
 	}
 	w.call = nil
 	w.stmts(prog.Stmts)
@@ -287,7 +298,7 @@ func heapArgKinds(prog *Program) map[string]map[int]int {
 		}
 		m[idx] = kind
 	}
-	w.call = func(fn string, args []Expr) {
+	w.call = func(scope, fn string, args []Expr) {
 		fd, ok := funcs[fn]
 		if !ok {
 			return
@@ -297,12 +308,12 @@ func heapArgKinds(prog *Program) map[string]map[int]int {
 			if kw, ok := a.(*KeywordArg); ok {
 				for i, p := range fd.Params {
 					if p.Name == kw.Name {
-						mark(fn, i, heapKindOfExpr(kw.Value, varKinds, genFuncs))
+						mark(fn, i, heapKindOfExpr(kw.Value, varKinds, genFuncs, scope))
 					}
 				}
 				continue
 			}
-			mark(fn, pos, heapKindOfExpr(a, varKinds, genFuncs))
+			mark(fn, pos, heapKindOfExpr(a, varKinds, genFuncs, scope))
 			pos++
 		}
 	}
@@ -315,7 +326,7 @@ func heapArgKinds(prog *Program) map[string]map[int]int {
 				}
 				if k := heapKindOfAnnotation(p.Annot); k != HeapNone {
 					mark(name, i, k)
-				} else if k := heapKindOfExpr(p.Default, varKinds, genFuncs); k != HeapNone {
+				} else if k := heapKindOfExpr(p.Default, varKinds, genFuncs, name); k != HeapNone {
 					mark(name, i, k)
 				}
 			}
@@ -347,10 +358,13 @@ func heapArgKinds(prog *Program) map[string]map[int]int {
 			}
 			sort.Ints(idxs)
 			for _, i := range idxs {
-				if i >= len(fd.Params) || nonContainer[fd.Params[i].Name] {
+				if i >= len(fd.Params) || nonContainer[scopeKey(fn, fd.Params[i].Name)] {
 					continue
 				}
-				varKinds[fd.Params[i].Name] = m[i]
+				// A container parameter makes the *variable* inside this function a container;
+				// recording it under the function's own scope keeps a same-named parameter in
+				// another function unaffected.
+				varKinds[scopeKey(fn, fd.Params[i].Name)] = m[i]
 			}
 		}
 		before := snapshotKinds(out)
@@ -388,7 +402,7 @@ func snapshotKinds(m map[string]map[int]int) string {
 }
 
 // heapKindOfExpr classifies an expression as a runtime container value.
-func heapKindOfExpr(e Expr, varKinds map[string]int, genFuncs map[string]bool) int {
+func heapKindOfExpr(e Expr, varKinds map[string]int, genFuncs map[string]bool, scope string) int {
 	switch n := e.(type) {
 	case *ListLit:
 		return HeapList
@@ -411,14 +425,28 @@ func heapKindOfExpr(e Expr, varKinds map[string]int, genFuncs map[string]bool) i
 		// Generator expressions are evaluated eagerly into a heap list.
 		return HeapList
 	case *Name:
-		return varKinds[n.Value]
+		return lookupVarKind(varKinds, scope, n.Value)
 	case *Call:
-		if nm, ok := n.Fn.(*Name); ok && genFuncs[nm.Value] {
-			return HeapList
+		if nm, ok := n.Fn.(*Name); ok {
+			if genFuncs[nm.Value] {
+				return HeapList
+			}
+			// `t = set()` is a call, not a SetLit, and the codegen does track that variable as
+			// a runtime set — so the parameter inference has to know it too, or passing `t` to
+			// a helper leaves the parameter unregistered and `s.add(1)` inside the callee is
+			// mistaken for a string method.
+			switch nm.Value {
+			case "set":
+				return HeapSet
+			case "list":
+				return HeapList
+			case "dict":
+				return HeapDict
+			}
 		}
 	case *CondExpr:
-		a := heapKindOfExpr(n.If, varKinds, genFuncs)
-		if b := heapKindOfExpr(n.Else, varKinds, genFuncs); b != HeapNone && b == a {
+		a := heapKindOfExpr(n.If, varKinds, genFuncs, scope)
+		if b := heapKindOfExpr(n.Else, varKinds, genFuncs, scope); b != HeapNone && b == a {
 			return a
 		}
 		return a
@@ -590,6 +618,13 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 		v, err := g.value(b, e) // already an index into the string table
 		return v, true, err
 	}
+	if c, ok := e.(*Call); ok {
+		// make_key() returns an index already: re-interning would look up an i32 as text.
+		if nm, ok2 := c.Fn.(*Name); ok2 && g.strFuncs[nm.Value] {
+			v, err := g.value(b, e)
+			return v, true, err
+		}
+	}
 	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
 		return "", false, err
 	}
@@ -639,4 +674,54 @@ func (g *irGen) emitModuleContainerList(b *strings.Builder, name string, decl st
 	b.WriteString(fmt.Sprintf("  store i32 0, i32* %s\n", decl))
 	g.gcRegKey(b, "main."+name, name)
 	g.allocd[name] = true
+}
+
+// scopeKey qualifies a variable name with the function whose body it belongs to ("" is module
+// level), so per-function inference cannot describe an unrelated same-named variable.
+func scopeKey(scope, name string) string {
+	return scope + "\x1f" + name
+}
+
+// lookupVarKind resolves a variable's container kind: the enclosing function's own binding
+// wins, then the module-level one.
+func lookupVarKind(varKinds map[string]int, scope, name string) int {
+	if scope != "" {
+		if k, ok := varKinds[scopeKey(scope, name)]; ok {
+			return k
+		}
+	}
+	return varKinds[scopeKey("", name)]
+}
+
+// applyStrFill transfers a callee's "this container parameter holds strings in these
+// positions" fact onto the argument the caller passed (roadmap Gap J.5). The callee knows what
+// it stores; only the caller knows what the container prints as later.
+func (g *irGen) applyStrFill(fn string, idx int, arg Expr) {
+	if idx < 0 {
+		return
+	}
+	bits := g.strFillOf[fn][idx]
+	if bits == 0 {
+		return
+	}
+	nm, ok := arg.(*Name)
+	if !ok {
+		return
+	}
+	g.heapUsed = true
+	if bits&EstrListElem != 0 && g.listVars[nm.Value] {
+		g.listElemStr[nm.Value] = true
+	}
+	if bits&EstrSetMember != 0 && g.runtimeSets[nm.Value] {
+		g.setElemStr[nm.Value] = true
+	}
+	if !g.runtimeDicts[nm.Value] {
+		return
+	}
+	if bits&EstrDictKey != 0 {
+		g.dictKeyStr[nm.Value] = true
+	}
+	if bits&EstrDictValue != 0 {
+		g.dictValStr[nm.Value] = true
+	}
 }

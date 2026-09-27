@@ -449,6 +449,43 @@ Rules that both backends implement:
   in both backends (bools are untagged i32 values today, so `print(True)` and `print(1)`
   are indistinguishable). Inside containers strings are quoted as Python does; giving bools
   their own spelling needs a tagged bool representation, not just a printer (roadmap L.2).
+  Sets iterate in **insertion order** in both backends — deterministic, and identical between
+  them, where CPython's order comes from hashing. `{"q", "r"}` prints as `{'q', 'r'}` here.
+
+### Strings across a function boundary
+
+A string can be passed to a function, and the parameter behaves like any other string value:
+
+```gy
+def greet(name):
+    print("hello", name)      # hello ada
+
+def size(s):
+    return len(s)             # 4
+
+def fill(out, v):
+    out.append(v)             # a helper may fill a container its caller created
+
+names = []
+fill(names, "one")
+```
+
+Supported in both backends: passing a string positionally, by keyword, or as a default; a
+`str` annotation; `print(p)`, `len(p)`, `p == "text"`, `p != "text"`, forwarding `p` to another
+function, storing it in a list/dict/set, using it as a membership needle, and returning it
+(`print(echo("yo"))` prints `yo`). Comparison is cheap because interning makes equal text the
+same index.
+
+Not yet supported in the compiled backend, each reported as a compile diagnostic that names
+the interpreter rather than failing in the verifier:
+
+- **concatenation of a runtime string** (`s + "!"`) — building a new string needs a buffer
+  allocation the runtime does not have yet;
+- **string methods on a parameter** (`s.upper()`) — same reason;
+- **arithmetic or ordering on a string** (`s + 1`, `s < "z"`) — the interpreter raises
+  `TypeError`; compiled code refuses rather than computing with a table index;
+- **a parameter used as both a string and a number** (`f("a")` and `f(7)`) — guessing would
+  print `7` through the string table, so it stays a diagnostic.
 
 Before this was implemented, `d[1] = 2` did not work at all: the parser accepted the
 statement, consumed `= 2`, and threw it away, so the program ran as if the line were
@@ -1219,18 +1256,17 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
 - Without that inference the old codegen silently treated the handle as an
   integer and compiled `for x in xs` into a `0..handle` range loop — the same
   program, different answers per backend.
-- **Limitation:** a *string* cannot yet cross a function boundary in AOT at all —
-  a parameter receiving `"ada"` would need an `i8*` slot where the backend uses `i32`
-  — so the compiler reports `strings are not supported as function arguments in the
-  AOT backend yet (parameter "name" of greet); the interpreter supports them`
-  (roadmap Gap J.5). Strings are fully supported as module-level values, folded
-  constants, f-strings, and container elements in the interpreter.
-- **Limitation:** heap slots are `i32`, so a *string* cannot yet be an element
-  of a runtime container in AOT (`list[str]`, `dict[str, int]`). The compiler
-  reports it — `strings inside runtime containers are not supported by the AOT
-  backend yet (the interpreter supports them)` — rather than emitting IR that
-  `llc` rejects. Roadmap item Gap I.2; strings in inline-folded containers and
-  in the interpreter are unaffected.
+- Strings cross a function boundary in both backends: `greet("ada")` interns the argument and
+  the callee receives the index (ADR 0174). What the compiled backend still cannot do is report
+  itself rather than miscompile — concatenating a runtime string (`s + "!"`), a string method on
+  a parameter (`s.upper()`), arithmetic or ordering on a string, and a parameter used as both a
+  string and a number. Each names the interpreter, which supports all four; see
+  § Strings across a function boundary.
+- Strings are ordinary container elements too — `list[str]`, `dict[str, int]`, `set` of strings —
+  in the interpreter and in the compiled backend (ADR 0173), including printing them the way
+  Python renders `repr`. One shape is still compiled-backend-only-refused: a *dict literal*
+  written with string keys or values (`{"a": 1}`) — build it with item assignment
+  (`d = {}; d["a"] = 1`), which works, or run it on the interpreter.
 
 ## `with` context managers
 
