@@ -270,3 +270,38 @@ func TestHeapContainerDoesNotBreakScalars(t *testing.T) {
 		t.Errorf("scalar argument must not be heap-allocated:\n%s", ir)
 	}
 }
+
+// TestHeapContainerParamScopeIsLocal pins the scoping rule behind the above:
+// registering a container parameter must not leak the name into module scope.
+// The module-level `xs = []` then has to allocate its own slot; when the
+// registration leaked, codegen emitted a load of `%_xs` that only the callee
+// declared (llc: "use of undefined value '%_xs'").
+func TestHeapContainerParamScopeIsLocal(t *testing.T) {
+	ir := llcCompiles(t, `def total(xs) -> int:
+    n = 0
+    for x in xs:
+        n = n + x
+    return n
+
+xs = []
+i = 0
+while i < 4:
+    xs.append(i)
+    i = i + 1
+
+print(total(xs))
+`)
+	// The module's list variable allocates its own slot ...
+	if !strings.Contains(ir, "%_xs = alloca i32") {
+		t.Errorf("module-level list variable did not allocate a slot:\n%s", ir)
+	}
+	// ... and every load of it is dominated by an alloca in the same function.
+	mainIdx := strings.Index(ir, "define i32 @main(")
+	if mainIdx < 0 {
+		t.Fatalf("no main in module:\n%s", ir)
+	}
+	mainPart := ir[mainIdx:]
+	if strings.Contains(mainPart, "%_xs") && !strings.Contains(mainPart, "%_xs = alloca i32") {
+		t.Errorf("main reads the _xs slot without declaring it:\n%s", mainPart)
+	}
+}

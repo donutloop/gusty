@@ -455,7 +455,18 @@ func (g *irGen) paramHeapKind(fn string, idx int, p *Param) int {
 // slot (rooted for the GC), so `for x in xs`, `len(xs)`, `xs[i]` and `print(xs)`
 // all read the runtime handle instead of treating it as an integer.
 // reg(i) returns the SSA register holding parameter i.
-func (g *irGen) declareHeapParams(b *strings.Builder, fn string, fd *FuncDef, reg func(int) string) {
+//
+// The registration is *scoped to this body*: the returned undo restores the
+// variable-kind maps, so a parameter named `xs` in one function can never make
+// an unrelated `xs` elsewhere look like a container. Call it as
+// `defer g.declareHeapParams(...)()`.
+func (g *irGen) declareHeapParams(b *strings.Builder, fn string, fd *FuncDef, reg func(int) string) func() {
+	type binding struct {
+		which                              int // 0 list, 1 dict, 2 set
+		name                               string
+		wasList, wasDict, wasSet, wasAlloc bool
+	}
+	var bindings []binding
 	for i, p := range fd.Params {
 		if p == nil {
 			continue
@@ -465,21 +476,32 @@ func (g *irGen) declareHeapParams(b *strings.Builder, fn string, fd *FuncDef, re
 			continue
 		}
 		g.heapUsed = true
+		bd := binding{which: 0, name: p.Name, wasList: g.listVars[p.Name], wasDict: g.runtimeDicts[p.Name], wasSet: g.runtimeSets[p.Name], wasAlloc: g.allocd[p.Name]}
 		switch k {
 		case HeapDict:
+			bd.which = 1
 			g.runtimeDicts[p.Name] = true
 		case HeapSet:
+			bd.which = 2
 			g.runtimeSets[p.Name] = true
 		default:
 			g.listVars[p.Name] = true
 		}
-		if g.allocd[p.Name] {
-			continue
+		if !g.allocd[p.Name] {
+			fmt.Fprintf(b, "  %%%s = alloca i32\n", "_"+p.Name)
+			fmt.Fprintf(b, "  store i32 %s, i32* %%%s\n", reg(i), "_"+p.Name)
+			g.allocd[p.Name] = true
+			g.gcRegKey(b, fn+"."+p.Name, p.Name)
 		}
-		fmt.Fprintf(b, "  %%%s = alloca i32\n", "_"+p.Name)
-		fmt.Fprintf(b, "  store i32 %s, i32* %%%s\n", reg(i), "_"+p.Name)
-		g.allocd[p.Name] = true
-		g.gcRegKey(b, fn+"."+p.Name, p.Name)
+		bindings = append(bindings, bd)
+	}
+	return func() {
+		for _, bd := range bindings {
+			g.listVars[bd.name] = bd.wasList
+			g.runtimeDicts[bd.name] = bd.wasDict
+			g.runtimeSets[bd.name] = bd.wasSet
+			g.allocd[bd.name] = bd.wasAlloc
+		}
 	}
 }
 

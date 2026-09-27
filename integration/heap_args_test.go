@@ -251,3 +251,34 @@ func TestHeapContainerConformanceProgram(t *testing.T) {
 		t.Errorf("AOT:\n got %q\nwant %q", got, want)
 	}
 }
+
+// TestAOTHeapContainerParamScopeDoesNotLeak pins the scoping rule: a container
+// parameter named `xs` must not make an unrelated module-level `xs` look like a
+// container. Before the registration was scoped to the function body, the
+// module's `xs = []` / `xs.append(i)` was lowered against a slot that only
+// existed inside the callee (`llc: use of undefined value '%_xs'`).
+func TestAOTHeapContainerParamScopeDoesNotLeak(t *testing.T) {
+	src := `def total(xs) -> int:
+    n = 0
+    for x in xs:
+        n = n + x
+    return n
+
+xs = []
+i = 0
+while i < 4:
+    xs.append(i)
+    i = i + 1
+
+print(total(xs))
+print(len(xs))
+print(total([10, 20]))
+`
+	want := "6\n4\n30\n"
+	if got := runInterp(t, src); got != want {
+		t.Errorf("interpreter: got %q want %q", got, want)
+	}
+	if got := runAOT(t, src); got != want {
+		t.Errorf("AOT: got %q want %q", got, want)
+	}
+}

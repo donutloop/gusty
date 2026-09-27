@@ -5466,8 +5466,9 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		}
 	}
 	// A parameter that receives a list/dict/set handle must be treated as a
-	// runtime container inside the body (see heapargs.go).
-	g.declareHeapParams(b, g.fnName(fd), fd, func(i int) string { return fmt.Sprintf("%%p%d", i) })
+	// runtime container inside the body (see heapargs.go). The registration is
+	// scoped to this body: undo it when the body is done.
+	defer g.declareHeapParams(b, g.fnName(fd), fd, func(i int) string { return fmt.Sprintf("%%p%d", i) })()
 	isGen := containsYield(fd.Body)
 	if isGen {
 		g.genIdx++
