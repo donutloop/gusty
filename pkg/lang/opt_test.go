@@ -457,3 +457,158 @@ entry:
 		t.Fatalf("undefined-index read was scalar-replaced:\n%s", out)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// L6.7: call-graph reachability
+// ---------------------------------------------------------------------------
+
+// A function unreachable from @main is eliminated, along with globals
+// referenced only by it (precise dead-global elimination; `__doc__` folding
+// becomes reachable-driven).
+func TestCallGraphReachabilityRemovesDeadFunc(t *testing.T) {
+	ir := `@keep = private unnamed_addr constant [1 x i8] c"k\00"
+@drop = private unnamed_addr constant [1 x i8] c"d\00"
+declare i32 @printf(i8*, ...)
+define i32 @main() {
+entry:
+  %r = call i32 @helper()
+  ret i32 0
+}
+define i32 @helper() {
+entry:
+  %g = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @keep, i32 0, i32 0))
+  ret i32 0
+}
+define i32 @dead() {
+entry:
+  %g = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @drop, i32 0, i32 0))
+  ret i32 0
+}
+`
+	out := optimizeTextual(ir)
+	if strings.Contains(out, "@dead") {
+		t.Fatalf("unreachable function kept:\n%s", out)
+	}
+	if strings.Contains(out, "@drop") {
+		t.Fatalf("global referenced only by dead function kept:\n%s", out)
+	}
+	for _, want := range []string{"@main", "@helper", "@keep"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("reachable %s dropped:\n%s", want, out)
+		}
+	}
+}
+
+// Reachability is transitive through the call graph: a callee of a callee of
+// @main is kept, an unused sibling is dropped.
+func TestCallGraphReachabilityTransitiveCallees(t *testing.T) {
+	ir := `define i32 @main() {
+entry:
+  %a = call i32 @helper()
+  ret i32 0
+}
+define i32 @helper() {
+entry:
+  %b = call i32 @deep()
+  ret i32 0
+}
+define i32 @deep() {
+entry:
+  ret i32 0
+}
+define i32 @unused() {
+entry:
+  ret i32 0
+}
+`
+	out := optimizeTextual(ir)
+	if strings.Contains(out, "@unused") {
+		t.Fatalf("unreachable function kept:\n%s", out)
+	}
+	for _, want := range []string{"@main", "@helper", "@deep"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("reachable %s dropped:\n%s", want, out)
+		}
+	}
+}
+
+// Direct recursion is handled: a function reachable from @main that calls
+// itself is kept (BFS must terminate).
+func TestCallGraphReachabilityRecursion(t *testing.T) {
+	ir := `define i32 @main() {
+entry:
+  %r = call i32 @rec()
+  ret i32 0
+}
+define i32 @rec() {
+entry:
+  %r2 = call i32 @rec()
+  ret i32 0
+}
+define i32 @dead() {
+entry:
+  ret i32 0
+}
+`
+	out := optimizeTextual(ir)
+	if strings.Contains(out, "@dead") {
+		t.Fatalf("unreachable function kept:\n%s", out)
+	}
+	if !strings.Contains(out, "@rec") {
+		t.Fatalf("reachable recursive function dropped:\n%s", out)
+	}
+	if !strings.Contains(out, "@main") {
+		t.Fatalf("@main dropped:\n%s", out)
+	}
+}
+
+// Mutual recursion (a->b, b->a) is handled: both are reachable and kept.
+func TestCallGraphReachabilityMutualRecursion(t *testing.T) {
+	ir := `define i32 @main() {
+entry:
+  %a = call i32 @even()
+  ret i32 0
+}
+define i32 @even() {
+entry:
+  %b = call i32 @odd()
+  ret i32 0
+}
+define i32 @odd() {
+entry:
+  %a2 = call i32 @even()
+  ret i32 0
+}
+define i32 @dead() {
+entry:
+  ret i32 0
+}
+`
+	out := optimizeTextual(ir)
+	if strings.Contains(out, "@dead") {
+		t.Fatalf("unreachable function kept:\n%s", out)
+	}
+	for _, want := range []string{"@main", "@even", "@odd"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("reachable %s dropped:\n%s", want, out)
+		}
+	}
+}
+
+// A library module with no @main entry is treated conservatively: no
+// function is eliminated.
+func TestCallGraphReachabilityNoEntryKeepsAll(t *testing.T) {
+	ir := `define i32 @a() {
+entry:
+  ret i32 0
+}
+define i32 @b() {
+entry:
+  ret i32 0
+}
+`
+	out := optimizeTextual(ir)
+	if !strings.Contains(out, "@a") || !strings.Contains(out, "@b") {
+		t.Fatalf("no-entry module must keep all functions:\n%s", out)
+	}
+}

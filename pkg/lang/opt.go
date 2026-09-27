@@ -1266,6 +1266,93 @@ func isGlobalLine(line string) bool {
 	return !strings.HasPrefix(t, "declare ") && strings.Contains(t, " = ")
 }
 
+
+// fnName extracts a function's name from its define line
+// ("define i32 @main() {" -> "main"). Returns "" if malformed.
+func fnName(sig string) string {
+	i := strings.Index(sig, "@")
+	if i < 0 {
+		return ""
+	}
+	rest := sig[i+1:]
+	j := strings.IndexAny(rest, " (")
+	if j < 0 {
+		j = len(rest)
+	}
+	return rest[:j]
+}
+
+// computeCallGraph builds the module's call graph: for each defined
+// function, the set of functions it calls (L6.7 call-graph reachability).
+func (m *irModule) computeCallGraph() map[string]map[string]bool {
+	calls := map[string]map[string]bool{}
+	for _, fn := range m.funcs {
+		name := fnName(fn.sig)
+		if name == "" {
+			continue
+		}
+		callees := map[string]bool{}
+		for _, b := range fn.blocks {
+			for _, in := range b.instrs {
+				if in.op == "call" {
+					callees[calleeTrim(in.callee)] = true
+				}
+			}
+		}
+		calls[name] = callees
+	}
+	return calls
+}
+
+// reachableFunctions marks every function reachable from the module entry
+// (@main) via the call graph (L6.7). If the module has no entry (a library),
+// all functions are conservatively considered reachable so nothing is dropped.
+func (m *irModule) reachableFunctions(calls map[string]map[string]bool) map[string]bool {
+	hasMain := false
+	for _, fn := range m.funcs {
+		if fnName(fn.sig) == "main" {
+			hasMain = true
+			break
+		}
+	}
+	if !hasMain {
+		reach := map[string]bool{}
+		for _, fn := range m.funcs {
+			if n := fnName(fn.sig); n != "" {
+				reach[n] = true
+			}
+		}
+		return reach
+	}
+	// BFS from @main over the call graph (handles recursion/mutual recursion).
+	reach := map[string]bool{"main": true}
+	queue := []string{"main"}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for callee := range calls[cur] {
+			if !reach[callee] {
+				reach[callee] = true
+				queue = append(queue, callee)
+			}
+		}
+	}
+	return reach
+}
+
+// deadFuncElim removes function definitions unreachable from the module
+// entry (L6.7). Malformed sigs are kept conservatively.
+func (m *irModule) deadFuncElim(reach map[string]bool) {
+	kept := make([]*irFunction, 0, len(m.funcs))
+	for _, fn := range m.funcs {
+		name := fnName(fn.sig)
+		if name == "" || reach[name] {
+			kept = append(kept, fn)
+		}
+	}
+	m.funcs = kept
+}
+
 func (m *irModule) deadGlobalElim() {
 	used := map[string]bool{}
 	for _, fn := range m.funcs {
@@ -1377,6 +1464,13 @@ func optimizeTextual(ir string) string {
 	if len(m.funcs) == 0 {
 		return ir
 	}
+	// L6.7: call-graph reachability. Drop functions unreachable from the
+	// entry first, so dead-global elimination is precise: globals referenced
+	// only by dead functions (incl. docstrings) are removed, making `__doc__`
+	// folding reachable-driven.
+	calls := m.computeCallGraph()
+	reach := m.reachableFunctions(calls)
+	m.deadFuncElim(reach)
 	m.deadGlobalElim()
 	for _, fn := range m.funcs {
 		// fixpoint over the pass pipeline

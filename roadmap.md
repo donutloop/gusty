@@ -276,7 +276,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 
 **Goal: move `semantic.go` from static checks toward a real gradual checker.**
 
-- **L6.1 Exhaustiveness checking for `match`** — prove a `match` covers all
+- **L6.1 Exhaustiveness checking for `match`** ✅ DONE — prove a `match` covers all
   subject shapes (int ranges, unions, wildcard); warn on non-exhaustive;
   this is the semantic half of Gap B.
 - **L6.2 Definite-assignment analysis** ✅ DONE — warn which names are definitely
@@ -297,7 +297,7 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L6.6 Variance + generics** — `list[T]` invariance, protocol structural
   subtyping; `gusty check` reports contravariant misuse. (Monomorphization is
   Phase 8.)
-- **L6.7 Call-graph + reachability** — compute a module call graph so
+- **L6.7 Call-graph + reachability** ✅ DONE — compute a module call graph so
   dead-global elimination (`opt.go`) is precise and `__doc__` folding is
   reachable-driven.
 
