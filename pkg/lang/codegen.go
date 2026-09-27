@@ -3,6 +3,7 @@ package lang
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +12,11 @@ import (
 
 // GenerateIR produces LLVM IR text for prog (deterministic, no native LLVM).
 const heapRuntimeIR = `@heap_count = internal global i32 0
+; Cached handle for the None singleton (heap kind 4). None cannot be an immediate the way
+; ints are: any i32 value is a legal integer, so no bit pattern is free to mean "no value".
+; The handle is allocated once and never freed, so "x = None" and "x == None" behave the
+; same in the compiled backend and the interpreter (ADR 0172).
+@none_h = internal global i32 -1
 @gc_mark = internal global [1024 x i8] zeroinitializer
 @gc_urgent = internal global i32 0
 @free_head = internal global i32 -1
@@ -142,6 +148,47 @@ entry:
 @.fmtlclose = private unnamed_addr constant [2 x i8] c"]\00"
 @.fmti = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtnl = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.fmtnone = private unnamed_addr constant [5 x i8] c"None\00"
+
+; rt_none returns the None singleton handle, allocating it on first use.
+define internal i32 @rt_none() {
+entry:
+  %cached = load i32, i32* @none_h
+  %have = icmp ne i32 %cached, -1
+  br i1 %have, label %hit, label %make
+make:
+  %h = call i32 @rt_alloc(i32 4)
+  store i32 %h, i32* @none_h
+  ret i32 %h
+hit:
+  ret i32 %cached
+}
+
+; rt_none_len is the container length of the None object (always 0), so a generic
+; length query on a None handle reports 0 instead of reading an uninitialised word.
+define internal i32 @rt_is_none(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
+  %k = load i32, i32* %kp
+  %isnone = icmp eq i32 %k, 4
+  %r = zext i1 %isnone to i32
+  ret i32 %r
+}
+
+; rt_print_none writes "None", honouring the caller's newline flag like every other
+; runtime printer (ADR 0165: the printer does not own the terminator).
+define internal void @rt_print_none(i32 %nl) {
+entry:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([5 x i8], [5 x i8]* @.fmtnone, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
 
 define internal void @rt_print_list(i32 %h, i32 %nl) {
 entry:
@@ -883,7 +930,7 @@ func GenerateIR(prog *Program) (string, error) {
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
-		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -1017,18 +1064,21 @@ type irGen struct {
 	decls      string
 	sym        map[string]string // variable -> load temp
 	allocd     map[string]bool   // alloca emitted?
-	funcs      map[string]bool
-	funcBind   map[string]string
-	externs    map[string]*ExternDecl // user-defined function names
-	fds        map[string]*FuncDef    // function definitions by name (for call arg binding)
-	imports    *ImportInfo            // folded module globals for `import mod`
-	params     map[string]string      // current function params: name -> register
-	fmtIdx     int
-	strIdx     int
-	tmp        int
-	label      int
-	ldN        int
-	loopStack  []loopInfo
+	// noneVars records variables whose latest assignment is the None singleton, so
+	// print/truthiness/equality can be decided statically (ADR 0172).
+	noneVars  map[string]bool
+	funcs     map[string]bool
+	funcBind  map[string]string
+	externs   map[string]*ExternDecl // user-defined function names
+	fds       map[string]*FuncDef    // function definitions by name (for call arg binding)
+	imports   *ImportInfo            // folded module globals for `import mod`
+	params    map[string]string      // current function params: name -> register
+	fmtIdx    int
+	strIdx    int
+	tmp       int
+	label     int
+	ldN       int
+	loopStack []loopInfo
 
 	closures    map[string]*closureInfo
 	envMode     bool
@@ -2913,16 +2963,19 @@ func containerKindFromTy(name string) string {
 func (g *irGen) beginScope() func() {
 	savedAlloc, savedRoots := g.allocd, g.gcRootSeen
 	savedList, savedDict, savedSet, savedFresh := g.listVars, g.runtimeDicts, g.runtimeSets, g.freshSlots
+	savedNone := g.noneVars
 	g.allocd = map[string]bool{}
 	g.gcRootSeen = map[string]bool{}
 	g.listVars = map[string]bool{}
 	g.runtimeDicts = map[string]bool{}
 	g.runtimeSets = map[string]bool{}
 	g.freshSlots = map[string]bool{}
+	g.noneVars = map[string]bool{}
 	return func() {
 		g.allocd, g.gcRootSeen = savedAlloc, savedRoots
 		g.listVars, g.runtimeDicts, g.runtimeSets = savedList, savedDict, savedSet
 		g.freshSlots = savedFresh
+		g.noneVars = savedNone
 	}
 }
 
@@ -3191,6 +3244,33 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			switch n.Op {
 			case "==", "!=", "<", "<=", ">", ">=":
 				return g.floatBinOp(b, n), nil
+			}
+		}
+		// None equality. Values are untagged i32s here, so `x == None` is decided the way
+		// the other dynamic-looking comparisons are: statically, from what the source says
+		// each side is. Two Nones are equal, None and anything else are not — comparing a
+		// None handle against the integer 0 would have made `0 == None` true (ADR 0172).
+		if n.Op == "==" || n.Op == "!=" || n.Op == "is" || n.Op == "is not" {
+			ln, rn := g.isNoneExpr(n.L), g.isNoneExpr(n.R)
+			if ln || rn {
+				// Both sides still have to be evaluated: `print(f() == None)` runs f(),
+				// and f may print. Deciding the result statically must not delete the
+				// operand's effects.
+				if _, err := g.value(b, n.L); err != nil {
+					return "", err
+				}
+				if _, err := g.value(b, n.R); err != nil {
+					return "", err
+				}
+				eq := ln && rn
+				if n.Op == "!=" || n.Op == "is not" {
+					eq = !eq
+				}
+				v := "0"
+				if eq {
+					v = "1"
+				}
+				return v, nil
 			}
 		}
 
@@ -5162,6 +5242,22 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					continue
 				}
 			}
+			// None prints as "None" in both backends. The decision is static, like every
+			// other print format here: values are untagged i32s, so codegen — not the
+			// runtime — knows which expressions are the None singleton (ADR 0172).
+			if g.isNoneExpr(a) {
+				g.heapUsed = true // the None printer lives in the heap runtime module
+				// Evaluate the argument first: `print(emit())` must run emit() (and any
+				// output it produces) before writing None, exactly as the interpreter
+				// interleaves them. Skipping the call is the classic way to lose output.
+				if _, isLit := a.(*NoneLit); !isLit {
+					if _, err := g.value(b, a); err != nil {
+						return "", err
+					}
+				}
+				b.WriteString("  call void @rt_print_none(i32 0)\n")
+				continue
+			}
 			if sl, ok := a.(*Slice); ok {
 				if nm2, ok2 := sl.Obj.(*Name); ok2 {
 					if _, isList := g.listVars[nm2.Value]; isList {
@@ -5985,6 +6081,73 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 	}
 }
 
+// isNoneExpr reports whether an expression evaluates to the None singleton. The AOT
+// representation of a value is an untagged i32, so unlike the interpreter this cannot be
+// decided at run time: None is recognised where the source says so — the literal, a variable
+// whose latest assignment was None, and a call to a function whose body never returns a value
+// (ADR 0172).
+func (g *irGen) isNoneExpr(e Expr) bool {
+	switch v := e.(type) {
+	case *NoneLit:
+		return true
+	case *Name:
+		return g.noneVars[v.Value]
+	case *Call:
+		if nm, ok := v.Fn.(*Name); ok {
+			if fd, ok2 := g.fds[nm.Value]; ok2 && !fdReturnsValue(fd) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fdReturnsValue reports whether a function can produce a value: any `return <expr>`
+// anywhere in the body, or any `yield` (a generator evaluates to the list of yielded
+// values). It is used to decide statically whether a call yields None, so the search is
+// deliberately exhaustive — a hand-enumerated statement walk once mistook a `return`
+// nested inside `match` for a procedure and printed None instead of the value (ADR 0172).
+func fdReturnsValue(fd *FuncDef) bool {
+	if fd == nil {
+		return false
+	}
+	if containsYield(fd.Body) {
+		return true
+	}
+	return hasValueReturn(reflect.ValueOf(fd.Body))
+}
+
+func hasValueReturn(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Invalid:
+		return false
+	case reflect.Interface, reflect.Ptr:
+		if v.IsNil() {
+			return false
+		}
+		if rs, ok := v.Interface().(*ReturnStmt); ok {
+			return rs.Expr != nil
+		}
+		return hasValueReturn(v.Elem())
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			if hasValueReturn(v.Index(i)) {
+				return true
+			}
+		}
+		return false
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if hasValueReturn(v.Field(i)) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
 // calleeName renders a call's callee as the source text the user wrote, so diagnostics
 // name `list(...)` rather than dumping the AST node (`&{list {2 7} fn() -> list[any]}`).
 func calleeName(c *Call) string {
@@ -6744,6 +6907,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.runtimeSets[nm.Value] = true
 				}
 			}
+			// Track the None singleton the same way containers are tracked: the variable's
+			// *latest* assignment decides how print/truthiness/equality lower, and any other
+			// assignment must clear the status (x = None; x = 0 must print 0) (ADR 0172).
+			if g.isNoneExpr(n.Value) {
+				g.noneVars[nm.Value] = true
+			} else if !rebindsContainer {
+				delete(g.noneVars, nm.Value)
+			}
 			// A module-level container variable needs its slot + GC root before
 			// anything mutates it; the empty-literal init (`xs = []`) is where that
 			// happens, because the literal path below only stores a fresh handle.
@@ -7400,6 +7571,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		fmt.Fprintf(b, "  store i32 %s, i32* @%s_slot\n", env, n.Name)
 	case *ReturnStmt:
+		if n.Expr == nil {
+			// bare `return` yields None (ADR 0172). A float function reaching this is
+			// a type error the checker reports; 0.0 keeps the module valid.
+			if g.floatFuncs[g.curFunc] {
+				b.WriteString("  ret double 0.000000\n")
+				return nil
+			}
+			g.heapUsed = true
+			t := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_none()\n", t))
+			b.WriteString(fmt.Sprintf("  ret i32 %s\n", t))
+			return nil
+		}
 		if g.floatFuncs[g.curFunc] {
 			fv := g.floatValue(b, n.Expr)
 			b.WriteString(fmt.Sprintf("  ret double %s\n", fv))

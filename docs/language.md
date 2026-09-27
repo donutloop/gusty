@@ -334,6 +334,36 @@ the same rule, and both backends implement it identically:
 | `[]`, `{}`, an empty set | false |
 | anything else (including any other number, string, container or object) | true |
 
+## None
+
+`None` is a real value — a singleton with its own dynamic type (`None`, value tag
+`TagNone`) — and not the integer `0`. Both backends agree, and the AOT backend allocates it
+once as a heap object of kind 4 rather than reserving an integer, because every `i32` is a
+legal integer and no bit pattern is free to mean "no value" (ADR 0172).
+
+```py
+def emit():
+    print("side")          # no return statement
+
+print(None)                # None      (not 0)
+print(emit())              # side, then None
+print(emit() == None)      # 1         — a procedure returned None
+print(0 == None)           # 0         — 0 is not None
+if None:                   # None is falsy
+    print("truthy")
+else:
+    print("falsy")         # → falsy
+```
+
+- A function that runs off the end, or `return` with no expression, yields `None` — never
+  the value of its last statement.
+- Generators are not procedures: `def gen(): yield 1` evaluates to the list of yields.
+- `x == None`, `x != None`, `is`/`is not` against `None` are decided where the source says
+  what each side is, and both operands are still evaluated, so a side effect in a comparison
+  is never optimised away.
+- `type(x) == "None"` is not how you ask: `type` is a reserved word here (annotations), so
+  `type(x)` is not a call in this grammar. Use `x == None`.
+
 ```py
 if count:                 # int truthiness — 0 is false
     print("have some")

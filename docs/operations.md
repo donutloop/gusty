@@ -305,7 +305,11 @@ annotations as static-only, as it does for the rest of the annotation surface.
 
 `gustyc` (in `cmd/gustyc`) provides:
 
-- `--eval <src>` / `--file <path>`: evaluate and print the result
+- `--eval <src>` / `--file <path>`: run the program. stdout is **only** what the program
+  printed — the CLI no longer appends the value of the last statement (`print(1)` used to be
+  followed by a stray `0`, the void `print` returned before ADR 0172). A *snippet* whose last
+  statement is a bare expression still echoes its value, so `--eval "x = 1 + 2\nx"` prints
+  `3`; a program ending in a call that yields `None` prints nothing extra.
 - `--verify <src>`: parse + analyze, exit 1 on diagnostics
 - `--emit-llvm <src>` / `--emit-ast <src>`: machine-readable IR / AST JSON
 - `--lang`: self-describing feature list for agents

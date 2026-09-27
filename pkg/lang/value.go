@@ -35,10 +35,14 @@ const (
 // continue signals) are not part of the %obj value model.
 func objKindTag(kind string) ValueTag {
 	switch kind {
-	case "int", "float", "bool", "None":
-		// ints/bools/none are plain immediate values in the interpreter; the
-		// heap only allocates reference kinds, so these never appear as objs.
+	case "int", "float", "bool":
+		// ints/bools are plain immediate values in the interpreter; the heap only
+		// allocates reference kinds, so these never appear as objs.
 		return TagInt
+	case "none", "None":
+		// None is the one null that *is* heap-allocated (the singleton), because
+		// ints are raw int64s and no int value is free to stand for "no value".
+		return TagNone
 	case "str":
 		return TagStr
 	case "list":

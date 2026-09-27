@@ -1225,3 +1225,49 @@ first is a trap.
   stdin-only, so 40/40 "parse errors"). Uniform output across cases = suspect the probe first.
 - Distinguishing "the tool ran and changed nothing" from "the tool never ran" needed an explicit
   report; `optimized != ir` was a heuristic that could not tell them apart.
+
+## Cycle: Gap L.1 — None was the integer 0 (and every program leaked a `0` line)
+
+**What happened.** Writing a None test made two things obvious at once: `print(None)` printed
+`0`, and `gustyc --file prog.gy` printed the program's output **plus a stray `0`** — the CLI
+echoed the last statement's value unconditionally, and `print` returned the int 0. Parity
+testing could never catch this: both backends were wrong identically. Only comparing against
+*Python* exposed it.
+
+**Fix:** None is a singleton (`tagOfVal` → `TagNone`, interpreter heap object, AOT heap kind 4
+cached in `@none_h` via `rt_none()`, permanent GC root); void functions and bare `return` yield
+it; the CLI echoes only when the last statement is a bare expression **and** the value is not
+None.
+
+**Representation reasoning worth keeping.** In AOT every value is an untagged `i32`, so a
+reserved sentinel is impossible — every `i32` is a legal integer and `x = -2147483648` would
+print `None`. Tagging every value is disproportionate for one null. Reusing the existing
+`rt_alloc(kind)` object model (kind 4, allocated once, never freed, handle identity equality)
+cost almost nothing because containers already work that way. **Look for the null that fits the
+representation you already have.**
+
+**Three bugs my own tests caught (they were wrong, and that is the point):**
+1. My `fdReturnsValue` hand-walked statements and missed `return` nested inside `match` — the
+   conformance corpus printed four `None`s. Now it walks the AST with reflection and also counts
+   `yield` (a generator is not a procedure).
+2. Static folding of `f() == None` deleted the call, losing the callee's `print`. Rule: a static
+   answer must still evaluate its operands. Same reason `print(emit())` must call emit() before
+   writing "None".
+3. My test asserted `call void @emit(` — the real signature is `call i32 @emit(`. The compiler
+   was right, the expectation was wrong: check which one is lying before "fixing" the compiler.
+
+**Also found:** bare `return` (no expression) failed AOT codegen outright with
+`codegen: unsupported expression <nil>` — an untested corner of the grammar, now returning None.
+And `x = None; x = 0` must clear None-ness: variable-kind maps record the *latest* assignment, so
+every registration path needs its clearing path (same lesson as containers-as-heap-handles).
+
+**Process notes.**
+- Backticks inside the embedded-LLVM raw string broke the build again (the comment said
+  `` `x = None` ``). The guard test in `runtime_ir_test.go` exists for exactly this; write IR
+  comments without them.
+- `--opt-level=2`-style probes taught me to check `flag` semantics; `--emit-llvm` takes a source
+  *string*, not a path — probes that silently read nothing produce uniform fake results (third
+  time this loop; suspect the harness first).
+- Interpreter void-return semantics lived in **three** duplicated call paths (`callFunc` plus two
+  inline copies in `evalCall`). Fixing one and seeing the tests still fail was the signal. That
+  duplication is a real defect: it is where the next semantic divergence will come from.

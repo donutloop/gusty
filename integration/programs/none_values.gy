@@ -1,0 +1,20 @@
+def emit():
+    print("side")
+
+print(None)
+x = None
+print(x)
+print(emit())
+print(emit() == None)
+print(0 == None)
+print(None == None)
+if None:
+    print("truthy")
+else:
+    print("falsy")
+xs = [1, None]
+print(len(xs))
+while x == None:
+    print("once")
+    x = 1
+print(x)

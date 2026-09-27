@@ -15,11 +15,15 @@ import (
 // It evaluates integer-typed expressions deterministically without needing
 // an LLVM JIT engine (the AOT backend emits textual IR verified by `llc`).
 type Evaluator struct {
-	Vars        map[string]int64
-	funcs       map[string]*FuncDef
-	externs     map[string]*ExternDecl
-	inCall      bool // true while evaluating a function body (nested defs become closures)
-	heap        map[int64]*obj
+	Vars    map[string]int64
+	funcs   map[string]*FuncDef
+	externs map[string]*ExternDecl
+	inCall  bool // true while evaluating a function body (nested defs become closures)
+	heap    map[int64]*obj
+	// noneVal is the None singleton (value tag TagNone). It is a heap object rather
+	// than an immediate because ints are raw int64s: encoding None as a reserved int
+	// would make `x = -2147483648` print "None". Allocated once, never freed.
+	noneVal     int64
 	nextID      int64
 	nurseryBase int64
 	allocCount  int64
@@ -77,6 +81,8 @@ func (e *Evaluator) truthy(v int64) bool {
 			return o.sval != ""
 		case "list", "set", "dict":
 			return len(o.elems) > 0
+		case "none":
+			return false
 		}
 		return true
 	}
@@ -299,9 +305,22 @@ func (e *Evaluator) strOf(id int64) string {
 }
 
 // Repr renders a heap handle (or plain int) to its printable representation.
+// IsNone reports whether v is the None singleton. Callers use it to tell "no value" from
+// the integer 0 — the distinction `--eval` needs so a program ending in print(...) does not
+// echo a stray line, and user code needs for `f() == None`.
+func (e *Evaluator) IsNone(v int64) bool {
+	if e.noneVal == 0 || v != e.noneVal {
+		return false
+	}
+	o, ok := e.heap[v]
+	return ok && o.kind == "none"
+}
+
 func (e *Evaluator) Repr(id int64) string {
 	if o, ok := e.heap[id]; ok {
 		switch o.kind {
+		case "none":
+			return "None"
 		case "str":
 			return o.sval
 		case "float":
@@ -354,6 +373,8 @@ func (e *Evaluator) TypeOf(v int64) string {
 func (e *Evaluator) typeOfVal(val int64) *Type {
 	if o, ok := e.heap[val]; ok {
 		switch o.kind {
+		case "none":
+			return TNone()
 		case "float":
 			return TFlt()
 		case "str":
@@ -588,6 +609,12 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 	if rs, ok := err.(*returnSignal); ok {
 		return rs.val, nil
 	}
+	if err == nil {
+		// No `return` executed: Python yields None here, not the value of the last
+		// statement. Returning that (0 for a procedure) is what made `print(f())`
+		// print 0 and made `f() == None` false.
+		return e.noneVal, nil
+	}
 	return rv, e.recordCall(err, fd.Name, caller, callSite)
 }
 
@@ -640,7 +667,9 @@ func NewEvaluator() *Evaluator {
 	// integer literal values (which are stored raw in lists, dict keys, vars).
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
-	return &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: 1 << 20, fnName: "<module>"}
+	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: 1 << 20, fnName: "<module>"}
+	ev.noneVal = ev.allocObj("none")
+	return ev
 }
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
@@ -658,6 +687,11 @@ func (e *Evaluator) Collect() {
 		return
 	}
 	marked := map[int64]bool{}
+	if e.noneVal != 0 {
+		// The None singleton is a permanent root: sweeping it would hand its heap
+		// slot to the free list and later objects would print as "None".
+		marked[e.noneVal] = true
+	}
 	var mark func(id int64)
 	mark = func(id int64) {
 		if id <= 0 || marked[id] {
@@ -1200,7 +1234,8 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 				return 0, &returnSignal{val: v}
 			}
-			return 0, &returnSignal{val: 0}
+			// bare `return` yields None, not 0 (ADR 0172)
+			return 0, &returnSignal{val: e.noneVal}
 		case *YieldStmt:
 			v, err := e.eval(s.Expr)
 			if err != nil {
@@ -1287,7 +1322,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		}
 		return 0, nil
 	case *NoneLit:
-		return 0, nil
+		return e.noneVal, nil
 	case *AssignExpr:
 		v, err := e.eval(n.Value)
 		if err != nil {
@@ -3234,7 +3269,10 @@ func (e *Evaluator) runCoro(cid int64) (int64, error) {
 		}
 		return 0, err
 	}
-	return rv, nil
+	// Fall-off-the-end yields None (see callFunc): a procedure that assigns
+	// variables must not leak its last statement value to the caller.
+	_ = rv
+	return e.noneVal, nil
 }
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
@@ -3463,6 +3501,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if rs, ok := err.(*returnSignal); ok {
 				return rs.val, nil
 			}
+			if err == nil {
+				// Fall-off-the-end yields None (see callFunc).
+				_ = rv
+				return e.noneVal, nil
+			}
 			return rv, e.recordCall(err, fd.Name, caller, callSite)
 		}
 		// built-in exception constructor: ValueError("msg") etc.
@@ -3520,7 +3563,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				fmt.Fprint(os.Stdout, e.Repr(v))
 			}
 			fmt.Fprint(os.Stdout, end)
-			return 0, nil
+			return e.noneVal, nil // print returns None, not the int 0
 		case "len":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "len expects 1 argument"}

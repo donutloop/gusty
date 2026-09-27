@@ -270,8 +270,10 @@ Exit codes are deterministic:
   `programs/truthiness.gy` (Python's truthiness rules),
   `programs/subscript_assign.gy` (container iteration and `d[k] = v` /
   `xs[i] = v` item assignment) and `programs/container_methods.gy`
-  (`xs.pop()`, `set()`/`list()`/`dict()`, `s.add`/`s.discard`) — see `docs/language.md`
-  § Truthiness / § Iterating and mutating containers / § Container methods.
+  (`xs.pop()`, `set()`/`list()`/`dict()`, `s.add`/`s.discard`) and
+  `programs/none_values.gy` (`None` as a singleton, void functions returning `None`,
+  `f() == None`) — see `docs/language.md`
+  § Truthiness / § None / § Iterating and mutating containers / § Container methods.
 - **Property testing** — seeded deterministic whole-program generation.
 
 ## Requirements & build

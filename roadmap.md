@@ -521,7 +521,36 @@ Each is a concrete, reproducible defect with the shape to fix it.
     instead of printing nothing and leaving the agent to scrape stderr prose.
   - pinned by `TestCLIExitCodeContract` (drives the real binary through every row),
     `TestBuildExitCodeClassifiesVerifierRejection` and `TestExitCodesAreDistinctAndDocumented`.
-- **Gap K.10 — `print(<undefined name>)` reached LLVM** — ✅ DONE.
+- **Gap L.1 — `None` was the integer 0, and every program printed a stray `0`** — ✅ DONE (ADR 0172).
+  `NoneLit` existed in the AST and `KindNone`/`TNone()` in the type table, but no value ever
+  represented it: `print(None)` printed `0`, `0 == None` was true, a procedure "returned" the
+  value of its last statement so `print(f())` printed that value and `f() == None` was false.
+  Worse, `--eval`/`--file` echoed the last value unconditionally, so **every** program's stdout
+  ended with a line the program never printed (`print(1)` → `1`, then `0`) — anything piping a
+  program's output had to know to discard it.
+  - None is now a singleton: interpreter heap object with `tag() == TagNone`, AOT heap object of
+    kind 4 cached in `@none_h` and handed out by `rt_none()`, a permanent GC root. Equality is
+    handle identity. A reserved integer was rejected: every `i32` is a legal integer, so
+    `x = -2147483648` would have printed `None`.
+  - AOT values are untagged, so `irGen.isNoneExpr` decides statically (literal / variable whose
+    latest assignment was None / call to a function that cannot produce a value), and always
+    evaluates its operands first so `print(emit())` and `f() == None` keep the callee's effects.
+  - `fdReturnsValue` walks the body by reflection: a hand-enumerated walk missed a `return`
+    nested in `match` and printed four `None`s in the conformance corpus.
+  - CLI echo rule: echo iff the last statement is a bare expression **and** the value is not
+    None; `--json` reports `{"result": null, "type": "None"}` for a void-ending program.
+    `--eval "x = 1 + 2\nx"` still prints `3`.
+  - bare `return` now yields None in both backends (codegen previously failed with
+    `codegen: unsupported expression <nil>`).
+  - Tests: `none_values.gy` in the conformance corpus (38 cases), plus
+    `TestNoneSingletonSemantics`, `TestNoneSurvivesGC`, `TestVoidFunctionYieldsNone`,
+    `TestCompiledNoneUsesTheRuntimeSingleton`, `TestNoneEqualityIsStaticButNotLazy`,
+    `TestNoneVarIsClearedByReassignment`, `TestNoneValuesInterpreter/AOT`, `TestNoneIsNotZero`,
+    `TestVoidCallSideEffectsStay`, `TestCLIEvalDoesNotEchoVoid`.
+  - Still open and deliberately out of scope: bools print `1`/`0` rather than `True`/`False`,
+    and strings inside containers print unquoted (`[1, None]` → `[1, None]`, `[a, b]`). Tracked
+    as Gap L.2 (value rendering is a language decision, not a debug-print detail).
+  - **Gap K.10 — `print(<undefined name>)` reached LLVM** — ✅ DONE.
   `print(undefined_thing)` at module level passed the checker (its arguments were not
   analysed), codegen emitted a load from the non-existent slot `%_undefined_thing`, and
   LLVM's verifier rejected the module — so the exit-code contract reported an ordinary typo

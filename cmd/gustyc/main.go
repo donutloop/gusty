@@ -349,9 +349,24 @@ func evalSrcOrFile(src, file string, jsonOut, jitMode bool) int {
 		// program being malformed (exit 1) or the CLI being mis-invoked (exit 4).
 		return exitRuntime
 	}
+	// Echoing the last value is a REPL courtesy for *snippets*, not a program feature:
+	// `gustyc --file prog.gy` used to append a stray "0" (the void value print() returned)
+	// to every program's stdout, corrupting piped output. Echo only when the program's last
+	// statement is a bare expression whose value is a real value (`--eval "x = 1 + 2\nx"`
+	// still prints 3); a program ending in a call that yields None prints nothing, matching
+	// `python prog.py`. Tracebacks and diagnostics are already stderr-only (ADR 0169).
+	finalExpr := false
+	if n := len(prog.Stmts); n > 0 {
+		_, finalExpr = prog.Stmts[n-1].(*lang.ExprStmt)
+	}
+	isNone := ev.IsNone(v)
 	if jsonOut {
-		fmt.Printf("{\"result\": %q, \"type\": %q, \"exit\": 0}\n", ev.Repr(v), ev.TypeOf(v))
-	} else {
+		if !finalExpr || isNone {
+			fmt.Printf("{\"result\": null, \"type\": %q, \"exit\": 0}\n", ev.TypeOf(v))
+		} else {
+			fmt.Printf("{\"result\": %q, \"type\": %q, \"exit\": 0}\n", ev.Repr(v), ev.TypeOf(v))
+		}
+	} else if finalExpr && !isNone {
 		fmt.Println(ev.Repr(v))
 	}
 	return exitOK
