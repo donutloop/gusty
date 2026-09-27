@@ -89,6 +89,9 @@ func (an *SemanticAnalyzer) isDefinite(nm string) bool {
 
 // Analyze runs semantic analysis and type inference on prog.
 func Analyze(prog *Program) []Diagnostic {
+	if prog == nil {
+		return nil
+	}
 	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: builtinExceptions(), classList: NewClassIndex()}
 	// Pre-pass: record every class (with its bases) before analyzing, so class
 	// annotations and nominal subtyping work regardless of declaration order.

@@ -355,7 +355,9 @@ func filterLex(raw []Token) (ok []Token, diags []Diagnostic) {
 	for _, tk := range raw {
 		switch tk.Kind {
 		case TokError:
-			diags = append(diags, Diagnostic{Level: LevelError, Span: tk.Span, Msg: tk.ErrMsg})
+			// The code is what lets an agent branch on "the source did not parse"
+			// instead of matching message prose.
+			diags = append(diags, Diagnostic{Level: LevelError, Span: tk.Span, Msg: tk.ErrMsg, Code: CodeParseError})
 		case TokWarning:
 			diags = append(diags, Diagnostic{Level: LevelWarning, Span: tk.Span, Msg: tk.ErrMsg})
 		default:

@@ -226,8 +226,14 @@ JSON array of diagnostics:
 
 ### Diagnostic codes (stable)
 
-The variance + generics rules (L6.6) report these codes from `--check`,
-`--verify`, `--json`, and the LSP:
+The variance + generics rules (L6.6) and the parser report these codes from
+`--check`, `--verify`, `--json`, and the LSP:
+
+`--check` (and `gustyc check <files>`) reports **every** recovered error, not
+just the first: the lexer recovers from a bad character (L4.1), the parser
+recovers per statement, and the statements that did parse are still type-checked.
+They arrive in document order, and a broken file still yields the type errors
+below the broken line — one run tells you everything the toolchain knows.
 
 | Code | Rule |
 |------|------|
@@ -238,6 +244,7 @@ The variance + generics rules (L6.6) report these codes from `--check`,
 | `type.variance.nominal` | a class annotation accepts only that class or a subclass |
 | `type.callable.arity` | callable / tuple arity mismatch |
 | `type.union.members` | no union member accepts the value |
+| `parse.error` | the source did not parse — a parser error or a lexer error token that recovery turned into a diagnostic |
 
 The full table (which constructor is invariant/covariant/contravariant, and
 why) is machine-readable: `gustyc --variance` prints it, and

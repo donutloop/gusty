@@ -32,8 +32,60 @@ func TestCheckSourceErrors(t *testing.T) {
 }
 
 func TestCheckSourceParseError(t *testing.T) {
-	if _, err := CheckSource("def f(:"); err == nil {
-		t.Fatalf("expected a parse error")
+	res, err := CheckSource("def f(:")
+	if err != nil {
+		t.Fatalf("CheckSource: %v", err)
+	}
+	if res.OK || res.Exit != 1 {
+		t.Fatalf("a parse failure must be reported as failing diagnostics, got ok=%v exit=%d", res.OK, res.Exit)
+	}
+	if len(res.Diagnostics) == 0 {
+		t.Fatalf("no diagnostics for a broken source")
+	}
+	for _, d := range res.Diagnostics {
+		if d.Code != CodeParseError {
+			t.Fatalf("diagnostic %q lacks the stable parse code (got %q)", d.Msg, d.Code)
+		}
+	}
+}
+
+// L4.1 — the lexer recovers and the parser reports a forest, so the check
+// pipeline must surface *every* recovered error with its span, not one prose
+// string. This is the whole point of recovery: a broken document still tells
+// you all the places that are broken.
+func TestCheckSourceReportsEveryRecoveredError(t *testing.T) {
+	res, err := CheckSource("a = 1\nb = $\nc = @\nd = 4\n")
+	if err != nil {
+		t.Fatalf("CheckSource: %v", err)
+	}
+	if res.OK || res.Exit != 1 {
+		t.Fatalf("expected failing result, got ok=%v exit=%d", res.OK, res.Exit)
+	}
+	// The lexer names the offending character precisely; the parser adds its
+	// own error for the statement it could not parse.
+	var found int
+	for _, d := range res.Diagnostics {
+		if d.Span.Line == 2 && d.Span.Col == 5 && d.Msg == `unexpected character "$"` {
+			found |= 1
+		}
+		if d.Span.Line == 3 && d.Span.Col == 5 {
+			found |= 2
+		}
+	}
+	if found != 3 {
+		t.Fatalf("recovered diagnostics are incomplete: %+v", res.Diagnostics)
+	}
+}
+
+// Statements that DO parse must still be checked: recovery is not "stop at the
+// first bad line".
+func TestCheckSourceChecksWhatParsed(t *testing.T) {
+	res, err := CheckSource("a = 1\nb = $\ndef f(x: int) -> int:\n    return \"s\"\n")
+	if err != nil {
+		t.Fatalf("CheckSource: %v", err)
+	}
+	if !hasErrorMsg(res.Diagnostics, "return type mismatch") {
+		t.Fatalf("the statement after the broken line was not checked: %+v", res.Diagnostics)
 	}
 }
 

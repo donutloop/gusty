@@ -1500,3 +1500,47 @@ Also worth noting: the roadmap listed L4.1/L4.2 as unstarted while the lexer had
 already shipped both (verified by probe before marking). A plan that is not
 re-verified against the code drifts in both directions — claiming features that
 were never built, and hiding features that were.
+
+## L4.1 — a failed parse is a list of diagnostics, not a Go error (ADR 0177)
+
+**A feature is not done when its components exist.** The lexer recovered, the
+parser collected a forest, tokens carried rich spans — and `gustyc check` still
+printed one prose blob, `--json check` printed *no JSON at all*, and the precise
+lexer message (`unexpected character "$"` at 2:5) was thrown away. The last hop
+was `if err != nil { return nil, fmt.Errorf(...) }`. Roadmap items should be
+verified by driving the user-visible surface, because every layer can be correct
+while the feature is absent.
+
+**`return err` is where diagnostics go to die.** A Go error is a string-shaped
+channel; a parse failure is a *list* of positioned findings. Turning the list
+into an error collapses it, and every consumer downstream then reinvents
+parsing of a message it should never have lost. The fix routes parse failures
+through the same `Diagnostic` channel as semantic ones — one shape, human and
+JSON paths sharing it, exit code unchanged.
+
+**Recovery is only worth it if you keep going.** Skipping `Analyze` when parsing
+failed looked safest, but it hid every type error below the broken line: the
+"fix one error, rediscover the next" loop in the compiler's own face. Recovery
+yields only complete statements, so the rest of the file is still checkable. A
+test asserts a `return "s"` in a function *after* a broken line still reports
+`return type mismatch`.
+
+**Duplicates are a bug users see.** The first version appended `prog.Diags` in
+the parse-error converter, not knowing `Analyze` already merges them — the same
+error printed twice. Deleting one side (and writing down why) beat adding a
+dedup pass.
+
+**Order is part of the product.** Parse errors come from one collector and
+semantic errors from another; concatenating them by producer confused humans and
+made JSON output non-diffable. Sorting by line/col/message costs nothing.
+
+**Verify the plan before editing it.** The roadmap listed L4.1/L4.2 as not
+started. A probe (`Parse` with two bad characters, `Lex` on a triple-quoted
+string) showed both already shipped. A plan that is not re-verified against the
+code drifts both ways: it claims features that were never built and hides
+features that were.
+
+**Guard the nil path you just made reachable.** Making `Analyze` run after a
+failed parse exposed `Analyze(nil)` on the lexer-failure path (a segfault in the
+first test run), and my first `checkParseErrors` called `err.Error()` on a nil
+error. Whenever a call moves out of an error branch, the nil case becomes real.

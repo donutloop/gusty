@@ -267,10 +267,23 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L4.1 Error-recovering lexer** — on an unexpected character, emit a
   `TokError` token carrying the span + message and *resume*, instead of
   aborting the whole file. The parser/semantic can then report multiple
-  diagnostics per run (feed the LSP).
+  diagnostics per run (feed the LSP). ✅ DONE (ADR 0177) — the lexer recovers
+  (`emitErr` appends a `TokError` and keeps scanning) and the parser reports a
+  `ParseErrors` forest, but the last hop was discarding both: `CheckSource` /
+  `CheckFile` returned a Go error, which threw away `prog.Diags` (the precise
+  `unexpected character "$"` spans), collapsed the forest into one `Error()`
+  string, skipped `Analyze` — so type errors in statements that *had* parsed
+  went unreported — and left `--json check` printing prose. A failed parse is now
+  data: one `Diagnostic` per recovered error with the stable `parse.error` code,
+  sorted into document order, and the statements that parsed are still checked.
+  One run on a file with two bad lines yields all three diagnostics in both
+  shapes.
 - **L4.2 Rich token spans** — each token carries `start` AND `end` (byte +
   rune offsets), plus an optional multi-line flag, so f-strings, slices, and
-  `match` patterns have exact ranges for hover/diagnostics/formatting.
+  `match` patterns have exact ranges for hover/diagnostics/formatting. ✅ DONE —
+  verified against the code (probed, not assumed): `Token` carries `Start`/`End`
+  byte offsets and `StartRune`/`EndRune` rune offsets plus `Multiline`, and a
+  triple-quoted string token reports `multiline=true` with exact rune ranges.
 - **L4.3 Unicode identifiers** — accept the full `XID_Start`/`XID_Continue`
   classes (not just ASCII), with NFC normalization + a clear diagnostic for
   confusables (e.g. `l` vs `1`, `Ο` vs `O`). ✅ DONE — lexer now decodes UTF-8
