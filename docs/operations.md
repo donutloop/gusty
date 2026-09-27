@@ -332,6 +332,41 @@ annotations as static-only, as it does for the rest of the annotation surface.
 
 Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
 
+## Incremental parsing (LSP)
+
+The language server keeps a span-keyed `ParseCache` per document and re-parses
+only the statements an edit touches (`gustyc --lsp`, `textDocument/didChange`).
+Each `textDocument/publishDiagnostics` notification carries a self-report of
+what that pass did, so a client never has to guess or time the server:
+
+```json
+{
+  "method": "textDocument/publishDiagnostics",
+  "params": {
+    "uri": "file:///a.gy",
+    "version": 2,
+    "diagnostics": [],
+    "parseCache": { "statements": 4, "reusedStatements": 3, "incremental": true }
+  }
+}
+```
+
+- `statements` — top-level statements in the current parse tree.
+- `reusedStatements` — statements preserved as the **same AST nodes** across this
+  update, on either side of the edit. `0` means the document was re-parsed whole.
+- `incremental` — whether any reuse happened at all.
+
+Reuse is deliberately conservative: it applies to a single edit confined to one
+line that adds no line, and only when the text after the edit is byte-identical
+apart from a shift. A reused node keeps its source spans, so an edit that moves
+lines re-parses rather than leaving hover and squiggles pointing at stale lines.
+
+If a change cannot be applied (an out-of-range or overlapping span), the server
+keeps the previous buffer and publishes a severity-2 warning
+(`could not apply the last incremental change; resend the full document`) rather
+than replacing the document with the change's fragment. Send a `didChange` with
+no `range` (full text) to force a clean re-parse.
+
 ## JSON output for agents
 
 `gustyc --json` emits machine-readable JSON on stdout:

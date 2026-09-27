@@ -96,8 +96,15 @@ func (c *ParseCache) SetText(newText string) error {
 // Update applies the given edits to the document and re-parses only the
 // top-level statements affected by them. Unaffected statements keep their
 // AST node identity across the update.
+//
+// A keystroke near the top of a file used to re-parse everything below it:
+// reuse was prefix-only, so the statements after the edit lost their node
+// identity and the LSP re-did the work for the whole document. When the edit
+// is a single in-line substitution, the text after it is byte-identical (only
+// shifted), so the statements that live entirely in that tail are reused too
+// and only the statements overlapping the edit are re-parsed.
 func (c *ParseCache) Update(edits []Edit) error {
-	newSrc, editStartByte, _, err := applyEdits(c.src, edits)
+	newSrc, editStartByte, editEndByte, err := applyEdits(c.src, edits)
 	if err != nil {
 		return err
 	}
@@ -109,13 +116,53 @@ func (c *ParseCache) Update(edits []Edit) error {
 
 	affected, decremented := affectedIndex(c.stmtStartByte, c.stmtEndByte, editStartByte)
 	firstTok := c.firstAffectedTok(ok, affected, decremented)
-	suffix, sStarts, sEnds, sStartBytes, sEndBytes, suffixErrs := parseTopLevel(ok, newSrc, firstTok)
 
-	stmts := make([]Stmt, 0, len(c.prog.Stmts)-affected+len(suffix))
+	// Tail reuse: the index of the first statement that starts after the edit,
+	// plus the token index where its text begins in the NEW stream. Only sound
+	// for a single edit that adds no lines, because a reused node keeps its
+	// spans and inserting a line would silently stale them.
+	tailIdx, tailTok, canReuseTail := c.tailReuse(edits, editEndByte, newSrc, ok, affected)
+
+	var (
+		middle        []Stmt
+		mStarts       []int
+		mEnds         []int
+		mStartBytes   []int
+		mEndBytes     []int
+		middleErrs    []*ParseError
+		tail          []Stmt
+		tailStartTok  []int
+		tailEndTok    []int
+		tailStartByte []int
+		tailEndByte   []int
+	)
+	if canReuseTail {
+		middle, mStarts, mEnds, mStartBytes, mEndBytes, middleErrs = parseTopLevelRange(ok, newSrc, firstTok, tailTok)
+		tail = append([]Stmt(nil), c.prog.Stmts[tailIdx:]...)
+		delta := len(newSrc) - len(c.src)
+		tailStartTok = append([]int(nil), c.stmtStartTok[tailIdx:]...)
+		tailEndTok = append([]int(nil), c.stmtEndTok[tailIdx:]...)
+		for i := range tailStartTok {
+			tailStartTok[i] += tailTok - c.stmtStartTok[tailIdx]
+			tailEndTok[i] += tailTok - c.stmtStartTok[tailIdx]
+		}
+		tailStartByte = make([]int, len(tail))
+		tailEndByte = make([]int, len(tail))
+		for i := range tail {
+			tailStartByte[i] = c.stmtStartByte[tailIdx+i] + delta
+			tailEndByte[i] = c.stmtEndByte[tailIdx+i] + delta
+		}
+	} else {
+		middle, mStarts, mEnds, mStartBytes, mEndBytes, middleErrs = parseTopLevel(ok, newSrc, firstTok)
+		tailIdx = len(c.prog.Stmts) // no tail reused
+	}
+
+	stmts := make([]Stmt, 0, affected+len(middle)+len(tail))
 	stmts = append(stmts, c.prog.Stmts[:affected]...)
-	stmts = append(stmts, suffix...)
+	stmts = append(stmts, middle...)
+	stmts = append(stmts, tail...)
 
-	// rebuilt boundaries: preserved prefix + re-parsed suffix
+	// rebuilt boundaries: preserved prefix + re-parsed middle + preserved tail
 	presStart := append([]int(nil), c.stmtStartTok[:affected]...)
 	presEnd := append([]int(nil), c.stmtEndTok[:affected]...)
 	presSByte := append([]int(nil), c.stmtStartByte[:affected]...)
@@ -125,13 +172,96 @@ func (c *ParseCache) Update(edits []Edit) error {
 	c.toks = ok
 	c.diags = diags
 	c.prog = &Program{Diags: diags, Stmts: stmts}
-	c.stmtStartTok = append(presStart, sStarts...)
-	c.stmtEndTok = append(presEnd, sEnds...)
-	c.stmtStartByte = append(presSByte, sStartBytes...)
-	c.stmtEndByte = append(presEByte, sEndBytes...)
-	c.parseErrs = suffixErrs
-	c.reused = affected
+	c.stmtStartTok = append(append(presStart, mStarts...), tailStartTok...)
+	c.stmtEndTok = append(append(presEnd, mEnds...), tailEndTok...)
+	c.stmtStartByte = append(append(presSByte, mStartBytes...), tailStartByte...)
+	c.stmtEndByte = append(append(presEByte, mEndBytes...), tailEndByte...)
+	c.parseErrs = middleErrs
+	c.reused = affected + len(tail)
 	return nil
+}
+
+// tailReuse decides whether the statements after an edit can be reused as they
+// are. It returns the index of the first such statement and the token index in
+// the NEW stream where its text begins.
+//
+// Soundness needs three things, and the ordinary keystroke gives them: exactly
+// one edit, no newline added or removed (so every reused node's line/column
+// spans stay true), and the bytes after the edit unchanged apart from a
+// constant shift (verified against the text itself rather than assumed).
+func (c *ParseCache) tailReuse(edits []Edit, editEndByte int, newSrc string, newToks []Token, prefix int) (int, int, bool) {
+	if len(edits) != 1 || c.prog == nil {
+		return 0, 0, false
+	}
+	e := edits[0]
+	if e.Start.Line != e.End.Line || strings.ContainsRune(e.NewText, '\n') {
+		return 0, 0, false
+	}
+	tailIdx := len(c.prog.Stmts)
+	for i, s := range c.stmtStartByte {
+		if s >= editEndByte {
+			tailIdx = i
+			break
+		}
+	}
+	// The tail must start after the last statement the prefix reuse already keeps.
+	if tailIdx >= len(c.prog.Stmts) || tailIdx < prefix {
+		return 0, 0, false
+	}
+	delta := len(newSrc) - len(c.src)
+	oldFrom := c.stmtStartByte[tailIdx]
+	if oldFrom < editEndByte || editEndByte+delta > len(newSrc) {
+		return 0, 0, false
+	}
+	// The tail must be identical text, not merely the same length.
+	if c.src[oldFrom:] != newSrc[oldFrom+delta:] {
+		return 0, 0, false
+	}
+	tok, ok := tokenIndexAtByte(newToks, oldFrom+delta)
+	if !ok {
+		return 0, 0, false
+	}
+	return tailIdx, tok, true
+}
+
+// tokenIndexAtByte finds the index of the first token whose byte offset in the
+// source is exactly target (a statement boundary must land on a token start).
+func tokenIndexAtByte(toks []Token, target int) (int, bool) {
+	for i, tk := range toks {
+		if tk.Kind == TokEOF {
+			break
+		}
+		if tk.Start == target {
+			return i, true
+		}
+		if tk.Start > target {
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
+// parseTopLevelRange is parseTopLevel restricted to the token range [startTok,
+// endTok), so an edit in the middle of a document parses only the statements
+// that overlap it instead of everything below.
+func parseTopLevelRange(toks []Token, src string, startTok, endTok int) (stmts []Stmt, starts, ends, startBytes, endBytes []int, errs []*ParseError) {
+	if endTok > len(toks) {
+		endTok = len(toks)
+	}
+	// Truncate to the range: the parser stops at the slice end, and the tokens
+	// after it belong to statements being reused rather than re-parsed.
+	trimmed := append([]Token(nil), toks[startTok:endTok]...)
+	trimmed = append(trimmed, Token{Kind: TokEOF, Start: len(src), End: len(src)})
+	stmts, starts, ends, startBytes, endBytes, errs = parseTopLevel(trimmed, src, 0)
+	// Token indices come back relative to the slice; translate them to the real
+	// stream so the boundaries stay comparable with the reused prefix and tail.
+	for i := range starts {
+		starts[i] += startTok
+	}
+	for i := range ends {
+		ends[i] += startTok
+	}
+	return stmts, starts, ends, startBytes, endBytes, errs
 }
 
 // affectedIndex returns the index of the first top-level statement affected

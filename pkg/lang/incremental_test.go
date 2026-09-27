@@ -1,7 +1,9 @@
 package lang
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -63,8 +65,13 @@ func TestParseCacheUpdateEquivalentToParse(t *testing.T) {
 	if c.Program().Stmts[1] == old.Stmts[1] {
 		t.Fatalf("affected statement 1 kept stale identity")
 	}
-	if c.Reused() != 1 {
-		t.Fatalf("expected 1 reused statement, got %d", c.Reused())
+	// "c = 3" and "d = 4" sit after a single in-line edit whose text is unchanged
+	// (only shifted), so they are reused too: reuse is no longer prefix-only.
+	if c.Reused() != 3 {
+		t.Fatalf("expected 3 reused statements (prefix + tail), got %d", c.Reused())
+	}
+	if c.Program().Stmts[2] != old.Stmts[2] || c.Program().Stmts[3] != old.Stmts[3] {
+		t.Fatalf("statements after an in-line edit lost identity")
 	}
 }
 
@@ -200,5 +207,149 @@ func TestSpanToByte(t *testing.T) {
 	pos, err = spanToByte(utf8src, Span{Line: 2, Col: 2})
 	if err != nil || pos != 8 {
 		t.Fatalf("spanToByte(utf8 line2 col2) = %d, %v; want 8", pos, err)
+	}
+}
+
+// L5.8 — a keystroke near the top of a file used to re-parse the whole document, because
+// reuse was prefix-only. An in-line edit leaves the text after it byte-identical (only
+// shifted), so the statements in that tail are reused by node identity and only the
+// statements overlapping the edit are re-parsed.
+
+func manyStatements(n int) string {
+	var sb strings.Builder
+	sb.WriteString("x = 1\n")
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&sb, "def f%d(a):\n    return a + %d\n\n", i, i)
+	}
+	return sb.String()
+}
+
+func TestParseCacheReusesTailAfterLineEdit(t *testing.T) {
+	src := manyStatements(20)
+	c, err := NewParseCache(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := c.Program()
+	// Edit line 1 only, and make the replacement longer: everything below shifts.
+	if err := c.Update([]Edit{{Start: Span{Line: 1, Col: 5}, End: Span{Line: 1, Col: 6}, NewText: "2 + 3"}}); err != nil {
+		t.Fatal(err)
+	}
+	after := c.Program()
+	if len(after.Stmts) != len(before.Stmts) {
+		t.Fatalf("statement count changed: %d -> %d", len(before.Stmts), len(after.Stmts))
+	}
+	// Every statement after the edited first line must be the same node.
+	for i := 1; i < len(before.Stmts); i++ {
+		if after.Stmts[i] != before.Stmts[i] {
+			t.Fatalf("statement %d lost identity after an in-line edit", i)
+		}
+	}
+	if c.Reused() != len(before.Stmts)-1 {
+		t.Fatalf("Reused() = %d, want %d", c.Reused(), len(before.Stmts)-1)
+	}
+	// The whole point: the result must equal a full parse of the new text.
+	if want := mustParse(t, c.Source()); !reflect.DeepEqual(after, want) {
+		t.Fatalf("incremental parse != full parse after tail reuse")
+	}
+}
+
+// A reused node keeps its spans, so tail reuse is only sound while those spans stay true.
+// An edit that inserts (or removes) a line moves everything below it, and the cache must
+// fall back to re-parsing rather than hand back statements whose lines are stale.
+func TestParseCacheTailReuseStopsWhenLinesMove(t *testing.T) {
+	src := manyStatements(6)
+	c, err := NewParseCache(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := c.Program()
+	// Insert a whole new line at the top: lines below shift by one.
+	if err := c.Update([]Edit{{Start: Span{Line: 1, Col: 1}, End: Span{Line: 1, Col: 1}, NewText: "w = 0\n"}}); err != nil {
+		t.Fatal(err)
+	}
+	after := c.Program()
+	if after.Stmts[1] == before.Stmts[0] && c.Reused() > 0 && after.Stmts[1] != nil {
+		// A reused node below an inserted line would report the old line number.
+		for i := 1; i < len(after.Stmts); i++ {
+			if after.Stmts[i] == before.Stmts[i-1] {
+				t.Fatalf("statement %d was reused across a line insertion; its span would be stale", i)
+			}
+		}
+	}
+	if want := mustParse(t, c.Source()); !reflect.DeepEqual(after, want) {
+		t.Fatalf("incremental parse != full parse after a line insertion")
+	}
+}
+
+// Boundaries must shift with the text, or the next edit classifies the wrong statements.
+func TestParseCacheBoundariesShiftWithTheEdit(t *testing.T) {
+	src := "x = 1\ny = 2\n"
+	c, err := NewParseCache(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Update([]Edit{{Start: Span{Line: 1, Col: 5}, End: Span{Line: 1, Col: 6}, NewText: "100"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := c.Source(), "x = 100\ny = 2\n"; got != want {
+		t.Fatalf("source = %q, want %q", got, want)
+	}
+	// A second edit, now targeting the shifted second line, must still classify
+	// correctly (it relies on the boundaries recorded for the reused tail).
+	if err := c.Update([]Edit{{Start: Span{Line: 2, Col: 5}, End: Span{Line: 2, Col: 6}, NewText: "200"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := c.Source(), "x = 100\ny = 200\n"; got != want {
+		t.Fatalf("source = %q, want %q", got, want)
+	}
+	if want := mustParse(t, c.Source()); !reflect.DeepEqual(c.Program(), want) {
+		t.Fatalf("incremental parse != full parse after successive shifted edits")
+	}
+}
+
+// Deleting text is an edit with an empty replacement; the tail rule must apply to it too.
+func TestParseCacheTailReuseOnDeletion(t *testing.T) {
+	src := "x = 12345\ny = 2\nz = 3\n"
+	c, err := NewParseCache(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := c.Program()
+	// Delete four of the five digits: the line shrinks, the tail shifts left.
+	if err := c.Update([]Edit{{Start: Span{Line: 1, Col: 6}, End: Span{Line: 1, Col: 10}, NewText: ""}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := c.Source(), "x = 1\ny = 2\nz = 3\n"; got != want {
+		t.Fatalf("source = %q, want %q", got, want)
+	}
+	if c.Program().Stmts[1] != before.Stmts[1] || c.Program().Stmts[2] != before.Stmts[2] {
+		t.Errorf("statements after a deletion lost identity")
+	}
+	if want := mustParse(t, c.Source()); !reflect.DeepEqual(c.Program(), want) {
+		t.Fatalf("incremental parse != full parse after a deletion")
+	}
+}
+
+// An edit that is not a single-line substitution (it introduces a newline) must not
+// reuse the tail.
+func TestParseCacheMultiLineEditReParsesTheTail(t *testing.T) {
+	src := "x = 1\ny = 2\nz = 3\n"
+	c, err := NewParseCache(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := c.Program()
+	if err := c.Update([]Edit{{Start: Span{Line: 1, Col: 5}, End: Span{Line: 1, Col: 6}, NewText: "1\nw = 9"}}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Reused() != 0 {
+		t.Errorf("Reused() = %d after a multi-line edit, want 0 (spans below would be stale)", c.Reused())
+	}
+	if c.Program().Stmts[1] == before.Stmts[1] {
+		t.Errorf("tail was reused across a newline insertion")
+	}
+	if want := mustParse(t, c.Source()); !reflect.DeepEqual(c.Program(), want) {
+		t.Fatalf("incremental parse != full parse")
 	}
 }

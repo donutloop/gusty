@@ -258,8 +258,13 @@ func TestIncrementalDidChange(t *testing.T) {
 	if d.Prog.Stmts[1] == oldProg.Stmts[1] {
 		t.Fatalf("affected statement kept stale identity")
 	}
-	if d.cache.Reused() != 1 {
-		t.Fatalf("expected 1 reused statement, got %d", d.cache.Reused())
+	// "c = 3" is after a single in-line edit whose text is unchanged apart from a
+	// shift, so it is reused as well: reuse covers both sides of the edit.
+	if d.cache.Reused() != 2 {
+		t.Fatalf("expected 2 reused statements (before + after the edit), got %d", d.cache.Reused())
+	}
+	if d.Prog.Stmts[2] != oldProg.Stmts[2] {
+		t.Fatalf("statement after the edit lost identity")
 	}
 }
 
@@ -270,4 +275,126 @@ func mustNewCache(t *testing.T, src string) *ParseCache {
 		t.Fatalf("NewParseCache: %v", err)
 	}
 	return c
+}
+
+// L5.8 — the diagnostics notification carries an incremental-parse self-report, so an
+// editor (or an agent driving the server) can tell a one-statement re-parse from a
+// whole-document re-parse without timing the server.
+func TestLSPPublishesParseCacheStats(t *testing.T) {
+	open := `{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///big.gy","text":"x = 1\ndef f(a):\n    return a + 1\n\ny = f(2)\nz = y * 3\n"}}}`
+	change := `{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///big.gy","version":2},"contentChanges":[{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}},"text":"2"}]}}`
+	shutdown := `{"jsonrpc":"2.0","method":"exit"}`
+	var in bytes.Buffer
+	for _, m := range []string{open, change, shutdown} {
+		in.WriteString("Content-Length: " + itoaLSP(len(m)) + "\r\n\r\n")
+		in.WriteString(m)
+	}
+	var out bytes.Buffer
+	RunLSP(&in, &out)
+
+	type stats struct {
+		Statements  int  `json:"statements"`
+		Reused      int  `json:"reusedStatements"`
+		Incremental bool `json:"incremental"`
+	}
+	type pub struct {
+		Method string `json:"method"`
+		Params struct {
+			URI         string `json:"uri"`
+			Version     int    `json:"version"`
+			Diagnostics []struct {
+				Message string `json:"message"`
+			} `json:"diagnostics"`
+			ParseCache *stats `json:"parseCache"`
+		} `json:"params"`
+	}
+	var got []pub
+	for _, f := range splitFrames(out.String()) {
+		var p pub
+		if err := json.Unmarshal(f, &p); err != nil || p.Method != "textDocument/publishDiagnostics" {
+			continue
+		}
+		got = append(got, p)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 publishDiagnostics (didOpen + didChange), got %d", len(got))
+	}
+	changed := got[1].Params
+	if changed.Version != 2 {
+		t.Fatalf("second publication is version %d, want 2", changed.Version)
+	}
+	if changed.ParseCache == nil {
+		t.Fatalf("didChange publication has no parseCache report")
+	}
+	if changed.ParseCache.Statements != 4 {
+		t.Errorf("statements = %d, want 4", changed.ParseCache.Statements)
+	}
+	if !changed.ParseCache.Incremental || changed.ParseCache.Reused < 3 {
+		t.Errorf("in-line edit re-parsed %d of %d statements; expected tail reuse",
+			changed.ParseCache.Statements-changed.ParseCache.Reused, changed.ParseCache.Statements)
+	}
+	// The whole point of the report: the diagnostics must be the same ones a full
+	// parse produces, so reuse cannot be hiding work.
+	full, err := Parse("x = 2\ndef f(a):\n    return a + 1\n\ny = f(2)\nz = y * 3\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(Analyze(full)) != len(changed.Diagnostics) {
+		t.Errorf("incremental diagnostics = %d, full parse = %d",
+			len(changed.Diagnostics), len(Analyze(full)))
+	}
+}
+
+// A didChange whose spans are unusable must not clobber the buffer. An
+// incremental change carries only the edited region, so "falling back" to that
+// text as a whole-document set would shrink the file to a fragment; the server
+// must keep the previous buffer and say the change was not applied.
+func TestLSPFailedIncrementKeepsBuffer(t *testing.T) {
+	open := `{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///fb.gy","text":"a = 1\nb = 2\n"}}}`
+	// Line 99 does not exist: the incremental update must fail.
+	change := `{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"file:///fb.gy","version":2},"contentChanges":[{"range":{"start":{"line":98,"character":0},"end":{"line":98,"character":0}},"text":"c = 3\n"}]}}`
+	exit := `{"jsonrpc":"2.0","method":"exit"}`
+	var in bytes.Buffer
+	for _, m := range []string{open, change, exit} {
+		in.WriteString("Content-Length: " + itoaLSP(len(m)) + "\r\n\r\n")
+		in.WriteString(m)
+	}
+	var out bytes.Buffer
+	RunLSP(&in, &out)
+	checked := false
+	for _, f := range splitFrames(out.String()) {
+		var p struct {
+			Method string `json:"method"`
+			Params struct {
+				Version     int `json:"version"`
+				Diagnostics []struct {
+					Message  string `json:"message"`
+					Severity int    `json:"severity"`
+				} `json:"diagnostics"`
+				ParseCache *struct {
+					Statements int `json:"statements"`
+				} `json:"parseCache"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(f, &p) != nil || p.Method != "textDocument/publishDiagnostics" || p.Params.Version != 2 {
+			continue
+		}
+		checked = true
+		if p.Params.ParseCache != nil && p.Params.ParseCache.Statements != 2 {
+			t.Fatalf("after a failed incremental update the server reports %d statements; the buffer must keep the 2 statements it still holds (not the 1-statement fragment)",
+				p.Params.ParseCache.Statements)
+		}
+		warned := false
+		for _, d := range p.Params.Diagnostics {
+			if strings.Contains(d.Message, "could not apply") {
+				warned = true
+			}
+		}
+		if !warned {
+			t.Fatalf("the change was not applied but no diagnostic says so: %+v", p.Params.Diagnostics)
+		}
+	}
+	if !checked {
+		t.Fatal("no version-2 diagnostics notification was published")
+	}
 }

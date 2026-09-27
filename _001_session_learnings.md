@@ -1453,3 +1453,50 @@ finished: `d = {"a": 1}` refused by an up-front constant-int check, `print({"a":
   *literal* with string keys, a bare container literal in `print`, a mixed list. Tests written as
   a list of features cover the features, not the combinations; the probe loop (many shapes × both
   backends × CPython) is what found them, and each finding became a regression test.
+
+## L5.8 — incremental parsing reuses both sides of an edit (ADR 0176)
+
+**Measured before designing.** The cache "existed" per the roadmap, but a probe
+answered the real question: editing line 1 of a 21-statement file reused **0**
+statements and re-parsed all 21. Reuse was prefix-only — everything from the
+first affected statement to EOF went back through the parser. An item marked
+done in a plan is a claim; a probe on the actual shape (an edit near the top of
+a file) is the evidence, and it turned "already implemented" into the commonest
+worst case an editor can have.
+
+**Reuse must not be allowed to lie about spans.** A reused node keeps its
+`Span`, so reusing statements below an edit that *inserts a line* would leave
+hover and squiggles pointing at lines that no longer hold that code. The tail
+rule is therefore conditional and conservative: one edit, inside one line,
+adding no newline, and the bytes after the edit identical up to a constant shift
+— checked by comparing the text, not by trusting a length difference. Multi-line
+edits and multi-edit notifications take the old full-reparse path, so the new
+code can only ever save work, never substitute a stale tree for a correct one.
+A test asserts a node is *not* allowed to survive a line insertion.
+
+**Byte offsets must travel with reused nodes.** The tail's recorded boundaries
+shift by the same delta as its text; without that, the *next* keystroke
+classifies statements against stale offsets and re-parses the wrong region.
+Successive-edit tests (two edits in a row, each shifting the tail) pin this.
+
+**Two real bugs were sitting in the "obvious" fallback.** `didChange` ignored
+`cache.Update`'s error and fell back to `SetText(last.Text)` — but for an
+*incremental* change `last.Text` is only the edited region, so a rejected change
+shrank the user's document to a fragment. The fix keeps the previous buffer and
+publishes a warning telling the client to resend in full. Silent staleness and
+silent data loss are both worse than a re-parse; the diagnostic is the product.
+
+**Report the work you did.** `publishDiagnostics` now carries
+`parseCache: {statements, reusedStatements, incremental}`. Reuse is otherwise
+invisible: two servers, one doing 1% of the work, look identical from outside.
+Every reuse test compares the incremental tree against a full parse of the same
+text — "faster" is only a win if it is still the same tree, and the report is
+only trustworthy if the tree is.
+
+**Process lessons.** Two existing tests asserted the prefix-only reuse counts
+(`1`, `1`) and failed the moment reuse improved; they were updated *together
+with* identity assertions rather than relaxed, so the new behaviour is pinned.
+Also worth noting: the roadmap listed L4.1/L4.2 as unstarted while the lexer had
+already shipped both (verified by probe before marking). A plan that is not
+re-verified against the code drifts in both directions — claiming features that
+were never built, and hiding features that were.

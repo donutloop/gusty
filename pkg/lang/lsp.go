@@ -92,9 +92,9 @@ type didOpenParams struct {
 type didChangeParams struct {
 	TextDocument   textDocID `json:"textDocument"`
 	ContentChanges []struct {
-		Range        *lspRange `json:"range,omitempty"`
-		RangeLength  *int      `json:"rangeLength,omitempty"`
-		Text         string    `json:"text"`
+		Range       *lspRange `json:"range,omitempty"`
+		RangeLength *int      `json:"rangeLength,omitempty"`
+		Text        string    `json:"text"`
 	} `json:"contentChanges"`
 }
 
@@ -129,6 +129,17 @@ type publishParams struct {
 	URI         string    `json:"uri"`
 	Version     int       `json:"version,omitempty"`
 	Diagnostics []lspDiag `json:"diagnostics"`
+	// ParseCache reports what the incremental parser did for this version, so an
+	// editor or agent can tell "re-parsed one statement" from "re-parsed the file"
+	// without timing the server (L5.8).
+	ParseCache *parseCacheStats `json:"parseCache,omitempty"`
+}
+
+// parseCacheStats is the incremental-parse self-report sent with diagnostics.
+type parseCacheStats struct {
+	Statements  int  `json:"statements"`
+	Reused      int  `json:"reusedStatements"`
+	Incremental bool `json:"incremental"`
 }
 
 type initResult struct {
@@ -623,6 +634,14 @@ type Document struct {
 	Prog    *Program
 	Index   *docIndex
 	Diags   []lspDiag
+	// lastReuse/lastStatements describe the most recent analyze(), for the
+	// parseCache field of the diagnostics notification (L5.8).
+	lastReuse       int
+	lastStatements  int
+	lastIncremental bool
+	// set when the last didChange could not be applied to the buffer, so the
+	// diagnostics on screen still describe the previous text (see didChange).
+	staleChange bool
 }
 
 // analyze parses + semantically analyzes src and rebuilds the index.
@@ -634,6 +653,9 @@ func (d *Document) analyze() {
 	prog := d.cache.Program()
 	d.Prog = prog
 	d.Text = d.cache.Source()
+	d.lastStatements = len(prog.Stmts)
+	d.lastReuse = d.cache.Reused()
+	d.lastIncremental = d.lastReuse > 0
 	var parseDiags []lspDiag
 	for _, pe := range d.cache.ParseErrors() {
 		parseDiags = append(parseDiags, diagAt(pe.Span.Line, pe.Span.Col, 1, "parse error: "+pe.Msg))
@@ -642,6 +664,14 @@ func (d *Document) analyze() {
 	semDiags := Analyze(prog)
 	d.Diags = make([]lspDiag, 0, len(semDiags))
 	d.Diags = make([]lspDiag, 0, len(semDiags))
+	if d.staleChange {
+		// Silent staleness is the worst failure mode for an editor: the
+		// squiggles would describe code the user no longer has.
+		d.Diags = append(d.Diags, lspDiag{
+			Severity: 2,
+			Message:  "could not apply the last incremental change; resend the full document (didChange without a range)",
+		})
+	}
 	for _, sd := range semDiags {
 		sev := 3
 		switch sd.Level {
@@ -813,7 +843,16 @@ func RunLSP(r io.Reader, w io.Writer) {
 		write(map[string]any{
 			"jsonrpc": "2.0",
 			"method":  "textDocument/publishDiagnostics",
-			"params":  publishParams{URI: d.URI, Version: d.Version, Diagnostics: d.Diags},
+			"params": publishParams{
+				URI:         d.URI,
+				Version:     d.Version,
+				Diagnostics: d.Diags,
+				ParseCache: &parseCacheStats{
+					Statements:  d.lastStatements,
+					Reused:      d.lastReuse,
+					Incremental: d.lastIncremental,
+				},
+			},
 		})
 	}
 
@@ -847,44 +886,54 @@ func RunLSP(r io.Reader, w io.Writer) {
 			write(rpcOK(req.ID, nil))
 		case "exit":
 			return
-			case "textDocument/didOpen":
-				var p didOpenParams
-				json.Unmarshal(req.Params, &p)
-				cache, err := NewParseCache(p.TextDocument.Text)
-				d := &Document{URI: p.TextDocument.URI, Version: 1, Text: p.TextDocument.Text, cache: cache}
-				if err == nil {
-					d.analyze()
-				} else {
-					d.Diags = []lspDiag{{Range: lspRange{Start: lspPosition{Line: 0, Character: 0}, End: lspPosition{Line: 0, Character: 1}}, Severity: 1, Message: err.Error()}}
-				}
-				docs[d.URI] = d
-				publish(d)
-			case "textDocument/didChange":
-				var p didChangeParams
-				json.Unmarshal(req.Params, &p)
-				d := docs[p.TextDocument.URI]
-				if d != nil {
-					d.Version++
-					if len(p.ContentChanges) > 0 {
-						edits := make([]Edit, 0, len(p.ContentChanges))
-						last := p.ContentChanges[len(p.ContentChanges)-1]
-						incremental := true
-						for _, ch := range p.ContentChanges {
-							if ch.Range == nil {
-								incremental = false
-								break
-							}
-							edits = append(edits, Edit{Start: Span{Line: ch.Range.Start.Line + 1, Col: ch.Range.Start.Character + 1}, End: Span{Line: ch.Range.End.Line + 1, Col: ch.Range.End.Character + 1}, NewText: ch.Text})
+		case "textDocument/didOpen":
+			var p didOpenParams
+			json.Unmarshal(req.Params, &p)
+			cache, err := NewParseCache(p.TextDocument.Text)
+			d := &Document{URI: p.TextDocument.URI, Version: 1, Text: p.TextDocument.Text, cache: cache}
+			if err == nil {
+				d.analyze()
+			} else {
+				d.Diags = []lspDiag{{Range: lspRange{Start: lspPosition{Line: 0, Character: 0}, End: lspPosition{Line: 0, Character: 1}}, Severity: 1, Message: err.Error()}}
+			}
+			docs[d.URI] = d
+			publish(d)
+		case "textDocument/didChange":
+			var p didChangeParams
+			json.Unmarshal(req.Params, &p)
+			d := docs[p.TextDocument.URI]
+			if d != nil {
+				d.Version++
+				if len(p.ContentChanges) > 0 {
+					edits := make([]Edit, 0, len(p.ContentChanges))
+					last := p.ContentChanges[len(p.ContentChanges)-1]
+					incremental := true
+					for _, ch := range p.ContentChanges {
+						if ch.Range == nil {
+							incremental = false
+							break
 						}
-						if incremental {
-							d.cache.Update(edits)
-						} else {
-							d.cache.SetText(last.Text)
-						}
+						edits = append(edits, Edit{Start: Span{Line: ch.Range.Start.Line + 1, Col: ch.Range.Start.Character + 1}, End: Span{Line: ch.Range.End.Line + 1, Col: ch.Range.End.Character + 1}, NewText: ch.Text})
 					}
-					d.analyze()
+					if incremental {
+						// A change we cannot apply (an out-of-range span, an
+						// overlapping pair) must NOT replace the buffer with
+						// `last.Text`: for an incremental change that is only the
+						// edited region, so the document would shrink to a
+						// fragment. Keep the previous text, say so, and let the
+						// client resend the whole document.
+						d.staleChange = false
+						if err := d.cache.Update(edits); err != nil {
+							d.staleChange = true
+						}
+					} else {
+						d.staleChange = false
+						d.cache.SetText(last.Text)
+					}
 				}
-				publish(d)
+				d.analyze()
+			}
+			publish(d)
 		case "textDocument/didClose":
 			var p textDocParam
 			json.Unmarshal(req.Params, &p)

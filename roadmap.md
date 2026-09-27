@@ -340,6 +340,18 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L5.7 Type aliases `type X = ...`** ✅ DONE (this round) — parse alias declarations into a `TypeAliasStmt`; the type checker resolves references structurally (not nominal) by default via parse-time substitution of a structural copy. Aliases are compile-time no-ops in the interpreter/codegen/formatter; conformance case `typealias.gy`, ADR 0159, and unit tests.
 - **L5.8 Incremental parse** — a stable parse tree keyed by spans so the LSP
   and REPL can re-parse only edited ranges (feeds incremental JIT in Phase 9).
+  ✅ DONE (ADR 0176) — `ParseCache` now splices **three** regions on every
+  `didChange`: preserved prefix statements, a re-parsed middle, and preserved
+  **tail** statements. Previously reuse was prefix-only, so editing line 1 of a
+  21-statement file reused `0` statements and re-parsed all 21 (measured). Tail
+  reuse is allowed only when it cannot make a span lie — one edit, confined to
+  one line, adding no line, and the text after it byte-identical apart from a
+  constant shift — and `parseTopLevelRange` parses a token window instead of the
+  rest of the file. `publishDiagnostics` gained a `parseCache` self-report
+  (`statements`, `reusedStatements`, `incremental`) so an editor or agent can see
+  the work instead of timing the server, and a change that fails to apply now
+  keeps the previous buffer and warns instead of replacing it with the change's
+  fragment (which is what the old `SetText(last.Text)` fallback did).
 
 ### Phase 6 — semantics & type-system growth (2026)
 
