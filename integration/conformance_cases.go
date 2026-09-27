@@ -52,6 +52,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"folded_lists",
 		"print_args",
 		"truthiness",
+		"subscript_assign",
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {

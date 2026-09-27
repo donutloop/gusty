@@ -360,8 +360,17 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *ForStmt:
 		it := an.inferExpr(s.Iter)
 		elem := it
-		if it != nil && it.Kind == KindIterator {
-			elem = it.Elem
+		if it != nil {
+			// A `for` binds the loop variable to what iteration *yields*, not to the
+			// iterable: a list/set yields elements, a dict yields keys. Leaving the
+			// iterable's own type here made `for k in d: s = s + k` infer
+			// `int + dict[any, any]` and reject a program that runs correctly.
+			switch it.Kind {
+			case KindIterator, KindList, KindSet:
+				elem = it.Elem
+			case KindDict:
+				elem = it.Key
+			}
 		}
 		if elem == nil {
 			elem = TDyn()

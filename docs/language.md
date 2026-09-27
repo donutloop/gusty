@@ -366,6 +366,49 @@ for sets). Constant-key lookup resolves at compile time; like lists, these
 literals must be used inline (no assignment-to-variable indirection) in the
 codegen path. The interpreter indexes dicts/sets at runtime and is unchanged.
 
+### Iterating and mutating containers
+
+A container variable behaves like the Python equivalent, identically on the
+interpreter and in AOT:
+
+```py
+d = {}              # {} is an EMPTY DICT (the empty set is set(), see below)
+m = {1: "a"}        # non-empty braces with colons are a dict
+s = {1, 2}          # braces without colons are a set
+
+for k in d:         # a dict yields its KEYS, in insertion order
+    print(k, d[k])
+
+for x in s:         # a set yields its members
+    print(x)
+
+d["k"] = 1          # item assignment inserts, or updates an existing key
+d["k"] = 2          # …and updating replaces the value, it does not append
+xs = [1, 2, 3]
+xs[1] = 9           # a list replaces the element: [1, 9, 3]
+xs[9] = 0           # IndexError — item assignment never grows a list
+```
+
+Rules that both backends implement:
+
+- **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so
+  `d = {}` then `d[k] = v` failed with `not in set`) while the AOT treated the same
+  token as a dict — one token, two kinds.
+- **Iteration yields elements; a dict yields keys.** The checker binds the loop
+  variable to the element/key type, so `for k in d: s = s + k` is not flagged as
+  `int + dict[...]`.
+- **Item assignment.** `d[k] = v` inserts or updates (Python's semantics: never raises
+  for a missing key). `xs[i] = v` replaces an element within bounds and raises
+  `IndexError` otherwise — in AOT the bounds test is emitted around the store, so a bad
+  index takes the exception path instead of writing past the elements. Assigning to a
+  set element or a string index is rejected (`TypeError` / `strings are immutable`).
+- A container produced by a call (`d = make(3)`) is iterated through the runtime
+  length, like any other container variable.
+
+Before this was implemented, `d[1] = 2` did not work at all: the parser accepted the
+statement, consumed `= 2`, and threw it away, so the program ran as if the line were
+absent — on both backends, with no diagnostic.
+
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other

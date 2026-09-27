@@ -1,0 +1,42 @@
+def make(n):
+    d = {}
+
+    for i in range(n):
+        d[i] = i * 10
+
+    return d
+
+d = {}
+d[1] = 2
+d[3] = 6
+d[1] = 9
+print(len(d))
+print(d[1])
+for k in d:
+    print(k, d[k])
+
+m = make(3)
+t = 0
+for k in m:
+    t = t + m[k]
+
+print(t)
+xs = [1, 2, 3]
+xs[0] = -4
+xs[2] = 8
+print(xs)
+
+i = 1
+xs[i] = xs[i] + 100
+print(xs)
+s = {3, 1, 2}
+total = 0
+for x in s:
+    total = total + x
+
+print(total)
+empty = {}
+if empty:
+    print(1)
+else:
+    print(2)

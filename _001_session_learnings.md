@@ -912,3 +912,58 @@ backends do") is what surfaced:
   `print(n)`), not the compiler.
 - `VerifyModuleIR` in a unit test catches the i1/i32 class immediately — five of these
   bugs predate today and were invisible to every existing test.
+
+## Cycle: Gap K.2/K.4/K.5 — container iteration, item assignment, `{}`
+
+**What happened.** Continuing the corpus work, `d = {}` + `d[1] = 2` + `print(d[1])`
+printed nothing on **both** backends. The parity harness was useless here: both sides
+agreed — on doing nothing. Root causes stacked three deep:
+
+1. The parser accepted `d[1] = 2`, consumed `= 2`, and returned an *expression
+   statement* — the assignment was thrown away. `1 = 2` and `f() = 2` produced **zero
+   statements** because `parseTopLevel`'s recovery loop recorded only `*ParseError` and
+   dropped every other error kind.
+2. Neither backend implemented item assignment (interpreter matched Name/Tuple/Attr
+   targets only; codegen rejected `Index`).
+3. `{}` parsed as an empty **set** — so the interpreter called `d[k] = v` a set mutation
+   (`not in set`) while codegen emitted dict code for the same token.
+
+Plus two latent ones found on the way: the checker bound a `for` variable to the
+*iterable's* type (so `for k in d: s = s + k` was rejected as `int + dict[any, any]`),
+and the loop variable's `alloca` sat inside the body block — which does not dominate the
+code after the loop, so `for k in d:` followed by `for k in m:` failed the verifier
+("Instruction does not dominate all uses").
+
+**Decisions worth stating (ADR 0168).**
+- **A compiler must not lose statements.** The parser rule is general, not "support Index
+  targets": any target that cannot be assigned is a `*ParseError`, and `parseTopLevel`
+  converts *any* non-`ParseError` from `parseStmt` into one rather than recovering past it.
+- `rt_set_elem` **appends** (it bumps the length), so item assignment needed
+  `rt_put_elem`; the bounds test is emitted around the store and takes the existing raise
+  path with `IndexError`'s code. An unchecked write past the end of a container is how you
+  get today's `rt_free(0)` class of bug tomorrow.
+- `{}` is an empty **dict**; `set()` doesn't exist yet, so "write `{}` for an empty set"
+  is not an option — that gap is K.3, recorded not papered over.
+
+**Debugging notes (what actually found the bugs).**
+- `opt-20 -passes=verify` on `--emit-llvm` output named the dominance bug in one line. It
+  is the fastest oracle in this repo — five bugs so far.
+- The `--build` failure that *only* printed warnings and exited 1 was maddening: `--json`
+  had the reason (`verification.ok=false`) while the human path lost it, because the error
+  branch printed diagnostics **or** the error. Recorded as Gap K.7; fixing it as its own
+  commit (one commit per feature is a promise to my future self, not bureaucracy).
+- Three of my own test expectations were wrong before the compiler was: iterating
+  `range(3)` then a dict sums to 93, not 14, and a `while` test had no `print` in it at
+  all. Check whose expectation is wrong before typing a fix.
+- Scope resets must cover every per-scope map. `beginScope()` now owns
+  allocd/gcRootSeen/listVars/runtimeDicts/runtimeSets/freshSlots; the previous fix reset
+  only the first two, so a dict named `d` inside a function made module code free `%_d`
+  before main allocated it ("input module is broken").
+- Registering a variable's container kind from the checker's inferred type
+  (`d = make(3)`) interacts with the "rebind to a non-container ⇒ free the old slot"
+  heuristic: registering then immediately letting that heuristic *un*register it made
+  iteration silently revert to comparing the index against the handle. Both now share one
+  computed `boundKind`.
+
+**State.** Suite green; conformance corpus 36/36 at parity; gaps K.2/K.4/K.5 closed,
+K.3/K.6/K.7 recorded for the next cycles.

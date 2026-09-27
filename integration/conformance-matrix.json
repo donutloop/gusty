@@ -394,6 +394,19 @@
     },
     {
       "case": {
+        "id": "programs/subscript_assign",
+        "name": "subscript_assign.gy",
+        "source": "def make(n):\n    d = {}\n\n    for i in range(n):\n        d[i] = i * 10\n\n    return d\n\nd = {}\nd[1] = 2\nd[3] = 6\nd[1] = 9\nprint(len(d))\nprint(d[1])\nfor k in d:\n    print(k, d[k])\n\nm = make(3)\nt = 0\nfor k in m:\n    t = t + m[k]\n\nprint(t)\nxs = [1, 2, 3]\nxs[0] = -4\nxs[2] = 8\nprint(xs)\n\ni = 1\nxs[i] = xs[i] + 100\nprint(xs)\ns = {3, 1, 2}\ntotal = 0\nfor x in s:\n    total = total + x\n\nprint(total)\nempty = {}\nif empty:\n    print(1)\nelse:\n    print(2)\n",
+        "shared": true
+      },
+      "interp_ok": true,
+      "interp_stdout": "2\n9\n1 9\n3 6\n30\n[-4, 2, 8]\n[-4, 102, 8]\n6\n2\n",
+      "aot_ok": true,
+      "aot_stdout": "2\n9\n1 9\n3 6\n30\n[-4, 2, 8]\n[-4, 102, 8]\n6\n2\n",
+      "parity": true
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -458,6 +471,6 @@
       "parity": true
     }
   ],
-  "pass": 35,
+  "pass": 36,
   "fail": 0
 }

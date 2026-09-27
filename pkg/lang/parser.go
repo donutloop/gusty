@@ -1055,15 +1055,28 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 		aug.Src = ex.Span()
 		return aug, nil
 	}
-	// attribute assignment: self.x = expr
+	// assignment to an attribute or a subscript: `self.x = expr`, `d[k] = v`,
+	// `xs[i] = v`. Anything else is a plain error: this path used to consume the
+	// `= value` and fall through to an ExprStmt, so `d[1] = 2` parsed successfully
+	// and silently did nothing.
 	if p.peek().IsOp("=") {
 		p.next()
 		val, err := p.parseExpr()
 		if err != nil {
 			return nil, err
 		}
-		if a, ok := ex.(*Attr); ok {
-			return &AssignStmt{Target: a, Value: val}, nil
+		switch t := ex.(type) {
+		case *Attr:
+			return &AssignStmt{Target: t, Value: val}, nil
+		case *Index:
+			return &AssignStmt{Target: t, Value: val, Src: t.Span()}, nil
+		case *Tuple:
+			return &AssignStmt{Target: t, Value: val}, nil
+		default:
+			// A *ParseError (not a plain error) so the front end reports it: a
+			// non-ParseError used to be swallowed by the statement-recovery loop,
+			// which is how `f() = 1` came to parse as "no statement at all".
+			return nil, &ParseError{Span: ex.Span(), Msg: "cannot assign to this target; assignment needs a name, attribute, tuple or subscript target"}
 		}
 	}
 	p.skipNewlines()
@@ -1931,6 +1944,13 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 	}
 	if isDict {
 		return &DictLit{Keys: keys, Vals: vals, Src: t.Span}, nil
+	}
+	// `{}` is an EMPTY DICT, like everywhere else in Python: braces mean mapping,
+	// and the empty set is spelled set(). Classifying it as a set made `d = {}` then
+	// `d[k] = v` fail with "not in set" on the interpreter while AOT treated the same
+	// literal as a dict — the same token, two kinds.
+	if len(elems) == 0 && len(keys) == 0 {
+		return &DictLit{Src: t.Span}, nil
 	}
 	return &SetLit{Elems: elems, Src: t.Span}, nil
 }

@@ -265,10 +265,12 @@ Exit codes are deterministic:
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **35 conformance cases**, all passing
-  (`pass: 35, fail: 0`) across both backends (interpreter and AOT), including
-  `programs/truthiness.gy`, which pins Python's truthiness rules
-  (`docs/language.md` § Truthiness) on both paths.
+  `conformance-matrix.json`: **36 conformance cases**, all passing
+  (`pass: 36, fail: 0`) across both backends (interpreter and AOT), including
+  `programs/truthiness.gy` (Python's truthiness rules) and
+  `programs/subscript_assign.gy` (container iteration and `d[k] = v` /
+  `xs[i] = v` item assignment) — see `docs/language.md`
+  § Truthiness / § Iterating and mutating containers.
 - **Property testing** — seeded deterministic whole-program generation.
 
 ## Requirements & build

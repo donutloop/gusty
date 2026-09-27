@@ -119,6 +119,50 @@ func (e *Evaluator) setLoopVar(v Expr, val int64) error {
 	return &EvalError{Msg: "unsupported loop variable"}
 }
 
+// storeIndex implements subscript assignment: `obj[idx] = val`.
+//
+// A dict inserts when the key is new and updates in place otherwise (Python's
+// assignment semantics — it never raises for a missing key). A list replaces an
+// element within bounds. Sets and strings are immutable mappings here, so assigning
+// into them is an error rather than a silent no-op.
+func (e *Evaluator) storeIndex(ix *Index, val int64) error {
+	objV, err := e.eval(ix.Obj)
+	if err != nil {
+		return err
+	}
+	idx, err := e.eval(ix.Idx)
+	if err != nil {
+		return err
+	}
+	o := e.heap[objV]
+	if o == nil {
+		return &EvalError{Msg: "cannot assign to an index of a non-container"}
+	}
+	switch o.kind {
+	case "dict":
+		for i, k := range o.elems {
+			if e.dictKeyEq(k, idx) {
+				o.dvals[i] = val
+				return nil
+			}
+		}
+		o.elems = append(o.elems, idx)
+		o.dvals = append(o.dvals, val)
+		return nil
+	case "list":
+		if idx < 0 || idx >= int64(len(o.elems)) {
+			return &EvalError{Msg: "index out of range"}
+		}
+		o.elems[idx] = val
+		return nil
+	case "set":
+		return &EvalError{Msg: "cannot assign to a set element"}
+	case "str":
+		return &EvalError{Msg: "strings are immutable"}
+	}
+	return &EvalError{Msg: "cannot assign to an index of this value"}
+}
+
 // resolveClassID returns the heap id of the class bound to name, if any.
 // Classes can be referenced by their definition name (classIDs) or as a
 // class value stored in a variable (e.g. `Alias = Point`).
@@ -1111,6 +1155,17 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 					o.attrs[a.Name.Value] = v
 					last = v
 				}
+			}
+			// Subscript assignment: `d[k] = v` inserts or updates a dict entry,
+			// `xs[i] = v` replaces a list element. Until both the parser and the
+			// evaluator supported it, `d[k] = v` parsed as an expression statement and
+			// the value was thrown away — the statement did nothing, silently, on both
+			// backends.
+			if ix, ok := s.Target.(*Index); ok {
+				if err := e.storeIndex(ix, v); err != nil {
+					return 0, err
+				}
+				last = v
 			}
 		case *AugAssignStmt:
 			// value = target op rhs, then write the result back to the target.

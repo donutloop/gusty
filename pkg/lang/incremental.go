@@ -190,6 +190,12 @@ func parseTopLevel(toks []Token, src string, startTok int) (stmts []Stmt, starts
 		if err != nil {
 			if pe, ok := err.(*ParseError); ok {
 				errs = append(errs, pe)
+			} else {
+				// Any other parser failure must still be reported. Before this, a
+				// plain error fell through here, the statement was recovered past and
+				// dropped, and the program "parsed" with that code missing — e.g.
+				// `f() = 1` or `1 = 2` produced zero statements and zero diagnostics.
+				errs = append(errs, &ParseError{Span: p.peek().Span, Msg: err.Error()})
 			}
 			p.recoverStmt()
 			continue

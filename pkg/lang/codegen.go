@@ -69,6 +69,16 @@ entry:
   ret void
 }
 
+; list element replacement: xs[i] = v writes elems[i] in place. Unlike
+; rt_set_elem this must NOT bump the length, which is what appends do.
+define internal void @rt_put_elem(i32 %h, i32 %i, i32 %v) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
+  store i32 %v, i32* %ep
+  ret void
+}
+
 define internal i32 @rt_list_len(i32 %h) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -834,8 +844,9 @@ func GenerateIR(prog *Program) (string, error) {
 	// per body; without a reset here, an alloca emitted for a function parameter
 	// named `xs` would make `xs = [1, 2]` in main skip its own alloca and store
 	// through the (out-of-scope) `%_xs` register inside the function.
-	g.allocd = map[string]bool{}
-	g.gcRootSeen = map[string]bool{}
+	// Module-level code is its own scope too (see beginScope).
+	restoreScope := g.beginScope()
+	defer restoreScope()
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
 	}
@@ -2667,6 +2678,127 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	return g.asI1(b, v), nil
 }
 
+// assignIndex lowers `ix.Obj[ix.Idx] = val` against a runtime container variable.
+func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
+	nm, ok := ix.Obj.(*Name)
+	if !ok {
+		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; the interpreter supports more forms", ix.Obj)
+	}
+	v, err := g.value(b, val)
+	if err != nil {
+		return err
+	}
+	h, err := g.value(b, ix.Obj)
+	if err != nil {
+		return err
+	}
+	key, err := g.value(b, ix.Idx)
+	if err != nil {
+		return err
+	}
+	switch {
+	case g.runtimeDicts[nm.Value]:
+		b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		return nil
+	case g.listVars[nm.Value]:
+		// Bounds are checked so an out-of-range index raises IndexError through the
+		// same exception path `raise` uses, instead of writing past the elements.
+		ln := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
+		hi := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp sge i32 %s, %s\n", hi, key, ln))
+		g.markI1(hi)
+		lo := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", lo, key))
+		g.markI1(lo)
+		bad := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
+		g.markI1(bad)
+		badL, okL, endL := g.newLabel("item.bad"), g.newLabel("item.ok"), g.newLabel("item.end")
+		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
+		b.WriteString(fmt.Sprintf("%s:\n", badL))
+		b.WriteString("  store i32 1, i32* @exn_flag\n")
+		b.WriteString(fmt.Sprintf("  store i32 %d, i32* @exn_code\n", exnCode("IndexError")))
+		if len(g.handlerStack) > 0 {
+			b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
+		} else {
+			b.WriteString("  br label %" + g.funcRaiseExit + "\n")
+		}
+		b.WriteString(fmt.Sprintf("%s:\n", okL))
+		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+		b.WriteString(fmt.Sprintf("%s:\n", endL))
+		return nil
+	case g.runtimeSets[nm.Value]:
+		return fmt.Errorf("codegen: sets do not support item assignment (s[k] = v); the interpreter raises TypeError")
+	case isStringExpr(ix.Obj) || (g.strVals != nil && g.strVals[nm.Value] != ""):
+		return fmt.Errorf("codegen: strings are immutable, so s[k] = v is not allowed")
+	}
+	return fmt.Errorf("codegen: item assignment is only supported for runtime dict and list variables")
+}
+
+// exprTyName returns the checker's inferred type name for an expression, for the
+// node kinds whose binding a container registration depends on.
+func exprTyName(e Expr) string {
+	switch n := e.(type) {
+	case *Call:
+		return n.Ty
+	case *Name:
+		return n.Ty
+	case *Index:
+		return n.Ty
+	case *Attr:
+		return n.Ty
+	case *CondExpr:
+		return n.Ty
+	case *ListLit:
+		return n.Ty
+	case *DictLit:
+		return n.Ty
+	case *SetLit:
+		return n.Ty
+	}
+	return ""
+}
+
+// containerKindFromTy maps an inferred type name ("dict[any, any]", "list[int]",
+// "set[int]") to the runtime container kind, or "" when it is not a container.
+func containerKindFromTy(name string) string {
+	switch {
+	case strings.HasPrefix(name, "dict["):
+		return "dict"
+	case strings.HasPrefix(name, "list["):
+		return "list"
+	case strings.HasPrefix(name, "set["):
+		return "set"
+	}
+	return ""
+}
+
+// beginScope starts a fresh variable-binding scope — a function body, or the
+// module's top-level code — and returns the closure that restores the previous one.
+//
+// Which names are containers, which slots have been allocated, and which are GC
+// roots are facts about a single scope. Sharing them across scopes makes code in one
+// scope act on registers belonging to another: a dict `d` inside a function made
+// module-level code free `%_d` before main had allocated it, producing a module LLVM
+// rejects.
+func (g *irGen) beginScope() func() {
+	savedAlloc, savedRoots := g.allocd, g.gcRootSeen
+	savedList, savedDict, savedSet, savedFresh := g.listVars, g.runtimeDicts, g.runtimeSets, g.freshSlots
+	g.allocd = map[string]bool{}
+	g.gcRootSeen = map[string]bool{}
+	g.listVars = map[string]bool{}
+	g.runtimeDicts = map[string]bool{}
+	g.runtimeSets = map[string]bool{}
+	g.freshSlots = map[string]bool{}
+	return func() {
+		g.allocd, g.gcRootSeen = savedAlloc, savedRoots
+		g.listVars, g.runtimeDicts, g.runtimeSets = savedList, savedDict, savedSet
+		g.freshSlots = savedFresh
+	}
+}
+
 // emitFreeOld releases the container handle a variable currently holds, if it
 // holds one at all.
 //
@@ -2675,9 +2807,11 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 // releases whatever object owns slot 0, so an unrelated list could be recycled out
 // from under its own variable (observed as a non-empty list reading back as empty).
 func (g *irGen) emitFreeOld(b *strings.Builder, name string) {
-	if g.freshSlots[name] {
-		// The slot was created by this same statement, so its "previous binding"
-		// is the zero store that created it — nothing to release.
+	// Only a variable that already has a slot can have an old binding, and a slot
+	// created by this same statement holds a value that is not a live handle.
+	// Loading and freeing it anyway emits `load i32, i32* %_x` before `%_x` is
+	// allocated — a module LLVM rejects outright.
+	if !g.allocd[name] || g.freshSlots[name] {
 		delete(g.freshSlots, name)
 		return
 	}
@@ -3301,7 +3435,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
-				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %d)\n", hs, hs, key))
+				// The key may be a runtime value (`for k in d: d[k]`), so it is
+				// lowered like the list index path does; only a literal key folds.
+				keyOp := strconv.FormatInt(key, 10)
+				if _, isLit := n.Idx.(*IntLit); !isLit {
+					kv, e := g.value(b, n.Idx)
+					if e != nil {
+						return "", e
+					}
+					keyOp = kv
+				}
+				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
 			if g.listVars[obj.Value] {
@@ -5716,8 +5860,13 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.handlerStack = nil
 	g.funcRaiseExit = g.fnName(fd) + ".raiseexit"
 	g.closures = map[string]*closureInfo{}
-	g.allocd = map[string]bool{}
-	g.gcRootSeen = map[string]bool{}
+	// A function body is its own variable-binding scope: slot/allocation state and
+	// the container-kind maps are per scope. Without this, a dict named `d` in one
+	// function made module-level `d = make(4)` emit its "release the old binding"
+	// free against `%_d` — a register main had not allocated yet — and the module
+	// failed to verify ("input module is broken").
+	restoreScope := g.beginScope()
+	defer restoreScope()
 	g.envMode = false
 	g.envCaptures = nil
 	g.envParam = "%env"
@@ -6049,6 +6198,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 	case *AssignStmt:
 		// tuple unpacking: a, b = v1, v2
+		// Subscript assignment: `d[k] = v` inserts/updates a dict entry, `xs[i] = v`
+		// replaces a list element within bounds (Python raises IndexError otherwise).
+		// Sets and strings reject it, as they do in the interpreter.
+		if ix, ok := n.Target.(*Index); ok {
+			return g.assignIndex(b, ix, n.Value)
+		}
 		if tup, ok := n.Target.(*Tuple); ok {
 			var valElems []Expr
 			switch vt := n.Value.(type) {
@@ -6102,6 +6257,29 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if _, isList := n.Value.(*ListLit); isList && !g.inFunc && g.deadLists[nm.Value] {
 				return nil
 			}
+			// A binding whose *inferred type* is a container is a container, even
+			// when the right-hand side is a call (`d = make(4)`). The kind maps are
+			// what make iteration, indexing, len and truthiness ask the runtime for
+			// a length; unregistered, `for k in d:` fell back to the range path and
+			// compared the loop index against the handle — zero iterations.
+			_, literal := n.Value.(*ListLit)
+			_, literalDict := n.Value.(*DictLit)
+			_, literalSet := n.Value.(*SetLit)
+			boundKind := containerKindFromTy(exprTyName(n.Value))
+			// Container literals have their own lowering paths below, which register
+			// the kind themselves; only non-literal bindings (a call, an index, ...)
+			// need the inferred type to say so here.
+			rebindsContainer := boundKind != "" && !literal && !literalDict && !literalSet
+			if rebindsContainer {
+				switch boundKind {
+				case "dict":
+					g.runtimeDicts[nm.Value] = true
+				case "list":
+					g.listVars[nm.Value] = true
+				case "set":
+					g.runtimeSets[nm.Value] = true
+				}
+			}
 			// A module-level container variable needs its slot + GC root before
 			// anything mutates it; the empty-literal init (`xs = []`) is where that
 			// happens, because the literal path below only stores a fresh handle.
@@ -6151,7 +6329,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				return nil
 			}
 			// list var rebound to a non-list value: free its heap slot (GC-correctness).
-			if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
+			// A binding that IS a container (e.g. `d = make(4)`) keeps its kind.
+			if !rebindsContainer && (g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value]) {
 				g.emitFreeOld(b, nm.Value)
 				g.listVars[nm.Value] = false
 				g.runtimeDicts[nm.Value] = false
@@ -6568,20 +6747,38 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// list variable. Iterate positions 0..len-1 and bind the loop
 		// variable to each element via rt_get_elem.
 		loopVar := loopVarName(n.Var)
-		isListIter := false
+		// Runtime heap container iterables. A list (or generator result) yields its
+		// elements and a set its members; a dict yields its KEYS in insertion order,
+		// which the runtime stores as [key, value] pairs — so entry i's key lives at
+		// 2*i. Iterating anything else falls through to the range path.
+		iterKind := "" // "list" | "set" | "dict"
 		var hVal string
 		if name, ok := n.Iter.(*Name); ok {
-			if g.listVars[name.Value] {
-				isListIter = true
+			switch {
+			case g.listVars[name.Value]:
+				iterKind = "list"
+			case g.runtimeSets[name.Value]:
+				iterKind = "set"
+			case g.runtimeDicts[name.Value]:
+				iterKind = "dict"
 			}
 		} else if call, ok := n.Iter.(*Call); ok {
 			if fn, ok2 := call.Fn.(*Name); ok2 {
 				if g.genFuncs[fn.Value] {
-					isListIter = true
+					iterKind = "list"
 				}
 			}
 		}
-		if isListIter {
+		if iterKind != "" {
+			lenFn := "rt_list_len"
+			elemStride := 1
+			switch iterKind {
+			case "set":
+				lenFn = "rt_set_len"
+			case "dict":
+				lenFn = "rt_dict_len"
+				elemStride = 2 // keys only
+			}
 			if hVal == "" {
 				hv, err := g.value(b, n.Iter)
 				if err != nil {
@@ -6590,10 +6787,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hVal = hv
 			}
 			lenT := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", lenT, hVal))
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s)\n", lenT, lenFn, hVal))
 			idxVar := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = alloca i32\n", idxVar))
 			b.WriteString(fmt.Sprintf("  store i32 0, i32* %s\n", idxVar))
+			// The loop variable's slot must be allocated here, in the block that
+			// branches into the loop: an alloca emitted inside the body block does
+			// not dominate the blocks after the loop, so a second loop reusing the
+			// same variable name (`for k in d:` … `for k in m:`) failed the verifier
+			// with "Instruction does not dominate all uses".
+			if !g.allocd[loopVar] {
+				b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+loopVar))
+			}
+			g.allocd[loopVar] = true
 			condL := g.newLabel("for.list.cond")
 			bodyL := g.newLabel("for.list.body")
 			incL := g.newLabel("for.list.inc")
@@ -6607,12 +6813,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n", cmp, ild, lenT))
 			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cmp, bodyL, elseL))
 			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
-			if !g.allocd[loopVar] {
-				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", loopVar))
+			pos := ild
+			if elemStride != 1 {
+				// dict entries occupy two words: walk the key slots.
+				scaled := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = mul i32 %s, %d\n", scaled, ild, elemStride))
+				pos = scaled
 			}
-			g.allocd[loopVar] = true
 			elemT := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, ild))
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, pos))
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", elemT, loopVar))
 			g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 			for _, s := range n.Body {

@@ -554,11 +554,53 @@ Each is a concrete, reproducible defect with the shape to fix it.
   slot 0 out from under an unrelated list (observed as `xs = [i for i in range(3)]` later
   reading as empty). Every free is now guarded (`if (h != 0) rt_free(h)`), pinned by
   `TestEmptyBindingNeverFreesHandleZero`.
-- **Gap K.2 — `for k in d:` over a dict yields nothing in AOT** — 🟥 FOUND.
-  `d = {1: 2, 3: 4}` / `for k in d: print(k)` prints the keys on the interpreter and
-  nothing in the native binary, with no error — the parity harness cannot see it because
-  it compares backends against each other only when a case exercises the shape. Needs a
-  key iterator over the runtime dict (the interpreter's key order is insertion order).
+- **Gap K.2 — `for k in d:` over a dict yields nothing in AOT** — ✅ DONE.
+  `d = {1: 2, 3: 4}` / `for k in d: print(k)` printed the keys on the interpreter and
+  nothing in the native binary, with no error: the loop compared its index against the
+  dict's *handle* instead of its length. Container iteration now asks the runtime
+  (`rt_list_len`/`rt_dict_len`/`rt_set_len`), a dict yields its keys from the `[key,
+  value]` pair layout (entry i's key at `2*i`), and a container returned by a call is
+  registered from the checker's inferred type so `d = make(3)` iterates too. Fixed
+  alongside it: the checker bound a `for` variable to the *iterable's* type (so
+  `for k in d: s = s + k` was rejected as `int + dict[any, any]`), and the loop
+  variable's slot was allocated inside the body block, which does not dominate the code
+  after the loop — two loops reusing one name (`for k in d:` … `for k in m:`) failed the
+  verifier with "Instruction does not dominate all uses". Covered by
+  `integration/dict_iteration_test.go` (17 cases × both backends vs Python) and
+  `programs/subscript_assign.gy`.
+- **Gap K.4 — item assignment was silently dropped by the parser** — ✅ DONE.
+  `d[1] = 2` parsed "successfully": `parseExprOrAssign` consumed `= 2` and returned an
+  expression statement, so the assignment vanished — on both backends, with no
+  diagnostic (`1 = 2` and `f() = 1` likewise produced *zero* statements, because the
+  statement-recovery loop in `parseTopLevel` only recorded `*ParseError`s and threw away
+  every other parser failure). Now: `d[k] = v` inserts/updates a dict, `xs[i] = v`
+  replaces an element and raises `IndexError` out of bounds (a bounds test around the
+  store in AOT, via the new `rt_put_elem` which writes without bumping the length),
+  sets and strings reject it, and an unassignable target is a real parse error —
+  including any non-`ParseError` the parser raises, which can no longer disappear.
+  Covered by `pkg/lang/subscript_assign_test.go` (AST shape, parse errors, interpreter
+  semantics, IR shape + verification, actionable diagnostics) and
+  `integration/programs/subscript_assign.gy`.
+- **Gap K.5 — `{}` was a set in the interpreter and a dict in AOT** — ✅ DONE.
+  Python's `{}` is an empty dict; the parser's brace classifier fell through to `SetLit`
+  when there were no elements, so `d = {}` then `d[k] = v` failed with `not in set` on
+  the interpreter while the AOT emitted dict code for the same source. `{}` now parses to
+  an empty `DictLit` (`{1, 2}` is still a set), pinned by `TestEmptyBracesIsAnEmptyDict`.
+- **Gap K.6 — unhandled exceptions report nothing in AOT** — 🟥 FOUND.
+  `xs = [1]` / `xs[5] = 2` raises `index out of range` and exits 1 on the interpreter,
+  but the AOT binary takes the raise-exit path and exits **0 printing nothing**, so a
+  trapped program looks like a success to a script. Related: `raise IndexError("boom")`
+  does not compile at all (`undefined name "IndexError"` — exception classes are not
+  registered as names), and there is no message global alongside `@exn_code`, so the
+  raise path cannot print what it caught. Fix by giving the raise-exit path a report
+  (message + nonzero exit, honouring the Gap J.3 exit-code contract) and registering the
+  builtin exception classes for both paths.
+- **Gap K.7 — `--build` can fail with no stated reason** — 🟥 FOUND.
+  When a build failed while the program also carried warnings, the CLI printed the
+  diagnostics and exited 1 without ever printing the failure itself: the error branch
+  printed the error *only when there were no diagnostics*. `--json` did carry the reason
+  (in `verification`), so a human saw an unexplained failure and only a machine could
+  tell what happened. Fix: always print the failure line, diagnostics or not.
 - **Gap K.3 — `list.pop` and the `set()` constructor are missing** — 🟥 FOUND.
   `xs.pop()` is `no such list method pop` in the interpreter and unsupported in AOT, so
   the natural way to empty a container in a `while xs:` loop does not exist (the
