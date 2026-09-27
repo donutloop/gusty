@@ -964,8 +964,13 @@ func augOpBase(text string) string {
 		return "-"
 	case "*=":
 		return "*"
-	case "/=", "//=":
+	case "/=":
 		return "/"
+	case "//=":
+		// `/=` and `//=` were collapsed to the same operator because `/` truncated;
+		// now that `/` is true division (PEP 238) they are different operators and
+		// `x //= 2` must keep floor semantics.
+		return "//"
 	case "%=":
 		return "%"
 	}

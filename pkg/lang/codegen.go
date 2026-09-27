@@ -1387,6 +1387,12 @@ func GenerateIR(prog *Program) (string, error) {
 	if g.raiseUsed || g.heapUsed {
 		g.globals.WriteString(raiseRuntimeIR)
 	}
+	if g.floatFmtUsed {
+		// rt_fmt_double is only referenced by Python-style float rendering, so it
+		// travels in its own block: a program that never prints a float does not
+		// pay for the snprintf/strtod declarations.
+		g.globals.WriteString(floatRuntimeIR)
+	}
 	if g.heapUsed {
 		g.globals.WriteString(heapRuntimeIR)
 	}
@@ -1514,7 +1520,10 @@ type irGen struct {
 	// raiseUsed is set by any raise site (a `raise` statement, or a
 	// compiler-generated one such as an out-of-bounds item assignment). It gates
 	// rt_die, which reports an uncaught exception on stderr before main exits 1.
-	raiseUsed     bool
+	raiseUsed bool
+	// floatFmtUsed records that a float is rendered at run time, which pulls in
+	// floatRuntimeIR (rt_fmt_double).
+	floatFmtUsed  bool
 	heapSeq       int
 	handlerStack  []string
 	funcRaiseExit string
@@ -1643,7 +1652,11 @@ func (g *irGen) emitUnionPrint(b *strings.Builder, nm, nl string) {
 	uf := g.newTmp()
 	fmt.Fprintf(b, "  %s = getelementptr %%unionbox, %%unionbox* %%_%s, i32 0, i32 2\n", uf, nm)
 	fmt.Fprintf(b, "  %s = load double, double* %s\n", fv, uf)
-	fmt.Fprintf(b, "  %s\n", g.printfCall("double", fv, "%g"+nl))
+	// Python's rendering, not printf's %g: see rt_fmt_double.
+	g.floatFmtUsed = true
+	fs := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i8* @rt_fmt_double(double %s)\n", fs, fv)
+	fmt.Fprintf(b, "  %s\n", g.printfCall("i8*", fs, "%s"+nl))
 	fmt.Fprintf(b, "  br label %%%s\n", lj)
 	fmt.Fprintf(b, "%s:\n", ln)
 	iss := g.newTmp()
@@ -2687,7 +2700,7 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				return strconv.FormatInt(il.Value, 10), true
 			}
 			if fv, ok := g.floatEval(n.Args[0]); ok {
-				return fmt.Sprintf("%g", fv), true
+				return pyFloatRepr(fv), true
 			}
 		}
 		if name, ok := n.Fn.(*Name); ok && name.Value == "chr" {
@@ -2777,7 +2790,7 @@ func (g *irGen) dictIndex(dl *DictLit, key int64) (string, error) {
 
 // floatConst formats a float constant as an LLVM double literal.
 func floatConst(v float64) string {
-	f := fmt.Sprintf("%g", v)
+	f := pyFloatRepr(v)
 	// LLVM double literals need a decimal point in the mantissa.
 	if i := strings.IndexAny(f, "eE"); i >= 0 {
 		if !strings.Contains(f[:i], ".") {
@@ -2803,8 +2816,15 @@ func (g *irGen) isFloat(e Expr) bool {
 		}
 		return false
 	case *BinOp:
+		// `/` is *true* division (PEP 238): 7 / 2 is 3.5 even when both operands are
+		// integers, so the result is a float whatever the operands are. Truncating it
+		// made the language's most common operator behave like C's, and the parity
+		// harness could not see it because both backends agreed on the wrong answer.
+		if n.Op == "/" {
+			return true
+		}
 		switch n.Op {
-		case "+", "-", "*", "/", "%", "//":
+		case "+", "-", "*", "%", "//":
 			return g.isFloat(n.L) || g.isFloat(n.R)
 		}
 		return false
@@ -3823,7 +3843,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 		}
 		if li, lok := n.L.(*IntLit); lok {
-			if ri, rok := n.R.(*IntLit); rok {
+			if ri, rok := n.R.(*IntLit); rok && !g.isFloat(n) {
 				lv, rv := int64(li.Value), int64(ri.Value)
 				var res int64
 				folded := false
@@ -5823,9 +5843,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					}
 					if part.Expr != nil {
 						if g.isFloat(part.Expr) {
-							fmtLit += "%.17g"
+							// %s of rt_fmt_double's text, not %.17g: Python's str(0.1) is
+							// "0.1" and str(2.0) is "2.0".
+							fmtLit += "%s"
 							fv := g.floatValue(b, part.Expr)
-							operands = append(operands, "double "+fv)
+							g.floatFmtUsed = true
+							fs := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_fmt_double(double %s)\n", fs, fv))
+							operands = append(operands, "i8* "+fs)
 						} else {
 							fmtLit += "%d"
 							vv, err := g.value(b, part.Expr)
@@ -5933,10 +5958,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			var t string
 			if g.isFloat(a) {
-				fmtName, size := g.fmtStr("%.17g")
+				// Python renders a float as its shortest round-tripping text with a
+				// ".0" when integral (rt_fmt_double); printf's %.17g invented digits
+				// and %g truncated them, and neither marked 2.0 as a float.
+				fmtName, size := g.fmtStr("%s")
 				fv := g.floatValue(b, a)
+				g.floatFmtUsed = true
+				fs := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i8* @rt_fmt_double(double %s)\n", fs, fv))
 				t = g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), double %s)\n", t, size, size, fmtName, fv))
+				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, fs))
 			} else {
 				// A container literal whose elements are strings builds a heap object (the static
 				// global layout is i32-only), so print it with the runtime printers rather than
@@ -6457,7 +6488,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		if g.isFloat(c.Args[0]) {
 			if fv, ok := g.floatEval(c.Args[0]); ok {
-				return g.strConst(fmt.Sprintf("%g", fv)), nil
+				return g.strConst(pyFloatRepr(fv)), nil
 			}
 		}
 		v, err := g.value(b, c.Args[0])
@@ -6738,6 +6769,73 @@ func exnCode(name string) int {
 // raiseRuntimeIR reports an uncaught exception the way the interpreter does — a
 // traceback header and the exception line — on stderr (fd 2, via write so it links on
 // every platform without depending on a libc `stderr` symbol) before main returns 1.
+const floatRuntimeIR = `; rt_fmt_double renders a runtime double the way Python's str() does, because the
+; printf formats alone cannot: %g loses precision (0.123456789 -> 0.123457) and
+; %.17g invents digits (0.1 -> 0.10000000000000001), and neither prints the
+; trailing ".0" that marks an integral float (print(x * 2.0) showed 2). It tries
+; the shortest precision that round-trips through strtod, then appends ".0" when
+; the text has no decimal point or exponent (and is not inf/nan). The result
+; lives in a small rotating buffer set so one print statement can format several
+; values before handing them to printf.
+@rt.fd.bufs = private global [8 x [64 x i8]] zeroinitializer
+@rt.fd.next = private global i32 0
+@rt.fd.fmt = private constant [5 x i8] c"%.*g\00"
+
+declare i32 @snprintf(i8*, i32, i8*, ...)
+declare double @strtod(i8*, i8**)
+
+define internal i8* @rt_fmt_double(double %v) {
+entry:
+  %slot = load i32, i32* @rt.fd.next
+  %ns = add i32 %slot, 1
+  %nw = urem i32 %ns, 8
+  store i32 %nw, i32* @rt.fd.next
+  %buf = getelementptr [8 x [64 x i8]], [8 x [64 x i8]]* @rt.fd.bufs, i32 0, i32 %slot, i32 0
+  br label %try
+try:
+  %prec = phi i32 [ 15, %entry ], [ %pn, %bad ]
+  %fmtp = getelementptr inbounds [5 x i8], [5 x i8]* @rt.fd.fmt, i32 0, i32 0
+  %w = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 64, i8* %fmtp, i32 %prec, double %v)
+  %back = call double @strtod(i8* %buf, i8* null)
+  %same = fcmp oeq double %back, %v
+  br i1 %same, label %fix, label %bad
+bad:
+  %pn = add i32 %prec, 1
+  %more = icmp slt i32 %prec, 17
+  br i1 %more, label %try, label %fix
+fix:
+  ; snprintf told us how many characters it wrote; that is where the ".0" goes.
+  %len = phi i32 [ %w, %try ], [ %w, %bad ]
+  %clamped = icmp ult i32 %len, 62
+  %safe = select i1 %clamped, i32 %len, i32 62
+  ; Decide the trailing ".0" from the value, not from the text: appending it is
+  ; correct exactly when the number is a finite integral value small enough that
+  ; %g rendered it positionally (Python: 2.0 -> "2.0", but 1e+16 -> "1e+16" and
+  ; 3.5 -> "3.5" take no suffix).
+  %fl = call double @llvm.floor.f64(double %v)
+  %integral = fcmp oeq double %fl, %v
+  %an = call double @llvm.fabs.f64(double %v)
+  %finite = fcmp olt double %an, 1.000000e+308
+  %positional = fcmp olt double %an, 1.000000e+15
+  %c1 = and i1 %integral, %finite
+  %needs = and i1 %c1, %positional
+  br i1 %needs, label %addzero, label %done
+addzero:
+  %p0 = getelementptr i8, i8* %buf, i32 %safe
+  store i8 46, i8* %p0
+  %i1 = add i32 %safe, 1
+  %p1 = getelementptr i8, i8* %buf, i32 %i1
+  store i8 48, i8* %p1
+  %i2 = add i32 %safe, 2
+  %p2 = getelementptr i8, i8* %buf, i32 %i2
+  store i8 0, i8* %p2
+  br label %done
+done:
+  ret i8* %buf
+}
+
+`
+
 const raiseRuntimeIR = `
 declare i64 @write(i32, i8*, i64)
 declare i64 @strlen(i8*)

@@ -325,7 +325,7 @@ func writeExpr(sb *strings.Builder, e Expr, prec int) {
 		if x.Text != "" {
 			sb.WriteString(x.Text)
 		} else {
-			s := strconv.FormatFloat(x.Value, 'f', -1, 64)
+			s := pyFloatRepr(x.Value)
 			if !strings.Contains(s, ".") {
 				s += ".0"
 			}

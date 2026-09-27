@@ -362,7 +362,7 @@ func (e *Evaluator) Repr(id int64) string {
 		case "str":
 			return o.sval
 		case "float":
-			return fmt.Sprintf("%g", o.fval)
+			return pyFloatRepr(o.fval)
 		case "list":
 			parts := make([]string, 0, len(o.elems))
 			for _, el := range o.elems {
@@ -2050,7 +2050,14 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		if r == 0 {
 			return 0, &EvalError{Msg: "division by zero"}
 		}
-		return l / r, nil
+		if floor {
+			// Python floors, Go truncates: -7 // 2 is -4, not -3.
+			return int64(math.Floor(float64(l) / float64(r))), nil
+		}
+		// `/` on two integers is *true* division (PEP 238): 7 / 2 is 3.5. Truncating
+		// it silently turned the language's most common operator into C's, and the
+		// parity harness could not see it because both backends agreed.
+		return e.allocFloat(float64(l) / float64(r)), nil
 	case "%":
 		if lf, ok := e.floatOf(l); ok {
 			rf, rfok := e.floatOf(r)

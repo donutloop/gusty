@@ -1631,3 +1631,49 @@ the shape stays pinned for the next change too.
 turn "works (interpreted)" into "fails (AOT-unsupported)" for unknown programs.
 Recorded as Gap M.2's open step, gated on the conformance matrix passing through
 the compiled path — a migration needs its evidence before it flips a default.
+
+## Gap P — `/` truncated and floats printed as ints (ADR 0180)
+
+**Parity has a blind spot for shared bugs.** Both backends computed `7 / 2 = 3`
+and printed `2.0` as `2`, so every parity test passed. The corpus only told the
+truth once I ran it through **CPython** — 32 of 35 Python-valid programs match now.
+An internal oracle proves agreement; only an external oracle proves correctness.
+When a feature is "Python-like", CPython is the specification, and it should be a
+test dependency, not a memory.
+
+**A documented wrong answer is still wrong.** `docs/language.md` said "Integer
+division treats `/` and `//` the same" and the docs had *internally* contradicted
+themselves about float representation a few lines earlier. Docs written from
+implementation notes preserve the bug and certify it; the fix had to update the
+language contract, not just the code.
+
+**Two formatters, two different lies.** `%g` dropped digits (0.123456789 →
+0.123457), `%.17g` invented them (0.1 → 0.10000000000000001), and neither marked
+an integral float as a float. Python's rule is "shortest that round-trips, with
+`.0` when integral" — which at runtime needs a precision ladder (15→16→17)
+verified by `strtod`, not a single format string.
+
+**Decide from the value, not the text.** My first `rt_fmt_double` scanned the
+formatted bytes for a `.` and rendered `3.5` as `3.5.0`. The condition — finite,
+integral, small enough to render positionally — is a property of the number;
+computing it (`floor(v) == v`, `|v| < 1e15`) was smaller, faster, and right.
+
+**Match Python's thresholds, not your library's defaults.** Go's `FormatFloat(…,'g',…)`
+switches to exponent notation at its own digit count, so `1e15` came out `1e+15`
+where Python says `1000000000000000.0`. Reimplementing "Python's float repr" means
+its *ranges* too, not just its shortest-digits rule.
+
+**Two LLVM/Go traps, again earned.** An instruction `getelementptr` takes no
+parentheses (only constant expressions do), and a runtime helper is only available
+if its block is emitted — mine landed in `heapRuntimeIR` and a float-only program
+got `use of undefined value '@rt_fmt_double'`. New runtime code gets its own block
+plus a use-flag, and a test that runs a program using *only* that feature.
+
+**Update expectations from the oracle, never to silence a failure.** Six tests and
+two golden files changed (`4` → `4.0`, `1` → `1.0`); each was checked against
+CPython first. A test updated to match output you did not verify is a test deleted.
+
+**Pin what you cannot fix today.** Three AOT division shapes remain wrong; they
+live in `TestKnownAOTDivisionGaps`, asserting Python's answer, the interpreter's
+(correct) answer, *and* the compiled backend's current wrong one — so the day
+someone fixes it, the test tells them to delete the allowance.

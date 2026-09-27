@@ -186,10 +186,25 @@ and writes the result back:
 - `x += e`  (add), `x -= e`  (subtract), `x *= e`  (multiply),
   `x /= e`  (integer divide), `x //= e` (integer divide), `x %= e` (modulus).
 
-The target must be a Name or an attribute (`self.x += 1`). Integer division
-treats `/` and `//` the same. Augmented assignment is supported in both the
-tree-walking interpreter and the AOT code generator (int and float Name
-targets, int Attr targets).
+The target must be a Name or an attribute (`self.x += 1`). Augmented assignment
+is supported in both the tree-walking interpreter and the AOT code generator (int
+and float Name targets, int Attr targets).
+
+**`/` is true division (PEP 238), `//` is floor division.** `7 / 2` is `3.5` and
+`84 / 2` is `42.0` — a float, even when both operands are integers. `7 // 2` is
+`3`, and `-7 // 2` is `-4` (it floors, it does not truncate toward zero). An
+earlier backend made `/` and `//` the same truncating operator, which turned the
+language's most common operator into C's. Remaining compiled-backend gaps: `//`
+on negative integers still truncates under AOT, `x /= 2` keeps the integer
+representation, and a float passed to an untyped parameter truncates — each
+pinned in `integration/division_test.go` (roadmap Gap P.1).
+
+**Floats print the way Python renders them** (`str()`, `print`, and f-strings all
+agree): the shortest text that round-trips, with a trailing `.0` when the value is
+integral — `print(2.0)` is `2.0`, `print(0.123456789)` is `0.123456789`, `print(1e20)`
+is `1e+20`. In the AOT backend this is `@rt_fmt_double` (a `snprintf` precision
+ladder checked against `strtod`, then the `.0`), because `%g` truncates digits and
+`%.17g` invents them.
 
 ### Expression statements
 

@@ -926,3 +926,41 @@ index) survived behind exactly that. Needed:
   conformance matrix is green through it, so "it ran" never again means "the
   interpreter ran it". Until then, AOT-only bugs need `--aot` or the harness to
   show themselves, which is how three of them (ADR 0178) survived manual use.
+
+## Gap P — `/` truncated and floats printed as ints (found 2026-08-03)
+
+- **Status**: ✅ DONE for the interpreter and the compiled paths that were
+  reachable (ADR 0180); the sub-gaps below stay open.
+- **Found by**: running the conformance corpus through CPython (the Python oracle
+  added while working on L9.6). Parity compares backends to *each other*; only an
+  external oracle sees an operator that both backends get wrong.
+- **What was wrong**:
+  - `7 / 2` was `3` and `1 / 4` was `0` — `/` and `//` were the same truncating
+    operator, and `docs/language.md` said so. PEP 238 says `/` is true division;
+    this was C's operator wearing Python's syntax;
+  - `//` truncated toward zero instead of flooring (`-7 // 2` was `-3`);
+  - `print(2.0)` printed `2`, `print(1.0 + 2.0)` printed `3`, and the two
+    formatting tools disagreed with each other as well: `%g` lost digits
+    (`0.123456789` → `0.123457`), `%.17g` invented them (`0.1` →
+    `0.10000000000000001`).
+- **Fixed**: `/` yields a float in both backends; `//` floors; `x /= e` and
+  `x //= e` are distinct operators again; one `pyFloatRepr` (interpreter, folding)
+  and `@rt_fmt_double` (compiled runtime, a `snprintf` precision ladder validated
+  by `strtod`, then the trailing `.0`) render floats the way Python does.
+  `TestKnownAOTDivisionGaps` pins the three compiled gaps with both the right
+  answer and today's wrong one.
+
+### Gap P.1 — compiled division shapes still wrong (OPEN)
+- `//` on negative **ints** truncates in AOT (`-7 // 2` → `-3`, Python `-4`);
+- `x /= 2` keeps the integer representation (prints `4`, Python `4.0`);
+- a **float through an untyped parameter** truncates: `def f(x): return x * 2`
+  with `f(0.1)` prints `0`. This is the static float-typing model, not the
+  operator — it needs float-parameter inference in the same shape as ADR 0174's
+  string-parameter inference.
+
+### Gap P.2 — numeric builtins that Python types differently (OPEN)
+- `floor`/`ceil` return a float where Python's `math.floor` returns an `int`
+  (docs say "the largest double <=", so this is a deliberate-but-questionable
+  choice — settle it and update the golden expectations);
+- float `%` uses truncated (`math.Mod`) rather than Python's floored modulo
+  (`-3.5 % 2.0` is `-1.5`, Python `0.5`).

@@ -31,7 +31,7 @@ func TestPipelineFloatVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pipeline run failed: %v", err)
 	}
-	want := "4\n8\n1\n"
+	want := "4.0\n8.0\n1.0\n"
 	if got := string(out); got != want {
 		t.Fatalf("pipeline output %q, want %q", got, want)
 	}

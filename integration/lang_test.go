@@ -104,7 +104,7 @@ func TestExecMultiArgPrint(t *testing.T) {
 func TestExecPrintArithmetic(t *testing.T) {
 	assertOutput(t, "print(40 + 2)", "42\n")
 	assertOutput(t, "print(2 * 21)", "42\n")
-	assertOutput(t, "print(84 / 2)", "42\n")
+	assertOutput(t, "print(84 / 2)", "42.0\n")
 	assertOutput(t, "print(7 - 1 + 36)", "42\n")
 }
 
@@ -461,7 +461,7 @@ func TestExecDynamicDispatch(t *testing.T) {
 
 func TestExecIntFloatConv(t *testing.T) {
 	// int(float var) truncates toward zero, float(int var) widens: AOT parity.
-	assertOutput(t, "a = 3.9\nb = -3.9\nc = 2\nd = 1\nprint(int(a))\nprint(int(b))\nprint(float(c))", "3\n-3\n2\n")
+	assertOutput(t, "a = 3.9\nb = -3.9\nc = 2\nd = 1\nprint(int(a))\nprint(int(b))\nprint(float(c))", "3\n-3\n2.0\n")
 }
 
 func TestExecClassInitArgs(t *testing.T) {
@@ -496,11 +496,11 @@ func TestExecForOverGeneratorList(t *testing.T) {
 func TestExecFloatFloorModNegNeg(t *testing.T) {
 	// Negative float floor/mod/neg must match in the AOT binary:
 	// -3.5//2.0 == -2, -3.5%%2.0 == -1.5, abs(-3.5) == 3.5, round(-3.5) == -4.
-	assertOutput(t, "a = -3.5\nb = 2.0\nprint(a // b)\nprint(a % b)\nprint(abs(a))\nprint(round(a))", "-2\n-1.5\n3.5\n-4\n")
+	assertOutput(t, "a = -3.5\nb = 2.0\nprint(a // b)\nprint(a % b)\nprint(abs(a))\nprint(round(a))", "-2.0\n-1.5\n3.5\n-4\n")
 }
 
 func TestExecAbsFloat(t *testing.T) {
-	assertOutput(t, "a = -3.5\nb = -2.0\nprint(abs(a))\nprint(abs(b))", "3.5\n2\n")
+	assertOutput(t, "a = -3.5\nb = -2.0\nprint(abs(a))\nprint(abs(b))", "3.5\n2.0\n")
 }
 
 func TestExecRoundIntVar(t *testing.T) {
@@ -521,8 +521,8 @@ func TestExecFloatFloorModNeg(t *testing.T) {
 	// Float `//` floor division, `%` remainder, and unary `-` on float
 	// variables must match the interpreter's float64-payload semantics
 	// (and the AOT codegen emits llvm.floor/frem/fsub for them).
-	assertOutput(t, "a = 5.5\nb = 2.0\nprint(a // b)\nprint(-a)\nprint(a % b)", "2\n-5.5\n1.5\n")
-	assertOutput(t, "print(7.0 // 2)\nprint(5.5 % 2.0)\nprint(-2.5)", "3\n1.5\n-2.5\n")
+	assertOutput(t, "a = 5.5\nb = 2.0\nprint(a // b)\nprint(-a)\nprint(a % b)", "2.0\n-5.5\n1.5\n")
+	assertOutput(t, "print(7.0 // 2)\nprint(5.5 % 2.0)\nprint(-2.5)", "3.0\n1.5\n-2.5\n")
 }
 
 func TestExecPrintStrFloat(t *testing.T) {
@@ -531,7 +531,7 @@ func TestExecPrintStrFloat(t *testing.T) {
 	// an i8*. Matches the interpreter's str()/Repr for floats.
 	assertOutput(t, `print(str(3.5))`, "3.5\n")
 	assertOutput(t, `print(str(2))`, "2\n")
-	assertOutput(t, `print(str(1.0 + 2.0))`, "3\n")
+	assertOutput(t, `print(str(1.0 + 2.0))`, "3.0\n")
 	assertOutput(t, `print(1, str(3.5), 2)`, "1 3.5 2\n")
 }
 
@@ -851,24 +851,27 @@ func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
 	// Lock float floor-division (`//`), frem modulo (`%`), abs, and round
 	// semantics across negative operands, exact multiples, and half-values —
 	// the AOT codegen emits fdiv+floor, frem, llvm.fabs, and llvm.round.
-	assertOutput(t, "print(8.0 // 2.0)\nprint(-8.0 // 3.0)\nprint(-5.0 // 2.0)", "4\n-3\n-3\n")
-	assertOutput(t, "print(5.0 % 2.0)\nprint(-5.0 % 2.0)\nprint(5.0 % -2.0)", "1\n-1\n1\n")
-	assertOutput(t, "print(abs(-3.5))\nprint(abs(-2.0))", "3.5\n2\n")
+	assertOutput(t, "print(8.0 // 2.0)\nprint(-8.0 // 3.0)\nprint(-5.0 // 2.0)", "4.0\n-3.0\n-3.0\n")
+	assertOutput(t, "print(5.0 % 2.0)\nprint(-5.0 % 2.0)\nprint(5.0 % -2.0)", "1.0\n-1.0\n1.0\n")
+	assertOutput(t, "print(abs(-3.5))\nprint(abs(-2.0))", "3.5\n2.0\n")
 	assertOutput(t, "print(round(2.5))\nprint(round(-2.5))", "3\n-3\n")
 }
 
 func TestExecSqrt(t *testing.T) {
 	// Standard-library sqrt builtin: promotes int/float args to float and
 	// emits llvm.sqrt.f64; constant args are folded at compile time.
-	assertOutput(t, "print(sqrt(9.0))\nprint(sqrt(9))\nprint(sqrt(2.0))", "3\n3\n1.4142135623730951\n")
-	assertOutput(t, "x = 16.0\nprint(sqrt(x))\nprint(sqrt(0.0))", "4\n0\n")
+	assertOutput(t, "print(sqrt(9.0))\nprint(sqrt(9))\nprint(sqrt(2.0))", "3.0\n3.0\n1.4142135623730951\n")
+	assertOutput(t, "x = 16.0\nprint(sqrt(x))\nprint(sqrt(0.0))", "4.0\n0.0\n")
 }
 
 func TestExecFloorCeil(t *testing.T) {
 	// Standard-library floor/ceil builtins: llvm.floor.f64 / llvm.ceil.f64
 	// with float promotion and constant folding.
-	assertOutput(t, "print(floor(2.7))\nprint(floor(-2.7))\nprint(ceil(2.2))\nprint(ceil(-2.2))", "2\n-3\n3\n-2\n")
-	assertOutput(t, "print(floor(7))\nprint(ceil(7))", "7\n7\n")
+	// floor/ceil return a float (documented: "the largest double <="), so an integral
+	// result renders as 2.0 — where Python's math.floor returns an int. The remaining
+	// divergence is tracked in the roadmap (Gap P.2).
+	assertOutput(t, "print(floor(2.7))\nprint(floor(-2.7))\nprint(ceil(2.2))\nprint(ceil(-2.2))", "2.0\n-3.0\n3.0\n-2.0\n")
+	assertOutput(t, "print(floor(7))\nprint(ceil(7))", "7.0\n7.0\n")
 }
 
 func TestExecTryExcept(t *testing.T) {

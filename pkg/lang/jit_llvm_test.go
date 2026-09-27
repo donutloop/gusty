@@ -31,8 +31,9 @@ func TestJITFloat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("JIT failed: %v", err)
 	}
-	if res.Output != "4\n" {
-		t.Fatalf("output = %q, want 4", res.Output)
+	// Python renders an integral float as 4.0 (ADR 0180), not printf's %g "4".
+	if res.Output != "4.0\n" {
+		t.Fatalf("output = %q, want 4.0", res.Output)
 	}
 }
 

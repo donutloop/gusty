@@ -12,4 +12,4 @@ fsum 21
 loop 45
 big 66
 abs 42
-conv 100 2 7
+conv 100 2.0 7
