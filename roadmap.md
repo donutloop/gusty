@@ -516,9 +516,16 @@ Each is a concrete, reproducible defect with the shape to fix it.
   "optimised at -O2" from "the optimiser was unavailable". Verification now checks
   whatever ships, but the pipeline should report whether the real passes ran (a field on
   the build/emit result plus a warning), so `--opt-level=2` never quietly means `-O0`.
-- **Gap J.5 — string arguments to user functions (AOT)** — 🟥 FOUND.
-  `def shout(msg): ...` called as `shout("hi")` emits `call i32 @shout(i32 @.str1)`, which
-  LLVM rejects (`global variable reference must have pointer type`) — the L8.2 verifier now
-  reports it during `--build`, but codegen should refuse it up front the way it refuses
-  strings inside containers, and the real fix is the string heap kind of Gap I.2 (an `i8*`
-  is not an `i32` slot). Same root cause, wider blast radius.
+- **Gap J.5 — string arguments to user functions (AOT)** — 🟨 PARTIAL.
+  `def shout(msg): ...` called as `shout("hi")` emitted `call i32 @shout(i32 @.str1)`,
+  which LLVM rejects (`global variable reference must have pointer type`). Codegen now
+  refuses it up front with a message naming the parameter —
+  `strings are not supported as function arguments in the AOT backend yet (parameter
+  "name" of greet); the interpreter supports them` — so the failure is a compile
+  diagnostic an agent can match (documented in `docs/operations.md` § Codegen
+  capability messages) instead of IR that only the L8.2 verifier would notice. Covered
+  by `pkg/lang/string_args_test.go` + `integration/string_args_test.go`.
+  Still open: the real fix, which is the same string representation Gap I.2 needs —
+  string-typed parameters (annotation/defaults/call sites, like the container-kind
+  inference in `heapargs.go`), an `i8*` slot in the callee, and runtime helpers for
+  print/strlen/compare, with the unsupported uses reported as diagnostics.

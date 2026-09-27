@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -18,6 +20,43 @@ import (
 //
 //	go test -tags=llvm20 ./integration -run TestCLIBuild -args -update
 var updateWant = flag.Bool("update", false, "rewrite integration golden files under expected/ from the observed output")
+
+// cliBuilt caches one real gusty CLI binary for tests that must observe CLI
+// behaviour (JSON shapes, exit codes, diagnostics reaching stdout/stderr) rather
+// than calling library functions in-process.
+var (
+	cliBuiltOnce sync.Once
+	cliBuiltPath string
+	cliBuiltErr  error
+)
+
+func cliBin(t *testing.T) string {
+	t.Helper()
+	cliBuiltOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "gusty-cli-")
+		if err != nil {
+			cliBuiltErr = fmt.Errorf("temp dir: %w", err)
+			return
+		}
+		cliBuiltPath = filepath.Join(dir, "gustyc")
+		cmd := exec.Command("go", "build", "-o", cliBuiltPath, "github.com/donutloop/gusty/cmd/gustyc")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			cliBuiltErr = fmt.Errorf("build gustyc: %v\n%s", err, out)
+		}
+	})
+	if cliBuiltErr != nil {
+		t.Fatalf("%v", cliBuiltErr)
+	}
+	return cliBuiltPath
+}
+
+// cliRun runs the cached CLI with args and returns stdout+stderr combined.
+func cliRun(t *testing.T, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(cliBin(t), args...)
+	out, _ := cmd.CombinedOutput() // tests assert on the message/shape, exit code separately if needed
+	return string(out)
+}
 
 // buildCLI compiles the actual gustyc binary once per test binary and returns
 // its path. This lets the whole-program tests drive the real CLI command

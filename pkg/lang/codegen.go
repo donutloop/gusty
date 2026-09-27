@@ -4270,9 +4270,32 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// A container literal argument is materialised into the runtime heap and
 		// passed by handle; the callee declares the matching parameter as a
 		// container (see declareHeapParams / heapargs.go).
-		argVal := func(a Expr) (string, error) {
+		// strArgCheck reports the AOT limitation before emitting IR that LLVM
+		// would reject: a string is an `i8*` global in this backend, so passing
+		// one where the callee expects an `i32` produces
+		// `call i32 @f(i32 @.str1)` — "global variable reference must have
+		// pointer type". Naming the parameter keeps the message actionable.
+		strArgCheck := func(a Expr, idx int) error {
+			if _, isStr := g.stringVal(a); !isStr {
+				if _, isFs := a.(*FString); !isFs {
+					return nil
+				}
+			}
+			what := "an argument"
+			if idx >= 0 && idx < len(fd.Params) {
+				what = fmt.Sprintf("parameter %q of %s", fd.Params[idx].Name, fnName)
+			}
+			return fmt.Errorf("codegen: strings are not supported as function arguments in the AOT backend yet (%s); the interpreter supports them", what)
+		}
+		argVal := func(a Expr, idx int) (string, error) {
 			if h, ok, err := g.heapArg(b, a); ok || err != nil {
-				return h, err
+				if err != nil {
+					return "", err
+				}
+				return h, nil
+			}
+			if err := strArgCheck(a, idx); err != nil {
+				return "", err
 			}
 			v, err := g.value(b, a)
 			if err != nil {
@@ -4309,7 +4332,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					fv := g.floatValue(b, kw.Value)
 					vals[idx] = "double " + fv
 				} else {
-					av, err := argVal(kw.Value)
+					av, err := argVal(kw.Value, idx)
 					if err != nil {
 						return "", err
 					}
@@ -4331,7 +4354,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fv := g.floatValue(b, a)
 				vals[pos] = "double " + fv
 			} else {
-				av, err := argVal(a)
+				av, err := argVal(a, pos)
 				if err != nil {
 					return "", err
 				}
@@ -4352,7 +4375,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fv := g.floatValue(b, fd.Params[i].Default)
 				vals[i] = "double " + fv
 			} else {
-				dv, err := argVal(fd.Params[i].Default)
+				dv, err := argVal(fd.Params[i].Default, i)
 				if err != nil {
 					return "", err
 				}

@@ -264,6 +264,7 @@ Match these messages rather than scraping diagnostics prose:
 |---|---|---|
 | `strings inside runtime containers are not supported by the AOT backend yet` | a `list[str]` / `dict[str, int]` element would have to store an `i8*` in an `i32` heap slot (roadmap Gap I.2) | run the program on the interpreter (`--eval`, `--file`), or keep container elements numeric |
 | `unsupported call "` | a call the AOT backend cannot lower, e.g. calling through a `Callable` parameter (`def apply(f, x): return f(x)`) | interpreter path, or dispatch on a class with methods |
+| `strings are not supported as function arguments in the AOT backend yet` | a string is an `i8*` constant, so passing one to a user function would emit `call i32 @f(i32 @.str1)`, which LLVM rejects (roadmap Gap J.5 / I.2). The message names the offending parameter | run the program on the interpreter, or pass numbers/containers and format the text at the call site |
 
 Every container that crosses a function boundary is passed as a runtime heap
 handle (see `docs/language.md` § Containers across function boundaries); the

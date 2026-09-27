@@ -1005,6 +1005,12 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
 - Without that inference the old codegen silently treated the handle as an
   integer and compiled `for x in xs` into a `0..handle` range loop — the same
   program, different answers per backend.
+- **Limitation:** a *string* cannot yet cross a function boundary in AOT at all —
+  a parameter receiving `"ada"` would need an `i8*` slot where the backend uses `i32`
+  — so the compiler reports `strings are not supported as function arguments in the
+  AOT backend yet (parameter "name" of greet); the interpreter supports them`
+  (roadmap Gap J.5). Strings are fully supported as module-level values, folded
+  constants, f-strings, and container elements in the interpreter.
 - **Limitation:** heap slots are `i32`, so a *string* cannot yet be an element
   of a runtime container in AOT (`list[str]`, `dict[str, int]`). The compiler
   reports it — `strings inside runtime containers are not supported by the AOT

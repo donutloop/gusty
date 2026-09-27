@@ -832,3 +832,36 @@ function) emits `call i32 @shout(i32 @.str1)` — LLVM rejects it, and the L8.2 
 now says so during `--build`; the real fix is Gap I.2's string heap kind. Gap J.2
 re-scoped: interpreter set rendering is fixed, set/dict comprehension *assignment* in
 AOT is still open, and `{x for x in [...] if ...}` turns out to be a parser gap too.
+
+## Cycle: Gap J.5 — unsupported lowering must be a diagnostic (ADR 0166)
+
+**What happened.** Writing the print corpus needed `def greet(name): print("hello",
+name)`; the interpreter printed `hello ada`, and AOT emitted
+`call i32 @greet(i32 @.str1)` — invalid IR that only the verifier (L8.2) or `llc` would
+notice. Rather than leaving the verifier as the messenger, codegen now refuses the case
+where it happens, naming the parameter: *strings are not supported as function arguments
+in the AOT backend yet (parameter "name" of greet); the interpreter supports them*.
+
+**Decision worth stating on its own (ADR 0166):** an unsupported lowering path is a
+compile diagnostic raised by the stage that would emit the IR — never a module that LLVM
+would reject. Three reasons: `--emit-llvm` output becomes trustworthy (if it returned IR,
+it is IR), the failure names a *program construct* instead of an IR line in a temp file,
+and an agent can branch on a fixed substring. The verifier stays as the backstop, worded
+as a compiler-bug report so a missed path is never blamed on the program.
+
+**Small design details that mattered.**
+- Put the check inside the shared argument closure (`argVal(a, idx)`), so positional,
+  keyword and default arguments are all covered — checking only the positional loop would
+  have left two paths emitting bad IR.
+- Report *before* `g.value` runs: lowering the string operand emits globals, so a
+  late check leaves partially emitted IR behind. `res.IR == ""` on these failures is
+  asserted, so a caller cannot pick up a half-built module.
+- Say which backend works. "Unsupported" without an alternative makes an agent give up;
+  "(the interpreter supports them)" turns it into a route.
+- Pin the wording in a test (`TestStringArgumentDiagnosticIsStable`) — a message that
+  agents match on is an API, so prose polish must not silently break it.
+
+**Process note.** Discovering these while *writing corpus programs* is a cheap bug-finding
+strategy: the parity harness only compares the backends with each other, so programs that
+stress an unlowerable shape are the ones that find gaps — and each gap now needs a listed
+message row in `docs/operations.md` plus a test, which is what keeps the catalogue honest.
