@@ -304,6 +304,44 @@ func (e *Evaluator) strOf(id int64) string {
 	return ""
 }
 
+// reprNested renders a value *inside* a container. Strings are quoted the way Python's repr
+// does — single quotes unless the text contains a single quote and no double quote — because
+// [a, b] is not distinguishable from the list of those two bare words, while ['a', 'b'] is.
+func (e *Evaluator) reprNested(id int64) string {
+	if o, ok := e.heap[id]; ok && o.kind == "str" {
+		return pyReprString(o.sval)
+	}
+	return e.Repr(id)
+}
+
+// pyReprString renders a Go string as Python would repr it.
+func pyReprString(s string) string {
+	quote := byte('\'')
+	if strings.ContainsRune(s, '\'') && !strings.ContainsRune(s, '"') {
+		quote = '"'
+	}
+	var sb strings.Builder
+	sb.WriteByte(quote)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == quote || c == '\\':
+			sb.WriteByte('\\')
+			sb.WriteByte(c)
+		case c == '\n':
+			sb.WriteString("\\n")
+		case c == '\t':
+			sb.WriteString("\\t")
+		case c == '\r':
+			sb.WriteString("\\r")
+		default:
+			sb.WriteByte(c)
+		}
+	}
+	sb.WriteByte(quote)
+	return sb.String()
+}
+
 // Repr renders a heap handle (or plain int) to its printable representation.
 // IsNone reports whether v is the None singleton. Callers use it to tell "no value" from
 // the integer 0 — the distinction `--eval` needs so a program ending in print(...) does not
@@ -328,13 +366,15 @@ func (e *Evaluator) Repr(id int64) string {
 		case "list":
 			parts := make([]string, 0, len(o.elems))
 			for _, el := range o.elems {
-				parts = append(parts, e.Repr(el))
+				parts = append(parts, e.reprNested(el))
 			}
 			return "[" + strings.Join(parts, ", ") + "]"
 		case "dict":
+			// Keys go through Repr too: printing the raw value used to leak a heap handle
+			// for a string key ({1048581: 1} instead of {'k': 1}).
 			parts := make([]string, 0, len(o.elems))
 			for i, k := range o.elems {
-				parts = append(parts, fmt.Sprintf("%v: %s", k, e.Repr(o.dvals[i])))
+				parts = append(parts, e.reprNested(k)+": "+e.reprNested(o.dvals[i]))
 			}
 			return "{" + strings.Join(parts, ", ") + "}"
 		case "set":
@@ -344,7 +384,7 @@ func (e *Evaluator) Repr(id int64) string {
 			}
 			parts := make([]string, 0, len(o.elems))
 			for _, el := range o.elems {
-				parts = append(parts, e.Repr(el))
+				parts = append(parts, e.reprNested(el))
 			}
 			return "{" + strings.Join(parts, ", ") + "}"
 		default:

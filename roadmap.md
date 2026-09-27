@@ -215,35 +215,38 @@ diff
   (`rt_alloc`/`rt_set_elem`), module definitions allocate + root their slot, module code
   starts a fresh binding scope, and the parameter-kind fixed point merges in sorted order
   (determinism). Covered by `programs/folded_lists.gy` plus unit/integration cases.
-- **Gap I.2 — strings inside runtime containers (AOT)** — 🟨 PARTIAL (diagnostics hardened).
-  The heap stores i32 slots, so a `list[str]`/`dict[str, int]` element cannot hold an `i8*`
-  string global (`rt_set_elem(i32 %h, i32 1, i32 @.str1)` — "global variable reference must
-  have pointer type"). Ten shapes still reached LLVM and were reported as a *compiler bug*
-  (exit 2) for perfectly ordinary code — `xs = ["a", "b"]` is a two-line program:
-  assigned string list literal, string list + `len`, `xs.append("s")`, `xs[0] = "s"`,
-  `{"a"}` set literal, `s.add("s")`, `d["k"] = 1`, `d[1] = "s"`, a folded `str(42)` element,
-  and a string-variable element. They all now fail the ADR 0166 way, before the verifier:
-  `codegen: cannot store a string as a runtime container element in the AOT backend yet; the
-  interpreter supports it — a compiled container slot holds an int/bool value, and strings
-  need the runtime string table (roadmap Gap I.2)`.
-  - `irGen.rejectRuntimeString` recognises a string three ways (literal/interpolated literal,
-    a folded string expression such as `str(x)` or `s.upper()`, and a variable bound to a
-    string), and `heapElem` is the single choke point every container slot write passes
-    through — plus the materialise-assigned-literal path, which called `value()` directly and
-    was the hole that let `xs = ["a", "b"]` emit the bad `rt_set_elem`.
-  - dict literal key/value refusals are now actionable too (they used to read
-    `dict literal keys must be constant integers`).
-  - covered by `TestStringInContainerIsADiagnosticNotAnInvalidModule` (10 shapes, asserts the
-    diagnostic names the working backend and never leaks a verifier verdict) and
-    `TestIntContainersStillBuild` (the guard must not become a blanket refusal).
-  Remaining work — the design, so the next cycle does not have to rediscover it: an **interned
-  string table** in the runtime. `rt_str_intern(i8*) -> i32` dedupes by `strcmp` into
-  `@str_tab`, `rt_str_ptr(i32) -> i8*` reads it back; container slots then hold the i32 index.
-  Containers need an element kind (the existing per-variable `listVars`/`runtimeDicts`/
-  `runtimeSets` maps gain a "elements are interned strings" flag, and `heapargs` param kinds a
-  `HeapStr`), which gives: printing (`rt_print_list_str` renders `'a'`, matching Python's repr
-  — that also closes the unquoted-string half of Gap L.2), indexing, iteration, membership, and
-  string parameters to user functions (Gap J.5) by passing the interned index.
+- **Gap I.2 — strings inside runtime containers (AOT)** — ✅ DONE (ADR 0173).
+  The heap stores i32 slots while a string is a compile-time global, so
+  `xs = ["a", "b"]` emitted `rt_set_elem(i32 %h, i32 1, i32 @.str1)` and LLVM rejected the
+  module — reporting a two-line program as a compiler bug (exit 2). The runtime now keeps an
+  **interned string table**: `rt_str_intern2(text, repr) -> i32` appends distinct texts to
+  `@str_tab` by `strcmp` (content-addressed, so two separate `"k"` literals are the same dict
+  key) with the Python repr form in the parallel `@str_repr_tab`; container slots hold the
+  index. `rt_print_value(v, isStr, quote)` picks the slot by context, so `print(x)` prints raw
+  text and `print(xs)` prints `['a', 'b']` — and `rt_print_list_str` / `rt_set_print_str` /
+  `rt_dict_print_s` all share that one helper, which is why list, set and dict rendering
+  cannot drift apart.
+  - Element kinds are tracked per container and per dict side — `listElemStr`, `setElemStr`,
+    `dictKeyStr`, `dictValStr` — saved and restored in `beginScope`, so `{'ada': 3}` and
+    `{1: 'one'}` both render correctly and one function's `xs` never describes another's.
+  - `heapElemKind(b, e)` is the single place a container word is produced (folded int passes
+    through, string interns, anything else is the ADR 0166 diagnostic); every store site goes
+    through it — append, add, setitem, list/dict literal, dict read by key, and the `in`
+    needle, which was the last shape still emitting `rt_contains(i32 %h, i32 @.strN)`.
+  - Working and byte-identical in both backends, checked against CPython: string list literal
+    with `len`/index/iteration/`in`, `append`, `xs[0] = "s"`, `s.add`, `d["k"] = v`,
+    `d[1] = "v"`, dict reads by string key, string lists passed to functions, and Python's
+    repr rules (`set()`, `["it's", 'plain']` — single quotes unless the text has `'` and no `"`).
+  - The interpreter's `Repr` was fixed alongside: container elements route through
+    `reprNested`, and dict keys print via `Repr` — `%v` used to print the heap handle
+    (`{1048581: 1}` for `{'k': 1}`).
+  - Covered by `integration/string_containers_test.go` (20 shapes × both backends × CPython's
+    output), `pkg/lang/string_containers_test.go` (IR invariants: interned store, no
+    `i32 @.str` anywhere, repr table emitted, quote rule) and the new conformance program
+    `string_containers.gy`. `TestIntContainersStillBuild` keeps the guard from becoming a
+    blanket refusal.
+  Remaining, deliberately: an element whose string comes from a `str`-typed **parameter** has
+  no compile-time text to intern and still reports the ADR 0166 diagnostic.
   Note: `Callable` parameters called through the parameter (`def apply(f, x):
   return f(x)`) are likewise unsupported in AOT (`codegen: unsupported call "f"`)
   — the L6.6 Callable surface is therefore checker-only for now.

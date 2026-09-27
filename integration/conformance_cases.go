@@ -55,7 +55,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"subscript_assign",
 		"container_methods",
 		"none_values",
+		"string_containers",
 	}
+
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
 		cases = append(cases, lang.ConformanceCase{

@@ -149,6 +149,278 @@ entry:
 @.fmti = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtnl = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.fmtnone = private unnamed_addr constant [5 x i8] c"None\00"
+@.fmtq = private unnamed_addr constant [5 x i8] c"'%s'\00"
+@.fmts = private unnamed_addr constant [3 x i8] c"%s\00"
+@.fmtcolon = private unnamed_addr constant [3 x i8] c": \00"
+@str_count = internal global i32 0
+@str_tab = internal global [256 x i8*] zeroinitializer
+; Parallel table holding each interned string's Python repr form (quoted, with the quote
+; character chosen the way Python chooses it). Containers store the index; printing inside a
+; container uses the repr slot, printing a single value uses the raw text.
+@str_repr_tab = internal global [256 x i8*] zeroinitializer
+declare i32 @strcmp(i8*, i8*)
+
+; Strings are compile-time globals, so a container slot cannot hold one directly (it is an
+; i32). The runtime keeps a table of the string texts it has been shown and hands back the
+; index; containers store that index, and rt_str_ptr reads the text back when printing or
+; comparing. Indices are content-addressed (strcmp), so two spellings of the same text are
+; the same key (roadmap Gap I.2).
+define internal i32 @rt_str_intern(i8* %p) {
+entry:
+  %n0 = load i32, i32* @str_count
+  br label %scan
+scan:
+  %i = phi i32 [ 0, %entry ], [ %inext, %next ]
+  %more = icmp slt i32 %i, %n0
+  br i1 %more, label %cmp, label %add
+cmp:
+  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %i
+  %q = load i8*, i8** %slot
+  %r = call i32 @strcmp(i8* %p, i8* %q)
+  %same = icmp eq i32 %r, 0
+  br i1 %same, label %found, label %next
+next:
+  %inext = add i32 %i, 1
+  br label %scan
+found:
+  ret i32 %i
+add:
+  %oob = icmp sge i32 %n0, 256
+  br i1 %oob, label %full, label %put
+put:
+  %slot2 = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %n0
+  store i8* %p, i8** %slot2
+  %n1 = add i32 %n0, 1
+  store i32 %n1, i32* @str_count
+  ret i32 %n0
+full:
+  ; Out of table space: reuse the last entry rather than returning a wild index.
+  %last = sub i32 %n0, 1
+  ret i32 %last
+}
+
+define internal i8* @rt_str_ptr(i32 %i) {
+entry:
+  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %i
+  %p = load i8*, i8** %slot
+  ret i8* %p
+}
+
+define internal i8* @rt_str_repr_ptr(i32 %i) {
+entry:
+  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_repr_tab, i32 0, i32 %i
+  %p = load i8*, i8** %slot
+  ret i8* %p
+}
+
+; rt_str_intern2 interns the raw text and its repr together: dedup is by raw text (so two
+; spellings of "k" are the same dict key), and index i always has both forms available.
+define internal i32 @rt_str_intern2(i8* %raw, i8* %repr) {
+entry:
+  %n0 = load i32, i32* @str_count
+  br label %scan
+scan:
+  %i = phi i32 [ 0, %entry ], [ %inext, %next ]
+  %more = icmp slt i32 %i, %n0
+  br i1 %more, label %cmp, label %add
+cmp:
+  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %i
+  %q = load i8*, i8** %slot
+  %r = call i32 @strcmp(i8* %raw, i8* %q)
+  %same = icmp eq i32 %r, 0
+  br i1 %same, label %found, label %next
+next:
+  %inext = add i32 %i, 1
+  br label %scan
+found:
+  %rs = getelementptr [256 x i8*], [256 x i8*]* @str_repr_tab, i32 0, i32 %i
+  store i8* %repr, i8** %rs
+  ret i32 %i
+add:
+  %oob = icmp sge i32 %n0, 256
+  br i1 %oob, label %full, label %put
+put:
+  %slot2 = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %n0
+  store i8* %raw, i8** %slot2
+  %rs2 = getelementptr [256 x i8*], [256 x i8*]* @str_repr_tab, i32 0, i32 %n0
+  store i8* %repr, i8** %rs2
+  %n1 = add i32 %n0, 1
+  store i32 %n1, i32* @str_count
+  ret i32 %n0
+full:
+  %last = sub i32 %n0, 1
+  ret i32 %last
+}
+
+; rt_print_str writes an interned string (an index into @str_tab) as its text, honouring the
+; caller's newline flag: printing an element shows the characters, not the index.
+define internal void @rt_print_str(i32 %idx, i32 %nl) {
+entry:
+  %sp = call i8* @rt_str_ptr(i32 %idx)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %sp)
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
+
+
+; rt_print_value writes one container element. isStr says the value is an index into
+; @str_tab, quote asks for Python's repr quoting (inside a container) rather than the raw
+; text (print(x) of a single string). One helper keeps list, set and dict rendering
+; identical, including the mixed cases where a dict has string keys and integer values.
+define internal void @rt_print_value(i32 %v, i32 %isStr, i32 %quote) {
+entry:
+  %wantstr = icmp ne i32 %isStr, 0
+  br i1 %wantstr, label %str, label %num
+str:
+  %sp = call i8* @rt_str_ptr(i32 %v)
+  %q = icmp ne i32 %quote, 0
+  br i1 %q, label %strq, label %strraw
+strq:
+  ; the repr slot already carries Python's chosen quotes, so it prints with a plain %s
+  %rp = call i8* @rt_str_repr_ptr(i32 %v)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %rp)
+  ret void
+strraw:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %sp)
+  ret void
+num:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
+  ret void
+}
+
+; rt_set_print_str renders a set whose members are interned strings: set() when empty,
+; {'a', 'b'} otherwise, matching the interpreter's Repr.
+define internal void @rt_set_print_str(i32 %h, i32 %nl) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  %isEmpty = icmp eq i32 %len, 0
+  br i1 %isEmpty, label %empty, label %open
+empty:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
+  br label %fin
+open:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %open ], [ %next, %cont ]
+  %more = icmp slt i32 %i, %len
+  br i1 %more, label %body, label %done
+body:
+  %ip = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
+  %idx = load i32, i32* %ip
+  %first = icmp eq i32 %i, 0
+  br i1 %first, label %emit, label %sepd
+sepd:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  br label %emit
+emit:
+  call void @rt_print_value(i32 %idx, i32 1, i32 1)
+  br label %cont
+cont:
+  %next = add i32 %i, 1
+  br label %loop
+done:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
+
+; rt_dict_print_s renders a dict whose keys and/or values are interned strings; the two
+; flags say which, so {'a': 1} and {1: 'a'} and {'a': 'b'} all print like the interpreter.
+define internal void @rt_dict_print_s(i32 %h, i32 %nl, i32 %ks, i32 %vs) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %more = icmp slt i32 %i, %len
+  br i1 %more, label %body, label %done
+body:
+  %idx = mul i32 %i, 2
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx
+  %k = load i32, i32* %kp
+  %idx2 = add i32 %idx, 1
+  %vp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx2
+  %v = load i32, i32* %vp
+  %first = icmp eq i32 %i, 0
+  br i1 %first, label %emit, label %sepd
+sepd:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  br label %emit
+emit:
+  call void @rt_print_value(i32 %k, i32 %ks, i32 1)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtcolon, i32 0, i32 0))
+  call void @rt_print_value(i32 %v, i32 %vs, i32 1)
+  br label %cont
+cont:
+  %next = add i32 %i, 1
+  br label %loop
+done:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
+
+; rt_print_list_str renders a list whose elements are interned strings, with Python's
+; quoting: ['a', 'b'].
+define internal void @rt_print_list_str(i32 %h, i32 %nl) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %more = icmp slt i32 %i, %len
+  br i1 %more, label %body, label %done
+body:
+  %ip = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
+  %idx = load i32, i32* %ip
+  %first = icmp eq i32 %i, 0
+  br i1 %first, label %emit, label %sepd
+sepd:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  br label %emit
+emit:
+  call void @rt_print_value(i32 %idx, i32 1, i32 1)
+  br label %cont
+cont:
+  %next = add i32 %i, 1
+  br label %loop
+done:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
 
 ; rt_none returns the None singleton handle, allocating it on first use.
 define internal i32 @rt_none() {
@@ -930,7 +1202,8 @@ func GenerateIR(prog *Program) (string, error) {
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
-		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, internedVars: map[string]bool{}, imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -1066,19 +1339,29 @@ type irGen struct {
 	allocd     map[string]bool   // alloca emitted?
 	// noneVars records variables whose latest assignment is the None singleton, so
 	// print/truthiness/equality can be decided statically (ADR 0172).
-	noneVars  map[string]bool
-	funcs     map[string]bool
-	funcBind  map[string]string
-	externs   map[string]*ExternDecl // user-defined function names
-	fds       map[string]*FuncDef    // function definitions by name (for call arg binding)
-	imports   *ImportInfo            // folded module globals for `import mod`
-	params    map[string]string      // current function params: name -> register
-	fmtIdx    int
-	strIdx    int
-	tmp       int
-	label     int
-	ldN       int
-	loopStack []loopInfo
+	noneVars map[string]bool
+	// listElemStr / setElemStr / dictKeyStr / dictValStr record that a container's elements
+	// are interned strings (indices into @str_tab), which decides how they print and how
+	// element reads behave (roadmap Gap I.2).
+	listElemStr map[string]bool
+	setElemStr  map[string]bool
+	dictKeyStr  map[string]bool
+	dictValStr  map[string]bool
+	// internedVars records names bound to an interned-string index (element reads and loop
+	// variables over string containers), so print renders the text rather than the index.
+	internedVars map[string]bool
+	funcs        map[string]bool
+	funcBind     map[string]string
+	externs      map[string]*ExternDecl // user-defined function names
+	fds          map[string]*FuncDef    // function definitions by name (for call arg binding)
+	imports      *ImportInfo            // folded module globals for `import mod`
+	params       map[string]string      // current function params: name -> register
+	fmtIdx       int
+	strIdx       int
+	tmp          int
+	label        int
+	ldN          int
+	loopStack    []loopInfo
 
 	closures    map[string]*closureInfo
 	envMode     bool
@@ -2908,24 +3191,35 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	if err != nil {
 		return err
 	}
-	if err := g.rejectRuntimeString(ix.Idx, "dict key", "store"); err != nil {
-		return err
-	}
-	key, err := g.value(b, ix.Idx)
+	key, kIsStr, err := g.heapElemKind(b, ix.Idx)
 	if err != nil {
 		return err
 	}
 	switch {
 	case g.runtimeDicts[nm.Value]:
-		if err := g.rejectRuntimeString(val, "dict value", "store"); err != nil {
+		v, vIsStr, err := g.heapElemKind(b, val)
+		if err != nil {
 			return err
+		}
+		if vIsStr {
+			g.dictValStr[nm.Value] = true
+		}
+		if kIsStr {
+			g.dictKeyStr[nm.Value] = true
 		}
 		b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
 		return nil
 	case g.listVars[nm.Value]:
-		if err := g.rejectRuntimeString(val, "list element", "store"); err != nil {
-			return err
+		// A string element is stored as its @str_tab index (Gap I.2), like every other
+		// container slot write; the printed form follows from listElemStr.
+		sv, sIsStr, serr := g.heapElemKind(b, val)
+		if serr != nil {
+			return serr
 		}
+		if sIsStr {
+			g.listElemStr[nm.Value] = true
+		}
+		v = sv
 		// Bounds are checked so an out-of-range index raises IndexError through the
 		// same exception path `raise` uses, instead of writing past the elements.
 		ln := g.newTmp()
@@ -3006,6 +3300,7 @@ func (g *irGen) beginScope() func() {
 	savedAlloc, savedRoots := g.allocd, g.gcRootSeen
 	savedList, savedDict, savedSet, savedFresh := g.listVars, g.runtimeDicts, g.runtimeSets, g.freshSlots
 	savedNone := g.noneVars
+	savedLStr, savedSStr, savedKStr, savedVStr, savedInt := g.listElemStr, g.setElemStr, g.dictKeyStr, g.dictValStr, g.internedVars
 	g.allocd = map[string]bool{}
 	g.gcRootSeen = map[string]bool{}
 	g.listVars = map[string]bool{}
@@ -3013,11 +3308,18 @@ func (g *irGen) beginScope() func() {
 	g.runtimeSets = map[string]bool{}
 	g.freshSlots = map[string]bool{}
 	g.noneVars = map[string]bool{}
+	g.listElemStr = map[string]bool{}
+	g.setElemStr = map[string]bool{}
+	g.dictKeyStr = map[string]bool{}
+	g.dictValStr = map[string]bool{}
+	g.internedVars = map[string]bool{}
 	return func() {
 		g.allocd, g.gcRootSeen = savedAlloc, savedRoots
 		g.listVars, g.runtimeDicts, g.runtimeSets = savedList, savedDict, savedSet
 		g.freshSlots = savedFresh
 		g.noneVars = savedNone
+		g.listElemStr, g.setElemStr = savedLStr, savedSStr
+		g.dictKeyStr, g.dictValStr, g.internedVars = savedKStr, savedVStr, savedInt
 	}
 }
 
@@ -3332,6 +3634,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		r, err := g.value(b, n.R)
 		if err != nil {
 			return "", err
+		}
+		// `x in xs` compares against the words stored in the container, so a string needle
+		// must become its @str_tab index: passing @.strN to rt_contains(i32, i32) is the
+		// shape LLVM rejects (roadmap Gap I.2).
+		if n.Op == "in" || n.Op == "not in" {
+			if needle, ok := g.stringVal(n.L); ok {
+				g.heapUsed = true
+				it := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", it, g.strConst(needle), g.strConst(pyReprString(needle))))
+				l = it
+			}
 		}
 		// Constant folding: fold integer literals at compile time.
 		// Constant-fold string equality/inequality: compare contents, not refs.
@@ -3693,12 +4006,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
 				// The key may be a runtime value (`for k in d: d[k]`), so it is
-				// lowered like the list index path does; only a literal key folds.
+				// lowered like the list index path does; only a literal key folds. A
+				// string key becomes its @str_tab index, because rt_dict_get/rt_dict_has
+				// take i32 keys and a global pointer there is what LLVM rejected.
 				keyOp := strconv.FormatInt(key, 10)
 				if _, isLit := n.Idx.(*IntLit); !isLit {
-					kv, e := g.value(b, n.Idx)
+					kv, isStr, e := g.heapElemKind(b, n.Idx)
 					if e != nil {
 						return "", e
+					}
+					if isStr {
+						g.dictKeyStr[obj.Value] = true
 					}
 					keyOp = kv
 				}
@@ -4461,12 +4779,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if len(c.Args) != 1 {
 					return "", fmt.Errorf("codegen: %s() takes exactly 1 argument", attr.Name.Value)
 				}
-				if err := g.rejectRuntimeString(c.Args[0], "set element", "add"); err != nil {
-					return "", err
-				}
-				av, err := g.value(b, c.Args[0])
+				av, interned, err := g.heapElemKind(b, c.Args[0])
 				if err != nil {
 					return "", err
+				}
+				if interned {
+					g.setElemStr[nm.Value] = true
 				}
 				g.heapSeq++
 				hs := g.heapSeq
@@ -4548,12 +4866,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
 			}
-			if err := g.rejectRuntimeString(c.Args[0], "list element", "append"); err != nil {
-				return "", err
-			}
-			av, err := g.value(b, c.Args[0])
+			av, interned, err := g.heapElemKind(b, c.Args[0])
 			if err != nil {
 				return "", err
+			}
+			if interned {
+				g.listElemStr[nm.Value] = true
 			}
 			g.heapSeq++
 			hs := g.heapSeq
@@ -5032,7 +5350,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// is not an i32 handle: copy it into the runtime heap so the callee
 			// receives a handle it can iterate, measure and index.
 			if ln, ok := g.staticLists[v]; ok {
-				return g.heapListFrom(b, ln)
+				return g.heapListFrom(b, ln, "")
 			}
 			return v, nil
 		}
@@ -5279,14 +5597,31 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					g.heapSeq++
 					hs := g.heapSeq
 					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %%h%d, i32 0)\n", hs))
+					if g.dictKeyStr[nm.Value] || g.dictValStr[nm.Value] {
+						// keys and/or values are @str_tab indices: the flagged printer renders
+						// {'a': 1} / {1: 'a'} exactly as the interpreter's Repr does (Gap I.2).
+						ks, vs := "0", "0"
+						if g.dictKeyStr[nm.Value] {
+							ks = "1"
+						}
+						if g.dictValStr[nm.Value] {
+							vs = "1"
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_dict_print_s(i32 %%h%d, i32 0, i32 %s, i32 %s)\n", hs, ks, vs))
+					} else {
+						b.WriteString(fmt.Sprintf("  call void @rt_dict_print(i32 %%h%d, i32 0)\n", hs))
+					}
 					continue
 				}
 				if g.runtimeSets[nm.Value] {
 					g.heapSeq++
 					hs := g.heapSeq
 					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-					b.WriteString(fmt.Sprintf("  call void @rt_set_print(i32 %%h%d, i32 0)\n", hs))
+					printer := "rt_set_print"
+					if g.setElemStr[nm.Value] {
+						printer = "rt_set_print_str"
+					}
+					b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 0)\n", printer, hs))
 					continue
 				}
 			}
@@ -5306,6 +5641,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString("  call void @rt_print_none(i32 0)\n")
 				continue
 			}
+			if g.printsAsInternedStr(a) {
+				g.heapUsed = true
+				v, err := g.value(b, a)
+				if err != nil {
+					return "", err
+				}
+				fmt.Fprintf(b, "  call void @rt_print_str(i32 %s, i32 0)\n", v)
+				continue
+			}
 			if sl, ok := a.(*Slice); ok {
 				if nm2, ok2 := sl.Obj.(*Name); ok2 {
 					if _, isList := g.listVars[nm2.Value]; isList {
@@ -5313,7 +5657,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						if err != nil {
 							return "", err
 						}
-						fmt.Fprintf(b, "  call void @rt_print_list(i32 %s, i32 0)\n", h)
+						printer := "rt_print_list"
+						if g.listElemStr[nm2.Value] {
+							printer = "rt_print_list_str"
+						}
+						fmt.Fprintf(b, "  call void @%s(i32 %s, i32 0)\n", printer, h)
 						continue
 					}
 				}
@@ -5322,7 +5670,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-				b.WriteString(fmt.Sprintf("  call void @rt_print_list(i32 %%h%d, i32 0)\n", hs))
+				printer := "rt_print_list"
+				if g.listElemStr[nm.Value] {
+					printer = "rt_print_list_str"
+				}
+				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 0)\n", printer, hs))
 				continue
 			}
 			var t string
@@ -6127,6 +6479,22 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 	} else {
 		b.WriteString("  store i8* null, i8** @exn_frame\n")
 	}
+}
+
+// printsAsInternedStr reports whether an expression's value is an index into the runtime
+// string table: an element read from a string container, or a loop variable walking one.
+// Those print as their own text, while the container itself prints as a list of
+// single-quoted strings the way Python does (roadmap Gap I.2).
+func (g *irGen) printsAsInternedStr(e Expr) bool {
+	switch v := e.(type) {
+	case *Name:
+		return g.internedVars[v.Value]
+	case *Index:
+		if nm, ok := v.Obj.(*Name); ok {
+			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value]
+		}
+	}
+	return false
 }
 
 // isNoneExpr reports whether an expression evaluates to the None singleton. The AOT
@@ -7002,13 +7370,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 1)\n", hs))
 				for i, el := range lit.Elems {
-					// heapElem, not value(): an assigned container literal is still a
-					// runtime container, and a string element must be refused rather than
-					// emitted as `rt_set_elem(i32 %h, i32 0, i32 @.str1)` — a global in an
-					// i32 parameter, which LLVM rejects (ADR 0166, roadmap Gap I.2).
-					ev, err := g.heapElem(b, el)
+					// heapElemKind, not value(): an assigned container literal is still a
+					// runtime container, so a string element becomes an index into @str_tab
+					// instead of the global pointer that LLVM rejects in an i32 parameter
+					// (ADR 0166, roadmap Gap I.2).
+					ev, interned, err := g.heapElemKind(b, el)
 					if err != nil {
 						return err
+					}
+					if interned {
+						g.listElemStr[nm.Value] = true
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, ev))
 				}
@@ -7044,12 +7415,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 3)\n", hs))
 				for _, el := range sl.Elems {
-					if err := g.rejectRuntimeString(el, "set element", "add"); err != nil {
-						return err
-					}
-					ev, err := g.value(b, el)
+					ev, interned, err := g.heapElemKind(b, el)
 					if err != nil {
 						return err
+					}
+					if interned {
+						g.setElemStr[nm.Value] = true
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, ev))
 				}
@@ -7172,7 +7543,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						g.gcReg(b, nm.Value)
 						g.allocd[nm.Value] = true
 					}
-					h, herr := g.heapListFrom(b, ln)
+					h, herr := g.heapListFrom(b, ln, "")
 					if herr != nil {
 						return herr
 					}
@@ -7460,6 +7831,22 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 		}
 		if iterKind != "" {
+			// A loop over a container of interned strings binds the loop variable to an
+			// index into @str_tab; recording that keeps print(x) rendering the text instead
+			// of the index (roadmap Gap I.2). Dict iteration yields keys, so it is the key
+			// kind that matters.
+			if name, ok := n.Iter.(*Name); ok {
+				switch iterKind {
+				case "list", "set":
+					if g.listElemStr[name.Value] || g.setElemStr[name.Value] {
+						g.internedVars[loopVar] = true
+					}
+				case "dict":
+					if g.dictKeyStr[name.Value] {
+						g.internedVars[loopVar] = true
+					}
+				}
+			}
 			lenFn := "rt_list_len"
 			elemStride := 1
 			switch iterKind {

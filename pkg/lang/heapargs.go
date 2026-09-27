@@ -530,7 +530,7 @@ func (g *irGen) heapArg(b *strings.Builder, e Expr) (handle string, ok bool, err
 	g.heapUsed = true
 	switch n := e.(type) {
 	case *ListLit:
-		h, err := g.heapListFrom(b, n)
+		h, err := g.heapListFrom(b, n, "")
 		if err != nil {
 			return "", true, err
 		}
@@ -567,27 +567,50 @@ func (g *irGen) heapArg(b *strings.Builder, e Expr) (handle string, ok bool, err
 // backend and the heap stores i32 slots, so a string element would produce IR
 // the verifier rejects — report it as the unsupported case it is instead.
 func (g *irGen) heapElem(b *strings.Builder, e Expr) (string, error) {
-	// Every value that goes into a heap container slot passes here, so this is the
-	// choke point for the ADR 0166 rule: a string would be emitted as an @.strN global
-	// fed to an i32 parameter, which LLVM rejects — turning valid user code into what the
-	// exit-code contract calls a compiler bug (roadmap Gap I.2).
-	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
-		return "", err
+	v, _, err := g.heapElemKind(b, e)
+	return v, err
+}
+
+// heapElemKind lowers a value for a heap container slot and reports whether it became an
+// interned string. Strings are compile-time globals in this backend, so a slot stores the
+// index into @str_tab instead of the pointer: `rt_set_elem(i32 %h, i32 0, i32 @.str1)` put a
+// global in an i32 parameter, which LLVM rejected and the exit-code contract then called a
+// compiler bug (roadmap Gap I.2). A string the backend cannot resolve to text still refuses
+// with the actionable diagnostic rather than emitting bad IR (ADR 0166).
+func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
+	if txt, ok := g.stringVal(e); ok {
+		g.heapUsed = true
+		t := g.newTmp()
+		// Intern the text and its Python repr together: containers store the index, and the
+		// printer picks the raw or the repr slot depending on context (Gap I.2).
+		fmt.Fprintf(b, "  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", t, g.strConst(txt), g.strConst(pyReprString(txt)))
+		return t, true, nil
 	}
-	return g.value(b, e)
+	if nm, ok := e.(*Name); ok && g.internedVars[nm.Value] {
+		v, err := g.value(b, e) // already an index into the string table
+		return v, true, err
+	}
+	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
+		return "", false, err
+	}
+	v, err := g.value(b, e)
+	return v, false, err
 }
 
 // heapListFrom materialises a list literal as a runtime heap list and returns
 // its handle. Elements are lowered as i32 values; a string element is reported
 // as unsupported rather than emitting IR the verifier rejects.
-func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit) (string, error) {
+func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (string, error) {
 	g.heapUsed = true
 	h := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
 	for i, el := range ln.Elems {
-		v, err := g.heapElem(b, el)
+		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
+		}
+		if interned && name != "" {
+			g.listElemStr[name] = true
 		}
 		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
 	}

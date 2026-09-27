@@ -434,6 +434,21 @@ Rules that both backends implement:
   set element or a string index is rejected (`TypeError` / `strings are immutable`).
 - A container produced by a call (`d = make(3)`) is iterated through the runtime
   length, like any other container variable.
+- **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
+  `s.add("q")`, `d["k"] = 1`, `d[1] = "v"`, `"a" in xs`, `for x in xs`, `len`, indexing
+  and printing all work in both backends. In the AOT backend a string is a compile-time
+  global while a container slot is an i32, so strings live in a runtime interned table:
+  `rt_str_intern2(text, repr) -> i32` stores each distinct text once (content-addressed, so
+  two spellings of `"k"` are the same dict key) and the container keeps the index. Printing
+  picks the slot by context — raw text for `print(x)`, the Python repr form for elements
+  inside a container — which is why `print(names)` gives `['ada', 'brin']` and
+  `print(["it's"])` gives `["it's"]`, exactly as CPython does. Dicts track their key and
+  value kinds separately, so `{1: 'one'}` and `{'k': 1}` both render correctly.
+
+  One rendering difference remains by convention: a bare `True`/`False` prints as `1`/`0`
+  in both backends (bools are untagged i32 values today, so `print(True)` and `print(1)`
+  are indistinguishable). Inside containers strings are quoted as Python does; giving bools
+  their own spelling needs a tagged bool representation, not just a printer (roadmap L.2).
 
 Before this was implemented, `d[1] = 2` did not work at all: the parser accepted the
 statement, consumed `= 2`, and threw it away, so the program ran as if the line were

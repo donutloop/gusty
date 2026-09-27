@@ -1,0 +1,23 @@
+['ada', 'brin', 'cad']
+3
+ada
+cad
+1
+0
+['x', 'y']
+['x', 'kept']
+ada
+brin
+cad
+{'ada': 3, 'brin': 5}
+2
+5
+{1: 'one'}
+{'k': 'v'}
+{'q', 'r'}
+2
+q
+r
+set()
+['1', '2']
+["it's", 'plain']

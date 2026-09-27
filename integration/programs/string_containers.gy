@@ -1,0 +1,56 @@
+# Strings inside runtime containers, compiled through LLVM (roadmap Gap I.2).
+# The AOT backend keeps strings as compile-time globals while a container slot is an i32, so
+# the interned string table (rt_str_intern2 / rt_str_ptr / rt_str_repr_ptr) turns each stored
+# string into an index. The rendering below is what CPython prints for the same program.
+
+names = ["ada", "brin", "cad"]
+print(names)
+print(len(names))
+print(names[0])
+print(names[2])
+print("ada" in names)
+print("zed" in names)
+
+row = []
+row.append("x")
+row.append("y")
+print(row)
+
+picked = "kept"
+row[1] = picked
+print(row)
+
+for n in names:
+    print(n)
+
+scores = {}
+scores["ada"] = 3
+scores["brin"] = 5
+print(scores)
+print(len(scores))
+print(scores["brin"])
+
+flags = {}
+flags[1] = "one"
+print(flags)
+
+both = {}
+both["k"] = "v"
+print(both)
+
+letters = set()
+letters.add("q")
+letters.add("r")
+print(letters)
+print(len(letters))
+for ch in letters:
+    print(ch)
+
+empty = set()
+print(empty)
+
+digits = [str(1), str(2)]
+print(digits)
+
+quoted = ["it's", "plain"]
+print(quoted)

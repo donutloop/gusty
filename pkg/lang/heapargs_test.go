@@ -224,19 +224,19 @@ func TestHeapContainerParameterAccessorsUseHeap(t *testing.T) {
 	}
 }
 
-func TestHeapContainerArgumentStringElementIsDiagnostic(t *testing.T) {
-	// A string element cannot live in an i32 heap slot. The old behaviour was
-	// IR that LLVM's verifier rejected; it must be a compile error instead.
-	_, err := Compile("def f(xs):\n    return 0\n\nf([\"a\"])\n")
-	if err == nil {
-		t.Fatalf("expected an unsupported-container diagnostic")
+func TestHeapContainerArgumentStringElementInterns(t *testing.T) {
+	// A string element cannot be an i32 pointer; it becomes an index into the runtime
+	// interned string table (roadmap Gap I.2). The old behaviour was IR that LLVM's
+	// verifier rejected, which the exit-code contract reported as a compiler bug.
+	res, err := Compile("def f(xs):\n    return 0\n\nf([\"a\"])\n")
+	if err != nil {
+		t.Fatalf("string container elements must compile: %v", err)
 	}
-	if !strings.Contains(err.Error(), "runtime container element") || !strings.Contains(err.Error(), "AOT backend yet") {
-		t.Errorf("unexpected error: %v", err)
+	if !strings.Contains(res.IR, "rt_str_intern2") {
+		t.Errorf("string elements should intern into @str_tab:\n%s", res.IR)
 	}
-	// ... and the message says where it does work.
-	if !strings.Contains(err.Error(), "interpreter") {
-		t.Errorf("error should point at the working backend: %v", err)
+	if strings.Contains(res.IR, "i32 @.str") {
+		t.Errorf("a string global must never be stored in an i32 slot:\n%s", res.IR)
 	}
 }
 

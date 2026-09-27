@@ -1303,3 +1303,53 @@ entry; int containers still compile and verify.
   (Gap J.5) at once — but it touches the value model, so it is its own cycle. The roadmap entry
   now contains that plan so the next cycle doesn't rediscover it. Shipping "honest refusal"
   first is still a real improvement: exit 1 with instructions beats exit 2 blaming the compiler.
+
+## Gap I.2 done — strings live in runtime containers now (ADR 0173)
+
+`xs = ["a", "b"]` compiled to `rt_set_elem(i32 %h, i32 1, i32 @.str1)`: a global pointer in an
+i32 slot, rejected by LLVM, reported as exit 2 — a compiler bug for a two-line program. It now
+compiles, runs, and prints `['a', 'b']` on both backends.
+
+- **Interning beat tagging, and beat bitcasting.** A container slot is an i32 and a string is a
+  compile-time global, so the options were: tag every word (a representation change and a
+  shift/extend on every container access), bitcast the pointer into the i32 (loses bits on
+  64-bit, and asks the verifier to bless nonsense), or store an index into a runtime string
+  table. Interning costs one `strcmp` scan at the store site, changes no representation, and
+  gives a bonus: content-addressed identity, which is exactly what a dict key needs.
+- **Two tables, one index — because printing has two contexts.** `@str_tab` holds the raw text
+  (`print(name)` → `hello`) and `@str_repr_tab` holds Python's repr (`print(names)` →
+  `['hello']`). One slot cannot serve both, and choosing at print time is what lets
+  `print(x)` and `print([x])` each be right. `rt_print_value(v, isStr, quote)` is shared by the
+  list, set and dict printers, so the three renderers cannot drift.
+- **The repr rule is one function used by both backends.** `pyReprString` implements Python's
+  choice — single quotes, unless the text contains `'` and no `"` — and is called by the
+  interpreter's `reprNested` and by codegen when it emits the intern call. `["it's", 'plain']`
+  comes out identically either way, and one unit test compares the function's answers to
+  CPython's `repr` output.
+- **A shared choke point is only as good as its coverage — again.** `heapElem` had been the
+  guard for stores, and `heapElemKind` is now the one place a container word is produced. The
+  last shape still emitting a raw global was `x in xs` (`rt_contains(i32 %h, i32 @.strN)`),
+  which is not a store at all: a *read* needed the same normalisation. Membership, indexing,
+  iteration and printing each needed their own wiring even though they all store the same
+  index.
+- **Track meaning per container *and per dict side*.** `listElemStr`, `setElemStr`,
+  `dictKeyStr`, `dictValStr` — a dict with string keys and int values (`{'ada': 3}`) needs the
+  two sides distinguished, and all four are saved/restored in `beginScope`, continuing the
+  per-scope discipline that fixed the parameter-kind leak (commit `5232142`).
+- **The interpreter had a matching bug, found only by asking Python.** Dict printing used
+  `%v` on the stored key, so a string key printed as its **heap handle**: `{1048581: 1}` for
+  `{'k': 1}`. A parity test compares the backends to each other and cannot see it; only the
+  corpus case whose expectation came from CPython did. Rendering values *inside* containers now
+  goes through `reprNested`, which quotes strings and prints keys with `Repr`.
+- **Expectations written before the shape worked have to be inverted, not deleted.** The
+  interim cycle's tests asserted *refusals* for ten shapes; nine of them now compile. Each was
+  rewritten to assert the working behaviour (output compared to Python's), and
+  `TestIntContainersStillBuild` stays behind it so the guard cannot quietly become a blanket
+  refusal of containers.
+- **`--file`/`--eval` stdout and the `.want` files are only as good as the oracle.** For this
+  feature the expected output came from running the same program under CPython; the two lines
+  that differ (`True`/`False` vs `1`/`0`) are the documented bool convention (Gap L.2), noted
+  in `docs/language.md` rather than silently normalised to our own output.
+
+Still refused, on purpose: an element whose string comes from a `str`-typed *parameter* has no
+compile-time text to intern, and reports the ADR 0166 diagnostic naming the interpreter.

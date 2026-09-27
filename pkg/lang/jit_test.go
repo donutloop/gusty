@@ -1000,7 +1000,7 @@ func TestStrMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("split: %v", err)
 	}
-	if s := ev.Repr(v); s != "[a, b, c]" {
+	if s := ev.Repr(v); s != "['a', 'b', 'c']" { // Python quotes strings inside containers
 		t.Fatalf("split repr %q", s)
 	}
 }

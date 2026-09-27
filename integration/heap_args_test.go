@@ -219,24 +219,23 @@ func TestAOTHeapContainerVerifier(t *testing.T) {
 	}
 }
 
-// TestAOTHeapContainerStringElementDiagnostic: a string cannot live in an i32
-// heap slot. The old behaviour was a verifier failure deep inside llc; the
-// compiler must instead name the limitation and point at the working backend.
-func TestAOTHeapContainerStringElementDiagnostic(t *testing.T) {
-	_, err := lang.Compile(`def f(xs) -> int:
-    return len(xs)
-
-print(f(["a", "b"]))
-`)
-	if err == nil {
-		t.Fatalf("expected a compile error for strings in a runtime container")
+// TestAOTHeapContainerStringElement: a string in a heap container used to be a verifier
+// failure (an @.strN global in an i32 parameter). Strings now live in the runtime interned
+// table, so a list of strings can be built and passed to a function (roadmap Gap I.2).
+func TestAOTHeapContainerStringElement(t *testing.T) {
+	src := "def f(xs) -> int:\n    return len(xs)\n\nprint(f([\"a\", \"b\"]))\n"
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Fatalf("string container argument must compile now: %v", err)
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "runtime container element") || !strings.Contains(msg, "AOT backend yet") {
-		t.Errorf("unexpected error text: %v", err)
+	if !strings.Contains(res.IR, "rt_str_intern2") {
+		t.Errorf("string elements should be interned into the runtime string table:\n%s", res.IR)
 	}
-	if !strings.Contains(msg, "interpreter") {
-		t.Errorf("error should name the backend that works: %v", err)
+	if strings.Contains(res.IR, "i32 @.str") {
+		t.Errorf("no string pointer may be stored in an i32 slot:\n%s", res.IR)
+	}
+	if got := compileAndRun(t, src); got != "2\n" {
+		t.Errorf("AOT output = %q, want \"2\\n\"", got)
 	}
 }
 
