@@ -163,6 +163,14 @@ entry:
 ; is a property of the *object*, not of the variable — a helper can fill a list its caller
 ; created — so the printers read this instead of trusting a static guess (Gap I.2/J.5).
 @estr = internal global [1024 x i32] zeroinitializer
+; @heap_tags is the per-element half of the value model (roadmap L11.1). @estr[h] says one
+; thing about a whole container -- "its elements are interned strings" -- which is why a
+; heterogeneous xs = [1, "a"] had to be refused rather than printed (ADR 0175). This array
+; numbers each slot with a canonical ValueTag (int=0, None=3, str=4, from the table in
+; value.go, so no new vocabulary), letting one list hold numbers and interned strings
+; together. Only scalars and interned strings are taggable: a nested container would have to
+; be marked by the collector, and that case stays refused.
+@heap_tags = internal global [1024 x [256 x i32]] zeroinitializer
 declare i32 @strcmp(i8*, i8*)
 
 ; Strings are compile-time globals, so a container slot cannot hold one directly (it is an
@@ -455,6 +463,84 @@ cont:
   br label %loop
 done:
   call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
+
+define internal void @rt_tag_elem(i32 %h, i32 %i, i32 %t) {
+entry:
+  %p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  store i32 %t, i32* %p
+  ret void
+}
+
+define internal i32 @rt_tag_of(i32 %h, i32 %i) {
+entry:
+  %p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %v = load i32, i32* %p
+  ret i32 %v
+}
+
+; rt_print_mixed_value renders one element by its tag, using the same three texts the
+; interpreter's Repr produces: numbers with %d, interned strings through the repr slot
+; (Python quotes elements inside a container), and the None singleton as "None".
+define internal void @rt_print_mixed_value(i32 %v, i32 %t) {
+entry:
+  %isStr = icmp eq i32 %t, 4
+  br i1 %isStr, label %str, label %checkNone
+str:
+  %rp = call i8* @rt_str_repr_ptr(i32 %v)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %rp)
+  ret void
+checkNone:
+  %isNone = icmp eq i32 %t, 3
+  br i1 %isNone, label %none, label %num
+none:
+  call void @rt_print_none(i32 0)
+  ret void
+num:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
+  ret void
+}
+
+; rt_print_list_mixed walks a list whose elements carry per-element tags. It is rt_print_list
+; with the container-wide @estr[h] flag replaced by a per-element tag lookup -- the difference
+; between "this list is the string list" and "this slot holds a string".
+define internal void @rt_print_list_mixed(i32 %h, i32 %nl) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %i1, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %done
+body:
+  %is0 = icmp eq i32 %i, 0
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
+  %e = load i32, i32* %ep
+  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %t = load i32, i32* %tp
+  br i1 %is0, label %first, label %sep
+first:
+  call void @rt_print_mixed_value(i32 %e, i32 %t)
+  br label %cont
+sep:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_print_mixed_value(i32 %e, i32 %t)
+  br label %cont
+cont:
+  %i1 = add i32 %i, 1
+  br label %loop
+done:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
@@ -1534,7 +1620,7 @@ func GenerateIR(prog *Program) (string, error) {
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, mixedLists: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -1791,6 +1877,11 @@ type irGen struct {
 	// internedVars records names bound to an interned-string index (element reads and loop
 	// variables over string containers), so print renders the text rather than the index.
 	internedVars map[string]bool
+	// mixedLists records list variables whose elements carry per-element tags (more than
+	// one kind, all taggable: numbers, interned strings, None). Printing them works; every
+	// other element-wise use refuses rather than reading a tag through one static kind
+	// (roadmap L11.1, ADR 0184).
+	mixedLists map[string]bool
 	// strParamOf maps a function name to the parameter indices that receive strings; the
 	// callee marks them in internedVars and the caller interns the argument (Gap J.5).
 	strParamOf map[string]map[int]bool
@@ -4711,6 +4802,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 				g.heapSeq++
 				hs := g.heapSeq
+				if g.mixedLists[obj.Value] {
+					return "", mixedReadErr("list")
+				}
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
 				g.checkIndexRead(b, fmt.Sprintf("%%h%d", hs), idxOp, n.Span())
 				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %s)\n", hs, hs, idxOp))
@@ -5547,6 +5641,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
+			}
+			if g.mixedLists[nm.Value] {
+				// Appending would need the new element tagged in heap_tags; the literal
+				// path is where tags are written today (ADR 0184).
+				return "", mixedAppendErr("list")
 			}
 			av, interned, err := g.heapElemKind(b, c.Args[0])
 			if err != nil {
@@ -6396,6 +6495,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if g.listElemStr[nm.Value] {
 					printer = "rt_print_list_str"
 				}
+				if g.mixedLists[nm.Value] {
+					printer = "rt_print_list_mixed"
+				}
 				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 0)\n", printer, hs))
 				continue
 			}
@@ -6416,6 +6518,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// global layout is i32-only), so print it with the runtime printers rather than
 				// as the integer handle it happens to be (roadmap Gap J.6).
 				if literalNeedsHeap(a) {
+					if _, isLL := a.(*ListLit); isLL && literalMixedKinds(a) && g.taggableMixedList(a.(*ListLit)) {
+						// Heterogeneous list of taggable elements: build it with per-element
+						// tags and print through the tag-aware printer, which is what the
+						// interpreter's Repr does element by element (ADR 0184).
+						g.heapUsed = true
+						h, err := g.heapListFromTagged(b, a.(*ListLit))
+						if err != nil {
+							return "", err
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
+						continue
+					}
 					if literalMixedKinds(a) {
 						noun := "list"
 						switch a.(type) {
@@ -8276,6 +8390,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.allocd[nm.Value] = true
 				}
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindList))
+				// A literal that mixes numbers with interned strings or None is no longer a
+				// refusal: each slot carries a canonical ValueTag (heap_tags), and the
+				// container prints through rt_print_list_mixed. Everything else that would
+				// read an element out of it keeps refusing (ADR 0184).
+				mixed := g.taggableMixedList(lit)
 				for i, el := range lit.Elems {
 					// heapElemKind, not value(): an assigned container literal is still a
 					// runtime container, so a string element becomes an index into @str_tab
@@ -8285,10 +8404,21 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
+					if mixed {
+						tag := elemTagFor(el, interned)
+						if tag == int32(TagNone) {
+							// None has no i32 payload of its own; the tag is what renders it.
+							ev = "0"
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i, tag))
+					} else if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
 						return err
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, ev))
+				}
+				if mixed {
+					g.mixedLists[nm.Value] = true
+					delete(g.listElemStr, nm.Value)
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
@@ -8747,6 +8877,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		var hVal string
 		if name, ok := n.Iter.(*Name); ok {
 			switch {
+			case g.mixedLists[name.Value]:
+				return mixedReadErr("list")
 			case g.listVars[name.Value]:
 				iterKind = "list"
 			case g.runtimeSets[name.Value]:

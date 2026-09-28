@@ -1907,3 +1907,38 @@ and reading what git actually printed.
   a backtick ends a raw string literal early (`syntax error: unexpected kind after top level
   declaration`), and a `%obj` inside the schema text trips `go vet`'s printf check on the
   `fmt.Println(lang.ASTIRSchema)` that prints it.
+
+## A tag per element: `[1, "a", None]` compiles, prints, and still refuses what it cannot read (ADR 0184)
+
+- **The enabling change was ~10 lines; the design is the gate that refuses.** `@heap_tags` plus a
+  per-slot load in a copy of `rt_print_list` is the whole feature. Everything worth reviewing is
+  in `elemKindTag`'s exclusions: bools (would print `1` where Python prints `True`), floats (no
+  float branch in the mixed printer), containers (the collector has no element worklist, so a
+  nested heap object could be freed under the list), and any element whose string-ness codegen
+  cannot prove. Skip any one of those and the compiler ships the old `(null)`/index-as-number bug
+  in a new costume.
+- **Stubbing caught what "it compiles" would have hidden.** Deleting the `rt_tag_elem` emission
+  still compiled, still printed a plausible list — `[1, 0, 0, 2]`. Only an assertion on the
+  *text* (against CPython, not against yesterday's output) fails that. Every new capability in
+  this area needs its output pinned, not its exit status.
+- **A test that pins a refusal becomes a to-do item the day the feature lands.**
+  `string_containers_test.go` asserted `xs = [1, "a"]` *must* be refused; it was right under
+  ADR 0175 and it failed correctly under ADR 0184. The suite surfacing it — rather than me
+  deleting it from memory of why it existed — is the reason the row moved to a print-correctly
+  test in the same commit that retired the refusal, with the reason written down.
+- **Parallel array beat a struct field for review-risk, not speed.** Adding `tags` as the fourth
+  field of `{kind, len, elems}` is better layout and would have rewritten every GEP into `elems`
+  in the same commit that changes observable behaviour. Two changes with one failure mode each
+  are easier to trust than one change with two.
+- **Make the zero value mean something, then skip the initialisation pass.** Tag `0` is the
+  canonical `TagInt`, so a fresh heap slot needs no tag write and `rt_alloc` stays as it was —
+  one less thing the collector and the free-list have to agree about. ADR 0182's numbering is
+  what made this free.
+- **Prove the memory argument or don't ship the case.** Mixed lists are safe *because* their
+  elements are immediates and interned strings — nothing the collector manages is reachable only
+  through them. Saying so is what makes "containers are excluded" a reasoned line rather than
+  timidity, and it tells the next cycle exactly what `rt_gc` needs before `[[1], "a"]` can open.
+- **The interpreter was already right**, so parity was free: `Repr` walks a slice of values and
+  already had per-value kind. Divergences like this one live in the compiled backend's need to
+  decide statically — which is also why the *refusal* messages are the honest interface (ADR 0166)
+  while the capability grows.

@@ -610,9 +610,26 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     `--schema`. Verified against stubs: renumbering `HeapKindSet` fails with "codegen
     allocated an unknown heap kind 5", and swapping the projection order fails the
     round-trip test.
-  - 🟢 **Remaining**, in order: (1) a tag word per *element* in the heap object, retiring
-    the compile-time element-kind maps and with them ADR 0175's refusal and ADR 0174's
-    `@estr[h]` flags; (2) **bools as values** — measured today `--json` reports
+  - ✅ **Done (ADR 0184): a tag word per element.** `@heap_tags : [1024 x [256 x i32]]` sits
+    parallel to the element slots (a fourth struct field would have rewritten every existing GEP
+    in the same commit that changes behaviour) and carries the canonical `ValueTag` numbers, so
+    `int=0` is both the zero value and "integer" with no init pass. `rt_print_list_mixed` is
+    `rt_print_list` with the container-wide `@estr[h]` load replaced by a per-slot tag load.
+    `xs = [1, "a", None, 2]` now compiles and prints `[1, 'a', None, 2]` — identical to CPython
+    and to the interpreter — where ADR 0175 refused it. `elemKindTag` is the gate: numbers,
+    interned strings and `None` only; **bools** (not values yet), **floats** (the mixed printer
+    has no float rendering) and **containers** (the collector cannot mark elements) stay refused,
+    as does anything whose string-ness codegen cannot prove, because printing a string table
+    *index* as a number is the very bug the original refusal prevented. Loop bodies
+    (`for i in range(N): xs = [i, "a", None]`), string variables, last-assignment-wins rebinding
+    and string-returning calls all work; a 150-iteration loop is tested to actually collect
+    (`freed=148`) while printing correctly. `integration/string_containers_test.go`'s
+    "must be refused" rows for literals moved to a print-correctly test in this commit.
+  - 🟢 **Remaining**, in order: (1a) element-wise *reads* of a mixed list — `xs[0]`,
+    `for x in xs`, `xs.append(...)` — are clean refusals today and need a tagged value at the use
+    site; (1b) mixed *dicts* and *sets* (same storage trick, `rt_dict_print`/`rt_set_print`
+    dispatch on one flag today); (1c) floats in containers, which needs a float branch in
+    `rt_print_mixed_value`; (1d) retiring `@estr[h]` entirely once every read path is tagged; (2) **bools as values** — measured today `--json` reports
     `"type": "int"` for `True` on both backends, so `print(True)` prints `1`, and L11.2
     cannot be fixed independently: there is no tag to print from; (3) the
     `i32 @.strN` / `ret i32 @.str1` / `rt_append(i32, i32 @.lstN)` invalid-IR family

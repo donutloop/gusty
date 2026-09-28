@@ -841,6 +841,14 @@ backends and the same text CPython prints: `str(None)` is `"None"` (not `"0"`), 
 string may be printed but never stored as a global; where it is stored, the text is interned
 and the handle kept (ADR 0183).
 
+A compiled list can hold numbers, interned strings and `None` together: each element slot
+carries its own tag, so `print([1, "a", None])` gives `[1, 'a', None]` on both backends and on
+CPython (ADR 0184). What a mixed list may hold is decided by what the tag can honestly describe
+— integers, interned strings, `None` — so `[True, "a"]`, `[1.5, "a"]` and `[[1], "a"]` are still
+reported rather than mis-printed, and reading one element out of a mixed list (`xs[0]`,
+`for x in xs`, `xs.append(...)`) reports that printing works while element reads need a tagged
+value at the use site.
+
 The tag is what makes a value's kind a fact rather than a guess, and it is what the
 compiled backend currently lacks per *element*: a compiled list records one element kind
 for the whole container, which is why a heterogeneous `xs = [1, "a"]` is refused rather

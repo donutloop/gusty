@@ -162,16 +162,46 @@ func TestContainerLiteralsMatchPython(t *testing.T) {
 
 func gotInterpHint(got string) string { return got }
 
-// A compiled container records one element kind, so a container that *grows* with both strings
-// and numbers is reported instead of printing its integers through the string table — `[1, "a"]`
-// used to render as [(null), 'a']. Item assignment overwrites, so it stays allowed.
+// A compiled container that *grows* with both strings and numbers still has one element kind
+// at the append site: `xs = [1]` then `xs.append("a")` cannot know the new slot's tag, so it is
+// reported instead of printing an integer through the string table — the shape that used to
+// render as [(null), 'a']. Heterogeneous *literals* left this list when per-element tags landed
+// (ADR 0184): see mixedLiteralCases. Item assignment overwrites, so it stays allowed.
 var mixedContainerCases = []string{
-	"print([1, \"a\"])\n",
-	"xs = [1, \"a\"]\nprint(xs)\n",
 	"xs = [1]\nxs.append(\"a\")\nprint(xs)\n",
 	"xs = [\"a\"]\nxs.append(1)\nprint(xs)\n",
 	"s = {1}\ns.add(\"a\")\nprint(s)\n",
 	"print({\"a\": 1, \"b\": \"c\"})\n",
+}
+
+// The case ADR 0175 refused and ADR 0184 fixed: a list literal that mixes numbers with
+// interned strings. Asserting the *output*, not just that it compiles — the failure mode this
+// whole area has is printing something plausible but wrong.
+var mixedLiteralCases = []struct {
+	src  string
+	want string
+}{
+	{"print([1, \"a\"])\n", "[1, 'a']\n"},
+	{"xs = [1, \"a\"]\nprint(xs)\n", "[1, 'a']\n"},
+}
+
+func TestMixedLiteralsPrintInsteadOfRefusing(t *testing.T) {
+	for _, tc := range mixedLiteralCases {
+		res, err := lang.Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q should compile since per-element tags landed: %v", tc.src, err)
+		}
+		if !strings.Contains(res.IR, "@heap_tags") {
+			t.Errorf("%q compiled without the per-element tag array", tc.src)
+		}
+		jit, err := lang.JIT(tc.src, 0)
+		if err != nil {
+			t.Fatalf("compile %q: %v", tc.src, err)
+		}
+		if jit.Output != tc.want {
+			t.Errorf("%q printed %q, want %q (CPython)", tc.src, jit.Output, tc.want)
+		}
+	}
 }
 
 func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
@@ -181,11 +211,12 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 			t.Errorf("%q must be refused (it used to print (null)); got IR", src)
 			continue
 		}
-		if !strings.Contains(err.Error(), "holds either strings or numbers") {
+		if !strings.Contains(err.Error(), "holds either strings or numbers") &&
+			!strings.Contains(err.Error(), "needs the new element tagged") {
 			t.Errorf("%q: unexpected diagnostic: %v", src, err)
 		}
-		if !strings.Contains(err.Error(), "interpreter") {
-			t.Errorf("%q: should name the backend that works: %v", src, err)
+		if !strings.Contains(err.Error(), "interpreter") && !strings.Contains(err.Error(), "printing it works") {
+			t.Errorf("%q: should name the path that works: %v", src, err)
 		}
 		if res != nil {
 			// nothing usable was emitted, and it must not be an invalid module

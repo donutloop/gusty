@@ -626,6 +626,29 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 // heapListFrom materialises a list literal as a runtime heap list and returns
 // its handle. Elements are lowered as i32 values; a string element is reported
 // as unsupported rather than emitting IR the verifier rejects.
+// heapListFromTagged builds a heap list whose elements carry per-element tags: one
+// rt_tag_elem per slot, with the canonical ValueTag number for what the element is. The
+// container-wide @estr[h] flag is deliberately left alone -- that flag is the thing a tag
+// replaces, and setting it would make rt_print_list render every element as a string.
+func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, error) {
+	g.heapUsed = true
+	h := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
+	for i, el := range ln.Elems {
+		v, interned, err := g.heapElemKind(b, el)
+		if err != nil {
+			return "", err
+		}
+		tag := elemTagFor(el, interned)
+		if tag == int32(TagNone) {
+			v = "0"
+		}
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i, tag)
+		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
+	}
+	return h, nil
+}
+
 func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (string, error) {
 	g.heapUsed = true
 	h := g.newTmp()
@@ -873,6 +896,88 @@ func stringConstOf(e Expr) (string, bool) {
 		return s, true
 	}
 	return "", false
+}
+
+// taggableMixedList reports whether a list literal mixes element kinds but every element is
+// one the per-element tag can describe today: an integer, an interned string, or None. That
+// set is deliberate. Bools are excluded because bools are not values in either backend yet
+// (L11.1), so a [True] would print 1 and disagree with Python; floats are excluded because
+// rt_print_mixed_value has no float rendering; and a nested container would have to be
+// marked by the collector, which per-element rooting has not reached. Anything else keeps the
+// honest refusal below rather than printing something wrong (ADR 0184).
+func (g *irGen) taggableMixedList(ln *ListLit) bool {
+	if len(ln.Elems) == 0 {
+		return false
+	}
+	sawStr, sawOther := false, false
+	for _, el := range ln.Elems {
+		tag, ok := g.elemKindTag(el)
+		if !ok {
+			return false
+		}
+		if tag == int32(TagStr) {
+			sawStr = true
+		} else {
+			sawOther = true
+		}
+	}
+	return sawStr && sawOther
+}
+
+// elemKindTag is the codegen's answer to "what tag does this element's slot carry", and the
+// gate on what a mixed list may hold at all. Excluded, each for a reason: bools (not values
+// in either backend yet, so [True] would print 1 against Python's True -- L11.1), floats
+// (rt_print_mixed_value has no float rendering), containers (the collector does not yet mark
+// elements, so a nested heap object could be freed under a list that references it), and any
+// expression whose string-ness the codegen cannot prove -- because printing an interned
+// string's *index* as a number is exactly the wrong-output bug the refusal exists to avoid.
+func (g *irGen) elemKindTag(e Expr) (int32, bool) {
+	switch e.(type) {
+	case *BoolLit, *FloatLit, *ListLit, *DictLit, *SetLit, *Tuple, *Lambda:
+		return 0, false
+	case *NoneLit:
+		return int32(TagNone), true
+	case *StrLit:
+		return int32(TagStr), true
+	case *IntLit:
+		return int32(TagInt), true
+	}
+	if _, ok := stringConstOf(e); ok {
+		return int32(TagStr), true
+	}
+	if g.printsAsInternedStr(e) {
+		return int32(TagStr), true
+	}
+	if nm, ok := e.(*Name); ok {
+		if g.strVals[nm.Value] != "" {
+			return int32(TagStr), true
+		}
+	}
+	return int32(TagInt), true
+}
+
+// elemTagFor is the canonical ValueTag number an element's slot carries. Numbers are 0
+// (TagInt, which is also the array's zero value), None is TagNone, interned strings TagStr.
+func elemTagFor(e Expr, interned bool) int32 {
+	switch e.(type) {
+	case *NoneLit:
+		return int32(TagNone)
+	}
+	if interned {
+		return int32(TagStr)
+	}
+	return int32(TagInt)
+}
+
+// mixedReadErr is what reading a single element out of a tagged list reports: the tag says
+// what the element is, but the use site was compiled against one static kind.
+func mixedReadErr(what string) error {
+	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind; printing it works, but reading one element out needs a tagged value at the use site (roadmap L11.1)", what)
+}
+
+// mixedAppendErr is the append/element-write counterpart of mixedReadErr.
+func mixedAppendErr(what string) error {
+	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind; printing it works, but adding to it needs the new element tagged (roadmap L11.1)", what)
 }
 
 // mixedKindErr is the diagnostic every mixed-container site reports.
