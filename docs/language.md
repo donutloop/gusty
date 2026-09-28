@@ -849,6 +849,13 @@ reported rather than mis-printed, and reading one element out of a mixed list (`
 `for x in xs`, `xs.append(...)`) reports that printing works while element reads need a tagged
 value at the use site.
 
+Iterating a mixed list works: `for x in xs` binds the element *together with its tag*, so
+`print(x)` inside the loop renders each element correctly (ADR 0185). The tag decides *what* the
+value is and the call site decides *how* to show it — `print(x)` gives `str()` (a bare `a`),
+while `print(xs)` gives `repr()` (`'a'`), matching Python. Using that loop variable as a number
+(`print(x + 1)`) is reported rather than computed on a string table index, and rebinding it
+(`x = 5`) clears the tag.
+
 The tag is what makes a value's kind a fact rather than a guess, and it is what the
 compiled backend currently lacks per *element*: a compiled list records one element kind
 for the whole container, which is why a heterogeneous `xs = [1, "a"]` is refused rather

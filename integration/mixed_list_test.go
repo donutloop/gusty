@@ -56,3 +56,28 @@ func TestMixedListsSurviveCollection(t *testing.T) {
 		t.Fatalf("the collector never reported; stderr = %q", jit.Stderr)
 	}
 }
+
+// The loop case, against CPython: `print(x)` over a mixed list shows str() (unquoted), while
+// `print(xs)` shows repr() (quoted) -- the same tag, two rendering contexts (ADR 0185).
+func TestLoopOverMixedListMatchesCPython(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{"xs = [1, \"a\", None]\nfor x in xs:\n    print(x)\n", "1\na\nNone\n"},
+		{"xs = [\"a\", 1, None]\nfor x in xs:\n    print(x)\nprint(xs)\n", "a\n1\nNone\n['a', 1, None]\n"},
+		{"xs = [1, \"a\", None]\nfor x in xs:\n    print(x, \"tag\", sep=\":\")\n", "1:tag\na:tag\nNone:tag\n"},
+		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x)\nx = 5\nprint(x)\n", "1\na\n5\n"},
+	} {
+		if interped := runInterp(t, tc.src); interped != tc.want {
+			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
+		}
+		res, err := lang.JIT(tc.src, 0)
+		if err != nil {
+			t.Fatalf("compile %q: %v", tc.src, err)
+		}
+		if res.Output != tc.want {
+			t.Errorf("compiled %q = %q, want %q", tc.src, res.Output, tc.want)
+		}
+	}
+}

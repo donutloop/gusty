@@ -1942,3 +1942,34 @@ and reading what git actually printed.
   already had per-value kind. Divergences like this one live in the compiled backend's need to
   decide statically — which is also why the *refusal* messages are the honest interface (ADR 0166)
   while the capability grows.
+
+## A loop over a mixed list binds (value, tag) — and the str/repr split arrives from the call site (ADR 0185)
+
+- **"Is this limitation real, or an artifact of where I implemented it?" is the question that
+  unlocked this feature.** ADR 0184 refused `xs[0]`, `xs.append(...)` *and* `for x in xs` for the
+  same stated reason — the read site has one static kind. But a loop is different: it already
+  computes the index, so the tag is available exactly where the variable is bound. Index reads
+  genuinely cannot know; loops can. Re-refusing a construct because a sibling one is hard is how
+  ADR 0175 ended up refusing literals.
+- **str vs repr is a property of the *context*, not of the value.** One tag, two renderings:
+  `print(x)` shows `a`, `print(xs)` shows `'a'`. The printer therefore takes a `quote` flag from
+  its caller instead of trying to infer intent from the tag. ADR 0174's interned repr slot made
+  this nearly free — the quoted form was already stored beside the raw text; nothing had been
+  *reading* it per element.
+- **Funneling through one resolver turns ten guards into one.** Every arithmetic, comparison and
+  call argument eventually reaches `value()`, so a single `taggedVars` check at the top of its
+  `*Name` case covers all of them with one honest message. Had each expression node resolved
+  names itself, this feature would have needed a guard each — and one of them would have been
+  missed.
+- **Two of my own tests were assertions about yesterday's bug, and had to be inverted.**
+  `mixed_list_test.go` asserted `for x in xs` must refuse; `string_containers_test.go` asserted
+  literals must refuse. Both were right when written, both were the first thing to fail once the
+  capability existed, and both moved to "prints correctly" tests in the same commit that retired
+  the refusal. A refusal test is a scheduled deletion; write it with the reason attached so the
+  deletion is a decision.
+- **Watch for the homogeneous trap in a mixed-value test.** `xs = ["a"]` looks like a tagged-value
+  case and is not — one string list is homogeneous and never becomes a tagged list, so a print
+  assertion written against it silently tests the wrong path. Mixed means *both kinds present*.
+- Stub discipline again paid: pinning `rt_tag_of` to `0` kept the program compiling and printed
+  `1\n0\n0`, and flipping the top-level `quote` flag kept everything green except the one parity
+  row that cares. "It compiles" continues to be worthless as an assertion.

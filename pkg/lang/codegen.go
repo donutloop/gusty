@@ -489,13 +489,23 @@ entry:
 ; rt_print_mixed_value renders one element by its tag, using the same three texts the
 ; interpreter's Repr produces: numbers with %d, interned strings through the repr slot
 ; (Python quotes elements inside a container), and the None singleton as "None".
-define internal void @rt_print_mixed_value(i32 %v, i32 %t) {
+define internal void @rt_print_mixed_value(i32 %v, i32 %t, i32 %quote) {
 entry:
   %isStr = icmp eq i32 %t, 4
   br i1 %isStr, label %str, label %checkNone
 str:
+  ; Inside a container Python shows repr() -- quoted, with its chosen quotes -- and at top
+  ; level str() -- the text itself. The caller knows which context it is in; only the tag
+  ; cannot say, so the flag comes from the call site (ADR 0185).
+  %q = icmp ne i32 %quote, 0
+  br i1 %q, label %strrepr, label %strraw
+strrepr:
   %rp = call i8* @rt_str_repr_ptr(i32 %v)
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %rp)
+  ret void
+strraw:
+  %sp = call i8* @rt_str_ptr(i32 %v)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %sp)
   ret void
 checkNone:
   %isNone = icmp eq i32 %t, 3
@@ -530,11 +540,11 @@ body:
   %t = load i32, i32* %tp
   br i1 %is0, label %first, label %sep
 first:
-  call void @rt_print_mixed_value(i32 %e, i32 %t)
+  call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
   br label %cont
 sep:
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
-  call void @rt_print_mixed_value(i32 %e, i32 %t)
+  call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
   br label %cont
 cont:
   %i1 = add i32 %i, 1
@@ -1620,7 +1630,7 @@ func GenerateIR(prog *Program) (string, error) {
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, mixedLists: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, mixedLists: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -1882,6 +1892,10 @@ type irGen struct {
 	// other element-wise use refuses rather than reading a tag through one static kind
 	// (roadmap L11.1, ADR 0184).
 	mixedLists map[string]bool
+	// taggedVars records variables bound by a loop over a mixed list: their value slot is an
+	// i32 whose meaning depends on the companion tag slot, so printing dispatches on the tag
+	// and every other use refuses (roadmap L11.1, ADR 0185).
+	taggedVars map[string]bool
 	// strParamOf maps a function name to the parameter indices that receive strings; the
 	// callee marks them in internedVars and the caller interns the argument (Gap J.5).
 	strParamOf map[string]map[int]bool
@@ -4151,6 +4165,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		return t, nil
 	case *Name:
+		if g.taggedVars[n.Value] {
+			// The value slot only means something together with its tag, and this
+			// context wants a number, not a (value, tag) pair (ADR 0185).
+			return "", mixedTaggedVarErr(n.Value)
+		}
 		// String variables are compile-time constants (strVals); emit their
 		// global pointer so printf/assign via value() sees the real string.
 		if sv, ok := g.strVals[n.Value]; ok {
@@ -6487,6 +6506,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					}
 				}
 			}
+			if nm, ok := a.(*Name); ok && g.taggedVars[nm.Value] {
+				vt := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", vt, nm.Value))
+				tg := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", tg, nm.Value))
+				b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", vt, tg))
+				continue
+			}
 			if nm, ok := a.(*Name); ok && g.listVars[nm.Value] {
 				g.heapSeq++
 				hs := g.heapSeq
@@ -8615,6 +8642,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if g.floatVars != nil {
 					delete(g.floatVars, nm.Value)
 				}
+				delete(g.taggedVars, nm.Value)
 			}
 		} else if attr, ok := n.Target.(*Attr); ok {
 			// Instance attribute write: `self.x = v` / `inst.x = v`.
@@ -8874,11 +8902,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// which the runtime stores as [key, value] pairs — so entry i's key lives at
 		// 2*i. Iterating anything else falls through to the range path.
 		iterKind := "" // "list" | "set" | "dict"
+		mixedIter := false
 		var hVal string
 		if name, ok := n.Iter.(*Name); ok {
 			switch {
 			case g.mixedLists[name.Value]:
-				return mixedReadErr("list")
+				// Iterating a mixed list binds the loop variable to an element *and* its
+				// tag, so print(x) can dispatch per iteration (ADR 0185).
+				iterKind = "list"
+				mixedIter = true
 			case g.listVars[name.Value]:
 				iterKind = "list"
 			case g.runtimeSets[name.Value]:
@@ -8963,6 +8995,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			elemT := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", elemT, hVal, pos))
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", elemT, loopVar))
+			if mixedIter {
+				// The companion tag slot is what makes the loop variable printable: its
+				// i32 alone is ambiguous (a number, or an index into the string table),
+				// and only the tag says which (ADR 0185).
+				if !g.allocd[loopVar+"_tag"] {
+					b.WriteString(fmt.Sprintf("  %%_%s_tag = alloca i32\n", loopVar))
+					g.allocd[loopVar+"_tag"] = true
+				}
+				tagT := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", tagT, hVal, pos))
+				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tagT, loopVar))
+				g.taggedVars[loopVar] = true
+			}
 			g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 			for _, s := range n.Body {
 				if err := g.stmt(b, s); err != nil {

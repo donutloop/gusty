@@ -975,6 +975,13 @@ func mixedReadErr(what string) error {
 	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind; printing it works, but reading one element out needs a tagged value at the use site (roadmap L11.1)", what)
 }
 
+// mixedTaggedVarErr is what a loop variable from a mixed list reports when the program
+// wants a number from it: printing dispatches on the tag, but arithmetic and calls have no
+// tag to carry (roadmap L11.1, ADR 0185).
+func mixedTaggedVarErr(name string) error {
+	return fmt.Errorf("codegen: %s comes from a loop over a mixed list; print(%s) works, but using it as a number needs a tagged value (roadmap L11.1)", name, name)
+}
+
 // mixedAppendErr is the append/element-write counterpart of mixedReadErr.
 func mixedAppendErr(what string) error {
 	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind; printing it works, but adding to it needs the new element tagged (roadmap L11.1)", what)

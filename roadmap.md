@@ -625,9 +625,17 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     and string-returning calls all work; a 150-iteration loop is tested to actually collect
     (`freed=148`) while printing correctly. `integration/string_containers_test.go`'s
     "must be refused" rows for literals moved to a print-correctly test in this commit.
-  - 🟢 **Remaining**, in order: (1a) element-wise *reads* of a mixed list — `xs[0]`,
-    `for x in xs`, `xs.append(...)` — are clean refusals today and need a tagged value at the use
-    site; (1b) mixed *dicts* and *sets* (same storage trick, `rt_dict_print`/`rt_set_print`
+  - ✅ **Done (ADR 0185): `for x in xs` over a mixed list.** The loop already computes the
+    index, so the tag is available where the value is bound: the runtime list loop fetches
+    `rt_get_elem(h, i)` *and* `rt_tag_of(h, i)` into `%_x` / `%_x_tag`, and `print(x)` dispatches
+    on the tag at run time. `rt_print_mixed_value` gained a `quote` flag — container printing
+    passes 1 (`repr()`, quoted, from the interned repr slot of ADR 0174), top-level printing
+    passes 0 (`str()`) — which is Gap L.2's str/repr split landing where it can be implemented.
+    Anything else with the variable refuses via one guard in `value()`: "print(x) works, but
+    using it as a number needs a tagged value". Stub check: pinning the tag to 0 prints
+    `1\n0\n0` and fails the parity rows.
+  - 🟢 **Remaining**, in order: (1a) the other element-wise *reads* — `xs[0]` and
+    `xs.append(...)` — are clean refusals today and need a tagged value at the use site; (1b) mixed *dicts* and *sets* (same storage trick, `rt_dict_print`/`rt_set_print`
     dispatch on one flag today); (1c) floats in containers, which needs a float branch in
     `rt_print_mixed_value`; (1d) retiring `@estr[h]` entirely once every read path is tagged; (2) **bools as values** — measured today `--json` reports
     `"type": "int"` for `True` on both backends, so `print(True)` prints `1`, and L11.2

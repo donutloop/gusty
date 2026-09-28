@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -114,8 +115,11 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		wanted string
 	}{
 		{"xs = [1, \"a\"]\nprint(xs[0])\n", "tagged value at the use site"},
-		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x)\n", "tagged value at the use site"},
 		{"xs = [1, \"a\"]\nxs.append(5)\nprint(xs)\n", "adding to it needs the new element tagged"},
+		// A loop over a mixed list binds (value, tag); arithmetic has no tag to carry, so it
+		// refuses with the same honesty rather than computing on a string table index (ADR 0185).
+		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
+		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},
 		// Mixing the still-unsupported kinds keeps the original, pre-tag refusal.
 		{"xs = [True, \"a\"]\nprint(xs)\n", "either strings or numbers"},
 		{"xs = [1.5, \"a\"]\nprint(xs)\n", "either strings or numbers"},
@@ -131,5 +135,32 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") {
 			t.Errorf("%q failed as an IR problem instead of a front-end refusal: %v", tc.src, err)
 		}
+	}
+}
+
+// A loop over a mixed list is where the tag has to survive from the object into a local: the
+// element and its tag are bound together, print dispatches on the tag, and using the variable
+// as a number refuses (ADR 0185).
+func TestLoopOverMixedListBindsValueAndTag(t *testing.T) {
+	res, err := Compile("xs = [1, \"a\", None]\nfor x in xs:\n    print(x)\n")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	for _, want := range []string{"%_x_tag = alloca i32", "call i32 @rt_tag_of(", "call void @rt_print_mixed_value("} {
+		if !strings.Contains(res.IR, want) {
+			t.Errorf("module is missing %q\ngot: %s", want, irLinesContaining(res.IR, "tag"))
+		}
+	}
+}
+
+// print(x) at top level is str(); print(xs) is repr(). One tag, two contexts, decided by the
+// call site -- the distinction Python has and a single shared printer would not.
+func TestTagPrinterQuotesOnlyInsideContainers(t *testing.T) {
+	loop, err := Compile("xs = [1, \"a\"]\nfor x in xs:\n    print(x)\n")
+	if err != nil {
+		t.Fatalf("Compile loop: %v", err)
+	}
+	if !regexp.MustCompile(`rt_print_mixed_value\(i32 %t\d+, i32 %t\d+, i32 0\)`).MatchString(loop.IR) {
+		t.Errorf("top-level print of a tagged value should pass quote=0 (str): %s", irLinesContaining(loop.IR, "rt_print_mixed_value"))
 	}
 }
