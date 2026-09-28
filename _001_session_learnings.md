@@ -1725,3 +1725,53 @@ closures, decorators, generators and `try`/`except` "interpreter-only" (they are
 lowered), and `docs/language.md` advertises "negative indices ✅ DONE" where the truth
 is *slicing only*. Both mislead the next cycle's planning, and both are now corrected
 in the Phase 11 items that own them.
+
+## L7.2 — the collector had no roots, and nobody called it (ADR 0181)
+
+**What the code actually was.** `Evaluator.Collect` was a real mark-and-sweep with a
+nursery and tests — and its only callers were tests. A REPL session retained every
+object it had ever allocated; a program that looped a million times never collected
+once. "We have a GC" and "the GC runs" are different claims, and only one of them is
+checkable by reading the file.
+
+**Precise rooting in a tree-walking interpreter reduces to two rules.** The live set
+at an arbitrary moment includes Go locals (`a + b` holds `a` while `b` evaluates, a
+call holds its argument list while the callee runs), and Go gives no way to walk that
+stack. What worked instead of guessing: a **watermark** (everything minted after the
+last safe point is unconditionally live, so half-evaluated expressions are safe to
+collect around) and a **safe point** (a statement boundary with `exprDepth` at its
+base, reached from a construct that *declared* its root groups). Declaring is the
+work: a `for` loop must hand its iterable to the collector instead of keeping it in a
+Go local, and an executor must hand over `last`.
+
+**A test that cannot fail proves nothing.** My first frame-root test passed with
+`pushFrame` stubbed out — two accidents masked the whole mechanism: the "value of the
+last statement" root happened to hold the list, and the young GC never sweeps old
+objects, so nothing was ever reclaimed where it mattered. The test only became real
+when it demanded the symptom (`cannot index null` under a full GC with frames
+disabled) instead of an internal counter. Stub-the-feature and re-run is now a step I
+take before believing a memory test.
+
+**Statement-root calls are where the win is.** A call that *is* the statement has no
+half-evaluated expression above it — arguments are already in the callee's rooted
+frame, the result does not exist — so its body may take safe points of its own. That
+is the difference between `def main(): <big loop>` leaking unboundedly and not. A call
+nested inside an expression stays conservative, and that limit is documented rather
+than discovered later as an OOM; removing it needs the Phase 11 value stack.
+
+**Turning the check on found an AOT wrong-answer bug.** While writing the repro
+program, `walk(k)` returned `0`s under `--aot` and `130` under `--interp`. Root slots
+in codegen are static per (scope, name), so a recursive call re-registers the *same*
+entry and the inner frame's list replaces the outer frame's root — then a collection
+inside the callee sweeps the outer frame's live list. Same root cause as Gap A's
+instance-layout bug, and the same answer: roots need stack discipline, not a name
+table. `integration/programs/gc_precise.gy` is pinned as the repro; the AOT half of
+L7.2 (root stack + per-slot handle tags + `rt_gc` counting what it skips) is the next
+commit. This is the third time a latent codegen bug surfaced only when a new check was
+actually run (L8.2's verifier, the heap-stress harness, now this).
+
+**Process — instrument the tool, not just the test.** Because `--gc-stats` reports
+roots traced vs roots *proved non-handles*, "is the collector precise?" became a
+number in a test rather than a paragraph in an ADR, and the corpus-wide
+`GUSTY_GC_STRESS=1` run became possible. Same lesson as the optimizer report (Gap
+J.4): a subsystem with no self-report cannot be gated.

@@ -887,3 +887,62 @@ func TestCLIExplicitInterpBackendRuns(t *testing.T) {
 		t.Fatalf("--interp run failed: exit=%d out=%q", code, got)
 	}
 }
+
+// TestCLIGCStats: --gc-stats reports the collector without polluting the
+// program's stdout, and carries the same numbers as data under --json (L7.2).
+func TestCLIGCStats(t *testing.T) {
+	prog := "acc = 0\nfor k in range(400):\n    row = [k, k]\n    acc = acc + row[1]\nprint(acc)\n"
+	got, code := cliCombined(t, "--eval", prog, "--gc-stats")
+	if code != 0 {
+		t.Fatalf("--gc-stats exit = %d, want 0 (%q)", code, got)
+	}
+	if !strings.Contains(got, "79800\n") {
+		t.Fatalf("program output missing under --gc-stats: %q", got)
+	}
+	if !strings.Contains(got, "gc: backend=interpreter collections=") || !strings.Contains(got, "total_freed=") {
+		t.Fatalf("--gc-stats did not report the collector: %q", got)
+	}
+	// The report must not be part of the program's stdout: with stderr dropped,
+	// only what the program printed survives.
+	cmd := exec.Command(combinedBin(t), "--eval", prog, "--gc-stats")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if stdout.String() != "79800\n" {
+		t.Fatalf("--gc-stats leaked the report into stdout: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "gc: backend=interpreter") {
+		t.Fatalf("collector report belongs on stderr, got %q", stderr.String())
+	}
+	// Machine path: the same numbers as a JSON member.
+	jsonOut := strings.TrimSpace(cli(t, "--eval", prog, "--gc-stats", "--json"))
+	// The program's own print goes to stdout too; the payload is the line that
+	// starts the JSON object.
+	for i, ln := range strings.Split(jsonOut, "\n") {
+		if strings.HasPrefix(ln, "{") {
+			jsonOut = strings.Join(strings.Split(jsonOut, "\n")[i:], "\n")
+			break
+		}
+	}
+	var payload struct {
+		Result  string        `json:"result"`
+		Backend string        `json:"backend"`
+		GC      *lang.GCStats `json:"gc"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &payload); err != nil {
+		t.Fatalf("--gc-stats --json is not valid JSON: %v\n%s", err, jsonOut)
+	}
+	if payload.GC == nil {
+		t.Fatalf("--gc-stats --json has no gc member: %s", jsonOut)
+	}
+	if payload.GC.Backend != "interpreter" || payload.GC.Collections == 0 {
+		t.Fatalf("gc member does not describe a real collection: %+v", payload.GC)
+	}
+	// Without the flag the payload keeps its old shape: no gc member.
+	plain := cli(t, "--eval", "x = 1\nx")
+	if strings.Contains(plain, "\"gc\"") {
+		t.Fatalf("gc member appeared without --gc-stats: %s", plain)
+	}
+}

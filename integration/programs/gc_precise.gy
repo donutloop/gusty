@@ -1,0 +1,46 @@
+# Precise stack roots (L7.2, ADR 0181).
+#
+# Every value below is held somewhere the collector has to know about: a call
+# frame's locals that survive a nested allocation storm, a loop variable the loop
+# itself keeps, and thousands of short-lived containers that must be reclaimed
+# while the program is still running. A missing root shows up as a wrong number;
+# an imprecise collector shows up as a heap full of garbage that is still live.
+
+def churn(n):
+    total = 0
+    i = 0
+    while i < n:
+        junk = [i, i, i]
+        total = total + junk[2]
+        i = i + 1
+    return total
+
+# walk binds a list, recurses, then allocates a storm before reading it back:
+# only frame roots keep `keep` alive across the nested collection.
+def walk(depth):
+    keep = [depth, depth * 2, depth * 3]
+    filler = 0
+    if depth > 0:
+        filler = walk(depth - 1)
+    churn(200)
+    return keep[0] + keep[1] + keep[2] + filler
+
+# A statement-position call whose own loop reclaims as it goes: `xs` is bound
+# before the loop and read hundreds of allocations later.
+def total_up_to(n):
+    xs = [10, 20, 30]
+    acc = 0
+    i = 0
+    while i < n:
+        scratch = [i, i]
+        acc = acc + xs[0] + xs[2] + scratch[0]
+        i = i + 1
+    return acc
+
+grand = 0
+for k in range(5):
+    scratch = [k, k + 1]
+    grand = grand + walk(k) + scratch[0]
+print(grand)
+print(total_up_to(300))
+print(churn(1200))

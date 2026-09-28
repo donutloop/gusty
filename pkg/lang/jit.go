@@ -37,6 +37,42 @@ type Evaluator struct {
 	// classList records the declared base chain (L6.6) so a nominal class
 	// annotation (`a: Animal`) can also be enforced for subclass instances.
 	classList *ClassIndex
+
+	// --- precise stack roots (L7.2, ADR 0181) — see gc.go ---
+	// frames are the local scopes of the active calls; a collection traces them
+	// so a value that only a live frame references is never swept, and stops
+	// tracing them when the frame returns so a dead frame keeps nothing alive.
+	frames []map[string]int64
+	// rootGroups are handles a statement holds in Go locals while it runs a
+	// nested body (a for-loop's iterable, a with-manager, a match subject, the
+	// previous statement's value). Each construct declares them explicitly.
+	rootGroups [][]int64
+	// exprDepth counts in-flight expression evaluations. The collector advances
+	// its soundness watermark only when it is zero: then no interpreter frame is
+	// mid-expression, so no live value is sitting in a register.
+	exprDepth int
+	// exprBase is the expression depth a statement executor measures safe points
+	// against: equal to exprDepth inside a statement-root call, 0 otherwise.
+	exprBase int
+	// stmtDepth counts nested statement executors (1 = the program's own list).
+	stmtDepth int
+	// stmtSafe says the construct that entered this statement executor has
+	// declared all of its root groups.
+	stmtSafe bool
+	// stmtRoot marks the evaluation of a statement's own (outermost) expression.
+	// A call made there has no half-evaluated enclosing expression above it, so
+	// its body can take collection safe points of its own (see callFunc).
+	stmtRoot bool
+	// callIsStmtRoot is set by eval when the expression it is dispatching is a
+	// call that is the whole statement. evalCall snapshots it before evaluating
+	// its arguments, because evaluating those arguments clears the flag.
+	callIsStmtRoot bool
+	// gcWatermark is the handle frontier of collectable objects: everything
+	// allocated after it is unconditionally live (see gc.go).
+	gcWatermark int64
+	gc          GCStats
+	gcStress    bool
+	gcThreshold int64
 }
 
 // obj is a heap value: a class, an instance, or a bound/unbound method.
@@ -584,7 +620,7 @@ func (e *Evaluator) recordCall(err error, callee string, caller string, callSite
 	return err
 }
 
-func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64) (int64, error) {
+func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64, bodySafe bool) (int64, error) {
 	caller := e.fnName
 	callSite := e.cur
 	savedFn := e.fnName
@@ -621,30 +657,31 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64)
 		co.args = argVals
 		return cid, nil
 	}
-	saved := e.Vars
+	// The frame's local scope is a root for exactly the duration of the call
+	// (L7.2): while the body runs its locals keep objects alive, and the moment
+	// the call returns the collector stops looking at them. The caller's scope is
+	// rooted too, because it is not reachable through e.Vars while the callee runs.
+	restoreScope := e.swapScope(scope)
+	defer restoreScope()
 	prevRet := e.curRet
 	e.curRet = fd.ReturnAnno
 	if containsYield(fd.Body) {
 		genH := e.allocObj("list")
 		prev := e.yieldList
 		e.yieldList = genH
-		e.Vars = scope
 		e.inCall = true
-		_, err := e.evalBody(fd.Body)
+		_, err := e.runFuncBody(fd, bodySafe)
 		e.inCall = false
 		e.yieldList = prev
-		e.Vars = saved
 		e.curRet = prevRet
 		if _, ok := err.(*returnSignal); ok {
 			return genH, nil
 		}
 		return genH, e.recordCall(err, fd.Name, caller, callSite)
 	}
-	e.Vars = scope
 	e.inCall = true
-	rv, err := e.evalBody(fd.Body)
+	rv, err := e.runFuncBody(fd, bodySafe)
 	e.inCall = false
-	e.Vars = saved
 	e.curRet = prevRet
 	if rs, ok := err.(*returnSignal); ok {
 		return rs.val, nil
@@ -680,17 +717,18 @@ func (e *Evaluator) evalDecorator(dec Expr) (any, error) {
 func (e *Evaluator) callDecValue(decVal any, arg int64) (int64, error) {
 	switch v := decVal.(type) {
 	case *FuncDef:
-		return e.callFunc(v, []int64{arg}, e.Vars)
+		return e.callFunc(v, []int64{arg}, e.Vars, false)
 	case int64:
 		o := e.heap[v]
 		if o != nil && o.kind == "closure" {
-			return e.callFunc(o.fn, []int64{arg}, o.env)
+			return e.callFunc(o.fn, []int64{arg}, o.env, false)
 		}
 	}
 	return 0, &EvalError{Msg: "decorator is not callable"}
 }
 
 func (e *Evaluator) callClosure(o *obj, n *Call) (int64, error) {
+	stmtRootCall := e.callIsStmtRoot
 	argVals := make([]int64, len(n.Args))
 	for i, a := range n.Args {
 		av, err := e.eval(a)
@@ -699,7 +737,7 @@ func (e *Evaluator) callClosure(o *obj, n *Call) (int64, error) {
 		}
 		argVals[i] = av
 	}
-	return e.callFunc(o.fn, argVals, o.env)
+	return e.callFunc(o.fn, argVals, o.env, stmtRootCall)
 }
 
 func NewEvaluator() *Evaluator {
@@ -707,7 +745,7 @@ func NewEvaluator() *Evaluator {
 	// integer literal values (which are stored raw in lists, dict keys, vars).
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
-	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: 1 << 20, fnName: "<module>"}
+	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: 1 << 20, fnName: "<module>", gcThreshold: gcAllocThresholdDefault, gcStress: gcEnvStress()}
 	ev.noneVal = ev.allocObj("none")
 	return ev
 }
@@ -716,105 +754,41 @@ func NewEvaluator() *Evaluator {
 // the final expression statement (or last assignment). It returns an error on
 // unsupported constructs.
 
-// collect implements a mark-and-sweep memory model pass. Roots are the
-// top-level environment bindings (e.Vars). It marks every heap object
-// reachable through containers (list/dict/set) and closure environments,
-// then sweeps unreachable objects. It runs before each top-level statement:
-// values from the prior statement that were bound into Vars are marked and
-// kept; values that were only temporaries are freed.
-func (e *Evaluator) Collect() {
-	if len(e.heap) == 0 {
-		return
-	}
-	marked := map[int64]bool{}
-	if e.noneVal != 0 {
-		// The None singleton is a permanent root: sweeping it would hand its heap
-		// slot to the free list and later objects would print as "None".
-		marked[e.noneVal] = true
-	}
-	var mark func(id int64)
-	mark = func(id int64) {
-		if id <= 0 || marked[id] {
-			return
-		}
-		o, ok := e.heap[id]
-		if !ok {
-			return
-		}
-		marked[id] = true
-		switch o.kind {
-		case "list", "set":
-			for _, v := range o.elems {
-				mark(v)
-			}
-		case "dict":
-			for _, k := range o.elems {
-				mark(k)
-			}
-			for _, v := range o.dvals {
-				mark(v)
-			}
-		case "closure":
-			for _, v := range o.env {
-				mark(v)
-			}
-		}
-		// class/object/import/method kinds store ids in attrs (methods, fields).
-		for _, v := range o.attrs {
-			mark(v)
-		}
-		for _, v := range o.env {
-			mark(v)
-		}
-	}
-	for _, id := range e.Vars {
-		mark(id)
-	}
-	// generational sweep: young GC reclaims unreachable nursery objects and
-	// promotes survivors (advance nurseryBase so they become old); a full GC
-	// sweeps the whole heap when the old generation grows past a threshold.
-	oldCount := 0
-	for id := range e.heap {
-		if id < e.nurseryBase {
-			oldCount++
-		}
-	}
-	young := e.nurseryBase
-	if young == 0 || oldCount > 512 {
-		// full GC over the whole heap, then reset the nursery to all-new
-		for id, o := range e.heap {
-			if !marked[id] {
-				switch o.kind {
-				case "list", "dict", "set", "str", "int", "float":
-					if !marked[id] {
-						delete(e.heap, id)
-					}
-				}
-			}
-		}
-		e.nurseryBase = maxHeapID(e.heap)
-		e.allocCount = 0
-		return
-	}
-	// young GC: reclaim unreachable nursery objects, promote survivors
-	for id, o := range e.heap {
-		if id >= young && !marked[id] {
-			switch o.kind {
-			case "list", "dict", "set", "str", "int", "float":
-				if !marked[id] {
-					delete(e.heap, id)
-				}
-			}
-		}
-	}
-	e.nurseryBase = maxHeapID(e.heap)
-	e.allocCount = 0
+func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
+	return e.runStatements(prog.Stmts, true)
 }
 
-func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
+// runStatements executes one statement list as one executor. Before every
+// statement it takes a collection safe point (L7.2, see gc.go), which is where
+// the interpreter reclaims memory while a program is running instead of only
+// between top-level statements.
+//
+// safe is the caller's claim that it has declared a root group for every handle
+// it keeps live in Go locals across this body — a for-loop roots its iterable, a
+// with-statement roots its manager. When that claim holds and no expression is
+// in flight, the collector may advance its watermark here; otherwise it still
+// collects, but only objects that were already past the watermark, which is what
+// keeps half-evaluated expressions safe.
+func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 	var last int64
-	for _, st := range prog.Stmts {
+	e.stmtDepth++
+	prevSafe := e.stmtSafe
+	e.stmtSafe = safe
+	// The value of the previous statement lives in a Go local across the
+	// boundaries below, so it is a root until this executor finishes.
+	lastBox := e.pushRootBox()
+	cookie := len(e.rootGroups) - 1
+	defer func() {
+		e.stmtDepth--
+		e.stmtSafe = prevSafe
+		e.popRoots(cookie)
+	}()
+	for _, st := range stmts {
 		e.cur = st.Span()
+		lastBox[0] = last
+		// The first expression this statement evaluates is the statement root.
+		e.stmtRoot = true
+		e.beginStatementBody(safe)
 		switch s := st.(type) {
 		case *ClassDef:
 			classID := e.allocObj("class")
@@ -888,7 +862,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 			taken := false
 			if e.truthy(cond) {
-				rv, err := e.evalBody(s.Then)
+				rv, err := e.runBodyRooted(s.Then)
 				if err != nil {
 					return 0, err
 				}
@@ -901,7 +875,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 						return 0, err
 					}
 					if e.truthy(ec) {
-						rv, err := e.evalBody(eif.Then)
+						rv, err := e.runBodyRooted(eif.Then)
 						if err != nil {
 							return 0, err
 						}
@@ -912,7 +886,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 			}
 			if !taken && s.Else != nil {
-				rv, err := e.evalBody(s.Else)
+				rv, err := e.runBodyRooted(s.Else)
 				if err != nil {
 					return 0, err
 				}
@@ -956,7 +930,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 			}
 			continue
 		case *TryStmt:
-			_, bodyErr := e.evalBody(s.Body)
+			_, bodyErr := e.runBodyRooted(s.Body)
 			if bodyErr != nil {
 				caught := false
 				for _, ec := range s.Excepts {
@@ -968,7 +942,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							ec.Exn.Value == ee.ExnType
 					}
 					if matches {
-						_, err2 := e.evalBody(ec.Body)
+						_, err2 := e.runBodyRooted(ec.Body)
 						if err2 != nil {
 							return 0, err2
 						}
@@ -981,7 +955,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 			}
 			if len(s.Finally) > 0 {
-				_, err := e.evalBody(s.Finally)
+				_, err := e.runBodyRooted(s.Finally)
 				if err != nil {
 					return 0, err
 				}
@@ -1031,7 +1005,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				if !e.truthy(cond) {
 					break
 				}
-				rv, err := e.evalBody(s.Body)
+				rv, err := e.runBodyRooted(s.Body)
 				if err != nil {
 					if ls, ok := err.(*loopSignal); ok {
 						if ls.kind == "break" {
@@ -1045,7 +1019,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				last = rv
 			}
 			if completed {
-				rv, err := e.evalBody(s.Else)
+				rv, err := e.runBodyRooted(s.Else)
 				if err != nil {
 					return 0, err
 				}
@@ -1072,7 +1046,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 								if err := e.setLoopVar(s.Var, e.allocStr(string(r))); err != nil {
 									return 0, err
 								}
-								rv, err := e.evalBody(s.Body)
+								rv, err := e.runBodyRooted(s.Body, itV)
 								if err != nil {
 									if ls, ok := err.(*loopSignal); ok {
 										if ls.kind == "break" {
@@ -1099,7 +1073,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 								if err := e.setLoopVar(s.Var, el); err != nil {
 									return 0, err
 								}
-								rv, err := e.evalBody(s.Body)
+								rv, err := e.runBodyRooted(s.Body, itV)
 								if err != nil {
 									if ls, ok := err.(*loopSignal); ok {
 										if ls.kind == "break" {
@@ -1126,7 +1100,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 							if err := e.setLoopVar(s.Var, i); err != nil {
 								return 0, err
 							}
-							rv, err := e.evalBody(s.Body)
+							rv, err := e.runBodyRooted(s.Body)
 							if err != nil {
 								if ls, ok := err.(*loopSignal); ok {
 									if ls.kind == "break" {
@@ -1153,7 +1127,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 						if err := e.setLoopVar(s.Var, i); err != nil {
 							return 0, err
 						}
-						rv, err := e.evalBody(s.Body)
+						rv, err := e.runBodyRooted(s.Body)
 						if err != nil {
 							if ls, ok := err.(*loopSignal); ok {
 								if ls.kind == "break" {
@@ -1169,7 +1143,7 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 				}
 			}
 			if completed {
-				rv, err := e.evalBody(s.Else)
+				rv, err := e.runBodyRooted(s.Else)
 				if err != nil {
 					return 0, err
 				}
@@ -1335,6 +1309,12 @@ func (e *Evaluator) EvalProgram(prog *Program) (int64, error) {
 }
 
 func (e *Evaluator) eval(x Expr) (int64, error) {
+	e.exprDepth++
+	root := e.stmtRoot
+	e.stmtRoot = false
+	_, callRoot := x.(*Call)
+	e.callIsStmtRoot = root && callRoot
+	defer func() { e.exprDepth--; e.stmtRoot = root }()
 	switch n := x.(type) {
 	case *IntLit:
 		return n.Value, nil
@@ -2359,8 +2339,35 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 	}
 }
 
+// evalBody runs a nested statement list (a loop body, a branch, a function
+// body). The caller has not claimed to have rooted anything, so the collector
+// keeps the whole current statement alive.
 func (e *Evaluator) evalBody(stmts []Stmt) (int64, error) {
-	return e.EvalProgram(&Program{Stmts: stmts})
+	return e.runStatements(stmts, false)
+}
+
+// evalBodySafe runs a nested statement list whose owning construct has rooted
+// every handle it keeps live across the body (L7.2). When `safe` is false this
+// behaves exactly like evalBody.
+func (e *Evaluator) evalBodySafe(stmts []Stmt, safe bool) (int64, error) {
+	return e.runStatements(stmts, safe && e.stmtSafe)
+}
+
+// swapScope installs a fresh local scope for a call and roots it — and the scope
+// it replaces — until the returned restore function runs. Rooting the saved
+// scope matters: while a call or an import runs, the caller's bindings are not
+// in e.Vars, and an unrooted caller environment would let a collection sweep
+// variables that are perfectly live.
+func (e *Evaluator) swapScope(scope map[string]int64) func() {
+	saved := e.Vars
+	e.Vars = scope
+	e.pushFrame(saved)
+	e.pushFrame(scope)
+	return func() {
+		e.Vars = saved
+		e.popFrame()
+		e.popFrame()
+	}
 }
 
 func (e *Evaluator) rangeBounds(iter Expr) (int64, int64, error) {
@@ -3193,9 +3200,8 @@ func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error)
 			scope[p.Name] = args[i]
 		}
 	}
-	old := e.Vars
-	e.Vars = scope
-	defer func() { e.Vars = old }()
+	restoreScope := e.swapScope(scope)
+	defer restoreScope()
 	// set the current method context so super() can resolve the base class
 	// and bind the current instance.
 	prevClass, prevSelf := e.curClass, e.curSelf
@@ -3203,7 +3209,7 @@ func (e *Evaluator) callMethod(mo *obj, self int64, args []int64) (int64, error)
 	e.curSelf = self
 	defer func() { e.curClass, e.curSelf = prevClass, prevSelf }()
 
-	rv, err := e.evalBody(mo.fn.Body)
+	rv, err := e.runFuncBody(mo.fn, false)
 	if rs, ok := err.(*returnSignal); ok {
 		return rs.val, nil
 	}
@@ -3259,7 +3265,14 @@ func (e *Evaluator) importModule(mod string) error {
 	e.Vars = map[string]int64{}
 	e.funcs = map[string]*FuncDef{}
 	e.externs = map[string]*ExternDecl{}
-	_, err = e.EvalProgram(prog)
+	// While the module body runs, neither the importing scope nor the module's own
+	// scope is reachable through e.Vars, so both are roots explicitly (L7.2) —
+	// otherwise a collection during an import would sweep live module globals.
+	e.pushFrame(savedVars)
+	e.pushFrame(e.Vars)
+	_, err = e.runStatements(prog.Stmts, false)
+	e.popFrame()
+	e.popFrame()
 	if err != nil {
 		e.Vars, e.funcs = savedVars, savedFuncs
 		return err
@@ -3300,15 +3313,14 @@ func (e *Evaluator) runCoro(cid int64) (int64, error) {
 	co := e.heap[cid]
 	fd := co.fn
 	argVals := co.args
-	saved := e.Vars
-	e.Vars = map[string]int64{}
+	prevRet := e.curRet
+	e.curRet = fd.ReturnAnno
+	restoreScope := e.swapScope(map[string]int64{})
 	for i, p := range fd.Params {
 		e.Vars[p.Name] = argVals[i]
 	}
-	prevRet := e.curRet
-	e.curRet = fd.ReturnAnno
-	rv, err := e.evalBody(fd.Body)
-	e.Vars = saved
+	rv, err := e.runFuncBody(fd, false)
+	restoreScope()
 	e.curRet = prevRet
 	if err != nil {
 		if rs, ok := err.(*returnSignal); ok {
@@ -3323,6 +3335,9 @@ func (e *Evaluator) runCoro(cid int64) (int64, error) {
 }
 
 func (e *Evaluator) evalCall(n *Call) (int64, error) {
+	// Snapshot before the arguments are evaluated: each argument goes through
+	// eval, which clears the statement-root flag (L7.2 safe points).
+	stmtRootCall := e.callIsStmtRoot
 	// method call: obj.method(args) — Fn is an Attr resolving to a method
 	// inline lambda callee: `(lambda ...)(args)` evaluates to a closure.
 	if _, ok := n.Fn.(*Lambda); ok {
@@ -3508,8 +3523,18 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				co.args = argVals
 				return cid, nil
 			}
-			saved := e.Vars
-			e.Vars = map[string]int64{}
+			prevRet := e.curRet
+			e.curRet = fd.ReturnAnno
+			caller := e.fnName
+			callSite := e.cur
+			savedFn := e.fnName
+			e.fnName = fd.Name
+			defer func() { e.fnName = savedFn }()
+			// Bind the parameters into the callee's scope and root that scope (and
+			// the caller's) for the duration of the call (L7.2). Restoring on the
+			// error paths too is what keeps the frame stack balanced.
+			restoreScope := e.swapScope(map[string]int64{})
+			defer restoreScope()
 			for i, p := range fd.Params {
 				if p.Annot != nil {
 					if err := e.checkAnnot(p.Name, p.Annot, argVals[i]); err != nil {
@@ -3518,22 +3543,14 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 				e.Vars[p.Name] = argVals[i]
 			}
-			prevRet := e.curRet
-			e.curRet = fd.ReturnAnno
-			caller := e.fnName
-			callSite := e.cur
-			savedFn := e.fnName
-			e.fnName = fd.Name
-			defer func() { e.fnName = savedFn }()
 			if containsYield(fd.Body) {
 				genH := e.allocObj("list")
 				prev := e.yieldList
 				e.yieldList = genH
 				e.inCall = true
-				_, err := e.evalBody(fd.Body)
+				_, err := e.runFuncBody(fd, stmtRootCall)
 				e.inCall = false
 				e.yieldList = prev
-				e.Vars = saved
 				e.curRet = prevRet
 				if err != nil {
 					return 0, err
@@ -3541,9 +3558,8 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return genH, nil
 			}
 			e.inCall = true
-			rv, err := e.evalBody(fd.Body)
+			rv, err := e.runFuncBody(fd, stmtRootCall)
 			e.inCall = false
-			e.Vars = saved
 			e.curRet = prevRet
 			if rs, ok := err.(*returnSignal); ok {
 				return rs.val, nil

@@ -86,13 +86,38 @@ floats. See ADR 0090.
 ## Memory model
 
 The evaluator boxes values on a heap (`map[int64]*obj`). Unreachable pure-data
-objects (list/dict/set/str/int/float) are collected by the explicit
-two-generation (nursery + old) tracing primitive `ev.Collect()`: roots are the top-level environment
-bindings; marking walks container elems, dict values, closure envs, and attr
-tables; the sweep frees unmarked pure-data objects. Class/method/closure/
-import objects are never freed. Collection is explicit (end-of-program), not
-automatic, so live generator yield-lists and closure envs are never freed
-mid-evaluation. See ADR 0089.
+objects (list/dict/set/str/int/float) are reclaimed by a two-generation (nursery +
+old) tracing collector with a **precise root set** (ADR 0181): the current
+environment, every active call frame's locals, the root groups a construct declares
+(a `for` loop's iterable, an executor's last statement value), and the permanent
+roots (`None`, the generator accumulator, the `super()` receiver, class objects).
+Marking walks container elems, dict values, closure envs, coroutine args, and attr
+tables; the sweep frees unmarked pure-data objects. Class/method/closure/import
+objects are never freed.
+
+Collection happens at **safe points**: statement boundaries reached with no
+expression evaluation in flight, from a construct that declared its roots — plus the
+body of a call that *is* the whole statement (`work()`, `total = helper(x)`). The
+watermark rule keeps it sound: anything allocated after the last safe point is
+unconditionally live, because the interpreter may still hold it in a register.
+
+Observable consequences, and the limits, in one place:
+
+- A long loop or a long REPL session reclaims as it goes; the heap is bounded by live
+  data rather than by everything the session has ever built.
+- A value that lives only in a live frame's local survives collections — recursion
+  that binds a list, recurses, allocates, and then reads the list back is correct
+  (`integration/programs/gc_precise.gy`).
+- Conservative by design: garbage created inside a call that is *nested in an
+  expression* is not reclaimed until the enclosing statement completes. Only the
+  value model of roadmap Phase 11 (a real value stack) removes that limit.
+- `ev.Collect()` remains the explicit entry point (it lifts the watermark first, since
+  nothing is mid-evaluation when it is called from outside a running program).
+- The collector reports itself: `Evaluator.GCStats()` in Go, `gustyc --gc-stats` (and
+  the `gc` member of an `--eval --json` payload) on the command line. See
+  `docs/operations.md` § Collector self-report.
+
+See ADR 0089 (the two-generation heap) and ADR 0181 (precise roots and safe points).
 
 ## Optimization (`--opt-level`)
 

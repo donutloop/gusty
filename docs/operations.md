@@ -23,6 +23,7 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--aot` | run through the compiled LLVM backend (alias of `--jit`) |
 | `--interp` | run through the AST interpreter explicitly; conflicts with `--aot`/`--jit` (usage error, exit 4) |
 | `--show-backend` | print `gustyc: backend <interpreter\|aot>` on stderr (stdout stays the program's) |
+| `--gc-stats` | report what the garbage collector did while the program ran, on stderr (`gc: backend=… collections=… roots=… skipped=… freed=…`); with `--json` the same numbers arrive as a `gc` member of the payload (L7.2, ADR 0181) |
 | `--emit-llvm` | print the emitted LLVM IR |
 | `--emit-ast` | print the JSON AST dump |
 | `--verify <src>` | run the front end (lex + parse + semantic analysis) and report diagnostics, without executing |
@@ -526,6 +527,63 @@ folds to a single concatenated constant (e.g. `"a" + "b"` -> `@.strN` with
 Boxed heap handles are allocated from a high base (`1 << 20`) so they never
 collide with raw small integer literals stored in lists/dicts/vars. This keeps
 `Repr` from misinterpreting a raw int as an object handle.
+
+## Collector: precise roots and safe points (L7.2, ADR 0181)
+
+Both backends trace an *enumerated* root set and never guess at machine words.
+
+The interpreter's roots are: the current environment, **every active call frame's
+locals** (pushed on call, popped on return, so a dead frame retains nothing), the
+root groups that constructs declare (a `for` loop's iterable, a loop's last value),
+and the permanent roots (`None`, the generator accumulator, the `super()` receiver,
+class objects). Two rules make collection sound in a tree-walking interpreter:
+
+- **Watermark.** Everything allocated after the last safe point is unconditionally
+  live, because the interpreter may be holding it in a register.
+- **Safe point.** The watermark advances only at a statement boundary with no
+  expression evaluation in flight, reached from a construct that declared its root
+  groups — or from a call that *is* the statement (`work()`, `total = helper(x)`),
+  whose caller side is therefore free of unrooted temporaries.
+
+Collection runs at those safe points once an allocation threshold is crossed; the
+threshold is a constant, so a given program collects the same number of times every
+run (parity stays assertable). Known conservative boundary: garbage created inside a
+call that is *nested in an expression* is not reclaimed until the enclosing statement
+completes — see ADR 0181 for why, and roadmap Phase 11 for what removes it.
+
+### Collector self-report (`--gc-stats`)
+
+```
+$ gustyc --eval 'acc = 0
+for k in range(400):
+    row = [k, k]
+    acc = acc + row[1]
+print(acc)' --gc-stats
+79800
+gc: backend=interpreter collections=1 roots=3 skipped=3 marked=2 freed=254 total_freed=254 live=2 frames=0 protected=0 kind=full
+```
+
+The line goes to stderr (it describes the tool, not the program), so
+`prog 2>/dev/null` still sees only program output. `--json` puts the same numbers in
+the payload as `"gc": { … }` — see `definitions.gcStats` in `--schema`:
+
+| Field | Meaning |
+|---|---|
+| `collections` | mark-and-sweep passes so far (cumulative) |
+| `roots` | root entries the last collection traced that really named a heap object |
+| `skipped` | root slots proved to hold raw immediates and never scanned — the number precision buys |
+| `marked` / `freed` / `total_freed` / `live` | objects found reachable / reclaimed last pass / reclaimed overall / still resident |
+| `frames` | call frames in the root set at the last collection (0 = a top-level boundary) |
+| `protected` | objects the watermark kept alive without tracing |
+| `generational` | true for a young (nursery) pass, false for a full sweep |
+| `backend` | `interpreter` or `aot` |
+
+The compiled backend reports through its own runtime (`gc: backend=aot …`); see
+`pkg/lang/codegen.go` `rt_gc`.
+
+`GUSTY_GC_STRESS=1` forces a collection at every statement boundary: the conformance
+corpus is run that way in `integration/gc_stress_test.go`, so a root the interpreter
+forgot fails a test instead of appearing as a heisenbug.
 
 ## String methods
 

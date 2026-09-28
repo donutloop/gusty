@@ -58,6 +58,49 @@ type ConformanceMatrix struct {
 	Fail          int                 `json:"fail"`
 }
 
+// InterpreterRunOptions tunes the interpreter for harnesses that need to prove
+// something about the collector rather than infer it from program output.
+type InterpreterRunOptions struct {
+	// GCStress collects at every statement boundary instead of only when
+	// allocation pressure asks for it (the L7.2 soundness probe).
+	GCStress bool
+	// GCAllocThreshold overrides the allocation count that triggers a collection
+	// (0 keeps the default).
+	GCAllocThreshold int64
+}
+
+// InterpreterRunOpts is InterpreterRun plus the collector's self-report, so a
+// conformance case can assert that collections really happened while the program
+// ran instead of trusting a threshold to have been crossed.
+//
+// Like InterpreterRun it redirects the process-wide stdout and is not safe for
+// concurrent use.
+func InterpreterRunOpts(src string, opt InterpreterRunOptions) (stdout string, stats GCStats, err error) {
+	prog, perr := Parse(src)
+	if perr != nil {
+		return "", GCStats{}, perr
+	}
+	ev := NewEvaluator()
+	if opt.GCStress {
+		ev.SetGCStress(true)
+	}
+	if opt.GCAllocThreshold > 0 {
+		ev.SetGCAllocThreshold(opt.GCAllocThreshold)
+	}
+	old := os.Stdout
+	r, w, werr := os.Pipe()
+	if werr != nil {
+		return "", GCStats{}, fmt.Errorf("pipe: %w", werr)
+	}
+	os.Stdout = w
+	_, evalErr := ev.EvalProgram(prog)
+	os.Stdout = old
+	w.Close()
+	out := make([]byte, 1<<20)
+	n, _ := r.Read(out)
+	return string(out[:n]), ev.GCStats(), evalErr
+}
+
 // InterpreterRun evaluates src with the AST interpreter and returns everything
 // written to stdout plus any runtime error. This is the interpreter half of a
 // conformance case; the AOT half is produced by compiling and running the native

@@ -240,6 +240,7 @@ gustyc --schema                              # print the JSON Schema for AST/IR 
 gustyc --lang                                 # self-describing feature list
 gustyc --variance                             # JSON variance table (list/dict invariant, Sequence covariant, Callable params contravariant)
 gustyc --jit "..."                           # in-process dlopen JIT path
+gustyc --gc-stats --file prog.gy             # report what the collector did (stderr; --json adds a gc member)
 gustyc --bench '<src>' --bench-runs N --bench-opt L   # wall-clock benchmark
 gustyc --fmt <src> | --fmt-check <src> | --fmt-file <path>  # canonical formatter
 gustyc --lsp                                  # stdio language server (hover, completion, diagnostics)
@@ -248,7 +249,7 @@ gustyc --version                             # compiler version
 gustyc                                      # start the interactive REPL
 ```
 
-Exit codes are deterministic:
+Exit codes are deterministic (full contract in `docs/operations.md` § Exit codes):
 
 | Code | Meaning |
 |------|---------|

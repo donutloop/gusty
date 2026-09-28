@@ -111,6 +111,7 @@ func run() int {
 	aot := fs.Bool("aot", false, "run through the compiled LLVM backend (alias of --jit); --file defaults to the interpreter, so say so explicitly")
 	interp := fs.Bool("interp", false, "run through the AST interpreter explicitly (the default; conflicts with --aot/--jit)")
 	showBackend := fs.Bool("show-backend", false, "print which backend executed the program (stderr; --json reports it in the payload)")
+	gcStats := fs.Bool("gc-stats", false, "report what the garbage collector did while the program ran (collections, roots traced, roots skipped as immediates, objects freed) on stderr; --json adds a gc object to the payload")
 	version := fs.Bool("version", false, "print version")
 	repl := fs.Bool("repl", false, "start an interactive REPL")
 	lsp := fs.Bool("lsp", false, "run the language server over stdio (LSP)")
@@ -319,7 +320,7 @@ func run() int {
 			// Program output stays on stdout; this is a statement about the tool.
 			fmt.Fprintf(os.Stderr, "gustyc: backend %s\n", backend)
 		}
-		return evalSrcOrFile(src, *file, *jsonOut, backend)
+		return evalSrcOrFile(src, *file, *jsonOut, backend, *gcStats)
 	}
 	usage(fs)
 	return exitUsage
@@ -345,7 +346,7 @@ const (
 	backendJIT         backend = "aot"
 )
 
-func evalSrcOrFile(src, file string, jsonOut bool, backend backend) int {
+func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
 		// Nothing to run: the CLI was used wrongly (no source, unreadable file).
@@ -369,12 +370,19 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend) int {
 		}
 		return exitOK
 	}
+	if gcStats && backend == backendJIT {
+		// Say so rather than staying silent: an empty report reads as "the
+		// collector did nothing", which is a different claim from "this backend
+		// cannot report yet".
+		fmt.Fprintln(os.Stderr, "gc: backend=aot status=unavailable note=the compiled runtime does not report collector stats yet; --interp reports them")
+	}
 	ev := lang.NewEvaluator()
 	prog, err := lang.Parse(s)
 	if err != nil {
 		return reportParseErr(err, jsonOut)
 	}
 	v, err := ev.EvalProgram(prog)
+	gc := ev.GCStats()
 	if err != nil {
 		err = ev.FinalizeTraceback(err)
 		ee, isRT := err.(*lang.EvalError)
@@ -383,13 +391,16 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend) int {
 			tb = ee.RenderTraceback()
 		}
 		if jsonOut {
-			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"backend\": %q, \"exit\": %d}\n", err.Error(), tb, backend, exitRuntime)
+			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"backend\": %q, \"exit\": %d%s}\n", err.Error(), tb, backend, exitRuntime, gcJSON(gc, gcStats))
 		} else if tb != "" {
 			// Tracebacks are diagnostics, not program output: they belong on stderr so
 			// `prog 2>/dev/null | ...` sees only what the program printed (the AOT
 			// backend writes its uncaught-exception report to fd 2 as well).
 			fmt.Fprintln(os.Stderr, tb)
 		} else {
+			if gcStats {
+				fmt.Fprintln(os.Stderr, gc.String())
+			}
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		}
 		// The front end accepted the program and it ran; this is a runtime failure,
@@ -412,14 +423,31 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend) int {
 		// The backend is part of the result, not an inference from the flag list:
 		// an agent that asked for AOT must be able to *see* it got AOT (Gap M.2).
 		if !finalExpr || isNone {
-			fmt.Printf("{\"result\": null, \"type\": %q, \"backend\": %q, \"exit\": 0}\n", ev.TypeOf(v), backend)
+			fmt.Printf("{\"result\": null, \"type\": %q, \"backend\": %q, \"exit\": 0%s}\n", ev.TypeOf(v), backend, gcJSON(gc, gcStats))
 		} else {
-			fmt.Printf("{\"result\": %q, \"type\": %q, \"backend\": %q, \"exit\": 0}\n", ev.Repr(v), ev.TypeOf(v), backend)
+			fmt.Printf("{\"result\": %q, \"type\": %q, \"backend\": %q, \"exit\": 0%s}\n", ev.Repr(v), ev.TypeOf(v), backend, gcJSON(gc, gcStats))
 		}
 	} else if finalExpr && !isNone {
 		fmt.Println(ev.Repr(v))
 	}
+	if gcStats && !jsonOut {
+		// The report describes the tool, so it never pollutes the program's stdout.
+		fmt.Fprintln(os.Stderr, gc.String())
+	}
 	return exitOK
+}
+
+// gcJSON is the `gc` member of a --json result payload, or "" when --gc-stats was
+// not given so the payload keeps its existing shape.
+func gcJSON(st lang.GCStats, on bool) string {
+	if !on {
+		return ""
+	}
+	b, err := json.Marshal(st)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf(", \"gc\": %s", b)
 }
 
 func verifySrc(src string, jsonOut bool) int {

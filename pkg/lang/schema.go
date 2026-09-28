@@ -1167,6 +1167,24 @@ const ASTIRSchema = `{
         "error": { "type": "string", "description": "Optimizer failure text, when the tool exists but failed or rejected the module." }
       }
     },
+    "gcStats": {
+      "type": "object",
+      "required": ["collections", "roots", "skipped", "marked", "freed", "live", "backend"],
+      "description": "What the garbage collector actually did while the program ran (gustyc --gc-stats; the \"gc\" member of an --eval/--file --json payload, and the interpreter's InterpreterRunOpts report). Counts except collections and total_freed describe the most recent collection. The human form is the same numbers as one key=value line on stderr: gc: backend=interpreter collections=3 roots=4 ...",
+      "properties": {
+        "collections": { "type": "integer", "description": "Mark-and-sweep passes run so far (cumulative)." },
+        "roots": { "type": "integer", "description": "Root handles the last collection traced: entries of the precise root set that really name a heap object (frame locals, declared root groups, permanent roots)." },
+        "skipped": { "type": "integer", "description": "Root slots the last collection proved held raw immediates and therefore never scanned. This is the number precise rooting saves a conservative collector, which has to guess at every one of them." },
+        "marked": { "type": "integer", "description": "Heap objects the last collection found reachable." },
+        "freed": { "type": "integer", "description": "Heap objects the last collection reclaimed." },
+        "total_freed": { "type": "integer", "description": "Heap objects reclaimed over the whole run (cumulative): the size of the garbage the program produced." },
+        "live": { "type": "integer", "description": "Heap objects still resident after the last collection." },
+        "frames": { "type": "integer", "description": "Call frames in the root set at the last collection. Zero means the collection happened at a top-level statement boundary." },
+        "protected": { "type": "integer", "description": "Objects the allocation watermark kept alive without tracing: they were minted after the last safe point, so the interpreter may still hold them in a register." },
+        "generational": { "type": "boolean", "description": "true when the last collection was a young (nursery) pass; false for a full sweep." },
+        "backend": { "type": "string", "description": "Which collector reported: \"interpreter\" or \"aot\".", "enum": ["interpreter", "aot"] }
+      }
+    },
     "type": {
       "type": "string",
       "description": "Type annotation text. Union types render members joined by \" | \", e.g. \"int | str\".",

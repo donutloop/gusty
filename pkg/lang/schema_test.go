@@ -2,6 +2,8 @@ package lang
 
 import (
 	"encoding/json"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -82,5 +84,56 @@ func TestSchemaHasIRDumpDefinition(t *testing.T) {
 	}
 	if d, ok := v.Definitions["irDump"]; !ok || d.ContentMediaType != "text/plain" {
 		t.Fatalf("irDump definition missing or wrong media type: %+v", d)
+	}
+}
+
+// TestSchemaDeclaresGCStats keeps the collector's machine path honest: every
+// field GCStats marshals must be declared in definitions.gcStats, so an agent can
+// validate a --gc-stats payload against the schema instead of reading Go structs.
+func TestSchemaDeclaresGCStats(t *testing.T) {
+	var doc struct {
+		Definitions struct {
+			GCStats struct {
+				Required   []string       `json:"required"`
+				Properties map[string]any `json:"properties"`
+			} `json:"gcStats"`
+		} `json:"definitions"`
+	}
+	if err := json.Unmarshal([]byte(ASTIRSchema), &doc); err != nil {
+		t.Fatalf("schema is not valid JSON: %v", err)
+	}
+	props := doc.Definitions.GCStats.Properties
+	if len(props) == 0 {
+		t.Fatal("schema declares no gcStats properties")
+	}
+	want := reflect.TypeOf(GCStats{})
+	for i := 0; i < want.NumField(); i++ {
+		name := strings.Split(want.Field(i).Tag.Get("json"), ",")[0]
+		if name == "-" {
+			continue
+		}
+		if _, ok := props[name]; !ok {
+			t.Fatalf("GCStats reports %q but the schema does not declare it", name)
+		}
+	}
+	for _, req := range doc.Definitions.GCStats.Required {
+		if _, ok := props[req]; !ok {
+			t.Fatalf("gcStats requires %q which is not a declared property", req)
+		}
+	}
+}
+
+// TestGCStatsShapeInJSON: the --json payload member is produced by the CLI, so the
+// CLI test covers it; here assert the report survives marshalling with stable keys.
+func TestGCStatsMarshalKeysAreStable(t *testing.T) {
+	st := GCStats{Collections: 1, Roots: 2, Skipped: 3, Marked: 4, Freed: 5, TotalFreed: 6, Live: 7, Frames: 1, Protected: 2, Generational: true, Backend: "interpreter"}
+	b, err := json.Marshal(st)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, key := range []string{`"collections":1`, `"roots":2`, `"skipped":3`, `"marked":4`, `"freed":5`, `"total_freed":6`, `"live":7`, `"frames":1`, `"protected":2`, `"generational":true`, `"backend":"interpreter"`} {
+		if !strings.Contains(string(b), key) {
+			t.Fatalf("gc stats JSON %s missing %s", b, key)
+		}
 	}
 }

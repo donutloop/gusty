@@ -430,6 +430,26 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L7.2 Precise stack roots** — replace conservative mark-and-sweep with
   precise rooting: the GC knows exactly which stack slots/registers hold
   handles (fixes Gap A's instance-layout bug at the root cause).
+  🟢 **IN PROGRESS (this round)** — the interpreter half is **DONE** (ADR 0181):
+  the root set is `Vars` ∪ active call frames ∪ declared root groups ∪ permanent
+  roots; a watermark makes everything allocated after the last safe point
+  unconditionally live; safe points are statement boundaries with an empty
+  expression stack, plus the body of a *statement-root* call. Collection now
+  actually runs while programs execute (it used to be reachable only from tests),
+  a loop's garbage is reclaimed, a 2000-input REPL session stays bounded, and
+  `GCStats`/`--gc-stats`/`--schema definitions.gcStats` make the collector's
+  behaviour observable; `GUSTY_GC_STRESS=1` + `integration/gc_stress_test.go`
+  stress the whole corpus under a collection at every statement. With `pushFrame`
+  stubbed out, `TestGCFramesKeepRecursionLive` fails with `cannot index null` —
+  frame rooting is tested as load-bearing, not decorative.
+  **Remaining (next commit of this item)**: the compiled backend. Its root slots are
+  static per (scope, name), so recursion clobbers the outer frame's entry and a
+  collection inside the inner call sweeps the outer frame's live list —
+  `integration/programs/gc_precise.gy` reproduces it (interpreter 130, AOT 346).
+  The fix is the same discipline as a root *stack*: prologue opens a frame,
+  handle-stores push `(slot, kind)` deduped per frame, scalar stores tag the slot
+  dead, every return closes the frame, and `rt_gc` traces only tagged entries while
+  counting what it skipped (its own `gc: backend=aot …` report).
 - **L7.3 Tagged pointers / NaN-boxing** — box small ints and floats in the
   payload so `int`/`float`/`bool` avoid heap allocation; pairs with L7.2 for
   a compact, allocation-free fast path.
