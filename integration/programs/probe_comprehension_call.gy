@@ -1,0 +1,8 @@
+# Oracle probe (L11.7, ADR 0190) — a comprehension whose element is a call. The AOT
+# comprehension path folds constants and stops there: "comprehension element must be
+# constant", so the most ordinary list-building idiom in Python needs a loop instead.
+def sq(n):
+    return n * n
+
+print([sq(x) for x in range(5)])
+print([abs(x) for x in [-1, 2, -3]])

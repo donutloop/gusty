@@ -298,15 +298,17 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **63 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — for 48 parity cases plus 15 pinned probes. Parity (interpreter ==
+  `conformance-matrix.json`: **65 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — for 48 parity cases plus 17 pinned probes. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its
   state — `match` (the default), `debt` (with a reason, a roadmap owner, and a per-leg pin of
   the wrong answer), or `not_applicable` (gusty-only surface the oracle cannot run) — and drift
   fails the build in both directions, so a new divergence and an unrecorded fix are equally
-  caught (roadmap L11.9, ADR 0186). The oracle's first catch was not a refusal but a passing
+  caught (roadmap L11.9, ADR 0186). Corpus growth follows a standing rule (ADR 0190): every feature
+  ships its **least interesting** program — the tutorial one, `print([1, 2])`, `xs.sort()` — because
+  a corpus grown from bug reports only tests what we already had reason to doubt. The oracle's first catch was not a refusal but a passing
   build: `xs[0] = "z"` on a mixed list answered `[1, 'a', None]`, the interned index printed
   through the slot's stale tag, and it is now ADR 0187 and two parity programs
   (`mixed_element_reads.gy`, `mixed_element_writes.gy`). Its third catch went the other way: `xs == ys`

@@ -2221,3 +2221,45 @@ head, which is the whole point of writing these down.
 (`[square(x) for x in range(5)]` — "comprehension element must be constant"), and
 `names.sort()` / `sorted(names)` on a variable (the interpreter has no `sort`, and AOT's diagnostic
 is the *string*-method one, which is the wrong family entirely).
+
+## The boring-program sweep: twelve tutorials, five divergences (ADR 0190)
+
+I wrote this entry's headline as a *standing rule* last cycle and then went and proved it in one
+sitting: twelve programs shaped like a tutorial (accumulate a loop, nested loops, a string method,
+a comprehension, iterate a dict, sort a list of names, a while loop, an arithmetic table, append in
+a loop, default args, a small class, print some bools). Five diverged from CPython. Two of those
+were new gaps and one of them is a bug in a *diagnostic*.
+
+The two new ones, now pinned as probes with per-leg pins including the message text:
+
+- `xs.sort()` / `xs.reverse()` — the interpreter raises `no such list method sort`; the AOT path
+  answers **`string method sort on non-constant string`**. The call fell through into string-method
+  dispatch, so the compiler tells the user their list is a string. That is AGENTS.md interface
+  territory: a wrong-family diagnostic is a defect even when the refusal is correct.
+- `print([square(x) for x in range(5)])` — refuses with `comprehension element must be constant`.
+  The AOT comprehension path folds constants and stops, so the single most ordinary list-building
+  idiom in Python needs a hand-written loop. `sorted(xs)` on a variable is the same family
+  (`sorted: codegen folds only an inline list literal`), joining the existing literal probe.
+
+**What I decided rather than just noted.** A corpus grown from bug reports and roadmap items
+inherits their shape: it tests what we already had reason to doubt. Bug-driven corpora are
+adversarial by construction, and the tutorial program — written by someone with no reason to
+doubt it — is the one neither a bug report nor a fuzzer produces. So the rule, in an ADR this time
+(0190): **every feature ships its least interesting program**, and interesting shapes are
+additional rows, not the only ones.
+
+**Sweeps are a cycle type, and their output is a ledger row, not prose.** The diff here is corpus
+and registry only: two probes, two debt rows with reasons, roadmap owners, and per-leg pins —
+including `Err: "string method sort"` and `Err: "comprehension element must be constant"`, so a
+cycle that changes the message without fixing the feature trips the drift check, and a cycle that
+fixes it has to delete the pin. My first pass at this cycle produced prose findings in a terminal
+scrollback; the reason it produced rows instead is that I asked "what does the next cycle *read*?"
+
+**One thing I still got wrong first.** I wrote the interpreter pin as `{Match: true}` — a field
+that does not exist on `OraclePin`. The compiler caught it in one second, which is the entire
+argument for pins being data.
+
+**Corpus**: 65 rows / 48 parity, 17 probes; oracle 32 match / 23 debt / 10 NA, 0 drift, 0 skipped
+short of the pre-declared legs. `tools/oracleprobe` made twelve three-leg runs a ten-minute
+exercise; if a cycle can't run a program on three legs in one command, that tool is the first
+thing to build.

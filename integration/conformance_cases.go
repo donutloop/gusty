@@ -141,6 +141,10 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
 		"probe_fn_name",          // L11.7 — a def'd name is not a value at all
 		"probe_print_atomic",     // Gap L.5 — print writes while it evaluates
+		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
+		// probed, twelve of them, five divergences.
+		"probe_sort_methods",       // L11.7 — sorting a container is not surface at all
+		"probe_comprehension_call", // L11.7 — a comprehension element cannot be a call
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
@@ -325,6 +329,14 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true}, {Backend: "aot", Missing: true}}},
+	"programs/probe_sort_methods": {oracle: lang.OracleDebt,
+		reason: "xs.sort() and xs.reverse() do not exist: the interpreter raises `no such list method sort` and the compiled path answers `string method sort on non-constant string` — a diagnostic from the wrong family on top of a missing feature",
+		ref:    "roadmap L11.7 (functions are values that compile) + Gap K.3 (container methods)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "no such list method sort"}, {Backend: "aot", Missing: true, Err: "string method sort"}}},
+	"programs/probe_comprehension_call": {oracle: lang.OracleDebt,
+		reason: "the AOT comprehension path folds constant elements and stops: `comprehension element must be constant`, so [f(x) for x in ...] needs a loop",
+		ref:    "roadmap L11.7 (functions are values that compile)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[0, 1, 4, 9, 16]\n[1, 2, 3]\n"}, {Backend: "aot", Missing: true, Err: "comprehension element must be constant"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
