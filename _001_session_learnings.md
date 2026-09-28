@@ -1874,3 +1874,36 @@ and reading what git actually printed.
   that choice with a test (`TestInstanceKindsInRuntimeAndCodegenAgree`) asserting text and named
   constant agree — cheaper than a second placeholder mechanism, and it is the check that makes
   leaving it acceptable.
+
+## `str(None)` was `0` because three places decided it (ADR 0183)
+
+- `print(str(None))` printed `0` and `s = str(None)` failed to compile — one bug, two
+  symptoms, because **three** sites fold `str()` of a compile-time-known argument
+  (`stringConst`, `irGen.stringVal`, and the builtin's own lowering) and each kept its own case
+  list. None was in none of them, so it fell through to `value(None) == 0`; and because the
+  sites disagreed about *whether the result is a string*, the assignment path stored the string
+  **global** into an `i32` slot — the constant-in-value-position shape ADR 0167/0168 kept
+  producing. A fold shared by every site, plus a test that compares the two folders against the
+  interpreter, is what makes this class of bug impossible to leave half-fixed.
+- **Two "better" designs were wrong, and the tests are why I know.** Interning inside the
+  builtin lowering (`rt_str_intern2` for every fold) broke `print(len(w))` and `"x" + w`,
+  because those paths key off the folded *text*. Making `stringVal` delegate to `stringConst`
+  broke the same two, because `stringConst` folds forms the string-value folder deliberately
+  does not. The rule the failures taught: case lists must **agree on the forms they share**,
+  not be identical. Reverted both; the correct fix was three two-line case additions.
+- Manual probing lied by omission. `s = str(None); print(s)` worked while
+  `print(str(None))` did not, so a single probe per shape would have shipped a false "fixed".
+  The parity table (interpreter + JIT + expected CPython text) caught what the CLI check missed.
+- Load-bearing checks, both verified by stubbing: fold `str(None)` back to `"0"` and the
+  integration parity test fails on exactly the `str(None)` rows; drop the same fold from the
+  builtin lowering and the in-package test fails on the emitted bytes (`no c"None` global).
+- Blunt IR-shape guards earn their keep: asserting no line contains `i32 @.` (or
+  `store i32 @`) states the invariant llc enforces, in the language of the artifact, and does
+  not care which helper got it wrong.
+- A Go octal escape is a trap in generated test strings: `"…\\00"` written as `"…\00"` fails
+  with `illegal character U+0022 '"' in escape sequence` — keep NUL markers in raw strings or
+  leave them out of the message.
+- Backticks and `%` are not inert inside Go raw strings and schema descriptions respectively:
+  a backtick ends a raw string literal early (`syntax error: unexpected kind after top level
+  declaration`), and a `%obj` inside the schema text trips `go vet`'s printf check on the
+  `fmt.Println(lang.ASTIRSchema)` that prints it.

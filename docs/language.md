@@ -835,6 +835,12 @@ read those numbers; the compiled heap's own object-header kind is a projection o
 this — it is an immediate or an interned string"). `gustyc --lang` prints both tables, and
 `--schema`'s `valueTag` definition documents the numbering.
 
+`str(x)` of a value the compiler can fold at compile time produces the same text on both
+backends and the same text CPython prints: `str(None)` is `"None"` (not `"0"`), `str(1.5)` is
+`"1.5"`, and `str("x")` is `x` — `str()` is the unquoted form, so it is not `repr()`. A folded
+string may be printed but never stored as a global; where it is stored, the text is interned
+and the handle kept (ADR 0183).
+
 The tag is what makes a value's kind a fact rather than a guess, and it is what the
 compiled backend currently lacks per *element*: a compiled list records one element kind
 for the whole container, which is why a heterogeneous `xs = [1, "a"]` is refused rather

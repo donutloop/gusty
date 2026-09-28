@@ -2592,10 +2592,22 @@ func stringConst(e Expr) (string, bool) {
 				}
 			}
 		}
-		// str(int-literal) folds to its decimal string, so len(str(42)) -> 2.
+		// str() over a literal folds to the text the program would print, so
+		// len(str(42)) -> 2 and `s = str(None)` needs no store. None folds to "None"
+		// because that is what str(None) is: the int 0 is a different value, and a
+		// fold that says "0" both prints the wrong thing and hands back a string
+		// constant the assignment path cannot elide (ADR 0183).
 		if n, ok := c.Fn.(*Name); ok && n.Value == "str" && len(c.Args) == 1 {
-			if il, ok := c.Args[0].(*IntLit); ok {
-				return strconv.FormatInt(il.Value, 10), true
+			switch arg := c.Args[0].(type) {
+			case *IntLit:
+				return strconv.FormatInt(arg.Value, 10), true
+			case *NoneLit:
+				return "None", true
+			case *StrLit:
+				return arg.Value, true
+			}
+			if fl, ok := c.Args[0].(*FloatLit); ok {
+				return pyFloatRepr(fl.Value), true
 			}
 		}
 		return "", false
@@ -3120,6 +3132,15 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		if name, ok := n.Fn.(*Name); ok && name.Value == "str" && len(n.Args) == 1 {
 			if il, ok := n.Args[0].(*IntLit); ok {
 				return strconv.FormatInt(il.Value, 10), true
+			}
+			// str(None) is "None", not "0": the fold has to agree with the interpreter's
+			// str()/print(), or the same program prints two different things depending on
+			// which backend ran it (ADR 0183).
+			if _, ok := n.Args[0].(*NoneLit); ok {
+				return "None", true
+			}
+			if sl, ok := n.Args[0].(*StrLit); ok {
+				return sl.Value, true
 			}
 			if fv, ok := g.floatEval(n.Args[0]); ok {
 				return pyFloatRepr(fv), true
@@ -6912,6 +6933,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if fv, ok := g.floatEval(c.Args[0]); ok {
 				return g.strConst(pyFloatRepr(fv)), nil
 			}
+		}
+		// str(None) is "None" and str("x") is "x" — not the int 0 and not an error.
+		// The two compile-time folders agree on these texts (stringConst, and
+		// irGen.stringVal for print/len/concat); this is the third site that has to,
+		// because print(str(None)) lowers here rather than through an assignment
+		// (ADR 0183). A string constant prints with %s, so handing back the folded
+		// global is correct in that position; storing one is not, which is why the
+		// assignment path interns (see the AssignStmt string branch).
+		if _, ok := c.Args[0].(*NoneLit); ok {
+			return g.strConst("None"), nil
+		}
+		if sl, ok := c.Args[0].(*StrLit); ok {
+			return g.strConst(sl.Value), nil
 		}
 		v, err := g.value(b, c.Args[0])
 		if err != nil {

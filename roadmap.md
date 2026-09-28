@@ -624,7 +624,15 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     heterogeneous lists/dicts/nested literals fail to compile AOT while the interpreter and
     Python agree; `print({1, 2})` emits invalid IR (`global variable reference must have
     pointer type`); `print(set())` is `set()` in the interpreter and `0` compiled;
-    `print([1.0, 1.5, -0.0])` emits invalid IR; `str(None)` emits invalid IR.
+    `print([1.0, 1.5, -0.0])` emits invalid IR.
+    - ✅ Fixed while starting L11.2 (ADR 0183): `str(None)` is `None` and `str("x")` is `x`,
+      on both backends, and `s = str(None)` compiles — the three compile-time `str()` folds
+      (the AST folder, the codegen's string-value folder, and the builtin lowering) now agree,
+      and a folded string is never stored as a global (the IR-shape guard rejects any
+      `i32 @.` / `store i32 @`). Pinned by `pkg/lang/str_fold_test.go` and
+      `integration/str_fold_test.go` against CPython, and checked against a stub that folds
+      `str(None)` back to `"0"`. `print(set())` (compiled prints `0`) and container quoting
+      remain open here; `str(True)` remains `1` because bools are not values yet.
 - **L11.2 — `str()` vs `repr()` are one function per backend (closes Gap L.2)**
   ⏳ PLANNED — **gated on L11.1's bool step**: `print(True)`/`print(1 == 1)` print `1` on
   *both* backends and `--json` reports `"type": "int"` for `True`, so the rendering table

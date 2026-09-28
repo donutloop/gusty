@@ -108,6 +108,10 @@ read those numbers, and the compiled heap's own object-header kind is a projecti
 interned string"). `gustyc --lang` prints both tables and `--schema`'s `valueTag`
 definition documents the numbering (ADR 0182).
 
+Where the tag does not decide yet, one rule does: `str(x)` folds to the same text on both
+backends and on CPython — `str(None)` is `"None"`, `str(1.5)` is `"1.5"`, `str("x")` is `x`
+(ADR 0183).
+
 ## Gradual typing & the type system
 
 Optional annotations on variables, parameters, and returns are checked
