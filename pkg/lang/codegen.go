@@ -5208,7 +5208,7 @@ func (g *irGen) genExpr(b *strings.Builder, gen *Generator) (string, error) {
 	g.genExprIdx++
 	h := fmt.Sprintf("%%gx%d", g.genExprIdx)
 	g.heapUsed = true
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 1)\n", h))
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapKindList))
 	if g.constBindings == nil {
 		g.constBindings = map[string]int64{}
 	}
@@ -5887,7 +5887,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	if _, isClass := g.classInfos[fnName]; isClass {
 		g.heapUsed = true
 		h := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 4)\n", h))
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapKindInstance))
 		b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
 		if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
 			// Compute each argument value first (each emits its own load
@@ -7839,7 +7839,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.genHandle = fmt.Sprintf("%%gh%d", g.genIdx)
 		g.genFuncs[g.fnName(fd)] = true
 		g.heapUsed = true
-		fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 1)\n", g.genHandle)
+		fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", g.genHandle, HeapKindList)
 		// Keep the generator's accumulator list alive across the GC emitted
 		// before the first body statement; otherwise it is collected and every
 		// yield appends into a stale/freed slot.
@@ -8241,7 +8241,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.gcReg(b, nm.Value)
 					g.allocd[nm.Value] = true
 				}
-				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 1)\n", hs))
+				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindList))
 				for i, el := range lit.Elems {
 					// heapElemKind, not value(): an assigned container literal is still a
 					// runtime container, so a string element becomes an index into @str_tab
@@ -8291,7 +8291,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.runtimeSets[nm.Value] = true
 				g.heapSeq++
 				hs := g.heapSeq
-				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 3)\n", hs))
+				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindSet))
 				for _, el := range sl.Elems {
 					ev, interned, err := g.heapElemKind(b, el)
 					if err != nil {
@@ -8343,7 +8343,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.runtimeDicts[nm.Value] = true
 				g.heapSeq++
 				hs := g.heapSeq
-				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 2)\n", hs))
+				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindDict))
 				for i := range dl.Keys {
 					// Keys and values go through the container-word rule: a string becomes its
 					// @str_tab index and the dict's key/value kinds record which side did, so

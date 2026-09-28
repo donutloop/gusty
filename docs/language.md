@@ -824,6 +824,23 @@ print(strlen("hello")) # 5
 - `int`, `float`, `bool`, `str`, `none`, `void`, and `any` (dynamic).
 - Unannotated variables infer to `any`; annotated variables pin their type.
 
+### The dynamic value model
+
+Behind the annotations, a value at runtime is one of fifteen kinds, and there is exactly
+one table that says which (ADR 0182): `int`, `float`, `bool`, `None`, `str`, `list`,
+`dict`, `set`, `tuple`, `class`, `instance`, `method`, `closure`, `exn`, `module`. The
+interpreter's heap objects, the compiled runtime's tagged values and the extern-fn ABI all
+read those numbers; the compiled heap's own object-header kind is a projection of them
+(`list`, `dict`, `set`, `instance`, with 0 meaning "the compiled backend does not allocate
+this — it is an immediate or an interned string"). `gustyc --lang` prints both tables, and
+`--schema`'s `valueTag` definition documents the numbering.
+
+The tag is what makes a value's kind a fact rather than a guess, and it is what the
+compiled backend currently lacks per *element*: a compiled list records one element kind
+for the whole container, which is why a heterogeneous `xs = [1, "a"]` is refused rather
+than printed wrong (ADR 0175), and why `print(True)` still says `1` — a bool has no tag to
+print from yet. Both are the remaining work of L11.1.
+
 ### Generics / structural protocols
 
 Annotations are recursive generic type expressions:

@@ -1834,3 +1834,43 @@ it. The next `go build` failed with `undefined: lang.SetGCReport`, and the reaso
 most of the round's work was sitting in `stash@{0}`, not in the tree. Recovered, nothing
 lost, but the correct habit is a copy of the file (or a second worktree) for A/B builds,
 and reading what git actually printed.
+
+## L11.1 first step: one tag table, and the compiled heap's kind is a projection of it (ADR 0182)
+
+- What I actually found, rather than what the roadmap assumed: the "single source of truth for
+  the tag set" was *half* built already. `ValueTag` in `value.go` existed, the interpreter's
+  `obj.tag()` and the compiled `%obj` FFI read it, and `abi.go`'s numbers happened to match —
+  but the compiled heap's `kind` word was a wholly separate numbering (list = 1 while
+  `TagList` = 5), with the numbers written as literals into IR (`call i32 @rt_alloc(i32 1)`)
+  at a dozen codegen sites, and `HeapKindName` spelling the kind names out a third time. So
+  the work was the projection and the naming, not a new table.
+- **Numbers that reach IR must stay constants.** My first attempt was
+  `const HeapList = HeapKindFor(TagList)` — which cannot compile, and even if a function could
+  be a constant, a function call cannot be a `case` label. What works is constants for the
+  wire values plus one order-slice (`heapKindOrder`) as the projection, with names derived from
+  the tag table and *tests* tying the two. That is the general shape whenever a Go value becomes
+  LLVM text.
+- The tests only earned trust after being stubbed twice: renumbering `HeapKindSet` to 5 fails
+  `TestEmittedHeapKindsComeFromTheTable` with "codegen allocated an unknown heap kind 5", and
+  swapping dict/set in the projection order fails the round-trip. A test that passes only
+  because the numbers happen to match is not a guard.
+- Backticks are a syntax hazard, not just formatting: putting `kind` in a description inside
+  `schema.go`'s **raw string** closed the literal early — `syntax error: unexpected kind after
+  top level declaration`. Raw-string content must not contain backticks; quoting in those
+  descriptions has to be done with plain words.
+- **A probe is worth an hour of guessing about scope.** Before writing anything I ran 15 print
+  forms through `--interp`, `--aot` and `python3`. That is what turned up the decisive fact —
+  `--json` reports `"type": "int"` for `True` — which means L11.2 (`str()`/`repr()`, "bools
+  print `1`") is not an independent fix: there is no tag to print from until L11.1's bool step
+  lands. Recording that in the roadmap as a gate is more useful than a half-migrated renderer
+  that would have to be written twice.
+- The probe also banked the remaining invalid-IR cases for L11.1 rather than silently
+  "fixing" them: `print({1, 2})`, `print([1.0, 1.5, -0.0])` and `str(None)` each fail `llc`
+  with a `global variable reference must have pointer type`-family error, and `print(set())`
+  prints `0` compiled versus `set()` interpreted. Those belong to the tagged element, not to a
+  printer patch (Gap J.6).
+- Left the one literal kind inside the runtime's IR text (`%h = call i32 @rt_alloc(i32 4)` in
+  the instance helper) rather than turning another const into a rendered template, and paid for
+  that choice with a test (`TestInstanceKindsInRuntimeAndCodegenAgree`) asserting text and named
+  constant agree — cheaper than a second placeholder mechanism, and it is the check that makes
+  leaving it acceptable.

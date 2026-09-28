@@ -97,6 +97,17 @@ gusty ships an indentation-based syntax covering:
   - `import collections` — `EMPTY_DICT`, `EMPTY_LIST`, `ZERO`, `ONE`.
   - `import json` — `NULL` (`None`), `TRUE` (`True`), `FALSE` (`False`).
 
+## The value model
+
+Behind the annotations, a runtime value is one of fifteen kinds — `int`, `float`, `bool`,
+`None`, `str`, `list`, `dict`, `set`, `tuple`, `class`, `instance`, `method`, `closure`,
+`exn`, `module` — and one Go table says which. The interpreter's heap objects, the compiled
+runtime's tagged values, the exported C ABI and the garbage collector's root tracing all
+read those numbers, and the compiled heap's own object-header kind is a projection of them
+(`list`, `dict`, `set`, `instance`, with 0 meaning "not allocated — an immediate or an
+interned string"). `gustyc --lang` prints both tables and `--schema`'s `valueTag`
+definition documents the numbering (ADR 0182).
+
 ## Gradual typing & the type system
 
 Optional annotations on variables, parameters, and returns are checked

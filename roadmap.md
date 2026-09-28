@@ -579,7 +579,7 @@ backends to *each other*; the CPython oracle exists in only two files
 done).** All ⏳ PLANNED. Order is dependency order — L11.1 is the keystone; do not
 start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
 
-- **L11.1 — Tagged value word (both backends)** ⏳ PLANNED — one value shape on
+- **L11.1 — Tagged value word (both backends)** 🟢 IN PROGRESS — one value shape on
   both sides: the interpreter's `value.go` tag set and a compiled `rt_value`
   (`{i64 payload, i64 tag}`, or a boxed slot with a parallel tag word) become the
   *same* enum, generated from one table so the two cannot drift (mirror the
@@ -597,8 +597,40 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   `i32 @\.(str|lst|dict|set)` ever appears in an argument or store position
   (extend `runtime_ir_test.go` to assert it module-wide). Pairs with L7.2/L7.3 —
   a tag is what makes precise rooting and NaN-boxing well-defined.
+  - ✅ **Done (ADR 0182): one tag table, and the compiled heap's kind is a projection of
+    it.** Three vocabularies answered "what kind is this": `ValueTag` (`value.go`, read by
+    the interpreter's heap, the compiled `%obj` values and `rt_obj_is`), the ABI tags
+    (`abi.go`, the exported ABI), and the heap's `kind` word (`heapargs.go`, `rt_alloc`'s
+    parameter and the collector's dispatch) — where a list was `5` in one and `1` in the
+    other, written into IR as a literal `rt_alloc(i32 1)` at a dozen sites. Now
+    `heapKindOrder` is the projection (`none=0, list=1, dict=2, set=3, instance=4`),
+    `HeapKindFor`/`HeapTagFor` translate both ways, names come from `kindForTag` (so
+    `HeapKindName` no longer spells them out a second time), codegen allocates through named
+    constants, and `gustyc --lang` prints both tables with `definitions.valueTag` in
+    `--schema`. Verified against stubs: renumbering `HeapKindSet` fails with "codegen
+    allocated an unknown heap kind 5", and swapping the projection order fails the
+    round-trip test.
+  - 🟢 **Remaining**, in order: (1) a tag word per *element* in the heap object, retiring
+    the compile-time element-kind maps and with them ADR 0175's refusal and ADR 0174's
+    `@estr[h]` flags; (2) **bools as values** — measured today `--json` reports
+    `"type": "int"` for `True` on both backends, so `print(True)` prints `1`, and L11.2
+    cannot be fixed independently: there is no tag to print from; (3) the
+    `i32 @.strN` / `ret i32 @.str1` / `rt_append(i32, i32 @.lstN)` invalid-IR family
+    (Gap J.6) disappears once elements are tagged, at which point `runtime_ir_test.go`
+    should assert module-wide that no handle constant appears in a value position;
+    (4) `programs/nested_data.gy` + `programs/heterogeneous.gy` byte-identical across
+    backends and equal to CPython.
+  - Probes recorded while planning this item (all reproducible, all still open):
+    heterogeneous lists/dicts/nested literals fail to compile AOT while the interpreter and
+    Python agree; `print({1, 2})` emits invalid IR (`global variable reference must have
+    pointer type`); `print(set())` is `set()` in the interpreter and `0` compiled;
+    `print([1.0, 1.5, -0.0])` emits invalid IR; `str(None)` emits invalid IR.
 - **L11.2 — `str()` vs `repr()` are one function per backend (closes Gap L.2)**
-  ⏳ PLANNED — `print(True)` is `1` today; bools, `True`/`False`, `None`, quoting
+  ⏳ PLANNED — **gated on L11.1's bool step**: `print(True)`/`print(1 == 1)` print `1` on
+  *both* backends and `--json` reports `"type": "int"` for `True`, so the rendering table
+  cannot be fixed before bools are values (measured 2026-08-04). The parts that do not need
+  a tag — the empty-set rule (`print(set())` is `set()` interpreted, `0` compiled), quoting
+  inside containers, and `str(None)`'s invalid-IR emission — can land with it. — `print(True)` is `1` today; bools, `True`/`False`, `None`, quoting
   and the empty-set `set()` rule are decided in two places (Go `Repr`, IR
   `@rt_print_value`). Make it one shared, context-correct pair (`str` for
   `print`/f-strings, `repr` inside containers), pinned by a table test that runs

@@ -611,6 +611,37 @@ both: `live` must fall back after recursion returns, and `top` must stay small f
 program with few live variables. Both assertions were checked against stubs that remove
 the mechanism.
 
+## The value model: one tag table, one heap-kind projection
+
+The number that says *what a value is* lives in exactly one Go table, and everything
+machine-readable about it is generated from that table (ADR 0182):
+
+```console
+$ gustyc --lang | tail -2
+values: int=0 float=1 bool=2 None=3 str=4 list=5 dict=6 set=7 tuple=8 class=9 instance=10 method=11 closure=12 exn=13 module=14
+heap kinds (compiled runtime object headers): list dict set instance (0 = not heap-allocated)
+```
+
+- **The tags** are `pkg/lang/value.go`'s `ValueTag` list. The interpreter's heap objects
+  (`obj.kind` → `obj.tag()`), the compiled runtime's tagged `%obj` values, and the
+  extern-fn ABI's tag words all read it; `--abi` prints the tag words and
+  `TestABITagsAgreeWithCanonicalTags` proves they are the same numbers.
+- **The compiled heap's `kind` word** is a projection of it (`HeapKindFor`/`HeapTagFor`):
+  `none=0, list=1, dict=2, set=3, instance=4`, because the compiled heap allocates only
+  those four — an int, float, bool, `None` or interned string has no object header, which
+  is what `HeapKindNone` means rather than "unknown". `rt_alloc`'s parameter, the
+  collector's dispatch and `rt_inst_get`'s checks all use these, and codegen writes them
+  through the named constants instead of literals.
+- `definitions.valueTag` in `--schema` documents the numbering and the projection, and a
+  test compares the list quoted there with the table, so the schema cannot drift.
+- `lang.ValueTagNames()`, `lang.HeapKindNames()`, `lang.HeapKindFor`, `lang.HeapTagFor`
+  and `lang.HeapKindNameOf` are the Go API for tools; the numbers are a wire format and
+  `TestValueTagTableIsPinned` fails if anyone renumbers them.
+
+`print(True)` still printing `1` is the honest limit of this step: bools are not values
+yet in either backend (`--json` reports `"type": "int"` for `True`), so there is no tag to
+print from. That is the next move in L11.1.
+
 ## String methods
 
 `upper()`, `lower()`, `strip()`, `split(sep?)` dispatch on boxed strings in

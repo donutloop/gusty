@@ -57,6 +57,10 @@ func TestCLIEvalString(t *testing.T) {
 func TestCLILang(t *testing.T) {
 	if got := cli(t, "--lang"); !strings.Contains(got, "statements:") {
 		t.Fatalf("--lang output = %q", got)
+	} else if !strings.Contains(got, "values: "+strings.Join(lang.ValueTagNames(), " ")) {
+		t.Errorf("--lang does not print the value-tag table:\n%s", got)
+	} else if !strings.Contains(got, "heap kinds (compiled runtime object headers): "+strings.Join(lang.HeapKindNames(), " ")) {
+		t.Errorf("--lang does not print the compiled heap kinds:\n%s", got)
 	}
 }
 

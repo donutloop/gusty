@@ -35,30 +35,21 @@ import (
 // The result is a pure, deterministic analysis over the AST: it emits nothing,
 // so it can run before any IR is produced.
 //
-// The kinds mirror the runtime heap tags understood by `rt_alloc`.
+// The kinds are the canonical runtime heap kinds, declared once in value.go as the
+// projection of the ValueTag table; they are aliased here because the inference below
+// speaks in container kinds.
 const (
-	HeapNone = 0 // not a runtime container
-	HeapList = 1 // rt_alloc(i32 1)
-	HeapDict = 2 // rt_alloc(i32 2)
-	HeapSet  = 3 // rt_alloc(i32 3)
-	HeapInst = 4 // rt_alloc(i32 4) (class instance; not inferred here)
+	HeapNone = HeapKindNone     // not a runtime container
+	HeapList = HeapKindList     // rt_alloc(i32 1)
+	HeapDict = HeapKindDict     // rt_alloc(i32 2)
+	HeapSet  = HeapKindSet      // rt_alloc(i32 3)
+	HeapInst = HeapKindInstance // rt_alloc(i32 4) (class instance; not inferred here)
 )
 
-// HeapKindName names a runtime container kind (used in diagnostics and JSON).
-func HeapKindName(k int) string {
-	switch k {
-	case HeapList:
-		return "list"
-	case HeapDict:
-		return "dict"
-	case HeapSet:
-		return "set"
-	case HeapInst:
-		return "instance"
-	default:
-		return "none"
-	}
-}
+// HeapKindName names a runtime container kind (used in diagnostics and JSON). The name
+// comes from the canonical tag table, so a kind is not "set" in one report and "dict"
+// in another.
+func HeapKindName(k int) string { return HeapKindNameOf(int32(k)) }
 
 // heapKindOfAnnotation maps a parameter annotation to its runtime container
 // kind (0 when the annotation is not a container).

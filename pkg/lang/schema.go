@@ -1186,6 +1186,12 @@ const ASTIRSchema = `{
         "backend": { "type": "string", "description": "Which collector reported: \"interpreter\" or \"aot\".", "enum": ["interpreter", "aot"] }
       }
     },
+    "valueTag": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 14,
+      "description": "Canonical dynamic-kind tag: the one number that says what a value is, shared by the interpreter's heap objects (obj.kind → obj.tag), the compiled runtime's tagged obj values, and the extern-fn ABI's tag word. Names in table order: int=0, float=1, bool=2, None=3, str=4, list=5, dict=6, set=7, tuple=8, class=9, instance=10, method=11, closure=12, exn=13, module=14 (gustyc --lang prints them, lang.ValueTagNames() returns them, and a test pins this list so the schema cannot drift from the table). The compiled heap's object-header kind word is a projection of this table — none=0, list=1, dict=2, set=3, instance=4 — because it numbers only the kinds the compiled heap allocates; lang.HeapKindFor/HeapTagFor translate between the two, so a per-element tag, an object header, and an exported tagged value all mean the same thing by the same number."
+    },
     "type": {
       "type": "string",
       "description": "Type annotation text. Union types render members joined by \" | \", e.g. \"int | str\".",

@@ -644,7 +644,9 @@ statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, 
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
 variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
-`, lang.Version)
+values: %s
+heap kinds (compiled runtime object headers): %s (0 = not heap-allocated)
+`, lang.Version, strings.Join(lang.ValueTagNames(), " "), strings.Join(lang.HeapKindNames(), " "))
 }
 
 // reorderFlags moves flag tokens to the front so the flag package sees all of them,
