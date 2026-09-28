@@ -6,10 +6,10 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0186`. `go test -tags=llvm20 ./...`
-> is green. Conformance corpus: 64 programs under `integration/programs/` (16 of
-> them pinned probes), 59 matrix rows over **three legs** (interpreter, compiled binary, CPython): 43
-> parity cases plus 16 pinned probes; oracle 27 `match` / 22 `debt` /
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0187`. `go test -tags=llvm20 ./...`
+> is green. Conformance corpus: 66 programs under `integration/programs/` (16 of
+> them pinned probes), 61 matrix rows over **three legs** (interpreter, compiled binary, CPython): 45
+> parity cases plus 16 pinned probes; oracle 29 `match` / 22 `debt` /
 > 10 `not_applicable`. **The current plan is Phase 11 — the value model** (below);
 > its harness, L11.9, is ✅ DONE (ADR 0186), so no remaining Phase 11 item may be
 > marked done on parity alone — each one has a pinned program that has to change.
@@ -638,17 +638,41 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     Anything else with the variable refuses via one guard in `value()`: "print(x) works, but
     using it as a number needs a tagged value". Stub check: pinning the tag to 0 prints
     `1\n0\n0` and fails the parity rows.
-  - 🟢 **Remaining**, in order: (1a) the other element-wise *reads* — `xs[0]` and
-    `xs.append(...)` — are clean refusals today and need a tagged value at the use site; (1b) mixed *dicts* and *sets* (same storage trick, `rt_dict_print`/`rt_set_print`
-    dispatch on one flag today); (1c) floats in containers, which needs a float branch in
-    `rt_print_mixed_value`; (1d) retiring `@estr[h]` entirely once every read path is tagged; (2) **bools as values** — measured today `--json` reports
+  - ✅ **Done (ADR 0187): element reads and writes carry the tag.** The CPython oracle found
+    the first of these as a *wrong answer in a passing build*: `xs[0] = "z"` on a mixed list
+    stored the payload through `rt_put_elem` and never wrote `@heap_tags`, so `print(xs)`
+    answered `[1, 'a', None]` — the interned index of `"z"`, rendered through the slot's stale
+    `int` tag. Both backends agreed, so the two-backend matrix had nothing to say.
+    The rule now: **the operation that writes a slot's payload writes its tag**.
+    `rt_append_tagged(h, v, t)` appends both in one call (the tag array is not cleared on free,
+    so a forgotten tag reads back the previous tenant's tag); item assignment emits
+    `rt_put_elem` + `rt_tag_elem` inside the same bounds-checked block and skips the
+    container-wide kind bookkeeping, because the tags carry the truth. Reading emits
+    `rt_get_elem` + `rt_tag_of`, and two uses of the pair are open: `print(xs[i])` dispatches on
+    the tag, and `v = xs[i]` binds a tagged variable (the same `%_v`/`%_v_tag` pair ADR 0185
+    gives a loop variable, so `print(v)` and rebinding-to-retire-the-tag came free). Payload and
+    tag are cross-checked — one saying interned-string while the other says number refuses
+    rather than emitting IR. Still refused, with a message naming what works: arithmetic,
+    comparison, call arguments and format specs on a tagged element, dict/set key reads, and
+    elements the tag cannot describe (bool, float, nested container). New parity programs
+    `mixed_element_reads.gy`, `mixed_element_writes.gy`; two older tests that asserted
+    `print(xs[i])` *must* refuse were inverted, and every refusal test now asserts the refusal's
+    text so a future opening is noticed.
+  - 🟢 **Remaining**, in order: (1a) ~~the other element-wise *reads*~~ — done (ADR 0187);
+    the next element-wise uses need tagged values at the *use* site, which is L11.2; (1b) mixed
+    *dicts* and *sets* (same storage trick, `rt_dict_print`/`rt_set_print` dispatch on one flag
+    today, and a key read answers through one static kind); (1c) floats in containers, which
+    needs a float branch in `rt_print_mixed_value` — the tag exists, the renderer does not;
+    (1d) retiring `@estr[h]` entirely once every read path is tagged; (2) **bools as values** — measured today `--json` reports
     `"type": "int"` for `True` on both backends, so `print(True)` prints `1`, and L11.2
     cannot be fixed independently: there is no tag to print from; (3) the
     `i32 @.strN` / `ret i32 @.str1` / `rt_append(i32, i32 @.lstN)` invalid-IR family
     (Gap J.6) disappears once elements are tagged, at which point `runtime_ir_test.go`
     should assert module-wide that no handle constant appears in a value position;
     (4) `programs/nested_data.gy` + `programs/heterogeneous.gy` byte-identical across
-    backends and equal to CPython.
+    backends and equal to CPython; (5) `@heap` elements carrying tag-and-payload together
+    rather than two parallel arrays — cleaner, but a layout change touching every container
+    operation, and the pairing rule above already makes the failure mode unreachable.
   - Probes recorded while planning this item (all reproducible, all still open):
     heterogeneous lists/dicts/nested literals fail to compile AOT while the interpreter and
     Python agree; `print({1, 2})` emits invalid IR (`global variable reference must have

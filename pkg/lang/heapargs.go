@@ -3,6 +3,7 @@ package lang
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -972,7 +973,7 @@ func elemTagFor(e Expr, interned bool) int32 {
 // mixedReadErr is what reading a single element out of a tagged list reports: the tag says
 // what the element is, but the use site was compiled against one static kind.
 func mixedReadErr(what string) error {
-	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind; printing it works, but reading one element out needs a tagged value at the use site (roadmap L11.1)", what)
+	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind, so one element is a (value, tag) pair; print(xs[i]) and v = xs[i] work because the tag travels with them, but this context needs a single static kind (roadmap L11.1, ADR 0187)", what)
 }
 
 // mixedTaggedVarErr is what a loop variable from a mixed list reports when the program
@@ -982,9 +983,100 @@ func mixedTaggedVarErr(name string) error {
 	return fmt.Errorf("codegen: %s comes from a loop over a mixed list; print(%s) works, but using it as a number needs a tagged value (roadmap L11.1)", name, name)
 }
 
-// mixedAppendErr is the append/element-write counterpart of mixedReadErr.
-func mixedAppendErr(what string) error {
-	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind; printing it works, but adding to it needs the new element tagged (roadmap L11.1)", what)
+// mixedTaggedElemErr names the element that cannot be tagged, and why refusing is the only
+// honest answer: without a tag the slot reads back as whatever the tag array happened to hold,
+// which is how a stored string would print as its interned table index (ADR 0184/0187).
+func mixedTaggedElemErr(e Expr) error {
+	return fmt.Errorf("codegen: an element of a mixed compiled container must carry a tag, and %s has none the runtime can render (bools are not values yet, floats have no mixed-printer rendering, and a nested container is not marked by the collector) (roadmap L11.1, ADR 0187)", exprSnippet(e))
+}
+
+// exprSnippet is a short, stable rendering of an expression for a diagnostic.
+func exprSnippet(e Expr) string {
+	switch n := e.(type) {
+	case *BoolLit:
+		if n.Value {
+			return "True"
+		}
+		return "False"
+	case *FloatLit:
+		return "a float literal"
+	case *ListLit:
+		return "a list literal"
+	case *DictLit:
+		return "a dict literal"
+	case *SetLit:
+		return "a set literal"
+	case *Tuple:
+		return "a tuple literal"
+	case *Lambda:
+		return "a lambda"
+	case *Name:
+		return n.Value
+	}
+	return fmt.Sprintf("%T", e)
+}
+
+// mixedElemTag lowers one element expression for a *tagged* container slot: the payload is
+// exactly what the untagged path would store (a number, or an index into the interned string
+// table), and the tag is the canonical ValueTag that says how to render it. The two halves are
+// checked against each other, and a disagreement refuses: "the payload is an interned index but
+// the tag says int" is precisely the wrong-answer shape the mixed-container refusal exists to
+// prevent, so it is never emitted (ADR 0184, ADR 0187).
+func (g *irGen) mixedElemTag(b *strings.Builder, e Expr) (payload, tag string, err error) {
+	t, ok := g.elemKindTag(e)
+	if !ok {
+		return "", "", mixedTaggedElemErr(e)
+	}
+	v, interned, err := g.heapElemKind(b, e)
+	if err != nil {
+		return "", "", err
+	}
+	if interned && t != int32(TagStr) {
+		return "", "", mixedTaggedElemErr(e)
+	}
+	if !interned && t == int32(TagStr) {
+		return "", "", mixedTaggedElemErr(e)
+	}
+	if t == int32(TagNone) {
+		// None has no i32 payload of its own; the tag is what renders it.
+		v = "0"
+	}
+	return v, strconv.FormatInt(int64(t), 10), nil
+}
+
+// mixedElemPair emits the tagged *read* of one element: the payload through rt_get_elem and its
+// tag through rt_tag_of, with the same bounds check every other element read gets. A loop over a
+// mixed list already bound its variable this way (ADR 0185); this is the same pair at an
+// arbitrary read site, which is what makes print(xs[i]) and `v = xs[i]` honest (ADR 0187).
+func (g *irGen) mixedElemPair(b *strings.Builder, listName string, idx Expr, sp Span) (val, tag string, err error) {
+	g.heapUsed = true
+	g.heapSeq++
+	hs := g.heapSeq
+	h := fmt.Sprintf("%%h%d", hs)
+	fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", h, listName)
+	idxOp, err := g.value(b, idx)
+	if err != nil {
+		return "", "", err
+	}
+	g.checkIndexRead(b, h, idxOp, sp)
+	val = g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", val, h, idxOp)
+	tag = g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", tag, h, idxOp)
+	return val, tag, nil
+}
+
+// mixedIndexRead reports whether an `obj[i]` expression reads an element out of a tagged list
+// variable, and returns that variable's name.
+func (g *irGen) mixedIndexRead(ix *Index) (string, bool) {
+	if ix == nil {
+		return "", false
+	}
+	nm, ok := ix.Obj.(*Name)
+	if !ok || !g.mixedLists[nm.Value] {
+		return "", false
+	}
+	return nm.Value, true
 }
 
 // mixedKindErr is the diagnostic every mixed-container site reports.

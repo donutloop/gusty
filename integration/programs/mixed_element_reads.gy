@@ -1,0 +1,17 @@
+# Reading one element out of a mixed list: the element carries its tag to the use site.
+# Before ADR 0187 every line here refused to compile through the LLVM backend; the list
+# itself printed, but a single element had no static kind and the compiler refused to guess.
+xs = [1, "a", None, 7, "b"]
+print(xs[0])
+print(xs[1])
+print(xs[2])
+i = 3
+print(xs[i])
+first = xs[0]
+name = xs[1]
+nothing = xs[2]
+print(first)
+print(name)
+print(nothing)
+for k in range(5):
+    print(xs[k])

@@ -759,6 +759,15 @@ heap kinds (compiled runtime object headers): list dict set instance (0 = not he
 yet in either backend (`--json` reports `"type": "int"` for `True`), so there is no tag to
 print from. That is the next move in L11.1.
 
+What L11.1 has opened since, in the LLVM backend, is element-level tagging: a mixed list
+literal tags each slot, `xs.append(v)` appends payload-and-tag together
+(`rt_append_tagged`), `xs[i] = v` rewrites the slot's tag with it, and reading `xs[i]` produces
+the `(value, tag)` pair that `print(xs[i])` dispatches on and `v = xs[i]` binds as a tagged
+variable (ADR 0184, ADR 0185, ADR 0187). What still refuses — with a message naming what does
+work — is a tagged element reaching a context that needs one static kind (`xs[i] + 1`,
+`xs[i] > 2`, `f(xs[i])`, `xs[i]` in a format spec), dict/set element tags, and the tag-less
+kinds (bool, float, nested container).
+
 ## String methods
 
 `upper()`, `lower()`, `strip()`, `split(sep?)` dispatch on boxed strings in

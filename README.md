@@ -298,15 +298,18 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **59 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — for 43 parity cases plus 16 pinned probes. Parity (interpreter ==
+  `conformance-matrix.json`: **61 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — for 45 parity cases plus 16 pinned probes. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its
   state — `match` (the default), `debt` (with a reason, a roadmap owner, and a per-leg pin of
   the wrong answer), or `not_applicable` (gusty-only surface the oracle cannot run) — and drift
   fails the build in both directions, so a new divergence and an unrecorded fix are equally
-  caught (roadmap L11.9, ADR 0186). Parity cases include
+  caught (roadmap L11.9, ADR 0186). The oracle's first catch was not a refusal but a passing
+  build: `xs[0] = "z"` on a mixed list answered `[1, 'a', None]`, the interned index printed
+  through the slot's stale tag, and it is now ADR 0187 and two parity programs
+  (`mixed_element_reads.gy`, `mixed_element_writes.gy`). Parity cases include
   `programs/truthiness.gy` (Python's truthiness rules),
   `programs/subscript_assign.gy` (container iteration and `d[k] = v` /
   `xs[i] = v` item assignment), `programs/container_methods.gy`

@@ -479,6 +479,25 @@ entry:
   ret void
 }
 
+; rt_append_tagged is rt_append plus the tag the new slot carries. An append that forgets the
+; tag leaves the slot reading back as whatever the *previous* tenant of that slot was — the
+; tag array is not cleared on free — so a mixed list would print an interned string's index as
+; a number. Appending and tagging are one operation precisely because they must not be two
+; (roadmap L11.1, ADR 0187).
+define internal void @rt_append_tagged(i32 %h, i32 %v, i32 %t) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %len
+  store i32 %v, i32* %ep
+  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %len
+  store i32 %t, i32* %tp
+  %len1 = add i32 %len, 1
+  store i32 %len1, i32* %lp
+  ret void
+}
+
 define internal i32 @rt_tag_of(i32 %h, i32 %i) {
 entry:
   %p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
@@ -3876,6 +3895,37 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		}
 		return nil
 	case g.listVars[nm.Value]:
+		if g.mixedLists[nm.Value] {
+			// An element of a tagged list is (payload, tag); writing the payload alone would
+			// leave the slot tagged as whatever lived there before, so the tag is written with
+			// it. This is the shape that used to answer `[1, 'a', None]` for `xs[0] = "z"` —
+			// the interned index printed through the stale int tag (roadmap L11.1, ADR 0187).
+			sv, tag, serr := g.mixedElemTag(b, val)
+			if serr != nil {
+				return serr
+			}
+			ln := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
+			hi := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp sge i32 %s, %s\n", hi, key, ln))
+			g.markI1(hi)
+			lo := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", lo, key))
+			g.markI1(lo)
+			bad := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
+			g.markI1(bad)
+			badL, okL, endL := g.newLabel("item.bad"), g.newLabel("item.ok"), g.newLabel("item.end")
+			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
+			b.WriteString(fmt.Sprintf("%s:\n", badL))
+			g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", ix.Span())
+			b.WriteString(fmt.Sprintf("%s:\n", okL))
+			b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, sv))
+			b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %s)\n", h, key, tag))
+			b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+			b.WriteString(fmt.Sprintf("%s:\n", endL))
+			return nil
+		}
 		// A string element is stored as its @str_tab index (Gap I.2), like every other
 		// container slot write; the printed form follows from listElemStr.
 		sv, sIsStr, serr := g.heapElemKind(b, val)
@@ -5662,9 +5712,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("append expects one argument")
 			}
 			if g.mixedLists[nm.Value] {
-				// Appending would need the new element tagged in heap_tags; the literal
-				// path is where tags are written today (ADR 0184).
-				return "", mixedAppendErr("list")
+				// Appending to a tagged list writes the payload and the tag together:
+				// rt_append alone would leave the new slot reading back with whatever tag the
+				// freed slot last carried, which is how an appended string would print as its
+				// interned index (roadmap L11.1, ADR 0187).
+				if av, tag, terr := g.mixedElemTag(b, c.Args[0]); terr == nil {
+					g.heapSeq++
+					hs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, av, tag))
+					return "", nil
+				} else {
+					return "", terr
+				}
 			}
 			av, interned, err := g.heapElemKind(b, c.Args[0])
 			if err != nil {
@@ -6513,6 +6573,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", tg, nm.Value))
 				b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", vt, tg))
 				continue
+			}
+			if ix, ok := a.(*Index); ok {
+				// print(xs[i]) reads the element *and* its tag, so the printer dispatches on
+				// what the slot holds instead of on what the compiler guessed: the same
+				// (value, tag) pair a tagged variable carries, produced at the read site
+				// (roadmap L11.1, ADR 0187).
+				if listName, mixed := g.mixedIndexRead(ix); mixed {
+					val, tag, err := g.mixedElemPair(b, listName, ix.Idx, ix.Span())
+					if err != nil {
+						return "", err
+					}
+					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
+					continue
+				}
 			}
 			if nm, ok := a.(*Name); ok && g.listVars[nm.Value] {
 				g.heapSeq++
@@ -8401,6 +8475,47 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.lambdas[nm.Value] = name
 				return nil
+			}
+			// `v = xs[i]` out of a tagged list binds a (value, tag) pair, not a bare i32:
+			// the slot means nothing without its companion, and print(v) dispatches on the
+			// tag exactly as a loop variable over a mixed list does (ADR 0185, ADR 0187).
+			if ix, isIndex := n.Value.(*Index); isIndex {
+				if listName, mixed := g.mixedIndexRead(ix); mixed {
+					val, tag, err := g.mixedElemPair(b, listName, ix.Idx, ix.Span())
+					if err != nil {
+						return err
+					}
+					// Rebinding over a container or a tagged value: free the old heap slot and
+					// mark the root dead, the way every other immediate binding does.
+					if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
+						g.emitFreeOld(b, nm.Value)
+						if g.allocd[nm.Value] {
+							g.gcClearRoot(b, nm.Value)
+						}
+					}
+					g.listVars[nm.Value] = false
+					g.runtimeDicts[nm.Value] = false
+					g.runtimeSets[nm.Value] = false
+					g.mixedLists[nm.Value] = false
+					delete(g.strVals, nm.Value)
+					delete(g.internedVars, nm.Value)
+					delete(g.noneVars, nm.Value)
+					if g.floatVars != nil {
+						delete(g.floatVars, nm.Value)
+					}
+					if !g.allocd[nm.Value] {
+						b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+nm.Value))
+						g.allocd[nm.Value] = true
+					}
+					if !g.allocd[nm.Value+"_tag"] {
+						b.WriteString(fmt.Sprintf("  %%%s_tag = alloca i32\n", "_"+nm.Value))
+						g.allocd[nm.Value+"_tag"] = true
+					}
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, nm.Value))
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tag, nm.Value))
+					g.taggedVars[nm.Value] = true
+					return nil
+				}
 			}
 			if lit, ok := n.Value.(*ListLit); ok {
 				g.heapUsed = true

@@ -51,6 +51,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"variance",
 		"heap_containers",
 		"folded_lists",
+		// Element-level reads and writes of a mixed list: the (value, tag) pair travels with the
+		// element to the use site (roadmap L11.1, ADR 0187).
+		"mixed_element_reads",
+		"mixed_element_writes",
 		"print_args",
 		"truthiness",
 		"subscript_assign",

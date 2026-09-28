@@ -81,3 +81,73 @@ func TestLoopOverMixedListMatchesCPython(t *testing.T) {
 		}
 	}
 }
+
+// Element-level access is the half of roadmap L11.1 that ADR 0187 opened: reading one element
+// out of a mixed list produces the (value, tag) pair at the read site, and writing or appending
+// an element writes its tag together with its payload. Expectations are CPython's own output,
+// checked against both of our backends.
+func TestMixedElementAccessMatchesCPython(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{`xs = [1, "a", None]` + "\n" + "print(xs[1])\n", "a\n"},
+		{`xs = [1, "a", None]` + "\n" + "print(xs[0])\nprint(xs[2])\n", "1\nNone\n"},
+		{"xs = [1, \"a\", None]\nfor i in range(3):\n    print(xs[i])\n", "1\na\nNone\n"},
+		{"xs = [1, \"a\", None]\nv = xs[1]\nprint(v)\n", "a\n"},
+		// The stale-tag bug this cycle fixed: the slot kept the tag it was allocated with, so
+		// this printed [1, 'a', None] — the interned table answering as if it were the value.
+		{"xs = [1, \"a\", None]\nxs[0] = \"z\"\nprint(xs)\nprint(xs[0])\n", "['z', 'a', None]\nz\n"},
+		{"xs = [1, \"a\", None]\nxs[1] = 42\nprint(xs)\n", "[1, 42, None]\n"},
+		{"xs = [1, \"a\", None]\nxs[2] = 0\nprint(xs)\n", "[1, 'a', 0]\n"},
+		{"xs = [1, \"a\"]\nxs.append(2)\nxs.append(\"b\")\nxs.append(None)\nprint(xs)\nprint(len(xs))\n", "[1, 'a', 2, 'b', None]\n5\n"},
+		{"xs = [1, \"a\", None]\nxs.append(\"z\")\nprint(xs[3])\n", "z\n"},
+		// Rebinding a tagged variable over a plain value retires the tag: y prints 5, not a
+		// stale 'a'.
+		{"xs = [1, \"a\", None]\ny = xs[1]\nprint(y)\ny = 5\nprint(y)\n", "a\n5\n"},
+	} {
+		if interped := runInterp(t, tc.src); interped != tc.want {
+			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
+		}
+		res, err := lang.JIT(tc.src, 0)
+		if err != nil {
+			t.Fatalf("compile %q: %v", tc.src, err)
+		}
+		if res.Output != tc.want {
+			t.Errorf("compiled %q = %q, want %q", tc.src, res.Output, tc.want)
+		}
+	}
+}
+
+// Tagged slots and the collector have to coexist: a string element lives in @str_tab and the
+// only reference to it is the payload-and-tag pair inside the list, so a stale tag shows up as
+// a wrong render rather than a crash. These build and rewrite mixed lists across collection
+// cycles and read elements back on both sides of them (ADR 0181, ADR 0187).
+func TestMixedElementAccessSurvivesCollection(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{
+			"xs = [1, \"a\", None]\nn = 0\nfor i in range(120):\n    ys = [i, \"t\"]\n    xs.append(i)\n    xs.append(\"u\")\n    n = n + 1\nprint(n)\nprint(len(xs))\nprint(xs[0])\nprint(xs[1])\nprint(xs[2])\nprint(xs[3])\n",
+			"120\n243\n1\na\nNone\n0\n",
+		},
+		{
+			// Slot 0 is rewritten to a string 80 times while short-lived lists churn, and slot 1
+			// keeps the tag it was allocated with: both halves have to stay right.
+			"xs = [1, \"a\", None]\nfor i in range(80):\n    zs = [i, i]\n    xs[0] = \"w\"\nprint(xs[0])\nprint(xs[1])\nprint(xs)\n",
+			"w\na\n['w', 'a', None]\n",
+		},
+	} {
+		if interped := runInterp(t, tc.src); interped != tc.want {
+			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
+		}
+		res, err := lang.JIT(tc.src, 0)
+		if err != nil {
+			t.Fatalf("compile %q: %v", tc.src, err)
+		}
+		if res.Output != tc.want {
+			t.Errorf("compiled %q = %q, want %q", tc.src, res.Output, tc.want)
+		}
+	}
+}

@@ -108,18 +108,27 @@ func TestTaggedListEmitsTagsAndPrintsThroughTheTaggedPrinter(t *testing.T) {
 }
 
 func TestMixedListElementUsesStillRefuse(t *testing.T) {
-	// Printing a mixed list is supported; every other element-wise use must refuse with an
-	// actionable message rather than read a tagged slot through one static kind.
+	// Printing an element, binding one, appending one and writing one all carry the tag now
+	// (see TestElementReadCarriesItsTag / TestElementWriteAndAppendTagTheSlot). What is left
+	// here is the set of uses that genuinely have no tag to carry: a context that demands one
+	// static kind, or an element the tag cannot describe at all.
 	for _, tc := range []struct {
 		src    string
 		wanted string
 	}{
-		{"xs = [1, \"a\"]\nprint(xs[0])\n", "tagged value at the use site"},
-		{"xs = [1, \"a\"]\nxs.append(5)\nprint(xs)\n", "adding to it needs the new element tagged"},
-		// A loop over a mixed list binds (value, tag); arithmetic has no tag to carry, so it
-		// refuses with the same honesty rather than computing on a string table index (ADR 0185).
+		// A tagged element reaching a context that needs a plain i32 refuses rather than
+		// computing on what is, for a string element, an index into the interned table.
+		{"xs = [1, \"a\"]\nprint(xs[0] + 1)\n", "needs a single static kind"},
+		{"xs = [1, \"a\"]\nprint(xs[0] > 2)\n", "needs a single static kind"},
+		{"def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n", "needs a single static kind"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},
+		// An element the tag cannot describe: a float has no rendering in the mixed printer,
+		// a bool is not a value yet, and a nested container is not marked by the collector.
+		{"xs = [1, \"a\"]\nxs.append(1.5)\nprint(xs)\n", "must carry a tag"},
+		{"xs = [1, \"a\"]\nxs[0] = 2.5\nprint(xs)\n", "must carry a tag"},
+		{"xs = [1, \"a\"]\nxs[0] = True\nprint(xs)\n", "must carry a tag"},
+		{"xs = [1, \"a\"]\nxs.append([1])\nprint(xs)\n", "must carry a tag"},
 		// Mixing the still-unsupported kinds keeps the original, pre-tag refusal.
 		{"xs = [True, \"a\"]\nprint(xs)\n", "either strings or numbers"},
 		{"xs = [1.5, \"a\"]\nprint(xs)\n", "either strings or numbers"},
@@ -134,6 +143,86 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		}
 		if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") {
 			t.Errorf("%q failed as an IR problem instead of a front-end refusal: %v", tc.src, err)
+		}
+	}
+}
+
+// An element read produces (value, tag) at the read site, so print(xs[i]) dispatches on the
+// tag and `v = xs[i]` binds a tagged variable — the same pair a loop variable over a mixed
+// list already carried (ADR 0185), now available at an arbitrary read site (ADR 0187).
+func TestElementReadCarriesItsTag(t *testing.T) {
+	res, err := Compile("xs = [1, \"a\", None]\nprint(xs[1])\nv = xs[2]\nprint(v)\n")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	for _, want := range []string{
+		"call i32 @rt_get_elem(", "call i32 @rt_tag_of(",
+		"%_v_tag = alloca i32",
+		"call void @rt_print_mixed_value(i32 %t",
+	} {
+		if !strings.Contains(res.IR, want) {
+			t.Errorf("module is missing %q\ntag loads: %s\ntag allocas: %s", want,
+				strings.Join(irLinesContaining(res.IR, "rt_tag_of"), "\n"),
+				strings.Join(irLinesContaining(res.IR, "_tag = alloca"), "\n"))
+		}
+	}
+	// Both prints are top-level, so both are str(): the quote flag must be 0. (The runtime's
+	// own rt_print_list_mixed calls the same helper with quote 1 — that is the repr() side,
+	// and the count here is what pins *this* program's two calls to the str() side.)
+	called := 0
+	for _, line := range strings.Split(res.IR, "\n") {
+		if !strings.Contains(line, "call void @rt_print_mixed_value(") {
+			continue
+		}
+		if strings.HasSuffix(strings.TrimSpace(line), "i32 0)") {
+			called++
+		}
+	}
+	if called != 2 {
+		t.Errorf("want two str()-flagged tag dispatches (print(xs[1]) and print(v)), got %d:\n%s", called,
+			strings.Join(irLinesContaining(res.IR, "call void @rt_print_mixed_value"), "\n"))
+	}
+	// Top-level print is str(), not repr(): the quote flag must be 0 for both lines.
+	if strings.Count(res.IR, "call void @rt_print_mixed_value(") < 2 {
+		t.Errorf("both prints should go through the tag-dispatching printer:\n%s", irLinesContaining(res.IR, "rt_print_mixed_value"))
+	}
+	for _, line := range strings.Split(res.IR, "\n") {
+		if strings.Contains(line, "store i32 @") || strings.Contains(line, "(i32 @.") {
+			t.Fatalf("module puts a global in value position: %s", strings.TrimSpace(line))
+		}
+	}
+}
+
+// Writing or appending an element writes its tag with it. Before ADR 0187 `xs[0] = "z"` stored
+// the interned index through the slot's stale int tag and printed [1, 'a', None] — an answer,
+// from the interned table, that CPython does not give.
+func TestElementWriteAndAppendTagTheSlot(t *testing.T) {
+	res, err := Compile("xs = [1, \"a\", None]\nxs[0] = \"z\"\nxs.append(None)\nprint(xs)\n")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if !strings.Contains(res.IR, "call void @rt_append_tagged(") {
+		t.Errorf("append should write payload and tag together:\n%s", irLinesContaining(res.IR, "rt_append"))
+	}
+	// Slot 0 becomes a string (TagStr = 4) and the appended slot carries None (TagNone = 3).
+	if !strings.Contains(strings.Join(irLinesContaining(res.IR, "rt_tag_elem"), "\n"), ", i32 0, i32 4)") {
+		t.Errorf("item write must retag slot 0 as a string:\n%s", strings.Join(irLinesContaining(res.IR, "rt_tag_elem"), "\n"))
+	}
+	if !strings.Contains(strings.Join(irLinesContaining(res.IR, "rt_append_tagged"), "\n"), ", i32 3)") {
+		t.Errorf("append must carry the None tag:\n%s", irLinesContaining(res.IR, "rt_append_tagged"))
+	}
+}
+
+// A tagged element that reaches a number context refuses, and the refusal names what does work
+// — the message is the interface while the capability grows (ADR 0166).
+func TestTaggedElementRefusalNamesWhatWorks(t *testing.T) {
+	_, err := Compile("xs = [1, \"a\"]\nprint(xs[0] + 1)\n")
+	if err == nil {
+		t.Fatal("arithmetic on a tagged element must refuse")
+	}
+	for _, want := range []string{"print(xs[i])", "v = xs[i]", "(value, tag) pair"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q should mention %q", err.Error(), want)
 		}
 	}
 }

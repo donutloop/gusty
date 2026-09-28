@@ -864,16 +864,20 @@ A compiled list can hold numbers, interned strings and `None` together: each ele
 carries its own tag, so `print([1, "a", None])` gives `[1, 'a', None]` on both backends and on
 CPython (ADR 0184). What a mixed list may hold is decided by what the tag can honestly describe
 — integers, interned strings, `None` — so `[True, "a"]`, `[1.5, "a"]` and `[[1], "a"]` are still
-reported rather than mis-printed, and reading one element out of a mixed list (`xs[0]`,
-`for x in xs`, `xs.append(...)`) reports that printing works while element reads need a tagged
-value at the use site.
+reported rather than mis-printed.
 
-Iterating a mixed list works: `for x in xs` binds the element *together with its tag*, so
-`print(x)` inside the loop renders each element correctly (ADR 0185). The tag decides *what* the
-value is and the call site decides *how* to show it — `print(x)` gives `str()` (a bare `a`),
-while `print(xs)` gives `repr()` (`'a'`), matching Python. Using that loop variable as a number
-(`print(x + 1)`) is reported rather than computed on a string table index, and rebinding it
-(`x = 5`) clears the tag.
+A slot's tag is written by whatever writes its payload, never afterwards (ADR 0187). That covers
+building a literal, `xs.append(v)`, and `xs[i] = v` — the last of which used to store the payload
+and leave the tag alone, so `xs = [1, "a", None]; xs[0] = "z"; print(xs)` answered
+`[1, 'a', None]`: the interned index of `"z"`, printed through the slot's stale `int` tag.
+
+Reading one element out produces the pair as well, and two uses of it are open:
+`print(xs[i])` dispatches on the tag, and `v = xs[i]` binds a *tagged variable* — the same
+`(value, tag)` binding a loop variable gets, so `print(v)` renders `str()` (`a`) while
+`print(xs)` renders `repr()` (`'a'`), and rebinding `v = 5` retires the tag (ADR 0185, ADR 0187).
+What still reports — rather than computing on a string-table index — is any context that needs
+one static kind: `xs[i] + 1`, `xs[i] > 2`, passing `xs[i]` to a function, `xs[i]` in a format
+spec, and reading a `dict`/`set` by key (those containers have no tag array yet).
 
 The tag is what makes a value's kind a fact rather than a guess, and it is what the
 compiled backend currently lacks per *element*: a compiled list records one element kind

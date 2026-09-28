@@ -2024,3 +2024,70 @@ and reading what git actually printed.
   wrong pin and requires drift; `TestOracleThirdLegIsNotAStub` requires the CPython leg to
   *disagree* with both backends on a program whose whole point is disagreement. A harness is only
   trustworthy once you have watched it fail on purpose.
+
+## The oracle's first catch: a passing build with a wrong answer (L11.1, ADR 0187)
+
+Continued L11.1 one cycle after landing the oracle (ADR 0186), and it paid for itself
+immediately. The thing it found was not a refusal — it was a **build that passed everything and
+printed the wrong list**.
+
+```gusty
+xs = [1, "a", None]
+xs[0] = "z"
+print(xs)     # both backends: [1, 'a', None]      CPython: ['z', 'a', None]
+```
+
+`rt_put_elem` wrote the payload; nothing wrote `@heap_tags`. The slot kept the `int` tag it was
+allocated with, and the payload — the *interned index* of `"z"` — rendered as a number that had
+come out of the string table. Under the two-backend matrix this was invisible forever: both
+backends emit the same module, so parity was 100%.
+
+**What I built.** One rule at every site that writes a slot: *the operation that writes a slot's
+payload writes its tag.* `rt_append_tagged(h, v, t)` appends both in one call; item assignment
+emits `rt_put_elem` + `rt_tag_elem` in the same bounds-checked block and deliberately skips the
+container-wide kind bookkeeping, because the tags carry the truth now. Reads emit `rt_get_elem` +
+`rt_tag_of`, and two uses of that pair are open: `print(xs[i])` dispatches on the tag, and
+`v = xs[i]` binds a tagged variable. Payload and tag are cross-checked — if one says "interned
+string" and the other says "number", the program refuses rather than emitting IR — because that
+disagreement *is* the bug class.
+
+**Three things to remember.**
+
+1. **A wrong answer costs more than a refusal.** Every refusal opened this cycle cost a program
+   nothing; the one place where the compiler answered instead of refusing cost the oracle its
+   trust. When forced to choose, refuse loudly — but go *look* for the places where you are
+   currently answering.
+
+2. **I again wrote tests asserting yesterday's limitation, and had to invert them — third cycle
+   running.** `TestMixedListElementUsesStillRefuse` asserted `print(xs[0])` must refuse. This
+   time I fixed the process, not only the test: every refusal test now asserts the refusal's
+   *text*, so when a future cycle opens one of those sites the assertion that breaks names the
+   capability that moved. A limitation test that checks only "some error" is a landmine; one that
+   checks the message is a sensor.
+
+3. **The general shape makes the specific use cheap.** `v = xs[i]` cost ~15 lines because
+   ADR 0185 had already built the tagged-variable binding for loop variables — same
+   `%_v`/`%_v_tag` allocas, same print dispatch, same rebinding-retires-the-tag path. The loop
+   cycle could have special-cased loop printing; it built the pair instead.
+
+**Where I was wrong twice, both about my own test expectations.** I wrote `xs[i % 2] = "w"` over
+80 iterations and predicted `['w', 'a']`; both slots get written, so the answer is `['w', 'w']`.
+I would have shipped the wrong *expectation* if the three-leg workflow had not made me run
+CPython on the program before writing the row. Expectations come from the oracle, not from
+imagining the program.
+
+**Also worth keeping.**
+
+- Payload-and-tag as two stores is a bug class that recurs whenever an operation is *composed*
+  rather than *named*. Naming it (`rt_append_tagged`) removed the ability to get it wrong. The
+  rejected alternative — poison the tag on write so a forgotten tag traps at print time — turns a
+  wrong answer into a crash but keeps the composition. Prefer the API that cannot express the bug.
+- Clearing `@heap_tags` on alloc/free was the other rejection: a memset per allocation to guard a
+  failure mode the pairing rule already makes unreachable. `TestMixedElementAccessSurvivesCollection`
+  is what keeps that bet honest — a stale tag shows up there as a wrong render, not a crash.
+- Corpus is 61 rows / 45 parity, oracle 29 match / 22 debt / 10 NA, 0 drift, 0 skipped. Matrix
+  counts are now part of every cycle's record.
+
+**Next.** L11.1's remaining list is ordered by oracle verdict, not by size: dict/set element tags
+(most of the container debt), floats in containers (the tag exists, the renderer does not), then
+bools as values — which still gates L11.2, because there is no tag to print from.
