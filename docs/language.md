@@ -821,6 +821,37 @@ match p:
 - `Call` to user functions or builtins (`print`, `range`).
 - Attribute access (`obj.attr`) and indexing are parsed for future features.
 
+### Comparison
+
+Numbers compare by value, strings compare by content, and **containers compare by value too**
+(ADR 0189):
+
+```python
+[1, 2] == [1, 2]                 # True
+{1, 2} == {2, 1}                 # True   — sets are unordered
+{"a": 1, "b": 2} == {"b": 2, "a": 1}   # True   — so are dicts
+[0] == ["zero"]                  # False  — the tag separates a number from a word
+[1] == 1                         # False  — unequal, not a trap
+```
+
+An element is the `(payload, tag)` pair, and *both* halves must match: a stored string is an
+index into the interned table, so the container holding the number `0` and the container holding
+the first interned string would otherwise be called equal. That is why every operation that writes
+a container slot writes its tag with it (ADR 0187), including the builders a call argument uses.
+
+- Lists compare position by position; sets and dicts by containment — a positional walk would make
+  `{1, 2} == {2, 1}` False.
+- A container compared with a scalar is unequal (`[1] == 1` is False, not an error), and the
+  operands are still evaluated, so `f() == xs` keeps `f`'s side effects.
+- Comparing a container with something whose kind the compiler cannot see — `xs == make()` —
+  **reports** rather than answering: "comparing a container with X needs a tagged value". That is
+  L11.2's missing value tag, named where it bites.
+- `is` / `is not` are the identity operators and always were: `xs is xs` is True, `xs is ys` is
+  False for two equal lists, and class instances, closures and methods compare by identity, as in
+  Python without `__eq__`.
+- `!=` is the negation of `==`. It used to be a separate, unreflective handle comparison, which
+  made `[1] == [1]` and `[1] != [1]` agree — both False.
+
 
 ## FFI / C interop (`extern fn`)
 

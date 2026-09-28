@@ -6,10 +6,10 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0188`. `go test -tags=llvm20 ./...`
-> is green. Conformance corpus: 67 programs under `integration/programs/` (15 of
-> them pinned probes), 62 matrix rows over **three legs** (interpreter, compiled binary, CPython): 47
-> parity cases plus 15 pinned probes; oracle 31 `match` / 21 `debt` /
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0189`. `go test -tags=llvm20 ./...`
+> is green. Conformance corpus: 68 programs under `integration/programs/` (15 of
+> them pinned probes), 63 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
+> parity cases plus 15 pinned probes; oracle 32 `match` / 21 `debt` /
 > 10 `not_applicable`. **The current plan is Phase 11 — the value model** (below);
 > its harness, L11.9, is ✅ DONE (ADR 0186), so no remaining Phase 11 item may be
 > marked done on parity alone — each one has a pinned program that has to change.
@@ -658,6 +658,34 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     `mixed_element_reads.gy`, `mixed_element_writes.gy`; two older tests that asserted
     `print(xs[i])` *must* refuse were inverted, and every refusal test now asserts the refusal's
     text so a future opening is noticed.
+  - ✅ **Done (ADR 0189): containers compare by value.** `xs == ys` for two equal lists answered
+    False on *both* backends — the comparison compared heap handles — and the bug went the other
+    way too: a stored string is an index into `@str_tab`, so `[0] == ["zero"]` was **True**, the
+    interned index matching the number. `if [1] == 1:` emitted `icmp eq i32 @.lst1, 1` and llc
+    refused the module; in the interpreter `!=` was not even the negation of `==`, so
+    `[1] == [1]` and `[1] != [1]` both answered False.
+    Now `rt_container_eq` walks the containers the way Python's `__eq__` does — lists positional,
+    sets and dicts by containment (a positional walk would make `{1, 2} == {2, 1}` False) — and
+    every element is the `(payload, tag)` pair, compared by `rt_slot_eq`. The tag is what makes
+    that sound: without it the payload collision returns. **Stub check**: delete the builder tag
+    stores and `TestTaggedElementsDistinguishPayloadCollisions` answers True where CPython answers
+    False.
+    Following ADR 0187's pairing rule to its end found four builders that had never written tags —
+    the plain list/dict/set literal builders, the container-variable assignment builders, and
+    `heapArg`, which hand-rolled its own `rt_alloc` + `rt_dict_put` loop for call arguments. An
+    untagged slot is uninitialised memory: a container could compare unequal to an *identical*
+    container depending on which heap slot it landed on. `heapArg` now delegates to
+    `heapSetFrom`/`heapDictFrom`, so a container is built in exactly one place per kind; mutation
+    uses `rt_append_tagged` / `rt_set_add_tagged` / `rt_dict_put_tagged` (whose update path also
+    rewrites the value's tag). `Tripwire`: `TestEveryContainerBuilderWritesTags` covers ten build
+    paths. Container-vs-proven-scalar is decided statically (with both operands still evaluated so
+    side effects survive); container-vs-*unknown* refuses — "comparing a container with X needs a
+    tagged value" — which is L11.2 named precisely. `is` stays identity, and `!=` is `==`'s
+    negation. New parity program `programs/container_equality.gy`, which reports verdicts through
+    `if` so the row tests equality and not the bool-rendering debt `probe_bool_value` pins.
+    **Latent, and now written down**: dict key lookup and set dedup still compare payloads only,
+    so they become unsound the moment heterogeneous keys are allowed — L11.1 (1b) must carry the
+    tag into `rt_dict_get`/`rt_set_add`, not only into equality.
   - 🟢 **Remaining**, in order: (1a) ~~the other element-wise *reads*~~ — done (ADR 0187);
     the next element-wise uses need tagged values at the *use* site, which is L11.2; (1b) mixed
     *dicts* and *sets* (same storage trick, `rt_dict_print`/`rt_set_print` dispatch on one flag

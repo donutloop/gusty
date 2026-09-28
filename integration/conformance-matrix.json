@@ -263,7 +263,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1910942356/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle405700345/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -274,7 +274,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1910942356/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle405700345/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -368,7 +368,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1374832906/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1533987354/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -379,7 +379,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1374832906/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1533987354/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -629,7 +629,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2476207075/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1372857568/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -640,7 +640,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2476207075/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1372857568/prog.py\", line 5"
       ]
     },
     {
@@ -670,7 +670,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle278125300/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1931507449/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -681,7 +681,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle278125300/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1931507449/prog.py\", line 3"
       ]
     },
     {
@@ -711,7 +711,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2928036737/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3726553965/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -722,7 +722,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2928036737/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3726553965/prog.py\", line 5"
       ]
     },
     {
@@ -901,6 +901,29 @@
       "parity": true,
       "python_ok": true,
       "python_stdout": "set()\nset()\n0\n[]\n{}\n[]|{}\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/container_equality",
+        "name": "container_equality.gy",
+        "source": "# Containers compare by value, like Python's ==; `is` stays identity (roadmap L11.1, ADR 0189).\n# Results are reported through `if` rather than printed, so this row tests equality semantics and\n# not the bool-rendering debt that probe_bool_value pins.\ndef verdict(a, b):\n    if a == b:\n        return \"equal\"\n    return \"different\"\n\n\nprint(verdict([1, 2], [1, 2]))\nprint(verdict([1, 2], [2, 1]))\nxs = [1, 2]\nys = [1, 2]\nprint(verdict(xs, ys))\nxs.append(3)\nprint(verdict(xs, ys))\nprint(verdict(xs, [1, 2, 3]))\nprint(verdict([0], [\"zero\"]))\nprint(verdict([\"a\"], [\"a\"]))\nprint(verdict([1, \"a\", None], [1, \"a\", None]))\nd = {\"a\": 1, \"b\": 2}\nprint(verdict(d, {\"b\": 2, \"a\": 1}))\nprint(verdict(d, {\"a\": 1}))\nd[\"c\"] = 3\nprint(verdict(d, {\"a\": 1, \"b\": 2, \"c\": 3}))\ns = {1, 2}\nprint(verdict(s, {2, 1}))\ns.add(3)\nprint(verdict(s, {1, 2}))\nprint(verdict([1], 1))\nprint(verdict([], []))\nif xs is xs:\n    print(\"same object\")\nif not (xs is ys):\n    print(\"different objects\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "equal\ndifferent\nequal\ndifferent\nequal\ndifferent\nequal\nequal\nequal\ndifferent\nequal\nequal\ndifferent\ndifferent\nequal\nsame object\ndifferent objects\n",
+      "aot_ok": true,
+      "aot_stdout": "equal\ndifferent\nequal\ndifferent\nequal\ndifferent\nequal\nequal\nequal\ndifferent\nequal\nequal\ndifferent\ndifferent\nequal\nsame object\ndifferent objects\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "equal\ndifferent\nequal\ndifferent\nequal\ndifferent\nequal\nequal\nequal\ndifferent\nequal\nequal\ndifferent\ndifferent\nequal\nsame object\ndifferent objects\n",
       "interp_matches_python": true,
       "aot_matches_python": true,
       "oracle": "match",
@@ -1274,7 +1297,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1022271269/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3753581964/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1285,7 +1308,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1022271269/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3753581964/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1315,7 +1338,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2210437829/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2154351668/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1326,7 +1349,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2210437829/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2154351668/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1651,7 +1674,7 @@
       "interp_stdout": "5\n195\na\né\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1878053544/050/prog.ll:160:13: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1127664171/051/prog.ll:160:13: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "4\né\na\né\n",
@@ -1666,7 +1689,7 @@
       ],
       "oracle_notes": [
         "interpreter stdout differs from CPython",
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1878053544/050/prog.ll:160:13: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1127664171/051/prog.ll:160:13: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -2002,11 +2025,11 @@
       ]
     }
   ],
-  "rows": 62,
+  "rows": 63,
   "skipped": 15,
-  "pass": 47,
+  "pass": 48,
   "fail": 0,
-  "oracle_match": 31,
+  "oracle_match": 32,
   "oracle_debt": 21,
   "oracle_not_applicable": 10,
   "oracle_drift": 0

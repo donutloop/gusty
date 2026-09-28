@@ -515,6 +515,140 @@ entry:
   ret i32 %v
 }
 
+; rt_slot_eq compares two container slots by (payload, tag), which is the only sound element
+; comparison: a stored string is an index into @str_tab, and the number 1 is a payload that can
+; equal it. Two slots are equal when both halves are (roadmap L11.1, ADR 0189).
+define internal i32 @rt_slot_eq(i32 %h1, i32 %i1, i32 %h2, i32 %i2) {
+entry:
+  %o1 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h1
+  %e1 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %o1, i32 0, i32 2, i32 %i1
+  %v1 = load i32, i32* %e1
+  %o2 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h2
+  %e2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %o2, i32 0, i32 2, i32 %i2
+  %v2 = load i32, i32* %e2
+  %peq = icmp eq i32 %v1, %v2
+  %t1p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h1, i32 %i1
+  %t1 = load i32, i32* %t1p
+  %t2p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h2, i32 %i2
+  %t2 = load i32, i32* %t2p
+  %teq = icmp eq i32 %t1, %t2
+  %both = and i1 %peq, %teq
+  %r = zext i1 %both to i32
+  ret i32 %r
+}
+
+; rt_container_eq compares two containers the way Python's == does: same kind, same size, and
+; every element equal under rt_slot_eq. Lists compare position by position; sets and dicts compare
+; by containment, because {1, 2} == {2, 1} is True and so is {"a": 1, "b": 2} == {"b": 2, "a": 1}
+; — a positional walk would make both False. Non-containers and mismatched kinds are unequal,
+; which is also the right answer for [1] == 1 (ADR 0189).
+define internal i32 @rt_container_eq(i32 %a, i32 %b) {
+entry:
+  %rangeA = icmp slt i32 %a, 1024
+  %rangeB = icmp slt i32 %b, 1024
+  %bothrange = and i1 %rangeA, %rangeB
+  br i1 %bothrange, label %kinds, label %no
+kinds:
+  %oa = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %a
+  %ob = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %b
+  %kap = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %oa, i32 0, i32 0
+  %kbp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %ob, i32 0, i32 0
+  %ka = load i32, i32* %kap
+  %kb = load i32, i32* %kbp
+  %ksameness = icmp eq i32 %ka, %kb
+  br i1 %ksameness, label %sizes, label %no
+sizes:
+  %lap = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %oa, i32 0, i32 1
+  %lbp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %ob, i32 0, i32 1
+  %la = load i32, i32* %lap
+  %lb = load i32, i32* %lbp
+  %lsame = icmp eq i32 %la, %lb
+  br i1 %lsame, label %disp, label %no
+disp:
+  ; HeapKindList = 1, HeapKindDict = 2, HeapKindSet = 3
+  %islist = icmp eq i32 %ka, 1
+  br i1 %islist, label %li_entry, label %chkset
+chkset:
+  %isset = icmp eq i32 %ka, 3
+  br i1 %isset, label %si_entry, label %chkdict
+chkdict:
+  %isdict = icmp eq i32 %ka, 2
+  br i1 %isdict, label %di_entry, label %no
+
+li_entry:
+  br label %li
+li:
+  %li_i = phi i32 [ 0, %li_entry ], [ %li_next, %li_step ]
+  %li_c = icmp slt i32 %li_i, %la
+  br i1 %li_c, label %li_body, label %yes
+li_body:
+  %li_s = call i32 @rt_slot_eq(i32 %a, i32 %li_i, i32 %b, i32 %li_i)
+  %li_ne = icmp ne i32 %li_s, 0
+  br i1 %li_ne, label %li_step, label %no
+li_step:
+  %li_next = add i32 %li_i, 1
+  br label %li
+
+si_entry:
+  br label %si
+si:
+  %si_i = phi i32 [ 0, %si_entry ], [ %si_next, %si_step ]
+  %si_c = icmp slt i32 %si_i, %la
+  br i1 %si_c, label %si_body, label %yes
+si_body:
+  br label %sj
+sj:
+  %sj_j = phi i32 [ 0, %si_body ], [ %sj_next, %sj_step ]
+  %sj_c = icmp slt i32 %sj_j, %lb
+  br i1 %sj_c, label %sj_body, label %no
+sj_body:
+  %sj_s = call i32 @rt_slot_eq(i32 %a, i32 %si_i, i32 %b, i32 %sj_j)
+  %sj_ne = icmp ne i32 %sj_s, 0
+  br i1 %sj_ne, label %si_step, label %sj_step
+sj_step:
+  %sj_next = add i32 %sj_j, 1
+  br label %sj
+si_step:
+  %si_next = add i32 %si_i, 1
+  br label %si
+
+di_entry:
+  br label %di
+di:
+  %di_i = phi i32 [ 0, %di_entry ], [ %di_next, %di_step ]
+  %di_c = icmp slt i32 %di_i, %la
+  br i1 %di_c, label %di_body, label %yes
+di_body:
+  %di_k = mul i32 %di_i, 2
+  %di_v = add i32 %di_k, 1
+  br label %dj
+dj:
+  %dj_j = phi i32 [ 0, %di_body ], [ %dj_next, %dj_step ]
+  %dj_c = icmp slt i32 %dj_j, %lb
+  br i1 %dj_c, label %dj_body, label %no
+dj_body:
+  %dj_k = mul i32 %dj_j, 2
+  %dj_v = add i32 %dj_k, 1
+  %dj_key = call i32 @rt_slot_eq(i32 %a, i32 %di_k, i32 %b, i32 %dj_k)
+  %dj_kne = icmp ne i32 %dj_key, 0
+  br i1 %dj_kne, label %dj_val, label %dj_step
+dj_val:
+  %dj_val_eq = call i32 @rt_slot_eq(i32 %a, i32 %di_v, i32 %b, i32 %dj_v)
+  %dj_vne = icmp ne i32 %dj_val_eq, 0
+  br i1 %dj_vne, label %di_step, label %no
+dj_step:
+  %dj_next = add i32 %dj_j, 1
+  br label %dj
+di_step:
+  %di_next = add i32 %di_i, 1
+  br label %di
+
+yes:
+  ret i32 1
+no:
+  ret i32 0
+}
+
 ; rt_print_mixed_value renders one element by its tag, using the same three texts the
 ; interpreter's Repr produces: numbers with %d, interned strings through the repr slot
 ; (Python quotes elements inside a container), and the None singleton as "None".
@@ -718,6 +852,53 @@ fin:
 @.fmtdsep = private unnamed_addr constant [3 x i8] c", \00"
 @.fmtdclose = private unnamed_addr constant [2 x i8] c"}\00"
 
+; rt_dict_put_tagged is rt_dict_put with the tags the two new slots carry. A dict interleaves key
+; and value in the element array, so an entry owns tag slots 2i and 2i+1; updating an existing
+; key rewrites the value's tag, because a key that now maps to a different kind of thing must not
+; keep printing and comparing as the old one (ADR 0187's rule, applied to dicts by ADR 0189).
+define internal void @rt_dict_put_tagged(i32 %h, i32 %k, i32 %v, i32 %kt, i32 %vt) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %add
+body:
+  %idx = mul i32 %i, 2
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx
+  %ek = load i32, i32* %kp
+  %eq = icmp eq i32 %ek, %k
+  br i1 %eq, label %upd, label %cont
+upd:
+  %idx2 = add i32 %idx, 1
+  %vp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx2
+  store i32 %v, i32* %vp
+  %utg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx2
+  store i32 %vt, i32* %utg
+  ret void
+cont:
+  %next = add i32 %i, 1
+  br label %check
+add:
+  %idx3 = mul i32 %len, 2
+  %kp3 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx3
+  store i32 %k, i32* %kp3
+  %idx4 = add i32 %idx3, 1
+  %vp4 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx4
+  store i32 %v, i32* %vp4
+  %ktg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx3
+  store i32 %kt, i32* %ktg
+  %vtg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx4
+  store i32 %vt, i32* %vtg
+  %len2 = add i32 %len, 1
+  store i32 %len2, i32* %lp
+  ret void
+}
+
 define internal void @rt_dict_put(i32 %h, i32 %k, i32 %v) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -848,6 +1029,41 @@ entry:
 @.fmtsitem = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtssep = private unnamed_addr constant [3 x i8] c", \00"
 @.fmtsclose = private unnamed_addr constant [2 x i8] c"}\00"
+
+; rt_set_add_tagged is rt_set_add with the tag for the slot it writes. Adding a member that is
+; already there writes nothing, and the tag store below then lands one past the end — harmless,
+; because no loop reads past len, and the member that is there already keeps the tag it was added
+; with (ADR 0189).
+define internal void @rt_set_add_tagged(i32 %h, i32 %v, i32 %t) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %add
+body:
+  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
+  %ev = load i32, i32* %kp
+  %eq = icmp eq i32 %ev, %v
+  br i1 %eq, label %ret, label %cont
+ret:
+  ret void
+cont:
+  %next = add i32 %i, 1
+  br label %check
+add:
+  %kp2 = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %len
+  store i32 %v, i32* %kp2
+  %tg = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %len
+  store i32 %t, i32* %tg
+  %len2 = add i32 %len, 1
+  store i32 %len2, i32* %lp
+  ret void
+}
 
 define internal void @rt_set_add(i32 %h, i32 %v) {
 entry:
@@ -3845,6 +4061,18 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 	// `if a < b and b < 9:` would otherwise pay for a zext and a re-test per
 	// comparison; emit the predicate itself and use it directly.
 	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" && !g.isFloat(n.L) && !g.isFloat(n.R) {
+		// A container comparison in a condition goes through the same value-equality helper the
+		// expression path uses; `if [1] == 1:` emitted `icmp eq i32 @.lst1, 1` before, which is
+		// both invalid IR and the wrong question (ADR 0189).
+		if (n.Op == "==" || n.Op == "!=") && (g.isContainerExpr(n.L) || g.isContainerExpr(n.R)) {
+			eq, err := g.containerEquality(b, n)
+			if err != nil {
+				return "", err
+			}
+			t := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", t, eq)
+			return g.markI1(t), nil
+		}
 		l, err := g.value(b, n.L)
 		if err != nil {
 			return "", err
@@ -3892,7 +4120,15 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		// d[k] = "s" after d[k] = 1 leaves a string-valued dict (Gap J.6).
 		g.replaceElemKind(nm.Value, "dict value", vIsStr)
 		g.replaceElemKind(nm.Value, "dict key", kIsStr)
-		b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		// The pair and its two tags go in together: a dict entry that keeps the tag of the
+		// value it used to hold prints and compares as the old kind (ADR 0187, ADR 0189).
+		kt, ktOK := g.elemKindTag(ix.Idx)
+		vt, vtOK := g.elemKindTag(val)
+		if ktOK && vtOK {
+			b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, key, v, kt, vt))
+		} else {
+			b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		}
 		if kIsStr || vIsStr {
 			bits := 0
 			if kIsStr {
@@ -3963,6 +4199,9 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", ix.Span())
 		b.WriteString(fmt.Sprintf("%s:\n", okL))
 		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		if kt, ok := g.elemKindTag(val); ok {
+			b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %d)\n", h, key, kt))
+		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 		return nil
@@ -4362,6 +4601,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if lok && rok {
 				return g.strConst(ls + rs), nil
 			}
+		}
+		// A container is equal to another container by *value*. Both backends compared the
+		// two i32s instead, which compared heap slots: xs == ys was False for two equal
+		// lists, [1] == [1] was False, and a literal operand made the module invalid (the
+		// static @.lstN global in an icmp). rt_container_eq walks the (payload, tag) pairs
+		// the way Python's __eq__ walks elements (roadmap L11.1, ADR 0189). `is` stays
+		// identity, which is what Python's `is` is for containers.
+		if (n.Op == "==" || n.Op == "!=") && (g.isContainerExpr(n.L) || g.isContainerExpr(n.R)) {
+			return g.containerEquality(b, n)
 		}
 		l, err := g.value(b, n.L)
 		if err != nil {
@@ -5642,7 +5890,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if attr.Name.Value == "discard" {
 					fn = "rt_set_discard"
 				}
-				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s)\n", fn, hs, av))
+				if kt, ok := g.elemKindTag(c.Args[0]); ok && attr.Name.Value == "add" {
+					b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %d)\n", hs, av, kt))
+				} else {
+					b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s)\n", fn, hs, av))
+				}
 				if interned {
 					// The object, not the variable, records that its members are strings: a helper
 					// that fills a container it was handed would otherwise leave the caller's print
@@ -5746,7 +5998,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			g.heapSeq++
 			hs := g.heapSeq
 			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-			b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %%h%d, i32 %s)\n", hs, av))
+			if kt, ok := g.elemKindTag(c.Args[0]); ok {
+				// Payload and tag are one operation, so an append cannot leave the new slot
+				// carrying the tag of whoever held it last (ADR 0187).
+				b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %%h%d, i32 %s, i32 %d)\n", hs, av, kt))
+			} else {
+				b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %%h%d, i32 %s)\n", hs, av))
+			}
 			if interned {
 				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 1)\n", hs))
 			}
@@ -8566,15 +8824,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if mixed {
-						tag := elemTagFor(el, interned)
-						if tag == int32(TagNone) {
-							// None has no i32 payload of its own; the tag is what renders it.
-							ev = "0"
+					// Every slot is tagged, not just the ones in a mixed list: rt_container_eq
+					// compares (payload, tag) pairs, and a slot whose tag was never written holds
+					// whatever the previous tenant of that heap slot left (ADR 0187, ADR 0189).
+					tag := elemTagFor(el, interned)
+					if tag == int32(TagNone) {
+						// None has no i32 payload of its own; the tag is what renders it.
+						ev = "0"
+					}
+					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i, tag))
+					if !mixed {
+						if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
+							return err
 						}
-						b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i, tag))
-					} else if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
-						return err
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, ev))
 				}
@@ -8618,6 +8880,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindSet))
+				si := 0
 				for _, el := range sl.Elems {
 					ev, interned, err := g.heapElemKind(b, el)
 					if err != nil {
@@ -8627,6 +8890,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						return err
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, ev))
+					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, si, elemTagFor(el, interned)))
+					si++
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
@@ -8696,6 +8961,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						bits |= 4
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %%h%d, i32 %s, i32 %s)\n", hs, kk, vv))
+					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i*2, elemTagFor(dl.Keys[i], kIsStr)))
+					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i*2+1, elemTagFor(dl.Vals[i], vIsStr)))
 					if bits != 0 {
 						b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, bits))
 					}

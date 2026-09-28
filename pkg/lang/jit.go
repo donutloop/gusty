@@ -1784,9 +1784,16 @@ func (e *Evaluator) evalGen(g *Generator) (int64, error) {
 }
 
 // eqVal reports value equality between two handles, mirroring `==` semantics:
-// numeric equality via float promotion, string content equality, and handle
-// identity for everything else.
+// numeric equality via float promotion, string content equality, containers compared
+// element-wise, and handle identity for everything else. Identity is `is`; `==` on a
+// container is not (ADR 0189).
 func (e *Evaluator) eqVal(l, r int64) bool {
+	if l == r {
+		// The same handle is equal to itself under every rule below: an immediate is the same
+		// number, an interned string is the same text, a container is the same container.
+		// `is` is the operator that asks about identity; it does not come through here.
+		return true
+	}
 	if lf, ok := e.floatOf(l); ok {
 		rf, rfok := e.floatOf(r)
 		if !rfok {
@@ -1806,6 +1813,73 @@ func (e *Evaluator) eqVal(l, r int64) bool {
 		}
 		return false
 	}
+	// Containers compare by value, the way Python's `==` does: same kind, same size, and
+	// every element (or every key with its value) equal under this same rule. Until now
+	// this fell through to `l == r`, so `[1, 2] == [1, 2]` was False and `xs == ys` was
+	// False for equal containers — answers, not refusals, on both backends (ADR 0189).
+	lo, lok := e.heap[l]
+	ro, rok := e.heap[r]
+	if lok != rok {
+		return false
+	}
+	if !lok {
+		return l == r
+	}
+	if lo.kind != ro.kind {
+		return false
+	}
+	switch lo.kind {
+	case "list":
+		if len(lo.elems) != len(ro.elems) {
+			return false
+		}
+		for i := range lo.elems {
+			if !e.eqVal(lo.elems[i], ro.elems[i]) {
+				return false
+			}
+		}
+		return true
+	case "set":
+		if len(lo.elems) != len(ro.elems) {
+			return false
+		}
+		// A set is unordered: equal means each side contains the other, not the same slot
+		// order — {1, 2} == {2, 1} is True in Python and would be False on a positional walk.
+		for _, el := range lo.elems {
+			found := false
+			for _, other := range ro.elems {
+				if e.eqVal(el, other) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	case "dict":
+		if len(lo.elems) != len(ro.elems) || len(lo.dvals) != len(ro.dvals) {
+			return false
+		}
+		for i, k := range lo.elems {
+			matched := false
+			for j, ok2 := range ro.elems {
+				if !e.eqVal(k, ok2) {
+					continue
+				}
+				if e.eqVal(lo.dvals[i], ro.dvals[j]) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return false
+			}
+		}
+		return true
+	}
+	// Instances, classes, closures, methods: identity, as in Python without __eq__.
 	return l == r
 }
 
@@ -2090,10 +2164,13 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return 1, nil
 	case "!=":
-		if l != r {
-			return 1, nil
+		// `!=` is the negation of `==`, which means it goes through eqVal too. This was
+		// a raw handle comparison, so `[1] != [1]` answered False in the interpreter while
+		// `[1] == [1]` also answered False — the pair disagreed with itself (ADR 0189).
+		if e.eqVal(l, r) {
+			return 0, nil
 		}
-		return 0, nil
+		return 1, nil
 	case "<":
 		if lf, ok := e.floatOf(l); ok {
 			rf, rfok := e.floatOf(r)

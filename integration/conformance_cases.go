@@ -59,6 +59,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// container instead of as its handle / its static global (Gap J.6, Gap K.3, ADR 0188).
 		"empty_containers",
 		"empty_set",
+		// Containers compare by value on both backends, and the row is checked against
+		// CPython like every other parity case (roadmap L11.1, ADR 0189).
+		"container_equality",
 		"print_args",
 		"truthiness",
 		"subscript_assign",

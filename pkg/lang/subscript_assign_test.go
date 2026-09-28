@@ -111,8 +111,10 @@ func TestIRSubscriptAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile(dict): %v", err)
 	}
-	if !strings.Contains(res.IR, "call void @rt_dict_put(") {
-		t.Errorf("dict item assignment must use rt_dict_put:\n%s", res.IR)
+	if !strings.Contains(res.IR, "call void @rt_dict_put_tagged(") {
+		// A dict entry is (key, value) plus the two tags those slots carry; the tagged helper
+		// writes all four in one operation (ADR 0187's pairing rule, applied by ADR 0189).
+		t.Errorf("dict item assignment must use rt_dict_put_tagged:\n%s", irLinesContaining(res.IR, "rt_dict_put"))
 	}
 	if v, err := VerifyModuleIR(res.IR, 0); err != nil || !v.OK {
 		t.Errorf("dict assignment module must verify: %v %v", v.Errors, err)

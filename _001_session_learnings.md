@@ -2159,3 +2159,65 @@ tested seventeen ways; `print([1, 2])` — the tutorial's first line — crashed
 **Now.** Corpus: 62 rows / 47 parity, oracle 31 match / 21 debt / 10 NA, 0 drift. Next in L11.1:
 dict/set element tags (most of the remaining container debt), floats in containers, then bools as
 values — the one that still gates L11.2, because there is no tag to print from.
+
+## Containers compare by value — and the bug that went *both* ways (L11.1, ADR 0189)
+
+The boring-program sweep (twelve tutorial-shaped programs, run on all three legs) kept paying:
+five of them diverged, and the richest was `xs == ys` for two equal lists.
+
+Both backends answered **False**. That is the familiar shape: `==` on containers compared the two
+i32s, and the i32s were heap slots. But the same comparison had a second, inverted face — the
+element of a container holding a string is an *index into the interned table*, so
+
+```gusty
+[0] == ["zero"]     # would answer True;  CPython: False
+```
+
+A comparison that is wrong in both directions is the worst property it can have: no amount of
+"just try it on a few cases" surfaces it, because whichever way you test, something looks right.
+
+**What I built.** `rt_container_eq` walks two containers the way Python's `__eq__` does — lists
+positional, sets and dicts by containment (a positional walk makes `{1, 2} == {2, 1}` False) — and
+each element is compared as the `(payload, tag)` pair. Container-vs-proven-scalar is decided
+statically with both operands still evaluated (`f() == xs` keeps `f`'s side effects);
+container-vs-*unknown* refuses with "needs a tagged value", which is L11.2 named exactly where it
+bites. `is` stays identity, and `!=` became the negation of `==` — it had been its own raw handle
+comparison, so `[1] == [1]` and `[1] != [1]` both answered False.
+
+**The pairing rule was not finished, and following it found the real bug.** ADR 0187 said *the
+operation that writes a slot's payload writes its tag*; I had applied it to the mixed-list path and
+the element writes, and no further. Grepping for every place a container gets built turned up four
+builders that never wrote tags at all: the plain list/dict/set literal builders, the
+container-variable assignment builders, and `heapArg`, which hand-rolled its own
+`rt_alloc`+`rt_dict_put` loop for call arguments. An untagged slot is **uninitialised memory** — it
+holds whatever the previous tenant of that heap slot left — so a container could compare unequal to
+an *identical* container depending on which slot it happened to land on. That is exactly the
+symptom I chased: `same({"a":1},{"a":1})` equal, `same(p, {"a":1})` unequal, both "correct-looking"
+programs, differing by which allocation came first. `heapArg` now delegates to
+`heapSetFrom`/`heapDictFrom`: a container is built in exactly one place per kind, and that place
+writes the pair.
+
+**The test that earned its keep.** My first collision test (`[1] == ["1"]`) passed *with the tags
+removed* — the interned index never equalled the payload, so it proved nothing. The version with
+teeth is `[0] == ["zero"]`: the first interned string lands on index 0, and with the builder tag
+stores deleted it answers True where CPython answers False. I now treat "I stubbed it and the test
+still passed" as a failed test, not a passing one — third cycle I've caught myself this way, and
+each time it was a test I had written in the previous hour.
+
+**A process note on my own expectations.** I wrote `print([1] == [1])` into a corpus program, then
+caught it: comparing containers via a printed bool conflates this work with the bool-rendering debt
+(`print(True)` → `1`, `probe_bool_value`). The corpus row now reports verdicts through `if`, so
+`container_equality.gy` tests equality and stays a clean `match` row. Two debts, two rows — a test
+that measures one thing is worth two that measure two.
+
+**Latent, recorded not fixed:** dict key lookup and set dedup still compare payloads only. They are
+safe today only because heterogeneous dict keys are refused; the moment L11.1 (1b) allows them,
+`rt_dict_get`/`rt_set_add` need the tag too. It is in the ADR and the roadmap rather than in my
+head, which is the whole point of writing these down.
+
+**Corpus**: 63 rows / 48 parity, oracle 32 match / 21 debt / 10 NA, 0 drift, 0 skipped.
+
+**Next** from the same sweep, still unpinned: a comprehension whose element is a call
+(`[square(x) for x in range(5)]` — "comprehension element must be constant"), and
+`names.sort()` / `sorted(names)` on a variable (the interpreter has no `sort`, and AOT's diagnostic
+is the *string*-method one, which is the wrong family entirely).

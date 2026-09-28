@@ -1,0 +1,35 @@
+# Containers compare by value, like Python's ==; `is` stays identity (roadmap L11.1, ADR 0189).
+# Results are reported through `if` rather than printed, so this row tests equality semantics and
+# not the bool-rendering debt that probe_bool_value pins.
+def verdict(a, b):
+    if a == b:
+        return "equal"
+    return "different"
+
+
+print(verdict([1, 2], [1, 2]))
+print(verdict([1, 2], [2, 1]))
+xs = [1, 2]
+ys = [1, 2]
+print(verdict(xs, ys))
+xs.append(3)
+print(verdict(xs, ys))
+print(verdict(xs, [1, 2, 3]))
+print(verdict([0], ["zero"]))
+print(verdict(["a"], ["a"]))
+print(verdict([1, "a", None], [1, "a", None]))
+d = {"a": 1, "b": 2}
+print(verdict(d, {"b": 2, "a": 1}))
+print(verdict(d, {"a": 1}))
+d["c"] = 3
+print(verdict(d, {"a": 1, "b": 2, "c": 3}))
+s = {1, 2}
+print(verdict(s, {2, 1}))
+s.add(3)
+print(verdict(s, {1, 2}))
+print(verdict([1], 1))
+print(verdict([], []))
+if xs is xs:
+    print("same object")
+if not (xs is ys):
+    print("different objects")

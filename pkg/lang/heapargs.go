@@ -556,39 +556,25 @@ func (g *irGen) heapArg(b *strings.Builder, e Expr) (handle string, ok bool, err
 		}
 		return h, true, nil
 	}
-	h := g.newTmp()
-	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, k)
+	// Sets and dicts handed to a callee are built by the same helpers every other container
+	// build uses, so their slots carry tags: a hand-rolled loop here used to write payloads
+	// only, and the container it built compared unequal to an identical one whose slots *were*
+	// tagged — rt_slot_eq compares the pair (ADR 0189).
 	switch n := e.(type) {
 	case *SetLit:
-		for _, el := range n.Elems {
-			v, e := g.heapElem(b, el)
-			if e != nil {
-				return "", true, e
-			}
-			fmt.Fprintf(b, "  call void @rt_set_add(i32 %s, i32 %s)\n", h, v)
+		h, err := g.heapSetFrom(b, n, "")
+		if err != nil {
+			return "", true, err
 		}
+		return h, true, nil
 	case *DictLit:
-		for i := range n.Keys {
-			kk, e := g.heapElem(b, n.Keys[i])
-			if e != nil {
-				return "", true, e
-			}
-			vv, e := g.heapElem(b, n.Vals[i])
-			if e != nil {
-				return "", true, e
-			}
-			fmt.Fprintf(b, "  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, kk, vv)
+		h, err := g.heapDictFrom(b, n, "")
+		if err != nil {
+			return "", true, err
 		}
+		return h, true, nil
 	}
-	return h, true, nil
-}
-
-// heapElem lowers one container element. Strings are `i8*` globals in this
-// backend and the heap stores i32 slots, so a string element would produce IR
-// the verifier rejects — report it as the unsupported case it is instead.
-func (g *irGen) heapElem(b *strings.Builder, e Expr) (string, error) {
-	v, _, err := g.heapElemKind(b, e)
-	return v, err
+	return "", false, nil
 }
 
 // heapElemKind lowers a value for a heap container slot and reports whether it became an
@@ -670,6 +656,10 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 			}
 		}
 		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
+		// Every builder writes the tag with the payload, not only the mixed-list one: a slot
+		// whose tag was never written carries whatever the previous tenant of that heap slot
+		// left behind, and equality (rt_slot_eq) reads the pair (ADR 0187's rule, ADR 0189).
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i, elemTagFor(el, interned))
 	}
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
@@ -707,6 +697,10 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 			}
 		}
 		fmt.Fprintf(b, "  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, kk, vv)
+		// A dict interleaves key and value in the element array, so it owns two tag slots per
+		// entry: rt_dict_get reads the key payload, rt_container_eq reads the pairs.
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i*2, elemTagFor(dl.Keys[i], kIsStr))
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i*2+1, elemTagFor(dl.Vals[i], vIsStr))
 	}
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
@@ -720,6 +714,7 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 	h := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapSet)
 	bits := 0
+	idx := 0
 	for _, el := range sl.Elems {
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
@@ -732,6 +727,8 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 			}
 		}
 		fmt.Fprintf(b, "  call void @rt_set_add(i32 %s, i32 %s)\n", h, v)
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, idx, elemTagFor(el, interned))
+		idx++
 	}
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
@@ -1187,4 +1184,114 @@ func (g *irGen) replaceElemKind(name, slot string, isStr bool) {
 	}
 	strMap[name] = false
 	numMap[name] = true
+}
+
+// isContainerExpr reports the expressions whose value the compiled backend knows to be a heap
+// container: a container variable, a container literal, or an empty constructor call. It is a
+// static question, answered by the same maps that choose the printer for print (ADR 0188) — and
+// for the same reason: an i32 that is a handle cannot be treated as a number.
+func (g *irGen) isContainerExpr(e Expr) bool {
+	switch n := e.(type) {
+	case *ListLit, *SetLit, *DictLit:
+		return true
+	case *Name:
+		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
+	}
+	_, ok := emptyContainerLiteral(e)
+	return ok
+}
+
+// containerOperand lowers one operand of a container comparison to its handle. A literal builds
+// the runtime object rather than using the compile-time global: the global's layout is a length
+// plus an array, not a handle, and handing it to a runtime helper is the invalid-IR shape that
+// print used to have (ADR 0188).
+func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
+	if lit, ok := emptyContainerLiteral(e); ok {
+		e = lit
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		return g.heapListFrom(b, n, "")
+	case *SetLit:
+		return g.heapSetFrom(b, n, "")
+	case *DictLit:
+		return g.heapDictFrom(b, n, "")
+	case *Name:
+		g.heapUsed = true
+		v := g.newTmp()
+		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", v, n.Value)
+		return v, nil
+	}
+	return "", fmt.Errorf("codegen: %s is not a container (roadmap L11.1, ADR 0189)", exprSnippet(e))
+}
+
+// compareOperand lowers one side of a container comparison: a container through the heap path,
+// anything else through the ordinary value path.
+func (g *irGen) compareOperand(b *strings.Builder, e Expr, isContainer bool) (string, error) {
+	if isContainer {
+		return g.containerOperand(b, e)
+	}
+	return g.value(b, e)
+}
+
+// isProvenScalarExpr reports what the compiler can show is *not* a container: a number, a string,
+// None. Container-vs-scalar is False the way Python says it is — but only when the other side is
+// proven, because an i32 with no static kind could be a handle, and two handles that differ are
+// two different containers, not an unequal container and number.
+func (g *irGen) isProvenScalarExpr(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *BoolLit, *NoneLit:
+		return true
+	}
+	if _, ok := g.stringVal(e); ok {
+		return true
+	}
+	if nm, ok := e.(*Name); ok && (g.internedVars[nm.Value] || g.floatVars[nm.Value]) {
+		return true
+	}
+	return g.isFloat(e)
+}
+
+// containerEquality lowers == and != when at least one side is a container (ADR 0189).
+func (g *irGen) containerEquality(b *strings.Builder, n *BinOp) (string, error) {
+	lc, rc := g.isContainerExpr(n.L), g.isContainerExpr(n.R)
+	// Each side lowers by what it is: a container becomes a handle, anything else keeps the
+	// ordinary value path (and its side effects — deciding an answer statically must not
+	// delete an operand that prints).
+	lhs, err := g.compareOperand(b, n.L, lc)
+	if err != nil {
+		return "", err
+	}
+	rhs, err := g.compareOperand(b, n.R, rc)
+	if err != nil {
+		return "", err
+	}
+	if !lc || !rc {
+		// Both operands are still built above: deciding the answer statically must not
+		// delete a side effect (the same rule as the None comparison in value()).
+		// Whichever side is not the container is the one we must be able to prove is a scalar.
+		other := n.R
+		if rc && !lc {
+			other = n.L
+		}
+		if !g.isProvenScalarExpr(other) {
+			return "", fmt.Errorf("codegen: comparing a container with %s needs a tagged value: the compiler cannot see whether that side is a container, and comparing the two i32s would compare a heap slot with a number (roadmap L11.1/L11.2, ADR 0189)", exprSnippet(other))
+		}
+		if n.Op == "!=" {
+			return "1", nil
+		}
+		return "0", nil
+	}
+	raw := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_container_eq(i32 %s, i32 %s)\n", raw, lhs, rhs)
+	cmp := g.newTmp()
+	if n.Op == "==" {
+		fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", cmp, raw)
+	} else {
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, 0\n", cmp, raw)
+	}
+	g.markI1(cmp)
+	out := g.newTmp()
+	fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", out, cmp)
+	return out, nil
 }
