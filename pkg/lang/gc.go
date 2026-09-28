@@ -69,6 +69,10 @@ type GCStats struct {
 	// Protected is how many objects the watermark kept alive without tracing.
 	Protected int `json:"protected"`
 	// Generational is true when the last collection was a young (nursery) GC.
+	// Top is the high-water mark of the compiled backend's root stack (0 for the
+	// interpreter, which has no fixed-capacity stack): how close the program came to
+	// the point where a handle could not be rooted.
+	Top          int  `json:"top"`
 	Generational bool `json:"generational"`
 	// Backend names the collector that produced these numbers.
 	Backend string `json:"backend"`
@@ -104,7 +108,75 @@ func (s GCStats) String() string {
 	} else {
 		b.WriteString(" kind=full")
 	}
+	if s.Top != 0 {
+		// Only the compiled backend reports a root-stack high-water mark; keeping it
+		// conditional leaves the interpreter's line byte-for-byte stable.
+		b.WriteString(" top=")
+		b.WriteString(strconv.Itoa(s.Top))
+	}
 	return b.String()
+}
+
+// ParseGCStatsLine reads back one collector self-report line: the shape written by
+// GCStats.String (interpreter) and by the compiled runtime's rt_gc_report (--gc-stats
+// on the AOT path, whose numbers live in the child program's globals and so reach the
+// CLI as this line on fd 2). Splitting the documented line into fields — instead of
+// scraping prose — is what lets `--json --aot --gc-stats` hand an agent data.
+// Fields the reporting backend does not emit are simply left at zero.
+func ParseGCStatsLine(line string) (GCStats, bool) {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) < 3 || fields[0] != "gc:" {
+		return GCStats{}, false
+	}
+	num := func(s string) int {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return 0
+		}
+		return n
+	}
+	st := GCStats{Backend: "aot"}
+	seen, numbered := false, false
+	for _, f := range fields[1:] {
+		k, v, ok := strings.Cut(f, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "backend":
+			st.Backend = v
+			seen = true
+		case "collections":
+			st.Collections = num(v)
+			numbered = true
+		case "roots":
+			st.Roots = num(v)
+		case "skipped":
+			st.Skipped = num(v)
+		case "marked":
+			st.Marked = num(v)
+		case "freed":
+			st.Freed = num(v)
+		case "total_freed":
+			st.TotalFreed = num(v)
+		case "live":
+			st.Live = num(v)
+		case "frames":
+			st.Frames = num(v)
+		case "protected":
+			st.Protected = num(v)
+		case "kind":
+			st.Generational = v == "young"
+		case "top":
+			st.Top = num(v)
+		}
+	}
+	// A report always names its backend and always counts its collections: both are
+	// required so a stray "gc:" line in program output cannot be mistaken for one.
+	if !seen || !numbered {
+		return GCStats{}, false
+	}
+	return st, true
 }
 
 // gcEnvStress forces a collection at every statement boundary instead of only
@@ -444,3 +516,15 @@ func (e *Evaluator) SetGCAllocThreshold(n int64) {
 	}
 	e.gcThreshold = n
 }
+
+// gcReport is the process switch that makes the *compiled* backend's runtime print its
+// collector report at the end of main — the AOT counterpart of the interpreter's
+// --gc-stats. Codegen has no option object, so this follows the SetStdlibDir pattern:
+// one package switch, set once by the CLI before generating.
+var gcReport bool
+
+// SetGCReport turns the compiled backend's collector self-report on or off.
+func SetGCReport(on bool) { gcReport = on }
+
+// GCReportEnabled reports whether compiled programs print their collector report.
+func GCReportEnabled() bool { return gcReport }

@@ -235,6 +235,10 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 		fmt.Fprintf(b, ", i32 %%p%d", i)
 	}
 	fmt.Fprintf(b, ") {\n")
+	// The closure body is a call too: it opens its own root frame and pops it on the
+	// way out, so its locals retain nothing once it returns (ADR 0181).
+	savedFrame := g.frameOpen
+	g.gcOpenFrame(b)
 	g.params = map[string]string{}
 	for i, p := range ci.params {
 		g.params[p] = fmt.Sprintf("%%p%d", i)
@@ -253,9 +257,11 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	}
 	g.inFunc = false
 	if !strings.HasSuffix(strings.TrimSpace(b.String()), "ret ") {
+		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret i32 0\n")
 	}
 	fmt.Fprintf(b, "}\n")
+	g.frameOpen = savedFrame
 	g.envMode = false
 	g.envCaptures = nil
 	g.params = map[string]string{}
@@ -333,6 +339,8 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 		fmt.Fprintf(b, "i32 %%p%d", i)
 	}
 	fmt.Fprintf(b, ") {\n")
+	savedFrame := g.frameOpen
+	g.gcOpenFrame(b)
 	g.params = map[string]string{}
 	for i, p := range fd.Params {
 		g.params[p.Name] = fmt.Sprintf("%%p%d", i)
@@ -340,7 +348,9 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 	for _, st := range fd.Body {
 		g.stmt(b, st)
 	}
+	g.gcCloseFrame(b)
 	fmt.Fprintf(b, "  ret i32 0\n}\n")
+	g.frameOpen = savedFrame
 	// @f_ptr global fnptr initialized to @f_impl
 	finalLabel, err := g.resolveDecorators(fd)
 	if err != nil {

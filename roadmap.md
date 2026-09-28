@@ -430,26 +430,32 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L7.2 Precise stack roots** — replace conservative mark-and-sweep with
   precise rooting: the GC knows exactly which stack slots/registers hold
   handles (fixes Gap A's instance-layout bug at the root cause).
-  🟢 **IN PROGRESS (this round)** — the interpreter half is **DONE** (ADR 0181):
-  the root set is `Vars` ∪ active call frames ∪ declared root groups ∪ permanent
-  roots; a watermark makes everything allocated after the last safe point
-  unconditionally live; safe points are statement boundaries with an empty
-  expression stack, plus the body of a *statement-root* call. Collection now
-  actually runs while programs execute (it used to be reachable only from tests),
-  a loop's garbage is reclaimed, a 2000-input REPL session stays bounded, and
-  `GCStats`/`--gc-stats`/`--schema definitions.gcStats` make the collector's
-  behaviour observable; `GUSTY_GC_STRESS=1` + `integration/gc_stress_test.go`
-  stress the whole corpus under a collection at every statement. With `pushFrame`
-  stubbed out, `TestGCFramesKeepRecursionLive` fails with `cannot index null` —
-  frame rooting is tested as load-bearing, not decorative.
-  **Remaining (next commit of this item)**: the compiled backend. Its root slots are
-  static per (scope, name), so recursion clobbers the outer frame's entry and a
-  collection inside the inner call sweeps the outer frame's live list —
-  `integration/programs/gc_precise.gy` reproduces it (interpreter 130, AOT 346).
-  The fix is the same discipline as a root *stack*: prologue opens a frame,
-  handle-stores push `(slot, kind)` deduped per frame, scalar stores tag the slot
-  dead, every return closes the frame, and `rt_gc` traces only tagged entries while
-  counting what it skipped (its own `gc: backend=aot …` report).
+  ✅ **DONE (this round, ADR 0181)** — both backends.
+  *Interpreter*: the root set is `Vars` ∪ active call frames ∪ declared root groups ∪
+  permanent roots; a watermark makes everything allocated after the last safe point
+  unconditionally live; safe points are statement boundaries with an empty expression
+  stack, plus the body of a *statement-root* call. Collection now actually runs while
+  programs execute (it used to be reachable only from tests), a loop's garbage is
+  reclaimed, a 2000-input REPL session stays bounded, and `GUSTY_GC_STRESS=1` +
+  `integration/gc_stress_test.go` stress the whole corpus under a collection at every
+  statement. Stubbing `pushFrame` makes `TestGCFramesKeepRecursionLive` fail with
+  `cannot index null`.
+  *Compiled backend*: the static per-(scope,name) root table became a **root stack** —
+  `@gc.roots` + `@gc.kinds`, `rt_root_put`/`rt_root_clear`/`rt_frame_open`/
+  `rt_frame_close`; prologues open a frame, every handle store pushes (deduped per
+  frame), scalar stores tag the entry dead, every return and unwind edge pops, and
+  `rt_gc` traces only tagged entries while counting what it skipped. Fixing it exposed
+  two latent codegen faults it now depends on: a variable's slot must be allocated once
+  per call (`hoistAllocas` — an `alloca` left in a loop body changed address every
+  iteration: `top` hit 2002, the 1024-slot heap filled, the program died), and every
+  function-emitting path including `emitClassMethod` must pop what it pushed. The
+  instance-layout bug that Gap A worked around is rooted out at the cause.
+  *Machine path*: `GCStats`, `--gc-stats` (either backend, stderr), the `gc` member of
+  `--json`, `definitions.gcStats` (incl. `top`) in `--schema`, and
+  `lang.ParseGCStatsLine` ↔ `GCStats.String` round-trip. `gc_precise.gy` is in the
+  conformance matrix; the AOT half is pinned by structural invariants
+  (`pkg/lang/gc_roots_ir_test.go`) and by runtime assertions calibrated against stubs
+  (no frame pop → "19 objects still live"; no hoisting → "root stack grew to 1210").
 - **L7.3 Tagged pointers / NaN-boxing** — box small ints and floats in the
   payload so `int`/`float`/`bool` avoid heap allocation; pairs with L7.2 for
   a compact, allocation-free fast path.
@@ -1127,3 +1133,32 @@ index) survived behind exactly that. Needed:
   choice — settle it and update the golden expectations);
 - float `%` uses truncated (`math.Mod`) rather than Python's floored modulo
   (`-3.5 % 2.0` is `-1.5`, Python `0.5`).
+
+## Gap Q — container-kind rebinding and a fixed 1024-slot heap (found 2026-09-28, L7.2)
+
+Both surfaced while making the compiled collector precise (ADR 0181): one as a
+wrong answer that reproduced identically at HEAD, one as the ceiling the new root stack
+revealed underneath. Neither is a root-set bug — they are what the collector was hiding.
+
+### Gap Q.1 — a container variable rebound to another kind keeps the old kind (OPEN)
+```
+d = {1: 10}
+d = [3, 4]
+print(d[0])        # interpreter 3, python3 3, --aot 0   (identical before ADR 0181)
+```
+The assignment frees the old object and stores the new handle, but the variable's
+container-kind tracking (`listVars` / `runtimeDicts` / `runtimeSets`) does not settle on
+the new kind for every read path, so `d[0]` is still measured as a dict lookup and yields
+the wrong slot. Reproduced at HEAD, so this is not a regression from the root work; it is
+a candidate for the same "one tagged word" fix as Gap A/J.6 rather than another patch to
+the kind maps.
+
+### Gap Q.2 — the runtime heap is a fixed 1024 objects, and exhaustion is silent (OPEN)
+`@heap` is `[1024 x {i32, i32, [256 x i32]}]`; when it fills, `rt_alloc` returns **-1**
+and the program carries on with an invalid handle. Before ADR 0181 the collector kept
+everything alive, so a heap-stress program reached the ceiling and died; the root stack
+fixed the retention but not the ceiling. Two things are missing, and neither is subtle:
+an out-of-memory **diagnostic** (raise `MemoryError`-style and exit non-zero like any
+other runtime failure, instead of returning -1), and a heap that grows — either larger or
+segmented — with the capacity reported in `--gc-stats` so a workload's headroom is
+visible (the interpreter's `--gc-stats` already has `live`; the AOT has `live` and `top`).

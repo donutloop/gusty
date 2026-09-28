@@ -125,10 +125,11 @@ func TestIRClosureCompilesWithLLC(t *testing.T) {
 	if !strings.Contains(ir, "@inc_slot") {
 		t.Fatalf("missing closure env slot in IR:\n%s", ir)
 	}
-	// The mark-sweep GC must root the closure env slot so a captured env (and
-	// any heap handles it holds) survives a top-level boundary.
-	if !strings.Contains(ir, "store i32* @inc_slot, i32** %gc.envSlot") {
-		t.Fatalf("closure env slot @inc_slot is not registered as a GC root:\n%s", ir)
+	// The collector must be told about the closure env slot explicitly: codegen pushes
+	// it on the root stack, and rt_gc traces only entries tagged as handles — so an
+	// env that was never pushed would be swept while a closure still uses it (ADR 0181).
+	if !strings.Contains(ir, "call void @rt_root_put(i32* @inc_slot)") {
+		t.Fatalf("closure env slot @inc_slot is not pushed as a GC root:\n%s", ir)
 	}
 }
 

@@ -58,6 +58,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"string_containers",
 		"string_escapes",
 		"string_params",
+		// The precise-root repro: a frame local that must survive a nested allocation
+		// storm, a statement-position callee whose loop reclaims as it goes, and
+		// thousands of short-lived containers (ADR 0181).
+		"gc_precise",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

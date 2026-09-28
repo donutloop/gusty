@@ -126,14 +126,44 @@ func TestSchemaDeclaresGCStats(t *testing.T) {
 // TestGCStatsShapeInJSON: the --json payload member is produced by the CLI, so the
 // CLI test covers it; here assert the report survives marshalling with stable keys.
 func TestGCStatsMarshalKeysAreStable(t *testing.T) {
-	st := GCStats{Collections: 1, Roots: 2, Skipped: 3, Marked: 4, Freed: 5, TotalFreed: 6, Live: 7, Frames: 1, Protected: 2, Generational: true, Backend: "interpreter"}
+	st := GCStats{Collections: 1, Roots: 2, Skipped: 3, Marked: 4, Freed: 5, TotalFreed: 6, Live: 7, Frames: 1, Protected: 2, Top: 9, Generational: true, Backend: "interpreter"}
 	b, err := json.Marshal(st)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, key := range []string{`"collections":1`, `"roots":2`, `"skipped":3`, `"marked":4`, `"freed":5`, `"total_freed":6`, `"live":7`, `"frames":1`, `"protected":2`, `"generational":true`, `"backend":"interpreter"`} {
+	for _, key := range []string{`"collections":1`, `"roots":2`, `"skipped":3`, `"marked":4`, `"freed":5`, `"total_freed":6`, `"live":7`, `"frames":1`, `"protected":2`, `"top":9`, `"generational":true`, `"backend":"interpreter"`} {
 		if !strings.Contains(string(b), key) {
 			t.Fatalf("gc stats JSON %s missing %s", b, key)
+		}
+	}
+}
+
+// TestGCStatsLineRoundTrip pins the one documented shape shared by the two backends:
+// the interpreter renders GCStats with String, the compiled runtime prints the same
+// fields with rt_gc_report's printf format, and ParseGCStatsLine reads either back.
+// The CLI turns the compiled program's line into JSON this way, so the two halves must
+// agree byte-for-byte on the field names.
+func TestGCStatsLineRoundTrip(t *testing.T) {
+	for _, st := range []GCStats{
+		{Collections: 3, Roots: 4, Skipped: 5, Marked: 6, Freed: 7, TotalFreed: 9, Live: 2, Frames: 1, Protected: 3, Generational: true, Backend: "interpreter"},
+		{Collections: 102, Roots: 3, Skipped: 0, Marked: 51, Freed: 0, TotalFreed: 4243, Live: 51, Top: 17, Backend: "aot"},
+	} {
+		got, ok := ParseGCStatsLine(st.String())
+		if !ok {
+			t.Fatalf("report line %q does not parse", st.String())
+		}
+		if got != st {
+			t.Fatalf("round trip changed the stats:\n in:  %+v\nout: %+v\nline: %s", st, got, st.String())
+		}
+	}
+	// The interpreter's line must not grow a top= field: existing assertions and user
+	// scripts read it.
+	if strings.Contains(GCStats{Backend: "interpreter"}.String(), "top=") {
+		t.Errorf("interpreter report gained a top= field: %s", GCStats{Backend: "interpreter"}.String())
+	}
+	for _, bad := range []string{"", "gc:", "gc: backend", "hello world", "gc: backend=aot nope"} {
+		if _, ok := ParseGCStatsLine(bad); ok {
+			t.Errorf("%q should not parse as a collector report", bad)
 		}
 	}
 }

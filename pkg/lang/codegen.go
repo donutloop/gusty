@@ -909,8 +909,15 @@ ret0:
   ret i32 0
 }
 
-define internal void @rt_gc([1024 x i32*]* %roots, i32 %nroots) {
+define internal void @rt_gc([4096 x i32*]* %roots, i32 %nroots) {
 entry:
+  %c0 = load i32, i32* @gc.stat_collections
+  %c1 = add i32 %c0, 1
+  store i32 %c1, i32* @gc.stat_collections
+  store i32 0, i32* @gc.stat_freed
+  store i32 0, i32* @gc.stat_roots
+  store i32 0, i32* @gc.stat_skipped
+  store i32 0, i32* @gc.stat_live
   br label %cl.loop
 cl.loop:
   %i = phi i32 [ 0, %entry ], [ %i.nxt, %cl.inc ]
@@ -943,11 +950,27 @@ roots.loop:
   %j.end = icmp sge i32 %j, %nroots
   br i1 %j.end, label %pass.init, label %roots.body
 roots.body:
-  %rp = getelementptr [1024 x i32*], [1024 x i32*]* %roots, i32 0, i32 %j
+  ; A slot tagged 0 holds a raw value (or nothing): it is *not scanned*, which is
+  ; the whole point of precise roots. Counted separately so --gc-stats can show
+  ; how much precision buys (ADR 0181).
+  %kp = getelementptr [4096 x i8], [4096 x i8]* @gc.kinds, i32 0, i32 %j
+  %kv = load i8, i8* %kp
+  %isHandle = icmp ne i8 %kv, 0
+  br i1 %isHandle, label %roots.check, label %roots.notHandle
+roots.notHandle:
+  %sk0 = load i32, i32* @gc.stat_skipped
+  %sk1 = add i32 %sk0, 1
+  store i32 %sk1, i32* @gc.stat_skipped
+  br label %roots.skip
+roots.check:
+  %rp = getelementptr [4096 x i32*], [4096 x i32*]* %roots, i32 0, i32 %j
   %rpp = load i32*, i32** %rp
   %rnull = icmp eq i32* %rpp, null
   br i1 %rnull, label %roots.skip, label %roots.mark
 roots.mark:
+  %rs0 = load i32, i32* @gc.stat_roots
+  %rs1 = add i32 %rs0, 1
+  store i32 %rs1, i32* @gc.stat_roots
   %rh = load i32, i32* %rpp
   call void @rt_gc_mark(i32 %rh)
   br label %roots.skip
@@ -1007,9 +1030,23 @@ sw.loop:
 sw.body:
   %wm = getelementptr [1024 x i8], [1024 x i8]* @gc_mark, i32 0, i32 %w
   %wmv = load i8, i8* %wm
+  %walive = icmp eq i8 %wmv, 1
+  br i1 %walive, label %sw.live, label %sw.check
+sw.live:
+  %lv0 = load i32, i32* @gc.stat_live
+  %lv1 = add i32 %lv0, 1
+  store i32 %lv1, i32* @gc.stat_live
+  br label %sw.check
+sw.check:
   %wfree = icmp eq i8 %wmv, 0
   br i1 %wfree, label %sw.free, label %sw.inc
 sw.free:
+  %fr0 = load i32, i32* @gc.stat_freed
+  %fr1 = add i32 %fr0, 1
+  store i32 %fr1, i32* @gc.stat_freed
+  %ft0 = load i32, i32* @gc.stat_total_freed
+  %ft1 = add i32 %ft0, 1
+  store i32 %ft1, i32* @gc.stat_total_freed
   %fhp = getelementptr [1024 x i32], [1024 x i32]* @free_next, i32 0, i32 %w
   %fhc = load i32, i32* @free_head
   store i32 %fhc, i32* %fhp
@@ -1019,6 +1056,8 @@ sw.inc:
   %w.nxt = add i32 %w, 1
   br label %sw.loop
 done:
+  %mk = load i32, i32* @gc.stat_live
+  store i32 %mk, i32* @gc.stat_marked
   ret void
 }
 
@@ -1267,6 +1306,225 @@ miss:
 }
 `
 
+// gcRootCap is the capacity of the compiled backend's root stack (ADR 0181). One
+// entry is one *live handle variable* in one *active frame*, so the working set is
+// (container variables in scope) x (call depth) — 4096 is generous for real
+// programs, and exhausting it is a loud, deterministic failure rather than a
+// silently unrooted handle.
+const gcRootCap = 4096
+
+// rootRuntimeIR is the compiled backend's precise-root stack: globals, the push /
+// clear / frame primitives, and the collector's self-report (ADR 0181).
+//
+// It replaces the old static table. Before, `xs = [...]` recorded the *address* of
+// `%_xs` at slot number f(scope,name), allocated once per function body — so a
+// recursive call re-registered the same entry and the inner frame's list replaced
+// the outer frame's root; a collection inside the callee then swept a list the outer
+// frame was still about to read. The table also scanned every slot ever registered
+// for the whole run, and relied on the address of an int variable being out of range
+// of @heap to avoid marking a random object — guessing, which is exactly what
+// precision is supposed to end.
+//
+// Now the array is a stack with discipline: a function prologue opens a frame,
+// every handle-assigning store pushes the slot it wrote (deduped within the frame,
+// because a loop body re-executes its assignments), a store of a non-handle tags the
+// entry dead, and every return pops the frame. rt_gc traces only entries tagged as
+// handles and counts the ones it did not have to look at.
+const rootGlobalsIR = `
+@gc.kinds = internal global [@CAP@ x i8] zeroinitializer
+@gc.stat_collections = internal global i32 0
+@gc.stat_roots = internal global i32 0
+@gc.stat_skipped = internal global i32 0
+@gc.stat_marked = internal global i32 0
+@gc.stat_freed = internal global i32 0
+@gc.stat_total_freed = internal global i32 0
+@gc.stat_live = internal global i32 0
+@gc.stat_topmax = internal global i32 0
+@gc.root_overflow = internal global i32 0
+@.gcrootmsg = private unnamed_addr constant [@MSGLEN@ x i8] c@MSG@
+@.gcreport = private unnamed_addr constant [@FMTLEN@ x i8] c@FMT@
+`
+
+// rootRuntimeIR is the code half: the push / clear / frame primitives and the
+// collector's self-report. The data half above is emitted whether or not a module
+// touches the root stack, because rt_gc (part of the heap runtime) reads @gc.kinds
+// and the stat globals.
+const rootRuntimeIR = `
+declare void @llvm.trap()
+
+define internal void @rt_root_put(i32* %slot) {
+entry:
+  %top0 = load i32, i32* @gc_roots_used
+  %start = sub i32 %top0, 1
+  %empty = icmp slt i32 %start, 0
+  br i1 %empty, label %rp.append, label %rp.loop
+rp.loop:
+  %i = phi i32 [ %start, %entry ], [ %i.next, %rp.step ]
+  %sp = getelementptr [@CAP@ x i32*], [@CAP@ x i32*]* @gc.roots, i32 0, i32 %i
+  %have = load i32*, i32** %sp
+  %dup = icmp eq i32* %have, %slot
+  br i1 %dup, label %rp.hit, label %rp.step
+rp.step:
+  %i.next = sub i32 %i, 1
+  %more = icmp sge i32 %i.next, 0
+  br i1 %more, label %rp.loop, label %rp.append
+rp.hit:
+  %kh = getelementptr [@CAP@ x i8], [@CAP@ x i8]* @gc.kinds, i32 0, i32 %i
+  store i8 1, i8* %kh
+  ret void
+rp.append:
+  %fits = icmp slt i32 %top0, @CAP@
+  br i1 %fits, label %rp.push, label %rp.full
+rp.push:
+  %wp = getelementptr [@CAP@ x i32*], [@CAP@ x i32*]* @gc.roots, i32 0, i32 %top0
+  store i32* %slot, i32** %wp
+  %wk = getelementptr [@CAP@ x i8], [@CAP@ x i8]* @gc.kinds, i32 0, i32 %top0
+  store i8 1, i8* %wk
+  %used = add i32 %top0, 1
+  store i32 %used, i32* @gc_roots_used
+  %cur = load i32, i32* @gc.stat_topmax
+  %grow = icmp sgt i32 %used, %cur
+  br i1 %grow, label %rptm, label %rptm.done
+rptm:
+  store i32 %used, i32* @gc.stat_topmax
+  br label %rptm.done
+rptm.done:
+  ret void
+rp.full:
+  store i32 1, i32* @gc.root_overflow
+  ; The message length is known at compile time, so no strlen (which travels with the
+  ; raise runtime and may not be declared in this module).
+  call i64 @write(i32 2, i8* getelementptr ([@MSGLEN@ x i8], [@MSGLEN@ x i8]* @.gcrootmsg, i32 0, i32 0), i64 @MSG_BYTES@)
+  call void @llvm.trap()
+  unreachable
+}
+
+define internal void @rt_root_clear(i32* %slot) {
+entry:
+  %top0 = load i32, i32* @gc_roots_used
+  %start = sub i32 %top0, 1
+  %empty = icmp slt i32 %start, 0
+  br i1 %empty, label %rc.done, label %rc.loop
+rc.loop:
+  %i = phi i32 [ %start, %entry ], [ %i.next, %rc.step ]
+  %sp = getelementptr [@CAP@ x i32*], [@CAP@ x i32*]* @gc.roots, i32 0, i32 %i
+  %have = load i32*, i32** %sp
+  %same = icmp eq i32* %have, %slot
+  br i1 %same, label %rc.hit, label %rc.step
+rc.step:
+  %i.next = sub i32 %i, 1
+  %more = icmp sge i32 %i.next, 0
+  br i1 %more, label %rc.loop, label %rc.done
+rc.hit:
+  %k = getelementptr [@CAP@ x i8], [@CAP@ x i8]* @gc.kinds, i32 0, i32 %i
+  store i8 0, i8* %k
+  ret void
+rc.done:
+  ret void
+}
+
+define internal void @rt_frame_open(i32* %save) {
+entry:
+  %top = load i32, i32* @gc_roots_used
+  store i32 %top, i32* %save
+  ret void
+}
+
+define internal void @rt_frame_close(i32 %base) {
+entry:
+  ; Entries above the base are unreachable to rt_gc once the top is pulled back,
+  ; so a returning frame retains nothing; the next rt_root_put re-tags any index it
+  ; reclaims.
+  store i32 %base, i32* @gc_roots_used
+  ret void
+}
+
+define internal void @rt_gc_report() {
+entry:
+  %topmax = load i32, i32* @gc.stat_topmax
+  ; The report describes the run, not the program, so it goes to fd 2 like every
+  ; other tool-level line this compiler emits (ADR 0179).
+  %buf = alloca [192 x i8]
+  %c = load i32, i32* @gc.stat_collections
+  %r = load i32, i32* @gc.stat_roots
+  %s = load i32, i32* @gc.stat_skipped
+  %m = load i32, i32* @gc.stat_marked
+  %f = load i32, i32* @gc.stat_freed
+  %t = load i32, i32* @gc.stat_total_freed
+  %l = load i32, i32* @gc.stat_live
+  %fmt = getelementptr [@FMTLEN@ x i8], [@FMTLEN@ x i8]* @.gcreport, i32 0, i32 0
+  %n = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 192, i8* %fmt, i32 %c, i32 %r, i32 %s, i32 %m, i32 %f, i32 %t, i32 %l, i32 %topmax)
+  %bad = icmp slt i32 %n, 0
+  br i1 %bad, label %rdone, label %rwrite
+rwrite:
+  %len = sext i32 %n to i64
+  call i64 @write(i32 2, i8* %buf, i64 %len)
+  br label %rdone
+rdone:
+  ret void
+}
+`
+
+// llvmCString renders a Go string as an LLVM byte-string constant, NUL terminated.
+// Escapes count as one byte each, so the declared array length stays honest.
+func llvmCString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\0A`)
+		default:
+			if c < 0x20 || c > 0x7e {
+				b.WriteString(fmt.Sprintf(`\%02X`, c))
+			} else {
+				b.WriteByte(c)
+			}
+		}
+	}
+	b.WriteString(`\00"`)
+	return b.String()
+}
+
+// gcRootReportLine is what the compiled backend prints for --gc-stats, mirroring the
+// interpreter's report so one assertion can read either backend.
+const gcRootReportLine = "gc: backend=aot collections=%d roots=%d skipped=%d marked=%d freed=%d total_freed=%d live=%d top=%d\n"
+
+// gcRootOverflowMessage is the loud failure for a root stack that ran out. A handle
+// that cannot be pushed may be swept while still live, so the alternative to
+// stopping is corruption.
+const gcRootOverflowMessage = "gustyc: the compiled root stack is full (recursion too deep); see ADR 0181\n"
+
+// renderedRootRuntime fills in the root runtime's capacities and string constants.
+func renderedRootRuntime() string {
+	return fillRootTemplate(rootRuntimeIR)
+}
+
+// renderedRootGlobals renders the root stack's data half, which is emitted for every
+// module (rt_gc reads @gc.kinds and the counters even in a program that never pushes).
+func renderedRootGlobals() string {
+	return fillRootTemplate(rootGlobalsIR)
+}
+
+// fillRootTemplate substitutes the capacities and string constants into a root-runtime
+// block. Placeholders are used instead of fmt because the IR is full of `%` register
+// names, which Sprintf would read as verbs.
+func fillRootTemplate(t string) string {
+	cap := strconv.Itoa(gcRootCap)
+	t = strings.ReplaceAll(t, "@CAP@", cap)
+	t = strings.ReplaceAll(t, "@MSGLEN@", strconv.Itoa(len(gcRootOverflowMessage)+1))
+	t = strings.ReplaceAll(t, "@MSG_BYTES@", strconv.Itoa(len(gcRootOverflowMessage)))
+	t = strings.ReplaceAll(t, "@MSG@", llvmCString(gcRootOverflowMessage))
+	t = strings.ReplaceAll(t, "@FMTLEN@", strconv.Itoa(len(gcRootReportLine)+1))
+	t = strings.ReplaceAll(t, "@FMT@", llvmCString(gcRootReportLine))
+	return t
+}
+
 func GenerateIR(prog *Program) (string, error) {
 	imports, err := resolveImports(prog)
 	if err != nil {
@@ -1292,7 +1550,19 @@ func GenerateIR(prog *Program) (string, error) {
 	g.heapArgs = heapArgKinds(prog)
 	g.globals.WriteString("@exn_flag = internal global i32 0\n")
 	g.globals.WriteString("@gc_roots_used = internal global i32 0\n")
-	g.globals.WriteString("@gc.roots = internal global [1024 x i32*] zeroinitializer\n")
+	cap := strconv.Itoa(gcRootCap)
+	g.globals.WriteString(fmt.Sprintf("@gc.roots = internal global [%s x i32*] zeroinitializer\n", cap))
+	// The root runtime's two libc dependencies are declared once, here, for the whole
+	// module: LLVM rejects the same function declared twice, and they are needed by
+	// code (`rt_root_put`'s overflow diagnostic, `rt_gc_report`) that is present even
+	// in a module that neither raises nor prints a float (the strlen lesson, ADR 0173).
+	// The root stack's data and code travel together with the features that need them.
+	// The libc declarations are always emitted (LLVM rejects a function declared in two
+	// blocks, so they may not live in the raise/float runtimes alongside their users);
+	// the globals go with any module that has a heap or pushes roots, and the
+	// primitives additionally with --gc-stats, whose report call lives in main.
+	g.globals.WriteString("declare i64 @write(i32, i8*, i64)\n")
+	g.globals.WriteString("declare i32 @snprintf(i8*, i32, i8*, ...)\n")
 	g.globals.WriteString("@exn_code = internal global i32 0\n")
 	var b strings.Builder
 	// pre-scan top-level for user function names
@@ -1347,7 +1617,7 @@ func GenerateIR(prog *Program) (string, error) {
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
 	}
-	b.WriteString("  store i32 1024, i32* @gc_roots_used\n")
+	b.WriteString("  store i32 0, i32* @gc_roots_used\n")
 	// Root every module-global closure env slot so GC keeps captured envs
 	// (and any heap handles they hold) alive across top-level boundaries.
 	for _, envName := range g.envSlots {
@@ -1366,6 +1636,12 @@ func GenerateIR(prog *Program) (string, error) {
 	}
 	g.inMain = false
 	g.gcCall(&b)
+	if GCReportEnabled() {
+		// The compiled backend's own collector self-report (--gc-stats). The numbers
+		// live in the program's globals, so only its runtime can read them out; the
+		// line goes to fd 2 like every other tool-level line (ADR 0179, ADR 0181).
+		b.WriteString("  call void @rt_gc_report()\n")
+	}
 	b.WriteString("  ret i32 0\n")
 	b.WriteString("main.raiseexit:\n")
 	// An uncaught exception used to fall off the end of main and exit 0 printing
@@ -1396,6 +1672,21 @@ func GenerateIR(prog *Program) (string, error) {
 	if g.heapUsed {
 		g.globals.WriteString(heapRuntimeIR)
 	}
+	// The precise-root stack runtime (ADR 0181) is emitted whether or not the program
+	// allocates: every function prologue calls rt_frame_open, and a referenced but
+	// undefined internal function fails verification. It is emitted after the other
+	// runtime blocks so it can see which libc names they already declared.
+	// Both halves of the root runtime are emitted *after* the body has been generated:
+	// only then does codegen know whether this module touches the root stack at all.
+	// (Emitting the data half in the preamble, where `rooted` was still false while the
+	// function half emitted later referenced it, produced modules whose @gc.kinds was
+	// missing — the verifier caught it, the tests did not until this round.)
+	if g.rooted || g.heapUsed || GCReportEnabled() {
+		g.globals.WriteString(renderedRootGlobals())
+	}
+	if g.rooted || GCReportEnabled() {
+		g.globals.WriteString(renderedRootRuntime())
+	}
 	out.WriteString(g.strGlobals.String())
 	out.WriteString(g.globals.String())
 	EmitABI(&g.decls)
@@ -1407,7 +1698,71 @@ func GenerateIR(prog *Program) (string, error) {
 	// relocations (e.g. R_X86_64_32) that the default PIE link (cc) rejects.
 	out.WriteString("!llvm.module.flags = !{!0}\n")
 	out.WriteString("!0 = !{i32 2, !\"PIC Level\", i32 2}\n")
-	return out.String(), nil
+	// Every variable slot has to be allocated once per call for its *address* to
+	// identify it — see hoistAllocas (ADR 0181).
+	return hoistAllocas(out.String()), nil
+}
+
+// isAllocaLine reports whether a module line defines a stack slot, e.g.
+// `  %_p = alloca i32`.
+func isAllocaLine(ln string) bool {
+	t := strings.TrimSpace(ln)
+	return strings.HasPrefix(t, "%") && strings.Contains(t, " = alloca ")
+}
+
+// hoistAllocas moves every stack-slot allocation to the top of its own function.
+//
+// A precise root stack identifies a variable by the *address* of its slot, so the
+// address must be one per variable per call. Codegen emits `%_p = alloca i32` where
+// the variable is first assigned, which for a loop body means an alloca instruction
+// inside the loop — and at llc's default -O0 nothing hoists it, so each iteration
+// bumped a fresh frame slot. Consequences measured, not guessed: the machine stack
+// grew by a slot per iteration, and the root entry for that variable never matched the
+// one recorded before, so the root stack grew by one entry per iteration (a loop that
+// built 2000 instances reached top=2002), every stale slot kept its object live, the
+// 1024-slot heap filled up, and the program died. Hoisting the allocation gives each
+// variable exactly one slot per call, which is also what a local variable means in C.
+func hoistAllocas(module string) string {
+	lines := strings.Split(module, "\n")
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); {
+		ln := lines[i]
+		if !strings.HasPrefix(ln, "define ") || !strings.HasSuffix(strings.TrimSpace(ln), "{") {
+			out = append(out, ln)
+			i++
+			continue
+		}
+		end := i + 1
+		for end < len(lines) && lines[end] != "}" {
+			end++
+		}
+		if end >= len(lines) {
+			// No closing brace: emit the rest unchanged rather than guess.
+			out = append(out, lines[i:]...)
+			return strings.Join(out, "\n")
+		}
+		out = append(out, ln)
+		body := lines[i+1 : end]
+		var lead []string
+		if len(body) > 0 && strings.HasSuffix(strings.TrimSpace(body[0]), ":") {
+			lead = append(lead, body[0])
+			body = body[1:]
+		}
+		var allocas, rest []string
+		for _, bl := range body {
+			if isAllocaLine(bl) {
+				allocas = append(allocas, bl)
+			} else {
+				rest = append(rest, bl)
+			}
+		}
+		out = append(out, lead...)
+		out = append(out, allocas...)
+		out = append(out, rest...)
+		out = append(out, "}")
+		i = end + 1
+	}
+	return strings.Join(out, "\n")
 }
 
 type irGen struct {
@@ -1569,6 +1924,14 @@ type irGen struct {
 	gcRootIdx  int
 	gcCallIdx  int
 	gcRootSeen map[string]bool
+	// frameOpen is set while a function body's root frame is open (ADR 0181): the
+	// prologue recorded the root-stack base, so every return and unwind path must pop
+	// back to it. gcRootSeen is now only per-scope bookkeeping — dedup of root entries
+	// moved into the runtime, where it can be per *frame* rather than per body.
+	frameOpen bool
+	// rooted says the module touches the root stack at all, which gates shipping the
+	// root runtime: a program of pure scalars ships no collector scaffolding.
+	rooted bool
 	// envSlots holds the module-global closure env slot names; each holds an
 	// env heap handle and must be rooted so GC keeps captured envs alive.
 	envSlots []string
@@ -1744,12 +2107,20 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	}
 	g.selfClass = className
 	g.globals.WriteString(fmt.Sprintf("define i32 @%s(%s) {\n", funcName, strings.Join(paramRegs, ", ")))
+	// A method is a call like any other: it opens its own root frame and pops it on
+	// the way out. Without this the roots its body pushes (self, container args,
+	// locals) piled up on the root stack one frame per call, so a loop that made
+	// thousands of instances ran the stack out (ADR 0181).
+	savedFrame := g.frameOpen
+	g.gcOpenFrame(&g.globals)
 	g.inFunc = true
 	for _, st := range fd.Body {
 		g.stmt(&g.globals, st)
 	}
-	g.inFunc = false
+	g.gcCloseFrame(&g.globals)
 	g.globals.WriteString("  ret i32 0\n}\n")
+	g.inFunc = false
+	g.frameOpen = savedFrame
 	g.selfClass = prevSelf
 	g.params = prevParams
 }
@@ -1877,9 +2248,16 @@ func (g *irGen) fmtStr(format string) (string, int) {
 }
 
 func isScalarConst(e Expr) bool {
-	switch e.(type) {
+	switch n := e.(type) {
 	case *IntLit, *FloatLit, *BoolLit, *StrLit:
 		return true
+	case *BinOp:
+		// `x = 1 + 2` is a scalar constant too: codegen folds it, so the variable
+		// cannot hold a heap handle and does not need a root entry (which also keeps
+		// the root runtime out of purely scalar modules).
+		return isScalarConst(n.L) && isScalarConst(n.R)
+	case *UnOp:
+		return isScalarConst(n.X)
 	}
 	return false
 }
@@ -1888,33 +2266,77 @@ func (g *irGen) gcReg(b *strings.Builder, name string) {
 	g.gcRegKey(b, name, name)
 }
 
-// gcRegKey roots the alloca %_<allocaName> under a distinct dedup key. Keys
-// must be unique per *site*: two functions with the same parameter name need
-// two roots even though the alloca names collide.
-func (g *irGen) gcRegKey(b *strings.Builder, key, allocaName string) {
-	if g.gcRootSeen == nil {
-		g.gcRootSeen = map[string]bool{}
-	}
-	if g.gcRootSeen[key] {
-		return
-	}
-	g.gcRootSeen[key] = true
-	idx := g.gcRootIdx
-	g.gcRootIdx++
-	fmt.Fprintf(b, "  %%gc.slot%d = getelementptr [1024 x i32*], [1024 x i32*]* @gc.roots, i32 0, i32 %d\n", idx, idx)
-	fmt.Fprintf(b, "  store i32* %%_%s, i32** %%gc.slot%d\n", allocaName, idx)
+// gcOpenFrame emits the prologue that remembers where this call's root entries
+// start, so the matching rt_frame_close can drop everything the call pushed
+// (ADR 0181).
+func (g *irGen) gcOpenFrame(b *strings.Builder) {
+	b.WriteString("  %gc.frame.base = alloca i32\n")
+	b.WriteString("  call void @rt_frame_open(i32* %gc.frame.base)\n")
+	g.frameOpen = true
+	g.rooted = true
 }
 
-func (g *irGen) gcRegGlobal(b *strings.Builder, name string) {
-	// Root a module-global closure env slot: the env slot holds an i32 heap
-	// handle (the closure env), so GC must mark it even when no main local
-	// references it. Conservative: the slot may hold a scalar, which is just
-	// treated as a potential heap address.
-	slot := g.gcRootIdx
+// gcCloseFrame emits the pop of the current call's root frame (ADR 0181). Outside a
+// function body — main, module level, the synthetic apply functions — no frame was
+// opened, so there is nothing to pop.
+func (g *irGen) gcCloseFrame(b *strings.Builder) {
+	if !g.frameOpen {
+		return
+	}
+	g.rooted = true
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%gc.frame.base\n", t))
+	b.WriteString(fmt.Sprintf("  call void @rt_frame_close(i32 %s)\n", t))
+}
+
+// gcRegKey pushes the alloca %_<allocaName> as a root of the currently open frame.
+// The key names the *site*, so two functions whose parameter slots share an alloca
+// name stay distinct even though the runtime dedups by slot address.
+func (g *irGen) gcRegKey(b *strings.Builder, key, allocaName string) {
+	// Push, never overwrite: the entry belongs to whichever frame is currently open,
+	// so a recursive call gets its own instead of clobbering the outer one. The runtime
+	// dedups within the frame, which is what lets codegen emit this at every assignment
+	// site rather than only the first one it generates (a registration that lives in a
+	// branch which did not run rooted nothing at all).
+	b.WriteString("  call void @rt_root_put(i32* %_" + allocaName + ")\n")
+	g.rooted = true
 	g.gcRootIdx++
-	fmt.Fprintf(b, "  %%gc.envSlot%d = getelementptr [1024 x i32*], [1024 x i32*]* @gc.roots, i32 0, i32 %d\n", slot, slot)
-	fmt.Fprintf(b, "  store i32* @%s_slot, i32** %%gc.envSlot%d\n", name, slot)
-	fmt.Fprintf(b, "  store i32 %d, i32* @gc_roots_used\n", g.gcRootIdx)
+}
+
+// gcClearRoot tags a variable's root entry dead when a non-handle is stored into it
+// (ADR 0181). Without it, an int left in a variable slot would be scanned as a
+// candidate heap index — the guessing precise rooting exists to end.
+func (g *irGen) gcClearRoot(b *strings.Builder, allocaName string) {
+	b.WriteString("  call void @rt_root_clear(i32* %_" + allocaName + ")\n")
+	g.rooted = true
+}
+
+// gcStoreHandle stores a heap handle into a variable's slot and re-registers that
+// slot as a root of the currently open frame (ADR 0181).
+//
+// The re-registration is not redundant. Rebinding a variable to a scalar tags its
+// root entry dead (rt_root_clear), so the *next* container binding — say `s = {1, 2}`
+// after `s = 5` — would otherwise leave a live container invisible to the collector,
+// which recycles it while the program still uses it (observed as a set whose insert
+// loop never terminated: the object under the variable had been reused). Because the
+// runtime dedups within a frame, pushing on every handle store costs a scan of a
+// handful of entries and cannot grow the stack.
+func (g *irGen) gcStoreHandle(b *strings.Builder, h, name string) {
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", h, name))
+	b.WriteString("  call void @rt_root_put(i32* %_" + name + ")\n")
+	g.rooted = true
+	g.gcRootIdx++
+}
+
+// gcRegGlobal pushes a module-global closure env slot as a permanent root.
+func (g *irGen) gcRegGlobal(b *strings.Builder, name string) {
+	// Root a module-global closure env slot: the env slot holds an i32 heap handle
+	// (the closure env), so the collector must see it even when no main-level local
+	// references it. Pushed, not written into a fixed index, so it is tagged as a
+	// handle rather than left for the scanner to guess about (ADR 0181).
+	b.WriteString("  call void @rt_root_put(i32* @" + name + "_slot)\n")
+	g.rooted = true
+	g.gcRootIdx++
 }
 
 func (g *irGen) gcCall(b *strings.Builder) {
@@ -1924,7 +2346,7 @@ func (g *irGen) gcCall(b *strings.Builder) {
 	ci := g.gcCallIdx
 	g.gcCallIdx++
 	fmt.Fprintf(b, "  %%gc.n%d = load i32, i32* @gc_roots_used\n", ci)
-	fmt.Fprintf(b, "  call void @rt_gc([1024 x i32*]* @gc.roots, i32 %%gc.n%d)\n", ci)
+	fmt.Fprintf(b, "  call void @rt_gc([%s x i32*]* @gc.roots, i32 %%gc.n%d)\n", strconv.Itoa(gcRootCap), ci)
 }
 
 // strConst emits a global for a string literal operand.
@@ -6781,7 +7203,6 @@ const floatRuntimeIR = `; rt_fmt_double renders a runtime double the way Python'
 @rt.fd.next = private global i32 0
 @rt.fd.fmt = private constant [5 x i8] c"%.*g\00"
 
-declare i32 @snprintf(i8*, i32, i8*, ...)
 declare double @strtod(i8*, i8**)
 
 define internal i8* @rt_fmt_double(double %v) {
@@ -6837,7 +7258,6 @@ done:
 `
 
 const raiseRuntimeIR = `
-declare i64 @write(i32, i8*, i64)
 declare i64 @strlen(i8*)
 
 ; @exn_msg travels with the flag: a raise statement and a compiler-generated raise
@@ -7386,6 +7806,10 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		fmt.Fprintf(b, "%s %%p%d", paramTy, i)
 	}
 	fmt.Fprintf(b, ") {\n")
+	// A call opens its own root frame (ADR 0181). Everything this body pushes as a
+	// root is dropped when it returns, so a dead frame cannot retain a list — and a
+	// recursive call gets its own entries instead of overwriting the outer frame's.
+	g.gcOpenFrame(b)
 	for i, p := range fd.Params {
 		g.params[p.Name] = fmt.Sprintf("%%p%d", i)
 		if floatRet {
@@ -7434,7 +7858,9 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.gcReg(b, fmt.Sprintf("param%d", i))
 	}
 	if g.isWrappingDecorator(fd) {
+		g.gcCloseFrame(b)
 		b.WriteString("  ret i32 0\n}\n")
+		g.frameOpen = false
 		return nil
 	}
 	for _, st := range fd.Body {
@@ -7444,17 +7870,24 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		}
 	}
 	if isGen {
+		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
 	} else {
+		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret %s %s\n", retTy, retVal)
 	}
 	fmt.Fprintf(b, "%s:\n", g.funcRaiseExit)
+	// An unwinding raise pops the frame too, so a raise that crosses a frame boundary
+	// does not leave that frame's handles rooted forever.
 	if isGen {
+		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
 	} else {
+		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret %s %s\n", retTy, retVal)
 	}
 	fmt.Fprintf(b, "}\n")
+	g.frameOpen = false
 	g.funcRaiseExit = prevRaise
 	g.genHandle = ""
 	g.handlerStack = prevHandlers
@@ -7823,13 +8256,18 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, ev))
 				}
-				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
+				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
 			}
 			// list var rebound to a non-list value: free its heap slot (GC-correctness).
 			// A binding that IS a container (e.g. `d = make(4)`) keeps its kind.
 			if !rebindsContainer && (g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value]) {
 				g.emitFreeOld(b, nm.Value)
+				// The slot now holds a raw value: tag its root entry dead so the
+				// collector never scans the int as a candidate heap index (ADR 0181).
+				if g.allocd[nm.Value] {
+					g.gcClearRoot(b, nm.Value)
+				}
 				g.listVars[nm.Value] = false
 				g.runtimeDicts[nm.Value] = false
 				g.runtimeSets[nm.Value] = false
@@ -7864,7 +8302,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, ev))
 				}
-				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
+				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
 			}
 			// String RHS: fold at compile time into strVals (strings are read back
@@ -7936,7 +8374,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, bits))
 					}
 				}
-				b.WriteString(fmt.Sprintf("  store i32 %%h%d, i32* %%_%s\n", hs, nm.Value))
+				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
 			}
 			if g.unionVars[nm.Value] {
@@ -8006,7 +8444,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if herr != nil {
 						return herr
 					}
-					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", h, nm.Value))
+					g.gcStoreHandle(b, h, nm.Value)
 					return nil
 				}
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
@@ -8476,17 +8914,20 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// bare `return` yields None (ADR 0172). A float function reaching this is
 			// a type error the checker reports; 0.0 keeps the module valid.
 			if g.floatFuncs[g.curFunc] {
+				g.gcCloseFrame(b)
 				b.WriteString("  ret double 0.000000\n")
 				return nil
 			}
 			g.heapUsed = true
 			t := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_none()\n", t))
+			g.gcCloseFrame(b)
 			b.WriteString(fmt.Sprintf("  ret i32 %s\n", t))
 			return nil
 		}
 		if g.floatFuncs[g.curFunc] {
 			fv := g.floatValue(b, n.Expr)
+			g.gcCloseFrame(b)
 			b.WriteString(fmt.Sprintf("  ret double %s\n", fv))
 			return nil
 		}
@@ -8499,6 +8940,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if txt, ok := g.stringVal(n.Expr); ok {
 				it := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", it, g.strConst(txt), g.strConst(pyReprString(txt))))
+				g.gcCloseFrame(b)
 				b.WriteString(fmt.Sprintf("  ret i32 %s\n", it))
 				return nil
 			}
@@ -8507,6 +8949,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if err != nil {
 			return err
 		}
+		g.gcCloseFrame(b)
 		b.WriteString(fmt.Sprintf("  ret i32 %s\n", v))
 	case *BreakStmt:
 		if len(g.loopStack) == 0 {

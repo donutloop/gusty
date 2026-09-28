@@ -58,11 +58,14 @@ import (
 )
 
 // JITResult is the structured outcome of a JIT compile-and-run: the stdout
-// the generated `main` produced, the emitted LLVM IR, and the exact
-// llc/cc toolchain commands executed. It is JSON-serializable so agents and
-// tooling can consume a JIT session without scraping process output.
+// the generated `main` produced, the stderr it produced (tracebacks and the
+// collector's self-report live there, not in the program's output), the emitted
+// LLVM IR, and the exact llc/cc toolchain commands executed. It is
+// JSON-serializable so agents and tooling can consume a JIT session without
+// scraping process output.
 type JITResult struct {
 	Output      string       `json:"output"`
+	Stderr      string       `json:"stderr"`
 	IR          string       `json:"ir"`
 	Commands    []string     `json:"commands"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
@@ -115,22 +118,29 @@ func JIT(src string, optLevel int) (*JITResult, error) {
 	}
 	res.Commands = append(res.Commands, ccCmd+" -shared -fPIC "+objPath+" -o "+soPath+" -lm")
 
-	out, err := dlopenRun(soPath)
+	out, errOut, err := dlopenRun(soPath)
 	if err != nil {
 		return nil, err
 	}
 	res.Output = out
+	res.Stderr = errOut
 	return res, nil
 }
 
+// captureFD1 runs fn with file descriptor 1 (stdout) redirected to a pipe. It is
+// the common case of captureFD.
+func captureFD1(fn func()) (string, error) { return captureFD(1, fn) }
+
 // dlopenRun loads the shared object, dlsym's its `main`, and runs it with fd 1
-// redirected to a pipe so the generated printf output can be captured in Go.
-func dlopenRun(soPath string) (string, error) {
+// and fd 2 redirected to pipes, so the generated printf output and its fd-2
+// diagnostics (uncaught-exception reports, the collector self-report) are both
+// recoverable in Go instead of disappearing into the terminal.
+func dlopenRun(soPath string) (string, string, error) {
 	cpath := C.CString(soPath)
 	defer C.free(unsafe.Pointer(cpath))
 	h := C.jit_dlopen(cpath)
 	if h == nil {
-		return "", fmt.Errorf("jit: dlopen: %s", C.GoString(C.jit_dlerror()))
+		return "", "", fmt.Errorf("jit: dlopen: %s", C.GoString(C.jit_dlerror()))
 	}
 	defer C.jit_dlclose(h)
 
@@ -138,45 +148,58 @@ func dlopenRun(soPath string) (string, error) {
 	defer C.free(unsafe.Pointer(cmain))
 	fn := C.jit_dlsym(h, cmain)
 	if fn == nil {
-		return "", fmt.Errorf("jit: dlsym(main): %s", C.GoString(C.jit_dlerror()))
+		return "", "", fmt.Errorf("jit: dlsym(main): %s", C.GoString(C.jit_dlerror()))
 	}
 
 	C.jit_unbuffered()
-	out, err := captureFD1(func() { C.jit_call(fn) })
-	if err != nil {
-		return "", err
+	// Both descriptors are redirected at once: fd 1 holds the program's own output,
+	// fd 2 its diagnostics (tracebacks, the collector self-report).
+	var (
+		out     string
+		errOut  string
+		outErr  error
+		errErr  error
+	)
+	errOut, errErr = captureFD(2, func() {
+		out, outErr = captureFD1(func() { C.jit_call(fn) })
+	})
+	if errErr != nil {
+		return "", "", errErr
 	}
-	return out, nil
+	if outErr != nil {
+		return "", "", outErr
+	}
+	return out, errOut, nil
 }
 
-// captureFD1 runs fn with file descriptor 1 (stdout) redirected to a pipe, then
-// restores it and returns everything the C code wrote. The generated main uses
-// printf against the C runtime's stdout (fd 1), so dup'ing fd 1 captures both
-// C and Go writes to stdout during the call.
-func captureFD1(fn func()) (string, error) {
+// captureFD runs fn with file descriptor fd redirected to a pipe, then restores
+// it and returns everything the C code wrote. The generated main uses printf
+// against the C runtime's stdout (fd 1) and write(2, ...) for diagnostics, so
+// dup'ing the descriptor captures both C and Go writes during the call.
+func captureFD(fd int, fn func()) (string, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return "", fmt.Errorf("jit: pipe: %w", err)
 	}
 
-	old := int(C.jit_dup(1))
+	old := int(C.jit_dup(C.int(fd)))
 	if old < 0 {
 		r.Close()
 		w.Close()
-		return "", fmt.Errorf("jit: dup(fd 1) failed")
+		return "", fmt.Errorf("jit: dup(fd %d) failed", fd)
 	}
 	restore := func() {
-		C.jit_dup2(C.int(old), 1)
+		C.jit_dup2(C.int(old), C.int(fd))
 		C.jit_close(C.int(old))
 	}
 	defer restore()
 
-	if int(C.jit_dup2(C.int(w.Fd()), 1)) < 0 {
+	if int(C.jit_dup2(C.int(w.Fd()), C.int(fd))) < 0 {
 		r.Close()
 		w.Close()
-		return "", fmt.Errorf("jit: dup2(fd 1) failed")
+		return "", fmt.Errorf("jit: dup2(fd %d) failed", fd)
 	}
-	// fd 1 now owns the pipe write end; closing the Go wrapper keeps it alive.
+	// fd now owns the pipe write end; closing the Go wrapper keeps it alive.
 	w.Close()
 
 	fn()

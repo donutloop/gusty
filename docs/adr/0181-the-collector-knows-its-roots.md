@@ -142,6 +142,88 @@ interpreter prints.
 - **Make `--gc-stats` stdout-only** — rejected: the report describes the tool, so it
   goes to stderr, and `--json` carries it as data (ADR 0169's rule about diagnostics).
 
+## Compiled backend (same round, second commit)
+
+The compiled backend had a *table*: `xs = [...]` recorded the address of `%_xs` at
+index `f(scope,name)`, allocated once per function body. Three properties followed from
+that single design, all wrong:
+
+- a recursive call re-registered the same index, so the inner frame's list **replaced**
+  the outer frame's root — a collection inside the callee swept a list the outer frame
+  was still about to read (`integration/programs/gc_precise.gy`: interpreter 130, AOT 346);
+- every index ever registered was scanned for the whole run (`store i32 1024,
+  @gc_roots_used`), so precision was a matter of luck;
+- a slot could hold an `int`, and avoiding marking a random object at that integer's
+  index relied on small ints falling outside `@heap` — the same guess this ADR removes
+  in the interpreter.
+
+**Decision: the array became a stack, with the discipline in the target's runtime.**
+`@gc.roots` holds slot addresses, `@gc.kinds` says whether an entry names a heap
+handle, and four primitives do the work: `rt_root_put` (append, or retag an existing
+entry for that slot — deduped by scanning down from the top, so a loop that re-executes
+its assignments cannot grow the stack), `rt_root_clear` (tag dead), `rt_frame_open`
+(record the base), `rt_frame_close` (pop back to it). Every function-emitting path in
+codegen opens a frame in its prologue and pops at every return and unwind edge:
+`funcDef`, the closure `_env` helper, the decorated `_impl`, and `emitClassMethod` —
+which was the last one found, and the one whose absence turned a 50 000-instance loop
+into a trap.
+
+**Two consequences that were not obvious, both measured:**
+
+1. *Every handle store must re-push.* Once clearing is real, a variable rebound from a
+   scalar to a container (`s = {1, 2}` after `s = 5`) would otherwise leave the new
+   object tagged dead: it got recycled while in use, and the symptom was a set whose
+   insert loop never terminated. Hence `gcStoreHandle`, which pairs the store with a
+   push. Dedup makes the repeated push cost a scan of a handful of entries.
+2. *A slot must have one address per call.* Codegen emitted `%_p = alloca i32` where the
+   variable was first assigned — inside a loop body — and at llc's default `-O0` nothing
+   hoists it, so each iteration bumped a fresh frame slot: the machine stack grew per
+   iteration, and the root entry never matched (`top` reached **2002** for a 2000-iteration
+   loop), every stale slot kept its object live, the 1024-slot heap filled, and the
+   program died. `hoistAllocas` moves every allocation to the top of its own function
+   (`top` after the fix: **3**), which is also what a local variable means in C.
+
+**Capacity is explicit and fails loudly.** 4096 entries is (container variables in
+scope) x (call depth). Exhausting it means a handle that cannot be rooted, so the target
+writes a diagnostic to fd 2 and executes `llvm.trap()` rather than continue with a
+collector that cannot see one of the program's objects. `top=` in the report shows how
+much headroom a workload actually uses.
+
+**Self-report.** The counters live in the program's globals, so the target prints the
+line (`rt_gc_report`, on fd 2 like every other tool-level line — ADR 0179); `--gc-stats`
+turns it on, the JIT captures fd 2 so the CLI can forward it unchanged, and `--json`
+carries the same fields as a `gc` member (`ParseGCStatsLine` is the single parser, and
+round-trips against the interpreter's `GCStats.String`).
+
+**Tests are calibrated against stubs, not against hopes.** `pkg/lang/gc_roots_ir_test.go`
+checks the structural invariants over a corpus that exercises every function-emitting
+path (a rooting function must open a frame and pop before each `ret`; no allocation may
+sit below the first instruction). `integration/gc_stress_test.go` checks behaviour
+through the runtime. Each was verified to fail when the mechanism was removed:
+stubbing `rt_frame_close` gives "19 objects still live at the end"; disabling
+`hoistAllocas` gives "root stack grew to 1210 entries". The first version of the runtime
+assertion (`top < 64` only) passed with frames never popping at all — an assertion tuned
+until a stub fails it is the only kind worth having.
+
+## Alternatives rejected (compiled backend)
+
+- **Snapshot the value at push time instead of the slot address** — rejected: the root
+  would go stale the moment the variable is reassigned, which is the common case in loops.
+- **Stable compile-time slot ids (per-function indexes)** — rejected: correct only if each
+  variable has one address per call, which is exactly what the alloca-in-loop discovery
+  says codegen was not providing; rooting by id also loses the ability to see the current
+  value of a slot that a callee mutated.
+- **Close a frame per loop iteration** — rejected as unsound: a container bound in a loop
+  body is routinely read after the loop ends (`print(p.x)`), so its root must outlive the
+  iteration.
+- **Leave `store i32 1024, @gc_roots_used` (scan everything registered) as the safe option**
+  — rejected: it was the source of both the clobbering bug and the guessing; the
+  4096-entry stack with an explicit overflow trap is both safer and cheaper.
+- **Emit the root runtime in the module preamble** — rejected after the fact: whether a
+  module touches the root stack is only known once the body has been generated, and
+  emitting the data half early produced modules whose `@gc.kinds` was undefined. Both
+  halves are emitted at assembly time, gated on `rooted || heapUsed || report`.
+
 ## References
 
 - `pkg/lang/gc.go` — root set, watermark, safe points, `GCStats`
@@ -150,6 +232,10 @@ interpreter prints.
 - `integration/gc_stress_test.go` — corpus-wide collection stress + heap bound
 - `integration/programs/gc_precise.gy` — the conformance program
 - `cmd/gustyc/main.go` — `--gc-stats`; `pkg/lang/schema.go` — `definitions.gcStats`
+- `pkg/lang/codegen.go` — `rootRuntimeIR`/`rootGlobalsIR`, `rt_root_put`/`rt_root_clear`/
+  `rt_frame_open`/`rt_frame_close`/`rt_gc_report`, `gcStoreHandle`, `gcOpenFrame`,
+  `hoistAllocas`, `isScalarConst`; `pkg/lang/closure.go`, `emitClassMethod` — frame edges
+- `pkg/lang/gc_roots_ir_test.go` — the structural invariants (stub-verified)
 - ADR 0151 (Gap A: AOT dynamic dispatch and GC roots), ADR 0163 (assigned containers are
   heap handles), ADR 0164 (`verifyModule`-driven pipeline — the earlier case of "turning a
   real check on exposed three bugs nobody could see")

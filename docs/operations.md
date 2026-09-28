@@ -23,7 +23,7 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--aot` | run through the compiled LLVM backend (alias of `--jit`) |
 | `--interp` | run through the AST interpreter explicitly; conflicts with `--aot`/`--jit` (usage error, exit 4) |
 | `--show-backend` | print `gustyc: backend <interpreter\|aot>` on stderr (stdout stays the program's) |
-| `--gc-stats` | report what the garbage collector did while the program ran, on stderr (`gc: backend=… collections=… roots=… skipped=… freed=…`); with `--json` the same numbers arrive as a `gc` member of the payload (L7.2, ADR 0181) |
+| `--gc-stats` | report what the garbage collector did while the program ran (`collections`, `roots`, `skipped`, `marked`, `freed`, `live`, and for the compiled backend `top`), on stderr for either backend; with `--json` the same numbers arrive as a `gc` member of the payload (L7.2, ADR 0181) |
 | `--emit-llvm` | print the emitted LLVM IR |
 | `--emit-ast` | print the JSON AST dump |
 | `--verify <src>` | run the front end (lex + parse + semantic analysis) and report diagnostics, without executing |
@@ -578,12 +578,38 @@ the payload as `"gc": { … }` — see `definitions.gcStats` in `--schema`:
 | `generational` | true for a young (nursery) pass, false for a full sweep |
 | `backend` | `interpreter` or `aot` |
 
-The compiled backend reports through its own runtime (`gc: backend=aot …`); see
-`pkg/lang/codegen.go` `rt_gc`.
+### The compiled backend's report
+
+The counters live inside the compiled program, so its own runtime prints the line
+(`rt_gc_report` in `pkg/lang/codegen.go`), on fd 2 like every other tool-level line:
+
+```
+$ gustyc --aot --gc-stats --file integration/programs/gc_precise.gy
+gc: backend=aot collections=102 roots=3 skipped=0 marked=51 freed=0 total_freed=4243 live=51 top=17
+130
+56850
+719400
+```
+
+`top=` is the high-water mark of the compiled root stack (4096 entries available; a
+program that exhausts it stops itself rather than run with an unrooted handle). The
+`--aot`/`--jit` path captures the target's stderr, forwards it unchanged, and — with
+`--json` — parses that line into the same `gc` member, so neither humans nor agents have
+to scrape it. `lang.ParseGCStatsLine` and `GCStats.String` are one documented shape read
+both ways, tested for round-tripping.
 
 `GUSTY_GC_STRESS=1` forces a collection at every statement boundary: the conformance
 corpus is run that way in `integration/gc_stress_test.go`, so a root the interpreter
 forgot fails a test instead of appearing as a heisenbug.
+
+The compiled backend gets the same treatment from the other side: its roots are a stack
+(`@gc.roots` + `@gc.kinds`, with `rt_root_put`/`rt_root_clear`/`rt_frame_open`/
+`rt_frame_close`), every function — including class methods and closure helpers — pops
+what it pushed, and every variable's slot is allocated once per call (`hoistAllocas`) so
+a slot address identifies exactly one variable. `integration/gc_stress_test.go` pins
+both: `live` must fall back after recursion returns, and `top` must stay small for a
+program with few live variables. Both assertions were checked against stubs that remove
+the mechanism.
 
 ## String methods
 

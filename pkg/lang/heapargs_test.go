@@ -254,8 +254,8 @@ print(a([1]) + b([2, 3]))
 	if n := strings.Count(ir, "call i32 @rt_list_len("); n != 2 {
 		t.Fatalf("expected both callees to measure the handle (got %d):\n%s", n, ir)
 	}
-	if !strings.Contains(ir, "store i32* %_xs, i32** %gc.slot") {
-		t.Errorf("expected a container parameter to be rooted:\n%s", ir)
+	if !strings.Contains(ir, "call void @rt_root_put(i32* %_xs)") {
+		t.Errorf("expected a container parameter to be pushed as a root of its frame:\n%s", ir)
 	}
 }
 
@@ -308,9 +308,9 @@ print(total(xs))
 
 // TestModuleContainerDefinitionIsRooted covers the GC-correctness half of
 // module-level containers: `xs = []` at module scope must give the variable an
-// entry-block slot *and* a gc.roots entry. Otherwise a later `xs.append(i)`
-// stores through a slot that never existed, and rt_gc cannot see the live handle
-// (a collection would recycle a container that is still in use).
+// entry-block slot *and* push it on the root stack. Otherwise a later
+// `xs.append(i)` stores through a slot that never existed, and rt_gc cannot see the
+// live handle (a collection would recycle a container that is still in use).
 func TestModuleContainerDefinitionIsRooted(t *testing.T) {
 	res, err := Compile("xs = []\nfor i in range(3):\n    xs.append(i * 2)\nprint(len(xs))\n")
 	if err != nil {
@@ -319,7 +319,7 @@ func TestModuleContainerDefinitionIsRooted(t *testing.T) {
 	if !strings.Contains(res.IR, "%_xs = alloca i32") {
 		t.Errorf("module-level `xs = []` must allocate its slot:\n%s", res.IR)
 	}
-	if !strings.Contains(res.IR, "store i32* %_xs, i32** %gc.slot") {
+	if !strings.Contains(res.IR, "call void @rt_root_put(i32* %_xs)") {
 		t.Errorf("the module-level container must be a GC root:\n%s", res.IR)
 	}
 	if strings.Count(res.IR, "%_xs = alloca") != 1 {

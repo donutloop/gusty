@@ -117,6 +117,16 @@ Observable consequences, and the limits, in one place:
   the `gc` member of an `--eval --json` payload) on the command line. See
   `docs/operations.md` § Collector self-report.
 
+The **compiled backend** roots the same way, in its own runtime: `@gc.roots` is a stack
+of slot addresses tagged by `@gc.kinds` as handle-or-not, a call opens a frame and pops
+it at every return, every handle-assigning store pushes the slot it wrote, and storing a
+non-handle tags the entry dead. Two properties this depends on are enforced by codegen
+and checked by tests: a variable's slot is allocated **once per call** (an `alloca` left
+in a loop body would change address every iteration and so could never be matched), and
+**every** function-emitting path — plain functions, class methods, closure helpers,
+decorated bodies — opens and closes its frame. A program whose root stack would overflow
+(4096 entries) stops itself instead of running with an unrooted handle.
+
 See ADR 0089 (the two-generation heap) and ADR 0181 (precise roots and safe points).
 
 ## Optimization (`--opt-level`)

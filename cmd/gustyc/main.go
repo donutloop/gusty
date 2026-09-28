@@ -354,6 +354,11 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		return exitUsage
 	}
 	if backend == backendJIT {
+		// The compiled backend reports its own collector numbers, from inside the
+		// program it just built (the counters live in the target's globals). --gc-stats
+		// turns that self-report on; it lands on fd 2, which the JIT captures for us.
+		lang.SetGCReport(gcStats)
+		defer lang.SetGCReport(false)
 		res, err := lang.JIT(s, 0)
 		if err != nil {
 			if jsonOut {
@@ -363,18 +368,23 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 			}
 			return exitCompileError
 		}
+		// The target's stderr (uncaught-exception reports, the collector line) is
+		// forwarded unchanged: stdout stays the program's, stderr stays the tool's.
+		if res.Stderr != "" {
+			fmt.Fprint(os.Stderr, res.Stderr)
+		}
+		gcMember := ""
+		if gcStats {
+			if st, ok := lang.ParseGCStatsLine(reportLine(res.Stderr)); ok {
+				gcMember = gcJSON(st, true)
+			}
+		}
 		if jsonOut {
-			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": 0}\n", res.Output, backend)
+			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": 0%s}\n", res.Output, backend, gcMember)
 		} else {
 			fmt.Print(res.Output)
 		}
 		return exitOK
-	}
-	if gcStats && backend == backendJIT {
-		// Say so rather than staying silent: an empty report reads as "the
-		// collector did nothing", which is a different claim from "this backend
-		// cannot report yet".
-		fmt.Fprintln(os.Stderr, "gc: backend=aot status=unavailable note=the compiled runtime does not report collector stats yet; --interp reports them")
 	}
 	ev := lang.NewEvaluator()
 	prog, err := lang.Parse(s)
@@ -435,6 +445,17 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		fmt.Fprintln(os.Stderr, gc.String())
 	}
 	return exitOK
+}
+
+// reportLine picks the collector self-report out of a program's stderr, so --json can
+// present it as data while the human still sees the line itself (ADR 0181).
+func reportLine(stderr string) string {
+	for _, ln := range strings.Split(stderr, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(ln), "gc: backend=") {
+			return ln
+		}
+	}
+	return ""
 }
 
 // gcJSON is the `gc` member of a --json result payload, or "" when --gc-stats was

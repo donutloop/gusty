@@ -1775,3 +1775,62 @@ roots traced vs roots *proved non-handles*, "is the collector precise?" became a
 number in a test rather than a paragraph in an ADR, and the corpus-wide
 `GUSTY_GC_STRESS=1` run became possible. Same lesson as the optimizer report (Gap
 J.4): a subsystem with no self-report cannot be gated.
+
+## L7.2 (second commit) — the compiled backend's roots were a table, not a stack
+
+**The bug was the data structure.** Codegen registered each container variable's slot
+address once, at index `f(scope,name)`. One entry per name cannot express two live
+frames, so a recursive call re-registered the entry and the inner frame's list replaced
+the outer frame's root; a collection in the callee swept a list the outer frame was
+still about to read. `gc_precise.gy`: interpreter 130, AOT 346. The fix was not a
+special case for recursion — it was turning the array into a root *stack* with an
+explicit push/clear/open/close protocol in the target's runtime, the same discipline the
+interpreter got in the previous commit.
+
+**"Precise" depends on things that have nothing to do with the collector.** With the
+stack in place, a 2000-iteration loop that built instances reported `top=2002`: the root
+stack grew by one entry per iteration, nothing could be reclaimed, the 1024-slot heap
+filled, and the program died. Cause: codegen emits `%_p = alloca i32` where the variable
+is first assigned — *inside the loop body* — and at llc's default `-O0` nothing hoists
+it, so each iteration used a different frame slot and the recorded address never matched
+the one already registered. Fixed with a `hoistAllocas` pass (one slot per variable per
+call), after which `top` is 3. The machine stack had been quietly growing per iteration
+for the same reason, in every program, since forever.
+
+**Making a tag dead is only safe if every store can bring it back to life.** Once a
+scalar binding cleared a variable's root entry, the *next* container binding
+(`s = {1, 2}` after `s = 5`) left the new object tagged dead — it was recycled while in
+use, and the symptom was a set whose insert loop never terminated. Not a crash, not a
+wrong number: a hang. `gcStoreHandle` pairs every handle store with a push; runtime
+dedup makes that cost a scan of a handful of entries.
+
+**An assertion is only real if removing the feature breaks it.** The first version of
+the compiled-backend runtime test asserted `top < 64`, and passed with `rt_frame_close`
+stubbed into a no-op — because with stable slots, dedup hides a missing pop. The
+assertion that actually discriminates is *retention after the frames are gone*: after
+400 recursive storms return, at most a handful of objects may still be live (with the
+stub: 19, and the test says so). Same lesson as `pushFrame` earlier in the round: stub
+the mechanism, watch the test fail, then believe it.
+
+**Measure, don't theorize — and check that a "wrong answer" is wrong.** Two of the three
+"GC corruption" symptoms I chased this commit turned out to be something else: the
+nonsense number `-1630298296` is exactly `int32(2664669000)`, i.e. the AOT's 32-bit
+arithmetic being correct while the interpreter's int64 disagrees (that divergence is
+Phase 11's, not a root bug), and `d = {1: 10}; d = [3, 4]; d[0]` returning `0` reproduces
+identically at HEAD — a pre-existing container-kind bug, not my regression. Counter
+globals (`topmax`, and temporarily appends/hits) answered both questions in one run each;
+reading the runtime and guessing would have cost the whole day. Two candidates for the
+gap list: dict→list rebinding keeps the stale container kind, and the i32/int64 split.
+
+**The LLVM verifier found what the test suite could not.** Gating the root runtime's
+*data* half on `g.rooted` in the module preamble — where `rooted` cannot be true yet
+because the body has not been generated — produced modules referencing an undefined
+`@gc.kinds`. Every `--verify`-driven test caught it instantly; nothing else did. Emission
+of feature-gated runtime blocks belongs after body generation, all halves together.
+
+**Process — never suppress git output.** An A/B experiment used
+`git stash push <paths> … ; git stash pop >/dev/null`; the pop failed and I did not see
+it. The next `go build` failed with `undefined: lang.SetGCReport`, and the reason was that
+most of the round's work was sitting in `stash@{0}`, not in the tree. Recovered, nothing
+lost, but the correct habit is a copy of the file (or a second worktree) for A/B builds,
+and reading what git actually printed.
