@@ -1,0 +1,7 @@
+# Oracle probe (ADR 0192) — a comprehension filter that compares elements with a string reaches
+# the same interned-comparison bug as probe_str_loop_eq. The list is mutated first so it is a
+# runtime object (otherwise the folded-iteration refusal answers first), which is what lets the
+# filter be reached at all: the comprehension refuses instead of inheriting the llc rejection.
+names = ["a", "b"]
+names.append("c")
+print([n for n in names if n == "a"])

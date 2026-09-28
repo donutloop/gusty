@@ -263,7 +263,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1259138597/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1581995388/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -274,7 +274,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1259138597/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1581995388/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -368,7 +368,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle4054245476/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1542932975/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -379,7 +379,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle4054245476/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1542932975/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -629,7 +629,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3658084843/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2133339812/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -640,7 +640,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3658084843/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2133339812/prog.py\", line 5"
       ]
     },
     {
@@ -670,7 +670,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle491562045/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2158518175/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -681,7 +681,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle491562045/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2158518175/prog.py\", line 3"
       ]
     },
     {
@@ -711,7 +711,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2275586972/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle4237693113/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -722,7 +722,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2275586972/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle4237693113/prog.py\", line 5"
       ]
     },
     {
@@ -1297,7 +1297,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2755363079/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle728131279/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1308,7 +1308,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2755363079/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle728131279/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1338,7 +1338,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle3665261485/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1675741766/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1349,7 +1349,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3665261485/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1675741766/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1674,7 +1674,7 @@
       "interp_stdout": "5\n195\na\né\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1014555367/051/prog.ll:160:13: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/051/prog.ll:160:13: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "4\né\na\né\n",
@@ -1689,7 +1689,7 @@
       ],
       "oracle_notes": [
         "interpreter stdout differs from CPython",
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1014555367/051/prog.ll:160:13: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/051/prog.ll:160:13: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -1985,53 +1985,179 @@
     },
     {
       "case": {
-        "id": "programs/probe_comprehension_call",
-        "name": "probe_comprehension_call.gy",
-        "source": "# Oracle probe (L11.7, ADR 0190) — a comprehension whose element is a call. The AOT\n# comprehension path folds constants and stops there: \"comprehension element must be\n# constant\", so the most ordinary list-building idiom in Python needs a loop instead.\ndef sq(n):\n    return n * n\n\nprint([sq(x) for x in range(5)])\nprint([abs(x) for x in [-1, 2, -3]])\n",
+        "id": "programs/probe_str_loop_eq",
+        "name": "probe_str_loop_eq.gy",
+        "source": "# Oracle probe (ADR 0192) — comparing an interned container element with a string literal emits\n# `icmp eq i32 %_n, @.str3`: an index into @str_tab compared against the *address* of a string\n# global. llc rejects the module, so this is an exit-2 compiler bug, not a refusal (roadmap L11.8).\nnames = [\"a\", \"b\"]\nfor n in names:\n    if n == \"a\":\n        print(n)\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "the AOT comprehension path folds constant elements and stops: `comprehension element must be constant`, so [f(x) for x in ...] needs a loop",
-        "ref": "roadmap L11.7 (functions are values that compile)",
+        "reason": "comparing a container element with a string literal emits `icmp eq i32 %_n, @.str3` — an index into @str_tab against the address of a string global — and llc rejects the module, so this is exit 2 (a compiler bug) rather than a refusal",
+        "ref": "roadmap L11.8 (refusal is part of the model) + Gap I.2 (interned strings)",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "[0, 1, 4, 9, 16]\n[1, 2, 3]\n"
+            "stdout": "a\n"
           },
           {
             "backend": "aot",
-            "error": "comprehension element must be constant",
+            "error": "global variable reference must have pointer type",
             "missing": true
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "[0, 1, 4, 9, 16]\n[1, 2, 3]\n",
+      "interp_stdout": "a\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "codegen: comprehension element must be constant",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/055/prog.ll:1973:30: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
-      "python_stdout": "[0, 1, 4, 9, 16]\n[1, 2, 3]\n",
+      "python_stdout": "a\n",
       "interp_matches_python": true,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "the AOT comprehension path folds constant elements and stops: `comprehension element must be constant`, so [f(x) for x in ...] needs a loop",
+      "oracle_reason": "comparing a container element with a string literal emits `icmp eq i32 %_n, @.str3` — an index into @str_tab against the address of a string global — and llc rejects the module, so this is exit 2 (a compiler bug) rather than a refusal",
+      "oracle_ref": "roadmap L11.8 (refusal is part of the model) + Gap I.2 (interned strings)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/055/prog.ll:1973:30: error: global variable reference must have pointer type"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_comp_str_filter",
+        "name": "probe_comp_str_filter.gy",
+        "source": "# Oracle probe (ADR 0192) — a comprehension filter that compares elements with a string reaches\n# the same interned-comparison bug as probe_str_loop_eq. The list is mutated first so it is a\n# runtime object (otherwise the folded-iteration refusal answers first), which is what lets the\n# filter be reached at all: the comprehension refuses instead of inheriting the llc rejection.\nnames = [\"a\", \"b\"]\nnames.append(\"c\")\nprint([n for n in names if n == \"a\"])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a comprehension filter that compares elements with a string reaches the same interned-comparison bug; the comprehension refuses instead of inheriting the llc rejection",
+        "ref": "roadmap L11.8 (refusal is part of the model)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "['a']\n"
+          },
+          {
+            "backend": "aot",
+            "error": "interned-string comparison",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "['a']\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: comparing container elements with a string in a filter needs the interned-string comparison fix (`for n in xs: if n == \"a\"` has the same bug); run it interpreted for now (roadmap L11.8, probe_str_loop_eq)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "['a']\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a comprehension filter that compares elements with a string reaches the same interned-comparison bug; the comprehension refuses instead of inheriting the llc rejection",
+      "oracle_ref": "roadmap L11.8 (refusal is part of the model)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: comparing container elements with a string in a filter needs the interned-string comparison fix (`for n in xs: if n == \"a\"` has the same bug); run it interpreted for now (roadmap L11.8, probe_str_loop_eq)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_comp_runtime_reduce",
+        "name": "probe_comp_runtime_reduce.gy",
+        "source": "# Oracle probe (ADR 0192) — the consumers of a comprehension whose elements are computed at\n# runtime have no compile-time element set to fold, so sum/min/max refuse rather than add up\n# nothing and answer 0. Needs a runtime reduction over the built list.\ndef sq(n):\n    return n * n\n\nprint(sum([sq(x) for x in range(4)]))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
+        "ref": "roadmap L11.7 (functions are values that compile)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "14\n"
+          },
+          {
+            "backend": "aot",
+            "error": "runtime reduction",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "14\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "sum of a comprehension whose elements are computed at runtime needs a runtime reduction (roadmap L11.7, ADR 0192)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "14\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
       "oracle_ref": "roadmap L11.7 (functions are values that compile)",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: codegen: comprehension element must be constant"
+        "compiled leg failed: sum of a comprehension whose elements are computed at runtime needs a runtime reduction (roadmap L11.7, ADR 0192)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_comp_folded_iter",
+        "name": "probe_comp_folded_iter.gy",
+        "source": "# Oracle probe (ADR 0192) — a comprehension over a list the escape analysis kept as a compile-time\n# constant has nothing to walk at runtime. The interpreter answers; AOT refuses (it must not emit\n# the load of a slot that was never allocated, which is the module llc rejects). Iterating the same\n# list with `for`, or mutating it first, materialises it and the comprehension works.\nxs = [1, 2, 3]\nprint([x * 2 for x in xs])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
+        "ref": "roadmap L11.2 (the tagged value word makes every container a runtime object)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[2, 4, 6]\n"
+          },
+          {
+            "backend": "aot",
+            "error": "compile-time constant",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[2, 4, 6]\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: xs is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[2, 4, 6]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
+      "oracle_ref": "roadmap L11.2 (the tagged value word makes every container a runtime object)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: xs is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)"
       ]
     }
   ],
-  "rows": 63,
-  "skipped": 15,
+  "rows": 66,
+  "skipped": 18,
   "pass": 48,
   "fail": 0,
   "oracle_match": 32,
-  "oracle_debt": 21,
+  "oracle_debt": 24,
   "oracle_not_applicable": 10,
   "oracle_drift": 0
 }

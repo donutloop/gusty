@@ -1221,6 +1221,20 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		v := g.newTmp()
 		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", v, n.Value)
 		return v, nil
+	case *Comp:
+		// A comprehension is a container the same way a literal is. The constant path hands
+		// back a folded global (@.lstN), whose layout is a length plus an array and not a
+		// handle — handing that to a runtime helper is the invalid-IR shape ADR 0188 removed
+		// for literals, so it is materialised into the heap here; the runtime path already
+		// produced a handle (roadmap L11.7, ADR 0192).
+		h, err := g.value(b, e)
+		if err != nil {
+			return "", err
+		}
+		if lit, ok := g.staticLists[h]; ok {
+			return g.heapListFrom(b, lit, "")
+		}
+		return h, nil
 	}
 	return "", fmt.Errorf("codegen: %s is not a container (roadmap L11.1, ADR 0189)", exprSnippet(e))
 }

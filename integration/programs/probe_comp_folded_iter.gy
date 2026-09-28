@@ -1,0 +1,6 @@
+# Oracle probe (ADR 0192) — a comprehension over a list the escape analysis kept as a compile-time
+# constant has nothing to walk at runtime. The interpreter answers; AOT refuses (it must not emit
+# the load of a slot that was never allocated, which is the module llc rejects). Iterating the same
+# list with `for`, or mutating it first, materialises it and the comprehension works.
+xs = [1, 2, 3]
+print([x * 2 for x in xs])

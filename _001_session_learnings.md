@@ -2323,3 +2323,60 @@ promoted to parity rows: `sorting.gy`, `sorting_literals.gy`.
 
 **Next** from the still-pinned sweep finding: `[f(x) for x in ...]` on the AOT path (`comprehension
 element must be constant`), which is L11.7's comprehension half.
+
+## Comprehensions: the fold was the meaning, and that was the bug (L11.7, ADR 0192)
+
+`[f(x) for x in range(5)]` refused in AOT with "comprehension element must be constant" and worked
+in the interpreter. The message tells you everything: the compiled backend had implemented
+comprehensions *as* its constant folder, so a comprehension was only defined where folding was
+possible. `docs/language.md` described comprehensions without ever mentioning the boundary — docs
+written from the implementation's shape, not the language's.
+
+**What I built.** Three lowerings, ordered: fold (unchanged, must keep priority because `sum`/`min`/
+`max`/`len` read the folded element set), unrolled-with-runtime-elements (one block per item — the
+same strategy `for` over a literal already uses), and a real loop over a container whose length is
+only known at runtime. The load-bearing detail: the loop variable is a real slot that each item is
+stored into. That is what makes a call in the element position legal at all — and it means the loop
+variable needs the same kind-tracking a `for` variable gets (`internedVars`), or a filter's `n == "a"`
+compares an interned index with something that isn't one.
+
+**Four bugs, and the two that mattered were found by tests I nearly skipped.**
+
+1. `sum([sq(x) for x in range(4)])` printed **0**. Not a crash, not a refusal: a *correct-looking
+   answer*. The fold consumers read the compile-time element set, which my runtime path left empty.
+   I saw the 0 in a test table I had written and was about to "fix" by adjusting the expectation —
+   which is precisely the failure mode ADR 0186 exists to prevent. It became a refusal
+   (`probe_comp_runtime_reduce`) and an owned debt.
+2. `ys = [f(x) for x in ...]` **segfaulted** under `--build`. The handle was stored without a GC
+   root, so the collector recycled the list. It passed under `--aot`/JIT. If I had tested only one
+   path — as I nearly did, since the JIT is faster — this would have shipped. The two-path test rule
+   paid for itself again, in the same session.
+
+**A crash that is not mine, found because I was honest about a refusal.** To make
+`[n for n in names if n == "a"]` refuse rather than emit what the `for` statement emits, I had to
+find out what the `for` statement emits: `icmp eq i32 %_n, @.str3` — an index into `@str_tab`
+compared against the *address* of a string global — and llc rejects it. So `for n in names: if n ==
+"a":` is an exit-2 compiler bug in shipped code, predating this cycle, reachable from any program
+that iterates strings. It is now `probe_str_loop_eq`, with a pin asserting the *llc error text*, and
+it is the next thing to fix. My comprehension refuses with exit 1 instead of inheriting it, which is
+the honest version of "not my feature".
+
+**A refusal I earned.** `[x*2 for x in xs]` where `xs` is a never-mutated all-int literal: escape
+analysis keeps that list compile-time, so there's no slot to load, and emitting the load is another
+llc rejection. I first shipped the load (found by my own unit test), then tried `containerOperand`
+first, then understood the ordering: try the static route first, and if the variable has no slot at
+all, refuse and say what materialises it (`append`, or `for`). The message points at L11.2, whose
+tagged value word deletes this entire category of problem.
+
+**The naming rule that keeps biting.** The induction register is `%cc<N>`, never `%s<N>`: a register
+whose name starts with `%s` reads as a *string value* to the print and call lowerings. Third cycle
+this has come up. It is in the ADR now, because a naming convention carrying semantic weight is
+exactly the thing nobody tells you.
+
+**Corpus**: 66 rows / 48 parity / 18 probes; oracle 32 match / 24 debt / 10 NA, 0 drift.
+`probe_comprehension_call` promoted to `comprehension_calls.gy`; four new probes pinned
+(`probe_str_loop_eq`, `probe_comp_str_filter`, `probe_comp_runtime_reduce`,
+`probe_comp_folded_iter`).
+
+**Next**: the interned-string comparison (`probe_str_loop_eq`) — a crash, older than my cycle, and
+the only one of today's findings that fails a program which looks completely normal.

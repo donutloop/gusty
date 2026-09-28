@@ -1,0 +1,19 @@
+# A comprehension whose element is a call: the AOT path used to fold constants and stop, so the
+# most ordinary list-building idiom in Python needed a hand-written loop (roadmap L11.7, ADR 0192).
+def sq(n):
+    return n * n
+
+def is_even(n):
+    return n % 2 == 0
+
+print([sq(x) for x in range(5)])
+print([abs(x) for x in [-1, 2, -3]])
+print([x * 2 for x in [1, 2, 3]])
+print([x for x in range(6) if x % 2 == 0])
+print([x for x in range(10) if is_even(x)])
+sqrs = [sq(x) for x in range(4)]
+print(sqrs)
+print(len(sqrs))
+print(sqrs[2])
+for v in sqrs:
+    print(v)

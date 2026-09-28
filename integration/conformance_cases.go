@@ -142,7 +142,13 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_print_atomic",     // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
-		"probe_comprehension_call", // L11.7 — a comprehension element cannot be a call
+
+		// Pinned by the runtime-comprehension work (ADR 0192): two honest refusals and one
+		// llc rejection that is a compiler bug, all recorded rather than remembered.
+		"probe_str_loop_eq",         // L11.8 — comparing an interned element with a string rejects the module
+		"probe_comp_str_filter",     // L11.8 — the same bug, reached from a comprehension filter
+		"probe_comp_runtime_reduce", // L11.7 — sum/min/max over a runtime comprehension
+		"probe_comp_folded_iter",    // L11.2 — iterating a list the compiler folded away
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
@@ -323,10 +329,22 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true}, {Backend: "aot", Missing: true}}},
-	"programs/probe_comprehension_call": {oracle: lang.OracleDebt,
-		reason: "the AOT comprehension path folds constant elements and stops: `comprehension element must be constant`, so [f(x) for x in ...] needs a loop",
+	"programs/probe_str_loop_eq": {oracle: lang.OracleDebt,
+		reason: "comparing a container element with a string literal emits `icmp eq i32 %_n, @.str3` — an index into @str_tab against the address of a string global — and llc rejects the module, so this is exit 2 (a compiler bug) rather than a refusal",
+		ref:    "roadmap L11.8 (refusal is part of the model) + Gap I.2 (interned strings)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "a\n"}, {Backend: "aot", Missing: true, Err: "global variable reference must have pointer type"}}},
+	"programs/probe_comp_str_filter": {oracle: lang.OracleDebt,
+		reason: "a comprehension filter that compares elements with a string reaches the same interned-comparison bug; the comprehension refuses instead of inheriting the llc rejection",
+		ref:    "roadmap L11.8 (refusal is part of the model)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "['a']\n"}, {Backend: "aot", Missing: true, Err: "interned-string comparison"}}},
+	"programs/probe_comp_runtime_reduce": {oracle: lang.OracleDebt,
+		reason: "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
 		ref:    "roadmap L11.7 (functions are values that compile)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[0, 1, 4, 9, 16]\n[1, 2, 3]\n"}, {Backend: "aot", Missing: true, Err: "comprehension element must be constant"}}},
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "runtime reduction"}}},
+	"programs/probe_comp_folded_iter": {oracle: lang.OracleDebt,
+		reason: "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
+		ref:    "roadmap L11.2 (the tagged value word makes every container a runtime object)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[2, 4, 6]\n"}, {Backend: "aot", Missing: true, Err: "compile-time constant"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",

@@ -330,15 +330,44 @@ the `else:` clause behave exactly like `range` loops).
 
 ### List comprehensions (LLVM codegen)
 
-The AOT LLVM path lowers **list comprehensions** over a constant iterable
-(inline list literal or `range(n)`) into a dedicated global struct, unrolled
-and constant-folded at compile time. A constant `if` condition filters elements
-at compile time. The lowered result can be indexed inline exactly like a list
-literal: `[x * 2 for x in [1, 2, 3]][1]` folds to the elements `2, 4, 6` and
-emits a `getelementptr` + `load` at the constant key. Like list/dict/set
-literals, the comprehension must be used inline (no assignment-to-variable
-indirection) in the codegen path; the interpreter evaluates comprehensions at
-runtime and is unchanged.
+A list comprehension means *a loop that appends*, and the compiled backend now implements that
+meaning rather than a subset of it (roadmap L11.7, ADR 0192). Three lowerings coexist, tried in
+this order:
+
+1. **Constant fold** — the iterable is an inline list literal or `range(...)` with constant bounds
+   and the element and filter both fold. The result is a dedicated global struct, unrolled and
+   folded at compile time, and indexable inline: `[x * 2 for x in [1, 2, 3]][1]` emits a
+   `getelementptr` + `load` at the constant key. This path keeps priority because `sum`/`min`/`max`/
+   `len` over a comprehension read the compile-time element set.
+2. **Unrolled with runtime elements** — same iterables, but the element (or the filter) is not a
+   constant, e.g. `[sq(x) for x in range(5)]` or `[abs(x) for x in [-1, 2, -3]]`. One straight-line
+   block per item: store the item into the loop variable's slot, evaluate the element, append it to
+   a heap list. The loop variable is a real binding, which is what makes a call in the element
+   position possible at all.
+3. **Runtime loop** — the iterable is a container whose length is only known at runtime (a list or
+   set variable that exists as a heap object): an index counter over `rt_list_len`/`rt_get_elem`
+   with the loop variable bound per step, as a `for` statement binds it.
+
+The result of either runtime path is an ordinary container: it can be assigned (`sqrs = [sq(x) for
+x in range(4)]`), printed, indexed, measured with `len`, iterated with `for`, and passed to a
+function. The assignment registers it as a container *and* roots it, because an unrooted heap handle
+is one collection away from a segfault (ADR 0181).
+
+Three shapes refuse rather than answer wrongly, each naming its reason:
+
+- `sum`/`min`/`max` over a comprehension whose elements are computed at runtime — there is no
+  compile-time element set to fold, and folding the empty one answers **0 for a list that has
+  elements** (`probe_comp_runtime_reduce`; a runtime reduction is the open item).
+- a filter comparing elements with a string literal — the underlying comparison is broken for
+  interned strings and the same shape in a `for` loop makes `llc` reject the module
+  (`probe_str_loop_eq`, roadmap L11.8); the comprehension refuses instead of inheriting that.
+- iterating a list the escape analysis kept as a compile-time constant (`xs = [1, 2, 3]` with no
+  mutation and no `for` over it) — there is no runtime object to walk. Iterating it with `for`, or
+  mutating it, materialises it (`probe_comp_folded_iter`; L11.2's tagged value word removes the
+  category).
+
+Dict and set comprehensions take the constant-fold path only; the runtime lowerings are list-kind.
+The interpreter evaluates comprehensions at runtime and is the reference for all of this.
 
 
 ### Multi-argument range iterables (comprehensions)

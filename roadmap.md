@@ -6,11 +6,11 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0191`. `go test -tags=llvm20 ./...`
-> is green. Conformance corpus: 70 programs under `integration/programs/` (15 of
-> them pinned probes), 63 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
-> parity cases plus 15 pinned probes; oracle 32 `match` / 21 `debt` /
-> 10 `not_applicable`. **The current plan is Phase 11 — the value model** (below);
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0192`. `go test -tags=llvm20 ./...`
+> is green. Conformance corpus: 74 programs under `integration/programs/` (18 of
+> them pinned probes), 66 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
+> parity cases plus 18 pinned probes; oracle 32 `match` / 24 `debt` / 10 `not_applicable`, 0 drift.
+> **The current plan is Phase 11 — the value model** (below);
 > its harness, L11.9, is ✅ DONE (ADR 0186), so no remaining Phase 11 item may be
 > marked done on parity alone — each one has a pinned program that has to change.
 
@@ -766,10 +766,22 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     pairs, mode 0 numerically and mode 1 by the **text** behind an interned index; the sort is a
     stable insertion sort on both paths, because `sorted(key=)` will be decorate–sort–undecorate
     over a stable sort.
-  - **Still open from that sweep:** `probe_comprehension_call.gy` — the AOT comprehension path
-    folds constants and stops there, so `[f(x) for x in ...]` refuses with `comprehension element
-    must be constant` and the most ordinary list-building idiom in Python needs a hand-written
-    loop.
+  - **Comprehensions build their lists now (ADR 0192).** `[f(x) for x in range(5)]`,
+    `[abs(x) for x in [...]]`, and a filter that calls a function all compile — the AOT path had
+    made its constant folder the *meaning* of a comprehension and refused everything else with
+    `comprehension element must be constant`. `probe_comprehension_call` was promoted to the parity
+    row `comprehension_calls.gy`. Three shapes refuse rather than answer wrongly, and each is a
+    pinned debt with an owner: `sum`/`min`/`max` over a runtime comprehension (folding the empty
+    element set answers **0** — `probe_comp_runtime_reduce`, this item), a filter comparing elements
+    with a string (see below), and iterating a list the escape analysis folded away
+    (`probe_comp_folded_iter`, L11.2).
+  - **A crash found on the way, and it is not the comprehension's:** `for n in names: if n == "a":`
+    emits `icmp eq i32 %_n, @.str3` — an index into `@str_tab` compared with the *address* of a
+    string global — and **`llc` rejects the module**, so the program exits 2 as a compiler bug rather
+    than 1 as a refusal. Pinned as `probe_str_loop_eq`; the comprehension equivalent refuses
+    instead of inheriting it (`probe_comp_str_filter`). Fix this first: it predates L11.7, it is
+    L11.8's contract violation made concrete, and it is reachable from any program that iterates
+    strings.
   - **What the next container method owes:** `xs.insert` / `xs.index` / `xs.remove` / `xs.extend` /
     `xs.clear` share this dispatch table and each needs ADR 0187's pairing rule (write the tag with
     the payload); `sorted(key=)`, `min/max(key=)` need the fnptr lowering; and a runtime helper

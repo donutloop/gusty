@@ -1,0 +1,7 @@
+# Oracle probe (ADR 0192) — the consumers of a comprehension whose elements are computed at
+# runtime have no compile-time element set to fold, so sum/min/max refuse rather than add up
+# nothing and answer 0. Needs a runtime reduction over the built list.
+def sq(n):
+    return n * n
+
+print(sum([sq(x) for x in range(4)]))
