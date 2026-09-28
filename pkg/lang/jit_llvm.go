@@ -97,7 +97,15 @@ func JIT(src string, optLevel int) (*JITResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("jit: temp dir: %w", err)
 	}
-	defer os.RemoveAll(dir)
+	// GUSTY_KEEP_LLVM=1 leaves the scratch directory behind and names it in the error.
+	// When a failure is "llc rejected the module", the only useful artifact is the .ll
+	// text, and a toolchain whose IR failures cannot be inspected is a toolchain you
+	// cannot debug (roadmap L11.8's contract: a refusal must be diagnosable).
+	if os.Getenv("GUSTY_KEEP_LLVM") != "" {
+		fmt.Fprintf(os.Stderr, "gustyc: keeping JIT scratch dir %s\n", dir)
+	} else {
+		defer os.RemoveAll(dir)
+	}
 
 	irPath := filepath.Join(dir, "jit.ll")
 	objPath := filepath.Join(dir, "jit.o")

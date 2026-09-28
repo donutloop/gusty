@@ -2263,3 +2263,63 @@ argument for pins being data.
 short of the pre-declared legs. `tools/oracleprobe` made twelve three-leg runs a ten-minute
 exercise; if a cycle can't run a program on three legs in one command, that tool is the first
 thing to build.
+
+## Sorting: the least interesting feature taught me four rules (L11.7, ADR 0191)
+
+I expected this cycle to be a chore — `xs.sort()`, really? — and it produced more design decisions
+per line than the container-equality cycle did, mostly because nothing about it forces you to think
+until it has already gone wrong.
+
+**The interned-index trap is the whole feature.** A stored string is an index into `@str_tab`, so
+"sort the payloads" sorts strings by the order they first appeared in the program. `["pear",
+"apple", "fig"]` sorted that way returns... whatever arrival says, which for many small lists is
+*close enough to alphabetical to pass a spot check*. My comparator had to load the text and
+`strcmp` it, and the mode that does that is the only reason the feature is correct. This is the
+second time the interned representation has bitten (the first was `[0] == ["zero"]`, ADR 0189), and
+I now think of "what is this value's payload *actually*?" as a standing question for any operation
+on container slots.
+
+**Stability is not a property of a sort you can defer.** Insertion sort, quadratic, in a runtime
+whose element array is 256 deep — fine. But the reason to write it down is `sorted(key=)`: Python
+specifies key-sorting as decorate–sort–undecorate over a *stable* sort. If I had written an unstable
+sort today, `key=` would arrive subtly wrong in a cycle that isn't thinking about sorting. A feature
+that will be built on top of this one is a legitimate reason to choose the boring algorithm today.
+
+**The pairing rule reaches swaps too.** ADR 0187 says: the operation that writes a slot's payload
+writes its tag. A sort is a sequence of two-slot writes, so my first `rt_sort` — moving payloads and
+leaving tags behind — mislabelled the list it had just sorted. The test asserts the `@heap_tags`
+stores are inside the swap block, which is what turns "I remembered" into "the build remembers".
+
+**A method mutates and returns None; the builtin copies** — and the copy is where the next bug was
+hiding. `ys = sorted(xs)` allocated a heap list and stored the handle in a plain int variable, so
+`print(ys)` printed `1`, the slot number. Same family as ADR 0188's print-a-handle, one layer down
+in the assignment path; the fix is the one the generator-call path already used (register the
+target as a container, inherit element-kind from the source). Then `print(sorted(xs))` needed its
+own branch, because the lowering hands back a handle and print would `printf` it.
+
+**Three things I want to remember about the process, not the code.**
+
+1. My stub-check on the string comparator *passed* at first — I had stubbed it by adding a dead
+   block that still contained `@str_tab` and `@strcmp`, so the IR-shape test still found the words
+   it was looking for. A stub check has to remove the capability, not route around it. Fourth cycle
+   in a row I have caught myself writing a test that cannot fail.
+2. Two existing tests broke when the new runtime helpers landed, because they counted call sites
+   module-wide: `strings.Count(ir, "call i32 @rt_list_len(") == 2` was measuring *the runtime*, and
+   my new `rt_list_copy` calls `rt_list_len`. They passed before only because no helper did. Now
+   scoped to user code (`countOutsideRuntimePrelude`). Lesson: a module-wide count is a test that
+   silently weakens every time the runtime grows.
+3. Every one of these failures was "llc rejected the module", and the module was deleted with the
+   temp dir. I added `GUSTY_KEEP_LLVM=1` (keep the scratch dir, print the path) after the fourth
+   round of guess-and-check. Documented in operations.md: if your IR failures cannot be inspected,
+   you are not debugging, you are guessing.
+
+**Also recorded, not fixed:** `--emit-llvm <file>` is a *second* codegen entry point and refuses
+things the JIT compiles (`print(sorted([10, 2, 33]))` → `unsupported attr expression`). For an
+agent whose machine path is `--emit-llvm`, that gap is real; it is in operations.md and the roadmap
+rather than in my head.
+
+**Corpus**: 63 rows / 48 parity, 15 probes; oracle 32 match / 21 debt / 10 NA, 0 drift. Two probes
+promoted to parity rows: `sorting.gy`, `sorting_literals.gy`.
+
+**Next** from the still-pinned sweep finding: `[f(x) for x in ...]` on the AOT path (`comprehension
+element must be constant`), which is L11.7's comprehension half.

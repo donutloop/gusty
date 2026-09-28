@@ -1,0 +1,25 @@
+# Container methods that mutate in place, and the builtin that copies: sorting a variable
+# container is language surface, not a stdlib afterthought (roadmap L11.7, ADR 0191). It is
+# also the row that proves the compiled backend's comparator for interned strings reads the
+# text and not the slot — and that xs.sort() mutates xs while sorted(xs) does not.
+xs = [3, 1, 2]
+xs.sort()
+print(xs)
+ys = ["c", "a", "b"]
+ys.sort()
+print(ys)
+zs = [1, 2, 3]
+zs.reverse()
+print(zs)
+ws = [3, 1, 2]
+print(sorted(ws))
+print(ws)
+vs = [5, 3, 9]
+vs.sort()
+vs.reverse()
+print(vs)
+ds = []
+ds.append(4)
+ds.append(1)
+ds.sort()
+print(ds)

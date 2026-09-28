@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -3117,8 +3116,89 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 			}
 		}
 		return cnt, nil
+	case "reverse":
+		// l.reverse() reverses in place and returns None (roadmap L11.7, ADR 0191).
+		if len(args) != 0 {
+			return 0, exnError("TypeError", "reverse() takes no arguments")
+		}
+		for i, j := 0, len(o.elems)-1; i < j; i, j = i+1, j-1 {
+			o.elems[i], o.elems[j] = o.elems[j], o.elems[i]
+		}
+		return e.noneVal, nil
+	case "sort":
+		// l.sort() sorts in place and returns None. Sorting is a *language* surface
+		// question, not a stdlib afterthought: until now neither backend had it, and the
+		// AOT path diagnosed `xs.sort()` as a string method (roadmap L11.7, ADR 0191).
+		if len(args) != 0 {
+			return 0, exnError("TypeError", "sort() takes no arguments in this build (key= and reverse= are not implemented)")
+		}
+		if err := e.sortElems(o.elems); err != nil {
+			return 0, err
+		}
+		return e.noneVal, nil
 	}
 	return 0, &EvalError{Msg: "no such list method " + name}
+}
+
+// compareElems orders two list elements the way Python's < does for the kinds the compiled
+// backend can hold: numbers (int or float) compare numerically, interned strings compare by
+// their text. Comparing across those kinds is a TypeError in Python, and saying so is better
+// than inventing an order — a sort that guesses is worse than one that refuses.
+func (e *Evaluator) compareElems(a, b int64) (int, error) {
+	af, aIsFloat := e.floatOf(a)
+	bf, bIsFloat := e.floatOf(b)
+	if aIsFloat || bIsFloat {
+		if !aIsFloat {
+			af = float64(a)
+		}
+		if !bIsFloat {
+			bf = float64(b)
+		}
+		switch {
+		case af < bf:
+			return -1, nil
+		case af > bf:
+			return 1, nil
+		}
+		return 0, nil
+	}
+	ao, aIsObj := e.heap[a]
+	bo, bIsObj := e.heap[b]
+	if aIsObj && ao.kind == "str" && bIsObj && bo.kind == "str" {
+		return strings.Compare(ao.sval, bo.sval), nil
+	}
+	if aIsObj && ao.kind == "str" || bIsObj && bo.kind == "str" {
+		return 0, exnError("TypeError", "'<' not supported between instances of 'str' and 'int'")
+	}
+	switch {
+	case a < b:
+		return -1, nil
+	case a > b:
+		return 1, nil
+	}
+	return 0, nil
+}
+
+// sortElems is a stable insertion sort. Stability is not decoration: sorted(key=) — the reason
+// L11.7 also owns first-class functions — is built on it, and an unstable sort makes the future
+// feature wrong in a way that is hard to see. n^2 is fine for the sizes the runtime holds (the
+// heap element array is 256 deep), and it keeps the compiled version a few dozen instructions.
+func (e *Evaluator) sortElems(elems []int64) error {
+	for i := 1; i < len(elems); i++ {
+		j := i
+		for j > 0 {
+			c, err := e.compareElems(elems[j-1], elems[j])
+			if err != nil {
+				return err
+			}
+			if c <= 0 {
+				break
+			}
+			elems[j-1], elems[j] = elems[j], elems[j-1]
+			j--
+		}
+	}
+	return nil
 }
 
 // callSetMethod dispatches builtin set methods. `add` is what makes `set()` usable at
@@ -3767,9 +3847,12 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return 0, &EvalError{Msg: "sorted() argument must be a list"}
 			}
 			elems := append([]int64(nil), lo.elems...)
-			sort.Slice(elems, func(i, j int) bool {
-				return e.lessVal(elems[i], elems[j])
-			})
+			// The same stable sort xs.sort() uses, so `sorted(xs)` and `xs.sort(); xs`
+			// cannot disagree, and so a str/int mix raises where sort.Slice would have
+			// silently ordered by handle (roadmap L11.7, ADR 0191).
+			if err := e.sortElems(elems); err != nil {
+				return 0, err
+			}
 			// sorted(iter, reverse=True) returns descending order.
 			if len(n.Args) > 1 {
 				// Accept reverse=True (KeywordArg) or a positional truthy second arg.

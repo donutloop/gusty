@@ -263,7 +263,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle3414891353/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1259138597/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -274,7 +274,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3414891353/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1259138597/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -368,7 +368,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle3946546861/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle4054245476/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -379,7 +379,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3946546861/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle4054245476/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -629,7 +629,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle1561294552/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3658084843/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -640,7 +640,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1561294552/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3658084843/prog.py\", line 5"
       ]
     },
     {
@@ -670,7 +670,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3556804710/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle491562045/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -681,7 +681,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3556804710/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle491562045/prog.py\", line 3"
       ]
     },
     {
@@ -711,7 +711,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle4014077945/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2275586972/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -722,7 +722,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle4014077945/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2275586972/prog.py\", line 5"
       ]
     },
     {
@@ -1297,7 +1297,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1175402773/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2755363079/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1308,7 +1308,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1175402773/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2755363079/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1338,7 +1338,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle3618469340/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3665261485/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1349,7 +1349,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3618469340/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3665261485/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1674,7 +1674,7 @@
       "interp_stdout": "5\n195\na\né\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2511241667/051/prog.ll:160:13: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1014555367/051/prog.ll:160:13: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "4\né\na\né\n",
@@ -1689,7 +1689,7 @@
       ],
       "oracle_notes": [
         "interpreter stdout differs from CPython",
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2511241667/051/prog.ll:160:13: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1014555367/051/prog.ll:160:13: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -1814,47 +1814,6 @@
       "oracle_notes": [
         "interpreter stdout differs from CPython",
         "compiled stdout differs from CPython"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_sorted",
-        "name": "probe_sorted.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — `sorted` is language surface: it emits invalid IR\n# today (`printf(..., i32 @.lst1)`) instead of a sort (L11.7).\nprint(sorted([3, 1, 2]))\nprint(sorted([3, 1, 2], reverse=True))\nprint(sorted([\"b\", \"a\"]))\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "sorted(...) is refused in AOT (`sorted: list elements must be integer literals`) instead of being language surface",
-        "ref": "roadmap L11.7 (functions are values that compile)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "[1, 2, 3]\n[3, 2, 1]\n['a', 'b']\n"
-          },
-          {
-            "backend": "aot",
-            "missing": true
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "[1, 2, 3]\n[3, 2, 1]\n['a', 'b']\n",
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "sorted: list elements must be integer literals",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "[1, 2, 3]\n[3, 2, 1]\n['a', 'b']\n",
-      "interp_matches_python": true,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "sorted(...) is refused in AOT (`sorted: list elements must be integer literals`) instead of being language surface",
-      "oracle_ref": "roadmap L11.7 (functions are values that compile)",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: sorted: list elements must be integer literals"
       ]
     },
     {
@@ -2026,51 +1985,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_sort_methods",
-        "name": "probe_sort_methods.gy",
-        "source": "# Oracle probe (L11.7, ADR 0190) — sorting a container is language surface, not a stdlib\n# afterthought. Neither backend has xs.sort() / xs.reverse(), and sorted() on a variable\n# refuses; the AOT diagnostic is even from the wrong family (`string method sort on\n# non-constant string`), which is a diagnostic bug on top of a missing feature.\nxs = [3, 1, 2]\nxs.sort()\nprint(xs)\nys = [\"c\", \"a\", \"b\"]\nys.sort()\nprint(ys)\nzs = [1, 2, 3]\nzs.reverse()\nprint(zs)\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "xs.sort() and xs.reverse() do not exist: the interpreter raises `no such list method sort` and the compiled path answers `string method sort on non-constant string` — a diagnostic from the wrong family on top of a missing feature",
-        "ref": "roadmap L11.7 (functions are values that compile) + Gap K.3 (container methods)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "error": "no such list method sort",
-            "missing": true
-          },
-          {
-            "backend": "aot",
-            "error": "string method sort",
-            "missing": true
-          }
-        ]
-      },
-      "interp_ok": false,
-      "interp_stdout": "",
-      "interp_error": "eval error: no such list method sort",
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "string method sort on non-constant string",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "[1, 2, 3]\n['a', 'b', 'c']\n[3, 2, 1]\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "xs.sort() and xs.reverse() do not exist: the interpreter raises `no such list method sort` and the compiled path answers `string method sort on non-constant string` — a diagnostic from the wrong family on top of a missing feature",
-      "oracle_ref": "roadmap L11.7 (functions are values that compile) + Gap K.3 (container methods)",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter leg failed: eval error: no such list method sort",
-        "compiled leg failed: string method sort on non-constant string"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_comprehension_call",
         "name": "probe_comprehension_call.gy",
         "source": "# Oracle probe (L11.7, ADR 0190) — a comprehension whose element is a call. The AOT\n# comprehension path folds constants and stops there: \"comprehension element must be\n# constant\", so the most ordinary list-building idiom in Python needs a loop instead.\ndef sq(n):\n    return n * n\n\nprint([sq(x) for x in range(5)])\nprint([abs(x) for x in [-1, 2, -3]])\n",
@@ -2112,12 +2026,12 @@
       ]
     }
   ],
-  "rows": 65,
-  "skipped": 17,
+  "rows": 63,
+  "skipped": 15,
   "pass": 48,
   "fail": 0,
   "oracle_match": 32,
-  "oracle_debt": 23,
+  "oracle_debt": 21,
   "oracle_not_applicable": 10,
   "oracle_drift": 0
 }

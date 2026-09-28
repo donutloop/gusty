@@ -298,8 +298,8 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **65 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — for 48 parity cases plus 17 pinned probes. Parity (interpreter ==
+  `conformance-matrix.json`: **63 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — for 48 parity cases plus 15 pinned probes. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its
@@ -314,7 +314,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (`mixed_element_reads.gy`, `mixed_element_writes.gy`). Its third catch went the other way: `xs == ys`
   for two equal lists answered False on both backends (the comparison compared heap handles), while
   `[0] == ["zero"]` answered **True** — an interned index matching a number. Containers now compare
-  by value, element by element, as `(payload, tag)` pairs (ADR 0189). Its second catch was a crash in the most
+  by value, element by element, as `(payload, tag)` pairs (ADR 0189). The same sweep's second find
+  is closed too: `xs.sort()`, `xs.reverse()` and `sorted(xs)` are now language surface on both
+  backends, with one comparator that orders interned strings by their **text** rather than by the
+  index they were interned at (ADR 0191). Its second catch was a crash in the most
   ordinary program in the corpus — `print([1, 2])` handed the static elements global to `printf`
   as an `i32` and `llc` refused the module, while `print(set())` printed the handle `0` and
   `print([["a"], ["b"]])` printed `[1, 2]` (ADR 0188). Parity cases include

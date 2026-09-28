@@ -222,6 +222,131 @@ full:
   ret i32 %last
 }
 
+; rt_elem_gt answers whether one container element has to move past another. mode 0 compares
+; payloads as signed numbers; mode 1 compares them as indices into @str_tab and orders by the
+; text — the interned index records the order strings first appeared in the program, so sorting
+; strings by payload would sort them by arrival and look almost right until it did not.
+define internal i32 @rt_elem_gt(i32 %a, i32 %b, i32 %mode) {
+entry:
+  %isstr = icmp eq i32 %mode, 1
+  br i1 %isstr, label %strs, label %nums
+nums:
+  %c = icmp sgt i32 %a, %b
+  %r = zext i1 %c to i32
+  ret i32 %r
+strs:
+  %sa = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %a
+  %pa = load i8*, i8** %sa
+  %sb = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %b
+  %pb = load i8*, i8** %sb
+  %c2 = call i32 @strcmp(i8* %pa, i8* %pb)
+  %g = icmp sgt i32 %c2, 0
+  %r2ok = zext i1 %g to i32
+  ret i32 %r2ok
+}
+
+; rt_sort is an in-place insertion sort over a heap list. Stable, in the order-preserving sense
+; that equal elements keep their relative positions — the compiled twin of the interpreter's
+; sortElems, and the reason sorted(key=) will be able to sit on top of it later. The heap element
+; array is 256 deep, so the quadratic cost is bounded by the representation, not by luck.
+define internal void @rt_sort(i32 %h, i32 %mode) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %n = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %outer
+outer:
+  %i = phi i32 [ 1, %entry ], [ %inext, %ostep ]
+  %ic = icmp slt i32 %i, %n
+  br i1 %ic, label %inner, label %done
+inner:
+  %j = phi i32 [ %i, %outer ], [ %jnext, %iswap ]
+  %jgt = icmp sgt i32 %j, 0
+  br i1 %jgt, label %jbody, label %ostep
+jbody:
+  %jm = sub i32 %j, 1
+  %pa = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %jm
+  %va = load i32, i32* %pa
+  %pb = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %j
+  %vb = load i32, i32* %pb
+  %gt = call i32 @rt_elem_gt(i32 %va, i32 %vb, i32 %mode)
+  %swap = icmp ne i32 %gt, 0
+  br i1 %swap, label %iswap, label %ostep
+iswap:
+  store i32 %vb, i32* %pa
+  store i32 %va, i32* %pb
+  %ta = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %jm
+  %tb = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
+  %gta = load i32, i32* %ta
+  %gtb = load i32, i32* %tb
+  store i32 %gtb, i32* %ta
+  store i32 %gta, i32* %tb
+  %jnext = sub i32 %j, 1
+  br label %inner
+ostep:
+  %inext = add i32 %i, 1
+  br label %outer
+done:
+  ret void
+}
+
+; rt_reverse flips a heap list in place — the compiled xs.reverse().
+define internal void @rt_reverse(i32 %h) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %n = load i32, i32* %lp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  br label %lo
+lo:
+  %i = phi i32 [ 0, %entry ], [ %inext, %body ]
+  %hic = sub i32 %n, 1
+  %hi2 = sub i32 %hic, %i
+  %go = icmp slt i32 %i, %hi2
+  br i1 %go, label %body, label %end
+body:
+  %pa = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
+  %pb = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %hi2
+  %va = load i32, i32* %pa
+  %vb = load i32, i32* %pb
+  store i32 %vb, i32* %pa
+  store i32 %va, i32* %pb
+  %ta = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %tb = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %hi2
+  %gta = load i32, i32* %ta
+  %gtb = load i32, i32* %tb
+  store i32 %gtb, i32* %ta
+  store i32 %gta, i32* %tb
+  %inext = add i32 %i, 1
+  br label %lo
+end:
+  ret void
+}
+
+; rt_list_copy builds a heap list with the same elements (and the same tags) as another one:
+; sorted(xs) is a sort of a copy, so the argument keeps its order, which is the difference
+; between the builtin and the method that a program can see.
+define internal i32 @rt_list_copy(i32 %h) {
+entry:
+  %n = call i32 @rt_list_len(i32 %h)
+  %nh = call i32 @rt_alloc(i32 1)
+  br label %lo
+lo:
+  %i = phi i32 [ 0, %entry ], [ %inext, %body ]
+  %c = icmp slt i32 %i, %n
+  br i1 %c, label %body, label %done
+body:
+  %v = call i32 @rt_get_elem(i32 %h, i32 %i)
+  %t = call i32 @rt_tag_of(i32 %h, i32 %i)
+  call void @rt_set_elem(i32 %nh, i32 %i, i32 %v)
+  call void @rt_tag_elem(i32 %nh, i32 %i, i32 %t)
+  %inext = add i32 %i, 1
+  br label %lo
+done:
+  ret i32 %nh
+}
+
 ; rt_mark_estr records which positions of a container hold interned strings. It ORs, because a
 ; dict can gain string keys and later string values.
 define internal void @rt_mark_estr(i32 %h, i32 %bits) {
@@ -2577,6 +2702,73 @@ func (g *irGen) receiverClass(recv Expr) string {
 type loopInfo struct {
 	breakLabel    string
 	continueLabel string
+}
+
+// sortedRuntime lowers sorted(<container>[, reverse=...]) to a runtime copy-and-sort. The fold in
+// the call lowering only covers constant int literals; this is the path for a variable and for
+// anything that is not plain integers, and print(sorted(xs)) reaches it directly so the handle it
+// yields is rendered by the runtime printer rather than printf'd (roadmap L11.7, ADR 0191).
+func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
+	// A literal argument is freshly allocated by containerOperand, so sorting it in place is
+	// correct; a variable must be copied first, because sorted(xs) leaves xs in its own order.
+	argIsFresh := true
+	if _, isName := c.Args[0].(*Name); isName {
+		argIsFresh = false
+	}
+	sv, serr := g.containerOperand(b, c.Args[0])
+	if serr != nil {
+		return "", serr
+	}
+	// Which comparator: numbers by payload, interned strings by their text. A list holding both
+	// is Python's TypeError, and ordering strings by payload would sort them by arrival order.
+	mode := 0
+	switch a := c.Args[0].(type) {
+	case *ListLit:
+		sawInt, sawStr := false, false
+		for _, el := range a.Elems {
+			if _, isStr := el.(*StrLit); isStr {
+				mode, sawStr = 1, true
+			}
+			if _, isInt := el.(*IntLit); isInt {
+				sawInt = true
+			}
+		}
+		if sawInt && sawStr {
+			return "", fmt.Errorf("cannot sort a list whose elements are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191)")
+		}
+	case *Name:
+		if g.listElemStr[a.Value] {
+			mode = 1
+		}
+		if g.mixedLists[a.Value] {
+			return "", fmt.Errorf("cannot sort a list whose elements are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191)")
+		}
+	}
+	// Handle registers in this backend are named %h<N> off heapSeq; a %t<N> name reads as an
+	// ordinary temp to the print and call lowerings, which then printf a handle as a value.
+	g.heapSeq++
+	slot := fmt.Sprintf("%%h%d", g.heapSeq)
+	if argIsFresh {
+		b.WriteString(fmt.Sprintf("  call void @rt_sort(i32 %s, i32 %d)\n", sv, mode))
+		slot = sv
+	} else {
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_copy(i32 %s)\n", slot, sv))
+		b.WriteString(fmt.Sprintf("  call void @rt_sort(i32 %s, i32 %d)\n", slot, mode))
+	}
+	if len(c.Args) == 2 {
+		revExpr := c.Args[1]
+		if kw, ok := c.Args[1].(*KeywordArg); ok {
+			revExpr = kw.Value
+		}
+		rv, rerr := g.constIntVal(revExpr)
+		if rerr != nil {
+			return "", fmt.Errorf("sorted(reverse=...) needs a constant flag (roadmap L11.7)")
+		}
+		if rv != 0 {
+			b.WriteString(fmt.Sprintf("  call void @rt_reverse(i32 %s)\n", slot))
+		}
+	}
+	return slot, nil
 }
 
 func (g *irGen) newTmp() string           { g.tmp++; return fmt.Sprintf("%%t%d", g.tmp) }
@@ -5969,6 +6161,34 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_pop(i32 %s, i32 %s)\n", ret, h, idx))
 			return ret, nil
 		}
+		// xs.sort() and xs.reverse() mutate in place and return None. Neither existed in
+		// either backend, and the compiled path diagnosed xs.sort() as a *string* method:
+		// the call fell through to string-method dispatch and told the user their list was
+		// a string (roadmap L11.7, ADR 0191).
+		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] &&
+			(attr.Name.Value == "sort" || attr.Name.Value == "reverse") {
+			if len(c.Args) != 0 {
+				return "", fmt.Errorf("%s() takes no arguments in this build — key= and reverse= need first-class functions (roadmap L11.7)", attr.Name.Value)
+			}
+			if attr.Name.Value == "sort" && g.mixedLists[nm.Value] {
+				// Python raises TypeError for a str/int mix rather than inventing an order,
+				// and ordering interned strings by payload would sort them by arrival.
+				return "", fmt.Errorf("cannot sort a list whose elements are of more than one kind; Python raises TypeError here too, and the compiled backend reports it (roadmap L11.1, ADR 0191)")
+			}
+			g.heapSeq++
+			hslot := g.heapSeq
+			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hslot, nm.Value))
+			if attr.Name.Value == "sort" {
+				mode := 0
+				if g.listElemStr[nm.Value] {
+					mode = 1
+				}
+				b.WriteString(fmt.Sprintf("  call void @rt_sort(i32 %%h%d, i32 %d)\n", hslot, mode))
+			} else {
+				b.WriteString(fmt.Sprintf("  call void @rt_reverse(i32 %%h%d)\n", hslot))
+			}
+			return "", nil
+		}
 		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
@@ -6856,6 +7076,21 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					continue
 				}
 			}
+			// print(sorted(xs)) — that lowering hands back a runtime list handle, and only
+			// the runtime printer can render it: the static path would printf the handle,
+			// which is the invalid-IR shape ADR 0188 removed for literals (ADR 0191).
+			if call, ok := a.(*Call); ok {
+				// reversed("abc") is a string reversal and takes its own path; only a
+				// container argument means this lowering produced a heap handle.
+				if cname, ok := call.Fn.(*Name); ok && (cname.Value == "sorted" || cname.Value == "reversed") && g.isContainerExpr(call.Args[0]) {
+					h, cerr := g.sortedRuntime(b, call)
+					if cerr != nil {
+						return "", cerr
+					}
+					b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
+					continue
+				}
+			}
 			if nm, ok := a.(*Name); ok && g.listVars[nm.Value] {
 				g.heapSeq++
 				hs := g.heapSeq
@@ -7511,6 +7746,25 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// descending reverse=True keyword / truthy positional second arg.
 		if len(c.Args) < 1 || len(c.Args) > 2 {
 			return "", fmt.Errorf("sorted expects 1 or 2 arguments")
+		}
+		// The ordinary cases first: sorted(xs) on a variable, and sorted([...]) with
+		// anything but plain integers inside. The fold below is a fast path for constant
+		// int literals; the runtime path copies and sorts, so sorted(xs) leaves xs in its
+		// original order — the difference between the builtin and the method that a
+		// program can see (roadmap L11.7, ADR 0191).
+		if g.isContainerExpr(c.Args[0]) {
+			foldable := false
+			if lit, ok := c.Args[0].(*ListLit); ok {
+				foldable = true
+				for _, el := range lit.Elems {
+					if _, isInt := el.(*IntLit); !isInt {
+						foldable = false
+					}
+				}
+			}
+			if !foldable {
+				return g.sortedRuntime(b, c)
+			}
 		}
 		ln, ok := c.Args[0].(*ListLit)
 		if !ok {
@@ -9010,10 +9264,27 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				// a generator call returns a runtime heap list handle: track the
 				// target so print/for/indexing treat it as a list, not a scalar.
+				// sorted(...)/reversed(...) return a handle the same way — without this,
+				// `ys = sorted(xs)` assigned a handle to a plain int variable and
+				// print(ys) printed the slot number (roadmap L11.7, ADR 0191).
 				if call, ok := n.Value.(*Call); ok {
 					if fn, ok2 := call.Fn.(*Name); ok2 {
 						if g.genFuncs[fn.Value] {
 							g.listVars[nm.Value] = true
+						} else if fn.Value == "sorted" || fn.Value == "reversed" || fn.Value == "list" {
+							g.listVars[nm.Value] = true
+							// Inherit what the elements are, so the printer and the sort
+							// comparator agree with the source container.
+							if len(call.Args) > 0 {
+								if src, isName := call.Args[0].(*Name); isName {
+									if g.listElemStr[src.Value] {
+										g.listElemStr[nm.Value] = true
+									}
+									if g.mixedLists[src.Value] {
+										g.mixedLists[nm.Value] = true
+									}
+								}
+							}
 						}
 					}
 				}

@@ -6,10 +6,10 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0190`. `go test -tags=llvm20 ./...`
-> is green. Conformance corpus: 70 programs under `integration/programs/` (17 of
-> them pinned probes), 65 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
-> parity cases plus 17 pinned probes; oracle 32 `match` / 23 `debt` /
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0191`. `go test -tags=llvm20 ./...`
+> is green. Conformance corpus: 70 programs under `integration/programs/` (15 of
+> them pinned probes), 63 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
+> parity cases plus 15 pinned probes; oracle 32 `match` / 21 `debt` /
 > 10 `not_applicable`. **The current plan is Phase 11 — the value model** (below);
 > its harness, L11.9, is ✅ DONE (ADR 0186), so no remaining Phase 11 item may be
 > marked done on parity alone — each one has a pinned program that has to change.
@@ -759,20 +759,21 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   unreachable. Ship the fnptr/indirect-call lowering, then make `sorted`,
   `enumerate`, `zip`, `reversed`, `min/max(key=)` real language surface instead of
   `unsupported call "enumerate"`, and list them in `--lang`.
-  - **Found by the boring-program sweep (ADR 0190), pinned and unowned until now:**
-    `probe_sort_methods.gy` — `xs.sort()` and `xs.reverse()` do not exist in either backend, and
-    the AOT answer is `string method sort on non-constant string`, a diagnostic from the wrong
-    family (the call fell into string-method dispatch), so this row is debt against the
-    *diagnostic* as well as the missing method; and `probe_comprehension_call.gy` — the AOT
-    comprehension path folds constants and stops there, so `[f(x) for x in ...]` refuses with
-    `comprehension element must be constant` and the most ordinary list-building idiom in Python
-    needs a hand-written loop. `sorted(...)` on a *variable* is the same family (`sorted: codegen
-    folds only an inline list literal`), on top of the existing `probe_sorted.gy` for literals.
-    Implementation notes for whoever takes it: a runtime sort needs one comparator each for
-    numbers and for interned strings (compare through `@str_tab`, not by index), stability is what
-    `sorted(key=)` will need later, and `xs.sort()` must mutate in place and return `None` while
-    `sorted(xs)` allocates a new list — the two differ in exactly the way ADR 0181's GC rules care
-    about.
+  - **Sorting is surface now (ADR 0191).** `xs.sort()`, `xs.reverse()` and `sorted(xs)` compile
+    and match CPython, and the two probes the sweep pinned for them (`probe_sort_methods`,
+    `probe_sorted`) were promoted to the parity programs `sorting.gy` / `sorting_literals.gy` —
+    deleting the pin is how a paid debt gets recorded. One comparator (`rt_elem_gt`) orders slot
+    pairs, mode 0 numerically and mode 1 by the **text** behind an interned index; the sort is a
+    stable insertion sort on both paths, because `sorted(key=)` will be decorate–sort–undecorate
+    over a stable sort.
+  - **Still open from that sweep:** `probe_comprehension_call.gy` — the AOT comprehension path
+    folds constants and stops there, so `[f(x) for x in ...]` refuses with `comprehension element
+    must be constant` and the most ordinary list-building idiom in Python needs a hand-written
+    loop.
+  - **What the next container method owes:** `xs.insert` / `xs.index` / `xs.remove` / `xs.extend` /
+    `xs.clear` share this dispatch table and each needs ADR 0187's pairing rule (write the tag with
+    the payload); `sorted(key=)`, `min/max(key=)` need the fnptr lowering; and a runtime helper
+    emitted in the prelude changes any module-wide call-site count, so count in user code.
 - **L11.8 — Refusal is part of the model, and so is its exit code** ⏳ PLANNED —
   no tested shape may leave the compiler as an `llc` rejection, a Go panic, or a
   SIGSEGV: the ADR 0166 diagnostic is the *only* exit for what does not lower.

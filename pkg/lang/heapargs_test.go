@@ -251,7 +251,10 @@ def b(xs) -> int:
 
 print(a([1]) + b([2, 3]))
 `)
-	if n := strings.Count(ir, "call i32 @rt_list_len("); n != 2 {
+	// Count in the user's code, not the module: the runtime prelude is emitted whole, and
+	// helpers like rt_list_copy call rt_list_len themselves, so a module-wide count is
+	// measuring the runtime rather than what the program does.
+	if n := countOutsideRuntimePrelude(ir, "call i32 @rt_list_len("); n != 2 {
 		t.Fatalf("expected both callees to measure the handle (got %d):\n%s", n, ir)
 	}
 	if !strings.Contains(ir, "call void @rt_root_put(i32* %_xs)") {
@@ -372,4 +375,22 @@ func TestFunctionParamSlotsDoNotLeakIntoMain(t *testing.T) {
 	if strings.Count(res.IR, "%_xs = alloca") != 2 {
 		t.Errorf("expected one slot in total() and one in main, got:\n%s", res.IR)
 	}
+}
+
+// countOutsideRuntimePrelude counts needle occurrences in the user's function bodies, skipping
+// the define internal blocks of the runtime prelude. A module-wide strings.Count silently counts
+// the runtime's own calls, which changes whenever a helper is added and proves nothing about the
+// program under test.
+func countOutsideRuntimePrelude(ir, needle string) int {
+	n, inRuntime := 0, false
+	for _, line := range strings.Split(ir, "\n") {
+		if strings.HasPrefix(line, "define ") {
+			inRuntime = strings.HasPrefix(line, "define internal ")
+			continue
+		}
+		if !inRuntime {
+			n += strings.Count(line, needle)
+		}
+	}
+	return n
 }

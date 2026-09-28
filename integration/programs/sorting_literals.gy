@@ -1,0 +1,7 @@
+# sorted() over literals — ascending, descending, and over interned strings, where the
+# compiled comparator has to compare the text rather than the interned index (ADR 0191).
+print(sorted([3, 1, 2]))
+print(sorted([3, 1, 2], reverse=True))
+print(sorted(["b", "a"]))
+print(sorted([10, 2, 33, 4]))
+print(sorted([]))

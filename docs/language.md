@@ -1328,14 +1328,34 @@ non-empty), else 0, in **both** paths: the interpreter checks
 `unicode.IsSpace`; the codegen folds it to `i32 1`/`i32 0`
 (`print("   ".isspace())` emits `i32 1`).
 
-The `sorted(list)` builtin returns a new sorted list. `sorted(iter, reverse=True)`
-(or a truthy positional second arg) returns descending order; `reverse=False`
-keeps ascending order. In the AOT codegen, `sorted` folds an inline list
-literal of integer literals to a sorted list global (ascending by default,
-descending when the `reverse` flag is truthy), mirroring the interpreter. `reversed(x)` returns a
+The `sorted(list)` builtin returns a new sorted list; the argument keeps its own
+order, because `sorted` sorts a copy. `sorted(iter, reverse=True)` (or a truthy
+positional second arg) returns descending order; `reverse=False` keeps ascending
+order. `list.sort()` sorts in place and returns `None`; `list.reverse()` reverses
+in place and returns `None`. All four take no `key=`/`reverse=` argument on the
+method yet — `sort(key=...)` needs first-class functions and refuses, naming that
+reason (roadmap L11.7, ADR 0191).
+
+Ordering is defined per element kind, and both backends implement the same rules:
+numbers compare numerically (an int and a float mix fine, as Python's `<` does),
+and **strings compare by their text** — never by the interned index the value is
+stored as, which records the order the strings first appeared in the program.
+A list whose elements are of more than one kind cannot be ordered: Python raises
+`TypeError: '<' not supported between instances of 'str' and 'int'`, the
+interpreter raises the same, and the compiled backend refuses with a message that
+names Python's answer. Sorting is a stable insertion sort on both paths, which is
+what a future `sorted(key=)` (decorate–sort–undecorate) will be built on.
+
+In the AOT codegen, `sorted` of an all-integer inline list literal is still
+constant-folded to a sorted list global; anything else — a variable, a list of
+strings, an empty list — is built as a runtime list and sorted by `rt_sort`, with
+`rt_list_copy` first when the argument is a variable. `sorted(xs)` assigned to a
+name binds a container, so `print`, indexing, `len` and `for` all work on it.
+`reversed(x)` returns a
 reversed copy of a list or string: `reversed([1, 2, 3])` -> `[3, 2, 1]`,
-`reversed("abc")` -> `"cba"`. `reversed` is interpreter-only (the AOT codegen
-constant-folds it only on literal list/string arguments); see ADR 0082.
+`reversed("abc")` -> `"cba"`. `reversed` is interpreter-only on non-literal
+arguments (the AOT codegen constant-folds it only on literal list/string
+arguments); see ADR 0082.
 `enumerate(x)` returns a list of `[index, value]` pairs for each element of a
 list: `enumerate([10, 20, 30])` -> `[[0, 10], [1, 20], [2, 30]]`. It is
 interpreter-only (the AOT codegen folds builtins only on literal args; nested

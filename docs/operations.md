@@ -719,6 +719,16 @@ both ways, tested for round-tripping.
 corpus is run that way in `integration/gc_stress_test.go`, so a root the interpreter
 forgot fails a test instead of appearing as a heisenbug.
 
+`GUSTY_KEEP_LLVM=1` keeps the JIT's scratch directory instead of deleting it and prints
+`keeping JIT scratch dir <path>` on stderr, so the `jit.ll` that `llc` rejected can be
+read, minimised, and filed. Most compiler bugs in this project are *llc rejected this
+module* failures, and the module was previously deleted with the temp directory: a
+compiler whose IR failures cannot be inspected cannot be debugged, and an agent driving
+it needs the artifact rather than a guess (ADR 0191). Note that `--emit-llvm <file>` is
+a separate codegen entry point from the JIT and still refuses some shapes the JIT
+compiles (`print(sorted([10, 2, 33]))` → `unsupported attr expression`); when the two
+disagree, `GUSTY_KEEP_LLVM=1` is the way to see what the JIT actually built.
+
 The compiled backend gets the same treatment from the other side: its roots are a stack
 (`@gc.roots` + `@gc.kinds`, with `rt_root_put`/`rt_root_clear`/`rt_frame_open`/
 `rt_frame_close`), every function — including class methods and closure helpers — pops

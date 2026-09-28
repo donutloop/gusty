@@ -136,14 +136,12 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_string_index",     // L11.5 — s[i] is a byte value, not a character
 		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
 		"probe_float_numeric",    // L11.6 — //, /=, float % and float params
-		"probe_sorted",           // L11.7 — sorted is not language surface yet
 		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
 		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
 		"probe_fn_name",          // L11.7 — a def'd name is not a value at all
 		"probe_print_atomic",     // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
-		"probe_sort_methods",       // L11.7 — sorting a container is not surface at all
 		"probe_comprehension_call", // L11.7 — a comprehension element cannot be a call
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
@@ -313,10 +311,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "-7 // 2 is -3 compiled, -3.5 % 2.0 is -1.5 on both backends, x /= 2 stays an int, and a float through an untyped parameter becomes 0",
 		ref:    "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-4\n-1.5\n4.0\n0.2\n"}, {Backend: "aot", Stdout: "-3\n-1.5\n4\n0\n"}}},
-	"programs/probe_sorted": {oracle: lang.OracleDebt,
-		reason: "sorted(...) is refused in AOT (`sorted: list elements must be integer literals`) instead of being language surface",
-		ref:    "roadmap L11.7 (functions are values that compile)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n[3, 2, 1]\n['a', 'b']\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_enumerate": {oracle: lang.OracleDebt,
 		reason: "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(<container>) copies are refused in AOT",
 		ref:    "roadmap L11.7 + L11.3 (tuples are values)",
@@ -329,10 +323,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true}, {Backend: "aot", Missing: true}}},
-	"programs/probe_sort_methods": {oracle: lang.OracleDebt,
-		reason: "xs.sort() and xs.reverse() do not exist: the interpreter raises `no such list method sort` and the compiled path answers `string method sort on non-constant string` — a diagnostic from the wrong family on top of a missing feature",
-		ref:    "roadmap L11.7 (functions are values that compile) + Gap K.3 (container methods)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "no such list method sort"}, {Backend: "aot", Missing: true, Err: "string method sort"}}},
 	"programs/probe_comprehension_call": {oracle: lang.OracleDebt,
 		reason: "the AOT comprehension path folds constant elements and stops: `comprehension element must be constant`, so [f(x) for x in ...] needs a loop",
 		ref:    "roadmap L11.7 (functions are values that compile)",
