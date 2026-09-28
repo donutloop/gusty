@@ -1,0 +1,11 @@
+# Printing a container literal: the all-int and empty literal cases used to reach the static
+# path, which passes the elements-array global (@.lstN) to printf as an i32 — a module llc
+# refuses. Print position goes through the runtime printers now (roadmap Gap J.6 item (3)).
+print([])
+print([1])
+print([1, 2, 3])
+print(["a"])
+print({})
+print({"a": 1})
+print({1, 2})
+print([1, "a", None])

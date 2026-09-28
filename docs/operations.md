@@ -768,6 +768,15 @@ work — is a tagged element reaching a context that needs one static kind (`xs[
 `xs[i] > 2`, `f(xs[i])`, `xs[i]` in a format spec), dict/set element tags, and the tag-less
 kinds (bool, float, nested container).
 
+Container **printing** is total on the AOT path (ADR 0188): a literal or a zero-argument
+constructor in print position builds the runtime object and calls the runtime printer, so
+`print([1, 2])`, `print([])`, `print({})`, `print(set())`, `print(list())`, `print(dict())` match
+CPython where they previously refused to compile or printed the handle `0`. `rt_alloc` clears the
+per-container "elements are interned text" flag (`@estr[h]`) on both the fresh and the recycled
+path — a recycled slot used to inherit it, which made a numeric set print through the string table
+as `{(null), (null)}`. `TestNoContainerGlobalInAValuePosition` is the module-wide invariant: no
+`i32 @.lstN` / `@.dictN` / `@.setN` / `@.strN` in a value position, ever.
+
 ## String methods
 
 `upper()`, `lower()`, `strip()`, `split(sep?)` dispatch on boxed strings in

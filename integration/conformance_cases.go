@@ -55,6 +55,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// element to the use site (roadmap L11.1, ADR 0187).
 		"mixed_element_reads",
 		"mixed_element_writes",
+		// Container printing: a literal or a constructor in print position renders as a
+		// container instead of as its handle / its static global (Gap J.6, Gap K.3, ADR 0188).
+		"empty_containers",
+		"empty_set",
 		"print_args",
 		"truthiness",
 		"subscript_assign",
@@ -133,7 +137,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
 		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
 		"probe_fn_name",          // L11.7 — a def'd name is not a value at all
-		"probe_empty_set",        // L11.1 — print(set()) is 0 compiled
 		"probe_print_atomic",     // Gap L.5 — print writes while it evaluates
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
@@ -319,10 +322,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true}, {Backend: "aot", Missing: true}}},
-	"programs/probe_empty_set": {oracle: lang.OracleDebt,
-		reason: "print(set()) is 0 compiled — an empty set literal folds to the integer 0 with no container behind it",
-		ref:    "roadmap L11.1 remaining (retire @estr[h]; Gap J.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "set()\nset()\n0\n"}, {Backend: "aot", Stdout: "0\nset()\n0\n"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",

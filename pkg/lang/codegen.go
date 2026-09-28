@@ -40,6 +40,14 @@ newok:
   store i32 %kind, i32* %kp
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   store i32 0, i32* %lp
+  ; @estr[h] is the container-wide "my elements are interned text" flag, and the printers
+  ; dispatch on it. Like a slot's tag it is an attribute of the object, so its lifetime has to
+  ; match the object's: a recycled slot that kept its predecessor's flag made print(["a"])
+  ; followed by print({1, 2}) render the numbers through the string table as {(null), (null)}.
+  ; Clearing the tag array would be a 256-entry memset and is covered by writing tags in pairs
+  ; with payloads (ADR 0187); this flag is one store, so clear it (ADR 0188).
+  %eslot = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %c
+  store i32 0, i32* %eslot
   %c1 = add i32 %c, 1
   store i32 %c1, i32* @heap_count
   ret i32 %c
@@ -52,6 +60,8 @@ alloc_reuse:
   store i32 %kind, i32* %kp2
   %lp2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj2, i32 0, i32 1
   store i32 0, i32* %lp2
+  %eslot2 = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %fh
+  store i32 0, i32* %eslot2
   ret i32 %fh
 }
 
@@ -6615,10 +6625,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				t = g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, fs))
 			} else {
-				// A container literal whose elements are strings builds a heap object (the static
-				// global layout is i32-only), so print it with the runtime printers rather than
-				// as the integer handle it happens to be (roadmap Gap J.6).
-				if literalNeedsHeap(a) {
+				// A container literal in print position is a *rendering* question, not a storage
+				// question: build the runtime object and let the runtime printer render it. The old
+				// gate was literalNeedsHeap — "does it contain a string?" — so an all-int literal
+				// fell through to the static path and printed the elements-array global as a number:
+				// `print([1, 2])` emitted `printf("%d\n", i32 @.lst1)`, which llc rejects outright
+				// ("global variable reference must have pointer type"), and `print(set())` answered
+				// `0`, the handle (roadmap Gap J.6, item (3)).
+				if lit, ok := emptyContainerLiteral(a); ok {
+					// `set()` / `list()` / `dict()` are containers the same way a literal is, and the
+					// empty set has no literal spelling at all — so the constructor has to reach the
+					// printer too, not just the literal (Gap K.3).
+					a = lit
+				}
+				if isContainerLiteral(a) {
 					if _, isLL := a.(*ListLit); isLL && literalMixedKinds(a) && g.taggableMixedList(a.(*ListLit)) {
 						// Heterogeneous list of taggable elements: build it with per-element
 						// tags and print through the tag-aware printer, which is what the

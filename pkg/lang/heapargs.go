@@ -598,6 +598,9 @@ func (g *irGen) heapElem(b *strings.Builder, e Expr) (string, error) {
 // compiler bug (roadmap Gap I.2). A string the backend cannot resolve to text still refuses
 // with the actionable diagnostic rather than emitting bad IR (ADR 0166).
 func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
+	if g.nestedContainerElem(e) {
+		return "", false, nestedContainerErr(e)
+	}
 	if txt, ok := g.stringVal(e); ok {
 		g.heapUsed = true
 		t := g.newTmp()
@@ -739,6 +742,59 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 // literalNeedsHeap reports whether a container literal cannot be a compile-time global struct
 // because some element is a string: the static {i32, [n x i32]} layout has no representation
 // for one, so the heap path (which interns) must build it instead (roadmap Gap J.6).
+// isContainerLiteral reports the three literal forms that have a runtime printer. Print
+// position asks a different question than storage: an all-int list literal has a static global
+// layout and needs no heap slot, but that layout is not an i32, and handing @.lstN to
+// printf("%d") is a module llc refuses. Anything with a printer gets the printer (Gap J.6).
+func isContainerLiteral(e Expr) bool {
+	switch e.(type) {
+	case *ListLit, *SetLit, *DictLit:
+		return true
+	}
+	return false
+}
+
+// emptyContainerLiteral maps a zero-argument `set()` / `list()` / `dict()` to the empty literal
+// it means, so print position recognises it. The empty *set* has no literal spelling at all, so
+// `set()` is the only way to write one (Gap K.3) — and until now `print(set())` printed the
+// freshly allocated handle, `0`, because the print gate asked for a literal.
+func emptyContainerLiteral(e Expr) (Expr, bool) {
+	c, ok := e.(*Call)
+	if !ok || len(c.Args) != 0 {
+		return nil, false
+	}
+	switch calleeName(c) {
+	case "set":
+		return &SetLit{}, true
+	case "list":
+		return &ListLit{}, true
+	case "dict":
+		return &DictLit{}, true
+	}
+	return nil, false
+}
+
+// nestedContainerElem reports an element that is itself a container: a literal inside a literal,
+// or a container variable inside another one. The compiled backend cannot store those — the
+// collector marks a container by the variable slot that holds it (ADR 0181), and an element that
+// is a handle has no slot to be marked from — and the static layout would put `@.lstN` in a value
+// position, which is a module llc refuses. Refusing is what keeps `print([[1], [2]])` from
+// answering `[1, 2]`: the interned indices of the inner strings, rendered as numbers
+// (roadmap L11.1, ADR 0188).
+func (g *irGen) nestedContainerElem(e Expr) bool {
+	switch n := e.(type) {
+	case *ListLit, *SetLit, *DictLit:
+		return true
+	case *Name:
+		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
+	}
+	return false
+}
+
+func nestedContainerErr(e Expr) error {
+	return fmt.Errorf("codegen: a compiled container cannot hold another container yet; an element that is a handle is not marked by the collector (only containers bound to a variable are), so nested contents need the element-tagging work (roadmap L11.1, ADR 0188). Build the inner container separately and index it, or run it interpreted")
+}
+
 func literalNeedsHeap(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit:

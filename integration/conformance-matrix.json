@@ -263,7 +263,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1056255950/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1910942356/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -274,7 +274,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1056255950/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1910942356/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -368,7 +368,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1965591525/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1374832906/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -379,7 +379,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1965591525/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1374832906/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -629,7 +629,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle188200116/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2476207075/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -640,7 +640,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle188200116/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2476207075/prog.py\", line 5"
       ]
     },
     {
@@ -670,7 +670,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle4005408011/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle278125300/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -681,7 +681,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle4005408011/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle278125300/prog.py\", line 3"
       ]
     },
     {
@@ -711,7 +711,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2184974302/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2928036737/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -722,7 +722,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2184974302/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2928036737/prog.py\", line 5"
       ]
     },
     {
@@ -855,6 +855,52 @@
       "parity": true,
       "python_ok": true,
       "python_stdout": "[1, 'a', None]\n['z', 'a', None]\nz\n['z', 42, None]\nn\n['z', 42, 'n', 5, 'c', None]\n6\n5\nc\nNone\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/empty_containers",
+        "name": "empty_containers.gy",
+        "source": "# Printing a container literal: the all-int and empty literal cases used to reach the static\n# path, which passes the elements-array global (@.lstN) to printf as an i32 — a module llc\n# refuses. Print position goes through the runtime printers now (roadmap Gap J.6 item (3)).\nprint([])\nprint([1])\nprint([1, 2, 3])\nprint([\"a\"])\nprint({})\nprint({\"a\": 1})\nprint({1, 2})\nprint([1, \"a\", None])\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "[]\n[1]\n[1, 2, 3]\n['a']\n{}\n{'a': 1}\n{1, 2}\n[1, 'a', None]\n",
+      "aot_ok": true,
+      "aot_stdout": "[]\n[1]\n[1, 2, 3]\n['a']\n{}\n{'a': 1}\n{1, 2}\n[1, 'a', None]\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "[]\n[1]\n[1, 2, 3]\n['a']\n{}\n{'a': 1}\n{1, 2}\n[1, 'a', None]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/empty_set",
+        "name": "empty_set.gy",
+        "source": "# The empty containers render as containers, not as handles (roadmap Gap J.6/K.3, ADR 0188).\n# This program used to be a pinned oracle-debt row: `print(set())` answered `0` compiled, the\n# freshly allocated handle, because the print path asked \"is this a literal?\" and a constructor\n# call is not one. `list()` and `dict()` were the same story.\nprint(set())\ns = set()\nprint(s)\nprint(len(s))\nprint(list())\nprint(dict())\nprint([], {}, sep=\"|\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "set()\nset()\n0\n[]\n{}\n[]|{}\n",
+      "aot_ok": true,
+      "aot_stdout": "set()\nset()\n0\n[]\n{}\n[]|{}\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "set()\nset()\n0\n[]\n{}\n[]|{}\n",
       "interp_matches_python": true,
       "aot_matches_python": true,
       "oracle": "match",
@@ -1228,7 +1274,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1097736331/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1022271269/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1239,7 +1285,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1097736331/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1022271269/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1269,7 +1315,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle3758630930/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2210437829/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1280,7 +1326,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3758630930/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2210437829/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1394,7 +1440,7 @@
       "interp_stdout": "2\n2\n1\n7\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "index requires an inline list/dict/set literal",
+      "aot_error": "codegen: a compiled container cannot hold another container yet; an element that is a handle is not marked by the collector (only containers bound to a variable are), so nested contents need the element-tagging work (roadmap L11.1, ADR 0188). Build the inner container separately and index it, or run it interpreted",
       "parity": false,
       "python_ok": true,
       "python_stdout": "2\n2\n1\n7\n",
@@ -1408,7 +1454,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: index requires an inline list/dict/set literal"
+        "compiled leg failed: codegen: a compiled container cannot hold another container yet; an element that is a handle is not marked by the collector (only containers bound to a variable are), so nested contents need the element-tagging work (roadmap L11.1, ADR 0188). Build the inner container separately and index it, or run it interpreted"
       ]
     },
     {
@@ -1605,7 +1651,7 @@
       "interp_stdout": "5\n195\na\né\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2400335189/048/prog.ll:160:13: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1878053544/050/prog.ll:160:13: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "4\né\na\né\n",
@@ -1620,7 +1666,7 @@
       ],
       "oracle_notes": [
         "interpreter stdout differs from CPython",
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2400335189/048/prog.ll:160:13: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1878053544/050/prog.ll:160:13: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -1916,46 +1962,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_empty_set",
-        "name": "probe_empty_set.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — the empty set renders as `set()` on both backends.\n# `print(set())` is recorded at 0 compiled because an empty set literal folds to the\n# integer 0 with no container behind it (L11.1 remaining, Gap L.2).\nprint(set())\ns = set()\nprint(s)\nprint(len(s))\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "print(set()) is 0 compiled — an empty set literal folds to the integer 0 with no container behind it",
-        "ref": "roadmap L11.1 remaining (retire @estr[h]; Gap J.2)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "set()\nset()\n0\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "0\nset()\n0\n"
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "set()\nset()\n0\n",
-      "aot_ok": true,
-      "aot_stdout": "0\nset()\n0\n",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "set()\nset()\n0\n",
-      "interp_matches_python": true,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "print(set()) is 0 compiled — an empty set literal folds to the integer 0 with no container behind it",
-      "oracle_ref": "roadmap L11.1 remaining (retire @estr[h]; Gap J.2)",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "compiled stdout differs from CPython"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_print_atomic",
         "name": "probe_print_atomic.gy",
         "source": "# Oracle probe (L11.9, ADR 0186) — print writes one line as a unit: every argument is\n# evaluated first, and only then is the line written. Today the argument loop writes\n# as it evaluates, so a call that itself prints interleaves into the caller's line.\ndef twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\nprint(\"after\")\n",
@@ -1996,12 +2002,12 @@
       ]
     }
   ],
-  "rows": 61,
-  "skipped": 16,
-  "pass": 45,
+  "rows": 62,
+  "skipped": 15,
+  "pass": 47,
   "fail": 0,
-  "oracle_match": 29,
-  "oracle_debt": 22,
+  "oracle_match": 31,
+  "oracle_debt": 21,
   "oracle_not_applicable": 10,
   "oracle_drift": 0
 }

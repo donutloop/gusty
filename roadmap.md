@@ -6,10 +6,10 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0187`. `go test -tags=llvm20 ./...`
-> is green. Conformance corpus: 66 programs under `integration/programs/` (16 of
-> them pinned probes), 61 matrix rows over **three legs** (interpreter, compiled binary, CPython): 45
-> parity cases plus 16 pinned probes; oracle 29 `match` / 22 `debt` /
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0188`. `go test -tags=llvm20 ./...`
+> is green. Conformance corpus: 67 programs under `integration/programs/` (15 of
+> them pinned probes), 62 matrix rows over **three legs** (interpreter, compiled binary, CPython): 47
+> parity cases plus 15 pinned probes; oracle 31 `match` / 21 `debt` /
 > 10 `not_applicable`. **The current plan is Phase 11 — the value model** (below);
 > its harness, L11.9, is ✅ DONE (ADR 0186), so no remaining Phase 11 item may be
 > marked done on parity alone — each one has a pinned program that has to change.
@@ -809,6 +809,33 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   `programs/print_args` ledger row — both pins have to be rewritten when it is fixed. DoD: the
   probe is promoted into `conformanceStandalone()` and the print bullet in `docs/language.md`
   that describes the interleaving is deleted.
+- **Gap L.6 — a container printed as its handle, its global, or its predecessor's strings** ✅ DONE
+  (found by the L11.9 oracle leg, ADR 0188) — the most ordinary program in the corpus did not
+  compile: `print([1, 2])` emitted `printf("%d\n", i32 @.lst1)` and `llc-20` refused the module
+  (`global variable reference must have pointer type`); `print([])` and `print({})` the same; and
+  `print(set())`, `print(list())`, `print(dict())` answered `0` — the freshly allocated handle.
+  Running CPython on them found two more that *did* run: `print(["a"])` then `print({1, 2})`
+  printed `{(null), (null)}`, and `print([["a"], ["b"]])` printed `[1, 2]` — the interned indices
+  of the inner strings, as numbers, exit 0.
+  One cause: print position asked a **storage** question (`literalNeedsHeap` — "does this literal
+  hold a string?") instead of a **rendering** one, so an all-int or empty literal fell through to
+  the static global struct, and constructors never reached the print path at all because the gate
+  asked for a literal (and the empty set has no literal spelling, Gap K.3).
+  Fixed in four moves, each with a stub check: **print asks about use** (`isContainerLiteral`, and
+  `emptyContainerLiteral` turns a zero-arg `set()`/`list()`/`dict()` into the empty literal for the
+  print path only — value lowering stays on `rt_alloc`, per ADR 0163); **an attribute of a
+  container is cleared where the container is born** (`rt_alloc` clears `@estr[h]` on both the
+  fresh and the recycled path — one store, unlike the 256-entry tag array, which ADR 0187 protects
+  by writing tags in pairs with payloads); **nested containers refuse with the collector's reason**
+  (`heapElemKind` rejects an element that is itself a container: an element handle has no variable
+  slot to be marked from, ADR 0181); and the **module-wide invariant is now a test** —
+  `TestNoContainerGlobalInAValuePosition` fails if any compiled program puts `@.lstN`/`@.dictN`/
+  `@.setN`/`@.strN` in an i32 value position, which is Gap J.6's closing condition (item (3))
+  landed. `probe_empty_set` is a **paid debt**: promoted out of the ledger into
+  `programs/empty_set.gy`, alongside the new `programs/empty_containers.gy` — which is the
+  stub-proven guard (delete the two `@estr` stores and it prints `{(null), (null)}` again).
+  Still open, and now named rather than wrong: containers inside containers (needs element tags
+  *and* collector marking — L11.1 with ADR 0181), and `@estr[h]` retirement (L11.1 (1d)).
 
 **Machine path (AGENTS.md, non-negotiable).** The tag enum is exposed as
 `gustyc --schema` → `valueTag` and named in `--lang` (`values: tagged int/float/bool/str/None/list/dict/set/tuple/instance/function`) so an

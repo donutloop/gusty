@@ -132,7 +132,9 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// Mixing the still-unsupported kinds keeps the original, pre-tag refusal.
 		{"xs = [True, \"a\"]\nprint(xs)\n", "either strings or numbers"},
 		{"xs = [1.5, \"a\"]\nprint(xs)\n", "either strings or numbers"},
-		{"xs = [[1], \"a\"]\nprint(xs)\n", "either strings or numbers"},
+		// A container inside a container is the nested case: it refuses with the reason the
+		// collector gives (an element handle is never marked), not the mixed-kind message.
+		{"xs = [[1], \"a\"]\nprint(xs)\n", "cannot hold another container"},
 	} {
 		_, err := Compile(tc.src)
 		if err == nil {

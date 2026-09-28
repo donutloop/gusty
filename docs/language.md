@@ -269,6 +269,13 @@ print("a", "b", sep="|", end="?")   # a|b?  — `end` replaces the newline entir
 
 - Arguments are rendered the way `str()`/`repr()` renders them and joined with
   `sep`; `end` is written once, after the last argument.
+- **A container prints as a container, however it is written** (ADR 0188): a list, dict or set
+  reaches `print` as a literal (`print([1, 2])`, `print([])`, `print({})`, `print({"a": 1})`) or
+  as a constructor (`print(list())`, `print(dict())`, `print(set())` — the empty set has no
+  literal spelling), and both backends call the same runtime printers that a container variable
+  uses. What it must never print is its own representation: not the handle (`0`), not the static
+  elements global, and not the interned indices a recycled heap slot happened to inherit — all
+  of which happened here, in programs that compiled, verified and exited 0.
 - **Known divergence (Gap L.5, pinned by `programs/probe_print_atomic.gy`):** an argument
   whose own evaluation prints — a call that prints — does *not* keep its place in the line.
   Both backends write each argument as they evaluate it, so
@@ -878,6 +885,11 @@ Reading one element out produces the pair as well, and two uses of it are open:
 What still reports — rather than computing on a string-table index — is any context that needs
 one static kind: `xs[i] + 1`, `xs[i] > 2`, passing `xs[i]` to a function, `xs[i]` in a format
 spec, and reading a `dict`/`set` by key (those containers have no tag array yet).
+
+A container **inside** a container (`[[1], "a"]`, `[["a"], ["b"]]`, `xs.append(other_list)`)
+reports rather than runs: the collector marks containers held by a variable (ADR 0181), and an
+element that is a handle has no variable to be marked from. Printing one used to print the
+interned indices of its inner strings as numbers (ADR 0188).
 
 The tag is what makes a value's kind a fact rather than a guess, and it is what the
 compiled backend currently lacks per *element*: a compiled list records one element kind

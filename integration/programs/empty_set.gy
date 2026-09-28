@@ -1,0 +1,11 @@
+# The empty containers render as containers, not as handles (roadmap Gap J.6/K.3, ADR 0188).
+# This program used to be a pinned oracle-debt row: `print(set())` answered `0` compiled, the
+# freshly allocated handle, because the print path asked "is this a literal?" and a constructor
+# call is not one. `list()` and `dict()` were the same story.
+print(set())
+s = set()
+print(s)
+print(len(s))
+print(list())
+print(dict())
+print([], {}, sep="|")

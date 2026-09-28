@@ -2091,3 +2091,71 @@ imagining the program.
 **Next.** L11.1's remaining list is ordered by oracle verdict, not by size: dict/set element tags
 (most of the container debt), floats in containers (the tag exists, the renderer does not), then
 bools as values — which still gates L11.2, because there is no tag to print from.
+
+## The most ordinary program in the corpus did not compile (Gap L.6, ADR 0188)
+
+I had been using the new CPython oracle to probe *interesting* shapes — bools, unicode, negative
+indexes, mixed containers. This cycle I pointed it at the boring ones and found that
+`print([1, 2])` — a program a tutorial would open with — made `llc-20` refuse the module:
+
+```
+error: global variable reference must have pointer type
+  %t1 = call i32 (i8*, ...) @printf(i8* getelementptr(... @.fmt1 ...), i32 @.lst1)
+```
+
+Five shapes, one misplaced question. `print([])`/`print({})` same crash; `print(set())`,
+`print(list())`, `print(dict())` printed `0`, the handle; and two ran *successfully* with garbage:
+`print(["a"]) … print({1, 2})` → `{(null), (null)}`, and `print([["a"], ["b"]])` → `[1, 2]`, the
+interned indices of the inner strings rendered as numbers, exit code 0.
+
+The cause was one gate asking the wrong question: `literalNeedsHeap` — *"does this literal contain
+a string, so does it need a heap object?"* — is a **storage** question, asked in a **rendering**
+position. Everything answering "no" fell through to the static global struct, which is a fine way
+to store an int list and a nonsense thing to hand `printf("%d")`.
+
+**Four fixes, and the one rule behind two of them.** An attribute of a container must be
+initialised where the container is born. `rt_alloc` already wrote `kind` and zeroed `len` on both
+the fresh and the recycled path — `@estr[h]` (the "my elements are interned text" flag the printers
+dispatch on) was missing, so a recycled slot inherited its predecessor's flag and printed numbers
+through the string table. It now clears it on both paths. Compare ADR 0187, where I *refused* to
+clear the tag array: 256 i32s per allocation is a hot-path memset, and there the failure mode is
+made impossible by writing tags in pairs with payloads instead. So the runtime rule is now written
+down with its cost criterion: **clear at alloc when clearing is cheap; pair at write time when
+clearing is expensive.**
+
+The other two fixes: `emptyContainerLiteral` lets a zero-arg `set()`/`list()`/`dict()` reach the
+print path (the empty set has no literal spelling at all), and `heapElemKind` refuses a container
+inside a container with the collector's actual reason — an element handle has no variable slot to
+be marked from (ADR 0181), so "supporting" it would be a use-after-free with a passing test.
+
+**The harness paid for itself a second time, differently.** `probe_empty_set` became a *paid debt*
+and the build told me so in three places at once, with the remedy in the message:
+
+```
+oracle debt is paid: both backends now print CPython's answer — update the registry (declared debt)
+pin says the aot leg prints "0\nset()\n0\n", got "set()\nset()\n0\n"
+a probe that now matches CPython is a paid debt — promote the program and delete its ledger row
+```
+
+That is the ledger design validated: an unrecorded *fix* fails the build as loudly as a new
+divergence. `probe_empty_set.gy` is now `empty_set.gy` in the parity corpus.
+
+**Test the test, again — and this time it nearly fooled me.** My first regression program built 40
+throwaway string-lists in a loop, then printed `{1, 2}`. Stub check: it passed **with the fix
+removed**. The reuse that triggers the bug needs the literal builds back-to-back, not a GC loop. The
+shape that actually catches it is the boring one — a string container immediately followed by a
+numeric one. A regression test that cannot fail is worse than none, because it is believed.
+
+**Where I was wrong again (fourth cycle running): my own expectations.** I wrote
+`print([1, 2], sep=", ")` expecting `1, 2`; `sep` joins *arguments*, and there is one argument, so
+CPython says `[1, 2]`. Every expectation in this cycle that I imagined before running CPython was a
+coin flip. The workflow that works is: write the program, run `python3` on it, paste that as the
+expectation, *then* ask the backends to match it.
+
+**Standing rule I'm adding for future cycles.** Every feature needs the **most boring program
+that uses it** in the corpus, not just the interesting ones. `print` with a mixed container was
+tested seventeen ways; `print([1, 2])` — the tutorial's first line — crashed the compiler.
+
+**Now.** Corpus: 62 rows / 47 parity, oracle 31 match / 21 debt / 10 NA, 0 drift. Next in L11.1:
+dict/set element tags (most of the remaining container debt), floats in containers, then bools as
+values — the one that still gates L11.2, because there is no tag to print from.
