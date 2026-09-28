@@ -1192,6 +1192,51 @@ const ASTIRSchema = `{
       "maximum": 14,
       "description": "Canonical dynamic-kind tag: the one number that says what a value is, shared by the interpreter's heap objects (obj.kind → obj.tag), the compiled runtime's tagged obj values, and the extern-fn ABI's tag word. Names in table order: int=0, float=1, bool=2, None=3, str=4, list=5, dict=6, set=7, tuple=8, class=9, instance=10, method=11, closure=12, exn=13, module=14 (gustyc --lang prints them, lang.ValueTagNames() returns them, and a test pins this list so the schema cannot drift from the table). The compiled heap's object-header kind word is a projection of this table — none=0, list=1, dict=2, set=3, instance=4 — because it numbers only the kinds the compiled heap allocates; lang.HeapKindFor/HeapTagFor translate between the two, so a per-element tag, an object header, and an exported tagged value all mean the same thing by the same number."
     },
+    "oracleReport": {
+      "type": "object",
+      "required": ["legs", "parity", "oracle"],
+      "description": "The three-leg verdict printed by 'gustyc --oracle <src>' / '--oracle-file <path>' (lang.OracleReport). Same classification as a conformance matrix row, computed by the same function, for one ad-hoc program an agent wants checked before trusting it (roadmap L11.9, ADR 0186). Exit codes: 0 match, 6 debt (the program does not behave like Python), 7 not_applicable (no verdict - the oracle could not run the source).",
+      "properties": {
+        "legs": {
+          "type": "array",
+          "description": "Exactly three legs, in order: interpreter, aot, python. Each records whether the leg completed, its stdout, a first-line error when it did not, and whether its stdout is the oracle's once the documented rules are applied.",
+          "items": {
+            "type": "object",
+            "required": ["backend", "ok", "stdout", "matches_python"],
+            "properties": {
+              "backend": { "type": "string", "enum": ["interpreter", "aot", "python"] },
+              "ok": { "type": "boolean", "description": "false when the leg failed: a compile refusal, a trap, or a Go panic (recorded, never fatal)." },
+              "stdout": { "type": "string" },
+              "error": { "type": "string" },
+              "matches_python": { "type": "boolean", "description": "normalized stdout equals the python leg's. Always false for a leg that did not complete: a refusal is a debt, not a pass." }
+            }
+          }
+        },
+        "parity": { "type": "boolean" },
+        "oracle": { "type": "string", "enum": ["match", "debt", "not_applicable"] },
+        "notes": { "type": "array", "items": { "type": "string" }, "description": "Why the verdict is what it is, one line per leg that disagreed or failed." },
+        "rules": { "type": "array", "items": { "type": "string" }, "description": "The documented comparison rules that were applied, so a reader can see exactly what was normalised away." }
+      }
+    },
+    "conformanceRow": {
+      "type": "object",
+      "required": ["case", "interp_ok", "aot_ok", "parity", "python_ok", "oracle", "oracle_declared"],
+      "description": "One row of the conformance matrix (integration/conformance-matrix.json, lang.ConformanceResult). Three legs per program: the AST interpreter, the LLVM AOT binary, and CPython. \"parity\" is interpreter stdout == AOT stdout; \"oracle\" is what both backends print against CPython, and \"oracle_declared\" is what the registry in integration/conformance_cases.go claims — the harness fails when the two disagree, in either direction (roadmap L11.9, ADR 0186).",
+      "properties": {
+        "interp_stdout": { "type": "string", "description": "Everything the AST interpreter wrote to stdout." },
+        "aot_stdout": { "type": "string", "description": "Everything the compiled binary wrote to stdout." },
+        "python_stdout": { "type": "string", "description": "Everything the oracle interpreter wrote to stdout for the same source (PYTHONHASHSEED=0, so a run is reproducible)." },
+        "parity": { "type": "boolean", "description": "interpreter stdout == AOT stdout (the shared-lowering contract)." },
+        "interp_matches_python": { "type": "boolean", "description": "interpreter stdout equals CPython's after the documented comparison rules." },
+        "aot_matches_python": { "type": "boolean", "description": "compiled stdout equals CPython's after the documented comparison rules." },
+        "oracle": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "Computed verdict: both backends print CPython's answer (match), at least one does not (debt — wrong value, refusal, or crash), or the source is not a CPython program at all (not_applicable)." },
+        "oracle_declared": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "The registry's claim. Absence of a ledger row means the claim is \"match\", so a new divergence cannot enter the corpus silently." },
+        "oracle_reason": { "type": "string", "description": "What is wrong, in one sentence (required for debt and not_applicable rows)." },
+        "oracle_ref": { "type": "string", "description": "The roadmap item that owns the fix (required for debt rows)." },
+        "oracle_rules": { "type": "array", "items": { "type": "string" }, "description": "The documented comparison rules applied to every leg (e.g. \"set-order\": a set rendering is compared as a multiset because CPython's iteration order is unspecified)." },
+        "oracle_drift": { "type": "array", "items": { "type": "string" }, "description": "Why this row fails: a classification that changed, a pin that no longer matches, or a debt that was paid without the ledger being updated." }
+      }
+    },
     "type": {
       "type": "string",
       "description": "Type annotation text. Union types render members joined by \" | \", e.g. \"int | str\".",

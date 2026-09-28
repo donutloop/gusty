@@ -1,0 +1,152 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/donutloop/gusty/pkg/lang"
+)
+
+// oracleMode is the CLI's answer to "does this program behave like Python?" —
+// the same three-leg comparison the conformance harness runs, exposed for one
+// ad-hoc program so an agent can check a construct before trusting it (roadmap
+// L11.9, ADR 0186).
+//
+// The verdict comes from lang.BuildOracleReport, the identical function the matrix
+// uses, so a program cannot pass here and fail there. Exit codes follow the table
+// in docs/operations.md: 0 match, 6 debt (gusty printed something else), 7
+// not_applicable (CPython could not run the source, so there is no verdict).
+func oracleMode(src, file string, jsonOut bool) int {
+	s, err := srcOrFile(src, file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitUsage
+	}
+
+	interpOut, interpErr := interpLeg(s)
+	aotOut, aotErr := aotLeg(s)
+	pyOut, pyErr := pythonLeg(s)
+
+	rep := lang.BuildOracleReport(interpErr == nil, interpOut, errLine(interpErr),
+		aotErr == nil, aotOut, errLine(aotErr), nil,
+		pyErr == nil, pyOut, errLine(pyErr))
+
+	if jsonOut {
+		b, jerr := json.Marshal(rep)
+		if jerr != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
+			return exitCompileError
+		}
+		fmt.Println(string(b))
+	} else {
+		fmt.Printf("oracle: %s (parity %s)\n", rep.Status, yesNo(rep.Parity))
+		for _, l := range rep.Legs {
+			state := "ok"
+			if !l.OK {
+				state = "FAILED: " + l.Error
+			}
+			verb := "differs from CPython"
+			if l.Backend == "python" {
+				verb = "the oracle"
+			} else if l.Matches {
+				verb = "matches CPython"
+			}
+			fmt.Printf("  %-11s %-8s %s\n", l.Backend, state, verb)
+			for _, line := range strings.Split(strings.TrimRight(l.Stdout, "\n"), "\n") {
+				fmt.Printf("      | %s\n", line)
+			}
+		}
+		for _, n := range rep.Notes {
+			fmt.Printf("  note: %s\n", n)
+		}
+		if len(rep.Rules) > 0 {
+			fmt.Printf("  rules: %s\n", strings.Join(rep.Rules, ", "))
+		}
+	}
+
+	return oracleExit(rep.Status)
+}
+
+// oracleExit maps a verdict to the documented exit code (docs/operations.md
+// § Exit codes). Three outcomes, three codes: a program that behaves like Python,
+// a program that does not, and a program the oracle could not judge.
+func oracleExit(status string) int {
+	switch status {
+	case lang.OracleMatch:
+		return exitOK
+	case lang.OracleDebt:
+		return exitOracleDivergence
+	case lang.OracleNA:
+		return exitOracleNoVerdict
+	default:
+		// An unknown verdict is a bug in the classifier, not a verdict: say so with
+		// the code that means "the tool failed", never with success.
+		return exitOracleNoVerdict
+	}
+}
+
+// interpLeg runs the AST interpreter and records a Go panic instead of dying: a
+// probe that crashes the compiler is a finding, and the harness has to survive it
+// long enough to report the other programs (L11.8).
+func interpLeg(src string) (out string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = "", fmt.Errorf("compiler panic: %v", r)
+		}
+	}()
+	return lang.InterpreterRun(src)
+}
+
+// aotLeg runs the compiled backend through the same JIT the --aot flag uses.
+func aotLeg(src string) (out string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = "", fmt.Errorf("compiler panic: %v", r)
+		}
+	}()
+	res, err := lang.JIT(src, 0)
+	if res != nil {
+		return res.Output, err
+	}
+	return "", err
+}
+
+// pythonLeg runs the oracle interpreter.
+func pythonLeg(src string) (out string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = "", fmt.Errorf("oracle panic: %v", r)
+		}
+	}()
+	out, stderr, err := lang.PythonRun(src)
+	if err != nil {
+		return out, fmt.Errorf("%w: %s", err, firstLine(stderr))
+	}
+	return out, nil
+}
+
+func errLine(err error) string {
+	if err == nil {
+		return ""
+	}
+	return firstLine(err.Error())
+}
+
+// firstLine keeps a diagnostic to one line: a whole CPython traceback or an llc
+// dump does not belong in a leg column.
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return s
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}

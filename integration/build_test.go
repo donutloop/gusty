@@ -415,6 +415,13 @@ func TestCLIExitCodeContract(t *testing.T) {
 		{"runtime error: out of range", []string{"--eval", "xs = [1]\nprint(xs[5])"}, 3},
 		{"usage error: unknown flag", []string{"--definitely-not-a-flag"}, 4},
 		{"usage error: --build without sources", []string{"--build", filepath.Join(dir, "o")}, 4},
+		// The oracle leg (roadmap L11.9, ADR 0186): "gusty disagrees with Python" is its
+		// own class, and "the oracle could not judge" is a third one. Neither may share a
+		// code with a compile error or a runtime trap.
+		{"oracle: conformant program", []string{"--oracle", "print(1 + 1)"}, 0},
+		{"oracle: divergence from CPython", []string{"--oracle", "print(True)"}, 6},
+		{"oracle: no verdict (gusty-only surface)", []string{"--oracle", "async def f():\n    return 1\n\nprint(await f())"}, 7},
+		{"oracle: usage error on a missing file", []string{"--oracle-file", filepath.Join(dir, "nope.gy")}, 4},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

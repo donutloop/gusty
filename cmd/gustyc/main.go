@@ -10,6 +10,7 @@
 //	--target <triple>   target triple for codegen (informational)
 //	--opt-level <n>     optimization level (informational)
 //	--lang              list supported language features (self-describing)
+//	--oracle <src>      run interpreter + compiled backend + CPython and compare (exit 6 divergence, 7 no verdict)
 //	--variance          print the generic variance table as JSON (L6.6)
 //	--version           print version
 //	--repl              start an interactive REPL (default when stdin is a TTY)
@@ -18,7 +19,10 @@
 // Exit codes (docs/operations.md § Exit codes): 0 = ok, 1 = compile error
 // (parse/analysis/codegen/link), 2 = LLVM rejected the module we emitted (a
 // compiler bug, not a source error), 3 = the program ran and trapped,
-// 4 = CLI usage error, 5 = benchmark regression (--bench-baseline gate).
+// 4 = CLI usage error, 5 = benchmark regression (--bench-baseline gate),
+// 6 = the oracle leg says gusty printed something other than CPython
+// (--oracle/--oracle-file), 7 = the oracle could not run the source, so there is
+// no verdict (--oracle on gusty-only surface).
 package main
 
 import (
@@ -63,6 +67,19 @@ const exitUsage = 4
 // apart from "the program is broken".
 const exitBenchRegression = 5
 
+// exitOracleDivergence is returned by --oracle when the program compiled and ran
+// but printed something CPython does not: the compiled-or-interpreted answer is
+// wrong, or one leg refused it. It is not a compile error (1) and not a crash (3)
+// — the program was accepted and executed, and the *answer* is the finding
+// (roadmap L11.9, ADR 0186).
+const exitOracleDivergence = 6
+
+// exitOracleNoVerdict is returned by --oracle when the CPython leg could not run
+// the source at all (gusty-only syntax, a stdlib attribute Python has no name for),
+// so there is no third opinion and therefore no verdict. Reporting this as success
+// would let "we never checked" read as "it matches".
+const exitOracleNoVerdict = 7
+
 const exitNotCanonical = 1
 
 func main() {
@@ -90,6 +107,8 @@ func run() int {
 	file := fs.String("file", "", "read and evaluate a source file")
 	verify := fs.String("verify", "", "parse + analyze a source string")
 	check := fs.String("check", "", "type-check a source string without executing (mypy-style)")
+	oracleSrc := fs.String("oracle", "", "run a source string through interpreter + compiled backend + CPython and report whether gusty behaves like Python (exit 6 divergence, 7 no verdict; --json: the leg-by-leg report)")
+	oracleFile := fs.String("oracle-file", "", "same as --oracle, for a source file")
 	emitLLVMF := fs.String("emit-llvm", "", "print LLVM IR for a source string")
 	emitSourceMapF := fs.String("emit-source-map", "", "print the source-map JSON for a source file")
 	emitASTF := fs.String("emit-ast", "", "print the AST as JSON for a source string")
@@ -261,7 +280,7 @@ func run() int {
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *oracleSrc == "" && *oracleFile == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
@@ -301,6 +320,9 @@ func run() int {
 	}
 	if *benchSrc != "" || *benchFile != "" {
 		return benchMode(*benchSrc, *benchFile, *benchRuns, *benchOpt, *jsonOut)
+	}
+	if *oracleSrc != "" || *oracleFile != "" {
+		return oracleMode(*oracleSrc, *oracleFile, *jsonOut)
 	}
 	if *evalSrc != "" || *file != "" {
 		// Which backend ran used to be invisible: --file quietly used the AST
@@ -646,6 +668,9 @@ types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[
 variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
 values: %s
 heap kinds (compiled runtime object headers): %s (0 = not heap-allocated)
+oracle: every conformance program is compared against CPython too (gustyc --oracle <src>; --json for the
+      three-leg report; exit 0 match, 6 gusty printed something else, 7 the oracle could not judge — see
+      docs/operations.md § The CPython oracle leg, ADR 0186)
 `, lang.Version, strings.Join(lang.ValueTagNames(), " "), strings.Join(lang.HeapKindNames(), " "))
 }
 

@@ -27,6 +27,8 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--emit-llvm` | print the emitted LLVM IR |
 | `--emit-ast` | print the JSON AST dump |
 | `--verify <src>` | run the front end (lex + parse + semantic analysis) and report diagnostics, without executing |
+| `--oracle <src>` | run `<src>` through **three** engines — AST interpreter, compiled backend, CPython — and report whether gusty behaves like Python (`--json` for the leg-by-leg report; exit 6 divergence, 7 no verdict) (L11.9, ADR 0186) |
+| `--oracle-file <path>` | same, reading the program from a file |
 | `--verify-llvm <src>` | compile `<src>` and report LLVM's module-verifier verdict for the emitted module (L8.2) |
 | `--verify-llvm-file <path>` | same, reading the program from a file |
 | `--no-verify` | with `--build`, skip the module-verifier stage (it runs by default) |
@@ -268,6 +270,8 @@ asserts each row.
 | 3 | **runtime error** — the program compiled and ran, then trapped (an uncaught exception, a failed built-in) | `--eval`, `--file`, `--repl` |
 | 4 | **usage error** — bad/unknown flags, no source given, unreadable file, empty `--bench-dir`, missing baseline file | any mode |
 | 5 | **benchmark regression** (`--bench-baseline` gate fired; see `docs/benchmark.md`) | `--bench-*` |
+| 6 | **divergence from CPython** — the program compiled, ran, and printed something other than what CPython prints for the same source (a wrong value, or a leg that refused it) | `--oracle`, `--oracle-file` |
+| 7 | **no verdict** — the CPython leg could not run the source (gusty-only surface such as `await` at module scope, a positional set subscript, or a stdlib attribute Python has no name for), so nothing was checked | `--oracle`, `--oracle-file` |
 
 Two distinctions this table exists to make:
 
@@ -277,6 +281,14 @@ Two distinctions this table exists to make:
 - **1 vs 2** — a source error and a compiler bug must never look alike. Codegen refuses what
   it cannot lower (1, with an actionable message); only LLVM's own verifier saying *no* to
   what we produced is 2.
+- **1/3 vs 6** — "my program is malformed", "my program crashed", and "my program ran fine and
+  gusty answered differently from Python" are three different events. Code 6 is a statement
+  about the *toolchain's* correctness, not the caller's: the program was accepted, executed,
+  and produced an answer that does not match the reference behaviour. It is the finding an
+  agent iterating on a language bug needs, and it must not be folded into "your program is
+  wrong" (ADR 0186).
+- **6 vs 7** — a measured divergence and "the oracle could not judge this" are not the same
+  outcome. Reporting "we never checked" as success is how a corpus turns into a rubber stamp.
 
 `--eval` is the interactive path: it parses and runs without the checker, so an undefined
 name there is an execution failure (3), not a front-end one (1) — `--check`/`--build` are
@@ -377,6 +389,111 @@ keeps the previous buffer and publishes a severity-2 warning
 (`could not apply the last incremental change; resend the full document`) rather
 than replacing the document with the change's fragment. Send a `didChange` with
 no `range` (full text) to force a clean re-parse.
+
+## The CPython oracle leg (L11.9, ADR 0186)
+
+Parity — the interpreter and the compiled backend printing the same bytes — is a necessary
+contract, and it is not a sufficient one: two backends that share a bug agree. `print(True)`
+printed `1` on both sides of a green build for a hundred ADRs, and so did `len("café") == 5`,
+`"abc"[1] == 98`, and a trap where Python answers `3` for `xs[-1]`. The third leg closes that
+hole: **a program is conformant when both backends agree *and* what they print is what
+CPython prints for the same source.**
+
+### From the command line
+
+```console
+$ gustyc --oracle 'print(1 + 1)'
+oracle: match (parity yes)
+  interpreter ok       matches CPython
+      | 2
+  aot         ok       matches CPython
+      | 2
+  python      ok       the oracle
+      | 2
+  rules: set-order
+
+$ gustyc --oracle 'print(True)'; echo $?
+oracle: debt (parity yes)
+  interpreter ok       differs from CPython
+      | 1
+  aot         ok       differs from CPython
+      | 1
+  python      ok       the oracle
+      | True
+  note: interpreter stdout differs from CPython
+  note: compiled stdout differs from CPython
+  rules: set-order
+6
+```
+
+`--oracle-file <path>` is the same mode for a file. `--json` prints the `oracleReport`
+(`legs`/`parity`/`oracle`/`notes`/`rules`, described by `--schema` → `definitions.oracleReport`),
+and the exit status classifies the outcome: **0** match, **6** debt, **7** no verdict. A leg that
+fails to run — a codegen refusal, a trap, a Go panic in the compiler — is recorded with its
+first error line and counts as *not matching*: a refusal is a divergence, never a pass
+(ADR 0166's rule, applied to the matrix).
+
+The oracle interpreter is `python3` unless `GUSTY_PYTHON` names another, and it runs with
+`PYTHONHASHSEED=0` so a run is reproducible. The version that produced an artifact is recorded
+in the artifact itself (`toolchain.python`, alongside `toolchain.llvm`), because "matches
+Python" is a claim about a named toolchain, not an abstraction.
+
+### The matrix (schema 1.1)
+
+`go test ./integration/ -run TestConformanceMatrix` writes `integration/conformance-matrix.json`:
+one row per program, three legs each. New in 1.1 — `python_stdout` / `python_ok` /
+`python_error`, `interp_matches_python` / `aot_matches_python`, the computed `oracle` with its
+`oracle_declared` counterpart, `oracle_reason` / `oracle_ref` / `oracle_rules` /
+`oracle_notes` / `oracle_drift`, the `rows` / `skipped` counters, the `oracle_match` /
+`oracle_debt` / `oracle_not_applicable` / `oracle_drift` counters, and the `toolchain` block.
+`--schema` → `definitions.conformanceRow` documents the row shape.
+
+### The ledger, and why absence means "must match"
+
+`integration/conformance_cases.go` declares each case's state. A case with **no ledger row is
+declared `match`** — new programs are expected to be conformant, and if they are not, the build
+fails until the divergence is written down with:
+
+- a **reason** (one sentence: what is wrong),
+- a **ref** (the roadmap item that owns the fix — an unowned divergence is an unfixable one),
+- and a **pin per leg**: the exact stdout that leg produces today, or `Missing: true` (optionally
+  with an `Err` substring such as `compiler panic`) for a leg that does not complete.
+
+`ConformanceCase.OracleCheck` compares the claim with the observation and returns *drift*, and
+drift fails the build **in both directions**: a row that got worse, and a row that got better
+(`oracle debt is paid: both backends now print CPython's answer — update the registry`). A
+ledger that cannot be falsified is decoration.
+
+Two comparisons would otherwise be meaningless and are normalised by one named rule, on by
+default and echoed per row: `set-order` treats a bare `{…}` rendering with no `k: v` entry as an
+unordered multiset, because CPython's set iteration order depends on hash seed and insertion
+history. A dict rendering keeps its order — that one is observable in both languages. Any extra
+rule a row declares is applied and listed, including names the compiler does not implement, so a
+stale claim stays visible instead of silently passing.
+
+### Probes, and the promotion rule
+
+`conformanceProbes()` registers `integration/programs/probe_*.gy`: programs that reproduce a
+roadmap Phase 11 defect on today's compiler (nested containers, heterogeneous elements, tuples,
+negative indexing — including the one that panics the Go compiler — code-point strings, stdlib
+constant types, floored `//` and `%`, `sorted`/`enumerate`, calling a function through a
+parameter, `print(set())`, print atomicity). They are compared to CPython and pinned, but not
+asserted for parity — a probe often fails on one leg by design. When a probe's pins stop
+matching because the answers became Python's, the row fails with the promotion instruction:
+delete the ledger row and move the program into `conformanceStandalone()`, where it becomes
+permanent parity surface. Nothing may be marked DONE on parity alone while Phase 11 is open.
+
+All three legs run behind `recover()`, so a compiler panic is one bad row instead of a dead
+test binary.
+
+### Writing or refreshing a row
+
+`go run ./tools/oracleprobe probe_tuple merged:ctrl_a,ctrl_b,ctrl_c` prints the three legs and
+the verdict for any program or merged group, in the same shape the harness computes — the ledger
+is written from measured output, never from memory. Rows are checked by `integration/oracle_test.go`:
+every row must describe a registered case, every exception must carry a reason and an owner,
+debt rows must pin both legs, and a stubbed pin must produce drift (the harness is tested
+against its own ability to fail).
 
 ## JSON output for agents
 

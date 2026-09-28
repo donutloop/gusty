@@ -1,0 +1,10 @@
+# Oracle probe (L11.9, ADR 0186) — a function passed to a function is a value. The
+# interpreter maps with a lambda; the compiled backend answers `unsupported call "f"`
+# because there is no fnptr operand or indirect call lowering (L11.7).
+def apply(f, xs):
+    out = []
+    for x in xs:
+        out.append(f(x))
+    return out
+
+print(apply(lambda v: v * 3, [1, 2]))

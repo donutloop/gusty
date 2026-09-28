@@ -171,6 +171,14 @@ falls back to dynamic dispatch.
   agent can tell "the compiler emitted bad IR" apart from "my program is wrong" —
   without scraping `llc` output. A missing toolchain is reported as `skipped`, never
   as a pass. Turning it on is how Gap I.3 was found.
+- **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
+  by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
+  runs each program through the interpreter, the compiled binary **and CPython**, and each case
+  declares its state in a ledger (`match` by default, `debt` with a reason, an owner and a pin of
+  the wrong answer, or `not_applicable` for gusty-only surface). Drift fails the build in both
+  directions. `gustyc --oracle '<src>'` exposes the same classifier interactively — `--json` for
+  the leg-by-leg report, exit 6 when gusty disagrees with Python and 7 when the oracle could not
+  judge the source (ADR 0186).
 - **Benchmark suite + regression gate** — `gustyc --bench-suite` measures a
   corpus on both backends and prints (or `--json`-emits) a stable artifact;
   `--bench-baseline` gates a run against a saved baseline, so "the compiler got
@@ -253,6 +261,7 @@ gustyc --emit-llvm "x = 1 + 2"               # print emitted LLVM IR
 gustyc --emit-ast "x = 1"                    # print the AST as JSON
 gustyc --emit-source-map --file src.gy       # JSON source map (fn -> IR symbol+line)
 gustyc --check <src> | check file1.gy ...    # mypy-style type-check without executing
+gustyc --oracle '<src>' | --oracle-file prog.gy  # interpreter + compiled backend + CPython, one verdict
 gustyc --json ...                            # machine-readable JSON output
 gustyc --schema                              # print the JSON Schema for AST/IR dumps
 gustyc --lang                                 # self-describing feature list
@@ -271,9 +280,14 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
 
 | Code | Meaning |
 |------|---------|
-| 0    | success / clean (check, fmt-check) |
-| 1    | compile / type error, runtime/eval error |
-| 2    | LLVM/verification failure or parse/usage error |
+| 0    | success / clean (check, fmt-check, an `--oracle` run that matches CPython) |
+| 1    | compile error — parse, analysis, a codegen refusal, or `llc`/`cc` failed; the program never ran |
+| 2    | LLVM rejected the module *we* emitted (a compiler bug, not a source error) |
+| 3    | runtime error — the program compiled, ran, then trapped |
+| 4    | CLI usage error (bad/unknown flags, no source, unreadable file) |
+| 5    | benchmark regression (the `--bench-baseline` gate fired) |
+| 6    | the oracle leg: the program ran and printed something other than what CPython prints |
+| 7    | the oracle leg: CPython could not run the source, so there is no verdict |
 
 ## Testing & verification
 
@@ -284,15 +298,27 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **37 conformance cases**, all passing
-  (`pass: 37, fail: 0`) across both backends (interpreter and AOT), including
+  `conformance-matrix.json`: **59 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — for 43 parity cases plus 16 pinned probes. Parity (interpreter ==
+  AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
+  project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
+  A row is conformant when both backends print what CPython prints. Each case *declares* its
+  state — `match` (the default), `debt` (with a reason, a roadmap owner, and a per-leg pin of
+  the wrong answer), or `not_applicable` (gusty-only surface the oracle cannot run) — and drift
+  fails the build in both directions, so a new divergence and an unrecorded fix are equally
+  caught (roadmap L11.9, ADR 0186). Parity cases include
   `programs/truthiness.gy` (Python's truthiness rules),
   `programs/subscript_assign.gy` (container iteration and `d[k] = v` /
-  `xs[i] = v` item assignment) and `programs/container_methods.gy`
+  `xs[i] = v` item assignment), `programs/container_methods.gy`
   (`xs.pop()`, `set()`/`list()`/`dict()`, `s.add`/`s.discard`) and
   `programs/none_values.gy` (`None` as a singleton, void functions returning `None`,
   `f() == None`) — see `docs/language.md`
   § Truthiness / § None / § Iterating and mutating containers / § Container methods.
+  The probes are the roadmap's measured TODO list: nested and heterogeneous containers, tuples,
+  negative indexing (including the one that panics the compiler), code-point strings, stdlib
+  constant types, floored `//`/`%`, `sorted`/`enumerate`, calling a function through a
+  parameter, `print(set())`, and print atomicity. `tools/oracleprobe` prints the three legs for
+  any program, which is how a ledger row is written from data.
 - **Property testing** — seeded deterministic whole-program generation.
 
 ## Requirements & build

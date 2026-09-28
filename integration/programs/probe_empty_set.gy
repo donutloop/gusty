@@ -1,0 +1,7 @@
+# Oracle probe (L11.9, ADR 0186) — the empty set renders as `set()` on both backends.
+# `print(set())` is recorded at 0 compiled because an empty set literal folds to the
+# integer 0 with no container behind it (L11.1 remaining, Gap L.2).
+print(set())
+s = set()
+print(s)
+print(len(s))

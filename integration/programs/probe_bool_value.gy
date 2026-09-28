@@ -1,0 +1,8 @@
+# Oracle probe (L11.9, ADR 0186) — bools are values, not the integer 1.
+# CPython prints True/False; both gusty backends print 1/0, and `--json` reports
+# "type": "int" for True, so there is no tag to render from (L11.2).
+print(True)
+print(1 == 1)
+print(False)
+print(0 == None)
+print("yes" == "yes")

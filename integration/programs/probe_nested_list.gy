@@ -1,0 +1,11 @@
+# Oracle probe (L11.9, ADR 0186) — containers nest. The compiled backend has no
+# per-element tag yet, so a list whose element is a list cannot be built, indexed
+# or printed (L11.1 "remaining": nested reads).
+m = [[1, 2], [3, 4]]
+print(m[0][1])
+d = {"a": [1, 2]}
+print(d["a"][1])
+xs = []
+xs.append([7, 8])
+print(len(xs))
+print(xs[0][0])

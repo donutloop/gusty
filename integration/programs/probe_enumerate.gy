@@ -1,0 +1,6 @@
+# Oracle probe (L11.9, ADR 0186) — enumerate/zip/reversed produce tuples, so they need
+# L11.3 (tuples are values) before they can be language surface; the interpreter
+# renders their pairs as lists and the compiled backend refuses `list(<container>)`.
+print(list(enumerate(["a", "b"])))
+print(list(zip([1, 2], [3, 4])))
+print(list(reversed([1, 2, 3])))

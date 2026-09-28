@@ -1973,3 +1973,54 @@ and reading what git actually printed.
 - Stub discipline again paid: pinning `rt_tag_of` to `0` kept the program compiling and printed
   `1\n0\n0`, and flipping the top-level `quote` flag kept everything green except the one parity
   row that cares. "It compiles" continues to be worthless as an assertion.
+
+## The corpus gets a third opinion: CPython is the oracle, parity is not enough (L11.9, ADR 0186)
+
+- **A green suite that compares two implementations to each other is a statement about
+  agreement, not about correctness.** Four of the five rows that motivated this cycle
+  (`print(True)` → `1`, `len("café")` → `5`, `"abc"[1]` → `98`, `xs[-1]` trapping) had *both*
+  backends agreeing, so all 41 matrix cases passed while four answers were wrong. The roadmap
+  only knew that because someone had hand-run `python3` beside the compiler. The fix is not more
+  tests of the same shape; it is a third engine that neither backend authors control.
+- **The divergences were hiding in plain sight inside the *passing* corpus,** and two of the
+  three oracle helpers that existed (`escapes_test.go`, `division_test.go`) actively normalised
+  them away: `normalizePy` rewrote `True` → `1` so that "does it match Python?" could be asked
+  without ever failing. Every convenience normaliser is a divergence with a hiding place. The one
+  rule this harness allows itself (`set-order`) is named, documented, justified by an
+  unspecified-ness argument, and echoed into every artifact row.
+- **Pinning the wrong answer is what makes a TODO testable.** A debt row records reason + owner +
+  the exact stdout each leg produces today. A fix that does not update the row fails ("debt is
+  paid"); a change that moves the answer *without* fixing it also fails. Without pins, "we know
+  this one is wrong" is prose — and prose about a corpus goes stale in both directions.
+- **Default to "must match" and the corpus cannot rot quietly.** A case with no ledger row is
+  declared `match`, so adding a program costs an assertion. The alternative default — "unclassified
+  unless someone says otherwise" — is how the old matrix reached 41/41 with 9 wrong rows.
+- **Bidirectional drift checking is the whole design.** A one-way check ("known-bad rows must still
+  be bad") rots the moment someone fixes something and forgets. Making an *improvement* a build
+  failure converts ledger maintenance from good intentions into a compile-time obligation.
+- **Refusals are divergences, not skips.** `oracle: not_applicable` is reserved for "CPython cannot
+  run this source at all", and a leg that failed to run counts as *not matching*. Otherwise
+  "the compiler gave up" would report as conformance — the exact inversion ADR 0166 was written
+  against.
+- **A harness that dies with the program under test reports nothing.** One probe makes codegen
+  panic (`print([1, 2, 3][-1])`); without `recover()` around each leg that is "the integration
+  suite crashed" and 58 lost rows. Recorded as `compiler panic: …` in one row, it is a measured,
+  owned defect (L11.4 + L11.8) and the rest of the corpus still reports.
+- **The oracle is a *named toolchain*, not an abstraction.** `toolchain.python` and
+  `toolchain.llvm` are recorded in the artifact and `GUSTY_PYTHON` overrides the interpreter,
+  because "prints what Python prints" is a claim about Python 3.12.3 — pin it like the LLVM
+  version is pinned, or a future CPython silently changes the spec.
+- **The harness found a bug nobody had listed.** `print` writes each argument *as it evaluates it*,
+  so `print("got", twice(21))` prints `got << 21 >>` / `42` where Python prints `<< 21 >>` / `42`.
+  It was in the corpus, in both backends, identically — and `docs/language.md` had *documented the
+  wrong behaviour as intentional*, because the only evidence available was "both backends agree".
+  Agreement between two implementations is not evidence about the language; it is evidence about
+  the implementations. Now Gap L.5, with two pinned programs.
+- **Exit codes are documentation you can execute.** `--oracle` needed a code for "the toolchain
+  answered differently than the reference" that is neither "your program is broken" (1/3) nor
+  "you invoked us wrongly" (4): 6 divergence, 7 no-verdict. An agent iterating on a language bug
+  can now loop on `gustyc --oracle prog.gy; [ $? -eq 0 ]` without scraping prose.
+- **Stub-tested the tester.** `TestOracleHarnessCanFail` re-runs a real program with a deliberately
+  wrong pin and requires drift; `TestOracleThirdLegIsNotAStub` requires the CPython leg to
+  *disagree* with both backends on a program whose whole point is disagreement. A harness is only
+  trustworthy once you have watched it fail on purpose.

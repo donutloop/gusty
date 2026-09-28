@@ -1,0 +1,8 @@
+# Oracle probe (L11.9, ADR 0186) — strings are code points, not bytes (L11.5).
+# len("café") is 4 in CPython and 5 in gusty; "héllo"[1] is "é", not the byte 195;
+# iterating "aé" yields two characters, and a module-scope `for c in s` is today an
+# invalid `store i32 @.str1`.
+print(len("café"))
+print("héllo"[1])
+for ch in "aé":
+    print(ch)

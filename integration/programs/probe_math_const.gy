@@ -1,0 +1,6 @@
+# Oracle probe (L11.9, ADR 0186) — a stdlib constant keeps its type through the
+# on-disk fold: print(math.PI) is 3.141592653589793, and 3 compiled (L11.6).
+import math
+
+print(math.PI)
+print(math.E)

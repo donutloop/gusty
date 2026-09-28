@@ -1,9 +1,6 @@
 package integration
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -11,30 +8,23 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// pythonOutput runs src through CPython and returns its stdout, with the one
-// documented rendering divergence normalised away (bare booleans print as 1/0
-// until Gap L.2 gives bools a tagged representation). Expected values in this
-// file are asserted against this, so a "what Python prints" claim that turns
-// out to be wrong fails the build instead of living in a comment.
+// pythonOutput runs src through CPython via the shared oracle leg
+// (lang.PythonRun, roadmap L11.9/ADR 0186) and returns its stdout with the one
+// documented rendering divergence normalised away: bare booleans print as 1/0
+// until bools are values (L11.2), and the expectations in *this* file were
+// written against that. The conformance matrix does **not** apply this
+// normalisation — it records those same rows as pinned debt — so a "what Python
+// prints" claim here still fails the build when it is wrong, and the
+// bool divergence stays visible where it is actually tracked.
 func pythonOutput(t *testing.T, src string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("no CPython comparison on Windows")
 	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "prog.py")
-	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("python3", path)
-	out, err := cmd.Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 && strings.Contains(string(ee.Stderr), "SyntaxWarning") {
-			// Python 3.12 warns about unknown escapes but still runs the program.
-			return normalizePy(string(out))
-		}
-	}
-	return normalizePy(string(out))
+	// Python 3.12 warns about unknown escapes and still runs the program; the
+	// oracle leg returns stdout regardless, and these cases assert on it.
+	out, _, _ := lang.PythonRun(src)
+	return normalizePy(out)
 }
 
 func normalizePy(s string) string {

@@ -60,6 +60,11 @@ func TestExitCodesAreDistinctAndDocumented(t *testing.T) {
 		exitRuntime:         "exitRuntime",
 		exitUsage:           "exitUsage",
 		exitBenchRegression: "exitBenchRegression",
+		// The oracle leg (L11.9, ADR 0186): "gusty printed something else" and "the
+		// oracle could not judge" are each their own class, and neither may share a
+		// code with "the program is broken".
+		exitOracleDivergence: "exitOracleDivergence",
+		exitOracleNoVerdict:  "exitOracleNoVerdict",
 	} {
 		if prev, dup := seen[code]; dup {
 			t.Errorf("exit codes collide: %s and %s are both %d", prev, name, code)
@@ -68,5 +73,19 @@ func TestExitCodesAreDistinctAndDocumented(t *testing.T) {
 	}
 	if exitCompileError == exitRuntime || exitUsage == exitIRVerify {
 		t.Error("the failure classes must not share a code")
+	}
+	// Every verdict maps to a code, and the mapping is what docs/operations.md says.
+	for status, want := range map[string]int{
+		lang.OracleMatch: exitOK,
+		lang.OracleDebt:  exitOracleDivergence,
+		lang.OracleNA:    exitOracleNoVerdict,
+		"gibberish":      exitOracleNoVerdict, // an unknown verdict is never success
+	} {
+		if got := oracleExit(status); got != want {
+			t.Errorf("oracleExit(%q) = %d, want %d", status, got, want)
+		}
+	}
+	if oracleExit(lang.OracleDebt) == exitOK || oracleExit(lang.OracleNA) == exitOK {
+		t.Error("no verdict other than `match` may exit 0 — that is how 'we never checked' becomes 'it works'")
 	}
 }

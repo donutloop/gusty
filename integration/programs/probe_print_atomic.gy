@@ -1,0 +1,9 @@
+# Oracle probe (L11.9, ADR 0186) — print writes one line as a unit: every argument is
+# evaluated first, and only then is the line written. Today the argument loop writes
+# as it evaluates, so a call that itself prints interleaves into the caller's line.
+def twice(v):
+    print("<<", v, ">>")
+    return v + v
+
+print("got", twice(21))
+print("after")

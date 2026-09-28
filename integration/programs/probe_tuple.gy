@@ -1,0 +1,13 @@
+# Oracle probe (L11.9, ADR 0186) — tuples are values. There is no AOT lowering for a
+# tuple literal at all ("unsupported expression *lang.Tuple"), and the interpreter
+# renders one as a list (L11.3).
+t = (1, 2, 3)
+print(t)
+print(t[1])
+print(len(t))
+a, b = (4, 5)
+print(a)
+print(b)
+def pair():
+    return (1, 2)
+print(pair())

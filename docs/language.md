@@ -31,7 +31,14 @@ print(l[::-1])   # [6, 5, 4, 3, 2, 1]
 - Omitted bounds default to the sequence start/end (`s[:b]`, `s[a:]`, `s[:]`).
 - An explicit `step` selects every `step`-th element (`s[a:b:c]`, `s[::step]`);
   a negative step walks backwards (`l[::-1]`).
-- Negative indices count from the end (`s[-3:]` == last three elements).
+- Negative indices count from the end (`s[-3:]` == last three elements) **in slice bounds
+  only**. Plain indexing does not normalise them yet: `xs = [1, 2, 3]; print(xs[-1])` traps with
+  *index out of range* on **both** backends where CPython prints `3`, and the literal form
+  `[1, 2, 3][-1]` currently panics the compiler. Both are pinned as probes
+  (`programs/probe_negative_index.gy`, `programs/probe_negative_literal.gy`) against the CPython
+  oracle and owned by roadmap L11.4, which will make one `i < 0 ⇒ i + len` rule serve read,
+  write, `pop`, `index`, slice and `for`. The heading of this section describes slicing; do not
+  read it as a claim about indexing (ADR 0186).
 - A zero step is an error.
 - Slicing a string returns a string; slicing a list returns a list.
 
@@ -261,9 +268,14 @@ print("a", "b", sep="|", end="?")   # a|b?  — `end` replaces the newline entir
 ```
 
 - Arguments are rendered the way `str()`/`repr()` renders them and joined with
-  `sep`; `end` is written once, after the last argument. An argument whose own
-  evaluation prints (a call that prints) keeps its place in the line, and both
-  backends interleave it identically.
+  `sep`; `end` is written once, after the last argument.
+- **Known divergence (Gap L.5, pinned by `programs/probe_print_atomic.gy`):** an argument
+  whose own evaluation prints — a call that prints — does *not* keep its place in the line.
+  Both backends write each argument as they evaluate it, so
+  `print("got", twice(21))` where `twice` prints `<< 21 >>` emits `got << 21 >>` then `42`,
+  where Python emits `<< 21 >>` then `got 42`: Python evaluates every argument and only then
+  writes one line. The two backends interleave it identically, which is exactly why parity
+  could not see it; the CPython oracle leg can (ADR 0186).
 - `sep` and `end` must be keyword arguments; any other keyword is an error
   (`print got an unexpected keyword argument "junk"`). In the AOT backend they
   must be compile-time string constants — the compiler says so
@@ -445,6 +457,13 @@ Each dict/set literal is emitted as a dedicated global struct (`{i32 count,
 for sets). Constant-key lookup resolves at compile time; like lists, these
 literals must be used inline (no assignment-to-variable indirection) in the
 codegen path. The interpreter indexes dicts/sets at runtime and is unchanged.
+
+> **Subscripting a set by position is a gusty extension, not Python.** `{1, 2, 3}[2]`
+> picks the element at index 2 here; CPython rejects it with
+> `TypeError: 'set' object is not subscriptable` (with a syntax warning calling out the
+> missing comma). Programs that use it are recorded `oracle: not_applicable` in the
+> conformance ledger — the CPython leg cannot reach the rest of the file — so the
+> extension is a deliberate difference rather than an unnoticed one (ADR 0186).
 
 ### Iterating and mutating containers
 

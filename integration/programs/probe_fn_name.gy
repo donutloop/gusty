@@ -1,0 +1,14 @@
+# Oracle probe (L11.9, ADR 0186) — a def'd function used as a *value* (passed as an
+# argument) is not resolvable on either backend: the interpreter reports
+# `undefined name twice`, so a name and a lambda are two different things today
+# (L11.7). Python treats them alike.
+def twice(v):
+    return v + v
+
+def apply(f, xs):
+    out = []
+    for x in xs:
+        out.append(f(x))
+    return out
+
+print(apply(twice, [1, 2]))

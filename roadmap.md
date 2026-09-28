@@ -6,11 +6,13 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0180`. `go test -tags=llvm20 ./...`
-> is green (857 test functions over `pkg/lang` + `integration`). Conformance
-> corpus: 50 programs under `integration/programs/`, 41 matrix cases, all
-> `parity: true`. **The current plan is Phase 11 — the value model** (below);
-> it is motivated by a CPython-oracle probe whose findings are recorded there.
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0186`. `go test -tags=llvm20 ./...`
+> is green. Conformance corpus: 64 programs under `integration/programs/` (16 of
+> them pinned probes), 59 matrix rows over **three legs** (interpreter, compiled binary, CPython): 43
+> parity cases plus 16 pinned probes; oracle 27 `match` / 22 `debt` /
+> 10 `not_applicable`. **The current plan is Phase 11 — the value model** (below);
+> its harness, L11.9, is ✅ DONE (ADR 0186), so no remaining Phase 11 item may be
+> marked done on parity alone — each one has a pinned program that has to change.
 
 ## Component map (state verified against the code)
 
@@ -576,7 +578,9 @@ backends to *each other*; the CPython oracle exists in only two files
 | `def m(self): return "hi"` (called) | `hi` | `hi` | **invalid IR**: `ret i32 @.str1` |
 
 **Items (each: ADR + unit test + `integration/` program, per the Definition of
-done).** All ⏳ PLANNED. Order is dependency order — L11.1 is the keystone; do not
+done).** L11.9 is ✅ DONE (ADR 0186) — its 16 probe programs are the measured form of every
+row below, so an item is not done until its probe's pins change. Order is dependency order —
+L11.1 is the keystone; do not
 start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
 
 - **L11.1 — Tagged value word (both backends)** 🟢 IN PROGRESS — one value shape on
@@ -711,15 +715,76 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   asymmetry found today: an `llc` rejection is exit **2** through `--build` but
   exit **1** through `--aot`/the JIT, so the same compiler bug is reported two
   ways. Extend `TestCLIExitCodeContract` to drive the JIT leg as well as `--build`.
-- **L11.9 — The corpus is the spec: CPython is the oracle everywhere** ⏳ PLANNED —
-  the conformance harness (41 cases) still asserts backend-vs-backend only, which
-  is exactly why rows like `print(True)`, `xs[-1]`, `len("café")`,
-  `print(math.PI)` sit in a green build. Promote the `pythonOutput` helper out of
-  `escapes_test.go` into the harness, require every `integration/programs/*.gy` to
-  match CPython on **both** legs, record the oracle output in
-  `conformance-matrix.json` (`python_stdout`, `oracle_match`), and add the Phase 11
-  rows above as new programs. Until this lands, no Phase 11 item may be marked
-  DONE on parity alone.
+- **L11.9 — The corpus is the spec: CPython is the oracle everywhere** ✅ DONE (ADR 0186) —
+  the harness ran 41 cases and asserted backend-vs-backend only, which is exactly why rows like
+  `print(True)`, `xs[-1]`, `len("café")`, `print(math.PI)` sat in a green build. The matrix now
+  runs **three legs** (interpreter, compiled binary, CPython) and asserts a second contract on
+  top of parity.
+  - **One classifier** — `pkg/lang/oracle.go`'s `BuildOracleReport` returns `match` / `debt` /
+    `not_applicable` plus per-leg `matches_python` flags and notes. A leg that did not run
+    (refusal, trap, **Go panic**) does not match: a refusal is a debt, never a skip (ADR 0166's
+    rule, expressed in the matrix). The harness and `gustyc --oracle` share the function, so a
+    program cannot pass in one place and fail in the other.
+  - **The ledger is the spec** — `integration/conformance_cases.go` declares every case's state.
+    **Absence of a row means `match`**, so a divergence cannot enter the corpus silently; a
+    `debt` row needs a reason, a roadmap ref (an owner), and a **pin per leg** — the exact stdout
+    that leg produces today, or `Missing: true` with an optional error substring. `OracleCheck`
+    returns drift, and drift fails the build **in both directions**: a row that got worse, and a
+    row that got better (`oracle debt is paid … update the registry`). A ledger nobody can be
+    forced to maintain is fiction.
+  - **Comparison rules are named and echoed** — one default rule, `set-order`: a bare `{…}`
+    rendering with no `k: v` entry compares as a sorted multiset, because CPython's set iteration
+    order depends on hash seed and insertion history; a dict rendering keeps its order, because
+    that one is observable in both languages. `PYTHONHASHSEED=0` makes an oracle run reproducible,
+    and the rule list travels in every row so nothing is normalised away invisibly.
+  - **16 probe programs** (`integration/programs/probe_*.gy`) reproduce the Phase 11 rows and are
+    recorded + pinned rather than parity-asserted: bools as values, nested lists, mixed elements,
+    tuples, negative indexing (the variable form *and* the literal form that **panics the Go
+    compiler**), code-point strings, string indexing, stdlib constant types, `//` / `/=` / float
+    `%`, `sorted`, `enumerate`/`zip`, calling a lambda through a parameter, passing a `def`'d
+    name as a value, `print(set())`, and print atomicity. **Promotion rule:** when a probe starts
+    matching CPython its pins fail with the instruction to delete the ledger row and move the
+    program into `conformanceStandalone()` — that promotion is the definition of done.
+  - **Nothing may crash the harness** — all three legs run behind `recover()`, so a compiler
+    panic is one row whose aot error reads `compiler panic: …` instead of a dead test binary.
+  - **Machine path** — matrix `schema_version` 1.1 adds `python_stdout`/`python_ok`/
+    `python_error`, `interp_matches_python`/`aot_matches_python`, `oracle` with its
+    `oracle_declared` counterpart, `oracle_reason`/`oracle_ref`/`oracle_rules`/`oracle_notes`/
+    `oracle_drift`, the `rows`/`skipped` and oracle counters, and a `toolchain` block naming the
+    interpreter and LLVM that produced the artifact. `--schema` gains `definitions.oracleReport`
+    and `definitions.conformanceRow`. `gustyc --oracle <src>` / `--oracle-file <path>` is the
+    ad-hoc form (`--json` for the leg-by-leg report), with **two new exit codes: 6** (gusty
+    disagreed with Python) and **7** (the oracle could not judge the source) — neither may
+    collapse into 1 or 3. `tools/oracleprobe` prints the three legs, so a ledger row is written
+    from measured data rather than memory.
+  - **Measured result** — 59 rows: 43 parity cases (still 43/43) + 16 probes; oracle 27 `match` /
+    22 `debt` / 10 `not_applicable`. **Seven of the rows that used to pass print something other
+    than what CPython prints** (`features_a`, `print_args`, `container_methods`, `none_values`,
+    `string_containers`, `string_escapes`, `string_params`) and eight more are gusty-only surface
+    the oracle cannot run — fifteen cases whose state was previously unrecorded, all now declared,
+    owned and pinned.
+  - **Found on its first run**, and in no roadmap row before this: **Gap L.5, `print` is not
+    atomic** (below). `docs/language.md` § print had described the wrong behaviour as intentional
+    ("keeps its place in the line, and both backends interleave it identically") and now states
+    what is actually true.
+  - Kept honest by tests, not prose: `pkg/lang/oracle_test.go` (classification, the set rule, and
+    every drift shape including "a leg that used to fail now runs"), `integration/oracle_test.go`
+    (the ledger describes only registered cases, every exception carries reason + owner + pins for
+    both legs, the third leg is not a stub, and **a stubbed pin must produce drift** — the
+    harness is tested against its own ability to fail), and `cmd/gustyc/oracle_test.go` plus the
+    extended `TestCLIExitCodeContract` for the payload and the two new codes.
+- **Gap L.5 — `print` is not atomic** ⏳ PLANNED (found by the L11.9 oracle leg, ADR 0186) —
+  `print` writes each argument **as it evaluates it**, so an argument whose own evaluation prints
+  interleaves into the caller's line: with `def twice(v): print("<<", v, ">>")
+  return v + v`, `print("got", twice(21))` emits `got << 21 >>` / `42` where CPython emits
+  `<< 21 >>` / `got 42`. Both backends do it identically — precisely why parity could never see
+  it. Python evaluates every argument and only then writes the line. Fix: evaluate all arguments
+  (and `sep`/`end`) into values first, then emit the line as a unit, in the interpreter's print
+  builtin and in codegen's print lowering (which currently emits its `printf` calls interleaved
+  with the callee calls). Pinned by `programs/probe_print_atomic.gy` and by the
+  `programs/print_args` ledger row — both pins have to be rewritten when it is fixed. DoD: the
+  probe is promoted into `conformanceStandalone()` and the print bullet in `docs/language.md`
+  that describes the interleaving is deleted.
 
 **Machine path (AGENTS.md, non-negotiable).** The tag enum is exposed as
 `gustyc --schema` → `valueTag` and named in `--lang` (`values: tagged int/float/bool/str/None/list/dict/set/tuple/instance/function`) so an
@@ -731,7 +796,8 @@ for both legs.
 **Sequencing.** Phase 11 sits *before* the remaining L7/L8 items that assume a
 representation: L7.2 (precise roots), L7.3 (tagged pointers/NaN-boxing), L8.1
 (monomorphization) and L8.4 (SROA on heap objects) all read the tag — do them
-after L11.1. L11.9 should land first (it is the harness that proves the rest).
+after L11.1. L11.9 landed first (ADR 0186) — it is the harness that proves the rest, and from
+here each item below arrives with a pinned program that has to start printing Python's answer.
 
 ---
 
@@ -754,13 +820,16 @@ A gap is closed when the previously interpreter-only path also lowers on AOT
 
 ## Sequencing note
 Gaps A–H are closed; the 2026 phases (4–10) are largely closed too. The
-**current** next work is **Phase 11 (the value model)** — its L11.9 harness first,
-then L11.1 (the tagged value word), because L7.2/L7.3/L8.1/L8.4 all assume it.
-The still-open gap-shaped items (Gap J.2, Gap K.8 part 2 — full AOT tracebacks,
-Gap M.2 — flipping `--file` to the compiled backend, Gaps N.2, P.1, P.2) are
-absorbed by Phase 11 where they are representation decisions, and stay their own
-work where they are not (K.8 needs L8.5's line tables; M.2 flips only once the
-Phase 11 oracle gate is green through the compiled leg).
+**current** next work is **Phase 11 (the value model)** — L11.9 (the CPython oracle
+harness) is ✅ DONE (ADR 0186), so the queue is now the 22 pinned `debt` rows: L11.1's
+remaining reads, L11.2 (bools as values), L11.3 (tuples), L11.4 (indexing), L11.5
+(code-point strings), L11.6 (numerics), L11.7 (functions as values), then L11.8 (refusals and
+exit codes). L7.2/L7.3/L8.1/L8.4 all assume L11.1. The still-open gap-shaped items (Gap J.2,
+Gap K.8 part 2 — full AOT tracebacks, Gap M.2 — flipping `--file` to the compiled backend,
+Gap L.5 — print atomicity, Gaps N.2, P.1, P.2) are absorbed by Phase 11 where they are
+representation decisions, and stay their own work where they are not (K.8 needs L8.5's line
+tables; M.2 flips only once the corpus is green through the compiled leg — which, since L11.9,
+is a measured claim rather than an assumption).
 
 ## Gap J — found while closing earlier gaps (2026-09-27)
 

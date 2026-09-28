@@ -1,0 +1,11 @@
+# Oracle probe (L11.9, ADR 0186) — numeric truth in the compiled backend (L11.6):
+# floored // on negatives, `/=` producing a float, Python-floored % on floats
+# (wrong on both backends today), and a float surviving an untyped parameter.
+print(-7 // 2)
+print(-3.5 % 2.0)
+x = 8
+x /= 2
+print(x)
+def dbl(v):
+    return v * 2
+print(dbl(0.1))

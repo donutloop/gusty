@@ -1,554 +1,1961 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "generated_by": "integration/conformance_test.go",
+  "toolchain": {
+    "python": "Python 3.12.3",
+    "llvm": "Ubuntu LLVM version 20.1.2"
+  },
   "results": [
     {
       "case": {
         "id": "programs/single",
         "name": "single.gy",
         "source": "x = 0\nfor i in range(3):\n    x = x + i\nprint(x)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "3\n",
       "aot_ok": true,
       "aot_stdout": "3\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "3\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/sq",
         "name": "sq.gy",
         "source": "def sq(x):\n    return x * x\nprint(sq(7))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "49\n",
       "aot_ok": true,
       "aot_stdout": "49\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "49\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/print1",
         "name": "print1.gy",
         "source": "print(1)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "1\n",
       "aot_ok": true,
       "aot_stdout": "1\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/ir",
         "name": "ir.gy",
         "source": "print(40 + 2)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "42\n",
       "aot_ok": true,
       "aot_stdout": "42\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "42\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/fstr",
         "name": "fstr.gy",
         "source": "x = 3\ny = 7\nprint(f\"x={x}\")\nprint(f\"{1 + 2}\")\nprint(f\"{1.5}\")\nprint(f\"a{y} c\")\nprint(f\"100% done\")\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "x=3\n3\n1.5\na7 c\n100% done\n",
       "aot_ok": true,
       "aot_stdout": "x=3\n3\n1.5\na7 c\n100% done\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "x=3\n3\n1.5\na7 c\n100% done\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/floatfn",
         "name": "floatfn.gy",
         "source": "def half(x):\n    return x / 2.0\nprint(half(5.0))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "2.5\n",
       "aot_ok": true,
       "aot_stdout": "2.5\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "2.5\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/ctrl_a",
         "name": "ctrl_a.gy",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "acc 15\nacc2 20\nacc3 30\n",
       "aot_ok": true,
       "aot_stdout": "acc 15\nacc2 20\nacc3 30\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "acc 15\nacc2 20\nacc3 30\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/ctrl_b",
         "name": "ctrl_b.gy",
         "source": "w1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "while 100\nwhile2 20\n",
       "aot_ok": true,
       "aot_stdout": "while 100\nwhile2 20\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "while 100\nwhile2 20\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/ctrl_c",
         "name": "ctrl_c.gy",
         "source": "def classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "cls 2 0 3\nnested 9\ncont 14\n",
       "aot_ok": true,
       "aot_stdout": "cls 2 0 3\nnested 9\ncont 14\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "cls 2 0 3\nnested 9\ncont 14\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/data_a",
         "name": "data_a.gy",
         "source": "da1 = 0\nfor di in range(1, 6):\n    da1 = da1 + di\nprint(\"dsum\", da1)\nprint(\"dmin\", min([3, 1, 4, 1, 5]))\nprint(\"dmax\", max([3, 1, 4, 1, 5]))\nprint(\"dlen\", len([10, 20, 30]))\nprint(\"didx\", [7, 8, 9][1])\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\n",
       "aot_ok": true,
       "aot_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/data_b",
         "name": "data_b.gy",
         "source": "print(\"dkeys\", len({1: 10, 2: 20, 3: 30}))\nprint(\"dval\", {1: 10, 2: 20}[2])\nprint(\"slen\", len({5, 6, 7}))\nprint(\"sidx\", {5, 6, 7}[6])\ndb1 = 0\nfor dj in range(1, 10, 2):\n    db1 = db1 + dj\nprint(\"odd\", db1)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "{5, 6, 7}[6] — subscripting a set by position is gusty surface; CPython raises TypeError ('set' object is not subscriptable)",
+        "ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "dkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "dkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "dkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\n",
       "aot_ok": true,
       "aot_stdout": "dkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
+      "python_error": "exit status 1: /tmp/gusty-oracle1097221579/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "{5, 6, 7}[6] — subscripting a set by position is gusty surface; CPython raises TypeError ('set' object is not subscriptable)",
+      "oracle_ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1097221579/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+      ]
     },
     {
       "case": {
         "id": "programs/data_c",
         "name": "data_c.gy",
         "source": "def total(n):\n    t = 0\n    for tk in range(1, n):\n        t = t + tk\n    return t\ndc1 = total(7)\nprint(\"fsum\", dc1)\ndc2 = 0\nfor dl in range(1, 10):\n    dc2 = dc2 + dl\nprint(\"loop\", dc2)\ndc3 = dc1 + dc2\nprint(\"big\", dc3)\nprint(\"abs\", abs(-42))\nprint(\"conv\", int(\"100\"), float(2), str(7))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "fsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n",
       "aot_ok": true,
       "aot_stdout": "fsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "fsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/features_a",
         "name": "features_a.gy",
         "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n",
-        "shared": true
+        "shared": true,
+        "oracle": "debt",
+        "reason": "\"abc\"[1] prints the byte 98; CPython prints the one-character string 'b'",
+        "ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n",
       "aot_ok": true,
       "aot_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "\"abc\"[1] prints the byte 98; CPython prints the one-character string 'b'",
+      "oracle_ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     },
     {
       "case": {
         "id": "programs/features_b",
         "name": "features_b.gy",
         "source": "def add(a, b):\n    return a + b\ndef kw(a, b):\n    return a - b\nprint(\"func\", add(2, 3))\nprint(\"kw\", kw(a=9, b=4))\ng = lambda a: a * a\nprint(\"lambda\", g(7))\nprint(\"len\", len([1, 2, 3]))\nprint(\"idx\", [1, 2, 3][1])\nprint(\"sum\", sum([1, 2, 3]))\nprint(\"minmax\", min([1, 2, 3]), max([1, 2, 3]))\nprint(\"dict\", len({1: 10, 2: 20}), {1: 10, 2: 20}[1])\nprint(\"set\", len({1, 2, 3}), {1, 2, 3}[2])\nwi = 0\nwt = 0\nwhile wi \u003c 10:\n    wi = wi + 1\n    if wi == 3:\n        continue\n    if wi == 7:\n        break\n    wt = wt + wi\nprint(\"while\", wt)\nxf = 3\nif xf == 1:\n    print(\"if\", \"one\")\nelif xf == 2:\n    print(\"if\", \"two\")\nelse:\n    print(\"if\", \"many\")\nstp = 0\nfor si in range(0, 10, 2):\n    stp = stp + si\nprint(\"step\", stp)\nprint(\"abs\", abs(-5))\nprint(\"conv\", int(\"42\"), float(1), str(42))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "{1, 2, 3}[2] — positional set subscript again; the CPython leg stops there and never reaches the rest of the program",
+        "ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
       "aot_ok": true,
       "aot_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
+      "python_error": "exit status 1: /tmp/gusty-oracle2893299742/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "{1, 2, 3}[2] — positional set subscript again; the CPython leg stops there and never reaches the rest of the program",
+      "oracle_ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2893299742/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+      ]
     },
     {
       "case": {
         "id": "programs/stdlib",
         "name": "stdlib.gy",
         "source": "# stdlib — import a standard-library module from the on-disk stdlib root\nimport string\nprint(string.DIGITS)\nprint(string.LOWERCASE)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "string.DIGITS / string.LOWERCASE are this language's stdlib names; Python's string module has no such attributes",
+        "ref": "roadmap Phase 2 § on-disk stdlib modules",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "0123456789\nabcdefghijklmnopqrstuvwxyz\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "0123456789\nabcdefghijklmnopqrstuvwxyz\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "0123456789\nabcdefghijklmnopqrstuvwxyz\n",
       "aot_ok": true,
       "aot_stdout": "0123456789\nabcdefghijklmnopqrstuvwxyz\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "string.DIGITS / string.LOWERCASE are this language's stdlib names; Python's string module has no such attributes",
+      "oracle_ref": "roadmap Phase 2 § on-disk stdlib modules",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
     },
     {
       "case": {
         "id": "programs/dispatch_nested",
         "name": "dispatch_nested.gy",
         "source": "# Dynamic dispatch at nested call sites: a method call with a statically\n# unknown receiver used as a value inside arithmetic, as a function argument,\n# in a return, and assigned to a variable. Exercises the AOT dispatch switch\n# from every expression position (all-call-site dispatch).\nclass Animal:\n    def __init__(self):\n        self.x = 1\n    def speak(self):\n        return self.x\nclass Dog(Animal):\n    def __init__(self):\n        super().__init__()\n    def speak(self):\n        return 42\ndef make(kind):\n    if kind == 1:\n        return Animal()\n    return Dog()\ndef add(a, b):\n    return a + b\ndef get(v):\n    return v.speak()\nprint(make(1).speak() + make(2).speak())\nprint(add(make(1).speak(), make(2).speak()))\nprint(get(make(1)) + get(make(2)))\nc = Animal()\nd = Dog()\nprint(c.speak() + d.speak())\nprint(\"done\")\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "43\n43\n43\n43\ndone\n",
       "aot_ok": true,
       "aot_stdout": "43\n43\n43\n43\ndone\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "43\n43\n43\n43\ndone\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/dispatch_gc",
         "name": "dispatch_gc.gy",
         "source": "# Gap A reproducer: an instance handle stored in a local variable must stay\n# alive across a later allocation that triggers GC. Expected: 43.\nclass Animal:\n    def __init__(self):\n        self.x = 1\n    def speak(self):\n        return self.x\nclass Dog(Animal):\n    def __init__(self):\n        super().__init__()\n    def speak(self):\n        return 42\ndef make(kind):\n    if kind == 1:\n        return Animal()\n    return Dog()\ndef f():\n    a = make(1)\n    b = make(2)\n    return a.speak() + b.speak()\nprint(f())\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "43\n",
       "aot_ok": true,
       "aot_stdout": "43\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "43\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/dispatch_gc_stress",
         "name": "dispatch_gc_stress.gy",
         "source": "# Gap A (ADR 0151): a polymorphic receiver that survives many real GC\n# collections + slot reuse must dispatch on the *live* instance. Unlike\n# dispatch_gc.gy (2 allocations, no collection), this forces the 1024-slot\n# heap to fill and free/reuse slots repeatedly while two receivers stay\n# reachable, then dispatches on both. Expected: 1 + 42 = 43.\nclass Animal:\n    def __init__(self):\n        self.x = 1\n    def speak(self):\n        return self.x\nclass Dog(Animal):\n    def __init__(self):\n        super().__init__()\n    def speak(self):\n        return 42\ndef make(kind):\n    if kind == 1:\n        return Animal()\n    return Dog()\ndef f():\n    a = make(1)\n    b = make(2)\n    for i in range(2000):\n        lst = [i]\n    return a.speak() + b.speak()\nprint(f())\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "43\n",
       "aot_ok": true,
       "aot_stdout": "43\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "43\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/match_baren",
         "name": "match_baren.gy",
         "source": "# Bare-name capture pattern in match: `case x:` binds the subject to x\n# and always matches (Python semantics), rather than comparing against an\n# existing variable. Covers literal match, capture match, and the captured\n# name used inside the matched branch.\ndef f(v):\n    match v:\n        case 1:\n            return 10\n        case 2:\n            return 20\n        case x:\n            return x\nprint(f(1))\nprint(f(2))\nprint(f(5))\nprint(f(99))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "10\n20\n5\n99\n",
       "aot_ok": true,
       "aot_stdout": "10\n20\n5\n99\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "10\n20\n5\n99\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/match_literal",
+        "name": "match_literal.gy",
+        "source": "# Literal types feed exhaustiveness: a match over a Literal[1,2] subject\n# with both constant values covered is exhaustive (no warning), and the\n# subject is narrowed to the matching Literal inside each case.\ndef classify(x: Literal[1, 2]):\n    match x:\n        case 1:\n            print(\"one\")\n        case 2:\n            print(\"two\")\nclassify(1)\nclassify(2)\n",
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "Literal[1, 2] is this language's checker surface; plain CPython has no Literal in scope and stops at the annotation",
+        "ref": "roadmap Phase 2 § gradual typing; docs/operations.md § gusty check",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "one\ntwo\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "one\ntwo\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "one\ntwo\n",
+      "aot_ok": true,
+      "aot_stdout": "one\ntwo\n",
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "Literal[1, 2] is this language's checker surface; plain CPython has no Literal in scope and stops at the annotation",
+      "oracle_ref": "roadmap Phase 2 § gradual typing; docs/operations.md § gusty check",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
     },
     {
       "case": {
         "id": "programs/wrapping_decorator",
         "name": "wrapping_decorator.gy",
         "source": "def add1(g):\n    def wrap(x):\n        return g(x) + 1\n    return wrap\n@add1\ndef f(x):\n    return x * 2\nprint(f(3))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "7\n",
       "aot_ok": true,
       "aot_stdout": "7\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "7\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/dunder",
         "name": "dunder.gy",
         "source": "# Operator overloading (dunder methods) in AOT: dispatch __add__/__mul__/__lt__\n# on a statically-known left operand, reflected __radd__/__rmul__ on the right,\n# and fall back to builtin arithmetic for non-instances.\nclass Vec:\n    def __init__(self):\n        self.x = 0\n    def __add__(self, other):\n        return self.x + other\n    def __radd__(self, other):\n        return self.x + other\n    def __mul__(self, other):\n        return self.x * other\n    def __rmul__(self, other):\n        return self.x * other\n    def __lt__(self, other):\n        if self.x \u003c other:\n            return 1\n        return 0\na = Vec()\na.x = 3\nprint(a + 100)\nprint(100 + a)\nprint(a * 5)\nprint(5 * a)\nprint(a \u003c 4)\nprint(a \u003c 2)\nc = 7\nprint(c + 5)\nprint(c * 2)\nprint(\"done\")\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "103\n103\n15\n15\n1\n0\n12\n14\ndone\n",
       "aot_ok": true,
       "aot_stdout": "103\n103\n15\n15\n1\n0\n12\n14\ndone\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "103\n103\n15\n15\n1\n0\n12\n14\ndone\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/async_basic",
         "name": "async_basic.gy",
         "source": "async def f(x):\n    return x + 1\nasync def g(x):\n    return x * 2\nv = await f(2)\nw = await g(3)\nprint(v)\nprint(w)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "await at module scope is a SyntaxError in CPython; the minimal synchronous-coroutine model accepts it (L5.6)",
+        "ref": "docs/shared-lowering-spec.md § async / await",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "3\n6\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "3\n6\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "3\n6\n",
       "aot_ok": true,
       "aot_stdout": "3\n6\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle4076731690/prog.py\", line 5",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "await at module scope is a SyntaxError in CPython; the minimal synchronous-coroutine model accepts it (L5.6)",
+      "oracle_ref": "docs/shared-lowering-spec.md § async / await",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle4076731690/prog.py\", line 5"
+      ]
     },
     {
       "case": {
         "id": "programs/async_for",
         "name": "async_for.gy",
         "source": "async def f(x):\n    return x * 2\nasync for v in [f(1), f(2), f(3)]:\n    print(v)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "async for outside an async function is a SyntaxError in CPython; lowered as a plain for loop here (L5.6)",
+        "ref": "docs/shared-lowering-spec.md § async / await",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "2\n4\n6\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "2\n4\n6\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "2\n4\n6\n",
       "aot_ok": true,
       "aot_stdout": "2\n4\n6\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle275459134/prog.py\", line 3",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "async for outside an async function is a SyntaxError in CPython; lowered as a plain for loop here (L5.6)",
+      "oracle_ref": "docs/shared-lowering-spec.md § async / await",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle275459134/prog.py\", line 3"
+      ]
     },
     {
       "case": {
         "id": "programs/async_multi",
         "name": "async_multi.gy",
         "source": "async def f(x):\n    return x + 1\na = f(10)\nb = f(20)\nprint(await a)\nprint(await b)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "await at module scope is a SyntaxError in CPython (L5.6)",
+        "ref": "docs/shared-lowering-spec.md § async / await",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "11\n21\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "11\n21\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "11\n21\n",
       "aot_ok": true,
       "aot_stdout": "11\n21\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3208057705/prog.py\", line 5",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "await at module scope is a SyntaxError in CPython (L5.6)",
+      "oracle_ref": "docs/shared-lowering-spec.md § async / await",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3208057705/prog.py\", line 5"
+      ]
     },
     {
       "case": {
         "id": "programs/typealias",
         "name": "typealias.gy",
         "source": "type Count = int\ntype Double = int\n\ndef twice(c: Count):\n    return c * 2\n\ndef add(a: Count, b: Double):\n    return a + b\n\nprint(twice(21))\nprint(add(1, 2))\nprint(twice(10))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "42\n3\n20\n",
       "aot_ok": true,
       "aot_stdout": "42\n3\n20\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "42\n3\n20\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/variance",
         "name": "variance.gy",
         "source": "# Variance + generics (L6.6): nominal class annotations accept subclass\n# instances, read-only Sequence annotations accept any container, and invariant\n# list/dict annotations keep their element types — identical on both backends.\n\nclass Animal:\n    def speak(self):\n        return 1\n\nclass Dog(Animal):\n    def speak(self):\n        return 2\n\nclass Puppy(Dog):\n    def speak(self):\n        return 3\n\n# a nominal base-class annotation accepts instances of the class and subclasses\ndef feed(a: Animal) -\u003e int:\n    return a.speak()\n\nprint(feed(Animal()))\nprint(feed(Dog()))\nprint(feed(Puppy()))\n\n# annotated containers keep working (list[T] is invariant in T)\nvals: list[int] = [10, 20]\nprint(vals[0] + vals[1])\n\n# an untyped (dynamic) element list stays gradual: no variance diagnostics\nmixed: list[int] = [1, 2]\nprint(len(mixed))\n\nd: dict[int, int] = {1: 41}\nprint(len(d) + d[1])\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "1\n2\n3\n30\n2\n42\n",
       "aot_ok": true,
       "aot_stdout": "1\n2\n3\n30\n2\n42\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "1\n2\n3\n30\n2\n42\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/heap_containers",
         "name": "heap_containers.gy",
         "source": "# heap_containers.gy — heap containers crossing function boundaries.\n#\n# A list is a reference value: it must survive being passed to a function,\n# whether it arrives as a literal, a variable, a keyword argument, a default, a\n# comprehension or a generator. This program is run by BOTH the interpreter and\n# the LLVM AOT pipeline; the two must agree byte-for-byte.\ndef total(xs) -\u003e int:\n    n = 0\n    for x in xs:\n        n = n + x\n    return n\n\n\ndef head(xs) -\u003e int:\n    return xs[0]\n\n\ndef count(xs) -\u003e int:\n    return len(xs)\n\n\ndef scale(xs, k) -\u003e int:\n    t = 0\n    for x in xs:\n        t = t + x * k\n    return t\n\n\ndef size(s: set[int]) -\u003e int:\n    return len(s)\n\n\ndef doubled(xs) -\u003e int:\n    return total(xs) * 2\n\n\nnums: list[int] = [1, 2, 3]\nprint(total(nums))\nprint(total([4, 5, 6]))\nprint(head(nums))\nprint(count([1, 2, 7]))\nprint(scale(nums, 3))\nprint(size({5, 6, 7}))\nprint(doubled(nums))\nprint(total([x * 2 for x in [1, 2, 3]]))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "6\n15\n1\n3\n18\n3\n12\n12\n",
       "aot_ok": true,
       "aot_stdout": "6\n15\n1\n3\n18\n3\n12\n12\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "6\n15\n1\n3\n18\n3\n12\n12\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/folded_lists",
         "name": "folded_lists.gy",
         "source": "def total(xs) -\u003e int:\n    t = 0\n    for x in xs:\n        t = t + x\n    return t\n\nys = [x * 2 for x in [1, 2, 3]]\nprint(ys)\nprint(len(ys))\nprint(ys[1])\nprint(total(ys))\n\nzs = [i * i for i in range(5)]\nprint(zs)\nprint(total(zs))\nprint(zs[3])\n\nws = [1, 2, 3]\nprint(ws)\nprint(total(ws))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "[2, 4, 6]\n3\n4\n12\n[0, 1, 4, 9, 16]\n30\n9\n[1, 2, 3]\n6\n",
       "aot_ok": true,
       "aot_stdout": "[2, 4, 6]\n3\n4\n12\n[0, 1, 4, 9, 16]\n30\n9\n[1, 2, 3]\n6\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "[2, 4, 6]\n3\n4\n12\n[0, 1, 4, 9, 16]\n30\n9\n[1, 2, 3]\n6\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/print_args",
         "name": "print_args.gy",
         "source": "n = 41\nprint(\"n =\", n + 1)\nprint(\"a\", 1, \"b\", 2)\nprint()\nprint(\"csv\", 1, 2, 3, sep=\", \")\nprint(\"tick\", end=\"!\")\nprint(\"tock\")\nxs = [1, 2, 3]\nprint(\"xs =\", xs)\nm = {1: 2}\nprint(\"m =\", m, \"len\", len(xs))\ndef twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "debt",
+        "reason": "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
+        "ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot \u003c\u003c 21 \u003e\u003e\n42\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot \u003c\u003c 21 \u003e\u003e\n42\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot \u003c\u003c 21 \u003e\u003e\n42\n",
       "aot_ok": true,
       "aot_stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot \u003c\u003c 21 \u003e\u003e\n42\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\n\u003c\u003c 21 \u003e\u003e\ngot 42\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
+      "oracle_ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     },
     {
       "case": {
         "id": "programs/truthiness",
         "name": "truthiness.gy",
         "source": "def sign(n):\n    if n \u003e 0:\n        return 1\n    elif n:\n        return -1\n    else:\n        return 0\n\nprint(sign(3))\nprint(sign(-2))\nprint(sign(0))\n\na = 1\nb = 2\nif a and b \u003c 9:\n    print(11)\nelse:\n    print(12)\n\nif a \u003e b or b \u003e 9:\n    print(13)\nelse:\n    print(14)\n\nif not a:\n    print(15)\nelse:\n    print(16)\n\nzero = 0.0\nif zero:\n    print(17)\nelse:\n    print(18)\n\nhalf = 0.5\nif half:\n    print(19)\nelse:\n    print(20)\n\nempty_list = []\nif empty_list:\n    print(21)\nelse:\n    print(22)\n\nfull_list = [1, 2]\nif full_list:\n    print(23)\nelse:\n    print(24)\n\nempty_text = \"\"\nif empty_text:\n    print(25)\nelse:\n    print(26)\n\nempty_map = {}\nif empty_map:\n    print(27)\nelse:\n    print(28)\n\nprint(1 if a else 2)\nprint(1 if 0 else 2)\n\ncount = 0\nwhile full_list:\n    count = count + 1\n    if count \u003e= 4:\n        full_list = []\n\nprint(count)\nkept = [i for i in range(6) if i]\nprint(kept)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "1\n-1\n0\n11\n14\n16\n18\n19\n22\n23\n26\n28\n1\n2\n4\n[1, 2, 3, 4, 5]\n",
       "aot_ok": true,
       "aot_stdout": "1\n-1\n0\n11\n14\n16\n18\n19\n22\n23\n26\n28\n1\n2\n4\n[1, 2, 3, 4, 5]\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "1\n-1\n0\n11\n14\n16\n18\n19\n22\n23\n26\n28\n1\n2\n4\n[1, 2, 3, 4, 5]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/subscript_assign",
         "name": "subscript_assign.gy",
         "source": "def make(n):\n    d = {}\n\n    for i in range(n):\n        d[i] = i * 10\n\n    return d\n\nd = {}\nd[1] = 2\nd[3] = 6\nd[1] = 9\nprint(len(d))\nprint(d[1])\nfor k in d:\n    print(k, d[k])\n\nm = make(3)\nt = 0\nfor k in m:\n    t = t + m[k]\n\nprint(t)\nxs = [1, 2, 3]\nxs[0] = -4\nxs[2] = 8\nprint(xs)\n\ni = 1\nxs[i] = xs[i] + 100\nprint(xs)\ns = {3, 1, 2}\ntotal = 0\nfor x in s:\n    total = total + x\n\nprint(total)\nempty = {}\nif empty:\n    print(1)\nelse:\n    print(2)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "2\n9\n1 9\n3 6\n30\n[-4, 2, 8]\n[-4, 102, 8]\n6\n2\n",
       "aot_ok": true,
       "aot_stdout": "2\n9\n1 9\n3 6\n30\n[-4, 2, 8]\n[-4, 102, 8]\n6\n2\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "2\n9\n1 9\n3 6\n30\n[-4, 2, 8]\n[-4, 102, 8]\n6\n2\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "programs/container_methods",
         "name": "container_methods.gy",
         "source": "xs = [1, 2, 3]\nprint(xs.pop())\nprint(xs)\nprint(xs.pop(0))\nprint(xs)\n\nys = [4, 5, 6]\nt = 0\n\nwhile ys:\n    t = t + ys.pop()\n\nprint(t)\nprint(len(ys))\n\ns = set()\nprint(s)\ns.add(1)\ns.add(2)\ns.add(1)\nprint(len(s))\nprint(2 in s)\n\nfor v in s:\n    print(v * 10)\n\ns.discard(1)\nprint(len(s))\n\nd = dict()\nd[1] = 9\nd[2] = 8\nprint(d[1])\nprint(len(d))\n\nlst = list()\nlst.append(7)\nlst.append(8)\nprint(lst)\nprint(lst.pop())\n\ntry:\n    xs.pop(99)\nexcept IndexError:\n    print(\"caught pop\")\n\ntry:\n    empty = []\n    empty.pop()\nexcept IndexError:\n    print(\"caught empty pop\")\n",
-        "shared": true
+        "shared": true,
+        "oracle": "debt",
+        "reason": "print(2 in s) is 1, not True — bools are still the integer 1 with no tag to render from",
+        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
       "aot_ok": true,
       "aot_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\nTrue\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "print(2 in s) is 1, not True — bools are still the integer 1 with no tag to render from",
+      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     },
     {
       "case": {
         "id": "programs/none_values",
         "name": "none_values.gy",
         "source": "def emit():\n    print(\"side\")\n\nprint(None)\nx = None\nprint(x)\nprint(emit())\nprint(emit() == None)\nprint(0 == None)\nprint(None == None)\nif None:\n    print(\"truthy\")\nelse:\n    print(\"falsy\")\nxs = [1, None]\nprint(len(xs))\nwhile x == None:\n    print(\"once\")\n    x = 1\nprint(x)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "debt",
+        "reason": "comparisons (emit() == None, 0 == None, None == None) print 1/0 where CPython prints True/False/True",
+        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n",
       "aot_ok": true,
       "aot_stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "comparisons (emit() == None, 0 == None, None == None) print 1/0 where CPython prints True/False/True",
+      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     },
     {
       "case": {
         "id": "programs/string_containers",
         "name": "string_containers.gy",
         "source": "# Strings inside runtime containers, compiled through LLVM (roadmap Gap I.2).\n# The AOT backend keeps strings as compile-time globals while a container slot is an i32, so\n# the interned string table (rt_str_intern2 / rt_str_ptr / rt_str_repr_ptr) turns each stored\n# string into an index. The rendering below is what CPython prints for the same program.\n\nnames = [\"ada\", \"brin\", \"cad\"]\nprint(names)\nprint(len(names))\nprint(names[0])\nprint(names[2])\nprint(\"ada\" in names)\nprint(\"zed\" in names)\n\nrow = []\nrow.append(\"x\")\nrow.append(\"y\")\nprint(row)\n\npicked = \"kept\"\nrow[1] = picked\nprint(row)\n\nfor n in names:\n    print(n)\n\nscores = {}\nscores[\"ada\"] = 3\nscores[\"brin\"] = 5\nprint(scores)\nprint(len(scores))\nprint(scores[\"brin\"])\n\nflags = {}\nflags[1] = \"one\"\nprint(flags)\n\nboth = {}\nboth[\"k\"] = \"v\"\nprint(both)\n\nletters = set()\nletters.add(\"q\")\nletters.add(\"r\")\nprint(letters)\nprint(len(letters))\nfor ch in letters:\n    print(ch)\n\nempty = set()\nprint(empty)\n\ndigits = [str(1), str(2)]\nprint(digits)\n\nquoted = [\"it's\", \"plain\"]\nprint(quoted)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "debt",
+        "reason": "membership tests (\"ada\" in names, \"zed\" in names) print 1/0 where CPython prints True/False",
+        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
       "aot_ok": true,
       "aot_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\nTrue\nFalse\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "membership tests (\"ada\" in names, \"zed\" in names) print 1/0 where CPython prints True/False",
+      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     },
     {
       "case": {
         "id": "programs/string_escapes",
         "name": "string_escapes.gy",
         "source": "# String literals are text with Python escapes (roadmap Gap N, ADR 0178).\n# The lexer used to decode an escape by dropping the backslash (\"a\\nb\" became the\n# three letters anb) and rebuilt ordinary string values with string(byte), which\n# re-encodes every non-ASCII byte — \"héllo\" arrived as \"hÃ©llo\". Both backends now\n# agree with each other and, for everything below, with CPython.\n\nprint(\"tab\\there\")\nprint(\"quoted \\\"inside\\\"\")\nprint(\"back\\\\slash\")\nprint(\"bell\\aend\")\nprint(\"hex \\x41\\x42\")\nprint(\"unicode \\u00e9 \\U0001F600\")\nprint(\"unknown \\q stays\")\nprint(r\"raw \\t stays literal\")\nprint(\"\"\"triple\nnewline\"\"\")\nprint(\"\"\"triple escape:\\nhere\"\"\")\n\ngreeting = \"café\"\nprint(greeting)\nprint(greeting + \"!\" + greeting)\nprint(\"é\" in greeting)\nprint(greeting == \"café\")\nprint(greeting.upper())\nprint(len(greeting))\n\nwords = [\"naïve\", \"日本語\", \"🐍\"]\nprint(words)\nfor w in words:\n    print(w)\n\ntable = {}\ntable[\"key\"] = \"value é\"\nprint(table)\nprint(table[\"key\"])\n\njoined = \", \".join([\"a\\tb\", \"c\"])\nprint(joined)\n\nx = 7\nprint(f\"f-string {x} ✓\")\n",
-        "shared": true
+        "shared": true,
+        "oracle": "debt",
+        "reason": "two rules fire: comparisons print 1/0 instead of True/False, and len(\"café\") is 5 because len counts bytes",
+        "ref": "roadmap L11.2 (bools as values) + L11.5 (code-point strings)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
       "aot_ok": true,
       "aot_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\nTrue\nTrue\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "two rules fire: comparisons print 1/0 instead of True/False, and len(\"café\") is 5 because len counts bytes",
+      "oracle_ref": "roadmap L11.2 (bools as values) + L11.5 (code-point strings)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     },
     {
       "case": {
         "id": "programs/string_params",
         "name": "string_params.gy",
         "source": "# Strings across a function boundary, compiled through LLVM (roadmap Gap J.5).\n# A string argument is interned into the runtime string table and the callee receives the\n# index, so a parameter can be printed, measured, compared, forwarded, and stored in a\n# container. The rendering below is what CPython prints for the same program.\ndef greet(name):\n    print(\"hello\", name)\n\n\ndef echo(s):\n    return s\n\n\ndef size(s):\n    return len(s)\n\n\ndef is_yes(s):\n    return s == \"yes\"\n\n\ndef eq2(a, b):\n    return a == b\n\n\ndef shout(msg):\n    print(msg)\n\n\ndef fill(out, v):\n    out.append(v)\n\n\ndef put(d, k, v):\n    d[k] = v\n\n\ndef ins(s, v):\n    s.add(v)\n\n\ndef wrap(s):\n    echo(s)\n    print(s)\n\n\ngreet(\"ada\")\nshout(\"hi\")\ngreet(name=\"keyword\")\nprint(echo(\"yo\"))\nprint(size(\"abcd\"))\nprint(size(\"\"))\nprint(is_yes(\"yes\"))\nprint(is_yes(\"no\"))\nprint(eq2(\"x\", \"x\"))\nprint(eq2(\"x\", \"y\"))\n\nnames = []\nfill(names, \"one\")\nfill(names, \"two\")\nprint(names)\nprint(names[1])\n\ncounts = {}\nput(counts, \"k\", 1)\nput(counts, \"j\", 2)\nprint(counts)\nprint(counts[\"j\"])\n\nmembers = set()\nins(members, \"q\")\nins(members, \"r\")\nprint(members)\nprint(len(members))\n\nfor n in names:\n    print(n)\n\nfwd = \"forwarded\"\nshout(fwd)\nwrap(fwd)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "debt",
+        "reason": "string equality predicates print 1/0 where CPython prints True/False",
+        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
       "aot_ok": true,
       "aot_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\nTrue\nFalse\nTrue\nFalse\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "string equality predicates print 1/0 where CPython prints True/False",
+      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     },
     {
       "case": {
         "id": "programs/gc_precise",
         "name": "gc_precise.gy",
         "source": "# Precise stack roots (L7.2, ADR 0181).\n#\n# Every value below is held somewhere the collector has to know about: a call\n# frame's locals that survive a nested allocation storm, a loop variable the loop\n# itself keeps, and thousands of short-lived containers that must be reclaimed\n# while the program is still running. A missing root shows up as a wrong number;\n# an imprecise collector shows up as a heap full of garbage that is still live.\n\ndef churn(n):\n    total = 0\n    i = 0\n    while i \u003c n:\n        junk = [i, i, i]\n        total = total + junk[2]\n        i = i + 1\n    return total\n\n# walk binds a list, recurses, then allocates a storm before reading it back:\n# only frame roots keep `keep` alive across the nested collection.\ndef walk(depth):\n    keep = [depth, depth * 2, depth * 3]\n    filler = 0\n    if depth \u003e 0:\n        filler = walk(depth - 1)\n    churn(200)\n    return keep[0] + keep[1] + keep[2] + filler\n\n# A statement-position call whose own loop reclaims as it goes: `xs` is bound\n# before the loop and read hundreds of allocations later.\ndef total_up_to(n):\n    xs = [10, 20, 30]\n    acc = 0\n    i = 0\n    while i \u003c n:\n        scratch = [i, i]\n        acc = acc + xs[0] + xs[2] + scratch[0]\n        i = i + 1\n    return acc\n\ngrand = 0\nfor k in range(5):\n    scratch = [k, k + 1]\n    grand = grand + walk(k) + scratch[0]\nprint(grand)\nprint(total_up_to(300))\nprint(churn(1200))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "130\n56850\n719400\n",
       "aot_ok": true,
       "aot_stdout": "130\n56850\n719400\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "130\n56850\n719400\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "acc 15\nacc2 20\nacc3 30\nwhile 100\nwhile2 20\ncls 2 0 3\nnested 9\ncont 14\n",
       "aot_ok": true,
       "aot_stdout": "acc 15\nacc2 20\nacc3 30\nwhile 100\nwhile2 20\ncls 2 0 3\nnested 9\ncont 14\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "acc 15\nacc2 20\nacc3 30\nwhile 100\nwhile2 20\ncls 2 0 3\nnested 9\ncont 14\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "merged/data",
         "name": "data_a+b+c",
         "source": "da1 = 0\nfor di in range(1, 6):\n    da1 = da1 + di\nprint(\"dsum\", da1)\nprint(\"dmin\", min([3, 1, 4, 1, 5]))\nprint(\"dmax\", max([3, 1, 4, 1, 5]))\nprint(\"dlen\", len([10, 20, 30]))\nprint(\"didx\", [7, 8, 9][1])\n\nprint(\"dkeys\", len({1: 10, 2: 20, 3: 30}))\nprint(\"dval\", {1: 10, 2: 20}[2])\nprint(\"slen\", len({5, 6, 7}))\nprint(\"sidx\", {5, 6, 7}[6])\ndb1 = 0\nfor dj in range(1, 10, 2):\n    db1 = db1 + dj\nprint(\"odd\", db1)\n\ndef total(n):\n    t = 0\n    for tk in range(1, n):\n        t = t + tk\n    return t\ndc1 = total(7)\nprint(\"fsum\", dc1)\ndc2 = 0\nfor dl in range(1, 10):\n    dc2 = dc2 + dl\nprint(\"loop\", dc2)\ndc3 = dc1 + dc2\nprint(\"big\", dc3)\nprint(\"abs\", abs(-42))\nprint(\"conv\", int(\"100\"), float(2), str(7))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "inherits data_b's positional set subscript, which CPython rejects",
+        "ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\nfsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\nfsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\nfsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n",
       "aot_ok": true,
       "aot_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\nfsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
+      "python_error": "exit status 1: /tmp/gusty-oracle3268045593/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "inherits data_b's positional set subscript, which CPython rejects",
+      "oracle_ref": "docs/language.md § Dicts \u0026 sets (positional set subscript is a gusty extension)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3268045593/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+      ]
     },
     {
       "case": {
         "id": "merged/features",
         "name": "features_a+b",
         "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n\ndef add(a, b):\n    return a + b\ndef kw(a, b):\n    return a - b\nprint(\"func\", add(2, 3))\nprint(\"kw\", kw(a=9, b=4))\ng = lambda a: a * a\nprint(\"lambda\", g(7))\nprint(\"len\", len([1, 2, 3]))\nprint(\"idx\", [1, 2, 3][1])\nprint(\"sum\", sum([1, 2, 3]))\nprint(\"minmax\", min([1, 2, 3]), max([1, 2, 3]))\nprint(\"dict\", len({1: 10, 2: 20}), {1: 10, 2: 20}[1])\nprint(\"set\", len({1, 2, 3}), {1, 2, 3}[2])\nwi = 0\nwt = 0\nwhile wi \u003c 10:\n    wi = wi + 1\n    if wi == 3:\n        continue\n    if wi == 7:\n        break\n    wt = wt + wi\nprint(\"while\", wt)\nxf = 3\nif xf == 1:\n    print(\"if\", \"one\")\nelif xf == 2:\n    print(\"if\", \"two\")\nelse:\n    print(\"if\", \"many\")\nstp = 0\nfor si in range(0, 10, 2):\n    stp = stp + si\nprint(\"step\", stp)\nprint(\"abs\", abs(-5))\nprint(\"conv\", int(\"42\"), float(1), str(42))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "inherits features_b's positional set subscript, which CPython rejects; features_a's \"abc\"[1] == 98 divergence is pinned on its own row",
+        "ref": "roadmap L11.5 (code-point strings)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
+          }
+        ]
       },
       "interp_ok": true,
       "interp_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
       "aot_ok": true,
       "aot_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
-      "parity": true
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
+      "python_error": "exit status 1: /tmp/gusty-oracle3424625282/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "inherits features_b's positional set subscript, which CPython rejects; features_a's \"abc\"[1] == 98 divergence is pinned on its own row",
+      "oracle_ref": "roadmap L11.5 (code-point strings)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3424625282/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+      ]
     },
     {
       "case": {
         "id": "merged/whole",
         "name": "whole_a+b",
         "source": "def double(x):\n    return x * 2\n\ns = 0\nfor i in range(1, 4):\n    s = s + i\nprint(s + double(5))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "16\n",
       "aot_ok": true,
       "aot_stdout": "16\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "16\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
     },
     {
       "case": {
         "id": "merged/math",
         "name": "math_lib+calc+main",
         "source": "def add(a, b):\n    return a + b\ndef mul(a, b):\n    return a * b\ndef scale(x, n):\n    return x * n\n\nac = 0\nfor ic in range(1, 6):\n    ac = ac + ic\nbc = add(ac, mul(2, 3))\nprint(\"calc\", bc)\nprint(\"scaled\", scale(bc, 2))\n\nmc = 0\nfor jc in range(0, 10, 2):\n    mc = mc + jc\nmc2 = mc + 10\nprint(\"main\", mc2)\nprint(\"addcall\", add(mc2, 5))\nprint(\"mulcall\", mul(mc2, 2))\n",
-        "shared": true
+        "shared": true,
+        "oracle": "match"
       },
       "interp_ok": true,
       "interp_stdout": "calc 21\nscaled 42\nmain 30\naddcall 35\nmulcall 60\n",
       "aot_ok": true,
       "aot_stdout": "calc 21\nscaled 42\nmain 30\naddcall 35\nmulcall 60\n",
-      "parity": true
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "calc 21\nscaled 42\nmain 30\naddcall 35\nmulcall 60\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_bool_value",
+        "name": "probe_bool_value.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — bools are values, not the integer 1.\n# CPython prints True/False; both gusty backends print 1/0, and `--json` reports\n# \"type\": \"int\" for True, so there is no tag to render from (L11.2).\nprint(True)\nprint(1 == 1)\nprint(False)\nprint(0 == None)\nprint(\"yes\" == \"yes\")\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "True/False print as 1/0 and comparisons print 1/0: there is no bool tag to render from, so --json also reports \"int\" for True",
+        "ref": "roadmap L11.2 (bools as values, closes Gap L.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "1\n1\n0\n0\n1\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "1\n1\n0\n0\n1\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "1\n1\n0\n0\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "1\n1\n0\n0\n1\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "True\nTrue\nFalse\nFalse\nTrue\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "True/False print as 1/0 and comparisons print 1/0: there is no bool tag to render from, so --json also reports \"int\" for True",
+      "oracle_ref": "roadmap L11.2 (bools as values, closes Gap L.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_nested_list",
+        "name": "probe_nested_list.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — containers nest. The compiled backend has no\n# per-element tag yet, so a list whose element is a list cannot be built, indexed\n# or printed (L11.1 \"remaining\": nested reads).\nm = [[1, 2], [3, 4]]\nprint(m[0][1])\nd = {\"a\": [1, 2]}\nprint(d[\"a\"][1])\nxs = []\nxs.append([7, 8])\nprint(len(xs))\nprint(xs[0][0])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "the compiled backend cannot nest: m[0][1] refuses with `index requires an inline list/dict/set literal` and xs.append([1,2]) cannot be lowered",
+        "ref": "roadmap L11.1 (tagged value word) remaining item (1a)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "2\n2\n1\n7\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "2\n2\n1\n7\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "index requires an inline list/dict/set literal",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "2\n2\n1\n7\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "the compiled backend cannot nest: m[0][1] refuses with `index requires an inline list/dict/set literal` and xs.append([1,2]) cannot be lowered",
+      "oracle_ref": "roadmap L11.1 (tagged value word) remaining item (1a)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: index requires an inline list/dict/set literal"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_heterogeneous",
+        "name": "probe_heterogeneous.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — a container element may be any value, including\n# a container. The interpreter and CPython agree; the compiled backend refuses the\n# literal because a slot still has to decide one element kind (L11.1).\nxs = [1, \"a\", [2, 3]]\nprint(xs)\nprint(len(xs))\nprint(xs[2][1])\nm = {\"k\": [1], \"n\": 2}\nprint(m[\"k\"])\nprint(m[\"n\"])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a container element that is itself a container is refused: a compiled list still decides one element kind at compile time",
+        "ref": "roadmap L11.1 (tagged value word) remaining item (1b)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[1, 'a', [2, 3]]\n3\n3\n[1]\n2\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[1, 'a', [2, 3]]\n3\n3\n[1]\n2\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: a compiled list holds either strings or numbers, not both; the interpreter allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[1, 'a', [2, 3]]\n3\n3\n[1]\n2\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a container element that is itself a container is refused: a compiled list still decides one element kind at compile time",
+      "oracle_ref": "roadmap L11.1 (tagged value word) remaining item (1b)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: a compiled list holds either strings or numbers, not both; the interpreter allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_tuple",
+        "name": "probe_tuple.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — tuples are values. There is no AOT lowering for a\n# tuple literal at all (\"unsupported expression *lang.Tuple\"), and the interpreter\n# renders one as a list (L11.3).\nt = (1, 2, 3)\nprint(t)\nprint(t[1])\nprint(len(t))\na, b = (4, 5)\nprint(a)\nprint(b)\ndef pair():\n    return (1, 2)\nprint(pair())\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
+        "ref": "roadmap L11.3 (tuples are values)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[1, 2, 3]\n2\n3\n4\n5\n[1, 2]\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[1, 2, 3]\n2\n3\n4\n5\n[1, 2]\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: unsupported expression *lang.Tuple",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "(1, 2, 3)\n2\n3\n4\n5\n(1, 2)\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
+      "oracle_ref": "roadmap L11.3 (tuples are values)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled leg failed: codegen: unsupported expression *lang.Tuple"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_negative_index",
+        "name": "probe_negative_index.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — negative indexing is one rule (i \u003c 0 =\u003e i + len)\n# shared by read, write and slice. Today xs[-1] traps on both backends and a literal\n# [1,2,3][-1] takes the compiler down (L11.4, and the L11.8 no-panic contract).\nxs = [1, 2, 3]\nprint(xs[-1])\nprint(xs[-2])\nys = [1, 2, 3]\nprint(ys[-1])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "xs[-1] traps on both backends where CPython answers 3; negative normalisation exists for slices only",
+        "ref": "roadmap L11.4 (Python-shaped indexing)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "missing": true
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": false,
+      "interp_stdout": "",
+      "interp_error": "eval error: index out of range",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "exit status 1",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "3\n2\n3\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "xs[-1] traps on both backends where CPython answers 3; negative normalisation exists for slices only",
+      "oracle_ref": "roadmap L11.4 (Python-shaped indexing)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter leg failed: eval error: index out of range",
+        "compiled leg failed: exit status 1"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_negative_literal",
+        "name": "probe_negative_literal.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — a *literal* container indexed by a negative constant\n# takes the compiler down (a Go panic in irGen.value, roadmap L11.4 + the L11.8 rule\n# that no tested shape may leave the compiler as a panic).\nprint([1, 2, 3][-1])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a literal container indexed by a negative constant panics in the Go compiler instead of answering or refusing (an L11.8 violation)",
+        "ref": "roadmap L11.4 + L11.8 (no tested shape may leave the compiler as a panic)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "missing": true
+          },
+          {
+            "backend": "aot",
+            "error": "compiler panic",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": false,
+      "interp_stdout": "",
+      "interp_error": "eval error: index out of range",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "compiler panic: runtime error: index out of range [-1]",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "3\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a literal container indexed by a negative constant panics in the Go compiler instead of answering or refusing (an L11.8 violation)",
+      "oracle_ref": "roadmap L11.4 + L11.8 (no tested shape may leave the compiler as a panic)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter leg failed: eval error: index out of range",
+        "compiled leg failed: compiler panic: runtime error: index out of range [-1]"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_unicode",
+        "name": "probe_unicode.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — strings are code points, not bytes (L11.5).\n# len(\"café\") is 4 in CPython and 5 in gusty; \"héllo\"[1] is \"é\", not the byte 195;\n# iterating \"aé\" yields two characters, and a module-scope `for c in s` is today an\n# invalid `store i32 @.str1`.\nprint(len(\"café\"))\nprint(\"héllo\"[1])\nfor ch in \"aé\":\n    print(ch)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "len(\"café\") is 5 and \"héllo\"[1] is the byte 195; module-scope `for ch in \"aé\"` emits an invalid store of a string global",
+        "ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "5\n195\na\né\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "5\n195\na\né\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1781989713/046/prog.ll:160:13: error: global variable reference must have pointer type",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "4\né\na\né\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "len(\"café\") is 5 and \"héllo\"[1] is the byte 195; module-scope `for ch in \"aé\"` emits an invalid store of a string global",
+      "oracle_ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1781989713/046/prog.ll:160:13: error: global variable reference must have pointer type"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_string_index",
+        "name": "probe_string_index.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — s[i] is a one-character string, not a byte value\n# (L11.5). Both backends print 98 for \"abc\"[1] today.\nprint(\"abc\"[1])\ns = \"héllo\"\nprint(s[0])\nprint(s[4])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "s[i] yields a byte value (98 for \"abc\"[1]) instead of a one-character string, and a non-literal string index is refused in AOT",
+        "ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "98\n104\n108\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "98\n104\n108\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "index of a non-literal variable",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "b\nh\no\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "s[i] yields a byte value (98 for \"abc\"[1]) instead of a one-character string, and a non-literal string index is refused in AOT",
+      "oracle_ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled leg failed: index of a non-literal variable"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_math_const",
+        "name": "probe_math_const.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — a stdlib constant keeps its type through the\n# on-disk fold: print(math.PI) is 3.141592653589793, and 3 compiled (L11.6).\nimport math\n\nprint(math.PI)\nprint(math.E)\n",
+        "shared": false,
+        "oracle": "not_applicable",
+        "reason": "Python spells these math.pi / math.e, so the source is not a CPython program; what the row pins is that the on-disk data-only fold loses the float type",
+        "ref": "roadmap L11.6 (a stdlib constant keeps its type)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "3.141592653589793\n2.718281828459045\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "3\n2\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "3.141592653589793\n2.718281828459045\n",
+      "aot_ok": true,
+      "aot_stdout": "3\n2\n",
+      "parity": false,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "Python spells these math.pi / math.e, so the source is not a CPython program; what the row pins is that the on-disk data-only fold loses the float type",
+      "oracle_ref": "roadmap L11.6 (a stdlib constant keeps its type)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_float_numeric",
+        "name": "probe_float_numeric.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — numeric truth in the compiled backend (L11.6):\n# floored // on negatives, `/=` producing a float, Python-floored % on floats\n# (wrong on both backends today), and a float surviving an untyped parameter.\nprint(-7 // 2)\nprint(-3.5 % 2.0)\nx = 8\nx /= 2\nprint(x)\ndef dbl(v):\n    return v * 2\nprint(dbl(0.1))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "-7 // 2 is -3 compiled, -3.5 % 2.0 is -1.5 on both backends, x /= 2 stays an int, and a float through an untyped parameter becomes 0",
+        "ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "-4\n-1.5\n4.0\n0.2\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "-3\n-1.5\n4\n0\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "-4\n-1.5\n4.0\n0.2\n",
+      "aot_ok": true,
+      "aot_stdout": "-3\n-1.5\n4\n0\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "-4\n0.5\n4.0\n0.2\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "-7 // 2 is -3 compiled, -3.5 % 2.0 is -1.5 on both backends, x /= 2 stays an int, and a float through an untyped parameter becomes 0",
+      "oracle_ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_sorted",
+        "name": "probe_sorted.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — `sorted` is language surface: it emits invalid IR\n# today (`printf(..., i32 @.lst1)`) instead of a sort (L11.7).\nprint(sorted([3, 1, 2]))\nprint(sorted([3, 1, 2], reverse=True))\nprint(sorted([\"b\", \"a\"]))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "sorted(...) is refused in AOT (`sorted: list elements must be integer literals`) instead of being language surface",
+        "ref": "roadmap L11.7 (functions are values that compile)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[1, 2, 3]\n[3, 2, 1]\n['a', 'b']\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[1, 2, 3]\n[3, 2, 1]\n['a', 'b']\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "sorted: list elements must be integer literals",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[1, 2, 3]\n[3, 2, 1]\n['a', 'b']\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "sorted(...) is refused in AOT (`sorted: list elements must be integer literals`) instead of being language surface",
+      "oracle_ref": "roadmap L11.7 (functions are values that compile)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: sorted: list elements must be integer literals"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_enumerate",
+        "name": "probe_enumerate.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — enumerate/zip/reversed produce tuples, so they need\n# L11.3 (tuples are values) before they can be language surface; the interpreter\n# renders their pairs as lists and the compiled backend refuses `list(\u003ccontainer\u003e)`.\nprint(list(enumerate([\"a\", \"b\"])))\nprint(list(zip([1, 2], [3, 4])))\nprint(list(reversed([1, 2, 3])))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(\u003ccontainer\u003e) copies are refused in AOT",
+        "ref": "roadmap L11.7 + L11.3 (tuples are values)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[[0, 'a'], [1, 'b']]\n[[1, 3], [2, 4]]\n[3, 2, 1]\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[[0, 'a'], [1, 'b']]\n[[1, 3], [2, 4]]\n[3, 2, 1]\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: list(\u003ccontainer\u003e) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with list() and add elements",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[(0, 'a'), (1, 'b')]\n[(1, 3), (2, 4)]\n[3, 2, 1]\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(\u003ccontainer\u003e) copies are refused in AOT",
+      "oracle_ref": "roadmap L11.7 + L11.3 (tuples are values)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled leg failed: codegen: list(\u003ccontainer\u003e) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with list() and add elements"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_fn_value",
+        "name": "probe_fn_value.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — a function passed to a function is a value. The\n# interpreter maps with a lambda; the compiled backend answers `unsupported call \"f\"`\n# because there is no fnptr operand or indirect call lowering (L11.7).\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(lambda v: v * 3, [1, 2]))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "calling a function through a parameter is `unsupported call \"f\"` in AOT: no fnptr operand, no indirect call lowering",
+        "ref": "roadmap L11.7 (functions are values that compile)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[3, 6]\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[3, 6]\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: unsupported call \"f\"",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[3, 6]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "calling a function through a parameter is `unsupported call \"f\"` in AOT: no fnptr operand, no indirect call lowering",
+      "oracle_ref": "roadmap L11.7 (functions are values that compile)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: unsupported call \"f\""
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_fn_name",
+        "name": "probe_fn_name.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — a def'd function used as a *value* (passed as an\n# argument) is not resolvable on either backend: the interpreter reports\n# `undefined name twice`, so a name and a lambda are two different things today\n# (L11.7). Python treats them alike.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(twice, [1, 2]))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
+        "ref": "roadmap L11.7 (functions are values that compile)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "missing": true
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": false,
+      "interp_stdout": "",
+      "interp_error": "eval error: undefined name twice",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: unsupported call \"f\"",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[2, 4]\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
+      "oracle_ref": "roadmap L11.7 (functions are values that compile)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter leg failed: eval error: undefined name twice",
+        "compiled leg failed: codegen: unsupported call \"f\""
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_empty_set",
+        "name": "probe_empty_set.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — the empty set renders as `set()` on both backends.\n# `print(set())` is recorded at 0 compiled because an empty set literal folds to the\n# integer 0 with no container behind it (L11.1 remaining, Gap L.2).\nprint(set())\ns = set()\nprint(s)\nprint(len(s))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "print(set()) is 0 compiled — an empty set literal folds to the integer 0 with no container behind it",
+        "ref": "roadmap L11.1 remaining (retire @estr[h]; Gap J.2)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "set()\nset()\n0\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "0\nset()\n0\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "set()\nset()\n0\n",
+      "aot_ok": true,
+      "aot_stdout": "0\nset()\n0\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "set()\nset()\n0\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "print(set()) is 0 compiled — an empty set literal folds to the integer 0 with no container behind it",
+      "oracle_ref": "roadmap L11.1 remaining (retire @estr[h]; Gap J.2)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_print_atomic",
+        "name": "probe_print_atomic.gy",
+        "source": "# Oracle probe (L11.9, ADR 0186) — print writes one line as a unit: every argument is\n# evaluated first, and only then is the line written. Today the argument loop writes\n# as it evaluates, so a call that itself prints interleaves into the caller's line.\ndef twice(v):\n    print(\"\u003c\u003c\", v, \"\u003e\u003e\")\n    return v + v\n\nprint(\"got\", twice(21))\nprint(\"after\")\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
+        "ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "got \u003c\u003c 21 \u003e\u003e\n42\nafter\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "got \u003c\u003c 21 \u003e\u003e\n42\nafter\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "got \u003c\u003c 21 \u003e\u003e\n42\nafter\n",
+      "aot_ok": true,
+      "aot_stdout": "got \u003c\u003c 21 \u003e\u003e\n42\nafter\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "\u003c\u003c 21 \u003e\u003e\ngot 42\nafter\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
+      "oracle_ref": "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
     }
   ],
-  "pass": 42,
-  "fail": 0
+  "rows": 59,
+  "skipped": 16,
+  "pass": 43,
+  "fail": 0,
+  "oracle_match": 27,
+  "oracle_debt": 22,
+  "oracle_not_applicable": 10,
+  "oracle_drift": 0
 }

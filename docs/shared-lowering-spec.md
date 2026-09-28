@@ -77,22 +77,35 @@ asserted:
 ## Machine-readable matrix
 
 `lang.ConformanceMatrix` (`pkg/lang/conformance.go`) is the JSON schema for the
-emitted artifact. A row records, for one case, the interpreter stdout, the AOT
-stdout, whether each backend ran clean, and the `parity` flag. The artifact is
-deterministic for a given registry + toolchain, so a script can diff two runs to
-detect a **new** drift. `lang.InterpreterRun` is the in-process interpreter half
-of a case; the AOT half requires the `llc`/`cc` toolchain.
+emitted artifact (schema `1.1`, ADR 0186). A row records, for one case, the
+interpreter stdout, the AOT stdout **and the CPython stdout**, whether each leg
+ran clean, the `parity` flag, the per-leg `*_matches_python` flags, the computed
+`oracle` verdict with the `oracle_declared` claim it was checked against, the
+`oracle_reason` / `oracle_ref` / `oracle_rules` / `oracle_notes` / `oracle_drift`
+fields, and the per-leg pins that hold a debt row to its recorded wrong answer.
+The matrix header names the toolchain that produced it (`toolchain.python`,
+`toolchain.llvm`), so a claim about Python is a claim about a specific interpreter.
+The artifact is deterministic for a given registry + toolchain, so a script can diff
+two runs to detect a **new** drift; `--schema` → `definitions.conformanceRow` /
+`definitions.oracleReport` document the shapes for agents.
 
 ## Keeping the matrix green
 
 When adding a language construct:
 
 1. Add a whole-program case (single-file or merged) to
-   `integration/conformance_cases.go` covering it.
+   `integration/conformance_cases.go` covering it — as a *parity* case, not a probe.
 2. Implement it on **both** backends so `EvalExpr` and `Compile` agree.
-3. Run `go test ./integration/ -run TestConformanceMatrix` — the matrix must
-   stay 19/19 green, and the artifact must record the new case as parity.
-4. If the construct is intentionally backend-only, leave `shared` false and
+3. Run `go test ./integration/ -run TestConformanceMatrix` — parity must stay green **and**
+   the new row must come out `oracle: match`. If it does not, either fix it or write a ledger
+   row (reason + roadmap ref + a pin per leg, taken from `go run ./tools/oracleprobe <name>`,
+   never from memory). A case with no ledger row is declared `match`, so "nobody compared it to
+   Python" is not a state the matrix can represent (ADR 0186).
+4. Reproducing an existing defect instead of adding a feature? Add it under
+   `integration/programs/probe_*.gy` and register it in `conformanceProbes()` with a debt row.
+   When it is fixed, the harness fails with "oracle debt is paid" and the program gets promoted
+   into `conformanceStandalone()` — that promotion is the definition of done.
+5. If the construct is intentionally backend-only, leave `shared` false and
    document the divergence here.
 
 ## async / await (L5.6, minimal synchronous-coroutine model)
