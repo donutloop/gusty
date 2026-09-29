@@ -104,6 +104,13 @@ compiled backend (definitions visible module-wide) would run different programs 
 inside function bodies and methods named after built-ins are unaffected. For a code generator: emit
 your `def`s before the code that calls them, or rename.
 
+**`for x in <integer>` is a repeat count** (Gap R.14, ADR 0207): it binds `0 … n-1` in both backends,
+`n` may be any integer expression, and `n <= 0` runs the body zero times. CPython rejects the construct,
+so `programs/for_int_count.gy` carries an oracle-excluded ledger row. For a code generator the useful
+fact is that it needs no built-in: a module that has claimed the name `range` for itself (ADR 0205) can
+still write a counted loop. Inside a comprehension the integer form is interpreter-only — the compiled
+backend asks for `range(n)` there, with that as its message.
+
 **Parameter order is free: a default may sit anywhere in a signature** (Gap R.11, ADR 0206).
 `def f(a, b=1, c)` is legal and callable here — positionally (`f(1, 2, 3)`) and by keyword
 (`f(1, b=2, c=3)`) — where CPython refuses the definition. A generator that emits signatures should

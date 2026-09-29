@@ -3123,3 +3123,36 @@ What to keep:
   ADR 0201), and this cycle added assertions that they fire on the *unordered* shape too — a rule you
   only test on the tidy inputs is not the rule you think you have.
 
+## Cycle 155 — declaring what the backends already agree on (Gap R.14, ADR 0207) — and finding a compiler bug on the way out
+
+`for i in 4:` printed `0 1 2 3` — identically in the interpreter and in the compiled binary — while
+CPython raises `TypeError: 'int' object is not iterable`. The roadmap called it a gap; the gap turned out
+to be the **document, the ledger row and the tests**, not the behaviour: an exercised, backend-agreeing,
+Python-divergent construct that nothing described. That kind of surface is invisible to its users in the
+worst way — a programmer can't tell whether to rely on it, an agent has nothing to generate from, and a
+refactor could change a boundary with nothing failing.
+
+So this cycle declared it: an integer on the right of `for … in` is a **repeat count** (any integer
+expression; `n <= 0` runs zero times; same counter loop as `range(n)`), `programs/for_int_count.gy` got an
+oracle-excluded ledger row, and the test asserts CPython still refuses it — because "the oracle isn't
+applicable" is a claim that needs a test, not an excuse that doesn't.
+
+Two things worth pinning:
+
+- **Measure the neighbours, not just the headline.** The headline (`for i in 4`) was already fine. Walking
+  outward — zero, negative, expression counts, comprehensions, and then *strings* — is what found the real
+  defect: `for c in "ab":` makes codegen emit `store i32 @.str1, i32* %_c`, which `llc-20` refuses with
+  *global variable reference must have pointer type*. Under our own exit-code contract that is a
+  **compiler bug**, the exact class ADR 0177's gate exists to keep away from users. Opened as R.15 with
+  the failing IR quoted, for its own cycle: lower it or refuse it, never emit a module that doesn't verify.
+- **A feature needs to earn its keep, and the test is "what would break without it?"** The answer here was
+  concrete: the integer form needs no built-in, so it is the counted loop available to a module that has
+  claimed the name `range` for itself (ADR 0205's ordering refusal otherwise pushes people into exactly
+  this shape). A less useful undocumented quirk might have been the one to delete instead.
+- **Not every gap closes with a patch.** Cycles 154 (R.11, not a defect) and 155 (R.14, declared feature)
+  both closed by documentation + tests + ledger. The standard that keeps that honest: the document must be
+  normative ("binds 0..n-1", "n <= 0 runs zero times") and the tests must fail if the behaviour moves. If
+  either is missing, "documented" is just the word we use when we stop looking.
+- Conformance matrix is up to 78 rows with 14 oracle-excluded, 0 fail, 0 drift; every one of those
+  exclusions has a test that re-checks the oracle still can't run its program.
+

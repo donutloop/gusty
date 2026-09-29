@@ -712,9 +712,15 @@ for i in range(n):
 - `while` loops while the condition is non-zero.
 - `for ... in range(n)` iterates `i` from `0` to `n-1`.
 - `for ... in range(a, b)` iterates `i` from `a` to `b-1`.
-- `for x in 5:` iterates `0, 1, 2, 3, 4` — an integer on the right-hand side is a repeat count.
-  Both backends agree on this; CPython refuses it (`'int' object is not iterable`), so it is a
-  deliberate extension rather than a Pythonism, and it is tracked as roadmap R.14.
+- `for x in 5:` iterates `0, 1, 2, 3, 4` — an integer on the right-hand side is a **repeat count**
+  (`programs/for_int_count.gy`). The count may be a literal, a variable or an expression; `0` and any
+  negative value run the body zero times, exactly like `range(0)`. Both backends have always agreed on
+  this, which is what makes it a feature rather than a bug — but CPython refuses it
+  (`'int' object is not iterable`), so it is a declared extension with its own conformance row rather
+  than something an agent should discover by accident (ADR 0207, roadmap R.14). It compiles to the same
+  counter loop as `range(n)` and is handy precisely where `range` has been claimed by the program itself
+  (ADR 0205). In a comprehension the integer form works in the interpreter
+  (`[x for x in 3]` → `[0, 1, 2]`) while the compiled backend asks for `range(3)`.
 - `for x in [1, 2, 3]:` iterates the elements of a list literal — in the
   interpreter over a boxed list, and in the AOT codegen over an inline list
   literal (unrolled per element).

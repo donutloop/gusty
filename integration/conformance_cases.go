@@ -75,6 +75,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// neighbours: a defaulted parameter in the middle of a signature, bound both
 		// positionally and by keyword (Gap R.11, ADR 0206). CPython cannot run it.
 		"param_default_order",
+		// `for x in <integer>` as a repeat count, which both backends implement and
+		// CPython refuses: a declared feature, not an undiscovered divergence
+		// (Gap R.14, ADR 0207).
+		"for_int_count",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -254,6 +258,10 @@ type oracleDecl struct {
 
 var oracleLedger = map[string]oracleDecl{
 	// ---- gusty-only surface: CPython cannot run the program at all --------------
+	"programs/for_int_count": {oracle: lang.OracleNA,
+		reason: "`for i in 4:` treats an integer as a repeat count; CPython raises TypeError ('int' object is not iterable), so the CPython leg stops at the first loop and never sees the rest of the file",
+		ref:    "docs/language.md § Control flow (integer repeat count) and roadmap Gap R.14 (ADR 0207)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "0\n1\n2\n3\n0\n10\n20\n100\n101\n102\n10\ndone\n"}, {Backend: "aot", Stdout: "0\n1\n2\n3\n0\n10\n20\n100\n101\n102\n10\ndone\n"}}},
 	"programs/param_default_order": {oracle: lang.OracleNA,
 		reason: "def offset(base, step=10, bonus) is a SyntaxError in CPython (`parameter without a default follows parameter with a default`); here positional binding fills left to right and a keyword call names what it fills, so every parameter is reachable",
 		ref:    "roadmap Gap R.11 (closed) and docs/language.md § Parameters and defaults (ADR 0206)",

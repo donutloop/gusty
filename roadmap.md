@@ -1498,7 +1498,13 @@ messages where nobody would look:
 - **R.12, closed by ADR 0205** — a program-defined built-in name was visible to codegen *above* its
   definition, so `for i in range(2)` iterated the program's value while the interpreter used the
   built-in: two programs from one file, with no diagnostic anywhere on the way.
-- **R.13, R.14 (OPEN)** — found while building the program that proves R.9: a file's final bare expression statement is
+- **R.14, closed by ADR 0207 as a declared feature** — `for i in 4:` printed `0 1 2 3` on both backends
+  while CPython refused it, and nothing said so: now documented, ledger-pinned and tested, boundaries
+  included.
+- **R.15 (OPEN, compiler bug)**, found while measuring those boundaries — `for c in "ab":` makes the
+  compiled backend emit `store i32 @.str1, i32* %_c`, which `llc` rejects: an invalid module is a
+  compiler bug under the exit-code contract, not a user error.
+- **R.13 (OPEN)** — found while building the program that proves R.9: a file's final bare expression statement is
   echoed by the interpreter and by nobody else (closed below, ADR 0204); and `for x in 5` iterates on
   both backends while
   being undocumented and refused by CPython.
@@ -1810,14 +1816,53 @@ A process note worth keeping: the gap was written up while its neighbouring gap 
 because the ledger program built to prove R.9 ended in a call. Corollary — **a comment that describes
 its intent more precisely than its code does is a defect report waiting to be filed.**
 
-### R.14 — `for x in 5` iterates, on both backends, undocumented (OPEN)
+### R.14 — `for x in 5` iterated on both backends, undocumented (CLOSED, ADR 0207 — declared feature)
 
-`for i in 5:` prints `0 1 2 3 4` identically in the interpreter and in the compiled binary, while
-CPython raises `TypeError: 'int' object is not iterable`. Two backends agreeing makes it a feature
-rather than a bug, but `docs/language.md` describes only the `range(...)` forms, so an undocumented
-construct is load-bearing for whichever corpus program discovered it (this one: a shadowed `range`
-being iterated as a count). Decide one way: document it as a deliberate extension with a probe to pin
-the CPython divergence, or refuse it and say so at the check.
+`for i in 4:` printed `0 1 2 3` in the interpreter and in the compiled binary, identically, while
+CPython raises `TypeError: 'int' object is not iterable`. Nothing said so: `docs/language.md` listed only
+the `range(...)` and list-literal forms, no test touched it, and the boundaries (a count of `0`, a
+negative count, a count from an expression, the same form inside a comprehension) were unstated. An
+undocumented, exercised, Python-divergent construct is the worst surface to have for the two audiences
+this toolchain is built for: a programmer can't tell whether to rely on it, an agent has nothing to
+generate from, and a refactor could change it with nothing failing.
+
+Closed by declaring it, measured first:
+
+| shape | interpreter | compiled | CPython |
+|---|---|---|---|
+| `for i in 4:` | `0 1 2 3` | `0 1 2 3` | TypeError |
+| `for j in n` (n=3), `for k in 2 + 1:` | `0 10 20`, `0 1 2` | same | — |
+| `for i in 0:` / `for i in -2:` | zero iterations | zero iterations | — |
+| `[x for x in 3]` | `[0, 1, 2]` | refused: "comprehension iterable must be an inline list literal, range(), or a container variable" | — |
+
+So: an integer on the right of `for … in` is a **repeat count**, from any integer expression, `n <= 0`
+running zero times, and it lowers to the same counter loop as `range(n)` (ADR 0196). It earns its keep —
+it needs no built-in, which makes it the counted loop available to a module that has claimed the name
+`range` for itself (ADR 0205). `programs/for_int_count.gy` joins the ledger's gusty-only-surface section
+with `oracle: not-applicable`, and the test asserts CPython still refuses it, because an excluded oracle
+is a claim with a test behind it rather than an excuse. The comprehension asymmetry is documented as the
+compiled-side limitation it is, with the message that already names the alternatives.
+
+### R.15 — iterating a string literal emits a module `llc` rejects (OPEN, compiler bug)
+
+```gusty
+for c in "ab":
+    print(c)
+```
+
+The interpreter prints `a` and `b`. The compiled backend emits
+
+```
+store i32 @.str1, i32* %_c
+```
+
+and `llc-20` refuses it: *`global variable reference must have pointer type`*. Under the exit-code
+contract an LLVM verifier failure is a **compiler bug**, not a user error — the class ADR 0177's gate
+exists to keep away from the user. Fix by lowering string iteration properly (bytes/chars as values, the
+L11.x line) or by refusing the shape at the front end with a message that says what to do instead; what
+must not survive is the invalid module. Found while measuring R.14's boundaries, which is the standing
+argument for measuring neighbours rather than only the headline case.
+
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)
 

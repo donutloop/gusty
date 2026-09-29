@@ -1,0 +1,28 @@
+# `for x in <integer>` is a repeat count: it binds 0, 1, … n-1. Both backends do it, which makes it a
+# feature of the language rather than a bug in one of them — and CPython refuses it
+# (`'int' object is not iterable`), which makes it a divergence that has to be declared rather than
+# discovered (roadmap Gap R.14, ADR 0207).
+#
+# It is the same loop the `range(n)` form compiles to, written without the call: handy exactly when
+# `range` is not available to mean that, e.g. a module that has claimed the name for itself (ADR 0205).
+
+for i in 4:
+    print(i)
+
+n = 3
+for j in n:
+    print(j * 10)
+
+for k in 2 + 1:
+    print(k + 100)
+
+total = 0
+for a in 5:
+    total = total + a
+
+print(total)
+
+for none in 0:
+    print("never runs")
+
+print("done")
