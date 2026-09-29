@@ -219,6 +219,10 @@ falls back to dynamic dispatch.
   surfaced as an `llc` "undefined value" error is gone; and where the compiled backend cannot act
   (iterating a run-time string) it refuses with a message instead of compiling a loop that silently does
   nothing (ADR 0209)
+- **A negative subscript means what it means** — `xs[-1]`, `xs[-1] = v`, `"abc"[-1]` and the folded
+  `[1, 2, 3][-1]` agree with CPython on both backends (the literal used to crash the compiler), while a
+  dict's `-1` stays a key, because a subscript is either a position or a key and only positions count
+  from the end (`programs/negative_index.gy`, ADR 0210)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

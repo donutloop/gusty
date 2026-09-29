@@ -740,13 +740,20 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   as `[1, 2, 3]`. Ship the tuple type in both backends: immutable, indexable,
   unpackable, hashable as a dict key, printed `(1, 2)`/`(1,)`/`()`. Feeds the
   covariant `tuple[...]` rule of L6.6, which today only has a checker to talk to.
-- **L11.4 — Python-shaped indexing: negatives, bounds, one rule** ⏳ PLANNED —
-  `xs[-1]` raises `IndexError` on **both** backends where Python answers `3`,
-  `"abc"[-1]` fails compilation, and a literal `[-1]` **panics the compiler**
-  (`pkg/lang/codegen.go:4314`). One normalisation (`i < 0 ⇒ i + len`) shared by
-  read, write, `pop`, `index`, slicing and `for`, with bounds checks emitted at
-  the same place the ADR 0168 checks already live. Fix the `docs/language.md`
-  heading claiming "negative indices ✅ DONE" — it is true of slicing only.
+- **L11.4 — Python-shaped indexing: negatives, bounds, one rule** ✅ DONE (ADR 0210) —
+  one normalisation (`i < 0 ⇒ i + len`) now serves read, write, `pop`, `index` and slice
+  bounds: `xs[-1]`, `xs[-1] = v`, `"abc"[-1]` and the folded literal `[1, 2, 3][-1]` answer
+  what CPython answers, and the literal shape no longer takes the compiler down with
+  `panic: runtime error: index out of range [-1]` (it had no bounds test at all). In the
+  compiled backend the normalisation is *emitted* against `rt_list_len` and the bounds check
+  runs on the normalised index, so it holds for a list the compiler never saw. **Dicts and sets
+  are exempt** — their subscript is a key, and `-1` is a key you can store — pinned on three
+  engines so no future "simplify it into one path" can quietly merge the two operations. The
+  `docs/language.md` heading that claimed "negative indices ✅ DONE" for slicing only now says
+  what is true of both. `probe_negative_index` and `probe_negative_literal` graduated to
+  `programs/negative_index.gy` / `programs/negative_literal_index.gy` with their ledger rows
+  deleted; what remains is L11.5's string value model (a string in a *variable* is still
+  AOT-refused) and the exit-code split recorded as R.17.
 - **L11.5 — Code-point strings (closes Gap N.2)** ⏳ PLANNED — `len("café")` is 5,
   `"héllo"[1]` is the byte `195`, and `for c in s` at module scope emits an
   invalid `store i32 @.str1`. Decide the representation **once for both backends**
@@ -1903,9 +1910,29 @@ Once R.2 was fixed this compiled cleanly and printed **nothing**: the call hands
 index and the counted-loop fall-through reads that index as a repeat count — zero iterations for `"hi"`.
 A silent wrong answer is worse than a refusal, so the shape is named instead: *iterating a string
 computed at run time is not supported in the AOT backend yet; the interpreter prints its characters —
-iterate a string literal, or index a string with a constant (s[0]); strings need the runtime string value
-model*. String **literals** iterate (ADR 0208). The real implementation belongs with L11.5 (code-point
-strings / runtime string values); until then the compiled backend declines rather than pretends.
+iterate a string literal, or subscript a string literal with a constant (`"abc"[0]`); a string held in a
+variable needs the runtime string value model*. String **literals** iterate (ADR 0208). The real
+implementation belongs with L11.5 (code-point strings / runtime string values); until then the compiled
+backend declines rather than pretends. (The sentence in the original entry advised `s[0]`, which turned
+out to be false — a string in a variable is refused too. Found while testing L11.4, and recorded in
+ADR 0210: a refusal whose workaround does not work is worse than no workaround.)
+
+### R.17 — an uncaught exception exits 0 through `--aot` (OPEN, tool bug)
+
+```gusty
+xs = [1, 2, 3]
+print(xs[-4])      # binary dies with 1; --interp reports 3; --aot reports 0
+```
+
+Found while testing L11.4: the linked binary dies with status **1** after printing the
+`IndexError` traceback, `gustyc --interp` reports **3**, and `gustyc --aot prog.gy` prints the
+same traceback and exits **0**. A script or agent that asks "did it work?" gets yes from the
+compiled path for a program that crashed. Exit codes are the machine-readable half of the
+diagnostic surface (ADR 0006, ADR 0168), so a failure that reads as success there is worse than a
+crash: the wrong answer is in the field nobody scrapes. Fix by propagating the child's status in
+the `--aot`/JIT run paths and choosing one contract for an uncaught exception across backends —
+then extend `TestCLIExitCodeContract` (L11.8's own test) to cover it, so the three paths cannot
+drift back apart.
 
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)

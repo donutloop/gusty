@@ -4567,23 +4567,12 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		g.replaceElemKind(nm.Value, "list", sIsStr)
 		v = sv
 		// Bounds are checked so an out-of-range index raises IndexError through the
-		// same exception path `raise` uses, instead of writing past the elements.
-		ln := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
-		hi := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp sge i32 %s, %s\n", hi, key, ln))
-		g.markI1(hi)
-		lo := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", lo, key))
-		g.markI1(lo)
-		bad := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
-		g.markI1(bad)
-		badL, okL, endL := g.newLabel("item.bad"), g.newLabel("item.ok"), g.newLabel("item.end")
-		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
-		b.WriteString(fmt.Sprintf("%s:\n", badL))
-		g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", ix.Span())
-		b.WriteString(fmt.Sprintf("%s:\n", okL))
+		// The index is normalised and bounds-checked by the same helper the read path
+		// uses, so `xs[-1] = v` writes the last element and an out-of-range write
+		// raises IndexError through the same path an explicit `raise` uses
+		// (roadmap L11.4, ADR 0210).
+		endL := g.newLabel("item.end")
+		key = g.normalizeIndex(b, h, key, ix.Span())
 		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, v))
 		if kt, ok := g.elemKindTag(val); ok {
 			b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %d)\n", h, key, kt))
@@ -5566,7 +5555,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return "", mixedReadErr("list")
 				}
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
-				g.checkIndexRead(b, fmt.Sprintf("%%h%d", hs), idxOp, n.Span())
+				idxOp = g.normalizeIndex(b, fmt.Sprintf("%%h%d", hs), idxOp, n.Span())
 				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_get_elem(i32 %%h%d, i32 %s)\n", hs, hs, idxOp))
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
@@ -5607,8 +5596,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 			return "", fmt.Errorf("codegen: index of non-list module attr")
 		case *ListLit:
-			// index into a list literal: evaluate the element directly.
-			return g.value(b, obj.Elems[key])
+			// index into a list literal: evaluate the element directly. A negative key
+			// counts from the end like every other positional subscript (L11.4), and it has
+			// to be checked here: this line used to hand `-1` straight to the Go slice and
+			// crash the compiler (`panic: runtime error: index out of range [-1]`), which the
+			// exit-code contract classifies as a compiler bug (ADR 0168's rule).
+			li := int(normPosIndex(key, int64(len(obj.Elems))))
+			if li < 0 || li >= len(obj.Elems) {
+				return "", fmt.Errorf("list index out of range")
+			}
+			return g.value(b, obj.Elems[li])
 		case *DictLit:
 			// constant-key lookup: find the key in the literal and return its
 			// constant value at compile time.
@@ -5651,6 +5648,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return "", err
 				}
 				n := g.compLen[obj]
+				key = normPosIndex(key, int64(n))
 				if key < 0 || key >= int64(n) {
 					return "", fmt.Errorf("list index out of range")
 				}
@@ -5690,6 +5688,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if !ok {
 				return "", fmt.Errorf("string index on non-constant string")
 			}
+			key = normPosIndex(key, int64(len(str)))
 			if key < 0 || key >= int64(len(str)) {
 				return "", fmt.Errorf("string index out of range")
 			}
@@ -5700,6 +5699,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// returns only dummy length elems (see dictMethodElems), so it
 			// is excluded here to avoid silently wrong results.
 			if elems, ok2 := g.indexListElems(obj); ok2 {
+				key = normPosIndex(key, int64(len(elems)))
 				if key < 0 || int(key) >= len(elems) {
 					return "", fmt.Errorf("list index out of range")
 				}
@@ -8873,6 +8873,39 @@ func (g *irGen) raiseTo(b *strings.Builder, code int, typeName, msg string, sp S
 
 // checkIndexRead emits the bounds test for a heap-list read: `xs[i]` used to load
 // whatever sat at that slot and print 0, where Python raises IndexError.
+// normalizeIndex turns a possibly-negative positional index into the offset the runtime
+// understands and bounds-checks the *normalised* value, raising IndexError through the
+// same path an explicit `raise` uses. One rule for read and write, shared with `pop` and
+// slicing: a negative index counts from the end (roadmap L11.4, ADR 0210). Dict and set
+// subscripts never come here — their index is a key, and `-1` is a key you can store.
+func (g *irGen) normalizeIndex(b *strings.Builder, h, idx string, sp Span) string {
+	ln := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
+	neg := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", neg, idx))
+	g.markI1(neg)
+	wrapped := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", wrapped, idx, ln))
+	ix := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", ix, neg, wrapped, idx))
+	hi := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp sge i32 %s, %s\n", hi, ix, ln))
+	g.markI1(hi)
+	lo := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", lo, ix))
+	g.markI1(lo)
+	bad := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", bad, lo, hi))
+	g.markI1(bad)
+	badL, okL := g.newLabel("ix.bad"), g.newLabel("ix.ok")
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", bad, badL, okL))
+	b.WriteString(fmt.Sprintf("%s:\n", badL))
+	g.raiseTo(b, exnCode("IndexError"), "IndexError", "index out of range", sp)
+	b.WriteString(fmt.Sprintf("%s:\n", okL))
+	g.heapUsed = true
+	return ix
+}
+
 func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string, sp Span) {
 	ln := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
@@ -10407,7 +10440,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// so the shape is named instead (roadmap Gap R.16, ADR 0209). A string *literal*
 		// iterates fine — it became a list of one-rune literals above (ADR 0208).
 		if g.iterableIsRuntimeString(n.Iter) {
-			return fmt.Errorf("codegen: iterating a string computed at run time is not supported in the AOT backend yet; the interpreter prints its characters — iterate a string literal, or index a string with a constant (s[0]); strings need the runtime string value model (roadmap L11.5)")
+			return fmt.Errorf("codegen: iterating a string computed at run time is not supported in the AOT backend yet; the interpreter prints its characters — iterate a string literal, or subscript a string literal with a constant (\"abc\"[0]); a string held in a variable needs the runtime string value model (roadmap L11.5)")
 		}
 		start, stop, step, err := g.rangeBounds(b, n.Iter)
 		if err != nil {

@@ -120,13 +120,18 @@ func TestCLIOracleHasNoVerdictWhenPythonCannotRunTheSource(t *testing.T) {
 	}
 }
 
-func TestCLIOracleRecordsACompilerPanicInsteadOfDying(t *testing.T) {
-	// A literal container indexed by a negative constant panics in codegen today
-	// (roadmap L11.4/L11.8). The CLI must report it as a failed leg — the exit code
-	// stays the divergence class, and the reason is in the payload.
-	out, code := benchCLI(t, "--json", "--oracle", "print([1, 2, 3][-1])\n")
+func TestCLIOracleRecordsARefusedCompiledLegInsteadOfDying(t *testing.T) {
+	// This test used to drive `print([1, 2, 3][-1])`, which panicked in codegen; ADR 0210 fixed
+	// that shape, so the fixture is a program whose compiled leg still fails while the
+	// interpreter and CPython answer — iterating a string computed at run time (Gap R.16).
+	// What the test is actually about has not changed: a leg that fails violently must be
+	// *recorded* — the CLI stays alive, the exit code stays a verdict class, and the reason is
+	// readable in the payload. The panic classification itself is pinned where it can be pinned
+	// deterministically, in pkg/lang/oracle_test.go.
+	src := "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n"
+	out, code := benchCLI(t, "--json", "--oracle", src)
 	if code != exitOracleDivergence && code != exitOracleNoVerdict {
-		t.Fatalf("--oracle on a compiler panic: exit = %d, want 6 or 7\n%s", code, out)
+		t.Fatalf("--oracle on a refused compiled leg: exit = %d, want 6 or 7\n%s", code, out)
 	}
 	var p oraclePayload
 	if err := json.Unmarshal([]byte(out), &p); err != nil {
@@ -135,8 +140,8 @@ func TestCLIOracleRecordsACompilerPanicInsteadOfDying(t *testing.T) {
 	if p.Legs[1].OK {
 		t.Fatalf("the compiled leg should have failed: %+v", p.Legs[1])
 	}
-	if !strings.Contains(p.Legs[1].Error, "panic") {
-		t.Errorf("the panic should be named in the leg error, got %q", p.Legs[1].Error)
+	if !strings.Contains(p.Legs[1].Error, "not supported") {
+		t.Errorf("the refusal should be named in the leg error, got %q", p.Legs[1].Error)
 	}
 }
 

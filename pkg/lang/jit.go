@@ -191,10 +191,11 @@ func (e *Evaluator) storeIndex(ix *Index, val int64) error {
 		o.dvals = append(o.dvals, val)
 		return nil
 	case "list":
-		if idx < 0 || idx >= int64(len(o.elems)) {
+		i := normPosIndex(idx, int64(len(o.elems)))
+		if i < 0 || i >= int64(len(o.elems)) {
 			return exnError("IndexError", "index out of range")
 		}
-		o.elems[idx] = val
+		o.elems[i] = val
 		return nil
 	case "set":
 		return exnError("TypeError", "cannot assign to a set element")
@@ -202,6 +203,19 @@ func (e *Evaluator) storeIndex(ix *Index, val int64) error {
 		return exnError("TypeError", "strings are immutable")
 	}
 	return exnError("TypeError", "cannot assign to an index of this value")
+}
+
+// normPosIndex turns a positional index into an element offset, counting from the end
+// when it is negative: `xs[-1]` is the last element, `s[-1]` the last character. `pop`
+// and slicing already behaved this way; read and write now share the same rule
+// (roadmap L11.4, ADR 0210). It is deliberately *not* applied to dict and set subscripts
+// — those are keys, and `-1` is a key you can store (`d[-1] = v` works in Python too).
+// The result may still be out of range; the caller bounds-checks it.
+func normPosIndex(idx, length int64) int64 {
+	if idx < 0 {
+		return idx + length
+	}
+	return idx
 }
 
 // resolveClassID returns the heap id of the class bound to name, if any.
@@ -1505,10 +1519,11 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		}
 		switch o.kind {
 		case "list":
-			if idx < 0 || idx >= int64(len(o.elems)) {
+			i := normPosIndex(idx, int64(len(o.elems)))
+			if i < 0 || i >= int64(len(o.elems)) {
 				return 0, exnError("IndexError", "index out of range")
 			}
-			return o.elems[idx], nil
+			return o.elems[i], nil
 		case "dict":
 			for i, k := range o.elems {
 				if e.dictKeyEq(k, idx) {
@@ -1524,10 +1539,11 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			}
 			return 0, exnError("KeyError", "not in set")
 		case "str":
-			if idx < 0 || idx >= int64(len(o.sval)) {
+			i := normPosIndex(idx, int64(len(o.sval)))
+			if i < 0 || i >= int64(len(o.sval)) {
 				return 0, exnError("IndexError", "string index out of range")
 			}
-			return int64(o.sval[idx]), nil
+			return int64(o.sval[i]), nil
 		default:
 			return 0, exnError("TypeError", "cannot index this value")
 		}

@@ -1,4 +1,0 @@
-# Oracle probe (L11.9, ADR 0186) — a *literal* container indexed by a negative constant
-# takes the compiler down (a Go panic in irGen.value, roadmap L11.4 + the L11.8 rule
-# that no tested shape may leave the compiler as a panic).
-print([1, 2, 3][-1])

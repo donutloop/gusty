@@ -73,6 +73,28 @@ func TestOracleReportRefusalIsDebtNotPass(t *testing.T) {
 	}
 }
 
+func TestOracleReportALegThatDiedViolentlyIsStillNotAMatch(t *testing.T) {
+	// A Go panic inside the compiler is the worst thing a leg can do, and the report has to
+	// treat it as a failed leg rather than let it look like a verdict. This is the shape
+	// `print([1, 2, 3][-1])` used to produce before ADR 0210 gave the constant folder a bounds
+	// test; the fixture at the CLI level had to change when the bug went away, so the contract
+	// is pinned here, where a violent leg can be described exactly.
+	panicText := "panic: runtime error: index out of range [-1]\n\ngoroutine 1 [running]:"
+	rep := reportFor(true, "3\n", "", false, "", panicText, true, "3\n", "", nil)
+	if rep.Status == OracleMatch {
+		t.Fatalf("a program whose compiled leg panicked may not be reported as a match: %+v", rep)
+	}
+	if rep.Legs[1].OK || rep.Legs[1].Matches {
+		t.Errorf("a panicked leg may not be ok or matching: %+v", rep.Legs[1])
+	}
+	if !strings.Contains(rep.Legs[1].Error, "panic:") {
+		t.Errorf("the panic text has to survive into the report so it is readable: %q", rep.Legs[1].Error)
+	}
+	if rep.Parity {
+		t.Errorf("parity between one leg and a corpse is not parity: %+v", rep)
+	}
+}
+
 func TestOracleReportNotApplicableOnlyWhenTheOracleCannotJudge(t *testing.T) {
 	rep := reportFor(true, "3\n", "", true, "3\n", "", false, "", "Traceback: SyntaxError", nil)
 	if rep.Status != OracleNA {

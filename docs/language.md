@@ -31,14 +31,15 @@ print(l[::-1])   # [6, 5, 4, 3, 2, 1]
 - Omitted bounds default to the sequence start/end (`s[:b]`, `s[a:]`, `s[:]`).
 - An explicit `step` selects every `step`-th element (`s[a:b:c]`, `s[::step]`);
   a negative step walks backwards (`l[::-1]`).
-- Negative indices count from the end (`s[-3:]` == last three elements) **in slice bounds
-  only**. Plain indexing does not normalise them yet: `xs = [1, 2, 3]; print(xs[-1])` traps with
-  *index out of range* on **both** backends where CPython prints `3`, and the literal form
-  `[1, 2, 3][-1]` currently panics the compiler. Both are pinned as probes
-  (`programs/probe_negative_index.gy`, `programs/probe_negative_literal.gy`) against the CPython
-  oracle and owned by roadmap L11.4, which will make one `i < 0 ⇒ i + len` rule serve read,
-  write, `pop`, `index`, slice and `for`. The heading of this section describes slicing; do not
-  read it as a claim about indexing (ADR 0186).
+- Negative bounds count from the end (`s[-3:]` is the last three elements, `l[::-1]` walks
+  backwards), and so do negative subscripts: `xs[-1]` is the last element, `xs[-1] = v`
+  replaces it, `"abc"[-1]` is the last character. One rule — `i < 0 ⇒ i + len` — serves read,
+  write, `pop`, `index` and slice bounds (ADR 0210). It is *not* applied to a dict or set
+  subscript, where `i` is a key and `-1` is a key you can store (`d[-1] = v` works, as in
+  Python). Out of range past either end is `IndexError`; a negative key in a dict is simply a
+  key. See *Containers* below. A string held in a variable still cannot be subscripted in the
+  AOT backend (roadmap L11.5) — the interpreter and CPython answer it, the compiled backend
+  refuses with a message rather than answering zero.
 - A zero step is an error.
 - Slicing a string returns a string; slicing a list returns a list.
 
@@ -537,6 +538,12 @@ Rules that both backends implement:
   `IndexError` otherwise — in AOT the bounds test is emitted around the store, so a bad
   index takes the exception path instead of writing past the elements. Assigning to a
   set element or a string index is rejected (`TypeError` / `strings are immutable`).
+- **A negative subscript counts from the end — for positions only.** `xs[-1]`, `xs[-1] = v`,
+  `xs.pop(-1)`, `l[-2:]` and `"abc"[-1]` mean what they mean in Python, and both backends and
+  CPython agree (`programs/negative_index.gy`, ADR 0210). Dict and set subscripts are keys, so
+  they keep their sign: `d = {-1: "minus"}` then `d[-1]` is `"minus"`, not the last entry. A
+  container *literal* with a negative constant subscript is folded at compile time; that shape
+  used to be a Go panic inside the compiler rather than an answer or a diagnostic.
 - A container produced by a call (`d = make(3)`) is iterated through the runtime
   length, like any other container variable.
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,

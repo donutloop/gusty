@@ -1,0 +1,6 @@
+# A container *literal* indexed by a negative constant used to take the compiler down:
+# irGen.value handed -1 straight to a Go slice, and the build ended in a Go panic
+# (`panic: runtime error: index out of range [-1]`) instead of an IR file or a
+# diagnostic. It is folded like any other constant subscript now.
+print([1, 2, 3][-1])
+print([1, 2, 3][0])

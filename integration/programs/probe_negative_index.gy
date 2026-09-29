@@ -1,8 +1,0 @@
-# Oracle probe (L11.9, ADR 0186) — negative indexing is one rule (i < 0 => i + len)
-# shared by read, write and slice. Today xs[-1] traps on both backends and a literal
-# [1,2,3][-1] takes the compiler down (L11.4, and the L11.8 no-panic contract).
-xs = [1, 2, 3]
-print(xs[-1])
-print(xs[-2])
-ys = [1, 2, 3]
-print(ys[-1])

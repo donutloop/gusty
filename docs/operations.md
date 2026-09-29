@@ -510,7 +510,8 @@ no `range` (full text) to force a clean re-parse.
 Parity — the interpreter and the compiled backend printing the same bytes — is a necessary
 contract, and it is not a sufficient one: two backends that share a bug agree. `print(True)`
 printed `1` on both sides of a green build for a hundred ADRs, and so did `len("café") == 5`,
-`"abc"[1] == 98`, and a trap where Python answers `3` for `xs[-1]`. The third leg closes that
+`"abc"[1] == 98`, and a trap where Python answers `3` for `xs[-1]` (L11.4 closed the last of those,
+ADR 0210). The third leg closes that
 hole: **a program is conformant when both backends agree *and* what they print is what
 CPython prints for the same source.**
 

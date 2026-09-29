@@ -3266,3 +3266,37 @@ What I'm keeping:
   mechanism is wrong, and the fix is to compute the answer from the artifact. If I ever catch myself
   adding "remember to also set X", that's the tell.
 
+## Cycle 158 — the workaround in a refusal message has to work (L11.4, ADR 0210)
+
+L11.4 looked like a one-liner: `if i < 0 { i += len }`. It was, and the one-liner is still not the
+interesting part.
+
+Three things happened that I want to keep:
+
+- **I shipped a refusal whose workaround was false.** Last cycle's run-time-string refusal told people
+  to "index a string with a constant (`s[0])". Writing this cycle's subscript tests I typed that shape
+  into a scratch file — `s = "abc"; print(s[0])` is *refused* by the AOT backend too, because a string in
+  a variable has no run-time string value yet (L11.5). Only a string *literal* may be subscripted with a
+  constant. The message is fixed. The rule I can apply again, and will forget unless I write it down:
+  **type the workaround into a file before shipping the sentence that offers it.** A refusal whose
+  escape hatch doesn't open is worse than a bare refusal — the reader burns their time on our mistake
+  and then stops trusting the rest of the message.
+- **The panic was hiding in the consumer, not the producer.** `case *ListLit: return g.value(b,
+  obj.Elems[key])` had no bounds test because every caller "checks the key". The place that knows the
+  length is the place that does the indexing; a constant folder that hands an int to a Go slice is a
+  compiler crash waiting for a negative literal. When I catch a path doing `arr[compilerComputedInt]`,
+  that's the audit target — not the sites that produced the int.
+- **The exemption is the finding.** The obvious refactor was "normalise all subscripts in one place".
+  That breaks `d[-1]`, because a dict subscript is a key and `-1` is a key you can store. The two shapes
+  looked identical (a subscript) and were different operations (a position, a key). `docs/language.md`
+  already has a bullet about `{}` meaning dict-vs-set for the same reason — surface syntax that rhymes is
+  where two-engine bugs live. Pinned with a three-engine test so a future "simplify" cannot pass.
+- **And the standing one, re-proved:** both backends agreed on `xs[-1]` trapping for dozens of cycles.
+  Agreement is not correctness; the third leg is the one with a vote. (Both probes went from `debt` rows
+  to ledger-free parity cases in one edit.)
+
+Found while measuring, recorded as **R.17 OPEN rather than fixed here** (one commit per feature): the
+compiled binary dies with 1 on an uncaught exception, `--interp` reports 3, and `gustyc --aot` prints the
+same traceback and exits **0**. "Did the program work?" answered yes for a crashed program, on the path
+agents script against. The next cycle that touches exit codes must own it.
+
