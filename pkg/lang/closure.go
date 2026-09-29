@@ -335,8 +335,11 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 	for i := 0; i < n; i++ {
 		fty += ", i32"
 	}
-	// @f_impl define (the decorated body)
-	fmt.Fprintf(b, "define internal i32 @%s_impl(", fd.Name)
+	// @f_impl define (the decorated body). The name carries irSymbolPrefix, as every
+	// program-owned function symbol does (Gap R.4), so that this define, the pointer
+	// global below and every call through resolveDecorators agree on one symbol — the
+	// wrapping branch above gets the prefix for free by emitting through funcDef.
+	fmt.Fprintf(b, "define internal i32 @%s_impl(", irSymbol(fd.Name))
 	for i := range fd.Params {
 		if i > 0 {
 			fmt.Fprintf(b, ", ")
@@ -389,7 +392,10 @@ func repeatParamTypes(n int) string {
 // or transform the decorated function are rejected with a clear codegen error
 // instead of being silently ignored.
 func (g *irGen) resolveDecorators(fd *FuncDef) (string, error) {
-	label := "@" + fd.Name + "_impl"
+	// The decorated body is emitted through funcDef, which emits program-defined names
+	// under irSymbolPrefix (Gap R.4); every reference to it has to carry the prefix too,
+	// which is why this label is built through irSymbol rather than by concatenation.
+	label := "@" + irSymbol(fd.Name+"_impl")
 	for _, dec := range fd.Decorators {
 		n, ok := dec.(*Name)
 		if !ok {

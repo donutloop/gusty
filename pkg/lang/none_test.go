@@ -115,7 +115,7 @@ func TestNoneEqualityIsStaticButNotLazy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if !strings.Contains(res.IR, "call i32 @emit(") {
+	if !strings.Contains(res.IR, "call i32 @gy_emit(") {
 		t.Errorf("deciding `f() == None` statically must not delete the call:\n%s", res.IR)
 	}
 }

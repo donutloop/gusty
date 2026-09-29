@@ -624,7 +624,6 @@ print(f())
 `)
 }
 
-
 // TestParityYieldFromAcrossGC exercises yield-from of a generator whose
 // accumulator list must survive the GC emitted at statement boundaries; a
 // stale handle produced double-appends (ADR 0140 / 0151 regression).
@@ -656,7 +655,6 @@ for x in outer():
 print(s)
 `)
 }
-
 
 func TestParityWalrus(t *testing.T) {
 	parity(t, `

@@ -903,6 +903,11 @@ print(strlen("hello")) # 5
 - The AST interpreter dispatches extern calls to a small Go registry mirroring
   the C stdlib (`abs`, `getpid`, `rand`, `strlen`); other externs raise a clear
   "not available in the interpreter" error.
+- An `extern fn` keeps the **C name** in the emitted module — `declare i32 @strlen(i8*)`,
+  called as `@strlen` — because that name is exactly what the declaration binds. Functions the
+  program itself defines do not share that namespace: they are emitted as `gy_<name>` (ADR 0198),
+  so declaring `extern fn abs` and defining `def abs` are two different declarations, and only
+  the extern reaches the C library.
 - Arity and argument types are checked at compile time.
 
 ## Types
@@ -1671,6 +1676,39 @@ with the hoisted name, so arity and argument-type errors are reported for a func
 walk has not reached. What it cannot know is a return type the checker would have
 *inferred* from a body it has not analyzed — that stays dynamic, which is where gradual
 typing already puts unannotated code.
+
+## Your names are your own (ADR 0198)
+
+A function name in a Gusty program is never a host symbol. These are all legal, and all mean
+what the program says:
+
+```gy
+def sync(x):
+    return x + 1
+
+
+def main(x):
+    return x + 7
+
+
+print(sync(0))   # 1
+print(main(0))   # 7
+```
+
+The compiled module defines them as `gy_sync` and `gy_main`. That is not decoration: an LLVM
+function name is a **link name**, and a program emitted as `@sync` had its own call answered by
+libc's `sync()` — the interpreter printed `1`, the binary printed the C library's answer, and the
+build reported success (roadmap Gap R.4). `main` was worse, because the generated entry point is
+`@main`: a program with a `def main` could not be built at all.
+
+What keeps its own name is what the program does not define: the runtime helpers the compiler
+emits (`rt_*`), the C library, the generated entry point `@main`, and every `extern fn`, whose
+link name is the C name it declares. The distinction is visible to tools — `nm` on a built binary
+shows `gy_sync` and never `sync` — and in the source map, where `name` is what you wrote and
+`symbol` is what the linker sees.
+
+Shadowing a *built-in* name (`def abs(x): ...`) is a separate, known defect: the compiled call is
+resolved against the builtin table and answers with the builtin (roadmap R.6).
 
 ## Docstrings and `__doc__` (Round 9, ADR 0141)
 

@@ -183,12 +183,12 @@ print(total([1, 2, 3]))
 		t.Errorf("expected heap element stores in:\n%s", ir)
 	}
 	// ... and never passed as a compile-time global (the verifier bug).
-	if strings.Contains(ir, "call i32 @total(i32 @.") {
+	if strings.Contains(ir, "call i32 @gy_total(i32 @") {
 		t.Errorf("list global was passed where a handle was required:\n%s", ir)
 	}
 	// The callee iterates the handle with the runtime list helpers, instead of
 	// treating it as an integer range bound (the silent-miscompile bug).
-	body := ir[strings.Index(ir, "define i32 @total"):]
+	body := ir[strings.Index(ir, "define i32 @gy_total"):]
 	if !strings.Contains(body, "@rt_list_len(") || !strings.Contains(body, "@rt_get_elem(") {
 		t.Errorf("callee does not iterate the container handle:\n%s", body)
 	}
@@ -266,7 +266,7 @@ func TestHeapContainerDoesNotBreakScalars(t *testing.T) {
 	// A function whose parameter is never handed a container still compiles as
 	// a plain i32 parameter.
 	ir := llcCompiles(t, "def inc(x) -> int:\n    return x + 1\n\nprint(inc(41))\n")
-	if strings.Contains(ir, "define i32 @inc(i32 %p0)") == false {
+	if strings.Contains(ir, "define i32 @gy_inc(i32 %p0)") == false {
 		t.Errorf("scalar parameter changed shape:\n%s", ir)
 	}
 	if strings.Contains(ir, "@rt_alloc(i32 1)\n  call void @rt_set_elem") && strings.Contains(ir, "@inc(i32") {

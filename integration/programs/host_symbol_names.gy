@@ -1,0 +1,62 @@
+# Every name here is one the host ABI already owns: libc exports `sync`, `exit`, `free`,
+# `strlen`, `write`, `time`, `rand`, `system`, and the generated entry point is `main`. A
+# program that defines a function with such a name used to be emitted under that very name,
+# and the linker answered the call from libc — the interpreter printed the program's value,
+# the compiled binary printed the C library's, and nothing complained (roadmap Gap R.4).
+#
+# They are ordinary names for a program, so they stay legal: the fix is that a function the
+# program defines is emitted as `gy_<name>`, while `extern fn` keeps the C name it binds.
+
+def sync(x):
+    return x + 1
+
+
+def write(x):
+    return x + 2
+
+
+def read(x):
+    return x + 3
+
+
+def open(x):
+    return x + 4
+
+
+def time(x):
+    return x + 5
+
+
+def exit(x):
+    return x + 6
+
+
+def main(x):
+    return x + 7
+
+
+# The methods are NOT named after the module functions above: a module `def time` and a
+# method `Timer.time` share a key in the checker's function table today, which is a separate
+# measured defect (roadmap R.8, pinned as programs/probe_method_function_name_clash).
+class Timer:
+    def tick(self, x):
+        return x * 3
+
+    def run(self, x):
+        return self.tick(x) + 1
+
+
+def apply_sync(x):
+    return sync(x) + write(x) + read(x) + open(x) + time(x) + exit(x) + main(x)
+
+
+print(sync(0))
+print(write(0))
+print(read(0))
+print(open(0))
+print(time(0))
+print(exit(0))
+print(main(0))
+print(apply_sync(0))
+print(Timer().tick(2))
+print(Timer().run(2))

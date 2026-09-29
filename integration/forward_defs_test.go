@@ -45,7 +45,7 @@ print(1 if is_odd(3) else 0)
 		}
 		t.Fatalf("a mutually recursive pair must compile, got %v", err)
 	}
-	for _, want := range []string{"define i32 @is_even(", "define i32 @is_odd(", "call i32 @is_odd("} {
+	for _, want := range []string{"define i32 @gy_is_even(", "define i32 @gy_is_odd(", "call i32 @gy_is_odd("} {
 		if !strings.Contains(res.IR, want) {
 			t.Errorf("emitted module missing %q:\n%s", want, res.IR)
 		}

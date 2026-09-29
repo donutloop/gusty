@@ -2571,7 +2571,10 @@ func (g *irGen) registerClass(cd *ClassDef) {
 			continue
 		}
 		mname := fd.Name
-		funcName := fmt.Sprintf("%s_%s", cd.Name, mname)
+		// A method symbol is minted once, stored in the class index, and reused by every
+		// call through resolveMethod — so the prefix applied here reaches definition and
+		// call sites together.
+		funcName := irSymbol(fmt.Sprintf("%s_%s", cd.Name, mname))
 		ci.methods[mname] = funcName
 		g.collectAttrs(fd.Body)
 		g.emitClassMethod(cd.Name, funcName, fd)
@@ -6300,7 +6303,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if fd, ok := modFuncs[attr.Name.Value]; ok && fd != nil {
 					mangle := modName.Value + "$" + attr.Name.Value
 					ret := g.newTmp()
-					b.WriteString(fmt.Sprintf("  %s = call i32 @%s(", ret, mangle))
+					b.WriteString(fmt.Sprintf("  %s = call i32 @%s(", ret, irSymbol(mangle)))
 					for i, arg := range c.Args {
 						if i > 0 {
 							b.WriteString(", ")
@@ -6997,6 +7000,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			callArgs = append(callArgs, argTypes[i]+" "+argRegs[i])
 		}
 		t := g.newTmp()
+		// NOT irSymbol: an `extern fn` is an FFI surface, and its link name is the C name
+		// the program asked to bind — `declare i32 @strlen(i8*)` and the call to it must
+		// both stay exactly `strlen` (roadmap Gap R.4). Only names the program *defines*
+		// are prefixed.
 		b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, fnName, strings.Join(callArgs, ", ")))
 		return t, nil
 	}
@@ -7005,7 +7012,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if fd, ok := sibling[fnName]; ok && fd != nil {
 				mangle := g.curModName + "$" + fnName
 				ret := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(", ret, mangle))
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(", ret, irSymbol(mangle)))
 				for i, arg := range c.Args {
 					if i > 0 {
 						b.WriteString(", ")
@@ -7184,11 +7191,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_env(%s)\n", t, fnName, strings.Join(callArgs, ", ")))
 			g.checkExn(b)
 		} else if g.decorated[fnName] {
-			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, fnName, strings.Join(vals, ", ")))
+			// The decorated body is emitted through funcDef, which defines program-owned
+			// names under irSymbolPrefix, so the reference must carry it too (Gap R.4).
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, irSymbol(fnName), strings.Join(vals, ", ")))
 			g.checkExn(b)
 		} else {
 			if isFloat {
-				b.WriteString(fmt.Sprintf("  %s = call double @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+				b.WriteString(fmt.Sprintf("  %s = call double @%s(%s)\n", t, irSymbol(fnName), strings.Join(vals, ", ")))
 				if g.floatTemps == nil {
 					g.floatTemps = map[string]bool{}
 				}
@@ -7228,10 +7237,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					for i := range argTypes {
 						callArgs = append(callArgs, argTypes[i]+" "+argRegs[i])
 					}
-					b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, fnName, strings.Join(callArgs, ", ")))
+					b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, irSymbol(fnName), strings.Join(callArgs, ", ")))
 					return t, nil
 				}
-				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, fnName, strings.Join(vals, ", ")))
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, irSymbol(fnName), strings.Join(vals, ", ")))
 			}
 			g.checkExn(b)
 			// a generator function returns a runtime heap list handle
@@ -8873,6 +8882,39 @@ func funcReturnsFloat(g *irGen, fd *FuncDef) bool {
 // fnName returns the emitted IR name for fd, honoring a module-function
 // name override (g.curFnOverride) so AOT module functions get a mangled,
 // collision-free label like `mod$fn`.
+// irSymbolPrefix is the prefix on the link name of every function the program's own
+// source defines; irSymbol applies it.
+//
+// An emitted function name is not a label, it is a symbol the linker resolves. A program
+// that wrote
+//
+//	def sync():
+//	    return 7
+//	print(sync())
+//
+// was emitted as `define i32 @sync()`, and the call bound to libc's `sync()` instead: the
+// interpreter printed `7`, the compiled binary printed libc's `0`, and nothing along the
+// way complained (roadmap Gap R.4). `main`, `exit`, `printf`, `free`, `strlen`, `write`,
+// `time` are the same accident — all names a program may choose deliberately — and the
+// generated entry point is `@main` too, so a user `def main()` was a duplicate definition.
+//
+// Prefixing every program-defined function closes the whole class without a blocklist to
+// keep current, and without refusing a name the program is free to choose. Names the
+// program does not define keep theirs: the runtime helpers (`rt_*`), the C library
+// (`printf`, `write`, `snprintf`), and the `extern fn` declarations an FFI surface must
+// export under the C name (see emitExterns / the `declare` path).
+const irSymbolPrefix = "gy_"
+
+// irSymbol is the link name a program-defined function is emitted and called under. It is
+// idempotent because a symbol is minted once and then travels through registries (a
+// method's symbol is stored in its class index), and both ends must agree.
+func irSymbol(name string) string {
+	if name == "" || strings.HasPrefix(name, irSymbolPrefix) {
+		return name
+	}
+	return irSymbolPrefix + name
+}
+
 func (g *irGen) fnName(fd *FuncDef) string {
 	if g.curFnOverride != "" {
 		return g.curFnOverride
@@ -8973,7 +9015,8 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		retVal = "0.0"
 		paramTy = "double"
 	}
-	fmt.Fprintf(b, "define %s @%s(", retTy, g.fnName(fd))
+	// The program's own functions carry the irSymbolPrefix; see irSymbol.
+	fmt.Fprintf(b, "define %s @%s(", retTy, irSymbol(g.fnName(fd)))
 	for i := range fd.Params {
 		if i > 0 {
 			fmt.Fprintf(b, ", ")

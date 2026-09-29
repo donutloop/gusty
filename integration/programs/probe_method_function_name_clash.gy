@@ -1,0 +1,24 @@
+# A module function and a method with the same name are two different things — but the
+# checker keys its function table by the bare name, so the method wins and the module call
+# is then checked against the *method's* parameters: `time(x)` inside a body reports
+# `undefined name "x"`, because it is being read as `Timer.time(self, x)` with no `self`.
+#
+# The front end refuses it, and the build gate therefore will not ship it — yet the evaluator
+# runs it and prints `6 7`, CPython prints `6 7`, and so does a binary built from the very
+# module codegen emits for this source. Everything below the checker disagrees with the refusal
+# (roadmap R.8, found while writing programs/host_symbol_names.gy for Gap R.4).
+
+def time(x):
+    return x + 5
+
+
+class Timer:
+    def time(self, x):
+        return x * 3
+
+    def run(self, x):
+        return self.time(x) + 1
+
+
+print(time(1))
+print(Timer().run(2))

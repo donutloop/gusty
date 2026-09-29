@@ -219,8 +219,20 @@ builds:
 
 Example source map entry:
 ```json
-{ "name": "C_m", "symbol": "C_m", "irLine": 9, "line": 5, "col": 5 }
+{ "name": "sync", "symbol": "gy_sync", "irLine": 9, "line": 5, "col": 5 }
 ```
+
+**IR symbol naming** (Gap R.4, ADR 0198). An emitted module defines every function the program
+wrote under a `gy_` prefix: `def sync(x)` becomes `define i32 @gy_sync(i32 %p0)`, a method
+`Point.x` becomes `@gy_Point_x`, a generated lambda `@gy_lambda_0`, an imported module function
+`@gy_lib$f`. Names the program does not define keep theirs — the runtime helpers (`@rt_alloc`,
+`@rt_frame_open`, the container printers), the C library (`@printf`, `@snprintf`), the generated
+entry point `@main`, and every `extern fn` (`declare i32 @strlen(i8*)`, called as `@strlen`).
+
+For a tool that means: to find a program's function in `--emit-llvm` output, grep `@gy_<name>`;
+to tell a program-defined function from a host or runtime symbol, look for the prefix; and in a
+source map or a debugger, `name` is what the source says and `symbol` is what the linker sees —
+never strip the prefix by hand, and never assume the two are equal.
 
 ## Diagnostics
 

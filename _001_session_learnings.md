@@ -2713,3 +2713,53 @@ Process notes:
   ast.go…). Only files I touched are kept gofmt-clean; reformatting the parser inside a checker
   cycle would make the diff unreadable for no benefit.
 
+## Cycle 146 — the linker was answering the program's own calls (Gap R.4, ADR 0198)
+
+`def sync(): return 7` printed `7` on the interpreter and **`0`** compiled. Not a wrong
+computation — the module defined `@sync`, exactly as the program wrote it, and the linker resolved
+the call against libc. Measured as a battery (`def NAME(x): return x + 7`, expected `8`), `sync`,
+`printf`, `exit`, `strlen`, `free`, `malloc`, `write`, `read`, `open`, `time`, `rand`, `system`,
+`abort` answered `0`, `1`, garbage, or killed the process; `main` could not be built at all,
+because the generated entry point is `@main` and the program's `def main` was a duplicate
+definition.
+
+The fix is one prefix on symbols the program owns (`gy_sync`, `gy_Point_x`, `gy_lambda_0`,
+`gy_lib$f`), applied at the places that *mint* a symbol and, crucially, at every place that
+*references* it — the `call`, the decorator's function-pointer global, the source map's `symbol`
+field. `irSymbol` is idempotent precisely because a symbol is minted once and then travels through
+registries (a method's symbol lives in its class index); two spellings of one symbol in one module
+is how the bug came back mid-implementation, twice:
+
+- first attempt wrapped the extern call site too, so `extern fn strlen` became a call to
+  `@gy_strlen` against a `declare i32 @strlen(i8*)` — `pkg/lang/ffi_test.go` caught that one, and
+  it is the reason "an FFI surface exports the C name" is written into the ADR rather than left
+  implicit;
+- then the *decorated* body: codegen emitted `@gy_f_impl` (via `funcDef`) while
+  `resolveDecorators` referenced `@f_impl` (via concatenation), and `programs/wrapping_decorator.gy`
+  went silent. Minting and referencing through one helper is the only durable shape.
+
+Process notes worth keeping:
+
+- **Assert on the artifact, not the stdout.** The broken binary printed plausible numbers, so
+  every output-level test would have passed. `TestBuiltBinaryCarriesThePrefixedSymbols` runs
+  `nm -defined-only` and requires `gy_sync` to be present and `sync` absent. Stdout is evidence of
+  behaviour; the symbol table is evidence of *what ran*.
+- **The corpus program found two more defects before the compiler did.** Writing
+  `programs/host_symbol_names.gy` hit a runtime-string concat the AOT backend refuses (documented,
+  Gap J.5), and then the class: a module `def time` next to `class Timer: def time(self, x)` is
+  refused by the checker with `undefined name "x"` — the method overwrote the module function in
+  the checker's bare-name key, so the call is checked against parameters including a `self` that
+  is not in scope. Verified on the base binary to be pre-existing, not caused by this change. Both
+  became roadmap entries (R.6, R.8) with probe programs rather than being hushed to make a test
+  pass.
+- **The ledger corrected me again, and this is its best showing.** I declared the new probe
+  `not_applicable` with the interpreter printing `6 7` and the AOT leg failing. The drift check
+  answered: the interpreter leg *refuses* (`verify: undefined name "x"`), and the compiled leg
+  **runs and prints `6 7`** — codegen, `llc` and the linker all consider the program fine. That is
+  a sharper fact than the one I wrote down, and it would have been wrong in the artifact forever
+  if the pins were trusted rather than re-measured. The registry describes reality, not my memory
+  of it.
+- `Compile` returning no error while the CLI refuses was surprising until read properly: the
+  front-end gate lives in the build pipeline (ADR 0177), so an agent sees a *diagnostic*, not a
+  Go error — worth remembering when writing assertions about "the compiler refuses".
+

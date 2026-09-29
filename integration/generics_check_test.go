@@ -104,11 +104,11 @@ func TestCLICheckProtocolExitCodes(t *testing.T) {
 	}
 
 	reject := []string{
-		"x: Sequence[int] = \"hi\"\n",       // str is Sequence[str], not Sequence[int]
-		"x: Sequence[str] = [1, 2]\n",       // list[int] not Sequence[str]
-		"x: Sequence[int] = 5\n",            // int is not a sequence
-		"x: Sequence[bool] = [1, 2]\n",      // list[int] not Sequence[bool]
-		"x: Sequence[int] = {\"a\": 1}\n",   // dict is not a Sequence
+		"x: Sequence[int] = \"hi\"\n",     // str is Sequence[str], not Sequence[int]
+		"x: Sequence[str] = [1, 2]\n",     // list[int] not Sequence[str]
+		"x: Sequence[int] = 5\n",          // int is not a sequence
+		"x: Sequence[bool] = [1, 2]\n",    // list[int] not Sequence[bool]
+		"x: Sequence[int] = {\"a\": 1}\n", // dict is not a Sequence
 	}
 	for _, src := range reject {
 		if code := checkSource(t, bin, src); code != 1 {

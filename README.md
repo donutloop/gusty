@@ -182,6 +182,10 @@ falls back to dynamic dispatch.
   declared below the code that calls them, check clean and compile; a call at module level and a
   decorator still require the name above them, because that code runs where it is written
   (`programs/forward_defs.gy`, ADR 0197)
+- **Your function names are your own** — `def sync`, `def main`, `def exit` are emitted as `gy_sync`,
+  `gy_main`, `gy_exit`, so the linker can never answer the program's own call from libc, while
+  `extern fn` keeps the C name it binds; `nm` on the built binary and the source map's `symbol`
+  field both show the link name (`programs/host_symbol_names.gy`, ADR 0198)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

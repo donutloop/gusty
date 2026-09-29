@@ -1471,10 +1471,17 @@ messages where nobody would look:
   `undefined name`, so mutual recursion could not be compiled at all while the interpreter
   ran it. The checker now resolves a name to any `def` of the enclosing *function* scope,
   and still refuses what runs where it is written: a module-level call, or a decorator.
-- **R.6, R.7 (OPEN)** — a user `def abs` answers with the builtin's value on the compiled
-  path, and one source line can report the same diagnostic two or three times because
-  return-type inference re-walks a callee per call site. Both measured this cycle; both are
-  silent rather than fatal, which is why they are next.
+- **R.4, closed by ADR 0198** — a program that defined `sync`, `exit`, `write`, `time` or `main`
+  was emitted under those exact link names, so libc answered its own calls (and `def main`
+  collided with the generated entry point, which made the program unbuildable). Program-owned
+  symbols now carry a `gy_` prefix and nothing else keeps its name unless the program did not
+  define it — which is why `extern fn` still binds the C name it declares.
+- **R.6, R.7, R.8 (OPEN)** — three defects measured while closing the others, all of them
+  discovered by writing a corpus program rather than by reading code:
+  `def abs` answers with the *builtin's* value on the compiled path (R.6); one source line can
+  report the same diagnostic two or three times, because return inference re-walks a callee per
+  call site (R.7); and a module function and a method that share a name share the checker's
+  function key, which refuses an ordinary program that every other layer runs (R.8).
 
 ### R.1 — the compiled backend runs a coroutine at the call, not at the await (OPEN)
 
@@ -1588,7 +1595,7 @@ unnoticed. Related, and also fixed by (e) of ADR 0196: a float-returning functio
 body assigns a parameter used to emit a second `alloca` of the same name — an `llc`
 "multiple definition of local value" rejection — and compiles now.
 
-### R.4 — an emitted function name can collide with a C symbol (OPEN)
+### R.4 — an emitted function name can collide with a C symbol (CLOSED, ADR 0198)
 
 ```gusty
 def sync():
@@ -1596,13 +1603,30 @@ def sync():
 print(sync())
 ```
 
-The interpreter answers `7`; the compiled binary answers **`0`** — the emitted function is
-named exactly `sync`, the linker resolved the call against libc's `sync()`, and nothing
-along the way noticed. `main`, `printf`, `exit`, `free` are the same class of accident, and
-this class is worse than a link error because it is silent: a wrong answer from a name the
-host ABI already owns. Either prefix emitted user functions (`gy_<name>`) or refuse a name
-the ABI owns — both are cheap, and L11.8 says a shape this ordinary must not be answerable
-with a wrong number.
+The interpreter answered `7`; the compiled binary answered **`0`** — the emitted function was
+named exactly `sync`, the linker resolved the call against libc's `sync()`, and nothing along
+the way noticed. Measured as a battery (`def NAME(x): return x + 7`, called through a wrapper,
+expected `8`): `sync`, `printf`, `exit`, `strlen`, `free`, `malloc`, `write`, `read`, `open`,
+`time`, `rand`, `system`, `abort` each answered `0`, `1`, garbage, or killed the process, and
+`main` failed to build at all because the generated entry point is `@main`.
+
+Closed by `irSymbol`: every symbol the program's own source defines is emitted as `gy_<name>` —
+module functions, methods (`@gy_Point_x`), generated lambdas, decorated bodies, imported module
+functions (`@gy_lib$f`) — and every reference to them (the `call`, the decorator's function-
+pointer global, the source map's `symbol`) is minted through the same helper, which is what keeps
+a define and its calls from drifting apart. What is *not* prefixed is what the program does not
+define: the runtime helpers (`rt_*`), the C library, the generated `@main`, and every `extern fn`,
+whose link name is the C name the declaration binds.
+
+`programs/host_symbol_names.gy` is in the ledger with `oracle: "match"` — seven host-ABI names,
+a class over them, and a wrapper calling all seven print identically on the interpreter, in the
+binary, and in CPython. `TestBuiltBinaryCarriesThePrefixedSymbols` asserts on the artifact rather
+than its stdout: `nm -defined-only` must list `gy_sync` and must not list `sync`, because a
+binary that prints the right numbers was never the property — the broken one printed plausible
+numbers too.
+
+Two adjacent defects surfaced while writing that program, and are *not* closed by prefixing:
+
 
 ### R.5 — a `def` below the code that uses it was refused as an undefined name (CLOSED, ADR 0197)
 
@@ -1648,6 +1672,37 @@ builtin table before the program's own `def abs` is consulted. Silent, and these
 people choose deliberately (`abs`, `len`, `min`, `max`, `sum`, `str`). The interpreter and
 CPython both let a user `def` shadow a builtin; the codegen call path must consult the
 module's own function table first, in the same order both of them use.
+
+### R.8 — a module function and a method of one name share the checker's key (OPEN)
+
+```gusty
+def time(x):
+    return x + 5
+
+
+class Timer:
+    def time(self, x):
+        return x * 3
+
+    def run(self, x):
+        return self.time(x) + 1
+
+
+print(time(1))
+print(Timer().run(2))
+```
+
+`error at 7:16: undefined name "x"`, from `--check` and from the build. The checker keys its
+function table by bare name, so the method `Timer.time` overwrote the entry for the module
+function `time`, and the call `time(x)` is then checked against the *method's* parameters —
+including a `self` that is not in scope at the call site.
+
+The disagreement is the interesting part: the evaluator prints `6 7`, CPython prints `6 7`, and
+so does a binary built from the module codegen emits for this same source. Only the front end
+thinks the program is broken, and because the build gate trusts the front end (ADR 0177), an
+ordinary program — a module-level helper and a method with the same name — cannot be compiled.
+`programs/probe_method_function_name_clash.gy` pins all of it. The fix is to key methods by
+`(class, name)` rather than by name, the way codegen's class index already does.
 
 ### R.7 — one source line can report the same diagnostic two or three times (OPEN)
 

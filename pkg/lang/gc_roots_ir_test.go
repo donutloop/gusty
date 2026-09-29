@@ -16,6 +16,10 @@ func irFunctions(t *testing.T, ir string) map[string]string {
 	t.Helper()
 	funcs := map[string]string{}
 	var name string
+	// emitted is the link name as it appears in the module; name is the name the program
+	// wrote. They differ by irSymbolPrefix (Gap R.4, ADR 0198), and a test that asks for
+	// the body of `bump` means the function it defined as `bump` — so both keys work.
+	var emitted string
 	var body strings.Builder
 	for _, ln := range strings.Split(ir, "\n") {
 		if strings.HasPrefix(ln, "define ") && strings.HasSuffix(strings.TrimSpace(ln), "{") {
@@ -24,7 +28,8 @@ func irFunctions(t *testing.T, ir string) map[string]string {
 			}
 			sig := strings.TrimSpace(strings.SplitN(ln, "(", 2)[0])
 			fields := strings.Fields(sig)
-			name = strings.TrimPrefix(fields[len(fields)-1], "@")
+			emitted = strings.TrimPrefix(fields[len(fields)-1], "@")
+			name = strings.TrimPrefix(emitted, irSymbolPrefix)
 			body.Reset()
 			continue
 		}
@@ -33,7 +38,11 @@ func irFunctions(t *testing.T, ir string) map[string]string {
 		}
 		if ln == "}" {
 			funcs[name] = body.String()
+			if emitted != "" && emitted != name {
+				funcs[emitted] = body.String()
+			}
 			name = ""
+			emitted = ""
 			body.Reset()
 			continue
 		}

@@ -89,7 +89,7 @@ func TestIRForElseBreakCompilesWithLLC(t *testing.T) {
 func TestIRDefaultArgCompilesWithLLC(t *testing.T) {
 	ir := llcCompiles(t, "def f(a, b=10):\n    return a + b\nprint(f(5))")
 	// codegen must fill the default b=10 as the second call argument
-	if !strings.Contains(ir, "call i32 @f(i32 5, i32 10)") {
+	if !strings.Contains(ir, "call i32 @gy_f(i32 5, i32 10)") {
 		t.Fatalf("missing default-arg call in IR:\n%s", ir)
 	}
 }
@@ -97,7 +97,7 @@ func TestIRDefaultArgCompilesWithLLC(t *testing.T) {
 func TestIRKeywordArgCompilesWithLLC(t *testing.T) {
 	ir := llcCompiles(t, "def f(a, b):\n    return a * b\nprint(f(a=3, b=4))")
 	// keyword args must be emitted in parameter order a,b => 3,4
-	if !strings.Contains(ir, "call i32 @f(i32 3, i32 4)") {
+	if !strings.Contains(ir, "call i32 @gy_f(i32 3, i32 4)") {
 		t.Fatalf("missing keyword-arg call in IR:\n%s", ir)
 	}
 }
@@ -105,7 +105,7 @@ func TestIRKeywordArgCompilesWithLLC(t *testing.T) {
 func TestIRKeywordOutOfOrderCompilesWithLLC(t *testing.T) {
 	ir := llcCompiles(t, "def f(a, b):\n    return a - b\nprint(f(b=3, a=10))")
 	// out-of-order keyword args must be reordered to (a=10, b=3)
-	if !strings.Contains(ir, "call i32 @f(i32 10, i32 3)") {
+	if !strings.Contains(ir, "call i32 @gy_f(i32 10, i32 3)") {
 		t.Fatalf("missing reordered keyword call in IR:\n%s", ir)
 	}
 }
@@ -135,7 +135,7 @@ func TestIRClosureCompilesWithLLC(t *testing.T) {
 
 func TestIRDecoratorCompilesWithLLC(t *testing.T) {
 	ir := llcCompiles(t, "def dec(g):\n    return g\n@dec\ndef f(x):\n    return x + 1\nprint(f(3))")
-	if !strings.Contains(ir, "@f_impl") {
+	if !strings.Contains(ir, "@gy_f_impl") {
 		t.Fatalf("missing decorated impl in IR:\n%s", ir)
 	}
 	if !strings.Contains(ir, "@f_apply") {
@@ -560,7 +560,7 @@ func TestIRMaxSetLiteralCompilesWithLLC(t *testing.T) {
 func TestIRLambdaInlineCompilesWithLLC(t *testing.T) {
 	// `print((lambda x: int: x + 1)(5))` -> 6 via an anonymous FuncDef + call.
 	ir := llcCompiles(t, "print((lambda x: int: x + 1)(5))")
-	if !strings.Contains(ir, "@lambda_") {
+	if !strings.Contains(ir, "@gy_lambda_") {
 		t.Fatalf("expected generated lambda FuncDef, got:\n%s", ir)
 	}
 }
@@ -568,7 +568,7 @@ func TestIRLambdaInlineCompilesWithLLC(t *testing.T) {
 func TestIRLambdaNamedCompilesWithLLC(t *testing.T) {
 	// `f = lambda x: int: x * 2; f(3)` -> 6 via g.lambdas resolution.
 	ir := llcCompiles(t, "f = lambda x: int: x * 2\nprint(f(3))")
-	if !strings.Contains(ir, "@lambda_") {
+	if !strings.Contains(ir, "@gy_lambda_") {
 		t.Fatalf("expected generated lambda FuncDef, got:\n%s", ir)
 	}
 }
@@ -1434,11 +1434,11 @@ func TestIRImportModuleFunctions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AOT import with module functions should compile: %v", err)
 	}
-	if !strings.Contains(res.IR, "@lib$f") {
-		t.Fatalf("expected lowered module function @lib$f in IR:\n%s", res.IR)
+	if !strings.Contains(res.IR, "@gy_lib$f") {
+		t.Fatalf("expected lowered module function @gy_lib$f in IR:\n%s", res.IR)
 	}
-	if !strings.Contains(res.IR, "call i32 @lib$f") {
-		t.Fatalf("expected a call to @lib$f in IR:\n%s", res.IR)
+	if !strings.Contains(res.IR, "call i32 @gy_lib$f") {
+		t.Fatalf("expected a call to @gy_lib$f in IR:\n%s", res.IR)
 	}
 }
 
@@ -1845,10 +1845,10 @@ def g():
 print(g())
 `)
 	// identity decorator resolves to the body: calls go to @g_impl, @g_ptr = @g_impl
-	if !strings.Contains(ir, "@g_ptr = internal global i32()* @g_impl") {
+	if !strings.Contains(ir, "@g_ptr = internal global i32()* @gy_g_impl") {
 		t.Fatalf("identity decorator @f_ptr should point at @g_impl:\n%s", ir)
 	}
-	if !strings.Contains(ir, "call i32 @g_impl(") {
+	if !strings.Contains(ir, "call i32 @gy_g_impl(") {
 		t.Fatalf("identity-decorated call should go to @g_impl:\n%s", ir)
 	}
 }
@@ -1910,7 +1910,7 @@ print(a.speak())
 	if !strings.Contains(ir, "switch i32") {
 		t.Fatalf("expected dynamic dispatch switch, got:\n%s", ir)
 	}
-	if !strings.Contains(ir, "@Animal_speak") || !strings.Contains(ir, "@Dog_speak") {
+	if !strings.Contains(ir, "@gy_Animal_speak") || !strings.Contains(ir, "@gy_Dog_speak") {
 		t.Fatalf("expected both speak targets in dispatch, got:\n%s", ir)
 	}
 }

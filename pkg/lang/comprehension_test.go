@@ -23,7 +23,7 @@ func compileSrcIR(t *testing.T, src string) string {
 
 func TestRuntimeComprehensionBindsTheLoopVariable(t *testing.T) {
 	mod := compileSrcIR(t, "def sq(n):\n    return n * n\n\nprint([sq(n) for n in range(4)])\n")
-	for _, want := range []string{"call i32 @rt_alloc(i32 1)", "call void @rt_append_tagged(", "call i32 @sq("} {
+	for _, want := range []string{"call i32 @rt_alloc(i32 1)", "call void @rt_append_tagged(", "call i32 @gy_sq("} {
 		if !strings.Contains(mod, want) {
 			t.Fatalf("runtime comprehension missing %q:\n%s", want, mod)
 		}
@@ -53,12 +53,12 @@ func TestComprehensionOverContainerVariableIsARealLoop(t *testing.T) {
 
 func TestComprehensionFilterBranchesPerItem(t *testing.T) {
 	mod := compileSrcIR(t, "def even(n):\n    return n % 2 == 0\n\nprint([x for x in range(6) if even(x)])\n")
-	for _, want := range []string{"comp.cond", "comp.item", "comp.skip", "call i32 @even("} {
+	for _, want := range []string{"comp.cond", "comp.item", "comp.skip", "call i32 @gy_even("} {
 		if !strings.Contains(mod, want) {
 			t.Fatalf("filtered comprehension missing %q:\n%s", want, mod)
 		}
 	}
-	if strings.Count(mod, "call i32 @even(") < 6 {
+	if strings.Count(mod, "call i32 @gy_even(") < 6 {
 		t.Fatal("the filter runs once per item — unrolling keeps that visible")
 	}
 }

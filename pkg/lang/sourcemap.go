@@ -50,9 +50,14 @@ func GenerateSourceMap(prog *Program, ir string) ([]byte, error) {
 
 	entries := []SourceMapEntry{}
 	for _, fn := range fns {
-		sym := fn.name
+		// The map's `name` is what the program wrote; `symbol` is what the linker sees —
+		// the emitted name, prefix and all (Gap R.4, ADR 0198). Building it here through
+		// the same helper codegen mints symbols with is what keeps the two halves of the
+		// map pointed at the same function; a hand-written concatenation would silently
+		// look up `f` in a module that only contains `gy_f` and report no IR line.
+		sym := irSymbol(fn.name)
 		if fn.class != "" {
-			sym = fn.class + "_" + fn.name
+			sym = irSymbol(fn.class + "_" + fn.name)
 		}
 		e := SourceMapEntry{
 			Name:   fn.name,
