@@ -1,0 +1,36 @@
+# Oracle probe (L11.9) — an operator applied to operands it cannot apply used to answer a
+# number: `print("a" * "b")` printed 1099516870662 and exited 0 (Gap R.26, ADR 0215). Each
+# arm below is the exception CPython raises, with CPython's wording; the interpreter and
+# CPython agree line for line. The compiled backend refuses most of these at compile time,
+# but answers `1 + None` with a value (roadmap Gap R.27), so the compiled leg is absent.
+try:
+    print("a" * "b")
+except TypeError:
+    print("mul-str ok")
+
+try:
+    print(1 - "a")
+except TypeError:
+    print("sub ok")
+
+try:
+    print("a" / 2)
+except TypeError:
+    print("div ok")
+
+try:
+    print(1 + None)
+except TypeError:
+    print("none ok")
+
+try:
+    print([1] + 1)
+except TypeError:
+    print("concat ok")
+
+try:
+    print("a" < 1)
+except TypeError:
+    print("order ok")
+
+print("done")

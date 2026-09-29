@@ -758,7 +758,7 @@ func NewEvaluator() *Evaluator {
 	// integer literal values (which are stored raw in lists, dict keys, vars).
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
-	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: 1 << 20, fnName: "<module>", gcThreshold: gcAllocThresholdDefault, gcStress: gcEnvStress()}
+	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: heapIDBase, fnName: "<module>", gcThreshold: gcAllocThresholdDefault, gcStress: gcEnvStress()}
 	ev.noneVal = ev.allocObj("none")
 	return ev
 }
@@ -2050,17 +2050,33 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			}
 		}
 	}
+	// The gate decides whether this operator may be applied to *these* values at all
+	// (ADR 0215). It sits after dunder dispatch, so an operand class that defines the
+	// operation still performs it, and before every arithmetic path.
+	if err := e.checkBinOp(n.Op, l, r); err != nil {
+		return 0, err
+	}
 	switch n.Op {
 	case "+":
+		// str + str concatenates; list + list concatenates (both were handle arithmetic
+		// before, which printed a heap id where the elements should have been).
 		if lo, ok := e.heap[l]; ok && lo.kind == "str" {
-			rs := e.strOf(r)
-			if rs == "" {
-				return 0, &EvalError{Msg: "cannot concatenate string and non-string"}
+			ro, ok2 := e.heap[r]
+			if !ok2 || ro.kind != "str" {
+				return 0, cannotConcat("str", e.operandKind(r))
 			}
-			return e.allocStr(lo.sval + rs), nil
+			return e.allocStr(lo.sval + ro.sval), nil
 		}
-		if ro, ok := e.heap[r]; ok && ro.kind == "str" {
-			return 0, &EvalError{Msg: "cannot concatenate non-string and string"}
+		if lo, ok := e.heap[l]; ok && lo.kind == "list" {
+			ro, ok2 := e.heap[r]
+			if !ok2 || ro.kind != "list" {
+				return 0, cannotConcat("list", e.operandKind(r))
+			}
+			h := e.allocObj("list")
+			dst := e.heap[h]
+			dst.elems = append(dst.elems, lo.elems...)
+			dst.elems = append(dst.elems, ro.elems...)
+			return h, nil
 		}
 		if lf, ok := e.floatOf(l); ok {
 			rf, rfok := e.floatOf(r)
@@ -2086,6 +2102,15 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return l - r, nil
 	case "*":
+		// Sequence repeat: `"ab" * 2`, `3 * [1]`. CPython allows either operand order and a
+		// negative count yields empty, not an error; the gate has already established that
+		// one side is a sequence and the other is an int, or that both are numeric.
+		if lk := e.operandKind(l); lk == "str" || lk == "list" {
+			return e.repeatSequence(lk, l, r)
+		}
+		if rk := e.operandKind(r); rk == "str" || rk == "list" {
+			return e.repeatSequence(rk, r, l)
+		}
 		if lf, ok := e.floatOf(l); ok {
 			rf, rfok := e.floatOf(r)
 			if !rfok {
@@ -2196,90 +2221,22 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			return 0, nil
 		}
 		return 1, nil
-	case "<":
-		if lf, ok := e.floatOf(l); ok {
-			rf, rfok := e.floatOf(r)
-			if !rfok {
-				rf = float64(r)
-			}
-			if lf < rf {
-				return 1, nil
-			}
+	case "<", "<=", ">", ">=":
+		// Ordered comparison, one body for the four operators. ordVal owns the question
+		// "may these two values be ordered at all" and raises the TypeError when they may
+		// not, so the rule lives with the ordering rather than being split between a gate
+		// and each operator.
+		if lf, ok := e.floatOf(l); ok && math.IsNaN(lf) {
+			return 0, nil // every ordered comparison with NaN is false, `<=` included
+		}
+		if rf, ok := e.floatOf(r); ok && math.IsNaN(rf) {
 			return 0, nil
 		}
-		if rf, ok := e.floatOf(r); ok {
-			if float64(l) < rf {
-				return 1, nil
-			}
-			return 0, nil
+		ord, err := e.ordVal(n.Op, l, r)
+		if err != nil {
+			return 0, err
 		}
-		if l < r {
-			return 1, nil
-		}
-		return 0, nil
-	case "<=":
-		if lf, ok := e.floatOf(l); ok {
-			rf, rfok := e.floatOf(r)
-			if !rfok {
-				rf = float64(r)
-			}
-			if lf <= rf {
-				return 1, nil
-			}
-			return 0, nil
-		}
-		if rf, ok := e.floatOf(r); ok {
-			if float64(l) <= rf {
-				return 1, nil
-			}
-			return 0, nil
-		}
-		if l <= r {
-			return 1, nil
-		}
-		return 0, nil
-	case ">":
-		if lf, ok := e.floatOf(l); ok {
-			rf, rfok := e.floatOf(r)
-			if !rfok {
-				rf = float64(r)
-			}
-			if lf > rf {
-				return 1, nil
-			}
-			return 0, nil
-		}
-		if rf, ok := e.floatOf(r); ok {
-			if float64(l) > rf {
-				return 1, nil
-			}
-			return 0, nil
-		}
-		if l > r {
-			return 1, nil
-		}
-		return 0, nil
-	case ">=":
-		if lf, ok := e.floatOf(l); ok {
-			rf, rfok := e.floatOf(r)
-			if !rfok {
-				rf = float64(r)
-			}
-			if lf >= rf {
-				return 1, nil
-			}
-			return 0, nil
-		}
-		if rf, ok := e.floatOf(r); ok {
-			if float64(l) >= rf {
-				return 1, nil
-			}
-			return 0, nil
-		}
-		if l >= r {
-			return 1, nil
-		}
-		return 0, nil
+		return boolVal(orderedBy(n.Op, ord)), nil
 	case "and":
 		if e.truthy(l) && e.truthy(r) {
 			return 1, nil
@@ -4225,26 +4182,7 @@ func exnError(exnType, msg string) *EvalError {
 // its class name, so `'int' object is not subscriptable` reads here the way it reads in the
 // reference implementation. A trap the user cannot grep for is a trap they cannot learn.
 func (e *Evaluator) valueTypeName(v int64) string {
-	o, ok := e.heap[v]
-	if !ok {
-		return "'int'"
-	}
-	switch o.kind {
-	case "none":
-		return "'NoneType'"
-	case "instance":
-		if o.class == "" {
-			return "'object'"
-		}
-		return "'" + o.class + "'"
-	case "closure", "method", "function":
-		return "'function'"
-	case "class":
-		return "'type'"
-	case "float":
-		return "'float'"
-	}
-	return "'" + o.kind + "'"
+	return "'" + e.operandKind(v) + "'"
 }
 
 // classDisplayName recovers the name a class object was defined with, for the AttributeError
@@ -4272,6 +4210,223 @@ func unpackArityErr(want, got int) error {
 		return exnError("ValueError", fmt.Sprintf("not enough values to unpack (expected %d, got %d)", want, got))
 	}
 	return exnError("ValueError", fmt.Sprintf("too many values to unpack (expected %d)", want))
+}
+
+// operandKind names a value's runtime type the way an exception message names it: `int`, `float`,
+// `str`, `list`, `NoneType`, and for an instance its class name. An unboxed value with no heap
+// object is an integer — the representation's only untagged kind, and sound here because heap
+// handles start above every value a literal writes.
+func (e *Evaluator) operandKind(v int64) string {
+	o, ok := e.heap[v]
+	if !e.isHandle(v) || !ok {
+		return "int"
+	}
+	switch o.kind {
+	case "none":
+		return "NoneType"
+	case "instance":
+		if o.class != "" {
+			return o.class
+		}
+		return "object"
+	case "closure", "method", "function":
+		return "function"
+	case "class":
+		return "type"
+	}
+	return o.kind
+}
+
+// unsupportedOperand, unsupportedCompare and cannotConcat are the three shapes an operator refusal
+// takes in the reference implementation. They are functions rather than inline strings because the
+// wording is a contract: it is what a user searches for, and what the tests compare against the
+// oracle's output (ADR 0215).
+func unsupportedOperand(op, leftKind, rightKind string) error {
+	return exnError("TypeError", fmt.Sprintf("unsupported operand type(s) for %s: '%s' and '%s'", op, leftKind, rightKind))
+}
+
+func unsupportedCompare(op, leftKind, rightKind string) error {
+	return exnError("TypeError", fmt.Sprintf("'%s' not supported between instances of '%s' and '%s'", op, leftKind, rightKind))
+}
+
+func cannotConcat(kind, otherKind string) error {
+	return exnError("TypeError", fmt.Sprintf("can only concatenate %s (not %q) to %s", kind, otherKind, kind))
+}
+
+// checkBinOp decides whether an operator may be applied to *these* values at all. Before it, the
+// operator switch never consulted operand kinds: a heap handle that reached an arithmetic path was
+// multiplied or added as an integer, so `print("a" * "b")` answered 1099516870662 and `print(1 +
+// None)` answered 1048578 — numbers no expression in the program denotes, printed with exit 0.
+// Raising is the only acceptable answer for an operator the operands do not support (ADR 0212,
+// ADR 0215). Ordered comparisons are not in this table: ordVal owns them, errors included.
+func (e *Evaluator) checkBinOp(op string, l, r int64) error {
+	lk, rk := e.operandKind(l), e.operandKind(r)
+	numeric := func(k string) bool { return k == "int" || k == "float" }
+	sequence := func(k string) bool { return k == "str" || k == "list" }
+	switch op {
+	case "+":
+		switch {
+		case numeric(lk) && numeric(rk), lk == "str" && rk == "str", lk == "list" && rk == "list":
+			return nil
+		case lk == "str" || lk == "list":
+			// Python distinguishes "you handed me the wrong right-hand side" from "this
+			// operator does not apply", and the first message names the type you should
+			// have passed.
+			return cannotConcat(lk, rk)
+		default:
+			return unsupportedOperand(op, lk, rk)
+		}
+	case "-", "/", "//", "**":
+		if numeric(lk) && numeric(rk) {
+			return nil
+		}
+		// The reference names `**` by both spellings, because the same operation is reachable
+		// as pow(); the message names both so a search finds whichever the user typed.
+		if op == "**" {
+			return unsupportedOperand("** or pow()", lk, rk)
+		}
+		return unsupportedOperand(op, lk, rk)
+	case "*":
+		if numeric(lk) && numeric(rk) {
+			return nil
+		}
+		if (sequence(lk) && rk == "int") || (sequence(rk) && lk == "int") {
+			return nil
+		}
+		if sequence(lk) || sequence(rk) {
+			other := rk
+			if !sequence(lk) {
+				other = lk
+			}
+			return exnError("TypeError", fmt.Sprintf("can't multiply sequence by non-int of type '%s'", other))
+		}
+		return unsupportedOperand(op, lk, rk)
+	case "%":
+		if numeric(lk) && numeric(rk) {
+			return nil
+		}
+		if lk == "str" {
+			// `%` on a string is interpolation, which the language does not have yet (roadmap
+			// Gap R.31). CPython's own message is reproduced for the shape it would also
+			// reject; where Python would have formatted something we still raise, and that
+			// divergence is pinned in programs/probe_percent_format.gy rather than hidden.
+			if o := e.heap[l]; o != nil && !strings.Contains(o.sval, "%") {
+				return exnError("TypeError", "not all arguments converted during string formatting")
+			}
+			return unsupportedOperand(op, lk, rk)
+		}
+		return unsupportedOperand(op, lk, rk)
+	}
+	// `==`, `!=`, `in`, `not in`, `is`, `is not`, `and`, `or` are total: they compare or
+	// short-circuit, they do not compute, so there is no operand type they can refuse.
+	return nil
+}
+
+// repeatSequence is `seq * n` for a str or a list, in either operand order. A negative or absent
+// count is empty rather than an error, as in the reference implementation; a non-int count is the
+// TypeError that names the count's type.
+func (e *Evaluator) repeatSequence(kind string, seq, count int64) (int64, error) {
+	src := e.heap[seq]
+	if src == nil {
+		return 0, exnError("TypeError", "can't multiply sequence by non-int of type '"+e.operandKind(count)+"'")
+	}
+	if _, ok := e.heap[count]; ok {
+		return 0, exnError("TypeError", "can't multiply sequence by non-int of type '"+e.operandKind(count)+"'")
+	}
+	if count <= 0 {
+		if kind == "str" {
+			return e.allocStr(""), nil
+		}
+		return e.allocObj("list"), nil
+	}
+	if kind == "str" {
+		return e.allocStr(strings.Repeat(src.sval, int(count))), nil
+	}
+	h := e.allocObj("list")
+	dst := e.heap[h]
+	for i := int64(0); i < count; i++ {
+		dst.elems = append(dst.elems, src.elems...)
+	}
+	return h, nil
+}
+
+// ordVal orders two values the language can order: two numbers, two strings, or two lists compared
+// element by element, longer winning ties. Anything else is the reference implementation's
+// TypeError, including the nested case nobody tests — `[1] < ["a"]` — because a list whose elements
+// cannot be ordered has not earned an answer.
+func (e *Evaluator) ordVal(op string, a, b int64) (int, error) {
+	ao, aok := e.heap[a]
+	bo, bok := e.heap[b]
+	aNum := !aok || ao.kind == "float"
+	bNum := !bok || bo.kind == "float"
+	if aNum && bNum {
+		af, _ := e.floatOf(a)
+		bf, _ := e.floatOf(b)
+		if !aok {
+			af = float64(a)
+		}
+		if !bok {
+			bf = float64(b)
+		}
+		switch {
+		case af < bf:
+			return -1, nil
+		case af > bf:
+			return 1, nil
+		}
+		return 0, nil
+	}
+	if aok && bok && ao.kind == "str" && bo.kind == "str" {
+		return strings.Compare(ao.sval, bo.sval), nil
+	}
+	if aok && bok && ao.kind == "list" && bo.kind == "list" {
+		n := len(ao.elems)
+		if len(bo.elems) < n {
+			n = len(bo.elems)
+		}
+		for i := 0; i < n; i++ {
+			c, err := e.ordVal(op, ao.elems[i], bo.elems[i])
+			if err != nil {
+				return 0, err
+			}
+			if c != 0 {
+				return c, nil
+			}
+		}
+		switch {
+		case len(ao.elems) < len(bo.elems):
+			return -1, nil
+		case len(ao.elems) > len(bo.elems):
+			return 1, nil
+		}
+		return 0, nil
+	}
+	return 0, unsupportedCompare(op, e.operandKind(a), e.operandKind(b))
+}
+
+// orderedBy is the one mapping from a three-way comparison to the four order operators; sharing it
+// is what keeps `<=` from drifting out of agreement with `<`, which is how the pair ended up
+// contradicting each other in the compiled backend.
+func orderedBy(op string, cmp int) bool {
+	switch op {
+	case "<":
+		return cmp < 0
+	case "<=":
+		return cmp <= 0
+	case ">":
+		return cmp > 0
+	case ">=":
+		return cmp >= 0
+	}
+	return false
+}
+
+// boolVal is the language's boolean: 1 and 0, printed as such.
+func boolVal(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // zeroDivisionErr is the one place the arithmetic traps are raised. The sites used to build

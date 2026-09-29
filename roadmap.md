@@ -2050,19 +2050,57 @@ equals CPython on all five handler lines; the shapes AOT will not lower stay hon
 in the matrix while R.19 and R.26 stay open.
 
 
-### R.26 — `"a" * "b"` answers a number instead of raising (OPEN, both backends)
+### R.26 — operators answered a number for operands they cannot apply (CLOSED, ADR 0215)
 
 ```gusty
-print("a" * "b")     # interpreter: 1099516870662, exit 0 · compiled: refused · CPython: TypeError
+print("a" * "b")   # was 1099516870662, exit 0
+print(1 + None)   # was 1048578, exit 0
+print([1] + 1)    # was 2097157, exit 0
 ```
 
-A silent wrong answer from the interpreter: the operand kind test is missing and the multiply
-proceeds on the interned-index representation of the right-hand string, printing whatever number
-came out — no report, no failure, exit 0. CPython raises `TypeError: can't multiply sequence by
-non-int of type 'str'`, and the compiled backend refuses the shape (an honest refusal, which is why
-this is a divergence rather than a crash). Fix with the same rule as R.25 — a typed `TypeError` at
-the operand check — and it should be found by sweeping every operator for the same missing test,
-not just this operator.
+Measured as a matrix before anything was written — 23 mistyped shapes and 30 legal ones, each run
+on the interpreter, the compiled backend and CPython — and it came back with three defects rather
+than one, all from the same root: `evalBin` never consulted an operand's kind, so a heap handle
+that reached an arithmetic path was added or multiplied as an integer.
+
+1. Every mistyped pair answered a number (this row).
+2. **Legal programs answered numbers too**: `[1] + [2]` was `2097157`, `[1] * 3` was `3145734`,
+   `"ab" * 2` was `2097156`. List concatenation and sequence repeat simply did
+   not exist. A refusal-only gate would have made these worse — refusing a program the reference
+   runs is still a divergence — so the rule shipped with the missing operations.
+3. Ordered comparison compared handles, so `"a" < "b"` was a question about allocation order.
+
+Now: `checkBinOp` after dunder dispatch and before every arithmetic path; the reference's four
+refusal message shapes; 22 shapes byte-identical to CPython, asserted by running `python3` rather
+than by pasting strings; sequence repeat and concatenation computing real values (negative and zero
+counts empty, either operand order); ordering by value for strings and lists including the nested
+`[1] < ["a"]` raise; `==`/`in`/`is` deliberately outside the gate, with a test that they stay total.
+`"a" + ""` is in the test table on purpose — the old path used "the string is empty" as the test for
+"the operand is not a string".
+
+Two things this exposed, both fixed here:
+
+- **The interpreter's untagged values.** Heap handles started at `1 << 20`, so a loop computing
+  `i * i` reached the object space: at `i = 1024`, `self.x * self.x` is `1048576`, the bench
+  accumulator reached `1048580`, which *was* the class's own method object, and `s + p.norm()` read
+  as int-plus-method. Correct to ~1000 iterations, wrong past that. `heapIDBase` is now `1 << 48`,
+  and `isHandle` is the single predicate answering "is this value an object?" for the collector, the
+  gate and every kind test — two answers to that question is how a value becomes an int to one
+  subsystem and a method to another. Tags are still the real answer (L11.1); the regression test
+  computes its expectation in Go, so a reintroduced collision cannot hide behind the language's own
+  arithmetic.
+- **The property generator could not fail.** It bound a list to a name and read that name as an
+  operand of `+` (`v1 = [1, 7, 6, 3, 4]` … `v2 = 9 + v1`), while its own test promises every
+  generated program runs cleanly. The promise had been untrue all along because nothing could make
+  it false. The generator now records the kind of each binding and reads a name only where that kind
+  is accepted.
+
+Pinned by `pkg/lang/operator_operand_test.go` (refusals, totals, sequence values, the collision
+regressions) and `integration/operator_operand_test.go` (report lines against a real `python3`, the
+parity program, compiled-leg honesty), with `programs/sequence_ops.gy` and
+`programs/probe_operand_types.gy` keeping both halves in the matrix. The compiled half is R.27 and
+R.33.
+
 
 ### R.22 — a function returning a float on one path and a string on another emits invalid IR (OPEN, L11.8 violation)
 
@@ -2104,6 +2142,93 @@ ADR 0210 emits bounds tests and ADR 0212 emits division guards: a member test pl
 promote `programs/probe_builtin_traps_untyped.gy` and delete
 `TestCompiledMissingAttributeIsStillAGap` in `integration/builtin_trap_classes_test.go`, which exists
 only to say out loud what to remove.
+
+
+### R.27 — operators never consulted operand kinds (OPEN, compiled half)
+
+Measured as a matrix, not as one anecdote — see R.26 for the interpreter half, closed by ADR 0215.
+The compiled backend answers a number for two shapes where a heap handle reaches arithmetic:
+
+| program | `--aot` prints | CPython |
+|---------|----------------|---------|
+| `print(1 + None)` | `1` | `TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'` |
+| `print(None * 2)` | `0` | `TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'` |
+
+Every other mistyped pair is a compile-time refusal there (exit 1, `codegen: …`), which is honest.
+What is missing is the runtime guard ADR 0212 and ADR 0215 ask for: test the operand kinds the
+static type cannot pin down and `raiseTo(exnCode("TypeError"), …)` rather than fold. Fix with the
+same `branchRaise`/`raiseTo` machinery the division guards use, and promote
+`programs/probe_operator_operand_types.gy`.
+
+### R.28 — `%` truncates toward zero instead of flooring (OPEN, both backends)
+
+```gusty
+print(-7 % 2)   # both backends: -1      CPython: 1
+print(7 % -2)   # both backends: 1      CPython: -1
+```
+
+`//` was fixed to floor (ADR 0212's neighbourhood) but `%` was not given its counterpart, and the
+two must move together: Python's invariant is `a == (a // b) * b + (a % b)`, so a truncating `%`
+also implies a truncating `//` somewhere. One rule, both backends, and the invariant as a test over
+a grid of signs — the invariant catches the pair in one assertion where per-case outputs catch each
+half separately.
+
+### R.29 — `1 == 1.0` is false, and the two backends disagree about it (OPEN, both backends)
+
+```gusty
+print(1 == 1.0)          # interpreter: 0    compiled: 1    CPython: True
+print({"a": 1} == {"a": 1})   # both: 1 (handle comparison)   CPython: True
+```
+
+The interpreter compares an int handle against a float object pointer, so an int never equals the
+float with the same value; the compiled path happens to answer `1`, which is not the same
+implementation agreeing twice but two different wrongs. Containers compare by handle too. One rule:
+`==` compares numeric values across int/float, and compares containers element-wise; everything else
+compares identity. Test both backends against CPython on the same grid, because "the backends agree"
+was exactly what hid this.
+
+### R.30 — the compiled backend truncates `//` toward zero (OPEN, compiled backend)
+
+```gusty
+print(-7 // 2)   # interpreter: -4    compiled: -3    CPython: -4
+```
+
+The interpreter has the floor correction (`math.Floor` on the quotient); the emitted IR does a plain
+`sdiv`, which truncates. One operator, two answers, one source. Fix in codegen with the same floor
+correction and pin `-7 // 2`, `7 // -2`, `-7 // -2` together so the sign combinations cannot drift
+apart.
+
+### R.31 — `%` on a string is not formatting (OPEN, feature)
+
+```gusty
+print("%s" % 2)          # interpreter: 0      CPython: 2
+print("%d-%d" % (1, 2))  # interpreter: %d-%d  CPython: 1-2
+```
+
+String interpolation with the format operator is a feature, not a bug, and the interpreter currently
+returns the left operand (or 0) instead. Until it exists, mistyped `%` raises (ADR 0215) and these
+two shapes stay pinned as `programs/probe_percent_format.gy` so the gap keeps a measured output
+rather than a memory.
+
+
+
+### R.33 — the compiled backend cannot lower sequence operations (OPEN, compiled backend)
+
+```gusty
+print([1] + [2])   # llc rejects the module: "global variable reference must have pointer type"
+print([1] * 3)     # same
+print("ab" * 2)    # honest refusal: `operator "*" on a string is not supported in the AOT backend`
+print("a" < "b")   # honest refusal
+```
+
+The interpreter now computes all four (ADR 0215); the codegen path emits `%t1 = add i32 @.lst1,
+@.lst2` for list concatenation — a `TypeError` waiting in the IR, which `llc` correctly refuses, so
+the CLI reports the compiler-bug class (exit 2) rather than answering. Same signature as Gap R.16's
+`store i32 @.str1`. Fix: the list/str runtime helpers (length, element copy, repeat) behind the same
+operand-kind dispatch the interpreter uses, so one rule decides both backends. Until then
+`programs/sequence_ops.gy` stays a debt row, and `TestCompiledSequenceOpsNeverAnswerWrong` allows a
+refusal or a verification failure but never a wrong value.
+
 
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)

@@ -1,0 +1,24 @@
+# Sequence operations are what the operand-kind rule (ADR 0215) makes legal: a str or a
+# list repeated by an int (in either operand order), two lists concatenated, and two
+# values of the same kind ordered by value. Each line agrees with CPython in the
+# interpreter. The compiled backend refuses `str * int` and emits an invalid module for
+# list concatenation (roadmap Gap R.33), so the compiled leg does not complete.
+print([1] + [2])
+print([1] + [2] + [3])
+print([1] * 3)
+print(3 * [1])
+print("ab" * 2)
+print(2 * "ab")
+print("ab" * 0)
+print("ab" * -1)
+print([1] * 0)
+# Ordered comparison compares values, not handles. The result is tested rather than
+# printed: this language renders a boolean as 1 or 0, which is a separate documented
+# divergence, and what is pinned here is whether the ordering itself is right.
+if "a" < "b":
+    print("str ordered")
+if [1, 2] < [2]:
+    print("list ordered")
+if [2] < [1, 2]:
+    print("wrong")
+print(len([1, 2, 3]) * 2)

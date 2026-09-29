@@ -190,6 +190,8 @@ func conformanceProbes() []lang.ConformanceCase {
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
+		"sequence_ops",                // Gap R.26 — sequence repeat/concat/order are operands, not handles
+		"probe_operand_types",         // Gap R.26 — an operator applied to the wrong operands
 		"probe_unicode",               // L11.5 — strings are bytes, not code points
 		"probe_string_index",          // L11.5 — s[i] is a byte value, not a character
 		"probe_math_const",            // L11.6 — a stdlib float constant folds to int
@@ -374,6 +376,16 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
 		ref:    "roadmap L11.3 (tuples are values)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n2\n3\n4\n5\n[1, 2]\n"}, {Backend: "aot", Missing: true}}},
+
+	"programs/sequence_ops": {oracle: lang.OracleDebt,
+		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
+		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n"}, {Backend: "aot", Missing: true}}},
+
+	"programs/probe_operand_types": {oracle: lang.OracleDebt,
+		reason: "the interpreter and CPython agree on all seven handler lines, but the compiled backend answers `1 + None` with a value instead of raising and refuses the rest at compile time, so the compiled leg never completes",
+		ref:    "roadmap Gap R.27 (operand kinds unchecked in the compiled backend); ADR 0215",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "mul-str ok\nsub ok\ndiv ok\nnone ok\nconcat ok\norder ok\ndone\n"}, {Backend: "aot", Missing: true}}},
 
 	"programs/probe_builtin_traps_untyped": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all five handler lines, but the compiled backend answers the missing-attribute case with a value instead of raising (Gap R.19) and refuses the others at compile time with prose diagnostics, so the compiled leg never completes",

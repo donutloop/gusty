@@ -37,6 +37,20 @@ import (
 // collector knows exactly which stack slots hold handles (see codegen.go,
 // @gc.kinds and rt_gc).
 
+// heapIDBase is the first heap id the interpreter hands out, and therefore the
+// line between "an integer the program computed" and "an object the interpreter
+// made". It is not a tuning knob. Values are an untagged int64 until roadmap
+// L11.1 gives the language real tagged values, so an integer that happens to
+// equal a live object id is read back as that object — and the first consumer to
+// *depend* on the difference found the collision in ordinary code: a bench loop
+// computing i*i reached 1<<20 exactly, and `self.x * self.x + self.y * self.y`
+// came back as the class's own method object. At 1<<48 the window is far outside
+// anything arithmetic produces (a squared loop counter reaching it would need
+// 168 million iterations, past the point where the loop itself is the problem),
+// and one predicate — isHandle below — decides handle-ness for the collector and
+// for operator dispatch, so the two can never disagree about what a value is.
+const heapIDBase = 1 << 48
+
 // gcAllocThresholdDefault is how many heap allocations may accumulate before a
 // statement boundary triggers a collection. It is a constant, not a clock or a
 // heuristic: two runs of one program collect at exactly the same statements,
@@ -248,6 +262,10 @@ func (e *Evaluator) popRoots(cookie int) {
 // isHandle reports whether v names a live heap object, as opposed to a raw
 // immediate (ints, bools and offsets are stored unboxed). Precise rooting
 // starts here: the collector asks instead of guessing.
+// isHandle is the interpreter's one answer to "is this value an object?". Operator
+// dispatch (evalBin's gate), the collector's root set and every kind test go through
+// it, because two answers to that question is how a value ends up being an int to one
+// subsystem and a method object to another.
 func (e *Evaluator) isHandle(v int64) bool {
 	if v <= 0 {
 		return false

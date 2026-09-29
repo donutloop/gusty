@@ -3481,3 +3481,43 @@ helper now runs the built binary. Lesson kept: *assert exit codes on the real ar
 exactly this, and a helper quietly violating it is how the rule stops being enforced); and when a test
 disagrees with the system under test, check what the harness is standing in front of before changing
 the system.
+
+## Cycle 163 — Gap R.26: an operator is a question about two runtime kinds (ADR 0215)
+
+- **Measure as a matrix, not an anecdote.** The recorded gap was one line: `"a" * "b"` prints
+  `1099516870662`. I ran 23 mistyped shapes *and 30 legal ones* through all three engines instead of
+  patching that one, and it came back as five defects: every mistyped pair answered a number; several
+  **legal** programs answered numbers too (`[1] + [2]` → `2097157`, `"ab" * 2` → `2097156` — list
+  concat and sequence repeat did not exist); `<` compared handles; the property generator emitted
+  programs the language refuses; and the value representation itself had a hole. One-line gaps are
+  usually the visible end of a rule nobody wrote.
+- **A refusal-only fix can make a language worse.** The tempting patch was "check kinds, raise
+  TypeError". Run against the legal table it refuses `[1] + [2]`, which CPython answers with
+  `[1, 2]` — trading a wrong number for an unfounded error. So the gate shipped with the missing
+  operations, and the legal table is now a test (`TestSequenceOperationsCompute`), not a suggestion.
+  Whenever a fix is "start refusing", the same sweep must ask what it refuses that should work.
+- **I suspected the GC and was wrong; the measurement was the correction.** The bench failure appeared
+  past ~1000 iterations, which reads like a collector threshold. One test with collection disabled
+  reproduced it identically — so the theory was dead in a minute, and an operand dump (`x*x =
+  1048576`) produced the real answer two minutes later. The lesson is the shape of the debugging:
+  *print the value, not your hypothesis*. And the value was right where a loop counter squared could
+  reach it: heap handles began at `1 << 20`, so `i*i` walked into the object space and the program
+  read back its own class's method object.
+- **One predicate per ontology question.** `operandKind` asked `e.heap[v]`; the collector asked
+  `isHandle(v)`. Two answers to "is this value an object?" is precisely how a value becomes an int to
+  one subsystem and a method to another. Now everything asks `isHandle`, and `heapIDBase` is a named
+  constant with a comment saying it is a contract, not a knob.
+- **A corpus that cannot fail is not a test.** The property generator had been producing
+  `v1 = [1, 7, 6, 3, 4]` … `v2 = 9 + v1` while its own test promised every generated program runs
+  cleanly. The promise was only ever unbreakable because nothing checked operands. After the gate it
+  failed on the first try. When a generator/fixture suite has never once complained, ask what would
+  make it complain — and if the answer is "nothing", it is decoration.
+- **Message parity means running the reference.** 22 trap messages now match CPython character for
+  character, and the integration test asserts that by executing `python3` and diffing the report line.
+  Pasting strings into a test would have preserved my wording, including two I had wrong
+  (`** or pow()`, and no colon before the type in the sequence message) until the diff said so.
+- **Discipline kept:** five new gaps (R.27 compiled operand checks, R.28 `%` truncation, R.29
+  `1 == 1.0`, R.30 compiled `//` truncation, R.31 `%` formatting) were recorded with measured repros
+  and left alone, because each is its own rule. The two that this commit *had* to fix — the collision
+  and the generator — are recorded in the commit and the ADR as exposures, not as separate features:
+  the gate did not cause them, it made them visible.

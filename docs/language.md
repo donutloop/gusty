@@ -930,12 +930,17 @@ match p:
 - Float literals, bool literals (`true`/`false`), `none`, string literals.
 - `Name` reads a variable (fresh SSA load per read for dominance safety).
 - `BinOp` arithmetic (`+`, `-`, `*`, `/`, `//`, `%`) and comparisons (`<`, `==`, ...).
+  An operator is a question about two runtime **kinds**, and a pair it has no rule for is a
+  `TypeError`, never a number (see *Operand kinds* below).
 - `and` / `or` are boolean operators: both operands are evaluated and the
   result is a `0`/`1` integer (`and` is 1 iff both are non-zero, `or` is 1 iff
   either is non-zero). Lowered in the AOT codegen to i1 logic zero-extended to
-  `i32`, mirroring the interpreter. `//` floor division lowers to `sdiv`, and
-  `%` modulo lowers to `srem` (signed remainder) — both in the interpreter and
-  the AOT runtime path; modulo on constant operands folds at compile time.
+  `i32`, mirroring the interpreter. On constant operands, `%` folds at compile
+  time. Note an unresolved divergence the operand rule made visible: the
+  interpreter floors (`-7 // 2` is `-4`, `-7 % 2` is `1`, as in Python) while the
+  compiled backend emits a plain `sdiv`/`srem`, which truncate (`-3`, `-1`). That
+  is roadmap Gap R.30 for `//` and Gap R.28 for `%` — the pair must move together,
+  because Python's invariant is `a == (a // b) * b + (a % b)`.
 - `Call` to user functions or builtins (`print`, `range`).
 - Attribute access (`obj.attr`) and indexing are parsed for future features.
 
@@ -970,6 +975,63 @@ a container slot writes its tag with it (ADR 0187), including the builders a cal
 - `!=` is the negation of `==`. It used to be a separate, unreflective handle comparison, which
   made `[1] == [1]` and `[1] != [1]` agree — both False.
 
+
+### Operand kinds
+
+An operator is a question about **two runtime kinds**. If the language has no rule for the pair it
+raises `TypeError`; it never answers with a value. Before this rule the interpreter consulted no
+operand kind at all, so a heap handle that reached an arithmetic path was added or multiplied as an
+integer, and each of these printed a number and exited 0:
+
+```python
+print("a" * "b")           # was 1099516870662
+print(1 + None)            # was 1048578
+print([1] + 1)             # was 2097157
+print({"a": 1} + {"b": 2}) # was 2097157
+print("a" < 1)             # was 0
+```
+
+Each is now a `TypeError`, and the wording is the reference implementation's character for character —
+the tests run a real `python3` and compare the report line rather than trusting a remembered string
+(ADR 0215). Four shapes of refusal exist, and which one you get follows what the reference says, not
+which internal branch noticed:
+
+| situation | message |
+|-----------|---------|
+| the operator does not apply to these kinds | `unsupported operand type(s) for -: 'int' and 'str'` |
+| a sequence got a non-int on the other side of `*` | `can't multiply sequence by non-int of type 'float'` |
+| a sequence got the wrong kind on the right of `+` | `can only concatenate list (not "int") to list` |
+| an order operator on unorderable kinds | `'<' not supported between instances of 'str' and 'int'` |
+| a `%` format string with nothing to convert | `not all arguments converted during string formatting` |
+
+`==`, `!=`, `in`, `not in`, `is` and `is not` are total — they compare, they do not compute, so
+`1 == "a"` is False rather than an error. Ordered comparison (`<`, `<=`, `>`, `>=`) accepts two
+numbers, two strings or two lists, and a list whose elements are not mutually orderable raises the
+same report a top-level mismatch would: `[1] < ["a"]` is `'<' not supported between instances of
+'int' and 'str'`.
+
+What the rule *enables* is the sequence half of the table. Those two lines are the reason the gate
+exists — `[1] + [2]` and `"ab" * 2` were handle arithmetic as surely as `"a" * "b"` was:
+
+```python
+[1] + [2]         # [1, 2]        "ab" * 2      # abab      "ab" * -1   # (empty)
+[1] + [2] + [3]   # [1, 2, 3]     2 * "ab"      # abab      [1] * 0     # []
+[1] * 3           # [1, 1, 1]     3 * [1]       # [1, 1, 1] "a" + ""    # a
+```
+
+A repeat count may be zero or negative, which yields empty rather than an error, and the operand
+order does not matter. `"a" + ""` is listed on purpose: the old concatenation path used "the string
+is empty" as the test for "the operand is not a string", so the empty string was not a string.
+
+**Why an `int` and an object were ever confusable.** Interpreter values are an untagged `int64`: a
+heap handle and a program's own integer share one space, and the only test was "does this number name
+a live object". The heap started at `1 << 20`, so an ordinary loop reached into object space — at
+`i = 1024`, `self.x * self.x` is `1048576`, an accumulator reached the class's own *method object*,
+and `s + p.norm()` became int-plus-method. `heapIDBase` is now `1 << 48`, far outside anything
+arithmetic produces, and `isHandle` is the single predicate answering "is this value an object?" for
+the collector, for operator dispatch and for every kind test, so those cannot disagree about what a
+value is. Real tagged values are roadmap L11.1; until then this is the boundary, and a program would
+have to compute an integer near 2.8×10^17 *and* land exactly on a live object id to cross it.
 
 ## FFI / C interop (`extern fn`)
 

@@ -59,12 +59,12 @@ type propGen struct {
 	// globals is the set of top-level variable names bound by a direct
 	// top-level assign in an earlier statement; top-level expressions may
 	// read these. Suite bodies never read globals (scope discipline).
-	globals map[string]bool
+	globals map[string]string
 }
 
 // newPropGen seeds a generator with the given grammar.
 func newPropGen(seed int64, g PropGrammar) *propGen {
-	return &propGen{r: rand.New(rand.NewSource(seed)), g: g, globals: map[string]bool{}}
+	return &propGen{r: rand.New(rand.NewSource(seed)), g: g, globals: map[string]string{}}
 }
 
 // PropSource deterministically generates n whole-program sources for a seed.
@@ -94,7 +94,7 @@ func PropPrograms(seed int64, n int, g PropGrammar) []*Program {
 // genProgram builds a random top-level program. The global scope is reset each
 // call so programs are independent (no names leak across the corpus).
 func (g *propGen) genProgram() *Program {
-	g.globals = map[string]bool{}
+	g.globals = map[string]string{}
 	stmts := make([]Stmt, 0, g.g.MaxStmts)
 	for i := 0; i < g.g.MaxStmts; i++ {
 		switch r := g.r.Float64(); {
@@ -113,14 +113,32 @@ func (g *propGen) genProgram() *Program {
 	return &Program{Stmts: stmts}
 }
 
-// freshName returns a new top-level variable name bound in globals.
-func (g *propGen) freshName() string {
+// freshName returns a new top-level variable name, recorded with the kind of value
+// it is about to be bound to. The kind is what makes the corpus runnable: a name is
+// only read where its kind is accepted (see numericGlobalNames).
+func (g *propGen) freshName(kind string) string {
 	for i := 0; ; i++ {
 		n := "v" + strconv.Itoa(i)
-		if !g.globals[n] {
-			g.globals[n] = true
+		if _, taken := g.globals[n]; !taken {
+			g.globals[n] = kind
 			return n
 		}
+	}
+}
+
+// propKindOf classifies a generated expression the way the interpreter would see it:
+// "list" for a list literal, "int" for anything numeric. The generator needs this
+// because it used to bind a list to a name and then read that name as an operand of
+// `+`, which is not a program the language accepts — it printed a number anyway until
+// operators started checking their operands (ADR 0215), and the property test's
+// promise that every generated program runs cleanly had been quietly untrue.
+func propKindOf(e Expr) string {
+	switch e.(type) {
+	case *ListLit:
+		return "list"
+	default:
+		// IntLit, UnOp, len(...), an index into a list, a builtin call: numeric.
+		return "int"
 	}
 }
 
@@ -130,7 +148,7 @@ func (g *propGen) freshName() string {
 // AOT backend does not lower tuple expressions.
 func (g *propGen) genAssign() Stmt {
 	rhs := g.genTopExpr(0)
-	return &AssignStmt{Target: &Name{Value: g.freshName()}, Value: rhs}
+	return &AssignStmt{Target: &Name{Value: g.freshName(propKindOf(rhs))}, Value: rhs}
 }
 
 // genExprStmt produces a print call. Bare (non-print) expression statements are
@@ -220,6 +238,21 @@ func (g *propGen) genFunc() Stmt {
 	return &FuncDef{Name: name, Params: params, Body: body}
 }
 
+// numericGlobalNames returns the bound globals whose recorded value is numeric, so
+// they may be read where the language requires a number. Names bound to a list stay
+// out of this pool: reading one inside `+` is a TypeError, not a program.
+func (g *propGen) numericGlobalNames() []string {
+	names := make([]string, 0, len(g.globals))
+	for n, kind := range g.globals {
+		if kind == "int" {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	g.r.Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
+	return names
+}
+
 // genTopExpr recursively builds a random expression that may read globals.
 func (g *propGen) genTopExpr(depth int) Expr {
 	if depth >= g.g.MaxDepth {
@@ -229,14 +262,16 @@ func (g *propGen) genTopExpr(depth int) Expr {
 	case r < 0.5:
 		return g.genTopAtom()
 	case r < 0.72:
+		// Arithmetic operands come from the numeric pool only; a list-valued name
+		// here would be a program the language refuses.
 		op := []string{"+", "-", "*"}[g.r.Intn(3)]
-		return &BinOp{Op: op, L: g.genTopAtom(), R: g.genTopAtom()}
+		return &BinOp{Op: op, L: g.genNumericTopAtom(), R: g.genNumericTopAtom()}
 	case r < 0.8:
 		return &UnOp{Op: "-", X: &IntLit{Value: int64(1 + g.r.Intn(9))}}
 	case r < 0.87:
 		b := []string{"abs", "min", "max"}[g.r.Intn(3)]
 		if b == "abs" {
-			return &Call{Fn: &Name{Value: b}, Args: []Expr{g.genTopAtom()}}
+			return &Call{Fn: &Name{Value: b}, Args: []Expr{g.genNumericTopAtom()}}
 		}
 		return &Call{Fn: &Name{Value: b}, Args: []Expr{g.genListLit()}}
 	case r < 0.94:
@@ -280,6 +315,22 @@ func (g *propGen) genTopAtom() Expr {
 	}
 }
 
+// genNumericTopAtom is genTopAtom restricted to values the interpreter will accept
+// as an operand of arithmetic: literals, len() of a list, and globals recorded numeric.
+func (g *propGen) genNumericTopAtom() Expr {
+	switch r := g.r.Float64(); {
+	case r < 0.45:
+		return &IntLit{Value: int64(g.r.Intn(10))}
+	case r < 0.55:
+		for _, n := range g.numericGlobalNames() {
+			return &Name{Value: n}
+		}
+		return &IntLit{Value: 1}
+	default:
+		return &Call{Fn: &Name{Value: "len"}, Args: []Expr{g.genListLit()}}
+	}
+}
+
 // genLocalAtom returns an integer literal or a reference to a local in scope.
 func (g *propGen) genLocalAtom(locals map[string]bool) Expr {
 	switch r := g.r.Float64(); {
@@ -301,7 +352,8 @@ func (g *propGen) genLocalAtom(locals map[string]bool) Expr {
 	}
 }
 
-// globalNames returns the bound global names in random order.
+// globalNames returns the bound global names in random order, of any kind: the read
+// position accepts whatever is bound there (print, assignment to another name).
 func (g *propGen) globalNames() []string {
 	names := make([]string, 0, len(g.globals))
 	for n := range g.globals {

@@ -242,6 +242,15 @@ falls back to dynamic dispatch.
   `'P' object has no attribute 'nope'`, `invalid literal for int() with base 10: 'abc'`, `not enough
   values to unpack (expected 2, got 1)`. One of them had reported `cannot index null` about an
   integer — not untyped, just false, and the kind of wrong that sends someone hunting a null.
+- **An operator is a question about two runtime kinds** (ADR 0215) — `print("a" * "b")` used to
+  print `1099516870662` and exit 0, because an operand that wasn't a known container went into the
+  arithmetic path holding a heap handle. So did `1 + None`, `[1] + 1`, `"a" < 1`. Mistyped pairs now
+  raise `TypeError` in the reference implementation's words (22 shapes verified by running `python3`
+  and diffing the report line), and the *legal* pairs the same path was silently eating — `[1] + [2]`,
+  `[1] * 3`, `"ab" * 2`, `"a" < "b"` — compute values instead of numbers-no-one-wrote. Chasing it also
+  found the interpreter's untagged values colliding with ordinary arithmetic: a bench loop computing
+  `i * i` reached the heap's id range at `i = 1024` and read back the class's own method object, so the
+  heap now starts at `1 << 48` and one predicate decides what an object is.
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case
