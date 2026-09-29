@@ -47,6 +47,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"async_basic",
 		"async_for",
 		"async_multi",
+		// The await/return discipline the L7.6 checker proves: deferred coroutines
+		// held in variables and awaited later, coroutines handed across a call and
+		// awaited inside it, an async def per control-flow shape, and `async for`
+		// over coroutines (roadmap Phase 7, ADR 0195).
+		"async_effects",
 		"typealias",
 		"variance",
 		"heap_containers",
@@ -149,6 +154,10 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_comp_str_filter",     // L11.8 — the same bug, reached from a comprehension filter
 		"probe_comp_runtime_reduce", // L11.7 — sum/min/max over a runtime comprehension
 		"probe_comp_folded_iter",    // L11.2 — iterating a list the compiler folded away
+
+		// Pinned by the await/return discipline (ADR 0195): the checker now refuses the
+		// dishonest async programs, so what is left is the honest one that still disagrees.
+		"probe_async_eager", // L7.1 — the compiled backend runs a coroutine at the call
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
@@ -233,6 +242,10 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "await at module scope is a SyntaxError in CPython (L5.6)",
 		ref:    "docs/shared-lowering-spec.md § async / await",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "11\n21\n"}, {Backend: "aot", Stdout: "11\n21\n"}}},
+	"programs/async_effects": {oracle: lang.OracleNA,
+		reason: "await at module scope is a SyntaxError in CPython; this is the L7.6 legal-async surface the checker must accept, so what is pinned is that both backends agree and nothing was reported",
+		ref:    "docs/language.md § Async (the await/return discipline)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "24\n18\n10\n42\n15\n6\n20\n3\n2\n4\n"}, {Backend: "aot", Stdout: "24\n18\n10\n42\n15\n6\n20\n3\n2\n4\n"}}},
 	"programs/match_literal": {oracle: lang.OracleNA,
 		reason: "Literal[1, 2] is this language's checker surface; plain CPython has no Literal in scope and stops at the annotation",
 		ref:    "roadmap Phase 2 § gradual typing; docs/operations.md § gusty check",
@@ -345,6 +358,10 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
 		ref:    "roadmap L11.2 (the tagged value word makes every container a runtime object)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[2, 4, 6]\n"}, {Backend: "aot", Missing: true, Err: "compile-time constant"}}},
+	"programs/probe_async_eager": {oracle: lang.OracleNA,
+		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call and the interpreter prints at the await; CPython rejects the program outright (module-scope await)",
+		ref:    "roadmap L7.6a (deferred coroutines in codegen)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "between\neffect 1\n2\n"}, {Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",

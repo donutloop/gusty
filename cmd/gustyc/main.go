@@ -12,6 +12,7 @@
 //	--lang              list supported language features (self-describing)
 //	--oracle <src>      run interpreter + compiled backend + CPython and compare (exit 6 divergence, 7 no verdict)
 //	--variance          print the generic variance table as JSON (L6.6)
+//	--effects <src>     print each function's effect signature (awaits/yields/raises, return + termination shape) as JSON (L7.6)
 //	--version           print version
 //	--repl              start an interactive REPL (default when stdin is a TTY)
 //	--help              show usage
@@ -107,6 +108,7 @@ func run() int {
 	file := fs.String("file", "", "read and evaluate a source file")
 	verify := fs.String("verify", "", "parse + analyze a source string")
 	check := fs.String("check", "", "type-check a source string without executing (mypy-style)")
+	effects := fs.String("effects", "", "print each function's effect signature (awaits / yields / raises, whether it returns a value, whether its control flow can fall off the end) for a source string; --json for the machine document, `gustyc effects <file>...` for files (L7.6)")
 	oracleSrc := fs.String("oracle", "", "run a source string through interpreter + compiled backend + CPython and report whether gusty behaves like Python (exit 6 divergence, 7 no verdict; --json: the leg-by-leg report)")
 	oracleFile := fs.String("oracle-file", "", "same as --oracle, for a source file")
 	emitLLVMF := fs.String("emit-llvm", "", "print LLVM IR for a source string")
@@ -280,7 +282,7 @@ func run() int {
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *oracleSrc == "" && *oracleFile == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *effects == "" && *oracleSrc == "" && *oracleFile == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
@@ -289,6 +291,13 @@ func run() int {
 	}
 	if *check != "" {
 		return runCheck(*check, nil, *jsonOut)
+	}
+	if *effects != "" {
+		return runEffects(*effects, nil, *jsonOut)
+	}
+	// `gusty effects <file1> <file2> ...` : effect signatures for files, no execution.
+	if fs.NArg() > 0 && fs.Arg(0) == "effects" && *buildOut == "" && *evalSrc == "" {
+		return runEffects("", fs.Args()[1:], *jsonOut)
 	}
 	// `gusty check <file1> <file2> ...` : type-check files without executing.
 	if fs.NArg() > 0 && fs.Arg(0) == "check" && *buildOut == "" && *evalSrc == "" {
@@ -642,6 +651,7 @@ Flags:
 Build: gustyc --build <out> <file1> <file2> ...  # compile sources into a native binary
 Shared library export (L10.3): gustyc --build out.so --shared <file1> ...  # emit a position-independent .so/.dylib with the stable extern-fn ABI
 Check: gustyc --check <src> | gustyc check <file1> <file2> ...  # mypy-style type-check without executing
+Effects: gustyc --effects <src> | gustyc effects <file>...  # per-function effect signature: awaits/yields/raises, returns, fall-through (L7.6; --json for the document)
 Variance: gustyc --variance  # JSON variance table (list/set/dict invariant, Sequence covariant, Callable params contravariant)
 Verify IR: gustyc --verify-llvm <src> [--json]         # LLVM module-verifier verdict for the emitted module (L8.2)
            gustyc --build out src.gy --no-verify        # skip verification (it runs by default in --build)
@@ -652,7 +662,10 @@ Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus 
 
 Diagnostic codes (--check --json): type.mismatch, type.variance.invariant,
 type.variance.covariant, type.variance.contravariant, type.variance.nominal,
-type.callable.arity, type.union.members — see docs/operations.md.
+type.callable.arity, type.union.members, async.coro.never_awaited,
+async.coro.awaited_twice, async.await.outside_coroutine,
+async.async_stmt.outside_coroutine, async.await.not_coroutine,
+async.generator.unsupported, async.missing_return — see docs/operations.md.
 
 Exit codes: 0 = ok, 1 = compile error (parse/analysis/codegen/link), 2 = LLVM rejected
 the module gusty emitted (a compiler bug, not your program), 3 = the program ran and
@@ -666,6 +679,7 @@ statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, 
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
 variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
+effects: async def calls are deferred until awaited; the checker proves the discipline and --effects prints each function's signature (await, yield, raise / returns / falls-through) — see gustyc --effects
 values: %s
 heap kinds (compiled runtime object headers): %s (0 = not heap-allocated)
 oracle: every conformance program is compared against CPython too (gustyc --oracle <src>; --json for the
@@ -797,6 +811,66 @@ func runCheck(src string, files []string, jsonOut bool) int {
 		}
 	}
 	return res.Exit
+}
+
+// runEffects implements the effect-signature mode (`--effects <src>` and
+// `gusty effects <file>...`, L7.6). It reports what each function *does* — the
+// effects its body performs, whether it returns a value, whether its control flow
+// can run off the end — without executing anything, and exits 1 when a source does
+// not parse (there is nothing to summarise) or breaks the await/return discipline
+// (the same diagnostics `--check` reports). The table is the same data the checker
+// decided from, so the two cannot disagree.
+func runEffects(src string, files []string, jsonOut bool) int {
+	type fileProg struct {
+		name string
+		src  string
+	}
+	var progs []fileProg
+	if len(files) > 0 {
+		for _, fn := range files {
+			b, err := os.ReadFile(fn)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "gustyc: effects: read %s: %v\n", fn, err)
+				return exitUsage
+			}
+			progs = append(progs, fileProg{name: fn, src: string(b)})
+		}
+	} else {
+		progs = append(progs, fileProg{name: "<src>", src: src})
+	}
+	bad := false
+	for _, fp := range progs {
+		res, err := lang.CheckSource(fp.src)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: effects: %v\n", err)
+			return exitUsage
+		}
+		for _, d := range res.Diagnostics {
+			fmt.Fprintln(os.Stderr, d)
+			if d.Level == lang.LevelError {
+				bad = true
+			}
+		}
+		prog, perr := lang.Parse(fp.src)
+		if perr != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: effects: %s: %v\n", fp.name, perr)
+			return exitCompileError
+		}
+		if jsonOut {
+			doc, jerr := lang.EffectsJSON(prog, fp.name, res.Diagnostics)
+			if jerr != nil {
+				fmt.Fprintf(os.Stderr, "gustyc: effects: %v\n", jerr)
+				return exitCompileError
+			}
+			fmt.Println(doc)
+			continue
+		}
+		fmt.Print(lang.EffectTable(prog, fp.name))
+	}
+	if bad {
+		return exitCompileError
+	}
+	return exitOK
 }
 
 // benchMode runs a source program through both the AST interpreter and the

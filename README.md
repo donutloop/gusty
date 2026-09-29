@@ -73,6 +73,10 @@ gusty ships an indentation-based syntax covering:
 - **Slicing** — `s[a:b]`, `s[::step]`, negative indices; supported in both the
   interpreter and the AOT backend (via the `rt_slice` runtime helper).
 - **Generators** — `def g(): yield a; yield b` collects yielded values.
+- **Async** — `async def` / `await` / `async for` / `async with`, with the await/return
+  discipline checked in the shared front end: dropping a coroutine, awaiting one twice, or
+  yielding inside an `async def` is a compile error, and each function's effect signature is
+  readable with `gustyc --effects` (ADR 0195).
 - **Context managers** — `with expr as name:` / `with expr:`, dispatching
   `__enter__` / `__exit__` (including exception suppression); supported in
   both backends.
@@ -266,6 +270,7 @@ gustyc --json ...                            # machine-readable JSON output
 gustyc --schema                              # print the JSON Schema for AST/IR dumps
 gustyc --lang                                 # self-describing feature list
 gustyc --variance                             # JSON variance table (list/dict invariant, Sequence covariant, Callable params contravariant)
+gustyc --effects <src> | effects file1.gy ...  # per-function effect signatures: effects performed, return shape, termination (--json for the document)
 gustyc --jit "..."                           # in-process dlopen JIT path
 gustyc --gc-stats --file prog.gy             # report what the collector did (stderr; --json adds a gc member)
 gustyc --bench '<src>' --bench-runs N --bench-opt L   # wall-clock benchmark

@@ -1505,14 +1505,77 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
   discards the entered value.
 - On normal completion `__exit__(none, none, none)` is called; on an exception
   `__exit__(exc_type, exc_val, exc_tb)` is called and a truthy return suppresses it.
-- Full support in the interpreter; codegen emits the protocol but runtime execution
-  is blocked by a pre-existing duplicate-function defect (ADR 0140).
+- Both backends: `with expr as name` runs the protocol and the body identically
+  interpreted and compiled (`programs/async_effects.gy` and the `with` cases in the
+  conformance corpus pin the output; ADR 0181 closed the generator-rooting defect that
+  used to block the compiled leg).
 
 ## `yield from`
 
 - `yield from expr` delegates yields to a sub-iterable (a generator call, a list
   literal, or `range(...)`), appending each element to the current generator.
 - Full support in the interpreter; codegen emits a runtime loop over the sub-list.
+
+## Async: `async def`, `await`, `async for` (L5.6, L7.1; the await/return discipline L7.6, ADR 0195)
+
+`async def` is a **deferred** function. Calling it runs nothing: it builds a coroutine
+object, and the body runs when that coroutine is `await`ed — exactly once.
+
+```gusty
+async def double(x):
+    return x * 2
+
+a = double(3)          # nothing has run yet
+print(await a)         # 6 — the body runs here
+print(await double(4)) # 8 — created and awaited in one expression
+```
+
+- `await e` consumes a coroutine and yields its result. Awaiting a value that is not a
+  coroutine passes it through (the reference implementation raises `TypeError` there).
+- `await` is legal at **module scope**: the top level of a file is the program's
+  coroutine context. CPython rejects it, which is why every program that actually runs a
+  coroutine is `not_applicable` on the oracle leg rather than a parity case.
+- `async for v in [f(1), f(2)]` awaits each element as the loop produces it, so a list
+  of coroutines is the expected iterable, not a bug. `async with m as x:` behaves as
+  `with` does (`__enter__`/`__exit__`): the protocol is driven, but nothing suspends.
+- Inside a plain `def`, `await` / `async for` / `async with` still *work* (the operand is
+  evaluated, the loop runs) even though CPython calls them a `SyntaxError`. The checker
+  reports them as warnings: they cannot suspend anything, so they are almost always what
+  the author meant to write inside an `async def`.
+- **Not implemented:** async generators (`async def` with `yield` — refused, because
+  neither backend lowers one), and suspension in the middle of a body: an `await` runs its
+  coroutine to completion, so there is no interleaving and no event loop to interleave on.
+- The compiled backend still *lowers* a coroutine call as a call (`await e` evaluates
+  `e`), so it performs a coroutine's effects at the call rather than at the await. That is
+  invisible while every coroutine is awaited and nothing observable happens in between,
+  and wrong when something does; the open item is named in `roadmap.md` as L7.6a and pinned as
+  `programs/probe_async_eager`.
+
+### What the checker proves about async code (L7.6, ADR 0195)
+
+The discipline above is not enforceable by either backend — a dropped coroutine printed
+`<coro>` in the interpreter and the awaited value in the compiled binary, and both
+"worked". So it is checked in the shared front end, and every rule names the fix:
+
+| Code | Level | Rule |
+|------|-------|------|
+| `async.coro.never_awaited` | error | a coroutine was created and nothing ever awaited it, so its body never runs — reported at the binding, the rebinding that drops it, or the operation that consumed it as a value |
+| `async.coro.awaited_twice` | error | one coroutine object is awaited twice on a path: its body already ran (CPython raises `RuntimeError` here) |
+| `async.generator.unsupported` | error | an `async def` whose body yields: an async generator that neither backend lowers |
+| `async.await.outside_coroutine` | warning | `await` inside a plain `def` — legal here, a `SyntaxError` in Python, and never what a suspension-hungry program wants |
+| `async.async_stmt.outside_coroutine` | warning | `async for` / `async with` inside a plain `def`: it behaves as the plain form |
+| `async.await.not_coroutine` | warning | `await` pointed at a value that provably is not a coroutine (a literal, a built-in call, a plain `def` call): a no-op here, `TypeError` in Python |
+| `async.missing_return` | warning | an `async def` path runs off the end while other paths — or its `-> T` annotation — promise a value, so awaiting it on that path is `None` |
+
+The proof is flow-sensitive, not syntactic: `a = f(1)` followed five lines later by
+`await a` is fine, coroutines stored in a container or handed to another function are
+assumed to be awaited there, and an `async for` over a list of coroutines is exactly the
+intended shape. What the pass cannot follow, it does not report.
+
+Every fact the rules decide from is also published, per function: `gustyc --effects <src>`
+(or `gusty effects <file>...`, `--json` for the document) prints the effect signature —
+which effects the body performs (`await`, `yield`, `raise`), whether it returns a value,
+and whether its control flow can run off the end. See `docs/operations.md`.
 
 ## Docstrings and `__doc__` (Round 9, ADR 0141)
 

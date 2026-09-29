@@ -121,9 +121,13 @@ func Analyze(prog *Program) []Diagnostic {
 	for _, st := range prog.Stmts {
 		an.analyzeStmt(st)
 	}
-	// surface lexer-recovered diagnostics (L4.1) ahead of semantic ones
+	// Effect/async exhaustiveness (L7.6): the await/return discipline, proven over
+	// the same AST the backends consume. It runs as its own pass because it needs
+	// the whole program indexed (which names are `async def`) and a path analysis
+	// of each body, which the name/type walk does not do.
 	all := append([]Diagnostic{}, prog.Diags...)
 	all = append(all, an.Diags...)
+	all = append(all, analyzeEffects(prog)...)
 	return all
 }
 

@@ -1,0 +1,56 @@
+async def double(x):
+    return x * 2
+
+async def twice(x):
+    a = await double(x)
+    b = await double(a)
+    return a + b
+
+async def addAll(a, b, c):
+    total = await a
+    total = total + await b
+    total = total + await c
+    return total
+
+async def sumTo(n) -> int:
+    total = 0
+    for i in range(n):
+        total = total + i
+    return total
+
+async def countdown(start) -> int:
+    n = start
+    while True:
+        if n <= 0:
+            return 42
+        n = n - 1
+
+async def first(xs):
+    match xs:
+        case [head, tail]:
+            return head + tail
+        case _:
+            return 0
+
+async def guarded(x) -> int:
+    try:
+        if x > 10:
+            return x
+        return await double(x)
+    except ValueError:
+        return -1
+
+a = double(3)
+b = double(4)
+c = double(5)
+print(await addAll(a, b, c))
+print(await twice(3))
+print(await sumTo(5))
+print(await countdown(3))
+print(await first([7, 8]))
+print(await guarded(3))
+print(await guarded(20))
+tasks = [double(1), double(2), double(3)]
+print(len(tasks))
+async for v in [double(1), double(2)]:
+    print(v)

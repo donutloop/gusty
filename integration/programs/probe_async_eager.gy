@@ -1,0 +1,10 @@
+async def work(x):
+    print("effect", x)
+    return x * 2
+
+async def run():
+    pending = work(1)
+    print("between")
+    return await pending
+
+print(await run())

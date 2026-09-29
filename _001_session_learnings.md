@@ -2474,3 +2474,88 @@ locally, which costs one command.
 *expectations* depend on — Go, `llc-20`, CPython — as a pinned, declared, **checked** dependency.
 Three toolchains, three pins, all printed and all gated in one CI step. A logged version is
 documentation; a version that fails the build is a contract.
+
+## The async surface had three answers and none of them was a bug (L7.6, ADR 0195)
+
+I went to implement "prove an `async def`'s control flow always terminates" and started the
+way every round has gone wrong for me: by writing the rule before measuring the behavior. The
+measurement took ten minutes and changed the feature.
+
+```gusty
+async def f(x):
+    return x * 2
+v = f(2)      # a coroutine: the body has not run
+print(v)
+```
+
+`--interp` printed `<coro>`. `--aot` printed `4`. CPython ran the program, printed `2`, and
+emitted `RuntimeWarning: coroutine 'f' was never awaited`. Three engines, three answers, and
+**the two that looked like results were both wrong** — one prints the representation of a body
+that never ran, the other prints the body's answer as if the call had been performed, which it
+was: the LLVM path lowers a coroutine construction as a call.
+
+So the roadmap's "no missing `await`" was not a missing check. It was the only thing standing
+between a program and an invented meaning, and neither backend could supply it: at runtime you
+can only notice a dropped coroutine in a finaliser, *after* the fact, if the value is even
+collected. That decision is the round.
+
+**Rule I followed.** Measure on all three engines before writing a rule, and put the table in
+the ADR, the roadmap (Gap R) and the language doc. The table is the evidence that the rule was
+worth writing; prose like "async is supported" is not. It also found two things I was not
+looking for: the `while True: return "ok"` intern bug (below) and `def sync()` printing `0`
+where the interpreter prints `7`.
+
+**The error/warning line I drew, and why it is not the Python line.** Refuse when the program
+cannot mean what it appears to mean — dropped coroutine (the body never runs), double await
+(the body runs twice, where CPython raises `RuntimeError`), `yield` in an `async def` (an async
+generator neither backend lowers). Warn when the program still means something but diverges
+from the reference implementation — `await` inside a plain `def`, `async for` in a plain `def`,
+`await` on a non-coroutine, an `async def` path that runs off the end. Python is stricter: it
+calls `await` outside an `async def` a `SyntaxError`. Adopting that line would have refused the
+handoff helper (`def run(c): return await c`) that our evaluation model supports, and
+contradicted ADR 0167, which made module-scope `await` legal on purpose. The severity is
+therefore a claim about *meaning*, stated per rule, with the Python behavior in the message so
+the reader learns the discipline rather than my dialect.
+
+**The proof is flow-sensitive or it is noise.** My first draft reported `a = f(1)` … five lines
+later … `await a`, because it checked whether an *identifier* was awaited rather than whether a
+*coroutine* was consumed. What actually works is a tiny abstract interpretation: each local is
+`coro`/`awaited`/`not_coro`/`unknown`, merges widen, branches join, loops are walked once with
+the tail folded back, and a `try` body is assumed to abort so its unawaited coroutine is still
+reported even though the block completes. Every rule fires at the last line the author could
+have fixed — the binding, the rebinding, the operation that consumes the value, the second
+`await` — never at the end of the function, because "a coroutine existed somewhere and I did
+not find a matching syntactic form" is a scan, not a check.
+
+**False positives are the cost of a check, so the pass states what it cannot follow.** A
+coroutine passed to a function, stored in a list or dict, or returned is assumed to be awaited
+there; an `async for` over `[f(1), f(2)]` is the *intended* shape (the loop body awaits each
+element), and a name awaited through a call chain whose definition is in another file is
+unknown, not unconsumed. I wrote the negative tests first — handoffs, task lists, a bare
+`await` whose value is discarded — and every one of them that lit up was a defect in the pass.
+
+**Publish the facts the rules decide from.** `gustyc --effects` prints the per-function effect
+signature — effects performed, return shape, whether control flow can run off the end — which
+is literally the input to the rules, so the table and the diagnostics cannot drift, and an
+agent that disagrees with a verdict can see why. `falls_through && (returns_value || annotated)
+&& async` *is* `async.missing_return`; `coroutine_calls > 0` with no await *is*
+`async.coro.never_awaited`. This is the ADR 0146/0127 habit again: publish the fact before an
+agent has to guess it.
+
+**Async had never been in the matrix.** `docs/language.md` had no async section, and the corpus
+had no async program — L5.6 and L7.1 both claimed the surface without pinning it. It now has
+`programs/async_effects.gy` (handoff helper, task list, `async for`, a bare await — legality
+arguable, output pinned on both backends) and, for the honest program that still disagrees,
+`programs/probe_async_eager`: the interpreter prints `between / effect 1 / 2`, the compiled
+binary `effect 1 / between / 2`, because machine code performs a coroutine at the call. That
+row is `parity: false` by design, with both orders pinned, so fixing it (L7.6a: `rt_coro_new` +
+a trampoline per `async def`) flips the row to drift instead of passing unnoticed.
+
+**Two findings I did not have a slot for.** (1) `await` followed by a `while True` that returns
+a string emits a call to `@rt_str_intern2` that nothing defines; `llc` rejects the module and
+`--verify-llvm` reports "LLVM rejected the module; this is a compiler bug, not a source error"
+— the L8.2 gate doing exactly its job rather than letting the link die. (2) `def sync(): return
+7` prints `7` interpreted and **`0`** compiled: the emitted symbol collided with libc's
+`sync()` and the linker answered quietly. A wrong number from your own function's *name* is the
+worst class in L11.8, and it is four characters of prefix away from gone — the next round's
+kind of item, found only because I compiled programs nobody had compiled.

@@ -123,6 +123,112 @@ func TestSchemaDeclaresGCStats(t *testing.T) {
 	}
 }
 
+// TestSchemaDeclaresEffectSummary keeps the L7.6 machine path honest: every field
+// EffectSummary marshals must be declared in definitions.effectSummary, so an agent
+// can validate a `gustyc --effects` document against the schema instead of reading
+// Go structs (roadmap Phase 7, ADR 0195).
+func TestSchemaDeclaresEffectSummary(t *testing.T) {
+	var doc struct {
+		Definitions struct {
+			EffectSummary struct {
+				Required   []string       `json:"required"`
+				Properties map[string]any `json:"properties"`
+			} `json:"effectSummary"`
+		} `json:"definitions"`
+	}
+	if err := json.Unmarshal([]byte(ASTIRSchema), &doc); err != nil {
+		t.Fatalf("schema is not valid JSON: %v", err)
+	}
+	props := doc.Definitions.EffectSummary.Properties
+	if len(props) == 0 {
+		t.Fatal("schema declares no effectSummary properties")
+	}
+	want := reflect.TypeOf(EffectSummary{})
+	for i := 0; i < want.NumField(); i++ {
+		name := strings.Split(want.Field(i).Tag.Get("json"), ",")[0]
+		if name == "-" {
+			continue
+		}
+		if _, ok := props[name]; !ok {
+			t.Fatalf("EffectSummary reports %q but the schema does not declare it", name)
+		}
+	}
+	for _, req := range doc.Definitions.EffectSummary.Required {
+		if _, ok := props[req]; !ok {
+			t.Fatalf("effectSummary requires %q which is not a declared property", req)
+		}
+	}
+	// The effect vocabulary is a closed set in both places, or an agent branching
+	// on a name the emitter can produce would be guessing.
+	eff, ok := props["effects"].(map[string]any)
+	if !ok {
+		t.Fatalf("effects property missing")
+	}
+	items, _ := eff["items"].(map[string]any)
+	enum, _ := items["enum"].([]any)
+	got := map[string]bool{}
+	for _, e := range enum {
+		got[e.(string)] = true
+	}
+	for _, name := range []string{EffectAwait, EffectYield, EffectRaise} {
+		if !got[name] {
+			t.Fatalf("schema effects enum lost %q", name)
+		}
+	}
+}
+
+// TestSchemaDeclaresEffectsDocument is the document half of the same contract: every
+// field EffectsDocument marshals must be declared in definitions.effectDocument, and
+// the two $refs it makes must resolve — an agent validating a `gustyc --effects
+// --json` payload against `gustyc --schema` should not be the one to find the hole
+// (roadmap Phase 7, ADR 0195).
+func TestSchemaDeclaresEffectsDocument(t *testing.T) {
+	var schema map[string]any
+	if err := json.Unmarshal([]byte(ASTIRSchema), &schema); err != nil {
+		t.Fatalf("schema is not valid JSON: %v", err)
+	}
+	defs, _ := schema["definitions"].(map[string]any)
+	def, _ := defs["effectDocument"].(map[string]any)
+	props, _ := def["properties"].(map[string]any)
+	if len(props) == 0 {
+		t.Fatal("schema declares no effectDocument properties")
+	}
+	want := reflect.TypeOf(EffectsDocument{})
+	for i := 0; i < want.NumField(); i++ {
+		name := strings.Split(want.Field(i).Tag.Get("json"), ",")[0]
+		if name == "-" {
+			continue
+		}
+		if _, ok := props[name]; !ok {
+			t.Fatalf("EffectsDocument reports %q but the schema does not declare it", name)
+		}
+	}
+	// The document's two references have to exist, or the shape is a promise the
+	// schema cannot keep.
+	for _, ref := range []string{"#/definitions/effectSummary", "#/definitions/diagnostic"} {
+		b, _ := json.Marshal(def)
+		if !strings.Contains(string(b), ref) {
+			t.Fatalf("effectDocument does not reference %s", ref)
+		}
+	}
+	for _, name := range []string{"effectSummary", "diagnostic"} {
+		if _, ok := defs[name]; !ok {
+			t.Fatalf("effectDocument references %s, which the schema does not define", name)
+		}
+	}
+	// And the emitter agrees with the declaration on the members that carry the
+	// verdict — an agent branches on ok/exit, not on prose.
+	doc, err := EffectsJSON(parseOrFatal(t, "async def f(x):\n    return x\nprint(await f(1))\n"), "t.gy", []Diagnostic{{Level: LevelError, Msg: "x", Code: CodeCoroNeverAwaited}})
+	if err != nil {
+		t.Fatalf("EffectsJSON: %v", err)
+	}
+	for _, key := range []string{`"ok": false`, `"exit": 1`, `"code": "async.coro.never_awaited"`} {
+		if !strings.Contains(doc, key) {
+			t.Fatalf("effects document is missing %s:\n%s", key, doc)
+		}
+	}
+}
+
 // TestGCStatsShapeInJSON: the --json payload member is produced by the CLI, so the
 // CLI test covers it; here assert the report survives marshalling with stable keys.
 func TestGCStatsMarshalKeysAreStable(t *testing.T) {

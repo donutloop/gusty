@@ -1054,6 +1054,97 @@ const ASTIRSchema = `{
         }
       }
     },
+    "effectSummary": {
+      "type": "object",
+      "required": [
+        "function",
+        "async",
+        "line",
+        "effects",
+        "awaits",
+        "yields",
+        "raises",
+        "coroutine_calls",
+        "returns_value",
+        "returns_bare",
+        "falls_through",
+        "terminates"
+      ],
+      "description": "One row of the self-describing effect table (gustyc --effects, or 'gustyc effects <file>...'; lang.EffectSummaries): what one function body actually does. The effect names are the vocabulary the L7.6 rules decide from, so the table and the async diagnostics can never disagree: a coroutine nobody awaits is async.coro.never_awaited, one awaited twice is async.coro.awaited_twice, and an 'async def' whose control flow can run off the end while promising a value is async.missing_return (roadmap Phase 7, ADR 0195). Function is the declaration path: outer.inner for a nested def, Class.method for a method, or <module> for the top level, whose awaits are the language's documented top-level coroutine.",
+      "properties": {
+        "function": {
+          "type": "string",
+          "description": "Declaration path: fetch, outer.inner, Box.load, or <module>."
+        },
+        "async": {
+          "type": "boolean",
+          "description": "true for an async def: calling it builds a coroutine and runs nothing until it is awaited."
+        },
+        "line": {
+          "type": "integer",
+          "description": "Line of the declaration (0 for <module>)."
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "await",
+              "yield",
+              "raise"
+            ]
+          },
+          "description": "Sorted effect names the body performs. Empty for a pure body."
+        },
+        "awaits": {
+          "type": "integer",
+          "description": "await sites in the body (a signature, not a profile: a loop body counts once)."
+        },
+        "yields": {
+          "type": "integer",
+          "description": "yield / yield from sites in the body. Non-zero under an async def is async.generator.unsupported."
+        },
+        "raises": {
+          "type": "integer",
+          "description": "raise sites in the body."
+        },
+        "coroutine_calls": {
+          "type": "integer",
+          "description": "Calls to an async def, i.e. coroutine constructions, from this body."
+        },
+        "returns_value": {
+          "type": "boolean",
+          "description": "Some path executes return with an expression."
+        },
+        "returns_bare": {
+          "type": "boolean",
+          "description": "Some path executes a bare return (which yields None)."
+        },
+        "falls_through": {
+          "type": "boolean",
+          "description": "Control flow can run off the end of the body, so the call — or the await — answers None. True for <module>: a file ends."
+        },
+        "terminates": {
+          "type": "boolean",
+          "description": "!falls_through: every path leaves the body through return, raise, break or continue. This is what the checker means by an exhaustive control flow."
+        }
+      }
+    },
+    "effectDocument": {
+      "type": "object",
+      "required": ["schema_version", "language_version", "generated_by", "source", "functions", "ok", "exit"],
+      "description": "The document gustyc --effects <src> --json (and gustyc effects <file>... --json) prints: one effectSummary row per function plus the verdict the same source produced. It is the machine path for the await/return discipline (roadmap Phase 7, ADR 0195): the rows are the facts the async rules were decided from, and the diagnostics are those rules' verdicts, so one call answers both what a file does and whether it is honest.",
+      "properties": {
+        "schema_version": { "type": "string", "description": "Version of this document shape, currently \"1.0\"." },
+        "language_version": { "type": "string", "description": "Compiler version that produced it (lang.Version)." },
+        "generated_by": { "type": "string", "description": "Producer, always \"gustyc --effects\"." },
+        "source": { "type": "string", "description": "Label for the source: the file path, or \"<src>\" for a source string." },
+        "functions": { "type": "array", "items": { "$ref": "#/definitions/effectSummary" }, "description": "One effectSummary per function in declaration order, led by one row for <module>." },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/definitions/diagnostic" }, "description": "The diagnostics the source produced, async rules included — the same objects the --check document carries." },
+        "ok": { "type": "boolean", "description": "true when no error-level diagnostic fired (warnings do not move it)." },
+        "exit": { "type": "integer", "description": "The exit code the CLI returns for this document: 0 clean, 1 refused (docs/operations.md § Exit codes)." }
+      }
+    },
     "benchReport": {
       "type": "object",
       "required": ["total_ms", "mean_ms", "best_ms"],

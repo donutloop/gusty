@@ -41,6 +41,7 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--schema` | print the machine-readable JSON schema for the AST/IR/diagnostic dumps |
 | `--abi` | print the versioned extern-fn C ABI schema as JSON |
 | `--variance` | print the generic variance table as JSON (L6.6) |
+| `--effects <src>` | print each function's **effect signature** (effects performed, return shape, control-flow termination) for a source string; `gusty effects <file>...` for files, `--json` for the schema-declared document (L7.6, ADR 0195) |
 
 
 ## Building a binary from multiple files
@@ -251,10 +252,22 @@ below the broken line — one run tells you everything the toolchain knows.
 | `type.callable.arity` | callable / tuple arity mismatch |
 | `type.union.members` | no union member accepts the value |
 | `parse.error` | the source did not parse — a parser error or a lexer error token that recovery turned into a diagnostic |
+| `async.coro.never_awaited` | a coroutine was created and nothing awaited it, so its body never runs (error: refused) |
+| `async.coro.awaited_twice` | one coroutine object is awaited twice on a path (error: refused) |
+| `async.generator.unsupported` | an `async def` whose body yields — no backend lowers async generators (error: refused) |
+| `async.await.outside_coroutine` | `await` inside a plain `def`: evaluated here, a `SyntaxError` in Python (warning) |
+| `async.async_stmt.outside_coroutine` | `async for` / `async with` inside a plain `def`: behaves as the plain form (warning) |
+| `async.await.not_coroutine` | `await` pointed at a value that provably is not a coroutine (warning) |
+| `async.missing_return` | an `async def` path runs off the end while other paths promise a value (warning) |
 
 The full table (which constructor is invariant/covariant/contravariant, and
 why) is machine-readable: `gustyc --variance` prints it, and
 `gustyc --schema` declares both the `diagnostic` and `varianceRule` shapes.
+
+The `async.*` rules (L7.6, ADR 0195) are the await/return discipline of the
+async surface — what must hold for `async def` to mean anything. Their input,
+the per-function effect signature the rules were decided from, is machine-readable
+too: `gustyc --effects` prints it and `--schema` declares `effectSummary`.
 
 ## Exit codes (deterministic)
 
@@ -887,6 +900,51 @@ code (only `LevelError` does). Reading a name bound by an irrefutable case
 on every path is accepted (definitely assigned); reading one bound on only
 some paths is an `undefined name` error. A function-name reference (bare `fn`) is
 assignable to any Callable bound under gradual typing.
+
+## Effect signatures (`gustyc --effects`, L7.6, ADR 0195)
+
+`gustyc --effects <src>` (or `gusty effects <file>...`) answers *what a function does*
+without running it:
+
+```
+$ gustyc --effects "$(cat eff.gy)"
+effect signatures for <src>
+  <module>             def        line top    effects=none returns=no falls_through=yes
+  fetch                async def  line 1      effects=await,raise returns=yes falls_through=no
+  plain                def        line 9      effects=none returns=yes falls_through=no
+```
+
+for `eff.gy` = `async def fetch(n)` with a loop that `await`s and sometimes `raise`s and
+then returns, followed by a plain `def plain(x)`. The `fetch` row says everything an agent
+needs to schedule it: async (a call builds a coroutine), it awaits and can raise, it
+returns a value on every path (`falls_through=no`).
+
+`--json` prints the same rows as a document — `schema_version`, `language_version`,
+`generated_by`, `source`, `functions[]`, plus `diagnostics`, `ok` and `exit` — shaped by
+`definitions.effectDocument` (whose rows are `definitions.effectSummary`) in `gustyc --schema`.
+The verdict travels with the facts that produced it, so one call answers both "what does this
+file do" and "is it honest": `ok`/`exit` mean the same thing they mean in the `--check`
+document, and an agent never has to re-read stderr to learn why a program was refused.
+
+| Field | Meaning |
+|-------|---------|
+| `function` | declaration path: `fetch`, `outer.inner`, `Box.load`, or `<module>` |
+| `async` | true for an `async def`: calling it builds a coroutine and runs nothing |
+| `line` | declaration line (0 for `<module>`) |
+| `effects` | sorted effect names performed by the body: `await`, `yield`, `raise` |
+| `awaits` / `yields` / `raises` | effect sites (a signature, not a profile: a loop body counts once) |
+| `coroutine_calls` | calls to an `async def`, i.e. coroutine constructions |
+| `returns_value` / `returns_bare` | some path returns a value / returns None |
+| `falls_through` | control flow can run off the end, so the call — or the await — answers None |
+| `terminates` | `!falls_through`: every path leaves via return, raise, break or continue |
+
+The rows are exactly what the async rules are decided from, so the table and the
+diagnostics cannot drift: a body whose `falls_through` is true while it promises a value is
+the `async.missing_return` warning, a `coroutine_calls` count with no matching await is
+`async.coro.never_awaited`, and a non-zero `yields` under `async: true` is
+`async.generator.unsupported`. `--effects` prints the diagnostics on stderr and exits 1
+when one of them is an error, so "summarise this file" and "is this file honest" are one
+call. It is the machine path for the same pass the LSP publishes and `--check` gates on.
 
 ## Benchmarking
 

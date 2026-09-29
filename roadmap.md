@@ -467,8 +467,18 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
 - **L7.5 Algebraic effects** — a `raise`/`yield`/`await` effect system as a
   first-class control-flow model in codegen, unifying exceptions, generators,
   and async (one lowering, one runtime).
-- **L7.6 Effect/async exhaustiveness** — the semantic check proves an
-  `async def`'s control flow always terminates (no missing `await`/`return`).
+- **L7.6 Effect/async exhaustiveness** ✅ DONE — the await/return discipline is a
+  semantic check, not a runtime promise: `async.coro.never_awaited`,
+  `async.coro.awaited_twice` and `async.generator.unsupported` refuse programs whose
+  async meaning is broken, `async.await.outside_coroutine`,
+  `async.async_stmt.outside_coroutine`, `async.await.not_coroutine` and
+  `async.missing_return` warn where the program still means something. The proof
+  (effect signatures + a flow-sensitive coroutine-liveness walk) is shared by both
+  backends and machine-readable: `gustyc --effects` (ADR 0195). See Gap R.
+- **L7.6a Deferred coroutines in codegen** ⏳ PLANNED — the compiled backend still
+  lowers a coroutine construction as a call, so a coroutine created early performs its
+  effects early. Pinned as `programs/probe_async_eager`: the interpreter prints
+  `between / effect 1 / 2`, the compiled binary `effect 1 / between / 2` (ADR 0195).
 
 ### Phase 8 — codegen: monomorphization, verification, autovectorization (2026)
 
@@ -1409,3 +1419,117 @@ an out-of-memory **diagnostic** (raise `MemoryError`-style and exit non-zero lik
 other runtime failure, instead of returning -1), and a heap that grows — either larger or
 segmented — with the capacity reported in `--gc-stats` so a workload's headroom is
 visible (the interpreter's `--gc-stats` already has `live`; the AOT has `live` and `top`).
+
+## Gap R — async code that could not mean what it said (found while starting L7.6)
+
+L7.6 asks the semantic check to prove an `async def`'s control flow always terminates.
+Before writing the proof, the async surface was measured on all three engines, and the
+result was worse than "missing check": for one program there were three different answers,
+two of them plausible.
+
+```gusty
+async def f(x):
+    return x * 2
+v = f(2)      # a coroutine: the body has not run
+print(v)
+```
+
+| path | measured |
+|------|----------|
+| `--interp` / `--file` | `<coro>` — the repr of a value whose body never ran |
+| `--aot` / `--jit` | `4` — codegen lowers the construction as a call, so `v` holds the *result* |
+| CPython | runs, prints `2`, and warns `RuntimeWarning: coroutine 'f' was never awaited` |
+
+A double await was worse: the interpreter re-ran the body and printed `4 4`; CPython raises
+`RuntimeError: cannot reuse coroutine object`. Both backends "worked". `docs/language.md`
+had no async section at all.
+
+**Closed by ADR 0195.** `pkg/lang/effects.go` computes an effect signature per function
+(effects performed, return shape, whether control flow can run off the end) and runs a
+flow-sensitive coroutine-liveness walk; `Analyze` refuses when a coroutine is created and
+never awaited (`async.coro.never_awaited`), when one object is awaited twice on a path
+(`async.coro.awaited_twice`), and when an `async def` yields
+(`async.generator.unsupported` — neither backend lowers an async generator, so it is refused
+rather than implemented half-way). Four rules warn instead of refusing, on the principle
+that a program which still means something is not a refusal: `await` / `async for` /
+`async with` inside a plain `def` (CPython calls them `SyntaxError`; our model evaluates
+them), `await` on a value that provably is not a coroutine, and an `async def` path that
+runs off the end while other paths promise a value (`async.missing_return`). The signatures
+are published as data — `gustyc --effects`, `--json`, `definitions.effectSummary` in
+`--schema` — so the facts behind every verdict are readable without re-deriving them, and
+`docs/language.md` now has the async section the language never had.
+
+### R.1 — the compiled backend runs a coroutine at the call, not at the await (OPEN)
+
+`programs/probe_async_eager` is accepted by the checker and disagrees with itself:
+
+```gusty
+async def work(x):
+    print("effect", x)
+    return x * 2
+async def run():
+    pending = work(1)
+    print("between")
+    return await pending
+print(await run())
+```
+
+interpreter `between / effect 1 / 2`; compiled `effect 1 / between / 2`. The awaiting rule
+catches the dishonest program, not this ordering, because fixing it needs coroutine objects
+in machine code: `rt_coro_new` + a per-`async def` trampoline, so a call constructs instead
+of executing. Named as **L7.6a** in the plan; the probe pins both orders so paying the debt
+flips the row rather than going unnoticed.
+
+### R.2 — `await` in a loop-exit position emits an undefined intern function (OPEN)
+
+```gusty
+async def f(x):
+    return x + 1
+async def g():
+    await f(1)
+    while True:
+        return "ok"
+print(await g())
+```
+
+The checker accepts it, the interpreter prints `ok`, and the compiled module ends with
+`%t9 = call i32 @rt_str_intern2(i8* @.str1, i8* @.str2)` for an `@rt_str_intern2` that is
+never defined — `llc` rejects the module ("use of undefined value '@rt_str_intern2'") and
+the link fails with "undefined symbol". The interned-string table is filled by a pass that
+misses a literal returned from inside a `while True` body that follows an `await`; without
+either ingredient the same program compiles (`def g(): f(1); while True: return "ok"` is
+fine), so this is the await path's intern accounting, not the loop's. Credit where due:
+`--verify-llvm` catches it ("LLVM rejected the module; this is a compiler bug, not a source
+error") instead of the module verifying clean and the link dying — the L8.2 gate did its job.
+
+### R.3 — a compiled loop whose condition variable the body reassigns never ends (OPEN)
+
+```gusty
+def loop(n):
+    while n < 3:
+        n = n + 1
+    return n
+print(loop(0))
+```
+
+The interpreter answers `3`; the compiled binary never terminates — the condition is
+hoisted, or the parameter store does not reach the compared slot. A hang, not a wrong
+answer, so no leg timeout in the corpus catches it: `--aot` on a real file simply never
+returns. Needs a minimal repro and a fix in the same area as the eager-coroutine work
+(stores to a parameter inside a loop).
+
+### R.4 — an emitted function name can collide with a C symbol (OPEN)
+
+```gusty
+def sync():
+    return 7
+print(sync())
+```
+
+The interpreter answers `7`; the compiled binary answers **`0`** — the emitted function is
+named exactly `sync`, the linker resolved the call against libc's `sync()`, and nothing
+along the way noticed. `main`, `printf`, `exit`, `free` are the same class of accident, and
+this class is worse than a link error because it is silent: a wrong answer from a name the
+host ABI already owns. Either prefix emitted user functions (`gy_<name>`) or refuse a name
+the ABI owns — both are cheap, and L11.8 says a shape this ordinary must not be answerable
+with a wrong number.

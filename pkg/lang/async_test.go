@@ -82,7 +82,6 @@ func TestParseAsyncBad(t *testing.T) {
 	}
 }
 
-
 func TestAsyncCoroAwait(t *testing.T) {
 	src := `async def f(x):
     return x + 1
@@ -108,21 +107,52 @@ func TestAsyncAwaitPlain(t *testing.T) {
 }
 
 func TestAsyncCoroDeferred(t *testing.T) {
-	// calling an async def does NOT run the body; it returns a coroutine
+	// Calling an async def does NOT run the body — the body runs at the await. The
+	// observation is the body's own effect: called eagerly, `raise ValueError` fires
+	// while evaluating `c = f()` — outside the try — and the program dies there
+	// instead of answering 2. Deferred, the raise arrives inside the try, which is
+	// only reachable if the body ran at the `await` and nowhere earlier. That eager
+	// shape is precisely what the compiled backend used to do silently.
+	//
+	// The coroutine also has to be awaited at all: L7.6 refuses one that is simply
+	// dropped (TestEffectsNeverAwaited), because a handle nobody awaits is not a
+	// value any backend can print consistently — that refusal is the other half of
+	// this round.
 	src := `async def f():
+    raise ValueError("ran")
     return 7
 c = f()
-c`
+n = 0
+try:
+    await c
+    n = 1
+except ValueError:
+    n = 2
+n`
 	v, _, err := EvalExpr(src)
 	if err != nil {
 		t.Fatalf("EvalExpr: %v", err)
 	}
-	// c is a coro handle, not the result 7
-	if v == 7 {
-		t.Errorf("async call ran eagerly; want deferred coroutine")
+	if v != 2 {
+		t.Errorf("deferred async call = %d, want 2 (the body raised at the await, not at the call)", v)
 	}
 }
 
+// TestEffectsNeverAwaited: the dropped coroutine is now a checked error, not a
+// handle the two backends print differently ("<coro>" vs the eager result).
+func TestEffectsNeverAwaited(t *testing.T) {
+	src := `async def f():
+    return 7
+c = f()
+c`
+	if _, _, err := EvalExpr(src); err == nil {
+		t.Errorf("expected the checker to refuse a coroutine that is never awaited")
+	}
+	diags := Analyze(parseOrFatal(t, src))
+	if !hasDiagCode(diags, CodeCoroNeverAwaited) {
+		t.Errorf("want %s, got %v", CodeCoroNeverAwaited, diags)
+	}
+}
 
 func TestAsyncForCoro(t *testing.T) {
 	src := `async def f(x):
