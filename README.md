@@ -223,6 +223,10 @@ falls back to dynamic dispatch.
   `[1, 2, 3][-1]` agree with CPython on both backends (the literal used to crash the compiler), while a
   dict's `-1` stays a key, because a subscript is either a position or a key and only positions count
   from the end (`programs/negative_index.gy`, ADR 0210)
+- **A failure class has one code, whichever path produced it** — a program that trapped exits 3
+  whether the interpreter or native code ran it, an `llc` rejection of our own module is the
+  compiler-bug class 2 on the run path too, and `--json`'s `exit` field is derived from the
+  process status rather than written down (ADR 0211)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

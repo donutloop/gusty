@@ -3300,3 +3300,47 @@ compiled binary dies with 1 on an uncaught exception, `--interp` reports 3, and 
 same traceback and exits **0**. "Did the program work?" answered yes for a crashed program, on the path
 agents script against. The next cycle that touches exit codes must own it.
 
+## Cycle 159 — the answer was one frame down, and nobody was consuming it (Gap R.17, ADR 0211)
+
+`gustyc --aot prog.gy` printed `IndexError: index out of range` and exited **0**. The linked
+binary exited 1. `--interp` exited 3. Three ways of asking one question, three answers.
+
+The cause is the most embarrassing kind of bug: the generated `main` returned 1 correctly, the C
+helper returned it (`static int jit_call(void* fn) { return ((int (*)(void)) fn)(); }`), and the Go
+frame above threw it away — `captureFD1(func() { C.jit_call(fn) })`. The information existed end to
+end and one frame with no current use for it dropped it.
+
+What I'm keeping:
+
+- **Audit *consumers*, not just producers.** For every quantity the toolchain already computes —
+  exit status, verification result, timings, diagnostics — ask who reads it. If the answer is
+  "nobody, we re-derive it or hard-code it", that is a defect even when nothing looks broken. This
+  loop has now hit the same shape four times (symbol prefixes 0198, runtime blocks 0209, duplicated
+  diagnostics 0202, discarded status 0211); the pattern is "one pipeline computes a fact, several
+  paths re-implement the decision, and one path forgets".
+- **A contract verified on one execution path is unverified.** Every test that linked and ran a real
+  binary saw the correct exit status for dozens of cycles, so the class looked covered. The
+  in-process JIT was the uncovered path. Now the matrix is *paths × classes* (`--aot` joins
+  `TestCLIExitCodeContract`, plus a dedicated file), because "we test exit codes" was the claim that
+  was false.
+- **A payload field shaped like the truth is worse than no field.** `--json --aot` documented
+  `"exit": 0`. An agent that trusts a published schema does not second-guess it. Rule to apply
+  forever: every documented field is *derived from the artifact it describes*, and there is a test
+  that fails if it is hard-coded. Here: `payload.Exit != process.ExitCode()` fails the build.
+- **Classify with types, and keep "refused" apart from "absent".** `*ToolchainRejectionError`
+  makes the `llc`-rejection class reachable through `errors.As` on any path, and the missing-tool
+  case is a different message and a different code — a test I could only write *because* the
+  classification is a type. Matching `"jit: llc:"` would have merged an uninstalled LLVM into
+  "our compiler emitted an invalid module", which is an accusation that sends someone debugging a
+  bug that does not exist. (Same honesty rule as ADR 0210's broken workaround.)
+- **Doing the status correctly meant *not* fixing two wrong answers.** `print(1 / 0)` prints `inf`
+  and `print(p.nope)` prints `0`, both exit 0 — and exit 0 is right, because those programs really do
+  run to completion; the bug is that they answered instead of raising. Measuring which programs
+  actually trapped kept me from smuggling "make traps non-zero" into a plumbing fix and calling it
+  done. They are Gaps R.18 and R.19, measured and owned by the next cycles: both backends also fail to
+  attach the exception *class*, so `except ZeroDivisionError:` never fires — which tells me the fix is
+  one rule (every built-in trap is a typed raise everywhere), not two patches.
+- **Write the repro into the roadmap entry, not just the commit message.** Both new Gap entries carry
+  the exact source and the exact observed outputs of all three engines, because the entry is how the
+  next cycle decides whether the gap is real.
+

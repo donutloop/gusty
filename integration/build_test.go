@@ -397,6 +397,22 @@ func TestCLIExitCodeContract(t *testing.T) {
 	if err := os.WriteFile(badSrc, []byte("print(nope_such_function(1))\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The run-path sources for the compiled leg: a program that works, a program that
+	// raises, and a program the compiled backend declines to lower.
+	cleanSrc := filepath.Join(dir, "clean.gy")
+	trapSrc := filepath.Join(dir, "raises.gy")
+	oobSrc := filepath.Join(dir, "oob.gy")
+	refuseSrc := filepath.Join(dir, "refuses.gy")
+	for f, body := range map[string]string{
+		cleanSrc:  "print(1 + 1)\n",
+		trapSrc:   "raise ValueError(\"boom\")\n",
+		oobSrc:    "xs = [1]\nprint(xs[5])\n",
+		refuseSrc: "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n",
+	} {
+		if err := os.WriteFile(f, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cases := []struct {
 		name string
 		args []string
@@ -413,6 +429,14 @@ func TestCLIExitCodeContract(t *testing.T) {
 		{"runtime error: undefined name under --eval", []string{"--eval", "print(undefined_thing)"}, 3},
 		{"runtime error: uncaught exception", []string{"--eval", "raise ValueError(\"boom\")"}, 3},
 		{"runtime error: out of range", []string{"--eval", "xs = [1]\nprint(xs[5])"}, 3},
+		// The compiled path used to be the exception: it forwarded the program's traceback
+		// and then reported success, because the in-process JIT threw away the status the
+		// generated main returns. One failure class, one code, whichever backend ran it
+		// (roadmap Gap R.17, ADR 0211).
+		{"success under --aot", []string{"--aot", cleanSrc}, 0},
+		{"runtime error: uncaught exception under --aot", []string{"--aot", trapSrc}, 3},
+		{"runtime error: out of range under --aot", []string{"--aot", oobSrc}, 3},
+		{"compile error: codegen refuses under --aot", []string{"--aot", refuseSrc}, 1},
 		{"usage error: unknown flag", []string{"--definitely-not-a-flag"}, 4},
 		{"usage error: --build without sources", []string{"--build", filepath.Join(dir, "o")}, 4},
 		// The oracle leg (roadmap L11.9, ADR 0186): "gusty disagrees with Python" is its

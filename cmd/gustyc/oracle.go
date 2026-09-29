@@ -108,6 +108,14 @@ func aotLeg(src string) (out string, err error) {
 	}()
 	res, err := lang.JIT(src, 0)
 	if res != nil {
+		if res.Code != 0 {
+			// A compiled program that died from an uncaught exception is a leg that did
+			// not complete, not a leg that printed something different — the difference
+			// matters to the report, because "our backend refused" must never be
+			// recorded as an answer (ADR 0166). Gap R.17 is why the status could be asked
+			// for in the first place.
+			return res.Output, fmt.Errorf("compiled program trapped (exit %d): %s", res.Code, firstLine(res.Stderr))
+		}
 		return res.Output, err
 	}
 	return "", err

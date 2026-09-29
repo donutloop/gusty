@@ -375,8 +375,8 @@ asserts each row.
 |------|---------|-----------|
 | 0 | success | any mode |
 | 1 | **compile error** — the program never ran: parse, analysis, a codegen refusal, or `llc`/`cc` failed. Diagnostics were emitted | `--eval`, `--check`, `--verify`, `--build`, `--emit-*`, `--fmt-check` |
-| 2 | **LLVM rejected the module we emitted** — a compiler bug, not a source error (see ADR 0164/0166) | `--build` (when the verifier stage rejects), `--verify-llvm` |
-| 3 | **runtime error** — the program compiled and ran, then trapped (an uncaught exception, a failed built-in) | `--eval`, `--file`, `--repl` |
+| 2 | **LLVM rejected the module we emitted** — a compiler bug, not a source error (see ADR 0164/0166). Reached through `errors.As(err, *lang.ToolchainRejectionError)`, never by matching message text; a toolchain that is *not installed* is not a rejection and stays class 1 | `--build` (when the verifier stage rejects), `--verify-llvm`, `--aot`/`--jit` (when `llc` refuses what codegen produced) |
+| 3 | **runtime error** — the program compiled and ran, then trapped (an uncaught exception, a failed built-in). Every run path reports it identically: the compiled backend's status comes from the generated `main`'s return value, which `lang.JITResult.Code` carries (ADR 0211) | `--eval`, `--file`, `--repl`, `--aot`/`--jit` |
 | 4 | **usage error** — bad/unknown flags, no source given, unreadable file, empty `--bench-dir`, missing baseline file | any mode |
 | 5 | **benchmark regression** (`--bench-baseline` gate fired; see `docs/benchmark.md`) | `--bench-*` |
 | 6 | **divergence from CPython** — the program compiled, ran, and printed something other than what CPython prints for the same source (a wrong value, or a leg that refused it) | `--oracle`, `--oracle-file` |
@@ -468,7 +468,8 @@ annotations as static-only, as it does for the rest of the annotation surface.
 - `--lang`: self-describing feature list for agents
 - REPL (interactive): accumulates input line by line so multi-line suites (functions, classes, `if`/`for`/`while` bodies) can be entered; shows `> ` primary and `... ` continuation prompts on a terminal; recovers from parser/eval panics so a bug never kills the session.
 
-Exit codes: 0 ok, 1 runtime/eval error, 2 parse/usage error.
+Exit codes are the table above — `--repl` has no per-session status to report, and the rest of
+the contract (0/1/2/3/4) holds wherever a program is run.
 
 ## Incremental parsing (LSP)
 
@@ -664,11 +665,23 @@ against its own ability to fail).
   about the run, not something to infer from the flag list — `--file` without
   `--aot` reports `"backend": "interpreter"` (roadmap Gap M.2). Captured-output
   runs (the compiled backend) report `{"output": "42\n", "backend": "aot", "exit": 0}`.
+  For a program that trapped, `"exit"` is the very number the process exits with and the
+  target's own diagnostics come along: `{"output": "", "backend": "aot", "exit": 3,
+  "stderr": "Traceback (most recent call last):\n…IndexError: index out of range\n"}`. That
+  status is the generated `main`'s return value, carried as `lang.JITResult.Code`; until it
+  existed `--aot` answered `"exit": 0` for a program that had just died, on the path an agent
+  scripts a compiled run through (roadmap Gap R.17, ADR 0211).
+- `--json --aot <file>` when the program never ran → `{"error": "<message>", "backend": "aot",
+  "exit": N}`: `N` is 1 for a front-end or codegen refusal, and **2** when `llc` rejected the
+  module we emitted (the compiler-bug class, `*lang.ToolchainRejectionError`). A toolchain that
+  is not installed says `could not be run` and stays 1 — it is not an LLVM rejection.
 - `--json --verify <src>` → `{"ok": true, "exit": 0}` or `{"diagnostics": [...], "exit": 1}`
 - parse errors → `{"ok": false, "phase": "parse", "error": "1:7: unexpected token",
   "errors": [{"line": 1, "col": 7, "msg": "unexpected token"}], "exit": 1}` — the spans
   are in the payload, so no agent has to parse `gustyc: parse error at 1:7: …` off stderr
-- runtime errors → `{"error": "...", "traceback": "...", "exit": 3}`
+- runtime errors → `{"error": "...", "traceback": "...", "exit": 3}` (the interpreted path
+  renders the traceback into `traceback`; the compiled path forwards the program's fd 2 in
+  `stderr`, which is where an uncaught-exception report belongs)
 - `--json --verify-llvm <src>` → the `irVerification` record, e.g.
   `{"ok":true,"tool":"/usr/bin/opt-20","skipped":false,"pipeline":["verify"],"toolchain":"LLVM 20"}`
   (see [Module verification](#module-verification-irverification-l82))

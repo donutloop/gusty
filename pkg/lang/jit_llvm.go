@@ -50,10 +50,10 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"time"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 	"unsafe"
 )
 
@@ -64,8 +64,15 @@ import (
 // JSON-serializable so agents and tooling can consume a JIT session without
 // scraping process output.
 type JITResult struct {
-	Output      string       `json:"output"`
-	Stderr      string       `json:"stderr"`
+	Output string `json:"output"`
+	Stderr string `json:"stderr"`
+	// Code is what the generated `main` returned: 0 when the program ran to
+	// completion, non-zero when it trapped (an uncaught exception, a failed
+	// built-in). Before it existed the in-process JIT threw the status away, so
+	// `--aot` reported success for a program whose own binary exits 1 — the answer
+	// an agent asks first ("did it work?") was the one answer we withheld
+	// (roadmap Gap R.17, ADR 0211).
+	Code        int          `json:"code"`
 	IR          string       `json:"ir"`
 	Commands    []string     `json:"commands"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
@@ -116,22 +123,23 @@ func JIT(src string, optLevel int) (*JITResult, error) {
 
 	llc := exec.Command(llcCmd, "-relocation-model=pic", "-filetype=obj", irPath, "-o", objPath)
 	if out, err := llc.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("jit: llc: %v\n%s", err, out)
+		return nil, toolchainFailure("llc", llcCmd, err, out)
 	}
 	res.Commands = append(res.Commands, llcCmd+" -relocation-model=pic -filetype=obj "+irPath+" -o "+objPath)
 
 	cc := exec.Command(ccCmd, "-shared", "-fPIC", objPath, "-o", soPath, "-lm")
 	if out, err := cc.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("jit: cc: %v\n%s", err, out)
+		return nil, toolchainFailure("cc", ccCmd, err, out)
 	}
 	res.Commands = append(res.Commands, ccCmd+" -shared -fPIC "+objPath+" -o "+soPath+" -lm")
 
-	out, errOut, err := dlopenRun(soPath)
+	out, errOut, code, err := dlopenRun(soPath)
 	if err != nil {
 		return nil, err
 	}
 	res.Output = out
 	res.Stderr = errOut
+	res.Code = code
 	return res, nil
 }
 
@@ -142,13 +150,15 @@ func captureFD1(fn func()) (string, error) { return captureFD(1, fn) }
 // dlopenRun loads the shared object, dlsym's its `main`, and runs it with fd 1
 // and fd 2 redirected to pipes, so the generated printf output and its fd-2
 // diagnostics (uncaught-exception reports, the collector self-report) are both
-// recoverable in Go instead of disappearing into the terminal.
-func dlopenRun(soPath string) (string, string, error) {
+// recoverable in Go instead of disappearing into the terminal. It also returns
+// the status `main` returned, which is the only place the compiled backend
+// records that a program trapped.
+func dlopenRun(soPath string) (string, string, int, error) {
 	cpath := C.CString(soPath)
 	defer C.free(unsafe.Pointer(cpath))
 	h := C.jit_dlopen(cpath)
 	if h == nil {
-		return "", "", fmt.Errorf("jit: dlopen: %s", C.GoString(C.jit_dlerror()))
+		return "", "", 0, fmt.Errorf("jit: dlopen: %s", C.GoString(C.jit_dlerror()))
 	}
 	defer C.jit_dlclose(h)
 
@@ -156,28 +166,29 @@ func dlopenRun(soPath string) (string, string, error) {
 	defer C.free(unsafe.Pointer(cmain))
 	fn := C.jit_dlsym(h, cmain)
 	if fn == nil {
-		return "", "", fmt.Errorf("jit: dlsym(main): %s", C.GoString(C.jit_dlerror()))
+		return "", "", 0, fmt.Errorf("jit: dlsym(main): %s", C.GoString(C.jit_dlerror()))
 	}
 
 	C.jit_unbuffered()
 	// Both descriptors are redirected at once: fd 1 holds the program's own output,
 	// fd 2 its diagnostics (tracebacks, the collector self-report).
 	var (
-		out     string
-		errOut  string
-		outErr  error
-		errErr  error
+		out    string
+		errOut string
+		outErr error
+		errErr error
+		code   int
 	)
 	errOut, errErr = captureFD(2, func() {
-		out, outErr = captureFD1(func() { C.jit_call(fn) })
+		out, outErr = captureFD1(func() { code = int(C.jit_call(fn)) })
 	})
 	if errErr != nil {
-		return "", "", errErr
+		return "", "", 0, errErr
 	}
 	if outErr != nil {
-		return "", "", outErr
+		return "", "", 0, outErr
 	}
-	return out, errOut, nil
+	return out, errOut, code, nil
 }
 
 // captureFD runs fn with file descriptor fd redirected to a pipe, then restores

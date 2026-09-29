@@ -65,6 +65,14 @@ func replRun(ev *lang.Evaluator, buf *strings.Builder, jitMode bool) {
 			return
 		}
 		fmt.Print(res.Output)
+		// A turn whose program died says so, on the tool's own channel. Swallowing it
+		// left the REPL showing a blank line for a program that raised (Gap R.17).
+		if res.Stderr != "" {
+			fmt.Fprint(os.Stderr, res.Stderr)
+		}
+		if res.Code != 0 {
+			fmt.Fprintf(os.Stderr, "gustyc: program exited with status %d\n", res.Code)
+		}
 		return
 	}
 	prog, err := lang.Parse(src)

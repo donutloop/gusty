@@ -803,14 +803,17 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     `xs.clear` share this dispatch table and each needs ADR 0187's pairing rule (write the tag with
     the payload); `sorted(key=)`, `min/max(key=)` need the fnptr lowering; and a runtime helper
     emitted in the prelude changes any module-wide call-site count, so count in user code.
-- **L11.8 — Refusal is part of the model, and so is its exit code** ⏳ PLANNED —
-  no tested shape may leave the compiler as an `llc` rejection, a Go panic, or a
-  SIGSEGV: the ADR 0166 diagnostic is the *only* exit for what does not lower.
-  Add the missing capability diagnostics (`nested container literal`,
-  `tuple literal`, `sorted(...)`, `enumerate(...)`), and close the contract
-  asymmetry found today: an `llc` rejection is exit **2** through `--build` but
-  exit **1** through `--aot`/the JIT, so the same compiler bug is reported two
-  ways. Extend `TestCLIExitCodeContract` to drive the JIT leg as well as `--build`.
+- **L11.8 — Refusal is part of the model, and so is its exit code** 🔷 PARTIAL —
+  **the exit-code half is ✅ DONE (ADR 0211)**: an `llc` rejection is exit **2** on every path
+  (`*lang.ToolchainRejectionError`, matched with `errors.As`), a trap is exit **3** on every run
+  path including `--aot` (`JITResult.Code`), a refusal stays 1, and a toolchain that is not
+  installed is not an LLVM rejection; `TestCLIExitCodeContract` drives the `--aot` leg and
+  `integration/trap_exit_test.go` drives the classes end to end with a manufactured `llc`
+  failure and a real-toolchain control. **Still PLANNED**: the capability diagnostics with
+  stable codes for what is refused today only in prose — `list(<container>)`, `tuple(...)`, a
+  compiled container of containers — measured this cycle to be clean refusals rather than `llc`
+  rejections or panics (so the ADR 0166 "no tested shape may leave the compiler as a panic"
+  contract holds for them), but their messages are `codegen:` text rather than schema'd codes.
 - **L11.9 — The corpus is the spec: CPython is the oracle everywhere** ✅ DONE (ADR 0186) —
   the harness ran 41 cases and asserted backend-vs-backend only, which is exactly why rows like
   `print(True)`, `xs[-1]`, `len("café")`, `print(math.PI)` sat in a green build. The matrix now
@@ -1917,22 +1920,68 @@ backend declines rather than pretends. (The sentence in the original entry advis
 out to be false — a string in a variable is refused too. Found while testing L11.4, and recorded in
 ADR 0210: a refusal whose workaround does not work is worse than no workaround.)
 
-### R.17 — an uncaught exception exits 0 through `--aot` (OPEN, tool bug)
+### R.17 — an uncaught exception exited 0 through `--aot` (CLOSED, ADR 0211)
 
 ```gusty
 xs = [1, 2, 3]
-print(xs[-4])      # binary dies with 1; --interp reports 3; --aot reports 0
+print(xs[-4])      # linked binary: 1 · --interp: 3 · --aot used to say: 0
 ```
 
-Found while testing L11.4: the linked binary dies with status **1** after printing the
-`IndexError` traceback, `gustyc --interp` reports **3**, and `gustyc --aot prog.gy` prints the
-same traceback and exits **0**. A script or agent that asks "did it work?" gets yes from the
-compiled path for a program that crashed. Exit codes are the machine-readable half of the
-diagnostic surface (ADR 0006, ADR 0168), so a failure that reads as success there is worse than a
-crash: the wrong answer is in the field nobody scrapes. Fix by propagating the child's status in
-the `--aot`/JIT run paths and choosing one contract for an uncaught exception across backends —
-then extend `TestCLIExitCodeContract` (L11.8's own test) to cover it, so the three paths cannot
-drift back apart.
+Recorded the day it was measured, and the cause was not where the symptom was: the in-process
+JIT dlopen'd the program, called the generated `main`, and threw away its return value — the C
+helper `jit_call` already returned it. So `--aot` printed the traceback, answered `"exit": 0` in
+`--json`, and the oracle's compiled leg filed a trap as an *answer* rather than a leg that did not
+complete. Fixed by making the status data (`JITResult.Code`), the classification a type
+(`*lang.ToolchainRejectionError`, matched with `errors.As`, so an `llc` rejection through the run
+path is exit 2 like it has always been through `--build`, while a toolchain that is merely not
+installed says `could not be run` and stays 1), and the JSON `exit` field derived from the process
+status instead of hard-coded.
+
+The lesson to keep: the linked binary had been exiting 1 correctly all along. Every test that
+linked and ran a binary saw the truth; only the in-process path dropped it. **A contract verified
+on one execution path is unverified.**
+
+Pinned by `pkg/lang/jit_exit_code_test.go` (status 0 clean, non-zero for an uncaught `raise` and
+for a bounds trap, and still 0 when the exception is *caught* — the direction a naive fix breaks),
+`pkg/lang/toolchain_error_test.go` (an llc refusal is the typed rejection with its words; a missing
+tool is not), and `integration/trap_exit_test.go` (the same trap is class 3 on `--aot`/`--file`/
+`--interp`; the traceback stays off stdout; the JSON `exit` cannot contradict the process; a
+manufactured `llc` failure through the run path is class 2 with a real-toolchain control).
+
+### R.18 — division by zero answers `inf` instead of raising (OPEN, both backends)
+
+```gusty
+try:
+    print(1 / 0)          # compiled: prints `inf`, exit 0, no report at all
+except ZeroDivisionError:
+    print("caught zero")  # never runs, on either backend
+```
+
+Measured (ADR 0211's sweep): the compiled backend prints `inf` and exits **0** with nothing on
+stderr; the interpreter traps with an error whose text is `division by zero` and **no exception
+class**, so `except ZeroDivisionError:` cannot match it and the handler never runs; CPython raises
+`ZeroDivisionError`. Two backends, three wrong answers, one root: a built-in trap that reports a
+message instead of raising a typed exception. The fix is one rule, not a patch — every runtime
+error the language raises goes through `exnError(<Class>, msg)` (interpreter) and the raise path
+(codegen), and the arithmetic belongs with L11.6's numeric work.
+
+### R.19 — a missing attribute answers `0` instead of raising (OPEN, both backends)
+
+```gusty
+class P:
+    pass
+p = P()
+try:
+    print(p.nope)         # compiled: prints `0`, exit 0, no report
+except AttributeError:
+    print("caught attr")  # never runs, on either backend
+```
+
+Same shape as R.18 and the same root: the compiled path substitutes a default value for a trap,
+and the interpreter's error carries `no attribute nope` without a class, so no `except` clause can
+catch it. CPython raises `AttributeError: 'P' object has no attribute 'nope'`. Fix with the same
+one rule (a built-in trap is a typed raise, everywhere), and add the class name to the traceback
+text so the report and the matcher read the same string.
 
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)

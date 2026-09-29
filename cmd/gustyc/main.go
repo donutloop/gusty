@@ -28,6 +28,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -392,12 +393,21 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		defer lang.SetGCReport(false)
 		res, err := lang.JIT(s, 0)
 		if err != nil {
+			// Which failure class this is was invisible until now: the run path wrapped
+			// every toolchain failure in a plain error and reported "your program does not
+			// compile", while `--build` reported the same llc rejection as the compiler-bug
+			// class. One event, one code, whichever flag produced it (ADR 0211).
+			exitCode := exitCompileError
+			var rejection *lang.ToolchainRejectionError
+			if errors.As(err, &rejection) {
+				exitCode = exitIRVerify
+			}
 			if jsonOut {
-				fmt.Printf("{\"error\": %q, \"backend\": %q, \"exit\": %d}\n", err.Error(), backend, exitCompileError)
+				fmt.Printf("{\"error\": %q, \"backend\": %q, \"exit\": %d}\n", err.Error(), backend, exitCode)
 			} else {
 				fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 			}
-			return exitCompileError
+			return exitCode
 		}
 		// The target's stderr (uncaught-exception reports, the collector line) is
 		// forwarded unchanged: stdout stays the program's, stderr stays the tool's.
@@ -410,12 +420,25 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 				gcMember = gcJSON(st, true)
 			}
 		}
+		// The target's own exit status is the answer to "did the program work?", and
+		// until now it was thrown away: a program that died from an uncaught exception
+		// printed its traceback and then reported success, on the one path an agent
+		// scripts a compiled run through. One failure class, one code, whichever
+		// backend ran it (roadmap Gap R.17, ADR 0211).
+		exitCode := exitOK
+		if res.Code != 0 {
+			exitCode = exitRuntime
+		}
+		stderrMember := ""
+		if res.Stderr != "" {
+			stderrMember = fmt.Sprintf(", \"stderr\": %q", res.Stderr)
+		}
 		if jsonOut {
-			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": 0%s}\n", res.Output, backend, gcMember)
+			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": %d%s%s}\n", res.Output, backend, exitCode, gcMember, stderrMember)
 		} else {
 			fmt.Print(res.Output)
 		}
-		return exitOK
+		return exitCode
 	}
 	ev := lang.NewEvaluator()
 	prog, err := lang.Parse(s)
