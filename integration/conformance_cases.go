@@ -71,6 +71,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// method all called `print`/`range`/`shape`, which used not to parse at all because
 		// those words were keywords (Gap R.9, ADR 0203).
 		"builtin_names_as_defs",
+		// A default marks a parameter that may be omitted and says nothing about its
+		// neighbours: a defaulted parameter in the middle of a signature, bound both
+		// positionally and by keyword (Gap R.11, ADR 0206). CPython cannot run it.
+		"param_default_order",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -250,6 +254,10 @@ type oracleDecl struct {
 
 var oracleLedger = map[string]oracleDecl{
 	// ---- gusty-only surface: CPython cannot run the program at all --------------
+	"programs/param_default_order": {oracle: lang.OracleNA,
+		reason: "def offset(base, step=10, bonus) is a SyntaxError in CPython (`parameter without a default follows parameter with a default`); here positional binding fills left to right and a keyword call names what it fills, so every parameter is reachable",
+		ref:    "roadmap Gap R.11 (closed) and docs/language.md § Parameters and defaults (ADR 0206)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "6\n16\n6\n123\n923\n129\n9\n"}, {Backend: "aot", Stdout: "6\n16\n6\n123\n923\n129\n9\n"}}},
 	"programs/data_b": {oracle: lang.OracleNA,
 		reason: "{5, 6, 7}[6] — subscripting a set by position is gusty surface; CPython raises TypeError ('set' object is not subscriptable)",
 		ref:    "docs/language.md § Dicts & sets (positional set subscript is a gusty extension)",

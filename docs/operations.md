@@ -104,6 +104,12 @@ compiled backend (definitions visible module-wide) would run different programs 
 inside function bodies and methods named after built-ins are unaffected. For a code generator: emit
 your `def`s before the code that calls them, or rename.
 
+**Parameter order is free: a default may sit anywhere in a signature** (Gap R.11, ADR 0206).
+`def f(a, b=1, c)` is legal and callable here — positionally (`f(1, 2, 3)`) and by keyword
+(`f(1, b=2, c=3)`) — where CPython refuses the definition. A generator that emits signatures should
+not sort its parameters to satisfy a Python rule this language does not have; it only has to give
+every parameter a way to be filled, which the checker verifies.
+
 **The calling contract is enforced in both directions** (Gap R.10, ADR 0201). A user-defined
 function is checked for arity at the call: `function "f" expects N arguments, got M` (positional
 shortfall), `function "f" accepts N arguments, got more` (too many), `function "f" is missing

@@ -211,6 +211,9 @@ falls back to dynamic dispatch.
 - **A built-in name you claim must be defined above your uses** — `for i in range(2)` above a
   `def range` was the built-in to the interpreter and the program's function to the compiled backend
   (two different outputs, no diagnostic); it is refused at the call instead (`ADR 0205`)
+- **A default may sit anywhere in a signature** — `def f(a, b=1, c)` is a `SyntaxError` in CPython and
+  ordinary source here, because positional binding fills left to right and a keyword call names what it
+  fills, so every parameter is reachable (`programs/param_default_order.gy`, ADR 0206)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

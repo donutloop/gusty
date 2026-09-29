@@ -1815,6 +1815,27 @@ A **default is a way of being supplied**, so every shape that passes fewer argum
 definition lists stays legal (`programs/arity_defaults.gy`):
 
 ```gy
+def offset(base, step=10, bonus):    # a default in the middle is not special
+    return base + step + bonus
+
+
+print(offset(1, 2, 3))               # 6   — positional binding fills left to right
+print(offset(1, bonus=5))            # 16  — the default fills itself
+print(offset(base=1, step=2, bonus=3))  # 6  — a keyword call names what it fills
+```
+
+**A default marks a parameter that may be omitted; it says nothing about the parameters around it**
+(ADR 0206). CPython rejects `def offset(base, step=10, bonus)` at the `def`
+(`parameter without a default follows parameter with a default`) because Python's positional binding
+stops at the first default, so that last parameter genuinely cannot be filled. This language has no
+such rule — positional binding fills left to right and a keyword call names what it fills — so every
+parameter is reachable, and the shape is ordinary source instead of a syntax error. The consequence is
+that `programs/param_default_order.gy` is a program CPython cannot run at all, recorded as such in the
+conformance ledger rather than made to look like a match. What *is* enforced is the thing that is
+actually broken in either language: a call that leaves a parameter with no default unfilled
+(`offset(1)` → `function "offset" expects 3 arguments, got 1`).
+
+```gy
 def greet(name, punct="!"):
     return name + punct
 

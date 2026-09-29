@@ -1502,8 +1502,9 @@ messages where nobody would look:
   echoed by the interpreter and by nobody else (closed below, ADR 0204); and `for x in 5` iterates on
   both backends while
   being undocumented and refused by CPython.
-- **R.11 (OPEN)** — a non-default parameter after a defaulted one parses, and is only caught at the
-  call, while CPython refuses the definition.
+- **R.11, closed by ADR 0206 as "not a defect"** — `def f(a, b=1, c)` looked like a missing CPython
+  refusal, but measurement showed the shape binds correctly in both engines; it is now a documented
+  divergence with a ledger row that excludes the oracle.
 
 Each of these was discovered by writing a corpus program rather than by reading code, which is why
 they are all reproducible as programs.
@@ -1896,21 +1897,35 @@ rule targets mistakes rather than style. `programs/arity_defaults.gy` was added 
 parity program for exactly that reason (trailing defaults, all defaults, keyword-only,
 keyword-plus-default, zero-parameter).
 
-### R.11 — a non-default parameter after a defaulted one is only caught at the call (OPEN)
+### R.11 — a non-default parameter after a defaulted one (CLOSED, ADR 0206 — not a defect)
 
 ```gusty
-def f(a, b=1, c):
-    return a
+def offset(base, step=10, bonus):
+    return base + step + bonus
 
 
-print(f(1))
+print(offset(1, 2, 3))          # 6   both engines
+print(offset(1, bonus=5))       # 16  both engines
 ```
 
-CPython refuses this at the `def`: such a function can never be called correctly, because positional
-binding can't reach `c` without also filling `b`. Ours parses it happily and reports a call-site
-arity error instead — right verdict, wrong place, and the definition itself remains a latent trap for
-every other call. The rule belongs at the definition site, where the fact is. (Found while writing
-the R.10 tests.)
+The entry read "CPython refuses this at the `def` … the definition site is the honest place to say so",
+and the cycle began by implementing that — until the measurement said `ok`, `6`, `16`, on both engines.
+CPython forbids the shape because its positional binding stops at the first default, which would leave
+`bonus` unreachable; this language fills positionally left to right and lets a keyword call name what it
+fills, so nothing is unreachable and the imported refusal would have rejected programs whose calls all
+bind correctly.
+
+Closed as a **deliberate divergence, documented and pinned**: language.md states the rule (a default
+marks a parameter as omissible, not as last), operations.md tells a code generator not to sort
+parameters to satisfy a Python rule this language does not have, `programs/param_default_order.gy` joins
+the ledger's gusty-only-surface section with `oracle: not-applicable`, and the tests assert both engines
+agree *and* that CPython still cannot run it. What remains enforced is the thing that is broken in either
+language: a call that leaves a no-default parameter unfilled, refused at the call by name (ADR 0201).
+
+Process note, and the reason this entry stays in the roadmap rather than being deleted: a gap copied
+from a language comparison is a **hypothesis**, and the cheap step is the one that measures the current
+behaviour before implementing the imported fix. The `def`-level refusal would have been committed with
+tests, ADR and docs if the repro had been run after the patch instead of before it.
 
 ### R.7 — one source line can report the same diagnostic two or three times (CLOSED, ADR 0202)
 

@@ -1,0 +1,30 @@
+# A default marks a parameter that may be omitted; it says nothing about the parameters around it.
+# CPython rejects `def f(a, b=1, c)` at the `def` — in Python that parameter can never be filled,
+# because positional binding stops at the first default. This language has no such rule: positional
+# binding fills left to right and a keyword call names what it fills, so both `f(1, 2, 3)` and
+# `f(1, b=2, c=3)` reach every parameter (roadmap Gap R.11, ADR 0206).
+#
+# CPython cannot run this file at all, which is why its ledger row says the oracle is not applicable
+# rather than pretending a match. What is asserted is that both engines here agree, and that a call
+# which really does leave a parameter unfilled is still refused (Gap R.10).
+
+def offset(base, step=10, bonus):
+    return base + step + bonus
+
+
+def mixed(a=1, b=2, c=3):
+    return a * 100 + b * 10 + c
+
+
+class Span:
+    def span(self, start, gap=0, stop):
+        return stop - start + gap
+
+
+print(offset(1, 2, 3))
+print(offset(1, bonus=5))
+print(offset(base=1, step=2, bonus=3))
+print(mixed())
+print(mixed(9))
+print(mixed(c=9))
+print(Span().span(2, 1, 10))

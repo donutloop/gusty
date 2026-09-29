@@ -3084,3 +3084,42 @@ What this cycle added to the toolbox:
   engines, and CPython disagrees everywhere instead of in one backend). Consistency obtained by moving
   the *user-visible* semantics is usually the expensive kind of wrong.
 
+## Cycle 154 — the gap that wasn't: measure the repro before implementing the imported fix (Gap R.11, ADR 0206)
+
+`def offset(base, step=10, bonus)` — a defaulted parameter in the middle of a signature. Roadmap:
+"CPython rejects this at the `def`… the definition site is the honest place to say so." That reasoning
+is Python's, and the entry had inherited it: in Python, positional binding stops at the first default,
+so `c` would be unreachable and the author would get a confusing `TypeError` — hence the `SyntaxError`.
+
+I started to implement the refusal. The detour that saved the cycle was running the repro first:
+
+| program | ours (interp) | ours (AOT) | CPython |
+|---|---|---|---|
+| `offset(1, 2, 3)` | 6 | 6 | SyntaxError |
+| `offset(1, bonus=5)` | 16 | 16 | SyntaxError |
+
+Here, positional binding fills left to right and a keyword call names what it fills, so **no parameter is
+unreachable** — the failure mode Python's rule exists to prevent cannot occur, and the refusal would have
+rejected programs whose calls all bind correctly. R.11 closed as *not a defect*: a documented divergence
+plus a ledger row with `oracle: not-applicable`, tests asserting both engines agree and that CPython still
+cannot run it.
+
+What to keep:
+
+- **A gap inherited from a language comparison is a hypothesis, not a spec.** Every R-item in this
+  series came from writing a program and watching what happened — this one came from reading CPython's
+  error message, and it was wrong about our language in the direction that would have *added* a false
+  refusal. Rule adopted: reproduce the current behaviour and record it in the same session, before
+  writing the fix.
+- **"Implement the imported fix" is the expensive path when the answer is a document.** The commit still
+  has tests, an ADR, docs and a corpus program — but they pin a *permission* instead of installing a
+  prohibition. If the behaviour is right, the artifact that makes it a rule is a normative sentence plus
+  tests that fail if it moves.
+- **Ledger rows for "CPython can't run this" must be kept honest by a test**, not trusted:
+  `TestDefaultedParameterInAnyPositionAgreesOnEveryPath` asserts the oracle still fails. An `NA` row that
+  quietly becomes runnable is exactly how a divergence stops being a decision and becomes drift — which
+  is also why the drift tests exist for the other 25 debt rows.
+- Two messages carry the real contract here (`expects N arguments, got M` / `is missing argument "p"`,
+  ADR 0201), and this cycle added assertions that they fire on the *unordered* shape too — a rule you
+  only test on the tidy inputs is not the rule you think you have.
+
