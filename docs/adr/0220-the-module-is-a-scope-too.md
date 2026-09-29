@@ -65,7 +65,7 @@ through a module global, which in this GC's history means "the list reads back e
 front-end answer; the interpreter said the module's own constant was not defined; and the compiled
 refusal told the reader the interpreter would report the same thing, which is now measurably untrue
 (that sentence is Gap R.38, and this cycle adds a second untrue instance of it: the probe's refusal
-claims an error the interpreter does not produce). `programs/probe_module_scope.gy` is a debt row:
+claims an error the interpreter does not produce). `programs/module_scope_in_functions.gy` was a debt row until ADR 0227 closed the compiled half:
 interpreter pinned at `80 7 5 40 1`, compiled leg recorded missing, with the reason naming both the
 refusals and the two shapes that compile and print `0`. `TestModuleScopeIsStillOutOfReachForCompiled
 Code` asserts that state and says what to delete when it changes.

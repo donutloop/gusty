@@ -1,0 +1,23 @@
+# The module is a scope, and it is looked up when the call RUNS (roadmap Gap R.35, ADR 0220).
+#
+# Two things a frame-local rule cannot express, both measured here against CPython: `late` is
+# assigned after the def that reads it, because a function body is not executed at its definition;
+# and `shadowed` binds MAX locally, because an assignment inside a body makes the name local to
+# that body even though the module binds the same name. The compiled backend reads a module
+# binding that cannot change as the value it is, so both legs answer the same line (ADR 0227).
+
+LATE = 0
+
+
+def reads_late() -> int:
+    return LATE
+
+
+def shadowed() -> int:
+    LATE = 1
+    return LATE
+
+
+LATE = 3
+
+print(reads_late(), shadowed())

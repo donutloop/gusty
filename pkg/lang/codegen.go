@@ -2001,6 +2001,23 @@ func GenerateIR(prog *Program) (string, error) {
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
 		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+	// What a compiled function body may know about its module: literal bindings the module never
+	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
+	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
+	g.moduleSlots = moduleSlotNames(prog, g.moduleConsts, g.moduleNames)
+	for nm, sym := range g.moduleSlots {
+		g.moduleSlotDecls += fmt.Sprintf("@%s = global i32 0 ; module binding %q, read by a function body (ADR 0227)\n", sym, nm)
+	}
+	g.decoratorNames = map[string]bool{}
+	for _, st := range prog.Stmts {
+		if fd, ok := st.(*FuncDef); ok {
+			for _, d := range fd.Decorators {
+				if nm, ok := d.(*Name); ok {
+					g.decoratorNames[nm.Value] = true
+				}
+			}
+		}
+	}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -2167,6 +2184,13 @@ func GenerateIR(prog *Program) (string, error) {
 	}
 	if g.rooted || GCReportEnabled() {
 		g.globals.WriteString(renderedRootRuntime())
+	}
+	out.WriteString(g.moduleSlotDecls)
+	// A closure body that could not be lowered and that a decorated call does not run is said here,
+	// in the module, where --emit-llvm and the verifier can both see it. It is not a hidden failure:
+	// the program runs because the trampoline, not this closure, is what executes (ADR 0227).
+	for _, note := range g.closureBodyNotes {
+		out.WriteString("; note: " + note + "\n")
 	}
 	out.WriteString(g.strGlobals.String())
 	out.WriteString(g.globals.String())
@@ -2557,6 +2581,38 @@ type irGen struct {
 	// curModName is the module whose function is currently being emitted; bare
 	// Name calls inside it dispatch to sibling module functions.
 	curModName string
+	// moduleConsts holds the *program's own* module-level names whose value is a literal and which
+	// the module never rebinds. A compiled function body may read those as values, because a value
+	// that cannot change needs no slot to read it from (ADR 0227, roadmap Gap R.35's compiled half).
+	moduleConsts map[string]Expr
+	// decoratorNames holds the names used as decorators anywhere in the program (`@add1` -> add1).
+	// While emitting such a function, a nested closure body that cannot be lowered is reported in the
+	// module comment instead of refusing: the decorated call goes through the trampoline, whose own
+	// body *is* compiled with full error propagation, so the closure object here is unreachable and a
+	// refusal would break a program that works (ADR 0227). The failure is never hidden -- it is said
+	// in the module, where --emit-llvm and the IR verifier both can see it.
+	decoratorNames map[string]bool
+	// emittingDecorator is set while funcDef emits one of those functions.
+	emittingDecorator bool
+	// closureBodyNotes collects the deferred body failures named in the module comment.
+	closureBodyNotes []string
+	// funcLocals is the set of names the function body currently being emitted binds anywhere in
+	// itself. It is the language's rule, not a slot-timing question: a binding inside a body makes
+	// the name local to that body even when the module binds it too (ADR 0220), so `K = 1; return K`
+	// in a function answers 1 while the module's K stays 5.
+	funcLocals map[string]bool
+	// moduleSlots holds the module names a compiled body reads that the module also *rebinds*: they
+	// cannot be folded, so they live in module globals (`@gy_mod_LATE`) that main writes and any body
+	// loads. A frame's allocas die with the frame; module state does not, which is exactly what a call
+	// that looks a name up "when it runs" requires (ADR 0220's rule, implemented for the compiled
+	// backend by ADR 0227). Containers stay refused -- the element ops are the missing machinery.
+	moduleSlots map[string]string
+	// moduleSlotDecls is the IR declaring those globals.
+	moduleSlotDecls string
+	// moduleNames is every name the module binds, constant or not. A read of one that is not a
+	// constant is refused with the reason that names the missing machinery, instead of the typo
+	// message that claims the interpreter reports the same error -- it does not (Gap R.38).
+	moduleNames map[string]bool
 	// curModGlobals holds folded module-global constants for the module
 	// function currently being emitted; bare Name refs resolve against it.
 	curModGlobals map[string]Expr
@@ -2777,6 +2833,9 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 		paramRegs = append(paramRegs, fmt.Sprintf("i32 %%p%d", i+1))
 	}
 	g.params = map[string]string{"self": "%self"}
+	// A method body is a body like any other: what it binds stays local to it (ADR 0227).
+	doneMethodBody := g.enterBody(fd.Body)
+	defer doneMethodBody()
 	for i := 1; i < len(fd.Params); i++ {
 		g.params[fd.Params[i].Name] = fmt.Sprintf("%%p%d", i)
 	}
@@ -4354,9 +4413,319 @@ func (g *irGen) valueText(b *strings.Builder, e Expr) string {
 // method emitter uses (ADR 0223) because the rule is the same one: an emission path with no error
 // channel of its own reports into the generator, and GenerateIR refuses rather than shipping IR it
 // knows to be wrong.
-func (g *irGen) noteUnlowered(e Expr, err error) {
+// moduleEnvFor decides, once per program, what a compiled function body may know about the module
+// it sits in. A name bound exactly once at module level to a literal, and never rebound by any
+// module-level statement, is a value: inlining it is sound and needs no runtime slot. Everything
+// else the module binds stays refused -- with a message that says so -- because main's slots are
+// stack allocas a callee cannot lawfully read. Assignments inside a function body are not module
+// writes (a binding inside a body is local, ADR 0220), so they neither disqualify a constant nor
+// make one mutable.
+func moduleEnvFor(prog *Program) (map[string]Expr, map[string]bool) {
+	consts := map[string]Expr{}
+	all := map[string]bool{}
+	if prog == nil {
+		return consts, all
+	}
+	literal := func(e Expr) bool {
+		switch e.(type) {
+		case *IntLit, *StrLit, *BoolLit, *NoneLit:
+			return true
+		}
+		return false
+	}
+	disqualify := func(names map[string]bool) {
+		for n := range names {
+			delete(consts, n)
+			all[n] = true
+		}
+	}
+	for _, st := range prog.Stmts {
+		switch n := st.(type) {
+		case *FuncDef, *ClassDef:
+			continue // a body's bindings are local to it
+		case *AssignStmt:
+			targets := map[string]bool{}
+			moduleBindingNames(n, targets)
+			if nm, ok := n.Target.(*Name); ok && len(targets) == 1 && literal(n.Value) && !all[nm.Value] {
+				consts[nm.Value] = n.Value
+				all[nm.Value] = true
+				continue
+			}
+			disqualify(targets)
+		default:
+			targets := map[string]bool{}
+			moduleBindingNames(st, targets)
+			disqualify(targets)
+		}
+	}
+	return consts, all
+}
+
+// moduleSlotNames chooses which module-level names need real storage: those that some function,
+// method or closure body reads, that the module rebinds (a name bound once to a literal is a value and
+// needs no slot at all), and whose module-level assignments are all scalar. A container is left out on
+// purpose: reading a module list as a handle without the container operations behind it would trade an
+// honest refusal for a half-working answer (Gap R.35's remaining half, ADR 0227).
+func moduleSlotNames(prog *Program, consts map[string]Expr, all map[string]bool) map[string]string {
+	slots := map[string]string{}
+	if prog == nil {
+		return slots
+	}
+	// What scalar shape does each module name hold?
+	scalar := map[string]bool{}
+	seenBefore := map[string]bool{}
+	for _, st := range prog.Stmts {
+		as, ok := st.(*AssignStmt)
+		if !ok {
+			continue
+		}
+		nm, ok := as.Target.(*Name)
+		if !ok {
+			continue
+		}
+		// Every assignment to the name must hold a scalar: an absent map entry reads false, so the
+		// first assignment has to initialise it rather than AND against nothing.
+		if !seenBefore[nm.Value] {
+			scalar[nm.Value] = scalarValue(as.Value)
+			seenBefore[nm.Value] = true
+		} else {
+			scalar[nm.Value] = scalar[nm.Value] && scalarValue(as.Value)
+		}
+	}
+	// Which names do bodies read?
+	reads := map[string]bool{}
+	var walk func(node interface{})
+	var mark func(e Expr)
+	mark = func(e Expr) {
+		switch n := e.(type) {
+		case *Name:
+			if all[n.Value] {
+				reads[n.Value] = true
+			}
+		case *BinOp:
+			mark(n.L)
+			mark(n.R)
+		case *UnOp:
+			mark(n.X)
+		case *Index:
+			mark(n.Obj)
+			mark(n.Idx)
+		case *Call:
+			mark(n.Fn)
+			for _, a := range n.Args {
+				mark(a)
+			}
+		case *Attr:
+			mark(n.Obj)
+		case *Tuple:
+			for _, el := range n.Elems {
+				mark(el)
+			}
+		}
+	}
+	walk = func(node interface{}) {
+		switch n := node.(type) {
+		case *FuncDef:
+			for _, st := range n.Body {
+				walk(st)
+			}
+			for _, pa := range n.Params {
+				if pa.Default != nil {
+					mark(pa.Default)
+				}
+			}
+		case *ClassDef:
+			for _, st := range n.Body {
+				walk(st)
+			}
+		case []Stmt:
+			for _, st := range n {
+				walk(st)
+			}
+		case *AssignStmt:
+			mark(n.Value)
+		case *AugAssignStmt:
+			mark(n.Value)
+			mark(n.Target)
+		case *ExprStmt:
+			mark(n.Expr)
+		case *ReturnStmt:
+			mark(n.Expr)
+		case *IfStmt:
+			mark(n.Cond)
+			walk(n.Then)
+			walk(n.Else)
+		case *WhileStmt:
+			mark(n.Cond)
+			walk(n.Body)
+			walk(n.Else)
+		case *ForStmt:
+			mark(n.Iter)
+			walk(n.Body)
+			walk(n.Else)
+		case *TryStmt:
+			walk(n.Body)
+			for _, arm := range n.Excepts {
+				walk(arm.Body)
+			}
+			walk(n.Finally)
+		case *WithStmt:
+			mark(n.Expr)
+			walk(n.Body)
+		case *MatchStmt:
+			mark(n.Subject)
+			for _, c := range n.Cases {
+				walk(c.Body)
+			}
+		}
+	}
+	for _, st := range prog.Stmts {
+		switch st.(type) {
+		case *FuncDef, *ClassDef:
+			walk(st)
+		}
+	}
+	for nm := range reads {
+		if _, isConst := consts[nm]; isConst {
+			continue // a value needs no slot
+		}
+		if !scalar[nm] {
+			continue
+		}
+		slots[nm] = irSymbol("gy_mod_" + nm)
+	}
+	return slots
+}
+
+func scalarValue(e Expr) bool {
+	switch n := e.(type) {
+	case *IntLit, *StrLit, *BoolLit, *NoneLit:
+		return true
+	case *BinOp:
+		return scalarValue(n.L) && scalarValue(n.R)
+	case *UnOp:
+		return scalarValue(n.X)
+	}
+	return false
+}
+
+// moduleBindingNames records the names a module-level statement *binds* -- the left-hand sides, the
+// loop variable, the `with ... as` name, and whatever a nested if/while/try body binds. It is a
+// binding collector, not a use collector: an expression that merely reads a name says nothing about
+// whether that name can change.
+func moduleBindingNames(st Stmt, out map[string]bool) {
+	if st == nil {
+		return
+	}
+	var bind func(e Expr)
+	bind = func(e Expr) {
+		switch t := e.(type) {
+		case *Name:
+			out[t.Value] = true
+		case *Tuple:
+			for _, el := range t.Elems {
+				bind(el)
+			}
+		case *ListLit:
+			for _, el := range t.Elems {
+				bind(el)
+			}
+		}
+	}
+	switch n := st.(type) {
+	case *AssignStmt:
+		bind(n.Target)
+	case *AugAssignStmt:
+		bind(n.Target)
+	case *ForStmt:
+		bind(n.Var)
+		for _, s := range n.Body {
+			moduleBindingNames(s, out)
+		}
+		for _, s := range n.Else {
+			moduleBindingNames(s, out)
+		}
+	case *WhileStmt:
+		for _, s := range n.Body {
+			moduleBindingNames(s, out)
+		}
+		for _, s := range n.Else {
+			moduleBindingNames(s, out)
+		}
+	case *IfStmt:
+		for _, s := range n.Then {
+			moduleBindingNames(s, out)
+		}
+		for _, s := range n.Else {
+			moduleBindingNames(s, out)
+		}
+	case *TryStmt:
+		for _, s := range n.Body {
+			moduleBindingNames(s, out)
+		}
+		for _, arm := range n.Excepts {
+			for _, s := range arm.Body {
+				moduleBindingNames(s, out)
+			}
+		}
+		for _, s := range n.Finally {
+			moduleBindingNames(s, out)
+		}
+	case *WithStmt:
+		if n.As != nil {
+			out[n.As.Value] = true
+		}
+		for _, s := range n.Body {
+			moduleBindingNames(s, out)
+		}
+	case *MatchStmt:
+		for _, c := range n.Cases {
+			for _, s := range c.Body {
+				moduleBindingNames(s, out)
+			}
+		}
+	}
+}
+
+// moduleStateErr is the honest answer when a body refers to module-level *state* -- a container, or
+// anything the module rebinds -- which a compiled body cannot reach. The two sites that used to answer
+// "non-constant string" (for a plain list's .append) and "non-string variable" (for len of a list) are
+// the ADR-0166 face of that gap: a claim that misdescribes the value sends the reader to a line they
+// never wrote, which the record treats as worse than no claim at all (roadmap Gap R.38).
+func (g *irGen) moduleStateErr(nm string) error {
+	if !g.inFunc || nm == "" {
+		return nil
+	}
+	if g.allocd[nm] || (g.funcLocals != nil && g.funcLocals[nm]) {
+		return nil // the body binds it: this is a local, and its own rules apply
+	}
+	if g.moduleNames[nm] {
+		return fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (the interpreter answers this program; compiled module globals are roadmap Gap R.35)", nm)
+	}
+	return nil
+}
+
+// enterBody records what a function, method or closure body binds anywhere inside itself, so the
+// module-read path can honour the scoping rule rather than the order slots happen to be allocated in.
+func (g *irGen) enterBody(body []Stmt) func() {
+	saved := g.funcLocals
+	g.funcLocals = map[string]bool{}
+	collectLocals(body, g.funcLocals)
+	return func() { g.funcLocals = saved }
+}
+
+func (g *irGen) noteUnlowered(where any, err error) {
+	what := "an expression"
+	switch n := where.(type) {
+	case Expr:
+		if t := exprTyName(n); t != "" {
+			what = t
+		}
+	case Stmt:
+		what = fmt.Sprintf("a %T statement", n)
+	}
 	if g.emitErr == nil {
-		g.emitErr = fmt.Errorf("codegen: %s cannot be compiled: %v", exprTyName(e), err)
+		g.emitErr = fmt.Errorf("codegen: %s cannot be compiled: %v", what, err)
 	}
 }
 
@@ -5288,6 +5657,30 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// reports as a *compiler bug* for what is an ordinary typo (roadmap Gap K.10).
 		// The checker catches this today; this is the safety net that keeps the next
 		// checker hole from surfacing as "input module is broken" (ADR 0166).
+		if sym, ok := g.moduleSlots[n.Value]; ok && (!g.inFunc || !(g.allocd[n.Value] || (g.funcLocals != nil && g.funcLocals[n.Value]))) {
+			// Read the module's own global: whatever the module assigned most recently, not what
+			// this frame happened to see when it was compiled (ADR 0227).
+			// No rooting: a module slot holds an i32 value (int, interned string index, or the
+			// None handle, which the runtime allocates once and never frees), never a collectable
+			// heap pointer -- floats and containers are excluded from moduleSlots for that reason.
+			g.ldN++
+			b.WriteString(fmt.Sprintf("  %%l%d = load i32, i32* @%s\n", g.ldN, sym))
+			return fmt.Sprintf("%%l%d", g.ldN), nil
+		}
+		if g.inFunc {
+			// The module is a scope too (ADR 0220), and a compiled body reaches it through these
+			// two tables. A name bound to a literal the module never rebinds is a value, so it
+			// needs no slot -- `MAX = 40` then `def f(): return MAX` answers 40 rather than refusing
+			// or, as it did before, answering 0 through an empty closure body (ADR 0227).
+			// A binding inside the body wins: `K = 1` in a function is a local even when the module
+			// also binds K (ADR 0220), and reading it from the module would answer 5 for 1.
+			if folded, ok := g.moduleConsts[n.Value]; ok && !(g.allocd[n.Value] || (g.funcLocals != nil && g.funcLocals[n.Value])) {
+				return g.value(b, folded)
+			}
+			if g.moduleNames[n.Value] && !(g.allocd[n.Value] || (g.funcLocals != nil && g.funcLocals[n.Value])) {
+				return "", fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot read module-level state that changes: only a literal the module never rebinds is visible here (the interpreter answers this program; compiled module globals are roadmap Gap R.35)", n.Value)
+			}
+		}
 		if !g.nameIsBound(n.Value) {
 			return "", fmt.Errorf("codegen: undefined name %q (no binding for it; assign it before use) — the interpreter reports the same error", n.Value)
 		}
@@ -7313,6 +7706,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
 		v, ok := g.stringVal(attr.Obj)
 		if !ok {
+			// The receiver's name, when the receiver is one: `xs.append(2)` over a module list
+			// is not a string method with a non-constant string, and saying so is a lie about
+			// the program (Gap R.38).
+			if nm, ok2 := attr.Obj.(*Name); ok2 {
+				if err := g.moduleStateErr(nm.Value); err != nil {
+					return "", err
+				}
+			}
 			return "", fmt.Errorf("string method %s on non-constant string", attr.Name.Value)
 		}
 		switch attr.Name.Value {
@@ -8368,6 +8769,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, lit.Value))
 				b.WriteString(fmt.Sprintf("  %%l%d = call i32 @rt_set_len(i32 %%h%d)\n", hs, hs))
 				return fmt.Sprintf("%%l%d", hs), nil
+			}
+			if err := g.moduleStateErr(lit.Value); err != nil {
+				return "", err
 			}
 			return "", fmt.Errorf("len of a non-string variable")
 
@@ -9953,6 +10357,14 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.envParam = "%env"
 	g.decorated = map[string]bool{}
 	g.inFunc = true
+	// What this body binds anywhere inside itself (so a name the module also binds stays local --
+	// ADR 0220's rule applied where it is decidable), and whether this function is used as a
+	// decorator (ADR 0227).
+	doneBody := g.enterBody(fd.Body)
+	defer doneBody()
+	wasDecorator := g.emittingDecorator
+	g.emittingDecorator = g.decoratorNames != nil && g.decoratorNames[fd.Name]
+	defer func() { g.emittingDecorator = wasDecorator }()
 	op := map[string]bool{}
 	for _, p := range fd.Params {
 		op[p.Name] = true
@@ -10705,6 +11117,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if g.unionVars[nm.Value] {
 				g.emitUnionStore(b, nm.Value, n.Value)
 				return nil
+			}
+			if !g.inFunc {
+				if sym, ok := g.moduleSlots[nm.Value]; ok {
+					// The module's state lives in a module global, so a body called later reads what
+					// the module assigned by then -- which is what "look the name up when the call
+					// runs" means once a frame's allocas are gone (ADR 0220, implemented compiled-side
+					// by ADR 0227). A main-frame alloca could not do that.
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* @%s\n", v, sym))
+					return nil
+				}
 			}
 			isFloat := g.isFloat(n.Value)
 			if !g.allocd[nm.Value] {

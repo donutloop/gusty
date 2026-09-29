@@ -309,6 +309,25 @@ to tell a program-defined function from a host or runtime symbol, look for the p
 source map or a debugger, `name` is what the source says and `symbol` is what the linker sees —
 never strip the prefix by hand, and never assume the two are equal.
 
+**Module bindings in the module** (Gap R.35, ADR 0227). A name the module binds once to a literal and
+never rebinds is emitted as a constant wherever a function body reads it, so it leaves no symbol. A
+module name that the module rebinds *and* a body reads becomes module state:
+`@gy_mod_<name> = global i32 0`, stored by the top level and loaded by the callee at call time. A tool
+that wants to know which of a program's names are module state can grep `@gy_mod_`; the name after the
+prefix is the source spelling, and it is prefixed like every other program-owned symbol (ADR 0198).
+
+A closure body that could not be lowered, in the single case where it provably does not run — a closure
+nested in a function used as a decorator, whose decorated call goes through the trampoline — is said in
+the module text rather than hidden:
+
+```llvm
+; note: closure wrap: body not lowered (codegen: unsupported call "g"); a decorated call runs the trampoline instead
+```
+
+That line is not an error and does not fail the build; it is the compiler recording a capability it did
+not emit. `--emit-llvm` prints it, and a script that must refuse such programs can grep for
+`; note: closure`.
+
 ## Diagnostics
 
 Diagnostics carry source spans and messages. The machine-readable path is a

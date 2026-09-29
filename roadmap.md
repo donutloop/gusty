@@ -2311,7 +2311,7 @@ refusal or a verification failure but never a wrong value.
 
 
 
-### R.35 — a function cannot read a module-level name (HALF FIXED, compiled half OPEN, ADR 0220)
+### R.35 — a function cannot read a module-level name (CLOSED for scalars, container/float half OPEN, ADR 0220 + ADR 0227)
 
 This program did not exist in the language:
 
@@ -2347,11 +2347,36 @@ reading a module name compiles and prints `0`, because the slot is never written
 signature). The method-shaped silent zero that used to be in that list is gone: since ADR 0223 stopped
 `emitClassMethod` discarding its body's refusal, a method reading a module name reports the same
 `undefined name` error as everyone else — still the wrong answer for the front end to give, but an
-honest one, and it is asserted in the refusal table. `programs/probe_module_scope.gy` is the debt row
-(interpreter pinned at `80 7 5 40 1`, compiled leg missing), and
-`TestModuleScopeIsStillOutOfReachForCompiledCode` pins the refusals and the remaining silent zero,
-naming its own deletion. The fix is module bindings in real global slots the collector
-scans, which is a cycle of its own.
+honest one, and it is asserted in the refusal table.
+
+**Closed for scalars (ADR 0227).** Three rules, all measured first:
+
+- a name the module binds once to a literal, and never rebinds, is a *value*: a body reads it and no
+  slot is needed. `MAX = 40; def twice(): return MAX * 2` answers 80 on both backends;
+- a name the module rebinds is module *state*, and state outlives a frame: it lives in a
+  `@gy_mod_<name>` global that main writes and any callee loads, so `LATE = 0; def read(): return LATE;
+  LATE = 3; print(read())` prints 3 — ADR 0220's call-time lookup, finally compiled. A main-frame
+  `alloca` could not do this: it is dead by the time the callee runs;
+- a binding inside a body is local, decided by what the body binds anywhere inside itself and not by
+  the order slots happen to be allocated in, so `K = 5` at module level with `def f(): K = 1; return K`
+  prints `1 5`, not `5 5`.
+
+Containers are deliberately left out: giving a body the handle of a module list without the container
+operations behind it would trade an honest refusal for a half-working answer, so `def n(): return
+len(xs)` over a module list still refuses — and now refuses with a message naming module state, instead
+of the old `len of a non-string variable` / `string method append on non-constant string`, which
+described a list as a string (Gap R.38's third instance).
+
+The closure-body swallow that hid the silent zero is gone too: `emitClosureDef` reported nothing when a
+statement failed and the function fell through to `ret i32 0`, the third emitter found doing this
+(after `emitClassMethod` in ADR 0223 and `truthyValue` in ADR 0225). Its one documented exemption is a
+closure nested in a function used as a decorator — a decorated call runs the trampoline, not that
+closure, and the trampoline reports its own failures — and the deferred failure is printed in the
+module (`; note: closure wrap: body not lowered …`) where `--emit-llvm` can see it.
+
+`programs/module_scope_in_functions.gy` (both legs `80 7 5 40 1`) and `programs/module_calltime_lookup.gy`
+(both legs `3 1`) are the oracle rows; `TestModuleScalarsReachCompiledFunctionBodies` replaced the test
+that pinned the refusals and the silent zero, and names the container refusal that is still owed.
 
 ### R.39 — reading a name the body also assigns below should be UnboundLocalError (OPEN, interpreter)
 
@@ -2381,6 +2406,12 @@ Any name whose only assignment sits on a path that did not run, read at module l
 | `try: a = 1 // 0` / `b = 2` / `except: pass`, then `print(b)` | prints `1630496` | NameError | NameError |
 | untaken `match` arm's capture, then `print(y)` | prints `518304` | NameError | NameError |
 | `for i in []: f = 1` then `print(f)` | compile refusal (`codegen:`) | NameError | NameError |
+| `def f(c): if c: x = 1` then `return x`, called with `False` | prints `0`, **exits 0** | traps (NameError — the class is R.39's) | UnboundLocalError |
+
+The last row is the plainest form of the bug and was measured while closing R.35's compiled half
+(ADR 0227): the slot exists, the untaken edge never wrote it, and the callee reads the alloca's previous
+contents — here a clean `0`, elsewhere a stale handle. It is pinned as `programs/probe_unwritten_slot.gy`
+plus `TestUnwrittenSlotIsGapR36`, both naming their own deletion.
 
 The numbers are the slot's previous contents — a tagged word from whatever the allocator handed out —
 so the compiled program is not merely wrong, it reads memory it was never given and prints it as a
@@ -2414,6 +2445,14 @@ of those sentences are true; one is not. Measured pair by pair:
 | compiled dict literal with string keys/values | "the interpreter supports string and other keys" | true, and the compiled leg supports it too now |
 | sets do not support item assignment | "the interpreter raises TypeError" | raises ✓ true |
 | `undefined name` | "the interpreter reports the same error" | NameError ✓ true |
+| `len of a non-string variable` — `def n(): return len(xs)` over a module **list** | (implies the value is a string) | **prints 2**; the value is a list ✗ — fixed by ADR 0227's `moduleStateErr`, which names module state instead |
+| `string method append on non-constant string` — `xs.append(2)` on a module **list** | (implies the receiver is a string) | appends to a list ✗ — same fix, same site |
+
+Both new rows are fixed: a body that reaches module container state is now refused by a message that
+says what is missing (module-level state, Gap R.35) rather than describing a list as a string. The
+lesson generalises — a refusal template that asserts something about *another backend* or about an
+*operand kind* must build its sentence from the gate that knows, and `moduleStateErr` is that gate here.
+The `undefined name` sentence keeps its claim because it is still checked against a real NameError.
 
 The message is one template, `operator %q on a string is not supported in the AOT backend; the
 interpreter evaluates it`, parameterised by operator — so it asserts the same thing about `%`, which

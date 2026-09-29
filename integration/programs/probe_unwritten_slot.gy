@@ -1,0 +1,18 @@
+# A slot written on one path only still reads as a value (roadmap Gap R.36, ADR 0227's neighbour).
+#
+# `x` is assigned inside `if c:` with no else, so `f(False)` never binds it: CPython says
+# UnboundLocalError, and the interpreter traps too -- with the wrong class (NameError rather than
+# UnboundLocalError, which is Gap R.39's finding, not this one). The compiled backend prints 0 for
+# the unbound call and exits 0: the alloca exists, nothing wrote that edge, and reading it is the
+# silent wrong answer this probe exists to keep in front of the compiler. The fix is the checker's
+# definite-assignment rule, which is a cycle of its own.
+
+
+def f(c):
+    if c:
+        x = 1
+    return x
+
+
+print(f(True))
+print(f(False))

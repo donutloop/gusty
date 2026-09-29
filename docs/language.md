@@ -984,10 +984,31 @@ for i in range(n):
   global scope is the module its enclosing function was written in, not that function's frame). An
   assignment inside a body makes the name *local* to that body — the module keeps its own value — and
   a name nothing binds anywhere is still a catchable `NameError`, with the checker reporting
-  `undefined name` for it. Two known differences: the compiled backend cannot reach a module binding
-  from a function body at all (roadmap Gap R.35's remaining half), and reading a name that the same
-  body assigns further down returns the module's value where CPython raises `UnboundLocalError`
-  (roadmap Gap R.39).
+  `undefined name` for it.
+
+  The compiled backend reaches module names in two shapes, and refuses the rest (ADR 0227). A name the
+  module binds exactly once, to an integer/string/bool/`None` literal, and never rebinds is a *value*:
+  a body that reads it is given that value, because a thing that cannot change needs no place to be
+  read from. A name the module does rebind is module *state*, and it lives in a module global
+  (`@gy_mod_<name>`) that the top level writes and any function, method or closure loads when it runs —
+  so the lookup really does happen at call time:
+
+  ```py
+  LATE = 0
+
+  def read() -> int:
+      return LATE          # whichever value the module held when read() was called
+
+  LATE = 3
+  print(read())            # 3
+  ```
+
+  What a body still cannot reach is module *containers* (`len(xs)`, `xs.append(v)` for a module-level
+  list) and module names holding floats: those are refused, with a message naming module state and the
+  missing machinery rather than misdescribing the value (roadmap Gap R.35's remaining half, Gap L11.6).
+  The other known difference is unchanged: reading a name that the same body assigns further down
+  returns the module's value where CPython raises `UnboundLocalError` (roadmap Gap R.39), and a local
+  assigned on one branch only reads as `0` in the compiled backend rather than trapping (Gap R.36).
 - `while`/`for` loops accept an optional `else:` clause that runs on normal
   completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.

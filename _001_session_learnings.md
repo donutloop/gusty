@@ -3940,3 +3940,119 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
   what produced the container-shaped operand. ADR 0215's gate is the place this belongs, with ADR 0221's
   numeric pair as the deliberate exception — and where the honest answer would be a runtime TypeError
   (`1.0 < [1]`), refuse and cite the gap (R.37) rather than inventing a value.
+
+## The module reached its compiled bodies — and a fourth emitter was throwing errors away (Gap R.35, ADR 0227)
+
+### What was measured first
+
+Fourteen module-scope shapes, three legs each (CPython, `--interp`, `--aot`). Eight disagreed. The two
+that mattered were not refusals — they were answers:
+
+- a nested `def` reading a module name printed `0` (exit 0) where CPython and the interpreter printed `9`;
+- a function that shadows a module name (`K = 5` at module level, `K = 1` in the body) printed `5 5`.
+
+Both were invisible to a stdout-only test in the old pinned style, and both were exit 0: the program
+finished "successfully" having said something false.
+
+### The rule that fixed it
+
+Three sentences, and they cover every shape in the family:
+
+1. a module name bound once to a literal and never rebound **is a value** — a body may read it, and no
+   storage is involved (`moduleEnvFor`);
+2. what the module rebinds **is state**, so it lives in a `@gy_mod_<name>` global that main stores and a
+   callee loads at the point of use — call-time lookup, which is what ADR 0220 promised and a frame
+   alloca could never deliver, because the frame is dead when the callee runs (`moduleSlotNames`);
+3. **a binding inside a body is the body's own**, decided by what the body binds anywhere inside itself
+   (`enterBody` + `collectLocals`), not by which slots happen to exist yet.
+
+Rule 3 is what the first two attempts got wrong. My first version consulted `g.allocd` (has the slot
+been allocated?) and so answered `5 5` for the shadow case, because at the time of the read the local's
+slot did not exist. My second version consulted it correctly and then fell into the *refusal*, because
+the guard that made the constant correct also intercepted the local read. The lesson is that a scoping
+rule is a fact about the source, and any scoping decision derived from compiler-side bookkeeping —
+which map, which order, which pass — is a scoping bug waiting to be measured.
+
+### The fourth emitter that discarded its own errors
+
+```go
+for _, st := range fd.Body { g.stmt(b, st) }   // error thrown away
+```
+
+`emitClosureDef` did this. Any statement that failed to lower ended the body early, and the function
+fell through to `ret i32 0`. That is four emitters found this session doing the identical thing —
+`emitClassMethod` (ADR 0223), `truthyValue` (ADR 0225), `valueText` (ADR 0226), `emitClosureDef` (ADR
+0227) — and the pattern to grep for is now written down: `x, _ := f(); return <plausible default>`.
+When the fourth turned up I fixed the one site, then found the same line in a sibling function in the
+same file, which is the sign that it is a house habit rather than a typo.
+
+### One exemption, and it has to speak
+
+Propagating closure-body errors broke a program that worked: `@add1 def f` printed 7 before and refused
+after. The reason is that a decorated call runs the trampoline, and the closure nested in the decorator
+definition is emitted but never executed — its body had been failing silently all along. Refusing a
+failure in dead code is not honesty, it is a regression. So that one case records the failure in the
+module (`; note: closure wrap: body not lowered (…); a decorated call runs the trampoline instead`)
+instead of refusing, and the exemption is keyed to a name-derived set (`decoratorNames`), not to a
+"skip errors here" flag. Two rules from this that generalise:
+
+- a deferred failure belongs **in the artifact**, where `--emit-llvm` and a reader can find it;
+- the trampoline's own body still refuses, so a decorated function that genuinely cannot be compiled
+  still fails to compile. The exemption is only for code that provably does not run.
+
+### Diagnostics: refusing correctly is not enough
+
+`len(xs)` over a module list in a body refused with `len of a non-string variable`, and `xs.append(2)`
+with `string method append on non-constant string` — both about a **list**. The refusal was "correct"
+(no wrong answer shipped) and still harmful: it sent the reader to edit a line that had no string in it.
+`moduleStateErr` now asks the one question that decides the message — is this a module binding this body
+cannot see? — and says that. Gap R.38's third instance, and the general form: a refusal template that
+asserts something about an operand kind, or about what the other backend does, must build the sentence
+from the gate that actually knows.
+
+### Pin the next gap while you are standing in it
+
+The same probe pass produced a clean reproduction of Gap R.36, which had only ever been measured at
+module level:
+
+```python
+def f(c):
+    if c:
+        x = 1
+    return x
+print(f(False))   # CPython: UnboundLocalError (exit 1); interpreter: traps (exit 3); compiled: 0, exit 0
+```
+
+It is pinned as `programs/probe_unwritten_slot.gy` + `TestUnwrittenSlotIsGapR36` rather than fixed here,
+because one item per cycle is the contract — but "record it in the same commit as the shape that found
+it" is what keeps the next cycle from having to rediscover it.
+
+### Ledger mechanics that paid for themselves
+
+`TestOracleProbeRowsAreRecordedAsDebt` fired the moment the compiled leg started working
+("a probe that now matches CPython is a paid debt"), and `TestModuleScopeIsStillOutOfReachForCompiledCode`
+— which had been pinning the refusals and the silent zero, and named its own deletion — told me exactly
+which pins were now stale. Two artifacts were promoted to parity rows (`module_scope_in_functions.gy`,
+`module_calltime_lookup.gy`, both CPython-checked first) and the old debt row deleted, so the matrix
+count moved by real work rather than by editing a number.
+
+The citation test earned its keep again: after renaming the probe, it caught README and the roadmap both
+still pointing at `programs/probe_module_scope.gy`. Records rot the moment an artifact moves, and the
+only fix that lasts is a test that walks the citations.
+
+### An integrity check worth more than it cost
+
+Mid-cycle I believed this repo contained several earlier cycles' work (a float-parameter module comment, a
+trap-frame refusal, an import fix, a readline REPL) and went looking for them. `git log`, `git reflog`,
+`git cat-file` and the ledger all say otherwise: none of it exists here, and the roadmap's L11.6/L11.7 are
+different items entirely ("numeric truth in the compiled backend", "functions are values that compile").
+Nothing in `_001_session_learnings.md` claimed them, so the written record is clean and needed no repair —
+but the episode produced two rules:
+
+- **Trust only tool output I can point at.** Some commands I had "run" in memory used a helper
+  (`integration/expected/oracle.py`) that does not exist in this tree; the real oracle is `python3` via
+  `lang.PythonRun`/`exec.Command`. Every expectation in this cycle was re-derived against the real thing.
+- **Check the tree before editing against a remembered shape.** Two of my patches silently missed because
+  they were written against code that isn't in this repo; a missed `s.replace(...)` in a patch script is
+  invisible until a capability fails to appear. Re-grep after scripted edits — it caught `emittingDecorator`
+  having landed in the async-only branch of `funcDef`, which made the decorator exemption do nothing.

@@ -414,8 +414,11 @@ falls back to dynamic dispatch.
   module scope became a permanent GC root for the same reason. The checker pre-collects top-level
   binding names and consults them *only* inside function bodies — module code still runs line by line,
   and two existing tests caught my first attempt doing it globally. The compiled leg still cannot
-  reach a module binding (three shapes refuse, two print `0`), pinned as debt in
-  `programs/probe_module_scope.gy`.
+  reach a module binding: a name bound to a literal the module never rebinds is read as the value it
+  is, and one the module rebinds lives in a `@gy_mod_*` global the callee can read (ADR 0227). Both
+  legs of `programs/module_scope_in_functions.gy` and `programs/module_calltime_lookup.gy` print
+  CPython's line now; a body reading a module *container* is still refused, with the reason that names
+  module state rather than blaming a string.
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

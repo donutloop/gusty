@@ -257,8 +257,28 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	// register (Gap R.3) — and so does the environment capture above, which is why
 	// the capture site consults paramSlot too.
 	g.copyInReboundParams(b, fd, false)
+	doneBody := g.enterBody(fd.Body)
+	defer doneBody()
 	for _, st := range fd.Body {
-		g.stmt(b, st)
+		if err := g.stmt(b, st); err != nil {
+			// The body of a closure used to be emitted with its errors thrown away. A statement
+			// that could not be lowered -- `return K` reading a module name the capture set had
+			// dropped, say -- left the function ending in the fallback `ret i32 0`, so calling it
+			// answered 0 for a program whose answer is 9, in the one place a compiler can be wrong
+			// without leaving a trace (roadmap Gap R.35, ADR 0227; the same shape as ADR 0225's
+			// truthyValue and ADR 0223's method emitter). Report it into the generator, where
+			// GenerateIR refuses: nothing that is about to be refused may also be executed.
+			//
+			// The one exception is a closure nested inside a function used as a decorator: a
+			// decorated call runs the trampoline, whose own body reports its failures, so this
+			// closure object is unreachable and refusing would break programs that work today.
+			// The failure is named in the module comment instead of hidden (ADR 0227).
+			if g.emittingDecorator {
+				g.closureBodyNotes = append(g.closureBodyNotes, fmt.Sprintf("closure %s: body not lowered (%v); a decorated call runs the trampoline instead", g.fnName(fd), err))
+			} else {
+				g.noteUnlowered(st, err)
+			}
+		}
 	}
 	g.inFunc = false
 	if !strings.HasSuffix(strings.TrimSpace(b.String()), "ret ") {

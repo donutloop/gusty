@@ -111,6 +111,8 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// ADR 0225: what `s[1]` is -- a one-character string counted in code points, on both
 		// backends, where both used to answer the byte.
 		"string_subscript",
+		"module_scope_in_functions", // Gap R.35 compiled half (ADR 0227)
+		"module_calltime_lookup",    // Gap R.35 — a module lookup happens at call time (ADR 0220)
 		// The promoted L11.5 probe: the same rule through a literal, a variable, and the two ends
 		// of a non-ASCII string.
 		"string_index",
@@ -224,8 +226,8 @@ func conformanceProbes() []lang.ConformanceCase {
 		"sequence_ops",
 		"probe_operand_types",  // Gap R.26 — an operator applied to the wrong operands
 		"probe_percent_format", // Gap R.31 — no `%` string formatting; both legs refuse
-		"probe_module_scope",
-		"probe_float_container_equality", // Gap R.35 — a function cannot read the module's names (compiled)
+		"probe_float_container_equality",
+		"probe_unwritten_slot", // Gap R.36 — a slot written on one path only reads as 0 (ADR 0227) // Gap R.35 — a function cannot read the module's names (compiled)
 		// Gap R.40 (ADR 0221): a literal list holding a float emits a module llc rejects.
 		"probe_float_list_equal",
 		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
@@ -427,10 +429,11 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the interpreter and CPython agree on all six lines; the compiled backend refuses, because a container slot is an i32 word and a float has no representation in one (it previously truncated, which is how [1.5] == [1.6] printed 1)",
 		ref:    "roadmap Gap R.40 (closed, ADR 0226) and L11.6 (the answers); ADR 0166 for refusal-not-invalid-module",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n1\n0\n0\n"}, {Backend: "aot", Missing: true}}},
-	"programs/probe_module_scope": {oracle: lang.OracleDebt,
-		reason: "the interpreter and CPython agree on all five values (a module constant read by a function, one defined below the def, a method reading one, a nested def reaching past both frames, and a local shadowing the global) — but the compiled backend refuses to lower the program at all: `undefined name \"MAX\" (no binding for it; assign it before use)`, whose claim that the interpreter reports the same error is false here too (it reports no error). Two other shapes -- a method reading a module name, a nested def reading one -- do not even refuse: they compile and print 0",
-		ref:    "roadmap Gap R.35 (compiled half); ADR 0220 (the interpreter and checker half); Gap R.38 for the untrue refusal",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "80 7 5 40 1\n"}, {Backend: "aot", Missing: true}}},
+	// Gap R.36 (pinned while closing R.35's compiled half, ADR 0227).
+	"programs/probe_unwritten_slot": {oracle: lang.OracleNA,
+		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError and exits 1; the interpreter traps too, but with the wrong class (NameError — that half is Gap R.39); the compiled backend prints 0 for the unbound call and exits 0, because the alloca exists and nothing wrote that edge. Reading a slot the program never assigned is the silent wrong answer, and it is the one failure a compiler is never allowed to have",
+		ref:    "roadmap Gap R.36 (definite assignment in the checker); Gap R.39 (which class an unwritten local raises); ADR 0227 (measured while closing R.35's compiled half)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "name 'x' is not defined"}, {Backend: "aot", Stdout: "1\n0\n"}}},
 
 	"programs/probe_percent_format": {oracle: lang.OracleDebt,
 		reason: "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
