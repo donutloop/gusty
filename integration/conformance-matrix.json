@@ -264,7 +264,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle379255197/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2480810714/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -275,7 +275,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle379255197/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2480810714/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -369,7 +369,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle3172181628/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3544841293/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -380,7 +380,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3172181628/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3544841293/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -630,7 +630,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3589111627/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1551265535/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -641,7 +641,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3589111627/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1551265535/prog.py\", line 5"
       ]
     },
     {
@@ -671,7 +671,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle171299670/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3303086235/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -682,7 +682,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle171299670/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3303086235/prog.py\", line 3"
       ]
     },
     {
@@ -712,7 +712,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle660126670/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2282586623/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -723,7 +723,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle660126670/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2282586623/prog.py\", line 5"
       ]
     },
     {
@@ -891,7 +891,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle549658321/prog.py\", line 11",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1049987690/prog.py\", line 11",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -902,7 +902,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle549658321/prog.py\", line 11"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1049987690/prog.py\", line 11"
       ]
     },
     {
@@ -1109,6 +1109,75 @@
     },
     {
       "case": {
+        "id": "programs/str_loop_eq",
+        "name": "str_loop_eq.gy",
+        "source": "# Comparing an interned container element with a string literal used to emit\n# `icmp eq i32 %_n, @.str3` -- an @str_tab index against the address of a string global -- and llc\n# rejected the module. A string value is an index now, so the comparison is an icmp on two indices\n# (roadmap Gap R.42 and L11.8, ADR 0224). CPython prints exactly this.\nnames = [\"a\", \"b\"]\nfor n in names:\n    if n == \"a\":\n        print(n)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "a\n",
+      "aot_ok": true,
+      "aot_stdout": "a\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "a\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/comp_str_filter",
+        "name": "comp_str_filter.gy",
+        "source": "# The same comparison inside a comprehension filter, over a list the compiler had to keep at\n# runtime. It used to be refused; then it reached an invalid module, because the filtered loop's\n# `phi` named the body as its predecessor when the skips came from the skip block (Gap R.42,\n# ADR 0224). CPython prints exactly this.\nnames = [\"a\", \"b\"]\nnames.append(\"c\")\nprint([n for n in names if n == \"a\"])\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "['a']\n",
+      "aot_ok": true,
+      "aot_stdout": "['a']\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "['a']\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/string_values",
+        "name": "string_values.gy",
+        "source": "# A string value in this language is an index into the runtime string table, not the address of a\n# literal (ADR 0224). Everything that reads a string as a value — comparison, `in`, an f-string\n# interpolation, an instance attribute, a method's result — goes through that index, which is why\n# these lines compile at all on the LLVM backend. CPython prints exactly this, on this file.\nnames = [\"a\", \"b\"]\nnames.append(\"c\")\n\nfor n in names:\n    if n == \"a\":\n        print(\"found a\")\n\nout = [n for n in names if n != \"b\"]\nprint(len(out))\n# `print(out[0])` is deliberately absent: an element of a freshly built comprehension list prints\n# as its @str_tab index (roadmap Gap R.46), and a parity program may only assert what the oracle\n# agrees with.\n\ngreeting = \"hello\"\nprint(1 if greeting == \"hello\" else 0)\nprint(1 if greeting != \"help\" else 0)\nprint(1 if \"b\" in names else 0)\nprint(1 if \"z\" not in names else 0)\nprint(1 if \"abc\" \u003c \"abd\" else 0)\nprint(1 if \"  hi \".strip() == \"hi\" else 0)\nprint(1 if \"hi\".upper() == \"HI\" else 0)\n\nleft = \"ab\"\nright = \"c\"\nprint(1 if left + right == \"abc\" else 0)\n\nwho = \"world\"\nprint(f\"hi {who}\")\n\nclass Greeter:\n    def __init__(self):\n        self.word = \"hi\"\n\n    def greet(self, who: str) -\u003e str:\n        return \"hello\"\n\n\ng = Greeter()\nprint(g.word)\nprint(g.greet(\"x\"))\nprint(1 if g.word == \"hi\" else 0)\n\necho = [\"x\", \"y\"]\nprint(1 if echo[0] == \"x\" else 0)\nprint(1 if {\"k\": 1}.get(\"k\") == 1 else 0)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "found a\n2\n1\n1\n1\n1\n1\n1\n1\n1\nhi world\nhi\nhello\n1\n1\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "found a\n2\n1\n1\n1\n1\n1\n1\n1\n1\nhi world\nhi\nhello\n1\n1\n1\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "found a\n2\n1\n1\n1\n1\n1\n1\n1\n1\nhi world\nhi\nhello\n1\n1\n1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/deferred_bodies",
         "name": "deferred_bodies.gy",
         "source": "# A `finally` is a deferred body: it runs on every exit from its `try` -- fall-through, a handled\n# exception, a propagating one, and the transfers (`return`, `break`, `continue`) that leave the\n# block. An `except` arm catches exceptions, never a transfer (roadmap Gap R.23, ADR 0222).\n# CPython prints exactly this, on this file.\n\ndef value_before_finally() -\u003e int:\n    n = 1\n    try:\n        return n\n    finally:\n        n = 99\n        print(\"fin\", n)\n\n\ndef nested() -\u003e int:\n    try:\n        try:\n            return 1\n        finally:\n            print(\"inner\")\n    finally:\n        print(\"outer\")\n\n\ndef winner() -\u003e int:\n    try:\n        return 1\n    finally:\n        return 2\n\n\ndef propagates() -\u003e int:\n    try:\n        x = 1 / 0\n    finally:\n        print(\"prop fin\")\n    return 0\n\n\ndef from_arm() -\u003e int:\n    try:\n        x = 1 / 0\n    except:\n        return 7\n    finally:\n        print(\"arm fin\")\n    return 0\n\n\ndef twice() -\u003e int:\n    try:\n        return 5\n    finally:\n        print(\"once\")\n\n\nprint(twice())\nprint(twice())\nprint(value_before_finally())\nprint(nested())\nprint(winner())\nprint(from_arm())\n\ntry:\n    print(propagates())\nexcept:\n    print(\"caught\")\n\nfor i in range(3):\n    try:\n        continue\n    finally:\n        print(\"cont fin\", i)\n\nfor i in range(3):\n    try:\n        break\n    finally:\n        print(\"brk fin\", i)\n\nfor i in range(4):\n    try:\n        print(\"body\", i)\n    except:\n        print(\"arm that never runs\")\n    finally:\n        print(\"loop fin\", i)\n\ndef ignores_transfers() -\u003e int:\n    try:\n        return 1\n    except:\n        print(\"an arm cannot catch a return\")\n    return 3\n\nprint(ignores_transfers())\n",
@@ -1203,7 +1272,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle1820908280/prog.py\", line 46",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1402150713/prog.py\", line 46",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1214,7 +1283,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1820908280/prog.py\", line 46"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1402150713/prog.py\", line 46"
       ]
     },
     {
@@ -1789,7 +1858,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2295130429/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2600202307/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1800,7 +1869,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2295130429/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2600202307/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1830,7 +1899,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle453704295/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1884092886/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1841,7 +1910,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle453704295/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1884092886/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -2325,7 +2394,7 @@
       "interp_stdout": "1\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1229577839/070/prog.ll:10:62: error: expected type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/073/prog.ll:10:62: error: expected type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "1\n",
@@ -2339,7 +2408,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1229577839/070/prog.ll:10:62: error: expected type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/073/prog.ll:10:62: error: expected type"
       ]
     },
     {
@@ -2675,90 +2744,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_str_loop_eq",
-        "name": "probe_str_loop_eq.gy",
-        "source": "# Oracle probe (ADR 0192) — comparing an interned container element with a string literal emits\n# `icmp eq i32 %_n, @.str3`: an index into @str_tab compared against the *address* of a string\n# global. llc rejects the module, so this is an exit-2 compiler bug, not a refusal (roadmap L11.8).\nnames = [\"a\", \"b\"]\nfor n in names:\n    if n == \"a\":\n        print(n)\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "comparing a container element with a string literal emits `icmp eq i32 %_n, @.str3` — an index into @str_tab against the address of a string global — and llc rejects the module, so this is exit 2 (a compiler bug) rather than a refusal",
-        "ref": "roadmap L11.8 (refusal is part of the model) + Gap I.2 (interned strings)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "a\n"
-          },
-          {
-            "backend": "aot",
-            "error": "global variable reference must have pointer type",
-            "missing": true
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "a\n",
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1229577839/075/prog.ll:1973:30: error: global variable reference must have pointer type",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "a\n",
-      "interp_matches_python": true,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "comparing a container element with a string literal emits `icmp eq i32 %_n, @.str3` — an index into @str_tab against the address of a string global — and llc rejects the module, so this is exit 2 (a compiler bug) rather than a refusal",
-      "oracle_ref": "roadmap L11.8 (refusal is part of the model) + Gap I.2 (interned strings)",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1229577839/075/prog.ll:1973:30: error: global variable reference must have pointer type"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_comp_str_filter",
-        "name": "probe_comp_str_filter.gy",
-        "source": "# Oracle probe (ADR 0192) — a comprehension filter that compares elements with a string reaches\n# the same interned-comparison bug as probe_str_loop_eq. The list is mutated first so it is a\n# runtime object (otherwise the folded-iteration refusal answers first), which is what lets the\n# filter be reached at all: the comprehension refuses instead of inheriting the llc rejection.\nnames = [\"a\", \"b\"]\nnames.append(\"c\")\nprint([n for n in names if n == \"a\"])\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "a comprehension filter that compares elements with a string reaches the same interned-comparison bug; the comprehension refuses instead of inheriting the llc rejection",
-        "ref": "roadmap L11.8 (refusal is part of the model)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "['a']\n"
-          },
-          {
-            "backend": "aot",
-            "error": "interned-string comparison",
-            "missing": true
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "['a']\n",
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "codegen: comparing container elements with a string in a filter needs the interned-string comparison fix (`for n in xs: if n == \"a\"` has the same bug); run it interpreted for now (roadmap L11.8, probe_str_loop_eq)",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "['a']\n",
-      "interp_matches_python": true,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "a comprehension filter that compares elements with a string reaches the same interned-comparison bug; the comprehension refuses instead of inheriting the llc rejection",
-      "oracle_ref": "roadmap L11.8 (refusal is part of the model)",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "compiled leg failed: codegen: comparing container elements with a string in a filter needs the interned-string comparison fix (`for n in xs: if n == \"a\"` has the same bug); run it interpreted for now (roadmap L11.8, probe_str_loop_eq)"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_comp_runtime_reduce",
         "name": "probe_comp_runtime_reduce.gy",
         "source": "# Oracle probe (ADR 0192) — the consumers of a comprehension whose elements are computed at\n# runtime have no compile-time element set to fold, so sum/min/max refuse rather than add up\n# nothing and answer 0. Needs a runtime reduction over the built list.\ndef sq(n):\n    return n * n\n\nprint(sum([sq(x) for x in range(4)]))\n",
@@ -2865,7 +2850,7 @@
       "interp_stdout": "2.5\n3.0\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1229577839/076/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/078/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
       "parity": false,
       "python_ok": true,
       "python_stdout": "2.5\n3.0\n",
@@ -2879,7 +2864,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1229577839/076/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/078/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
       ]
     },
     {
@@ -2909,7 +2894,7 @@
       "parity": false,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3018836279/prog.py\", line 10",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle875940343/prog.py\", line 10",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -2920,16 +2905,16 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3018836279/prog.py\", line 10"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle875940343/prog.py\", line 10"
       ]
     }
   ],
-  "rows": 92,
-  "skipped": 25,
-  "pass": 67,
+  "rows": 93,
+  "skipped": 23,
+  "pass": 70,
   "fail": 0,
-  "oracle_match": 48,
-  "oracle_debt": 30,
+  "oracle_match": 51,
+  "oracle_debt": 28,
   "oracle_not_applicable": 14,
   "oracle_drift": 0
 }

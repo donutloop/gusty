@@ -106,25 +106,28 @@ func TestRuntimeReductionRefusesRatherThanAnswerZero(t *testing.T) {
 	}
 }
 
-// TestStringElementFilterRefusesNotRejects: the interned-string comparison is a known compiler bug
-// (probe_str_loop_eq — the same shape in a `for` loop makes llc reject the module). The
-// comprehension must refuse (exit 1) rather than inherit the rejection (exit 2).
-func TestStringElementFilterRefusesNotRejects(t *testing.T) {
-	res, err := Compile("names = [\"a\", \"b\"]\nnames.append(\"c\")\nprint([n for n in names if n == \"a\"])\n")
-	msg := ""
+// TestStringElementFilterCompiles: a filter that compares an element with a string literal used to
+// be refused, because the comparison emitted `icmp eq i32 %_n, @.str3` — an @str_tab index against
+// the address of a string global — and the filtered loop's `phi` named the body as its predecessor
+// when the skips actually came from the skip block. Both are fixed; the shape compiles, verifies,
+// and the loop header's back edge is the block that really branches to it (Gap R.42, ADR 0224).
+func TestStringElementFilterCompiles(t *testing.T) {
+	src := "names = [\"a\", \"b\"]\nnames.append(\"c\")\nprint([n for n in names if n == \"a\"])\n"
+	res, err := Compile(src)
 	if err != nil {
-		msg = err.Error()
+		t.Fatalf("the string-comparison filter must compile now (it used to be refused to hide an invalid module): %v", err)
 	}
-	if res != nil {
-		for _, d := range res.Diagnostics {
-			msg += d.Msg + "\n"
+	if _, verr := VerifyModuleIR(res.IR, 0); verr != nil {
+		t.Fatalf("the emitted module does not verify: %v", verr)
+	}
+	if !strings.Contains(res.IR, "call i32 @rt_str_intern2") {
+		t.Fatalf("the compared literal is not interned; a comparison against a global would not verify:\n%s", res.IR)
+	}
+	// The loop header's back edge must be the block that actually branches to it.
+	for _, ln := range strings.Split(res.IR, "\n") {
+		if strings.Contains(ln, "= phi i32 [ 0, %comp.pre") && !strings.Contains(ln, ", %comp.skip") {
+			t.Fatalf("the induction phi names a predecessor that never branches to it:\n%s", ln)
 		}
-	}
-	if err == nil {
-		t.Fatal("the string-comparison filter must not compile while the comparison itself is broken")
-	}
-	if !strings.Contains(msg, "interned-string comparison") || !strings.Contains(msg, "probe_str_loop_eq") {
-		t.Fatalf("the refusal should name the bug and its probe:\n%s", msg)
 	}
 }
 

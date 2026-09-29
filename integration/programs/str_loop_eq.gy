@@ -1,0 +1,8 @@
+# Comparing an interned container element with a string literal used to emit
+# `icmp eq i32 %_n, @.str3` -- an @str_tab index against the address of a string global -- and llc
+# rejected the module. A string value is an index now, so the comparison is an icmp on two indices
+# (roadmap Gap R.42 and L11.8, ADR 0224). CPython prints exactly this.
+names = ["a", "b"]
+for n in names:
+    if n == "a":
+        print(n)

@@ -1,7 +1,0 @@
-# Oracle probe (ADR 0192) — comparing an interned container element with a string literal emits
-# `icmp eq i32 %_n, @.str3`: an index into @str_tab compared against the *address* of a string
-# global. llc rejects the module, so this is an exit-2 compiler bug, not a refusal (roadmap L11.8).
-names = ["a", "b"]
-for n in names:
-    if n == "a":
-        print(n)

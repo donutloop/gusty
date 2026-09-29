@@ -359,9 +359,12 @@ Three shapes refuse rather than answer wrongly, each naming its reason:
 - `sum`/`min`/`max` over a comprehension whose elements are computed at runtime — there is no
   compile-time element set to fold, and folding the empty one answers **0 for a list that has
   elements** (`probe_comp_runtime_reduce`; a runtime reduction is the open item).
-- a filter comparing elements with a string literal — the underlying comparison is broken for
-  interned strings and the same shape in a `for` loop makes `llc` reject the module
-  (`probe_str_loop_eq`, roadmap L11.8); the comprehension refuses instead of inheriting that.
+- printing an element of a comprehension list the program has not walked elsewhere —
+  `out = [n for n in names if n == "a"]; print(out[0])` answers the interned index (`0`) where
+  CPython answers `a`; the element-kind fact is only there once something has looked at the list
+  (roadmap Gap R.46);
+- `str(x)` of a value the compiler cannot fold, and indexing a `sorted(...)` result, refuse with a
+  message (roadmap Gap R.22).
 - iterating a list the escape analysis kept as a compile-time constant (`xs = [1, 2, 3]` with no
   mutation and no `for` over it) — there is no runtime object to walk. Iterating it with `for`, or
   mutating it, materialises it (`probe_comp_folded_iter`; L11.2's tagged value word removes the
@@ -548,10 +551,18 @@ Rules that both backends implement:
   length, like any other container variable.
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
   `s.add("q")`, `d["k"] = 1`, `d[1] = "v"`, `"a" in xs`, `for x in xs`, `len`, indexing
-  and printing all work in both backends. In the AOT backend a string is a compile-time
-  global while a container slot is an i32, so strings live in a runtime interned table:
-  `rt_str_intern2(text, repr) -> i32` stores each distinct text once (content-addressed, so
-  two spellings of `"k"` are the same dict key) and the container keeps the index. Printing
+  and printing all work in both backends. **A string value is an index into a runtime interned
+  table** (ADR 0224): the address of a literal belongs only to the places that ask for bytes — a
+  `printf` format, an argument to `rt_str_*`, a compile-time fold — so `x == "hi"`, `"a" in xs`,
+  `self.w = "hi"` and a method's `-> str` result are all i32-to-i32 operations. Interning a
+  constant emits `call i32 @rt_str_intern2(i8* getelementptr(...@.strN...), i8* null)`, and
+  printing an index reads the text back with `rt_str_ptr`, which is why `print(f"hi {n}")` can
+  print `hi world` rather than `hi 0`. Earlier the value path returned the global itself, and every
+  one of those shapes reached `llc` as `icmp eq i32 @.str1, %t1` or `ret i32 @.str1`: exit 2, the
+  compiler blamed for an ordinary program.
+  Interning is content-addressed, so two spellings of `"k"` are the same dict key, and text the
+  runtime makes up itself (a `+` concatenation, a slice) is interned by `rt_str_*` so an index
+  always names an entry. Printing
   picks the slot by context — raw text for `print(x)`, the Python repr form for elements
   inside a container — which is why `print(names)` gives `['ada', 'brin']` and
   `print(["it's"])` gives `["it's"]`, exactly as CPython does. Dicts track their key and

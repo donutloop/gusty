@@ -1,0 +1,49 @@
+# A string value in this language is an index into the runtime string table, not the address of a
+# literal (ADR 0224). Everything that reads a string as a value — comparison, `in`, an f-string
+# interpolation, an instance attribute, a method's result — goes through that index, which is why
+# these lines compile at all on the LLVM backend. CPython prints exactly this, on this file.
+names = ["a", "b"]
+names.append("c")
+
+for n in names:
+    if n == "a":
+        print("found a")
+
+out = [n for n in names if n != "b"]
+print(len(out))
+# `print(out[0])` is deliberately absent: an element of a freshly built comprehension list prints
+# as its @str_tab index (roadmap Gap R.46), and a parity program may only assert what the oracle
+# agrees with.
+
+greeting = "hello"
+print(1 if greeting == "hello" else 0)
+print(1 if greeting != "help" else 0)
+print(1 if "b" in names else 0)
+print(1 if "z" not in names else 0)
+print(1 if "abc" < "abd" else 0)
+print(1 if "  hi ".strip() == "hi" else 0)
+print(1 if "hi".upper() == "HI" else 0)
+
+left = "ab"
+right = "c"
+print(1 if left + right == "abc" else 0)
+
+who = "world"
+print(f"hi {who}")
+
+class Greeter:
+    def __init__(self):
+        self.word = "hi"
+
+    def greet(self, who: str) -> str:
+        return "hello"
+
+
+g = Greeter()
+print(g.word)
+print(g.greet("x"))
+print(1 if g.word == "hi" else 0)
+
+echo = ["x", "y"]
+print(1 if echo[0] == "x" else 0)
+print(1 if {"k": 1}.get("k") == 1 else 0)

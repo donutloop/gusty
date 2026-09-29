@@ -2000,7 +2000,7 @@ func GenerateIR(prog *Program) (string, error) {
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, mixedLists: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
@@ -2216,9 +2216,7 @@ func (g *irGen) iterableIsRuntimeString(e Expr) bool {
 		return false
 	}
 	if c, ok := e.(*Call); ok {
-		if fn, ok2 := c.Fn.(*Name); ok2 {
-			return g.strFuncs[fn.Value]
-		}
+		return g.callReturnsStr(c)
 	}
 	return false
 }
@@ -2479,6 +2477,10 @@ type irGen struct {
 	// like the arm's normal exit does — otherwise the transfer escapes the clear and the next
 	// user-function call reports the exception all over again (roadmap Gap R.21, compiled half).
 	handledArms int
+	// strAttrs records the instance attributes a class assigns a string to (`self.w = "hi"`),
+	// keyed "Class.attr", so a read of one is known to be an @str_tab index and prints as text
+	// instead of as the number (roadmap Gap R.42, ADR 0224).
+	strAttrs map[string]bool
 	// emitErr carries the first codegen refusal raised inside a body emitted outside GenerateIR's
 	// statement walk -- a class method, whose emitter writes into the globals buffer and has no
 	// error return. Dropping it built an incomplete function and let `llc` report the problem as
@@ -2704,6 +2706,12 @@ func (g *irGen) registerClass(cd *ClassDef) {
 		// call sites together.
 		funcName := irSymbol(fmt.Sprintf("%s_%s", cd.Name, mname))
 		ci.methods[mname] = funcName
+		g.markStringAttrs(cd.Name, fd)
+		if methodReturnsStr(fd) {
+			// Registered under the mangled symbol, which is what a call site resolves to
+			// (Gap R.42, ADR 0224).
+			g.strFuncs[funcName] = true
+		}
 		g.collectAttrs(fd.Body)
 		g.emitClassMethod(cd.Name, funcName, fd)
 	}
@@ -2890,7 +2898,200 @@ func (g *irGen) attrSlot(name string) int {
 	return s
 }
 
-// resolveMethod resolves a method name across a class chain.
+// exprIsString answers whether an expression's value is text -- an index into @str_tab. The
+// element-kind tests ask a runtime question (`heapElemKind` reads the emitted shape), and an
+// element written with the comprehension's own variable -- `out = [n for n in names if n == "a"]`
+// -- has no shape to read, which left `print(out[0])` printing the index as a number. This is the
+// static half of the same question (roadmap Gap R.42, ADR 0224).
+func (g *irGen) exprIsString(e Expr) bool {
+	switch v := e.(type) {
+	case *StrLit, *FString:
+		return true
+	case *Name:
+		return g.internedVars[v.Value]
+	case *Call:
+		return g.callReturnsStr(v)
+	case *Attr:
+		if cls := g.receiverClass(v.Obj); cls != "" {
+			return g.strAttrs[cls+"."+v.Name.Value]
+		}
+		return false
+	case *BinOp:
+		if v.Op != "+" {
+			return false
+		}
+		_, lf := g.stringVal(v.L)
+		_, rf := g.stringVal(v.R)
+		return lf || rf || (g.exprIsString(v.L) && g.exprIsString(v.R))
+	case *Index:
+		if nm, ok := v.Obj.(*Name); ok {
+			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value]
+		}
+		return false
+	case *Comp:
+		if len(v.Elems) != 1 {
+			return false
+		}
+		// The element names the iteration variable, so its kind is the iterated collection's.
+		if it, ok := v.Iter.(*Name); ok && (g.listElemStr[it.Value] || g.setElemStr[it.Value]) {
+			if iv, ok2 := v.Elems[0].(*Name); ok2 && iv.Value == v.ForVar.Value {
+				return true
+			}
+		}
+		return g.exprIsString(v.Elems[0])
+	}
+	return false
+}
+
+// callReturnsStr answers whether the value a call produces is a string, in the language's
+// representation -- an index into @str_tab. Module functions were answered by `strReturningFuncs`;
+// methods had no such registration, so `print(Dog().sound())` printed the index as a number while
+// the interpreter and CPython printed the text (roadmap Gap R.42, ADR 0224).
+func (g *irGen) callReturnsStr(c *Call) bool {
+	if nm, ok := c.Fn.(*Name); ok {
+		return g.strFuncs[nm.Value]
+	}
+	if at, ok := c.Fn.(*Attr); ok {
+		if cls := g.receiverClass(at.Obj); cls != "" {
+			if sym, ok2 := g.resolveMethod(cls, at.Name.Value); ok2 {
+				return g.strFuncs[sym]
+			}
+		}
+	}
+	return false
+}
+
+// methodReturnsStr is `strReturningFuncs` for a method body: the annotation says it, or some
+// `return` in the body hands back a string literal or a string parameter. The emitter cannot ask
+// the value path, because at that point the question is how to name the return type at every call
+// site.
+func (g *irGen) markStringAttrs(className string, fd *FuncDef) {
+	for _, st := range fd.Body {
+		g.scanStringAttrs(className, st)
+	}
+}
+
+// scanStringAttrs finds `self.<attr> = <string>` anywhere a method body can reach, including
+// inside an if/while/try, because an attribute initialised on one path is still a string-valued
+// attribute of the class.
+func (g *irGen) scanStringAttrs(className string, st Stmt) {
+	switch n := st.(type) {
+	case *AssignStmt:
+		if at, ok := n.Target.(*Attr); ok {
+			recv := g.receiverClass(at.Obj)
+			if recv != "" && recv != className {
+				recv = className // `self` inside a method of this class
+			}
+			if recv == "" {
+				recv = className
+			}
+			if _, foldable := g.stringVal(n.Value); foldable {
+				g.strAttrs[recv+"."+at.Name.Value] = true
+			} else if c, ok := n.Value.(*Call); ok && g.callReturnsStr(c) {
+				g.strAttrs[recv+"."+at.Name.Value] = true
+			}
+		}
+	case *IfStmt:
+		for _, s := range n.Then {
+			g.scanStringAttrs(className, s)
+		}
+		for _, e := range n.Elifs {
+			for _, s := range e.Then {
+				g.scanStringAttrs(className, s)
+			}
+		}
+		for _, s := range n.Else {
+			g.scanStringAttrs(className, s)
+		}
+	case *WhileStmt:
+		for _, s := range n.Body {
+			g.scanStringAttrs(className, s)
+		}
+	case *ForStmt:
+		for _, s := range n.Body {
+			g.scanStringAttrs(className, s)
+		}
+	case *WithStmt:
+		for _, s := range n.Body {
+			g.scanStringAttrs(className, s)
+		}
+	case *TryStmt:
+		for _, s := range n.Body {
+			g.scanStringAttrs(className, s)
+		}
+		for _, ec := range n.Excepts {
+			for _, s := range ec.Body {
+				g.scanStringAttrs(className, s)
+			}
+		}
+		for _, s := range n.Finally {
+			g.scanStringAttrs(className, s)
+		}
+	case *MatchStmt:
+		for _, c := range n.Cases {
+			for _, s := range c.Body {
+				g.scanStringAttrs(className, s)
+			}
+		}
+	}
+}
+
+func methodReturnsStr(fd *FuncDef) bool {
+	if fd.ReturnAnno != nil && fd.ReturnAnno.Kind == KindString {
+		return true
+	}
+	strParams := map[string]bool{}
+	for _, p := range fd.Params {
+		if p.Annot != nil && p.Annot.Kind == KindString {
+			strParams[p.Name] = true
+		}
+	}
+	found := false
+	var walk func([]Stmt)
+	walk = func(sts []Stmt) {
+		for _, st := range sts {
+			switch n := st.(type) {
+			case *ReturnStmt:
+				if n.Expr == nil {
+					continue
+				}
+				switch e := n.Expr.(type) {
+				case *StrLit, *FString:
+					found = true
+				case *Name:
+					if strParams[e.Value] {
+						found = true
+					}
+				}
+			case *IfStmt:
+				walk(n.Then)
+				for _, el := range n.Elifs {
+					walk(el.Then)
+				}
+				walk(n.Else)
+			case *WhileStmt:
+				walk(n.Body)
+			case *ForStmt:
+				walk(n.Body)
+			case *WithStmt:
+				walk(n.Body)
+			case *MatchStmt:
+				for _, c := range n.Cases {
+					walk(c.Body)
+				}
+			case *TryStmt:
+				walk(n.Body)
+				for _, ec := range n.Excepts {
+					walk(ec.Body)
+				}
+				walk(n.Finally)
+			}
+		}
+	}
+	walk(fd.Body)
+	return found
+}
+
 func (g *irGen) resolveMethod(className, mname string) (string, bool) {
 	ci, ok := g.classInfos[className]
 	if !ok {
@@ -2925,6 +3126,17 @@ func (g *irGen) receiverClass(recv Expr) string {
 		}
 		if c, ok := g.varClasses[n.Value]; ok {
 			return c
+		}
+	}
+	// `Dog().sound()` — the receiver is a fresh instance of a class the source names. Without
+	// this the receiver's class is unknown, so the call fell to the dynamic switch and the
+	// question "does this method return a string?" had nobody to ask, printing the @str_tab
+	// index where the interpreter and CPython print the text (Gap R.42, ADR 0224).
+	if c, ok := recv.(*Call); ok {
+		if n, ok2 := c.Fn.(*Name); ok2 {
+			if _, isClass := g.classInfos[n.Value]; isClass {
+				return n.Value
+			}
 		}
 	}
 	return ""
@@ -4983,7 +5195,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// String variables are compile-time constants (strVals); emit their
 		// global pointer so printf/assign via value() sees the real string.
 		if sv, ok := g.strVals[n.Value]; ok {
-			return g.strConst(sv), nil
+			// Same rule as a literal: the folded constant is still a string *value*, and a
+			// string value is an @str_tab index (Gap R.42, ADR 0224).
+			return g.internStr(b, sv), nil
 		}
 		// A module-level class name used as a value (e.g. `Alias = Point`)
 		// resolves to its class id so aliases can be stored and matched.
@@ -5112,7 +5326,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			ls, lok := g.stringVal(n.L)
 			rs, rok := g.stringVal(n.R)
 			if lok && rok {
-				return g.strConst(ls + rs), nil
+				// A folded concatenation is still a string *value*, so it is an @str_tab
+				// index; the pointer belongs only to the printf paths that ask for bytes
+				// (Gap R.42, ADR 0224).
+				return g.internStr(b, ls+rs), nil
 			}
 		}
 		// A container is equal to another container by *value*. Both backends compared the
@@ -5571,8 +5788,14 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return t, nil
 
 	case *StrLit:
-		name := g.strConst(n.Value)
-		return name, nil
+		// A string *value* in this language is an index into the runtime @str_tab, not the
+		// address of a private global: `x == "hi"`, `return "hi"` from a string-returning
+		// function, and `self.w = "hi"` all put it in an i32 slot, and emitting `@.str7`
+		// there made llc reject the module -- an exit-2 toolchain rejection for an ordinary
+		// program (ADR 0166's rule, roadmap Gap R.42 and L11.8). Contexts that genuinely want
+		// the bytes -- printf, the compile-time folds in rt_str_* helpers, the traceback
+		// strings -- go through g.strConst directly, never through value().
+		return g.internStr(b, n.Value), nil
 	case *FString:
 		return "", fmt.Errorf("codegen: f-string requires a constant expression (AOT backend)")
 	case *ListLit:
@@ -5615,11 +5838,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		return name, nil
 	case *Slice:
-		// String slices are folded at compile time via stringVal; emit the
-		// folded result's global pointer (used by print/assign via value()).
+		// String slices are folded at compile time via stringVal; the fold is a string
+		// value, so it is emitted as its @str_tab index -- the pointer is for printf
+		// contexts, which fold the text themselves (Gap R.42, ADR 0224).
 		if _, isStr := g.stringVal(n.Obj); isStr {
 			if sv, ok := g.stringVal(n); ok {
-				return g.strConst(sv), nil
+				return g.internStr(b, sv), nil
 			}
 			return "", fmt.Errorf("cannot fold string slice")
 		}
@@ -6000,22 +6224,6 @@ func (g *irGen) foldConstInt(e Expr) (int64, bool) {
 	}
 }
 
-// condComparesString reports a condition of the shape `x == "text"` / `x != "text"`, which is the
-// comparison the compiled backend gets wrong for interned string elements (it compares an index
-// with a string global's address). Narrow on purpose: the narrower the refusal, the less it hides.
-func condComparesString(cond Expr) bool {
-	bin, ok := cond.(*BinOp)
-	if !ok {
-		return false
-	}
-	if bin.Op != "==" && bin.Op != "!=" {
-		return false
-	}
-	_, lIsStr := bin.R.(*StrLit)
-	_, rIsStr := bin.L.(*StrLit)
-	return lIsStr || rIsStr
-}
-
 // runtimeCompLoop is the comprehension over a container whose length is only known at runtime —
 // a variable, or a builtin that builds one. Unlike the unrolled paths it is a real loop: an index
 // counter, rt_get_elem per step, the loop variable bound to the element the way a `for` statement
@@ -6088,15 +6296,7 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	if iterIsStrElems {
 		g.internedVars[lv] = true
 	}
-	// A filter that compares an interned loop variable with a string literal is a known
-	// compiler bug, not a language limit: the comparison emits `icmp eq i32 %_n, @.str3`,
-	// comparing an index into @str_tab with the address of a string global, and llc rejects
-	// the module. `for n in names: if n == "a": …` has the same bug today, so the filter
-	// refuses here rather than inheriting an exit-2 crash — pinning it is cheaper than
-	// shipping the rejection (roadmap L11.8, probe_str_loop_eq).
-	if g.internedVars[lv] && condComparesString(c.Cond) {
-		return "", fmt.Errorf("codegen: comparing container elements with a string in a filter needs the interned-string comparison fix (`for n in xs: if n == \"a\"` has the same bug); run it interpreted for now (roadmap L11.8, probe_str_loop_eq)")
-	}
+
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 1)\n", h))
@@ -6116,7 +6316,20 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	g.tmp++
 	nextReg := fmt.Sprintf("%%cc%d", g.tmp)
 	idx := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = phi i32 [ 0, %%%s ], [ %s, %%%s ]\n", idx, pre, nextReg, body))
+	// A filter puts the increment in the block the skips fall through to, so that block -- not
+	// the body -- is the loop header's real predecessor. Naming the body anyway built a `phi`
+	// whose entry list did not match its predecessors, which is why a runtime-list comprehension
+	// with a string filter was refused rather than compiled: the refusal was covering an invalid
+	// module, and the comparison bug underneath it (roadmap L11.8) has its own fix now
+	// (Gap R.42, ADR 0224).
+	backEdge := body
+	var keep, skip string
+	if c.Cond != nil {
+		keep = g.newLabel("comp.keep")
+		skip = g.newLabel("comp.skip")
+		backEdge = skip
+	}
+	b.WriteString(fmt.Sprintf("  %s = phi i32 [ 0, %%%s ], [ %s, %%%s ]\n", idx, pre, nextReg, backEdge))
 	cmp := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n  br i1 %s, label %%%s, label %%%s\n%s:\n", cmp, idx, nlen, cmp, body, done, body))
 	iv := g.newTmp()
@@ -6138,8 +6351,6 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		return nil
 	}
 	if c.Cond != nil {
-		keep := g.newLabel("comp.keep")
-		skip := g.newLabel("comp.skip")
 		tv := g.truthOperand(b, c.Cond)
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n%s:\n", tv, keep, skip, keep))
 		if err := appendElem(); err != nil {
@@ -6662,16 +6873,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					base = ci.bases[0]
 				}
 				if fn, ok := g.resolveMethod(base, mname); ok {
-					ret := g.newTmp()
-					b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %%self", ret, fn))
-					for _, arg := range c.Args {
+					// Every argument is emitted BEFORE the call line is started: a value that
+					// needs an instruction of its own (interning a string literal does) would
+					// otherwise be written into the middle of the operand list (Gap R.42).
+					argRegs := make([]string, len(c.Args))
+					for i, arg := range c.Args {
 						av, err := g.value(b, arg)
 						if err != nil {
 							return "", err
 						}
-						b.WriteString(", i32 " + av)
+						argRegs[i] = ", i32 " + av
 					}
-					b.WriteString(")\n")
+					ret := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %%self%s)\n", ret, fn, strings.Join(argRegs, "")))
 					// A method is program code, and program code raises: without the
 					// call-site check the exception stayed in flight, the method returned
 					// its unwind value, and the caller carried on printing (Gap R.41, ADR 0223).
@@ -6688,16 +6902,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if err != nil {
 					return "", err
 				}
-				ret := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s", ret, fn, recvHandle))
-				for _, arg := range c.Args {
+				argRegs := make([]string, len(c.Args))
+				for i, arg := range c.Args {
 					av, err := g.value(b, arg)
 					if err != nil {
 						return "", err
 					}
-					b.WriteString(", i32 " + av)
+					argRegs[i] = ", i32 " + av
 				}
-				b.WriteString(")\n")
+				ret := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s%s)\n", ret, fn, recvHandle, strings.Join(argRegs, "")))
 				g.checkExn(b) // a method call propagates like any other call (Gap R.41, ADR 0223)
 				return ret, nil
 			}
@@ -7198,13 +7412,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			pad := int(wv) - len(v)
 			if pad <= 0 {
-				return g.strConst(v), nil
+				// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+				return g.internStr(b, v), nil
 			}
 			spaces := strings.Repeat(" ", pad)
 			if attr.Name.Value == "ljust" {
-				return g.strConst(v + spaces), nil
+				// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+				return g.internStr(b, v+spaces), nil
 			}
-			return g.strConst(spaces + v), nil
+			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+			return g.internStr(b, spaces+v), nil
 		case "zfill":
 			// zfill pads the receiver on the left with '0' to width w
 			// (no-op when len(v) >= w), mirroring the interpreter.
@@ -7217,9 +7434,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			pad := int(wv) - len(v)
 			if pad <= 0 {
-				return g.strConst(v), nil
+				// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+				return g.internStr(b, v), nil
 			}
-			return g.strConst(strings.Repeat("0", pad) + v), nil
+			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+			return g.internStr(b, strings.Repeat("0", pad)+v), nil
 		case "removeprefix", "removesuffix":
 			// removeprefix strips the given prefix from the receiver;
 			// removesuffix strips the suffix, mirroring strings.TrimPrefix/TrimSuffix.
@@ -7236,7 +7455,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			} else {
 				res = strings.TrimSuffix(v, sub)
 			}
-			return g.strConst(res), nil
+			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+			return g.internStr(b, res), nil
 		case "index":
 			// "s".index(sub) returns the byte index of sub (strings.Index).
 			// The interpreter raises on not-found; the AOT codegen has no error
@@ -7265,23 +7485,26 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if w <= 0 {
 				return "", fmt.Errorf("expandtabs width must be positive")
 			}
-			var b strings.Builder
+			var sb strings.Builder
 			col := 0
 			for _, r := range v {
 				if r == '\t' {
 					n := w - (col % w)
-					b.WriteString(strings.Repeat(" ", n))
+					sb.WriteString(strings.Repeat(" ", n))
 					col += n
 				} else {
-					b.WriteRune(r)
+					sb.WriteRune(r)
 					col++
 				}
 			}
-			return g.strConst(b.String()), nil
+			v = sb.String()
+			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+			return g.internStr(b, v), nil
 		default:
 			return "", fmt.Errorf("unsupported string method %s", attr.Name.Value)
 		}
-		return g.strConst(v), nil
+		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+		return g.internStr(b, v), nil
 	}
 
 	// Class instantiation: `ClassName(args)`.
@@ -7648,13 +7871,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				g.emitUnionPrint(b, nm.Value, "")
 				continue
 			}
-			// print a constant string: literals and folded string-method results.
-			if _, ok := g.stringVal(a); ok {
+			// print a constant string: literals and folded string-method results. This is a
+			// context that wants the BYTES, so it takes the global pointer from strConst
+			// directly -- value() now hands back an @str_tab index, which is the language's
+			// string value and not something printf's %s may read (Gap R.42, ADR 0224).
+			if txt, ok := g.stringVal(a); ok {
 				fmtName, size := g.fmtStr("%s")
-				v, err := g.value(b, a)
-				if err != nil {
-					return "", err
-				}
+				v := g.strConst(txt)
 				t := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i32 0, i32 0), i8* %s)\n", t, size, size, fmtName, v))
 				last = t
@@ -7683,6 +7906,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							fs := g.newTmp()
 							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_fmt_double(double %s)\n", fs, fv))
 							operands = append(operands, "i8* "+fs)
+						} else if _, knownStr := g.stringVal(part.Expr); knownStr || g.printsAsInternedStr(part.Expr) {
+							// An interpolated string is an @str_tab index now, so printf must be
+							// handed the bytes through rt_str_ptr -- `%d` printed the index and
+							// `f"hi {n}"` came out as `hi 0` (Gap R.42, ADR 0224).
+							fmtLit += "%s"
+							vv, err := g.value(b, part.Expr)
+							if err != nil {
+								return "", err
+							}
+							sp := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, vv))
+							operands = append(operands, "i8* "+sp)
 						} else {
 							fmtLit += "%d"
 							vv, err := g.value(b, part.Expr)
@@ -8403,7 +8638,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		if g.isFloat(c.Args[0]) {
 			if fv, ok := g.floatEval(c.Args[0]); ok {
-				return g.strConst(pyFloatRepr(fv)), nil
+				// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+				return g.internStr(b, pyFloatRepr(fv)), nil
 			}
 		}
 		// str(None) is "None" and str("x") is "x" — not the int 0 and not an error.
@@ -8414,10 +8650,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// global is correct in that position; storing one is not, which is why the
 		// assignment path interns (see the AssignStmt string branch).
 		if _, ok := c.Args[0].(*NoneLit); ok {
-			return g.strConst("None"), nil
+			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+			return g.internStr(b, "None"), nil
 		}
 		if sl, ok := c.Args[0].(*StrLit); ok {
-			return g.strConst(sl.Value), nil
+			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+			return g.internStr(b, sl.Value), nil
 		}
 		v, err := g.value(b, c.Args[0])
 		if err != nil {
@@ -8427,7 +8665,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("str on non-integer")
 		}
-		return g.strConst(fmt.Sprintf("%d", n)), nil
+		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+		return g.internStr(b, fmt.Sprintf("%d", n)), nil
 	case "int":
 		// int(x) folds to a constant on literal args: int(str) parses the
 		// decimal string, int(int) is the identity. float() stays
@@ -8464,7 +8703,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return g.emitList(rev)
 		}
 		if lit, ok := c.Args[0].(*StrLit); ok {
-			return g.strConst(reverseStr(lit.Value)), nil
+			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+			return g.internStr(b, reverseStr(lit.Value)), nil
 		}
 		// imported string module global (data imports): reversed(mod.str)
 		if attr, ok := c.Args[0].(*Attr); ok {
@@ -8472,7 +8712,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if globals, ok3 := g.imports.Globals[nm.Value]; ok3 {
 					if lit2, ok4 := globals[attr.Name.Value]; ok4 {
 						if str, ok5 := lit2.(*StrLit); ok5 {
-							return g.strConst(reverseStr(str.Value)), nil
+							// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+							return g.internStr(b, reverseStr(str.Value)), nil
 						}
 						if lst, ok5 := lit2.(*ListLit); ok5 {
 							return g.emitList(&ListLit{Elems: reversedExprs(lst.Elems)})
@@ -8567,7 +8808,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if cerr != nil {
 			return "", fmt.Errorf("chr: codegen folds only a constant integer arg")
 		}
-		return g.strConst(string(rune(cn))), nil
+		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
+		return g.internStr(b, string(rune(cn))), nil
 	case "ord":
 		// ord(s) folds a constant string to the codepoint of its first byte,
 		// mirroring the interpreter (int64(o.sval[0])).
@@ -8855,12 +9097,17 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 	switch v := e.(type) {
 	case *Name:
 		return g.internedVars[v.Value]
+	case *Attr:
+		// `self.w = "hi"` in the class, `print(C().w)` outside it: the slot holds an
+		// @str_tab index, so printing it must show the text (Gap R.42, ADR 0224).
+		if cls := g.receiverClass(v.Obj); cls != "" {
+			return g.strAttrs[cls+"."+v.Name.Value]
+		}
+		return false
 	case *Call:
 		// echo("yo") returns an index into @str_tab; printing it must show the text
 		// (roadmap Gap J.5).
-		if nm, ok := v.Fn.(*Name); ok {
-			return g.strFuncs[nm.Value]
-		}
+		return g.callReturnsStr(v)
 	case *Index:
 		if nm, ok := v.Obj.(*Name); ok {
 			// Elements of a string list/set and the values of a string dict are both
@@ -9286,6 +9533,18 @@ func (g *irGen) runDeferredInnermost(b *strings.Builder) error {
 func (g *irGen) clearExn(b *strings.Builder) {
 	g.raiseUsed = true
 	b.WriteString("  store i32 0, i32* @exn_flag\n")
+}
+
+// internStr emits the interning call that turns a compile-time-known string into its runtime
+// representation, an index into @str_tab. Interning is content-addressed (rt_str_intern2 dedups by
+// strcmp on the raw text), so index equality IS content equality: `x == "hi"` is an `icmp` once the
+// operands are interned, which is what makes string comparison compilable at all (roadmap L11.8,
+// Gap R.42, ADR 0224).
+func (g *irGen) internStr(b *strings.Builder, txt string) string {
+	g.heapUsed = true
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", t, g.strConst(txt), g.strConst(pyReprString(txt))))
+	return t
 }
 
 // blockEndsInTerminator reports whether the block being built already ended in a terminator,
@@ -9941,8 +10200,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	case *RaiseStmt:
 		return g.raiseStmt(b, n)
 	case *ExprStmt:
-		if _, err := g.value(b, n.Expr); err != nil {
-			return err
+		// A bare string expression as a statement has no effect, and evaluating it would now
+		// intern it -- which keeps the literal's globals alive and unprunable for a program that
+		// only mentions the text (the `--opt-level=1` dead-global assertion). Skipping it is the
+		// same no-op it always was.
+		if _, isLit := n.Expr.(*StrLit); !isLit {
+			if _, err := g.value(b, n.Expr); err != nil {
+				return err
+			}
 		}
 	case *AssignStmt:
 		// tuple unpacking: a, b = v1, v2
@@ -10075,7 +10340,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if _, intern, kerr := g.heapElemKind(b, comp.Elems[0]); kerr == nil && intern {
 						g.listElemStr[nm.Value] = true
 					} else {
-						g.listElemStr[nm.Value] = false
+						g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
 					}
 				}
 				if !g.allocd[nm.Value] {

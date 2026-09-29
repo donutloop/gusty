@@ -3845,3 +3845,38 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
 - **Read the artifact before naming it in a test:** I asserted the symbol `gy_C_m_bad` and the mangling
   is `gy_C_bad`. Five lines of dumped IR settled it; guessing at a mangled name is how a test ends up
   asserting something the compiler never emits and "fails" for the wrong reason.
+
+## Cycle 172 — Gap R.42 / L11.8: a string value is an index (ADR 0224)
+
+- **The reported symptom names the construct, not the cause.** The gap said "a method that returns a
+  string returns the raw string global", and the obvious fix was a method-local interning path. The
+  measured matrix said otherwise in one run: `x = "hi"; x == "hi"` failed too, and `"a" in xs`, and a
+  folded `"ab" + "c" == "abc"`, and `self.w = "hi"; print(C().w)` — five refusals and one silent wrong
+  answer across constructs that share exactly one function, `value()`. Fixing the emitter that all of
+  them go through is cheaper than five patches and it is the only version that stops new shapes from
+  arriving broken. Had I fixed only the named case, the unit tests for it would have passed and the
+  class would have stayed open.
+- **A refusal can cover two bugs, and only removing it shows both.** The comprehension filter was
+  refused "because the comparison is broken" (the message said so, and ADR 0166 made that the right
+  shape). Once the comparison interned properly, the same program failed with `PHI node entries do not
+  match predecessors!` — the filtered loop declared its back edge as the body when the skips fall
+  through the skip block. A diagnostic that is *true* can still be an incomplete description of what
+  is wrong underneath, so the follow-up measurement is not optional once the refusal comes out.
+- **A test that passes for the wrong reason is worse than no test.** `print(out[0])` printed `a` in
+  my new parity program, and I would have shipped it; the same three lines without the preceding
+  `for n in names:` loop print `0`. The loop had registered the element kind under the *shared*
+  variable name `n`, which the comprehension then reused. Parity programs must not be allowed to
+  depend on an accident of position — I cut the line from the parity file and pinned the hole
+  (roadmap Gap R.46) instead.
+- **Wrong on the human path is the most expensive kind of wrong.** The interpreter answers `s[1]` with
+  `98` where CPython answers `b`: not a refusal, not an `llc` rejection, just a REPL that lies. Only
+  the oracle leg of the matrix can find that, because the two backends agree with each other.
+- **Verify a patch took, don't assume it did.** Two of this cycle's python-patch scripts reported
+  `hit: 1` for edits whose target text had already been rewritten by a later script; the file compiled
+  because the helper and its call site had both silently vanished (`foldableToString`). Re-grepping for
+  the helper name after a sequence of patches is now part of the loop: a missing helper is invisible to
+  the compiler only until it makes a capability quietly not exist.
+- **Say `%s` when you mean text.** Printing an index with `%d` is the silent-wrong-answer twin of
+  returning one from a method: `print(f"hi {n}")` gave `hi 0`. The fix is the same in both cases — read
+  the text back with `rt_str_ptr` — and the assertion belongs in the IR (`call i8* @rt_str_ptr(i32`)
+  because stdout of a *different* program can look right by accident.

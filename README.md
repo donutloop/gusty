@@ -300,6 +300,15 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **A string value is an index, not a pointer** (ADR 0224) — `x == "hi"`, `"a" in xs`,
+  `self.w = "hi"; print(C().w)` and a method's `-> str` result reached `llc` as an `i32` holding the
+  address of a string global (`icmp eq i32 @.str1, %t1`, `ret i32 @.str1`) and came back as exit 2,
+  the compiler blamed for an ordinary program. A string value is an index into the runtime interned
+  table everywhere a *value* is asked for — `rt_str_intern2` on the way in, `rt_str_ptr` on the way
+  out to `printf` — and the address of a literal stays only where bytes are the question. Printing an
+  index with `%d` was the silent twin of the same bug: `print(f"hi {n}")` answered `hi 0`.
+  Removing the refusal that covered this also exposed a filtered comprehension loop whose `phi` named
+  a predecessor that never branches to it.
 - **A method is a call like any other** (ADR 0223) — three different wrong interfaces came out of one
   emitter that had never been brought back to parity with functions:
 

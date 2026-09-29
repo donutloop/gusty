@@ -45,14 +45,15 @@ func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {
 
 // TestComprehensionRefusalsAreHonest covers the three places the new path declines rather than
 // getting one answer wrong: a runtime reduction (which would have summed an empty compile-time
-// element set and printed 0), a string comparison in a filter (whose underlying bug makes llc
-// reject the module in the `for` case), and a folded-away iterable (which has no slot to load).
+// element set and printed 0), and a folded-away iterable (which has no slot to load). A string
+// comparison in a filter used to be the third case: the comparison itself was broken (two operands
+// in different representations) and the filtered loop emitted a `phi` whose predecessors did not
+// match. Both are fixed (Gap R.42, ADR 0224) and asserted positively in TestStringElementFilterCompiles.
 func TestComprehensionRefusalsAreHonest(t *testing.T) {
 	for _, tc := range []struct {
 		src, want string
 	}{
 		{"def sq(n):\n    return n * n\n\nprint(sum([sq(x) for x in range(4)]))\n", "runtime reduction"},
-		{"names = [\"a\", \"b\"]\nnames.append(\"c\")\nprint([n for n in names if n == \"a\"])\n", "interned-string comparison"},
 		{"xs = [1, 2, 3]\nprint([x * 2 for x in xs])\n", "compile-time constant"},
 	} {
 		res, err := lang.Compile(tc.src)

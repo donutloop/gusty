@@ -99,6 +99,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// Gap R.29 (ADR 0221): `==` across int and float in both operand orders, and
 		// container equality through the same rule; printed 1/0 so CPython runs this file.
 		"numeric_equality",
+		// Gap R.42 / L11.8 (ADR 0224): a string value is an @str_tab index, so comparing a
+		// container element with a literal compiles instead of rejecting the module.
+		"str_loop_eq",
+		// The same comparison in a comprehension filter over a runtime list, whose loop header
+		// used to name the wrong phi predecessor.
+		"comp_str_filter",
+		// ADR 0224 in one file: comparison, `in`, f-strings, instance attributes and a method's
+		// string result, all through the @str_tab index that replaced the literal's address.
+		"string_values",
 		// Gap R.23 (ADR 0222): a deferred `finally` body runs on every exit from the
 		// try -- fall-through, handled, propagating, and the transfers that leave it.
 		"deferred_bodies",
@@ -219,8 +228,6 @@ func conformanceProbes() []lang.ConformanceCase {
 
 		// Pinned by the runtime-comprehension work (ADR 0192): two honest refusals and one
 		// llc rejection that is a compiler bug, all recorded rather than remembered.
-		"probe_str_loop_eq",         // L11.8 — comparing an interned element with a string rejects the module
-		"probe_comp_str_filter",     // L11.8 — the same bug, reached from a comprehension filter
 		"probe_comp_runtime_reduce", // L11.7 — sum/min/max over a runtime comprehension
 		"probe_comp_folded_iter",    // L11.2 — iterating a list the compiler folded away
 
@@ -456,14 +463,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true}, {Backend: "aot", Missing: true}}},
-	"programs/probe_str_loop_eq": {oracle: lang.OracleDebt,
-		reason: "comparing a container element with a string literal emits `icmp eq i32 %_n, @.str3` — an index into @str_tab against the address of a string global — and llc rejects the module, so this is exit 2 (a compiler bug) rather than a refusal",
-		ref:    "roadmap L11.8 (refusal is part of the model) + Gap I.2 (interned strings)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "a\n"}, {Backend: "aot", Missing: true, Err: "global variable reference must have pointer type"}}},
-	"programs/probe_comp_str_filter": {oracle: lang.OracleDebt,
-		reason: "a comprehension filter that compares elements with a string reaches the same interned-comparison bug; the comprehension refuses instead of inheriting the llc rejection",
-		ref:    "roadmap L11.8 (refusal is part of the model)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "['a']\n"}, {Backend: "aot", Missing: true, Err: "interned-string comparison"}}},
 	"programs/probe_comp_runtime_reduce": {oracle: lang.OracleDebt,
 		reason: "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
 		ref:    "roadmap L11.7 (functions are values that compile)",

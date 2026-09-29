@@ -814,6 +814,11 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   compiled container of containers — measured this cycle to be clean refusals rather than `llc`
   rejections or panics (so the ADR 0166 "no tested shape may leave the compiler as a panic"
   contract holds for them), but their messages are `codegen:` text rather than schema'd codes.
+  **Closed since this row was written**: the refusal that covered the interned-string comparison —
+  a filter comparing elements with a string literal, and the same comparison in a `for` loop, which
+  made `llc` reject the module — is gone, because both bugs under it are fixed: a string value is an
+  `@str_tab` index (Gap R.42) and the filtered loop's `phi` names a predecessor that really branches
+  to it (ADR 0224). `probe_str_loop_eq` and `probe_comp_str_filter` were promoted to parity programs.
 - **L11.9 — The corpus is the spec: CPython is the oracle everywhere** ✅ DONE (ADR 0186) —
   the harness ran 41 cases and asserted backend-vs-backend only, which is exactly why rows like
   `print(True)`, `xs[-1]`, `len("café")`, `print(math.PI)` sat in a green build. The matrix now
@@ -2108,7 +2113,7 @@ a method reported as a compile error — and `integration/method_exceptions_test
 both engines plus the exit-code contract. `programs/method_try.gy` is a standalone parity program, and
 the debt row for this shape was deleted by the drift test that demands exactly that when a debt is paid.
 
-### R.42 — a method that returns a string returns the raw string global (OPEN, compiled)
+### R.42 — a string value is an `@str_tab` index, not the address of a literal (CLOSED, ADR 0224)
 
 ```gusty
 class Dog:
@@ -2118,13 +2123,64 @@ class Dog:
 print(Dog().sound())        # interpreter and CPython: woof · compiled: exit 2
 ```
 
-The emitted module contains `ret i32 @.str1` — a string global in an `i32` return slot — and `llc`
-rejects it with *global variable reference must have pointer type*. `funcDef` solved this for functions
-in ADR 0174 by interning on return (`rt_str_intern2`) so callers read an index; the method emitter has
-no such path. Verified pre-existing on the binaries from before Gap R.23 and before Gap R.41, so it is
-not fallout from the unwind work — the unwind work just made methods reachable enough to notice. Fix:
-route a method's string return through the same interning `strFuncs` path uses, and decide what
-`str`-annotated means for a method's *parameters* while there, since the same emitter reads neither.
+The defect was not the method emitter: it was the **value** path. `value()` returned the string
+global for a literal, so every shape that reads a string as a value reached `llc` as an `i32` holding
+an address — `ret i32 @.str1`, `icmp eq i32 @.str1, %t1`, `icmp eq i32 %getresult2, @.str2` — and the
+compiler took the exit-2 blame for an ordinary program. A measured matrix of 22 string shapes (each
+expectation taken from CPython, not from the emission) found five such refusals and one silent wrong
+answer, and none of them was specific to methods.
+
+The rule now: a string value is an index into `@str_tab`; the address of a literal appears only where
+bytes are the question (a `printf` format, an argument to `rt_str_*`, a compile-time fold). Interning
+a constant emits `call i32 @rt_str_intern2(...)`; text the runtime creates itself is interned there;
+printing an index reads it back with `rt_str_ptr`; folds that *produce* strings intern their result.
+Element-kind facts follow the value: `exprIsString` answers the static question for a comprehension
+element so `listElemStr` can be recorded, and an `-> str` method registers under its mangled symbol so
+its callers know the `i32` they hold means text.
+
+Two things underneath had to give way at the same time. The static-dispatch emitter began the `call`
+line before evaluating arguments, so an argument needing an instruction of its own was written into
+the middle of the operand list; and the filtered comprehension's loop header declared the *body* as its
+back edge when the increments came from the *skip* block, which is the second bug the L11.8 refusal had
+been covering (`PHI node entries do not match predecessors!`). Both fixed, with the `phi` asserted to
+name the block that actually branches to it.
+
+Closed by: `pkg/lang/string_value_test.go`, `TestStringElementFilterCompiles`,
+`integration/string_value_test.go`, parity programs `string_values.gy`, `str_loop_eq.gy` and
+`comp_str_filter.gy` (the last two are promoted probes; the matrix no longer carries their rows).
+What remains is recorded as R.46 and R.45 rather than left implicit.
+
+### R.46 — printing an element of a freshly built comprehension list prints its index (OPEN, compiled)
+
+```gusty
+names = ["a", "b"]
+names.append("c")
+out = [n for n in names if n == "a"]
+print(out[0])           # CPython: a · compiled: 0
+```
+
+`0` is the interned index of `"a"` printed with `%d`. The list knows its elements are strings once
+something has walked it — the same program with a preceding `for n in names:` loop prints `a`, because
+that loop is what registers the element kind under the shared variable name. A parity program that
+happened to have such a loop is exactly the kind of test that goes green for the wrong reason, so it
+now asserts only what the oracle agrees with, and this shape is pinned at what the compiler does
+(`TestPrintingAnElementOfAFreshComprehensionListIsPinned`). Fix: have the comprehension's list-binding
+ask `exprIsString` of the element *and* of the iterated name, and have the element printer fall back to
+the same facts the container printer uses.
+
+### R.45 — the interpreter's string subscript answers the character code (OPEN, interpreter)
+
+```gusty
+s = "abc"
+print(s[1])             # CPython: b · interpreter: 98
+print(s[-1])            # CPython: c · interpreter: 99
+```
+
+Wrong on the human path — the REPL and `--eval` — in a shape the compiled path honestly refuses, so
+only the oracle leg catches it: the interpreter returns the code point where CPython returns a
+one-character string. ADR 0210 made negative subscripts positions for containers and left this alone,
+because it was about subscripts, not about what a string element *is*. Fix: a string subscript yields
+text in the interpreter, and `TestStringSubscriptOnTheInterpreterIsPinned` loses its expectation.
 
 ### R.40 — a literal container holding a float, or `float == str`, emits a module `llc` rejects (OPEN, compiled)
 

@@ -1,0 +1,7 @@
+# The same comparison inside a comprehension filter, over a list the compiler had to keep at
+# runtime. It used to be refused; then it reached an invalid module, because the filtered loop's
+# `phi` named the body as its predecessor when the skips came from the skip block (Gap R.42,
+# ADR 0224). CPython prints exactly this.
+names = ["a", "b"]
+names.append("c")
+print([n for n in names if n == "a"])
