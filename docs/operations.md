@@ -438,6 +438,22 @@ The oracle interpreter is `python3` unless `GUSTY_PYTHON` names another, and it 
 in the artifact itself (`toolchain.python`, alongside `toolchain.llvm`), because "matches
 Python" is a claim about a named toolchain, not an abstraction.
 
+### The three pinned toolchains
+
+Building and testing this repository depends on three external tools, and each is pinned,
+**checked**, and printed by CI's toolchain step — a version that is merely logged is documentation,
+a version that gates something is a contract:
+
+| tool | pin | where declared | what a mismatch looks like |
+|---|---|---|---|
+| **Go** | >= 1.22 | `go.mod`'s `go` directive **and** `go-version` in `.github/workflows/go.yml`, kept equal (ADR 0194) | A stdlib call newer than the floor used to compile locally and fail only in CI: the `go` directive gates language features, **not** stdlib API availability, so `strings.ContainsFunc` (Go 1.21) built fine on a 1.22 laptop against a declared 1.20 floor. The two declarations now match the development toolchain, and the CI step exits non-zero below the floor. |
+| **LLVM** | 20 (`llc-20`) | roadmap + the workflow's apt line (`apt.llvm.org/noble`, `llvm-toolchain-noble-20`) | Recorded per artifact as `toolchain.llvm`; a missing `llc-20` fails the install step rather than becoming "no toolchain found" skips, which are never counted as passes. |
+| **CPython (oracle)** | >= 3.12 | `lang.OracleMinPython`, matrix `toolchain.min_python` (ADR 0193) | The conformance legs take their expectations from CPython, so an oracle too old to parse a program (PEP 695 `type X = int`) reported compiler drift; `requirePinnedOracle` now fails with the remedy instead. Override with `GUSTY_PYTHON`. |
+
+When CI's version of any of these differs from yours, the fix is not to reason about the difference —
+it is to eliminate it, either by removing the discrepancy or by running CI's toolchain locally (the
+`golang.org/dl/go1.XX` SDKs make that a one-liner: `go1.20 build -tags=llvm20 ./...`).
+
 ### The oracle is a versioned toolchain, and the pin is enforced
 
 The oracle is pinned the way LLVM is: **CPython >= 3.12** (`lang.OracleMinPython`, recorded in the

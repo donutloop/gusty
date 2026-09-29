@@ -2431,3 +2431,46 @@ branch — which is the same class of thing as a test that passes with the fix d
 is cheap and worth nothing until a check reads it; the value is that a mismatch then says
 "environment" instead of "compiler". The matrix already recorded `toolchain.python` before this and
 still produced a confusing CI failure, which is the whole argument.
+
+## The `go` directive does not gate the stdlib — so CI was the only thing that could notice (ADR 0194)
+
+CI failed to *build*: `pkg/lang/oracle.go:94:44: undefined: strings.ContainsFunc`. That call is Go
+**1.21**; CI builds `go-version: '1.20'`, matching `go.mod`; my laptop runs 1.22.2. So it compiled,
+tested green, and shipped into a toolchain that could not resolve the symbol.
+
+The part I had wrong conceptually: I thought `go 1.20` in `go.mod` constrained which stdlib API I
+could use. **It gates language features, not stdlib API availability.** A 1.21 function type-checks
+on a 1.22 toolchain regardless of the directive. Nothing in the repo enforced the floor except CI,
+and I never read it that way — "CI is green" was treated as a property of my code rather than as an
+argument run against a *different toolchain than mine*.
+
+**Fix, and the order I did it in mattered.**
+1. Made the call version-portable (`strings.IndexFunc(f, unicode.IsDigit) >= 0`), because that file
+   should not carry a version landmine in a line that reads as ordinary string work.
+2. Then asked why the floor was 1.20 at all. It was inherited, not chosen — nobody picked 1.20 as a
+   compatibility promise; it's just where `go.mod` had been sitting.
+3. Raised the floor to **1.22 in both places** — `go.mod` and CI's `go-version` — because raising one
+   and not the other is how you get an *inverted* mismatch: permissive CI, stale declaration, and a
+   false statement about the project's requirements for the price of a green tick.
+4. **Checked** it in the same step that checks the oracle pin (ADR 0193), printing and gating.
+
+**The verification I nearly skipped, and it's the only one that mattered.** Raising the `go`
+directive is *not* cosmetic: at `go 1.22` per-iteration loop-variable semantics switch on, and every
+green run I'd ever done was a 1.22 compiler emitting 1.20 rules. `go build` passing tells you
+almost nothing there; the full suite under the new language version is the evidence. It passed —
+and the grep for the pattern that actually changes behaviour (closure or `defer` capturing a loop
+variable) found zero hits in the compiler packages, which is corroborating, not the proof.
+
+**The habit that came out of it, which is the durable part.** Before pushing, I installed the real
+CI toolchain — `go install golang.org/dl/go1.20@latest && go1.20 download` — and ran
+`go1.20 build -tags=llvm20 ./...` and `go1.20 vet ./...` across every package, **including the test
+files CI never reached** (CI had died in `pkg/lang`, so `cmd/`, `integration/`, `tools/` were
+unexamined; one reported error is not evidence of one violation). That run is now clean and, more to
+the point, so is the floor: a discrepancy between CI's toolchain and mine is not something to
+reason about, it's something to eliminate — by removing the difference, or by running CI's toolchain
+locally, which costs one command.
+
+**Second-order lesson, shared with ADR 0193:** I now treat any external tool the build or the
+*expectations* depend on — Go, `llc-20`, CPython — as a pinned, declared, **checked** dependency.
+Three toolchains, three pins, all printed and all gated in one CI step. A logged version is
+documentation; a version that fails the build is a contract.

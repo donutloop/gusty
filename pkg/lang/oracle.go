@@ -91,7 +91,12 @@ const OracleMinPython = "3.12"
 func OracleVersion(banner string) (major, minor int, ok bool) {
 	fields := strings.Fields(banner)
 	for _, f := range fields {
-		if !strings.Contains(f, ".") || !strings.ContainsFunc(f, unicode.IsDigit) {
+		// strings.IndexFunc, not strings.ContainsFunc: the latter is Go 1.21 and the
+		// module declares go 1.20 (go.mod), which CI builds against. The go directive
+		// gates language features, NOT stdlib API availability, so a 1.21 call type-checks
+		// on a newer local toolchain and fails only in CI (ADR 0193's lesson, one
+		// toolchain over).
+		if !strings.Contains(f, ".") || strings.IndexFunc(f, unicode.IsDigit) < 0 {
 			continue
 		}
 		parts := strings.Split(f, ".")

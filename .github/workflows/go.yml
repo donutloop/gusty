@@ -46,10 +46,17 @@ jobs:
           # never allowed to count as passes.
           llc-20 --version | head -n 1
 
+      # The Go floor is a declared dependency, not an accident of the runner image
+      # (ADR 0194). It used to be 1.20 while development happened on 1.22, and that
+      # skew is exactly what made a CI-only failure out of `strings.ContainsFunc`
+      # (a Go 1.21 stdlib call): the `go` directive gates language features, not
+      # stdlib API availability, so newer-than-floor calls type-check locally and
+      # fail only in CI. The version here and the `go` line in go.mod are kept equal,
+      # and the version step below prints what it actually got.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version: '1.22'
 
       - name: Toolchain versions (the matrix is only meaningful against these)
         run: |
@@ -66,6 +73,12 @@ jobs:
               sys.exit("oracle is %s; the corpus is validated against >= 3.12 (docs/operations.md)" % ".".join(map(str, sys.version_info[:3])))
           print("oracle satisfies the pin")
           PY
+          # Same rule for the compiler floor: a version that is merely printed is
+          # documentation, and a version that is checked is a contract. The skew
+          # between a 1.20 CI floor and 1.22 development is what turned a legal-local
+          # stdlib call into a red build (ADR 0194).
+          go version | grep -Eq 'go1\.(2[2-9]|[3-9][0-9])' || { echo "Go is older than the declared 1.22 floor in go.mod"; exit 1; }
+          echo "go satisfies the floor"
 
       - name: Build
         run: go build -tags=llvm20 ./...

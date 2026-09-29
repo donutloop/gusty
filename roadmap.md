@@ -6,7 +6,7 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0193`. `go test -tags=llvm20 ./...`
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0194`. `go test -tags=llvm20 ./...`
 > is green. Conformance corpus: 74 programs under `integration/programs/` (18 of
 > them pinned probes), 66 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
 > parity cases plus 18 pinned probes; oracle 32 `match` / 24 `debt` / 10 `not_applicable`, 0 drift.
