@@ -10090,10 +10090,25 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.allocd[loopVarName(n.Var)] = true
 			}
 			var contL string
+			loopSlot := loopVarName(n.Var)
+			prevInterned, wasInterned := g.internedVars[loopSlot]
 			for _, el := range ll.Elems {
-				v, err := g.value(b, el)
+				// Each element is lowered the way a heap container slot is, not the way a
+				// scalar is: a string element becomes its @str_tab index. Handing `g.value`
+				// a StrLit returned the raw `@.strN` global, so an unrolled loop over text
+				// emitted `store i32 @.str1, i32* %_c` — a global in an i32 slot, which llc
+				// rejects and the exit-code contract calls a compiler bug (roadmap Gap R.15,
+				// ADR 0208; the same rule Gap I.2 installed for container writes).
+				v, isStr, err := g.heapElemKind(b, el)
 				if err != nil {
 					return err
+				}
+				// The body copy emitted for *this* element then reads the loop variable as
+				// text or as a number, which is what lets a mixed literal print correctly.
+				if isStr {
+					g.internedVars[loopSlot] = true
+				} else {
+					delete(g.internedVars, loopSlot)
 				}
 				bodyL := g.newLabel("for.list.body")
 				contL = g.newLabel("for.list.cont")
@@ -10123,6 +10138,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 			}
 			b.WriteString(fmt.Sprintf("%s:\n", endL))
+			// The loop variable stops existing as a loop variable here: restore whatever
+			// the name meant before this loop, rather than leaving it interned for the
+			// rest of the function.
+			if wasInterned {
+				g.internedVars[loopSlot] = prevInterned
+			} else {
+				delete(g.internedVars, loopSlot)
+			}
 			return nil
 		}
 		// runtime heap list iterable: a generator-call result or a tracked

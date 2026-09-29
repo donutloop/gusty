@@ -1,0 +1,24 @@
+# Iterating text is ordinary source — and until this cycle the compiled backend could not emit it.
+# `for c in "ab"` unrolled one body per character and stored each one with the *scalar* value path,
+# which returned the raw `@.strN` global: `store i32 @.str1, i32* %_c`, a global in an i32 slot, which
+# llc rejects and the exit-code contract calls a compiler bug rather than a source error.
+#
+# The fix is the rule Gap I.2 already installed for container writes: a string value that has to live
+# in an i32 slot is stored as its @str_tab index, and the loop variable is then read as text. A mixed
+# literal works too, because each unrolled body copy sees the element it was emitted for
+# (roadmap Gap R.15, ADR 0208).
+
+for c in "abc":
+    print(c)
+
+for w in ["x", "y"]:
+    print(w)
+
+for mixed in [1, "a", 2]:
+    print(mixed)
+
+for ch in "hi":
+    print("<", ch, ">")
+
+for pair in ["ab", "cd"]:
+    print(pair)

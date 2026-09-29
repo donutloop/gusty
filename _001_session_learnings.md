@@ -3156,3 +3156,58 @@ Two things worth pinning:
 - Conformance matrix is up to 78 rows with 14 oracle-excluded, 0 fail, 0 drift; every one of those
   exclusions has a test that re-checks the oracle still can't run its program.
 
+## Cycle 156 — a rule that had one owner, and a flag that had many (Gap R.15, ADR 0208)
+
+`for c in "ab": print(c)` — the interpreter printed `a b`, CPython printed `a b`, and the compiled
+backend died in `llc`:
+
+```
+store i32 @.str1, i32* %_c        ; global variable reference must have pointer type
+```
+
+An invalid module is a compiler bug in this project's own contract, so this was not a "string iteration
+unsupported" ticket. The unrolled literal loop had been lowering each element with the **scalar** value
+path (`g.value`, which hands back a raw `@.strN` global) while loop variables live in `i32` slots. The
+rule that fixes it already existed and already had an owner — Gap I.2's `heapElemKind`: anything that has
+to live in an `i32` slot stores the `@str_tab` index instead, and `g.internedVars` tells the printer to
+render an index as text. The loop just had never been invited to it. One-line-ish fix; `for m in [1,"a",2]`
+now prints `1 a 2` on all three engines, because internedness is set per **element copy** (the unroller
+emits a body per element) rather than once per loop.
+
+Then the same investigation handed me R.2's true cause:
+
+```gusty
+def txt():
+    return "hi"
+
+for c in txt():
+    print(c)          # llc: use of undefined value '@rt_str_intern2'
+```
+
+The "function returns a string" path returns the interned index (correct, ADR 0174) but never sets
+`g.heapUsed` — and `heapRuntimeIR`, which *defines* `@rt_str_intern2`, only travels with the module when
+that flag is set. The roadmap's R.2 repro was `await` + `while True: return "ok"`, and its analysis blamed
+"the await path's intern accounting". Both ingredients were red herrings: the await-free shape above is
+the same bug, so **the flag, not the async path**, was the defect — and the re-scoped entry now says the
+fix must be derived (emit a runtime block when the module *references* it, scanning the block's `define`s)
+rather than another call site remembering to set a boolean.
+
+What I'm taking from this:
+
+- **"Unsupported" is a claim that requires a control experiment.** The cheap, plausible move was to make
+  codegen refuse string iteration with a nice message. Measuring the neighbouring shape first —
+  `xs = ["a","b"]; for x in xs:` compiles and prints `a b` — showed the capability was there all along and
+  only the rule was missing. Refusing would have deleted a working feature to hide a bug in one path.
+- **A flag with many writers is a defect shape.** Any number of codegen sites can emit `@rt_*` calls; one
+  boolean decides whether their definitions are emitted. That asymmetry is not a series of oversights to
+  patch one by one, it's the wrong mechanism — the emission decision should be derived from the artifact,
+  the way `irSymbol` (ADR 0198) made linking derived from one prefix instead of everyone remembering.
+- **Output tests can pass while the compiler is broken.** Here the interpreter was right and the compiler
+  was dying, so the passing parity assertion had nothing to do with the bug. The tests that caught it read
+  the emitted module (`no store i32 @.str`, the intern call, the definition present) and run LLVM's
+  verifier. For IR-emitting backends, artifact assertions are first-class, not a bonus.
+- **Investigations find neighbours.** R.14's boundary walk found R.15; R.15's root-cause hunt found R.2's
+  real cause and re-scoped a stale entry. The habit worth keeping is to keep a scratch loop running over
+  *adjacent* shapes (list variable, literal list, mixed literal, call-derived string) instead of only the
+  reported case — every one of those cost one command and changed a roadmap entry.
+

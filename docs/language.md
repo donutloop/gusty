@@ -1408,8 +1408,16 @@ shorter list: `zip([1, 2], [10, 20])` -> `[[1, 10], [2, 20]]`. It is
 interpreter-only (the AOT codegen folds builtins only on literal args; nested
 list construction is not yet lowered); see ADR 0084.
 `for x in "abc"` iterates over each character of a string (yielding a
-single-char string per rune). It is interpreter-only (the AOT codegen's `for`
-loop unrolls literal lists and ranges, but not literal strings); see ADR 0085.
+single-char string per rune), **in both backends** (`programs/for_string_chars.gy`).
+The compiled loop unrolls one body copy per character and stores each one the way a
+container slot does — as its interned index — so `for c in "ab"` and a literal list of
+strings compile and print like the interpreter and CPython do (ADR 0208; it used to be
+interpreter-only, ADR 0085, because the unrolled store handed a string global to an `i32`
+slot and LLVM rejected the module).
+
+A character is a one-character **string**, not a distinct char type, and strings are byte
+sequences today: `len("café")` is `5` and `"héllo"[1]` is the byte `195` (roadmap L11.5,
+`programs/probe_unicode.gy`).
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
 `float(3)` -> 3.0. `int` ships in both backends: the AOT codegen folds `int` on

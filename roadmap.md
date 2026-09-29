@@ -1843,25 +1843,64 @@ with `oracle: not-applicable`, and the test asserts CPython still refuses it, be
 is a claim with a test behind it rather than an excuse. The comprehension asymmetry is documented as the
 compiled-side limitation it is, with the message that already names the alternatives.
 
-### R.15 — iterating a string literal emits a module `llc` rejects (OPEN, compiler bug)
+### R.15 — iterating a string literal emitted a module `llc` rejects (CLOSED, ADR 0208)
 
 ```gusty
 for c in "ab":
     print(c)
 ```
 
-The interpreter prints `a` and `b`. The compiled backend emits
+The interpreter printed `a` and `b`; the compiled backend emitted
 
 ```
 store i32 @.str1, i32* %_c
 ```
 
-and `llc-20` refuses it: *`global variable reference must have pointer type`*. Under the exit-code
-contract an LLVM verifier failure is a **compiler bug**, not a user error — the class ADR 0177's gate
-exists to keep away from the user. Fix by lowering string iteration properly (bytes/chars as values, the
-L11.x line) or by refusing the shape at the front end with a message that says what to do instead; what
-must not survive is the invalid module. Found while measuring R.14's boundaries, which is the standing
-argument for measuring neighbours rather than only the headline case.
+and `llc-20` refused it (*global variable reference must have pointer type*) — a compiler bug under the
+exit-code contract, not a source error. The unrolled loop took each element through the **scalar** value
+path, which returns the raw `@.strN` global, while loop variables live in `i32` slots.
+
+Fixed by applying the rule Gap I.2 already owns: anything written into a slot goes through
+`heapElemKind`, which stores the `@str_tab` index and marks the name interned so `print` renders text.
+Internedness is set per **element copy** (the unroller emits a body per element) and restored after the
+loop, which is what makes `for m in [1, "a", 2]` print `1 a 2` rather than half indices, half numbers.
+Numeric loops are asserted to stay numeric — the new path is shared, so "fixed the strings, made every
+element a heap value" had to be ruled out explicitly. Tests read the emitted module (no `store i32 @.str`,
+an `@rt_str_intern2(` call, the definition present) and run LLVM's verifier, because the interpreter
+printed the right thing *while* the compiler was dying: an output test alone would have passed.
+
+`programs/for_string_chars.gy` is the three-engine parity program
+(`a b c x y 1 a 2 < h > < i > ab cd`).
+
+### R.2 — a module that interns without saying so emits a call to an undefined helper (OPEN, compiler bug, re-scoped)
+
+Same `llc` error as R.15 had, different cause, and the R.15 investigation found a deterministic,
+await-free repro:
+
+```gusty
+def txt():
+    return "hi"
+
+for c in txt():
+    print(c)
+```
+
+```
+llc-20: error: use of undefined value '@rt_str_intern2'
+```
+
+The "function returns a string" path returns the interned index — correct, ADR 0174 — but never sets
+`g.heapUsed`, and `heapRuntimeIR` (which *defines* `@rt_str_intern2`) travels with the module only when
+that flag is set. The async repro in this entry's original wording (`await` + `while True: return "ok"`)
+is the same defect through the same flag: the flag, not the await path and not the loop. Two codegen sites
+were found emitting `@rt_str_intern2` without it (the `strFuncs` return path and one comparison fold).
+
+Fix in the assembly step, as a derived rule rather than another `g.heapUsed = true`: a runtime block
+travels with the module whenever the module **references** it — scan the block's `define`s and test the
+emitted text — so a helper cannot be called without being defined, no matter which path calls it. Same
+treatment for `raiseRuntimeIR` (containers raise without an explicit `raise`) and `floatRuntimeIR`. This
+is the ADR 0177 stance applied to the runtime blocks themselves: the verifier should never be the one to
+notice.
 
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)

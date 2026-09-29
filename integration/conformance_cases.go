@@ -79,6 +79,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// CPython refuses: a declared feature, not an undiscovered divergence
 		// (Gap R.14, ADR 0207).
 		"for_int_count",
+		// Iterating text in an unrolled loop: each element must be stored as its
+		// @str_tab index, or the module references a global from an i32 slot and llc
+		// rejects it (Gap R.15, ADR 0208).
+		"for_string_chars",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -257,6 +261,9 @@ type oracleDecl struct {
 }
 
 var oracleLedger = map[string]oracleDecl{
+	// ---- three-engine parity added this round -----------------------------------
+	// (rows below are `oracle: match` by default; see the drift tests)
+
 	// ---- gusty-only surface: CPython cannot run the program at all --------------
 	"programs/for_int_count": {oracle: lang.OracleNA,
 		reason: "`for i in 4:` treats an integer as a repeat count; CPython raises TypeError ('int' object is not iterable), so the CPython leg stops at the first loop and never sees the rest of the file",
@@ -363,9 +370,9 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.4 + L11.8 (no tested shape may leave the compiler as a panic)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true}, {Backend: "aot", Missing: true, Err: "compiler panic"}}},
 	"programs/probe_unicode": {oracle: lang.OracleDebt,
-		reason: "len(\"café\") is 5 and \"héllo\"[1] is the byte 195; module-scope `for ch in \"aé\"` emits an invalid store of a string global",
-		ref:    "roadmap L11.5 (code-point strings, closes Gap N.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "5\n195\na\né\n"}, {Backend: "aot", Missing: true}}},
+		reason: "strings are bytes, not code points: len(\"café\") is 5 where CPython answers 4, and \"héllo\"[1] is the byte 195 where CPython answers \"é\". The loop itself is no longer part of the debt — iterating text used to emit an invalid `store i32 @.str1`, which Gap R.15 (ADR 0208) fixed, so both backends now run the program and agree on the wrong answer",
+		ref:    "roadmap L11.5 (code-point strings, closes Gap N.2); ADR 0208 for the loop",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "5\n195\na\né\n"}, {Backend: "aot", Stdout: "5\n195\na\né\n"}}},
 	"programs/probe_string_index": {oracle: lang.OracleDebt,
 		reason: "s[i] yields a byte value (98 for \"abc\"[1]) instead of a one-character string, and a non-literal string index is refused in AOT",
 		ref:    "roadmap L11.5 (code-point strings, closes Gap N.2)",
