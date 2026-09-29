@@ -1,0 +1,42 @@
+# The arms of a `try` are dispatched in the order they are written, and an exception no arm
+# matches belongs to an enclosing scope. The compiled backend used to lower only the first arm
+# and then clear the exception flag, so a later arm never ran and an unhandled exception
+# vanished with no traceback and exit 0 (Gap R.20, ADR 0213).
+try:
+    xs = [1]
+    print(xs[5])
+except KeyError:
+    print("not this one")
+except IndexError:
+    print("second arm")
+
+try:
+    d = {}
+    print(d[9])
+except IndexError:
+    print("not this either")
+except ValueError:
+    print("nor this")
+except KeyError:
+    print("third arm")
+
+try:
+    print(1 / 0)
+except KeyError:
+    print("no")
+except:
+    print("bare arm")
+
+try:
+    try:
+        ys = []
+        print(ys.pop())
+    except KeyError:
+        print("inner does not take IndexError")
+except IndexError:
+    print("outer arm")
+
+try:
+    raise RuntimeError("carried outward")
+except Exception:
+    print("exception base")

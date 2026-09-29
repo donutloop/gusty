@@ -1,0 +1,12 @@
+# Refiled while fixing Gap R.20: this is *not* a try/except defect. A function whose `return`s
+# disagree on type — an integer on one path, a string on another — is specialised as returning
+# one of them, and the caller reads the other through the wrong lens: the int comes back as an
+# interned-string index, so print renders `(null)`. Same root as Gap R.22 (`sitofp i32 @.str3`).
+# The interpreter and CPython both print 3.
+def guarded(a, b):
+    try:
+        return a % b
+    except ValueError:
+        return "nope"
+
+print(guarded(7, 4))

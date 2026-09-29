@@ -3389,3 +3389,38 @@ Other things worth writing down:
   did not fold the remaining untyped-trap sites in either — one rule, one instance per commit, the
   rest by name in the roadmap.
 
+## Cycle 161 — the chain that only had one link (Gap R.20, ADR 0213)
+
+`tryStmt` opened with `ec := ts.Excepts[0]`. Five different user-visible defects, one line: a
+matching second arm never ran, a third arm never ran, a bare `except:` after a typed arm never ran,
+a nested `try` never reached its outer arm, and an exception no arm matched was **deleted** — the
+flag was cleared on entry to the handler, so the mismatch fell through to `finally`, which *was* the
+continuation. Every one of those programs exited 0.
+
+Things worth pinning to memory:
+
+- **"It exits 0" is the loudest signal in the corpus.** All five shapes were silent. That is why the
+  five-row table (measured first, before touching code) is worth its bytes: I wrote down what each
+  engine printed *including the exit code* and only then read `tryStmt`. Had I started from the code
+  I would have fixed arm dispatch and left the swallowing bug in place, because they are two
+  decisions in one block — "which arm" and "what if none".
+- **A structurally-shortened lowering is invisible to a verifier.** The broken module verified
+  cleanly and ran fine. So the new tests assert the property at three levels: behaviour on both
+  backends for seven arm shapes, the IR's `@exn_code` read count for a three-arm `try`, and
+  three-engine output on the corpus program. If a future edit silently drops an arm, the count test
+  fails even if every behaviour test happens to pass.
+- **Re-file a wrong gap entry the moment you find it, and keep its pin.** Last cycle I recorded
+  "a `return` inside `try:` loses its value" — the repro printed `(null)`. Testing the fix showed it
+  reproduced with `return a % b` and *not* with `return a + b`: not a property of `try` at all, but
+  of the function's two return paths having different types (the int being rendered through the
+  string lens). R.21 becomes "not a separate defect — see R.22"; the probe keeps its measured pin and
+  gets an honest name. The output was always right; only the theory was wrong, which is exactly why
+  pins are the durable artifact.
+- **`git mv` the probe when its diagnosis changes, don't restate it.** Renaming
+  `probe_return_in_try.gy` → `probe_mixed_return_value.gy` with a header naming the real cause keeps
+  the ledger, the drift test and the evidence all pointing at the same thing.
+- **Discipline kept twice more:** `finally` not running on the return/raise paths (measured, both
+  backends, CPython disagrees) went in as R.23 rather than being "just fixed while I'm here", and the
+  checker refusing `try: x = a + b … return x` with `undefined name "x"` went in as R.24. Both are
+  one-file fixes; both would have made this commit unreviewable.
+

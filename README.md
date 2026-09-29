@@ -231,6 +231,10 @@ falls back to dynamic dispatch.
   CPython's wording and `except ZeroDivisionError:` catches it on both backends; the compiled
   backend used to emit the instruction and keep walking, printing `inf` or a fresh garbage integer
   and exiting 0 (`programs/zero_division.gy`, ADR 0212)
+- **Every `except` arm is a real arm** — arms are dispatched in source order on both backends, a
+  bare `except:` works in any position, a nested `try` reaches its outer arm, and an exception no
+  arm matches propagates instead of being deleted (the compiled backend used to lower only the
+  first arm and clear the flag, exiting 0 on a program whose error nobody handled, ADR 0213)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

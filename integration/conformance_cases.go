@@ -92,6 +92,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// program below is ledger-free because the oracle, the interpreter and the
 		// compiled binary print the same nine lines.
 		"zero_division",
+		// The compiled `try` dispatches every arm in order and hands an unmatched
+		// exception outward (Gap R.20, ADR 0213); five shapes, three engines.
+		"except_arm_order",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -185,16 +188,15 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_heterogeneous", // L11.1 — one element kind per compiled container
 		"probe_tuple",         // L11.3 — no tuple lowering at all
 
-		"probe_except_arm_order", // Gap R.20 — only the first except arm is dispatched in AOT
-		"probe_return_in_try",    // Gap R.21 — a return inside try loses its value in AOT
-		"probe_unicode",          // L11.5 — strings are bytes, not code points
-		"probe_string_index",     // L11.5 — s[i] is a byte value, not a character
-		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
-		"probe_float_numeric",    // L11.6 — //, /=, float % and float params
-		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
-		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",          // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",     // Gap L.5 — print writes while it evaluates
+		"probe_mixed_return_value", // Gap R.22 — returns of differing types share one lowering
+		"probe_unicode",            // L11.5 — strings are bytes, not code points
+		"probe_string_index",       // L11.5 — s[i] is a byte value, not a character
+		"probe_math_const",         // L11.6 — a stdlib float constant folds to int
+		"probe_float_numeric",      // L11.6 — //, /=, float % and float params
+		"probe_enumerate",          // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
+		"probe_fn_value",           // L11.7 — a lambda cannot be called through a parameter
+		"probe_fn_name",            // L11.7 — a def'd name is not a value at all
+		"probe_print_atomic",       // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 
@@ -372,13 +374,9 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.3 (tuples are values)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n2\n3\n4\n5\n[1, 2]\n"}, {Backend: "aot", Missing: true}}},
 
-	"programs/probe_except_arm_order": {oracle: lang.OracleDebt,
-		reason: "the compiled backend dispatches only the first except arm: with the matching class in a later arm no arm runs, nothing is printed, and the program continues after the try with exit 0 — the interpreter and CPython both print \"right\"",
-		ref:    "roadmap Gap R.20 (exception dispatch in codegen)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "right\nafter\n"}, {Backend: "aot", Stdout: "after\n"}}},
-	"programs/probe_return_in_try": {oracle: lang.OracleDebt,
-		reason: "a return inside try: loses its value in the compiled backend, which prints (null) where the interpreter and CPython print 3 — silently, with exit 0",
-		ref:    "roadmap Gap R.21 (the try/except lowering keeps the value off the return path)",
+	"programs/probe_mixed_return_value": {oracle: lang.OracleDebt,
+		reason: "a function whose return paths have different types is lowered as returning one of them, so the compiled caller reads the integer as an interned-string index and prints (null) where the interpreter and CPython print 3 — silently, with exit 0",
+		ref:    "roadmap Gap R.22 (mixed return types; ADR 0213 refiled the original Gap R.21 reading, which blamed try/except)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\n"}, {Backend: "aot", Stdout: "(null)\n"}}},
 	"programs/probe_unicode": {oracle: lang.OracleDebt,
 		reason: "strings are bytes, not code points: len(\"café\") is 5 where CPython answers 4, and \"héllo\"[1] is the byte 195 where CPython answers \"é\". The loop itself is no longer part of the debt — iterating text used to emit an invalid `store i32 @.str1`, which Gap R.15 (ADR 0208) fixed, so both backends now run the program and agree on the wrong answer",

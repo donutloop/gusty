@@ -820,13 +820,38 @@ for i in range(n):
 - One deliberate divergence: an assignment whose *target kind* is known statically to be
   impossible (`s[0] = "z"` on a string, `s[0] = 1` on a set) is a compile-time diagnostic
   in the AOT backend (ADR 0166) and a catchable `TypeError` in the interpreter.
-- `except ValueError:` catches exactly the raised class; `except Exception:` (or a bare
-  `except:`) catches any exception. A raised exception that no clause matches propagates
-  to the caller as an `*EvalError` carrying the class name (`ExnType`) and message
-  (`ExnMsg`). `try:`/`except:`/`finally:` follow Python semantics.
-- `try:` / `except Exception:` / `finally:` are supported: the try body runs; on a
-  runtime error a matching except clause runs (catch-all `Exception` matches any);
-  the `finally:` body always runs. Implemented in both the interpreter and the AOT/LLVM backend.
+- **The arms of a `try` are tried in the order they are written**, on both backends
+  (ADR 0213). `except ValueError:` catches exactly that class; `except Exception:` and a bare
+  `except:` catch anything, wherever they appear in the list — an arm after them is unreachable,
+  as in Python. An exception no arm matches is **not** dropped: it propagates outward — to an
+  enclosing `try`, or out of the function — and if nothing handles it, it is reported and the
+  program fails with the runtime class (exit 3). In the interpreter it surfaces to the caller as
+  an `*EvalError` carrying `ExnType` and `ExnMsg`.
+
+  ```py
+  try:
+      xs = [1]
+      print(xs[5])
+  except KeyError:
+      print("not this")        # the IndexError below is matched by the arm after it
+  except IndexError:
+      print("second arm")
+  ```
+
+  The compiled backend used to lower only the first arm and then clear the exception flag, so a
+  later arm never ran, a nested `try` never reached its outer arm, and an unmatched exception was
+  deleted: no report, exit 0.
+- **`finally:` runs on the paths that reach it.** Its body runs when the `try` completes and when
+  an arm handled the error. It does **not** yet run when the `try` body leaves via `return` or
+  `raise`, on either backend, where Python runs it before the transfer (roadmap Gap R.23):
+
+  ```py
+  def f():
+      try:
+          return 1
+      finally:
+          print("fin")        # gusty: prints nothing, then 1 · CPython: fin, then 1
+  ```
 - `while`/`for` loops accept an optional `else:` clause that runs on normal
   completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.

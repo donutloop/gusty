@@ -1964,43 +1964,69 @@ fault on AArch64, so `print(7 % 0)` printed a *different garbage integer on ever
 nothing at all, over six shapes including a divisor computed at run time (`x % z()`), because a
 guard that only works on constants guards nothing.
 
-### R.20 — the compiled backend dispatches only the first `except` arm (OPEN, codegen bug)
+### R.20 — the compiled backend dispatched only the first `except` arm (CLOSED, ADR 0213)
 
-Measured with three engines; the interpreter and CPython are both right, so this is purely the
-compiled lowering. Matching arm first works; matching arm later runs **no arm at all**, silently:
+`tryStmt` emitted `ts.Excepts[0]` and nothing else, and cleared `@exn_flag` on entry to the
+handler, so a mismatch fell through to `finally` — the ordinary continuation. Five measured shapes,
+all silent, all exit 0: a matching second or third arm never ran; a bare `except:` after a typed arm
+never ran; a nested `try` never reached its outer arm; and an exception no arm matched was
+**deleted** — no report, no failure. Fixed by emitting the arms as the chain the syntax describes —
+one block pair per arm, `@exn_code` compared in order, bare/`Exception` arms as branch-through
+catches — and ending the chain with a real re-raise (restore the flag, branch to the enclosing
+handler or the function's raise-exit, the same target an explicit `raise` uses). A `raise` inside a
+handler now escapes to the enclosing scope, because the arm bodies are emitted with the handler
+stack popped.
 
-| source (abridged)                          | interpreter / CPython | compiled |
-|----------------------------------------------|-----------------------|----------|
-| `except ValueError: … except IndexError: …`  | `right`               | *(nothing)*, exit 0 |
-| three arms, match the third                  | `c`                   | *(nothing)*, exit 0 |
-| `except ValueError: … except: …` (bare)      | `bare`                | *(nothing)*, exit 0 |
-| the same inside a function, then continue    | `right`               | *(nothing)*, execution continues after the `try` |
+Pinned three ways, because a shortened chain is invisible to a verifier: behaviourally on both
+backends for seven arm shapes (`pkg/lang/except_dispatch_test.go`), at the IR level by counting the
+`@exn_code` reads a three-arm `try` must produce, and end-to-end on three engines via
+`programs/except_arm_order.gy` (promoted from the probe, ledger row deleted).
 
-So a handler that exists does not run, the exception is dropped rather than propagated, and there
-is no traceback. Pinned as `programs/probe_except_arm_order.gy` (debt row with the measured pin
-`after\n`). Presumed cause: the raise site jumps to the innermost handler block, which tests only
-the first arm's `@exn_code` and then falls through to the normal continuation. The fix is one
-dispatch chain per `try` — compare each arm's code in order, then the bare arm, then re-raise to
-the enclosing scope.
+### R.21 — "a `return` inside `try:` loses its value" (NOT A SEPARATE DEFECT — refiled as R.22)
 
-### R.21 — a `return` inside `try:` loses its value in the compiled backend (OPEN, codegen bug)
+Recorded while fixing R.18, and wrong: it reproduced with `return a % b` and not with
+`return a + b`, which is not a property of `try`. The function's two `return` paths had different
+*types* (int and string), it was specialised as one, and the caller rendered the integer as an
+interned-string index — `(null)`. That is the mixed-return-type defect below. The probe was renamed
+`probe_mixed_return_value.gy` and its ledger row reworded; the measured pin never changed, which is
+the value of pinning the output rather than the theory. Keep the standing lesson: characterise the
+trigger before naming the cause — a wrong cause sends the next cycle to the wrong file.
+
+### R.23 — `finally` does not run when the `try` body returns or raises (OPEN, both backends)
 
 ```gusty
-def guarded(a, b):
+def f():
     try:
-        return a % b
-    except ValueError:
-        return "nope"
-
-print(guarded(7, 4))      # interpreter and CPython: 3 · compiled: (null), exit 0
+        return 1
+    finally:
+        print("fin")      # gusty (both backends): prints nothing, then 1 · CPython: fin, then 1
 ```
 
-Verified pre-existing (present before ADR 0212's guards, and independent of them — the same shape
-with `a + b` behaves the same). The value the `return` produced never reaches the caller: the
-compiled function comes back holding nothing and `print` renders `(null)`. Silent, exit 0, and
-wide-reaching, since `return` inside `try` is how people write guarded helpers. Pinned as
-`programs/probe_return_in_try.gy`. Likely the same lowering region as R.20: the try/except block
-structure swallows the return-value slot.
+Measured on three engines: `finally` runs on the fall-through path and after a handled exception
+(both correct), but not when the body leaves by `return` or by `raise` — the transfer paths skip the
+deferred body entirely, silently, in both backends. Fix: deferred actions must be attached to the
+exit paths, not just the straight-line one — for the interpreter, the unwind/return has to run the
+enclosing `finally` bodies before propagating (and a `return` in `finally` overriding the pending
+value follows Python); for codegen, the function's return/raise-exit blocks have to walk the pending
+`finally` list. The ADR 0213 chain is testable evidence that the arm wiring is right, so this is the
+remaining `try` semantics gap.
+
+### R.24 — the checker does not register names assigned inside a `try` body (OPEN, front end)
+
+```gusty
+def f(a, b):
+    try:
+        x = a + b
+    except ValueError:
+        return -1
+    return x            # gustyc: error at 6:12: undefined name "x"
+```
+
+A valid program is refused with a compile error (exit 1) that the interpreter and CPython both
+disagree with — the assignment is in a scope the checker never walks. Same likely cause as any
+`except`/`finally` body: the scope collector visits only `Body`/`IfStmt`/loop statements, not the
+`TryStmt` arms. Fix in the analyzer's scope pass, with a test that the shape analyses clean and
+runs everywhere.
 
 ### R.22 — a function returning a float on one path and a string on another emits invalid IR (OPEN, L11.8 violation)
 

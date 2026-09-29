@@ -9066,34 +9066,46 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 	b.WriteString("  " + f + " = load i32, i32* @exn_flag\n")
 	b.WriteString("  " + c + " = icmp eq i32 " + f + ", 1\n")
 	b.WriteString("  br i1 " + c + ", label %" + handler + ", label %" + finally + "\n")
+
 	b.WriteString(handler + ":\n")
-	b.WriteString("  store i32 0, i32* @exn_flag\n")
-	if len(ts.Excepts) > 0 {
-		ec := ts.Excepts[0]
-		specific := false
-		specCode := 0
-		if ec.Exn != nil && ec.Exn.Value != "Exception" {
-			specific = true
-			specCode = exnCode(ec.Exn.Value)
-		}
-		cbody := g.newLabel("try.body")
-		if specific {
+	// The arms are dispatched in source order, each comparing @exn_code, a bare `except:` and
+	// `except Exception:` catching everything. Only the first arm used to be emitted at all, and
+	// a non-matching exception had its flag cleared and fell through to the continuation — so a
+	// handler that exists ran nothing, an unhandled exception vanished with no traceback and
+	// exit 0, and a nested try never reached its outer arm (roadmap Gap R.20, ADR 0213).
+	for _, ec := range ts.Excepts {
+		armBody := g.newLabel("try.arm")
+		notThis := g.newLabel("try.next")
+		catchAll := ec.Exn == nil || ec.Exn.Value == "Exception"
+		if !catchAll {
 			code := g.newTmp()
 			m := g.newTmp()
 			b.WriteString("  " + code + " = load i32, i32* @exn_code\n")
-			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", m, code, specCode))
-			b.WriteString("  br i1 " + m + ", label %" + cbody + ", label %" + finally + "\n")
-			b.WriteString(cbody + ":\n")
+			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", m, code, exnCode(ec.Exn.Value)))
+			g.markI1(m)
+			b.WriteString("  br i1 " + m + ", label %" + armBody + ", label %" + notThis + "\n")
+		} else {
+			b.WriteString("  br label %" + armBody + "\n")
 		}
+		b.WriteString(armBody + ":\n")
 		for _, st := range ec.Body {
 			if err := g.stmt(b, st); err != nil {
 				return err
 			}
 		}
 		b.WriteString("  br label %" + finally + "\n")
-	} else {
-		b.WriteString("  br label %" + finally + "\n")
+		b.WriteString(notThis + ":\n")
 	}
+	// Nothing matched. The exception belongs to an enclosing scope now: restore the flag and
+	// hand it to the next handler out, or to the function's raise-exit — the same destination an
+	// explicit `raise` with no handler in sight uses.
+	b.WriteString("  store i32 1, i32* @exn_flag\n")
+	if len(g.handlerStack) > 0 {
+		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
+	} else {
+		b.WriteString("  br label %" + g.funcRaiseExit + "\n")
+	}
+
 	b.WriteString(finally + ":\n")
 	for _, st := range ts.Finally {
 		if err := g.stmt(b, st); err != nil {
