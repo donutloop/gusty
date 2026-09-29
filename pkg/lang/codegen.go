@@ -2286,6 +2286,12 @@ type irGen struct {
 	fds       map[string]*FuncDef    // function definitions by name (for call arg binding)
 	imports   *ImportInfo            // folded module globals for `import mod`
 	params    map[string]string      // current function params: name -> register
+	// paramSlot names the parameters whose body rebinds them: their slot (`%_name`),
+	// not the incoming argument register, is what reads load (Gap R.3, ADR 0196).
+	paramSlot map[string]bool
+	// forCtrSeq numbers the private induction counters of `for ... in range(...)`
+	// loops, which are no longer allowed to share the loop variable's slot (Gap R.3b).
+	forCtrSeq int
 	fmtIdx    int
 	strIdx    int
 	tmp       int
@@ -2572,9 +2578,60 @@ func (g *irGen) registerClass(cd *ClassDef) {
 	}
 }
 
+// copyInReboundParams gives every parameter the body rebinds a stack slot of its own
+// at the top of the entry block and makes that slot authoritative, so a read after the
+// assignment sees the store. Without it the assignment allocates a slot nothing reads
+// and the read keeps returning the incoming register: `def bump(n): n = n + 1;
+// return n` answers the argument, and an accumulator loop never terminates (Gap R.3,
+// ADR 0196).
+//
+// floatRet is the float-returning case, whose prologue already copies every parameter
+// into a double slot: those parameters behave like locals today, and giving them a
+// second (i32) slot would be both wrong and a duplicate name. A parameter rebound to a
+// float outside that case is excluded by reboundParams, which asks the same
+// (*irGen).isFloat question the store path will ask, so no i32 slot is ever asked to
+// hold a double.
+func (g *irGen) copyInReboundParams(b *strings.Builder, fd *FuncDef, floatRet bool) {
+	if fd == nil || floatRet || len(fd.Params) == 0 {
+		return
+	}
+	rb := reboundParams(fd, g.isFloat)
+	if len(rb) == 0 {
+		return
+	}
+	if g.paramSlot == nil {
+		g.paramSlot = map[string]bool{}
+	}
+	for _, p := range fd.Params {
+		if !rb[p.Name] {
+			continue
+		}
+		reg, ok := g.params[p.Name]
+		if !ok {
+			continue
+		}
+		if g.allocd[p.Name] || g.paramSlot[p.Name] {
+			// A slot already exists for this name (the float prologue, or a container
+			// path that allocated it first): it is the authoritative one.
+			g.allocd[p.Name] = true
+			g.paramSlot[p.Name] = true
+			continue
+		}
+		fmt.Fprintf(b, "  %%%s = alloca i32\n", "_"+p.Name)
+		fmt.Fprintf(b, "  store i32 %s, i32* %%%s\n", reg, "_"+p.Name)
+		// The slot is rooted like any other local: after `n = make()` it holds a heap
+		// handle, and an unrooted handle is one collection away from a segfault
+		// (ADR 0181). Rooting a raw int costs the collector one skip.
+		g.gcReg(b, p.Name)
+		g.allocd[p.Name] = true
+		g.paramSlot[p.Name] = true
+	}
+}
+
 // emitClassMethod emits a class method as an LLVM function with self as param 0.
 func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	prevParams := g.params
+	prevSlot := g.paramSlot
 	prevSelf := g.selfClass
 	paramRegs := []string{"i32 %self"}
 	for i := range fd.Params {
@@ -2592,6 +2649,9 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// thousands of instances ran the stack out (ADR 0181).
 	savedFrame := g.frameOpen
 	g.gcOpenFrame(&g.globals)
+	// A method that assigns to one of its parameters gets a slot for it, like any
+	// other rebinding body (Gap R.3).
+	g.copyInReboundParams(&g.globals, fd, false)
 	g.inFunc = true
 	for _, st := range fd.Body {
 		g.stmt(&g.globals, st)
@@ -2602,6 +2662,7 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	g.frameOpen = savedFrame
 	g.selfClass = prevSelf
 	g.params = prevParams
+	g.paramSlot = prevSlot
 }
 
 // collectAttrs walks a method body and assigns a slot to each instance attr.
@@ -4687,7 +4748,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if v, ok := g.constBindings[n.Value]; ok {
 			return fmt.Sprintf("%d", v), nil
 		}
-		if reg, ok := g.params[n.Value]; ok {
+		if reg, ok := g.params[n.Value]; ok && !g.paramSlot[n.Value] {
+			// The incoming register is the value only until the body rebinds the name;
+			// a rebound parameter reads its slot, which the entry copied over (Gap R.3).
 			return reg, nil
 		}
 		// Always load fresh from the alloca so the value dominates its use.
@@ -8892,7 +8955,14 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		return nil
 	}
 	g.params = map[string]string{}
+	g.paramSlot = nil
 	g.curFunc = g.fnName(fd)
+	// A parameter the body rebinds to a float is a float variable, and the calling
+	// convention does not know that yet: `def addf(x): x = x + 1.5; return x` returns a
+	// bare name, so nothing reads the assignment, the function is emitted as
+	// int-returning, and 1.0 arrives truncated to 1. Teaching it needs the tagged value
+	// word, because the argument's type and the return's type are decided separately
+	// today (roadmap L11.6, pinned as programs/probe_float_param_rebind).
 	floatRet := funcReturnsFloat(g, fd)
 	retTy := "i32"
 	retVal := "0"
@@ -8924,6 +8994,11 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 			g.floatVars[p.Name] = true
 			fmt.Fprintf(b, "  %%_%s = alloca double\n", p.Name)
 			fmt.Fprintf(b, "  store double %%p%d, double* %%_%s\n", i, p.Name)
+			// The slot exists now, so the body's assignment to this name must reuse
+			// it: without the registration the assignment emitted a second alloca of
+			// the same name and llc called it "multiple definition of local value"
+			// (Gap R.3c, ADR 0196).
+			g.allocd[p.Name] = true
 		}
 	}
 	// A parameter that receives a list/dict/set handle must be treated as a
@@ -8962,6 +9037,10 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		fmt.Fprintf(b, "  store i32 %%p%d, i32* %%_param%d\n", i, i)
 		g.gcReg(b, fmt.Sprintf("param%d", i))
 	}
+	// A parameter the body rebinds is a local that starts out bound to an argument:
+	// copy it into a named slot now and read from there, or every read keeps answering
+	// the argument however many times the body assigned (Gap R.3, ADR 0196).
+	g.copyInReboundParams(b, fd, floatRet)
 	if g.isWrappingDecorator(fd) {
 		g.gcCloseFrame(b)
 		b.WriteString("  ret i32 0\n}\n")
@@ -8997,6 +9076,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.genHandle = ""
 	g.handlerStack = prevHandlers
 	g.params = map[string]string{}
+	g.paramSlot = nil
 	g.curFunc = ""
 	g.inFunc = false
 	return nil
@@ -10091,12 +10171,22 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			g.gcReg(b, loopVarName(n.Var))
 			g.allocd[loopVarName(n.Var)] = true
 		}
-		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", start, loopVarName(n.Var)))
+		// The induction counter is the loop's own, never the loop variable's slot.
+		// Sharing them made the variable answer the *bound* after the loop —
+		// `for i in range(3): print(i)` and then `print(i)` gave 3 where Python and
+		// the interpreter give 2 — and worse, an assignment to the loop variable in
+		// the body moved the iteration, so `for i in range(3): i = i * 100` ran twice
+		// and answered 101. The variable is bound from the counter at the top of each
+		// body, which is when Python binds it (Gap R.3b, ADR 0196).
+		g.forCtrSeq++
+		ctr := fmt.Sprintf("_ctr%d", g.forCtrSeq)
+		b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", ctr))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%%s\n", start, ctr))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
 		g.ldN++
-		cld := fmt.Sprintf("%%_%s.ld%d", loopVarName(n.Var), g.ldN)
-		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", cld, loopVarName(n.Var)))
+		cld := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", cld, ctr))
 		t := g.newTmp()
 		cmpOp := "slt"
 		if strings.HasPrefix(step, "-") {
@@ -10110,6 +10200,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", t, bodyL, normalL))
 		b.WriteString(fmt.Sprintf("%s:\n", bodyL))
+		// Python binds the loop variable to each element as the loop produces it, so
+		// the store to the user's name happens here and nowhere else: what the body
+		// writes to it is overwritten by the next element, and survives the loop only
+		// as the last value actually bound.
+		g.ldN++
+		cbd := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", cbd, ctr))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", cbd, loopVarName(n.Var)))
 		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 		for _, s := range n.Body {
 			if err := g.stmt(b, s); err != nil {
@@ -10120,11 +10218,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", incL))
 		b.WriteString(fmt.Sprintf("%s:\n", incL))
 		g.ldN++
-		ild := fmt.Sprintf("%%_%s.ld%d", loopVarName(n.Var), g.ldN)
-		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ild, loopVarName(n.Var)))
+		ild := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", ild, ctr))
 		itmp := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", itmp, ild, step))
-		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", itmp, loopVarName(n.Var)))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%%s\n", itmp, ctr))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		if len(n.Else) > 0 {
 			b.WriteString(fmt.Sprintf("%s:\n", elseL))
@@ -10150,7 +10248,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		env := g.emitNewEnv(b)
 		for i, c := range ci.captured {
 			val := ""
-			if pn, ok := g.params[c]; ok {
+			if pn, ok := g.params[c]; ok && !g.paramSlot[c] {
 				val = pn
 			} else {
 				val = g.newTmp()

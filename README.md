@@ -62,7 +62,10 @@ gusty ships an indentation-based syntax covering:
   exactly like `def`.
 - **Control flow** — `if` / `elif` / `else`, `while`, `for ... in range(n)`
   / `range(a, b)` / `range(a, b, step)`, `for x in [...]`, optional loop
-  `else:` clauses, `break` / `continue`, and `pass`.
+  `else:` clauses, `break` / `continue`, and `pass`. A parameter is a local
+  variable (assigning to one is ordinary and local), and a `for` loop binds its
+  variable per element — it keeps the last value bound, and writing to it does not
+  move the iteration (ADR 0196).
 - **Pattern matching** — `match` with integer-literal equality, `_` wildcards,
   and list-destructuring patterns (`case [a, b]:`). Matches also support
   guards (`case x if cond:`), or-patterns (`case 1 | 2:`), dict patterns

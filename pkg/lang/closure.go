@@ -240,6 +240,7 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	savedFrame := g.frameOpen
 	g.gcOpenFrame(b)
 	g.params = map[string]string{}
+	g.paramSlot = nil
 	for i, p := range ci.params {
 		g.params[p] = fmt.Sprintf("%%p%d", i)
 	}
@@ -252,6 +253,10 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	g.fds[ci.name] = fd
 	g.envParam = "%env"
 	g.inFunc = true
+	// A closure that rebinds one of its parameters reads a slot, not the incoming
+	// register (Gap R.3) — and so does the environment capture above, which is why
+	// the capture site consults paramSlot too.
+	g.copyInReboundParams(b, fd, false)
 	for _, st := range fd.Body {
 		g.stmt(b, st)
 	}
@@ -342,9 +347,11 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 	savedFrame := g.frameOpen
 	g.gcOpenFrame(b)
 	g.params = map[string]string{}
+	g.paramSlot = nil
 	for i, p := range fd.Params {
 		g.params[p.Name] = fmt.Sprintf("%%p%d", i)
 	}
+	g.copyInReboundParams(b, fd, false)
 	for _, st := range fd.Body {
 		g.stmt(b, st)
 	}

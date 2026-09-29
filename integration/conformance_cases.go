@@ -47,6 +47,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"async_basic",
 		"async_for",
 		"async_multi",
+		// A parameter is a local that starts out bound to an argument: an accumulator
+		// that decrements its argument, a clamp that overwrites it, a loop that reuses
+		// it as its variable (Gap R.3, ADR 0196).
+		"param_rebind",
 		// The await/return discipline the L7.6 checker proves: deferred coroutines
 		// held in variables and awaited later, coroutines handed across a call and
 		// awaited inside it, an async def per control-flow shape, and `async for`
@@ -154,6 +158,10 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_comp_str_filter",     // L11.8 — the same bug, reached from a comprehension filter
 		"probe_comp_runtime_reduce", // L11.7 — sum/min/max over a runtime comprehension
 		"probe_comp_folded_iter",    // L11.2 — iterating a list the compiler folded away
+
+		// Pinned by the rebound-parameter work (ADR 0196): the scalar half is fixed,
+		// and this is the float half the tagged value word still owes.
+		"probe_float_param_rebind", // L11.6 — a parameter rebound to a float, returned bare
 
 		// Pinned by the await/return discipline (ADR 0195): the checker now refuses the
 		// dishonest async programs, so what is left is the honest one that still disagrees.
@@ -362,6 +370,10 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call and the interpreter prints at the await; CPython rejects the program outright (module-scope await)",
 		ref:    "roadmap L7.6a (deferred coroutines in codegen)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "between\neffect 1\n2\n"}, {Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
+	"programs/probe_float_param_rebind": {oracle: lang.OracleDebt,
+		reason: "a function's argument type is read from the shape of its return expression, so `x = x + 1.5; return x` is emitted as an int function: interpreted and in CPython 1.0 becomes 2.5, compiled the module is rejected",
+		ref:    "roadmap L11.6 (floats are half-implemented) — found closing Gap R.3",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2.5\n3.0\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",

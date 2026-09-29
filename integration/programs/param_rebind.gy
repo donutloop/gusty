@@ -1,0 +1,81 @@
+# A parameter is a local that starts out bound to an argument — the shape the
+# compiled backend used to answer with the argument, however many times the body
+# assigned it (Gap R.3, ADR 0196).
+
+# An accumulator that decrements the number it was given. Compiled, this looped
+# forever: the condition compared the incoming register.
+def acc(n):
+    total = 0
+    while n > 0:
+        total = total + n
+        n = n - 1
+    return total
+
+print(acc(4))
+print(acc(1))
+print(acc(0))
+
+# The quiet form: the store happened, the read ignored it.
+def bump(n):
+    n = n + 1
+    return n
+
+print(bump(0))
+print(bump(41))
+
+# A clamp overwrites what it was given.
+def clamp(x, lo, hi):
+    if x < lo:
+        x = lo
+    if x > hi:
+        x = hi
+    return x
+
+print(clamp(-4, 0, 10))
+print(clamp(7, 0, 10))
+print(clamp(99, 0, 10))
+
+# A loop that reuses the parameter as its variable, and reads it afterwards.
+def count(n):
+    for n in range(3):
+        print(n)
+    return n
+
+print(count(9))
+
+# A body that writes to its own loop variable does not move the iteration, and
+# the variable survives the loop holding what the loop last bound.
+def squares(step):
+    for i in range(3):
+        i = i * 100
+        print(i)
+    return i
+
+print(squares(1))
+
+# A method and a nested def rebind their parameters the same way.
+class Counter:
+    def __init__(self):
+        self.n = 0
+
+    def bumped(self, n):
+        n = n + 1
+        n = n * 2
+        return n
+
+print(Counter().bumped(3))
+
+def outer(n):
+    def inner(m):
+        m = m * 3
+        return m
+    return inner(n) + n
+
+print(outer(2))
+
+# The parameter keeps being usable as an argument after being rebound.
+def twiceThen(n):
+    n = n + 1
+    return bump(n) + bump(n)
+
+print(twiceThen(3))

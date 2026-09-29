@@ -1502,21 +1502,74 @@ fine), so this is the await path's intern accounting, not the loop's. Credit whe
 `--verify-llvm` catches it ("LLVM rejected the module; this is a compiler bug, not a source
 error") instead of the module verifying clean and the link dying — the L8.2 gate did its job.
 
-### R.3 — a compiled loop whose condition variable the body reassigns never ends (OPEN)
+### R.3 — a parameter was read-only in the compiled backend (CLOSED, ADR 0196)
+
+It began as "a compiled loop whose condition variable the body reassigns never ends" and
+turned out to be the whole variable model. `codegen` registered each parameter as its
+incoming argument register and resolved every reference from there, so the slot an
+assignment allocated was never read:
+
+| shape | interpreter / CPython | compiled, before |
+|-------|----------------------|------------------|
+| `def bump(n): n = n + 1; return n` | `1` | `0` |
+| `def twice(n): n = n*2; n = n+1; return n` | `7` | `3` |
+| `def acc(n): while n > 0: total += n; n = n - 1` | `10` | **never returns** |
+| `def count(n): for n in range(3): print(n); return n` | `0 1 2` then `2` | `9 9 9 9` then `9` |
+| method `def bumped(self, n): n = n + 1; return n` | `2` | `1` |
+| nested `def inner(m): m = m * 3; return m` | `6` | `2` |
+| `def show(xs): xs = [9, 9]; print(xs)` | `[9, 9]` | `[9, 9]` ✓ already |
+| `def greet(s): s = "world"; return s` | `world` | `world` ✓ already |
+
+A hang is what made it visible, but the hang was the quiet case: the ordinary ones
+printed a plausible number. Only parameters rebound to a float, a string or a container
+worked, because those reads consult the kind maps instead of the register.
+
+Fixed by giving every parameter the body rebinds an entry slot — the copy an SSA-form
+compiler makes for a variable assigned after its definition, at the entry so a read on a
+path before any assignment still reads initialized storage — and by making the slot
+authoritative (`pkg/lang/params.go` + `copyInReboundParams`). Functions, methods and
+nested defs share the mechanism. `programs/param_rebind.gy` is now a parity **and**
+oracle-match corpus row; `integration/params_test.go` runs the class shape by shape with
+a **timeout on the compiled leg**, because a program that never returns has no output to
+diff and no error to read.
+
+### R.3b — `for … in range()` drove iteration through the user's loop variable (CLOSED, ADR 0196)
+
+Found in the same lowering while proving R.3, and independent of it: sharing one slot
+between the counter and the variable meant
 
 ```gusty
-def loop(n):
-    while n < 3:
-        n = n + 1
-    return n
-print(loop(0))
+for i in range(3):
+    print(i)
+print(i)                 # CPython and the interpreter: 2 — compiled: 3
 ```
 
-The interpreter answers `3`; the compiled binary never terminates — the condition is
-hoisted, or the parameter store does not reach the compared slot. A hang, not a wrong
-answer, so no leg timeout in the corpus catches it: `--aot` on a real file simply never
-returns. Needs a minimal repro and a fix in the same area as the eager-coroutine work
-(stores to a parameter inside a loop).
+and that a body assigning to its own loop variable moved the iteration:
+`for i in range(3): i = i * 100` printed `0 100 101` where Python prints `0 100 200`. The
+range loop now has a private `%_ctrN` counter and binds the variable from it at the top
+of the body — the point Python binds it. (The container-loop lowering already had this
+shape; the range path did not.)
+
+### R.3c — a parameter rebound to a float, returned as a bare name (OPEN)
+
+```gusty
+def addf(x):
+    x = x + 1.5
+    return x
+
+print(addf(1.0))         # interpreter and CPython 2.5; compiled answers 1
+```
+
+A function's argument type is read from the *shape of its return expression*; `return x`
+says nothing, so the parameters are declared `i32` and `1.0` is truncated on the way in.
+The obvious fix — treat a parameter the body rebinds to a float as a float variable —
+made `llc` reject the module one layer later, because the type is then decided twice from
+two different pieces of evidence. That is the tagged value word (**L11.6**), not a patch
+here. Pinned as `programs/probe_float_param_rebind`: the interpreter leg prints
+`2.5 / 3.0`, the compiled leg fails, and paying L11.6 flips the row rather than passing
+unnoticed. Related, and also fixed by (e) of ADR 0196: a float-returning function whose
+body assigns a parameter used to emit a second `alloca` of the same name — an `llc`
+"multiple definition of local value" rejection — and compiles now.
 
 ### R.4 — an emitted function name can collide with a C symbol (OPEN)
 

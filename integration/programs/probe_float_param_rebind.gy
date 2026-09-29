@@ -1,0 +1,21 @@
+# A parameter rebound to a float, returned as a bare name. A function's argument type
+# is read from the shape of its *return expression*, and `return x` says nothing, so the
+# function is emitted with int parameters: the float argument arrives truncated. The
+# interpreter and CPython agree on 2.5 and 3.0; the compiled backend cannot compile the
+# module at all (roadmap L11.6, Gap R.3c, ADR 0196).
+
+def addf(x):
+    x = x + 1.5
+    return x
+
+print(addf(1.0))
+
+# The same shape written so the return *expression* is visibly a float: then the
+# convention sees it, the argument arrives as a double, and everything agrees. The
+# bug is exactly this — a type decided from the shape of one line rather than from
+# what the body does with the value.
+def scaled(x):
+    x = x * 2.0
+    return x + 0.0
+
+print(scaled(1.5))

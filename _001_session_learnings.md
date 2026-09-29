@@ -2559,3 +2559,84 @@ a string emits a call to `@rt_str_intern2` that nothing defines; `llc` rejects t
 `sync()` and the linker answered quietly. A wrong number from your own function's *name* is the
 worst class in L11.8, and it is four characters of prefix away from gone — the next round's
 kind of item, found only because I compiled programs nobody had compiled.
+
+## "A compiled loop hangs" was 5% of the bug (Gap R.3, ADR 0196)
+
+The roadmap line was `R.3 — a compiled loop whose condition variable the body reassigns
+never ends`. I went to fix a hang and found that **the compiled backend treats a
+parameter as a constant**:
+
+```gusty
+def bump(n):
+    n = n + 1
+    return n
+print(bump(0))
+```
+
+interpreter `1`, CPython `1`, compiled **`0`**. Not an error — a plausible number, which
+is the worst thing a compiler can hand back. The IR said the quiet part: the assignment
+allocated `%_n`, stored into it, and the `ret` read `%p0` — the incoming register. The
+hang was this same defect wearing a louder hat: the loop condition compared the argument,
+and the body's `n = n - 1` stored where nothing read, forever.
+
+I measured the class before writing anything, and the class was the whole variable model:
+
+| shape | interp / CPython | compiled, before |
+|---|---|---|
+| `bump(n): n = n + 1` | 1 | 0 |
+| `twice(n): n = n*2; n = n+1` | 7 | 3 |
+| `acc(n): while n > 0: n = n - 1` | 10 | **hangs** |
+| `count(n): for n in range(3)` | `0 1 2` then 2 | `9 9 9 9` then 9 |
+| a method rebinding its parameter | 2 | 1 |
+| a nested def rebinding its parameter | 6 | 2 |
+| a parameter rebound to a container / a string | ✓ | ✓ |
+
+The last two rows are why three years of tests never saw this: floats, strings and
+containers read through the kind maps, so they were fine, and **the corpus had no program
+that assigned to a parameter**. Parity testing compares two backends on the programs you
+thought of; it says nothing about the shapes you didn't. The fix is four instructions —
+the entry copy any SSA-form compiler makes — and it covers functions, methods and nested
+defs because all three prologues take the same path.
+
+**The hang made me look; the wrong answers were the emergency.** A hang has no output to
+diff and no error to read, so `--aot` on a real file simply never returns — and a test
+suite with an unbounded compiled leg doesn't fail, it stops reporting. Every compiled leg
+I added now runs under `context.WithTimeout` and fails with `the compiled program did not
+terminate`.
+
+**Two symptoms, one shared storage.** Proving the fix surfaced an independent bug in the
+same lowering: `for i in range(3)` drove its iteration *through the user's loop variable*,
+so `print(i)` after the loop answered the bound (3, where Python says 2), and
+`for i in range(3): i = i * 100` ran twice. The tempting repair was to patch the two
+symptoms. The honest one was to notice that **sharing the storage is the bug**: a loop
+that owns its counter and binds the variable at the top of the body — where Python binds
+it — produces all three correct behaviours at once and forbids the fourth. The container
+loop already had this shape; the range path did not.
+
+**A half-fix that trades a wrong answer for a rejection is not progress.** Making
+`def addf(x): x = x + 1.5; return x` work needs the *argument* type to be a float, and
+that is read from the shape of the return expression today. My first patch made the
+function float-returning and `llc` rejected the module one layer down. I reverted it,
+pinned it as `programs/probe_float_param_rebind` (interpreter `2.5 / 3.0`, compiled leg
+refused) and named it for L11.6, where the tagged value word belongs. Deciding a type
+twice from two different pieces of evidence is not a bug you patch at the leaf.
+
+**I checked whether I broke it, instead of assuming.** `probe_float_param_rebind` fails at
+HEAD too — with a *different* error ("multiple definition of local value named `_x'", the
+duplicate-alloca bug that my floatRet registration now fixes) — so the failure I found is
+pre-existing and one layer deeper than the one I closed. That is a five-minute check I
+almost skipped: `git worktree add /tmp/base HEAD`, build the old binary, run the same
+program. Same habit for the regression tests: I ran the new IR tests against the old
+codegen and watched them fail with exactly the messages they were written for. A
+regression test that has never been seen failing is decoration — and running the whole
+test file against HEAD also taught me to keep the IR-structure tests free of references
+to symbols that only exist after the fix, or the "does it fail?" check becomes a build
+failure that proves nothing.
+
+**The ledger argued with me twice, and both times it was right.** I registered
+`param_rebind` as an oracle-*match* row *with pins* — refused: pins record what a wrong
+answer looks like, and a match row has none. I pinned the probe's compiled leg with the
+`llc` message I had seen on my machine — refused: the actual leg error was a different
+`llc` line, and the harness quoted me back the difference. The drift check exists to keep
+the registry describing reality rather than my memory of it, and it caught both of my
+aspirational entries before they could mislead the next agent to read them.

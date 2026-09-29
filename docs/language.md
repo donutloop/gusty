@@ -1577,6 +1577,45 @@ Every fact the rules decide from is also published, per function: `gustyc --effe
 which effects the body performs (`await`, `yield`, `raise`), whether it returns a value,
 and whether its control flow can run off the end. See `docs/operations.md`.
 
+## Parameters and loop variables (ADR 0196)
+
+A **parameter is a local variable** that starts out bound to an argument. Assigning to
+one is ordinary and has no effect on the caller:
+
+```gusty
+def bump(n):
+    n = n + 1        # a new value for this function's own n
+    return n
+
+bump(0)              # 1 — not 0
+
+def clamp(x, lo, hi):
+    if x < lo:
+        x = lo
+    if x > hi:
+        x = hi
+    return x
+```
+
+Rebinding is allowed for every value kind — numbers, strings, containers, instances —
+and it is the same variable: what the body last stored is what the body reads, on every
+path, including a path that reaches a read before any assignment textually.
+
+A **`for` loop binds its variable to each element as the loop produces it**, the way
+Python does, which has two visible consequences:
+
+```gusty
+for i in range(3):
+    i = i * 100      # does not move the iteration
+    print(i)         # 0, 100, 200
+print(i)             # 200 — the last value the loop bound, not the range's end
+```
+
+The loop keeps its own counter, so writing to `i` changes only what `i` means inside the
+body, and after the loop the variable still holds the last element (`for i in
+range(3)` leaves `2`, never `3`). A `for` whose `else:` clause runs on normal completion
+is unaffected.
+
 ## Docstrings and `__doc__` (Round 9, ADR 0141)
 
 A leading bare string literal in a `def` or `class` body is captured as a
