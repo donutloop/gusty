@@ -113,19 +113,23 @@ func TestStringEscapesMatchPython(t *testing.T) {
 	}
 }
 
-// A documented, tracked divergence: `len`, indexing and slicing measure string
-// values in UTF-8 bytes, while Python measures code points. The value itself is
-// now correct (the bytes are the source's bytes, no re-encoding), but
-// len("héllo") is 6 where Python says 5. Making it code-point semantics is a
-// representation decision for both backends at once (len, s[i], s[i:j],
-// `for c in s`), so it is its own roadmap item (Gap N.2, ADR 0178) rather than a
-// half-migration that would break interpreter/AOT parity. Pinning the current
-// answer here means that change has to arrive as a test failure, not a shrug.
-func TestStringLengthIsBytesForNow(t *testing.T) {
+// The rule this file used to pin against: `len`, indexing and slicing measured string
+// values in UTF-8 bytes ("len(\"héllo\") is 6 where Python says 5"), and the pin existed so
+// that the change "has to arrive as a test failure, not a shrug". It arrived (ADR 0225):
+// a string is a sequence of code points, counted the same by s[i], s[i:j], len and ord.
+// Both spellings — the literal folded at compile time and the measured variable — are in the table,
+// because they are two code paths and they were not always both right: the fold measured bytes while
+// everything else counted code points, so only one of these lines can fail today.
+func TestStringLengthCountsCodePoints(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{"print(len(\"héllo\"))\n", "6\n"}, // Python: 5
-		{"print(len(\"日本語\"))\n", "9\n"},   // Python: 3
-		{"print(len(\"abc\"))\n", "3\n"},   // Python: 3 (identical for ASCII)
+		{"print(len(\"héllo\"))\n", "5\n"},
+		{"print(len(\"日本語\"))\n", "3\n"},
+		{"print(len(\"abc\"))\n", "3\n"},
+		{"print(len(\"héllo\"))\n", "5\n"}, // the same fold, spelled twice on purpose: the compile-time
+		// path measured bytes here while the measured-variable path was right, so a table that only
+		// had one of them could pass with half the rule missing (ADR 0225)
+		{"s = \"héllo\"\nprint(len(s))\n", "5\n"},
+		{"s = \"日本語\"\nprint(len(s))\n", "3\n"},
 	} {
 		if got := runInterp(t, tc.src); got != tc.want {
 			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)

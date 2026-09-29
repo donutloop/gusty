@@ -1,0 +1,21 @@
+# What `s[1]` *is*: a one-character string, counted in code points, on both backends (ADR 0225).
+# Both used to answer the byte, and the wrong type spread to everything the value touched --
+# `s[0] + s[2]` did arithmetic and printed 196, `s[1] == "b"` said false, `len(s[1])`, `s[1].upper()`
+# and `ord(s[1])` trapped. CPython prints exactly this, on this file.
+s = "abc"
+print(s[1])
+print(s[-1])
+print(1 if s[1] == "b" else 0)
+print(1 if s[1] == 98 else 0)
+print(1 if s[0] in "xyzabc" else 0)
+
+xs = [s[1]]
+print(xs[0])
+print(len(xs))
+
+word = "café"
+print(len(word))
+print(word[3])
+print(word[2:])
+print(word[-1])
+print("ab" + "c")

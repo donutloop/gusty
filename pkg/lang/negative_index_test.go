@@ -181,18 +181,21 @@ func TestNegativeIndexPastTheStartStillTraps(t *testing.T) {
 	}
 }
 
-// Strings index by position too. The *value* a string subscript yields is still a byte
-// code — that divergence belongs to L11.5 — but the *position* follows the same rule.
+// Strings index by position too, and since ADR 0225 the *value* follows the same rule as the
+// position: `s[-1]` is the last character as text, on both backends. This test used to pin the byte
+// codes ("99\n97\n") and to require the compiled leg to refuse the shape; both halves were the bug
+// this cycle fixed, and the expectations are now CPython's.
 func TestNegativeStringSubscriptFollowsTheSameRule(t *testing.T) {
 	src := "s = \"abc\"\nprint(s[-1])\nprint(s[-3])\n"
-	const want = "99\n97\n" // byte codes: L11.5 owns the representation, not the position
+	const want = "c\na\n" // CPython prints exactly this
 	if got, err := negInterp(t, src); err != nil || got != want {
 		t.Errorf("interpreter: got %q (%v), want %q", got, err, want)
 	}
-	// A string held in a variable is the L11.5 boundary — the compiled backend has no
-	// run-time string value yet — so it must be named, not silently answered. Refusing
-	// is the contract; answering 0 would be the bug.
-	if _, err := Compile(src); err == nil {
-		t.Fatal("compiling a string-variable subscript succeeded; it should be refused with a message")
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("a subscript of a string the compiler can name must compile, not refuse: %v", err)
+	}
+	if !strings.Contains(res.IR, "rt_str_intern2") {
+		t.Fatalf("the compiled subscript is not an interned character:\n%s", res.IR)
 	}
 }

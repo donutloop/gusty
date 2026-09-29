@@ -364,7 +364,11 @@ Three shapes refuse rather than answer wrongly, each naming its reason:
   CPython answers `a`; the element-kind fact is only there once something has looked at the list
   (roadmap Gap R.46);
 - `str(x)` of a value the compiler cannot fold, and indexing a `sorted(...)` result, refuse with a
-  message (roadmap Gap R.22).
+  message (roadmap Gap R.22);
+- any string question asked at *run* time on the compiled leg — `s[i]` with a variable index,
+  `len(s[1])`, `s[1].upper()`, `ord(s[1])`, `for c in s` over a variable string — because a compiled
+  string is a compile-time value and there is no runtime string object to ask (roadmap Gap R.47; the
+  interpreter answers all of them).
 - iterating a list the escape analysis kept as a compile-time constant (`xs = [1, 2, 3]` with no
   mutation and no `for` over it) — there is no runtime object to walk. Iterating it with `for`, or
   mutating it, materialises it (`probe_comp_folded_iter`; L11.2's tagged value word removes the
@@ -549,6 +553,15 @@ Rules that both backends implement:
   used to be a Go panic inside the compiler rather than an answer or a diagnostic.
 - A container produced by a call (`d = make(3)`) is iterated through the runtime
   length, like any other container variable.
+- **A subscript of a string is a one-character string** (ADR 0225). `s[1]` is `b`, not `98`: the
+  character is text in both backends, so it compares with text, concatenates, takes methods, and
+  `s[1] == 98` is false the way CPython says it is. A string is counted in **code points** wherever
+  position is asked about — `s[i]`, `s[a:b]`, `len(s)`, `ord(s)` — so `len("café")` is 4 and
+  `"café"[3]` is `é`; a byte-wise slice could also cut a character in half. An out-of-range character
+  subscript traps as `IndexError` in the interpreter. The compiled leg still refuses anything that
+  asks about a character at runtime (`s[i]` with a variable index, `len(s[1])`, `s[1].upper()`,
+  `ord(s[1])`, `for c in s` over a variable string), because a compiled string exists only as a
+  compile-time value: roadmap Gap R.47.
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
   `s.add("q")`, `d["k"] = 1`, `d[1] = "v"`, `"a" in xs`, `for x in xs`, `len`, indexing
   and printing all work in both backends. **A string value is an index into a runtime interned
@@ -1670,7 +1683,7 @@ slot and LLVM rejected the module).
 
 A character is a one-character **string**, not a distinct char type, and strings are byte
 sequences today: `len("café")` is `5` and `"héllo"[1]` is the byte `195` (roadmap L11.5,
-`programs/probe_unicode.gy`).
+`programs/unicode_text.gy`).
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
 `float(3)` -> 3.0. `int` ships in both backends: the AOT codegen folds `int` on

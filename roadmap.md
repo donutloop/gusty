@@ -2168,48 +2168,53 @@ now asserts only what the oracle agrees with, and this shape is pinned at what t
 ask `exprIsString` of the element *and* of the iterated name, and have the element printer fall back to
 the same facts the container printer uses.
 
-### R.45 — the interpreter's string subscript answers the character code (OPEN, interpreter)
+### R.45 — a subscript of a string is a one-character string (CLOSED, ADR 0225)
 
 ```gusty
 s = "abc"
-print(s[1])             # CPython: b · interpreter: 98
-print(s[-1])            # CPython: c · interpreter: 99
+print(s[1])             # CPython: b · both backends before: 98
+print(s[0] + s[2])      # CPython: ac · both backends before: 196
+print(1 if s[1] == "b" else 0)   # CPython: 1 · both backends before: 0
 ```
 
-Wrong on the human path — the REPL and `--eval` — in a shape the compiled path honestly refuses, so
-only the oracle leg catches it: the interpreter returns the code point where CPython returns a
-one-character string. ADR 0210 made negative subscripts positions for containers and left this alone,
-because it was about subscripts, not about what a string element *is*. Fix: a string subscript yields
-text in the interpreter, and `TestStringSubscriptOnTheInterpreterIsPinned` loses its expectation.
+Recorded from the interpreter side, but the compiled fold had the same missing type and produced the
+same wrong values, and nothing in the suite noticed because the two backends agreed with each other —
+only the CPython leg can see that `98` is not `b`. Sixteen measured shapes, zero matching before.
+The character is a string now, allocated in the interpreter and interned in codegen, and the unit it
+agrees on is the code point: `len("café")` is 4 (was 5), `"café"[3]` is `é`, `s[2:]` cannot cut a
+character in half, `ord` takes the first rune.
 
-### R.40 — a literal container holding a float, or `float == str`, emits a module `llc` rejects (OPEN, compiled)
+What the measurement uncovered on the way was worse than what we came for: `truthyValue` returned
+`asI1(b, "0")` when a condition failed to lower, believing "the enclosing statement path still has
+the error" — the ternary path had no error channel, so `print(1 if s[1] == "b" else 0)` emitted
+`icmp ne i32 0, 0` and printed `0`. A part of a program that cannot be lowered is a compile error,
+never a default value (asserted in `TestUnlowerableConditionIsAnErrorNotAFalseBranch`).
 
-Two shapes answer with a toolchain rejection (exit 2) where the answer is known and the interpreter
-prints it:
+Closed by: `pkg/lang/string_subscript_test.go`, `integration/string_subscript_test.go`, parity program
+`integration/programs/string_subscript.gy`.
+
+### R.47 — a compiled string is a compile-time value only (OPEN, compiled)
 
 ```gusty
-print(1 if [1] == [1.0] else 0)     # llc: expected type
-print(1 if 1.0 == "a" else 0)       # llc: global variable reference must have pointer type
+s = "abc"
+i = 0
+print(s[i])          # interpreter and CPython: a · compiled: refuses
+print(len(s[1]))     # interpreter and CPython: 1 · compiled: refuses
+print(s[1].upper())  # interpreter and CPython: B · compiled: refuses
+print(ord(s[1]))     # interpreter and CPython: 98 · compiled: refuses
+for c in s:          # interpreter and CPython: a, b, c · compiled: refuses
+    print(c)
 ```
 
-The emissions, verbatim from `--emit-llvm`:
-
-```
-@.lst2 = private global {i32, [1 x i32]} { i32 1, [1 x i32] [@env_store = internal global [4096 x i32] zeroinitializer
-%t222 = sitofp i32 @.str13 to double
-```
-
-The literal-list emitter writes a `@` with no name into an int-typed element slot; the equality path
-feeds a string global to `sitofp`. Both are the Gap K.10 / ADR 0166 class — the front end owes a
-refusal and instead hands `llc` a module it rejects, so the user sees exit 2 and a temp-file path
-instead of a diagnostic. Neither is a semantics hole: the same comparisons **through variables**
-(`xs = [1]; ys = [1.0]; print(1 if xs == ys else 0)`) compile and print the right answer, so this is
-the literal emitter plus a missing operand-kind gate (Gap R.38's `checkBinOp` covers arithmetic, not
-this path). `TestMixedNumericListEqualityIsAPinnedCompiledDebt` pins the first — including an assertion
-on the emitted IR text, and a demand that the second leg's exit code stop being 2 — and
-`programs/probe_float_list_equal.gy` is the debt row. Fix: fold literal float elements to the same
-representation the bound path uses, and refuse a comparison whose operand kinds cannot be compared
-instead of emitting a conversion the type system forbids.
+Each refusal is honest (exit 1 with a message — asserted shape in
+`TestCompiledStringSubscriptHolesRefuseWithAMessage`, which also fails the leg for exit 2 and for
+answering at all), but the family is one missing thing: there is no runtime string object, so a
+character asked about at run time has nowhere to live. It is the same root as the older "AOT supports
+only inline literals with constant indexing" line and as Gap J.5 (concatenating a computed string
+needs a buffer allocation). Fix: a boxed string in the runtime — bytes plus length in the heap, an
+`@str_tab` index still for constants — with `rt_str_index`, `rt_str_len`, `rt_slice_str` and the
+char-method path reading it, and the `for`-over-string loop taking the runtime iterator the container
+loops already use.
 
 ### R.30 — the compiled backend truncated `//` toward zero (CLOSED, ADR 0216)
 

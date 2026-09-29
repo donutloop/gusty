@@ -300,6 +300,14 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **A subscript of a string is a one-character string** (ADR 0225) — both backends answered `s[1]`
+  with `98`, and the missing type spread to everything the value touched: `s[0] + s[2]` did arithmetic
+  and printed `196`, `s[1] == "b"` said false (compiled as well as interpreted — the two backends
+  agreeing is what hid it from a green suite), and `len(s[1])`, `s[1].upper()`, `ord(s[1])` trapped. A
+  string is counted in code points everywhere position is asked about (`s[i]`, `s[a:b]`, `len`, `ord`),
+  so `len("café")` is 4 and `"café"[3]` is `é`. Measuring it also found a condition emitter that
+  replaced an un-lowerable condition with a false branch and printed `0` for `1 if s[1] == "b" else 0`:
+  a part that cannot be lowered is now a compile error, never a default value.
 - **A string value is an index, not a pointer** (ADR 0224) — `x == "hi"`, `"a" in xs`,
   `self.w = "hi"; print(C().w)` and a method's `-> str` result reached `llc` as an `i32` holding the
   address of a string global (`icmp eq i32 @.str1, %t1`, `ret i32 @.str1`) and came back as exit 2,

@@ -556,7 +556,9 @@ func TestExecDictMinMaxMethods(t *testing.T) {
 }
 
 func TestExecStrIndex(t *testing.T) {
-	assertOutput(t, `print("abc"[1])`, "98\n")
+	// The character, not the byte: `98` was what this asserted until ADR 0225 made a string
+	// subscript a one-character string on both backends.
+	assertOutput(t, `print("abc"[1])`, "b\n")
 }
 
 func TestExecStrSplitLen(t *testing.T) {

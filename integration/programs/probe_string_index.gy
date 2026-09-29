@@ -1,6 +1,0 @@
-# Oracle probe (L11.9, ADR 0186) — s[i] is a one-character string, not a byte value
-# (L11.5). Both backends print 98 for "abc"[1] today.
-print("abc"[1])
-s = "héllo"
-print(s[0])
-print(s[4])

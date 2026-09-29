@@ -1,0 +1,7 @@
+# What a string is measured in: code points, not bytes, on both backends (ADR 0225). `len("café")`
+# used to be 5, `"héllo"[1]` the byte 195, and iterating text emitted an invalid `store i32 @.str1`
+# (Gap R.15, ADR 0208). CPython prints exactly this.
+print(len("café"))
+print("héllo"[1])
+for ch in "aé":
+    print(ch)

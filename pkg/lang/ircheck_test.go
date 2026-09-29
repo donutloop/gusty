@@ -736,10 +736,16 @@ func TestIRDictMinMaxMethodsLowers(t *testing.T) {
 }
 
 func TestIRStrIndexFolds(t *testing.T) {
-	// print("abc"[1]) folds to 98 ('b').
+	// print("abc"[1]) folds to a one-character *string* (ADR 0225): an @str_tab index printed
+	// through the text lookup. Folding the byte and formatting it with %d is what answered 98
+	// where CPython answers b, so the assertion is about the intern and the pointer read, not a
+	// number appearing somewhere in the module.
 	ir := llcCompiles(t, `print("abc"[1])`)
-	if !strings.Contains(ir, "98") {
-		t.Fatalf("expected folded char code 98, got:\n%s", ir)
+	if !strings.Contains(ir, "rt_str_intern2") {
+		t.Fatalf("the folded character was not interned; it would print as an index:\n%s", ir)
+	}
+	if !strings.Contains(ir, "rt_str_ptr") {
+		t.Fatalf("the folded character did not go through the text lookup; printf would print a number:\n%s", ir)
 	}
 }
 

@@ -264,7 +264,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2480810714/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2463862650/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -275,7 +275,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2480810714/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2463862650/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -307,39 +307,21 @@
         "name": "features_a.gy",
         "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n",
         "shared": true,
-        "oracle": "debt",
-        "reason": "\"abc\"[1] prints the byte 98; CPython prints the one-character string 'b'",
-        "ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n"
-          }
-        ]
+        "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n",
+      "interp_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\n",
       "aot_ok": true,
-      "aot_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n",
+      "aot_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\n",
       "parity": true,
       "python_ok": true,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "\"abc\"[1] prints the byte 98; CPython prints the one-character string 'b'",
-      "oracle_ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
       "oracle_rules": [
         "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
       ]
     },
     {
@@ -369,7 +351,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle3544841293/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1687810669/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -380,7 +362,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3544841293/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1687810669/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -630,7 +612,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle1551265535/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1447172285/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -641,7 +623,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1551265535/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1447172285/prog.py\", line 5"
       ]
     },
     {
@@ -671,7 +653,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3303086235/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2147872193/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -682,7 +664,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3303086235/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2147872193/prog.py\", line 3"
       ]
     },
     {
@@ -712,7 +694,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2282586623/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3554725312/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -723,7 +705,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2282586623/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3554725312/prog.py\", line 5"
       ]
     },
     {
@@ -891,7 +873,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle1049987690/prog.py\", line 11",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2905120520/prog.py\", line 11",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -902,7 +884,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1049987690/prog.py\", line 11"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2905120520/prog.py\", line 11"
       ]
     },
     {
@@ -1178,6 +1160,75 @@
     },
     {
       "case": {
+        "id": "programs/string_subscript",
+        "name": "string_subscript.gy",
+        "source": "# What `s[1]` *is*: a one-character string, counted in code points, on both backends (ADR 0225).\n# Both used to answer the byte, and the wrong type spread to everything the value touched --\n# `s[0] + s[2]` did arithmetic and printed 196, `s[1] == \"b\"` said false, `len(s[1])`, `s[1].upper()`\n# and `ord(s[1])` trapped. CPython prints exactly this, on this file.\ns = \"abc\"\nprint(s[1])\nprint(s[-1])\nprint(1 if s[1] == \"b\" else 0)\nprint(1 if s[1] == 98 else 0)\nprint(1 if s[0] in \"xyzabc\" else 0)\n\nxs = [s[1]]\nprint(xs[0])\nprint(len(xs))\n\nword = \"café\"\nprint(len(word))\nprint(word[3])\nprint(word[2:])\nprint(word[-1])\nprint(\"ab\" + \"c\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "b\nc\n1\n0\n1\nb\n1\n4\né\nfé\né\nabc\n",
+      "aot_ok": true,
+      "aot_stdout": "b\nc\n1\n0\n1\nb\n1\n4\né\nfé\né\nabc\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "b\nc\n1\n0\n1\nb\n1\n4\né\nfé\né\nabc\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/string_index",
+        "name": "string_index.gy",
+        "source": "# What `s[i]` yields: a one-character string counted in code points, on both backends (ADR 0225).\n# The row this came from was L11.5's byte-index debt -- `\"abc\"[1]` answered 98 and the compiled leg\n# refused the variable case outright. Note that the *index* is code-point correct on both legs even\n# where the compiled `len` of non-ASCII text is not (Gap R.47). CPython prints exactly this.\nprint(\"abc\"[1])\ns = \"héllo\"\nprint(s[0])\nprint(s[4])\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "b\nh\no\n",
+      "aot_ok": true,
+      "aot_stdout": "b\nh\no\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "b\nh\no\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/unicode_text",
+        "name": "unicode_text.gy",
+        "source": "# What a string is measured in: code points, not bytes, on both backends (ADR 0225). `len(\"café\")`\n# used to be 5, `\"héllo\"[1]` the byte 195, and iterating text emitted an invalid `store i32 @.str1`\n# (Gap R.15, ADR 0208). CPython prints exactly this.\nprint(len(\"café\"))\nprint(\"héllo\"[1])\nfor ch in \"aé\":\n    print(ch)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "4\né\na\né\n",
+      "aot_ok": true,
+      "aot_stdout": "4\né\na\né\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "4\né\na\né\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/deferred_bodies",
         "name": "deferred_bodies.gy",
         "source": "# A `finally` is a deferred body: it runs on every exit from its `try` -- fall-through, a handled\n# exception, a propagating one, and the transfers (`return`, `break`, `continue`) that leave the\n# block. An `except` arm catches exceptions, never a transfer (roadmap Gap R.23, ADR 0222).\n# CPython prints exactly this, on this file.\n\ndef value_before_finally() -\u003e int:\n    n = 1\n    try:\n        return n\n    finally:\n        n = 99\n        print(\"fin\", n)\n\n\ndef nested() -\u003e int:\n    try:\n        try:\n            return 1\n        finally:\n            print(\"inner\")\n    finally:\n        print(\"outer\")\n\n\ndef winner() -\u003e int:\n    try:\n        return 1\n    finally:\n        return 2\n\n\ndef propagates() -\u003e int:\n    try:\n        x = 1 / 0\n    finally:\n        print(\"prop fin\")\n    return 0\n\n\ndef from_arm() -\u003e int:\n    try:\n        x = 1 / 0\n    except:\n        return 7\n    finally:\n        print(\"arm fin\")\n    return 0\n\n\ndef twice() -\u003e int:\n    try:\n        return 5\n    finally:\n        print(\"once\")\n\n\nprint(twice())\nprint(twice())\nprint(value_before_finally())\nprint(nested())\nprint(winner())\nprint(from_arm())\n\ntry:\n    print(propagates())\nexcept:\n    print(\"caught\")\n\nfor i in range(3):\n    try:\n        continue\n    finally:\n        print(\"cont fin\", i)\n\nfor i in range(3):\n    try:\n        break\n    finally:\n        print(\"brk fin\", i)\n\nfor i in range(4):\n    try:\n        print(\"body\", i)\n    except:\n        print(\"arm that never runs\")\n    finally:\n        print(\"loop fin\", i)\n\ndef ignores_transfers() -\u003e int:\n    try:\n        return 1\n    except:\n        print(\"an arm cannot catch a return\")\n    return 3\n\nprint(ignores_transfers())\n",
@@ -1272,7 +1323,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle1402150713/prog.py\", line 46",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2721251253/prog.py\", line 46",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1283,7 +1334,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1402150713/prog.py\", line 46"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2721251253/prog.py\", line 46"
       ]
     },
     {
@@ -1710,23 +1761,23 @@
         "source": "# String literals are text with Python escapes (roadmap Gap N, ADR 0178).\n# The lexer used to decode an escape by dropping the backslash (\"a\\nb\" became the\n# three letters anb) and rebuilt ordinary string values with string(byte), which\n# re-encodes every non-ASCII byte — \"héllo\" arrived as \"hÃ©llo\". Both backends now\n# agree with each other and, for everything below, with CPython.\n\nprint(\"tab\\there\")\nprint(\"quoted \\\"inside\\\"\")\nprint(\"back\\\\slash\")\nprint(\"bell\\aend\")\nprint(\"hex \\x41\\x42\")\nprint(\"unicode \\u00e9 \\U0001F600\")\nprint(\"unknown \\q stays\")\nprint(r\"raw \\t stays literal\")\nprint(\"\"\"triple\nnewline\"\"\")\nprint(\"\"\"triple escape:\\nhere\"\"\")\n\ngreeting = \"café\"\nprint(greeting)\nprint(greeting + \"!\" + greeting)\nprint(\"é\" in greeting)\nprint(greeting == \"café\")\nprint(greeting.upper())\nprint(len(greeting))\n\nwords = [\"naïve\", \"日本語\", \"🐍\"]\nprint(words)\nfor w in words:\n    print(w)\n\ntable = {}\ntable[\"key\"] = \"value é\"\nprint(table)\nprint(table[\"key\"])\n\njoined = \", \".join([\"a\\tb\", \"c\"])\nprint(joined)\n\nx = 7\nprint(f\"f-string {x} ✓\")\n",
         "shared": true,
         "oracle": "debt",
-        "reason": "two rules fire: comparisons print 1/0 instead of True/False, and len(\"café\") is 5 because len counts bytes",
-        "ref": "roadmap L11.2 (bools as values) + L11.5 (code-point strings)",
+        "reason": "comparisons print 1/0 where CPython prints True/False (roadmap L11.2). len(\"café\") is no longer part of this row: ADR 0225 made the string unit the code point on both backends, and the program now prints 4 as CPython does",
+        "ref": "roadmap L11.2 (bools as values); the L11.5 half of this row closed with ADR 0225",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
+            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
           },
           {
             "backend": "aot",
-            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
+            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
+      "interp_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
       "aot_ok": true,
-      "aot_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
+      "aot_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
       "parity": true,
       "python_ok": true,
       "python_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\nTrue\nTrue\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
@@ -1734,8 +1785,8 @@
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "two rules fire: comparisons print 1/0 instead of True/False, and len(\"café\") is 5 because len counts bytes",
-      "oracle_ref": "roadmap L11.2 (bools as values) + L11.5 (code-point strings)",
+      "oracle_reason": "comparisons print 1/0 where CPython prints True/False (roadmap L11.2). len(\"café\") is no longer part of this row: ADR 0225 made the string unit the code point on both backends, and the program now prints 4 as CPython does",
+      "oracle_ref": "roadmap L11.2 (bools as values); the L11.5 half of this row closed with ADR 0225",
       "oracle_rules": [
         "set-order"
       ],
@@ -1858,7 +1909,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2600202307/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2120933733/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1869,7 +1920,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2600202307/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2120933733/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1884,22 +1935,22 @@
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
+            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
           },
           {
             "backend": "aot",
-            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
+            "stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
+      "interp_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
       "aot_ok": true,
-      "aot_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
+      "aot_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n",
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1884092886/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2661093480/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1910,7 +1961,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1884092886/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2661093480/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -2394,7 +2445,7 @@
       "interp_stdout": "1\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/073/prog.ll:10:62: error: expected type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/076/prog.ll:10:62: error: expected type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "1\n",
@@ -2408,90 +2459,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/073/prog.ll:10:62: error: expected type"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_unicode",
-        "name": "probe_unicode.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — strings are code points, not bytes (L11.5).\n# len(\"café\") is 4 in CPython and 5 in gusty, and \"héllo\"[1] is \"é\" rather than the byte 195:\n# strings are byte sequences here, not code points. Iterating text used to be a second,\n# unrelated defect — the unrolled loop emitted an invalid `store i32 @.str1`, fixed by Gap R.15\n# (ADR 0208) — so both backends now run this program and agree on the same wrong answer.\nprint(len(\"café\"))\nprint(\"héllo\"[1])\nfor ch in \"aé\":\n    print(ch)\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "strings are bytes, not code points: len(\"café\") is 5 where CPython answers 4, and \"héllo\"[1] is the byte 195 where CPython answers \"é\". The loop itself is no longer part of the debt — iterating text used to emit an invalid `store i32 @.str1`, which Gap R.15 (ADR 0208) fixed, so both backends now run the program and agree on the wrong answer",
-        "ref": "roadmap L11.5 (code-point strings, closes Gap N.2); ADR 0208 for the loop",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "5\n195\na\né\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "5\n195\na\né\n"
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "5\n195\na\né\n",
-      "aot_ok": true,
-      "aot_stdout": "5\n195\na\né\n",
-      "parity": true,
-      "python_ok": true,
-      "python_stdout": "4\né\na\né\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "strings are bytes, not code points: len(\"café\") is 5 where CPython answers 4, and \"héllo\"[1] is the byte 195 where CPython answers \"é\". The loop itself is no longer part of the debt — iterating text used to emit an invalid `store i32 @.str1`, which Gap R.15 (ADR 0208) fixed, so both backends now run the program and agree on the wrong answer",
-      "oracle_ref": "roadmap L11.5 (code-point strings, closes Gap N.2); ADR 0208 for the loop",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
-      ]
-    },
-    {
-      "case": {
-        "id": "programs/probe_string_index",
-        "name": "probe_string_index.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — s[i] is a one-character string, not a byte value\n# (L11.5). Both backends print 98 for \"abc\"[1] today.\nprint(\"abc\"[1])\ns = \"héllo\"\nprint(s[0])\nprint(s[4])\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "s[i] yields a byte value (98 for \"abc\"[1]) instead of a one-character string, and a non-literal string index is refused in AOT",
-        "ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "98\n104\n108\n"
-          },
-          {
-            "backend": "aot",
-            "missing": true
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "98\n104\n108\n",
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "index of a non-literal variable",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "b\nh\no\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "s[i] yields a byte value (98 for \"abc\"[1]) instead of a one-character string, and a non-literal string index is refused in AOT",
-      "oracle_ref": "roadmap L11.5 (code-point strings, closes Gap N.2)",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled leg failed: index of a non-literal variable"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/076/prog.ll:10:62: error: expected type"
       ]
     },
     {
@@ -2850,7 +2818,7 @@
       "interp_stdout": "2.5\n3.0\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/078/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/080/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
       "parity": false,
       "python_ok": true,
       "python_stdout": "2.5\n3.0\n",
@@ -2864,7 +2832,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix551969981/078/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/080/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
       ]
     },
     {
@@ -2894,7 +2862,7 @@
       "parity": false,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle875940343/prog.py\", line 10",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle4082734364/prog.py\", line 10",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -2905,16 +2873,16 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle875940343/prog.py\", line 10"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle4082734364/prog.py\", line 10"
       ]
     }
   ],
-  "rows": 93,
-  "skipped": 23,
-  "pass": 70,
+  "rows": 94,
+  "skipped": 21,
+  "pass": 73,
   "fail": 0,
-  "oracle_match": 51,
-  "oracle_debt": 28,
+  "oracle_match": 55,
+  "oracle_debt": 25,
   "oracle_not_applicable": 14,
   "oracle_drift": 0
 }

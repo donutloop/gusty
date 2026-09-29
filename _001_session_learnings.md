@@ -3880,3 +3880,33 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
   returning one from a method: `print(f"hi {n}")` gave `hi 0`. The fix is the same in both cases — read
   the text back with `rt_str_ptr` — and the assertion belongs in the IR (`call i8* @rt_str_ptr(i32`)
   because stdout of a *different* program can look right by accident.
+
+## Cycle 173 — Gap R.45 / ADR 0225: a subscript of a string is a one-character string
+
+- **Two backends agreeing is not evidence.** `s[1]` returned the byte code in *both* engines, so every
+  backend-vs-backend assertion in the suite was satisfied and only the CPython leg could see that `98`
+  is not `b`. Sixteen shapes, zero matched. When the interpreters of a language agree with each other
+  and disagree with the oracle, the agreement is the thing that fooled you.
+- **A missing type shows up as arithmetic you didn't ask for.** `s[0] + s[2]` printed `196`. Whenever a
+  measurement produces a number that looks like a sum of character codes, stop: something is an integer
+  that should have been a string, and the interesting bug is downstream of the one being reported.
+- **The worst defect found this cycle was an error-swallow, not a wrong index.** `truthyValue` returned
+  `asI1(b, "0")` when a condition failed to lower, with a comment claiming the enclosing statement path
+  still had the error — true for `if`, false for the ternary, which had no error channel at all. Result:
+  `print(1 if s[1] == "b" else 0)` compiled to `icmp ne i32 0, 0` and printed a confident `0`. Rule now
+  asserted: a part of a program that cannot be lowered is a compile error, never a default value. Grep
+  for `return <plausible default>` where an error is in scope; that pattern is a silent-wrong-answer
+  generator.
+- **Fix the unit once, everywhere position is asked.** Indexing, slicing, `len` and `ord` had each made
+  their own byte/rune choice; fixing only the subscript would have left `len("café") == 5` next to
+  `"café"[3] == é`, two units in one language distinguished by which question you ask. The same rule
+  also removed a real memory-shape bug: a byte-wise slice can cut a multi-byte character in half.
+- **Expectations from the oracle caught me writing an expectation from gusty's behaviour**: I typed
+  `len("café") → 4` and the test failed against gusty's `5`. The failure was correct, gusty was wrong,
+  and the fix belongs in this cycle because it is the same "code points" decision (ADR 0225), not in a
+  follow-up that would have re-broken the first one.
+- **Record the hole the leg that can't do it, and assert it as a refusal, not an average.** The compiled
+  leg still can't ask a runtime question about a character (Gap R.47). The test asserts exit 1 *with a
+  message*, fails on exit 2, and fails on exit 0 — so if the leg ever starts answering, the test shouts
+  instead of quietly agreeing. The seven shapes only the interpreter gets are asserted on that leg
+  alone, because a two-engine table would have hidden the compiled hole behind the interpreter's answer.

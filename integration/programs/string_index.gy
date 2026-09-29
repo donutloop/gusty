@@ -1,0 +1,8 @@
+# What `s[i]` yields: a one-character string counted in code points, on both backends (ADR 0225).
+# The row this came from was L11.5's byte-index debt -- `"abc"[1]` answered 98 and the compiled leg
+# refused the variable case outright. Note that the *index* is code-point correct on both legs even
+# where the compiled `len` of non-ASCII text is not (Gap R.47). CPython prints exactly this.
+print("abc"[1])
+s = "héllo"
+print(s[0])
+print(s[4])

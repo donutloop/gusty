@@ -2924,6 +2924,12 @@ func (g *irGen) exprIsString(e Expr) bool {
 		_, rf := g.stringVal(v.R)
 		return lf || rf || (g.exprIsString(v.L) && g.exprIsString(v.R))
 	case *Index:
+		// A subscript of a string the compiler can name is text (ADR 0225), and so is an element
+		// of a string container: that is what lets `xs = [s[1]]` remember that its elements are
+		// strings rather than print the index that means them.
+		if _, isStr := g.stringVal(v.Obj); isStr {
+			return true
+		}
 		if nm, ok := v.Obj.(*Name); ok {
 			return g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value]
 		}
@@ -3608,7 +3614,11 @@ func stringConst(e Expr, shadowed func(string) bool) (string, bool) {
 // stringConstLen is len() over a compile-time-known string constant.
 func stringConstLen(e Expr, shadowed func(string) bool) (int, bool) {
 	if s, ok := stringConst(e, shadowed); ok {
-		return len(s), true
+		// Code points, the unit every other string position question uses (ADR 0225). This fold
+		// measured bytes, so `len("héllo")` answered 6 at compile time while the same program with
+		// the text in a variable answered 5 -- one language, two units, chosen by where the text
+		// happened to be written.
+		return len([]rune(s)), true
 	}
 	return 0, false
 }
@@ -4642,14 +4652,17 @@ func (g *irGen) floatEval(e Expr) (float64, bool) {
 
 // truthyValue emits an i32 0/1 for a condition, using float != 0.0
 // for float expressions (fcmp one + zext) instead of truncated ints.
-func (g *irGen) truthyValue(b *strings.Builder, e Expr) string {
+func (g *irGen) truthyValue(b *strings.Builder, e Expr) (string, error) {
 	v, err := g.truthOperandErr(b, e)
 	if err != nil {
-		// Mirrors valueText: an un-lowerable condition is reported by the enclosing
-		// statement path, which still has the error.
-		return g.asI1(b, "0")
+		// The condition used to be replaced by a false branch and the error dropped on the
+		// floor. That is the worst failure this backend can make: `print(1 if s[1] == "b" else 0)`
+		// could not lower its condition at all, and printed `0` as if the program had asked a
+		// question and been answered. A part that cannot be lowered is a compile error, reported
+		// by the caller that has the error channel (roadmap Gap R.45, ADR 0225; ADR 0166).
+		return "", err
 	}
-	return v
+	return v, nil
 }
 
 // --- i1 / i32 truthiness normalisation -------------------------------------
@@ -5772,7 +5785,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return t, nil
 	case *CondExpr:
 		// ternary `then if cond else otherwise`: pick a branch by condition.
-		cond := g.truthyValue(b, n.Cond)
+		cond, cerr := g.truthyValue(b, n.Cond)
+		if cerr != nil {
+			return "", cerr
+		}
 		then, err := g.value(b, n.If)
 		if err != nil {
 			return "", err
@@ -5898,6 +5914,22 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 			} else {
 				return "", fmt.Errorf("index must be a constant")
+			}
+		}
+		// A subscript of a string is a one-character string (ADR 0225), and the base the
+		// compiler can name is folded: a literal, a variable holding text, a folded
+		// concatenation. Negative positions are positions, as ADR 0210 ruled for containers,
+		// and the count is code points, which is how `len` and slicing already count. Without
+		// this the base only worked as a literal, so `s = "abc"; print(s[1])` refused while
+		// `"abc"[1]` answered -- one rule, two behaviours.
+		if _, isInt := n.Idx.(*IntLit); isInt {
+			if txt, isStr := g.stringVal(n.Obj); isStr {
+				runes := []rune(txt)
+				i := normPosIndex(key, int64(len(runes)))
+				if i < 0 || i >= int64(len(runes)) {
+					return "", fmt.Errorf("string index out of range")
+				}
+				return g.internStr(b, string(runes[i])), nil
 			}
 		}
 		switch obj := n.Obj.(type) {
@@ -6074,11 +6106,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if !ok {
 				return "", fmt.Errorf("string index on non-constant string")
 			}
-			key = normPosIndex(key, int64(len(str)))
-			if key < 0 || key >= int64(len(str)) {
+			// The same rule as the interpreter (ADR 0225): a subscript of a string is a
+			// one-character string, so it comes back as an @str_tab index, and it is counted in
+			// code points. `%d`-ing the byte made `s[1] == "b"` compile and answer false -- a wrong
+			// value, not a refusal, which is the worst thing this backend can do.
+			runes := []rune(str)
+			key = normPosIndex(key, int64(len(runes)))
+			if key < 0 || key >= int64(len(runes)) {
 				return "", fmt.Errorf("string index out of range")
 			}
-			return fmt.Sprintf("%d", str[key]), nil
+			return g.internStr(b, string(runes[key])), nil
 		case *Call:
 			// Element access into list-producing call expressions: keys(),
 			// values(), sorted(...), reversed(...), split(...). partition()
@@ -8213,7 +8250,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if globals, ok3 := g.imports.Globals[nm.Value]; ok3 {
 					if lit, ok4 := globals[attr.Name.Value]; ok4 {
 						if str, ok5 := lit.(*StrLit); ok5 {
-							return fmt.Sprintf("%d", len(str.Value)), nil
+							return fmt.Sprintf("%d", len([]rune(str.Value))), nil // code points, ADR 0225
 						}
 						if lst, ok5 := lit.(*ListLit); ok5 {
 							return fmt.Sprintf("%d", len(lst.Elems)), nil
@@ -8229,7 +8266,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		case *Name:
 			if g.strVals != nil {
 				if sv, ok := g.strVals[lit.Value]; ok {
-					return fmt.Sprintf("%d", len(sv)), nil
+					return fmt.Sprintf("%d", len([]rune(sv))), nil
 				}
 			}
 			// An interned string (parameter, container element, loop variable) has no
@@ -8827,7 +8864,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 								if str.Value == "" {
 									return "", fmt.Errorf("codegen: ord of empty string")
 								}
-								return fmt.Sprintf("%d", int(str.Value[0])), nil
+								return fmt.Sprintf("%d", int([]rune(str.Value)[0])), nil
 							}
 						}
 					}
@@ -8840,7 +8877,8 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(sv) == 0 {
 			return "", fmt.Errorf("ord of empty string")
 		}
-		return fmt.Sprintf("%d", int64(sv[0])), nil
+		// the first code point, not the first byte (ADR 0225)
+		return fmt.Sprintf("%d", int64([]rune(sv)[0])), nil
 	case "round":
 		// round(x) folds a constant integer literal to itself (mirroring the
 		// interpreter's int case; the AOT backend has no float representation).
@@ -9108,7 +9146,15 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		// echo("yo") returns an index into @str_tab; printing it must show the text
 		// (roadmap Gap J.5).
 		return g.callReturnsStr(v)
+	case *BinOp:
+		// `s[0] + s[2]` folds to text; every operand question is the same question.
+		return g.exprIsString(v)
 	case *Index:
+		// A subscript of a string is a one-character string (ADR 0225), so printing it is a
+		// text question. Answering with %d printed the interned index: `print(s[1])` said `0`.
+		if _, isStr := g.stringVal(v.Obj); isStr {
+			return true
+		}
 		if nm, ok := v.Obj.(*Name); ok {
 			// Elements of a string list/set and the values of a string dict are both
 			// @str_tab indices; printing one must show its text, not the index. The
@@ -10436,6 +10482,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
+					// `heapElemKind` reads the emitted shape, and an element that is a folded string
+					// subscript (`xs = [s[1]]`) has no shape yet -- its interning is a call, not a
+					// literal. The static question is the same question, and the tag below is what the
+					// printer reads, so answering it only one way prints the index (ADR 0225).
+					if !interned {
+						interned = g.exprIsString(el)
+					}
 					// Every slot is tagged, not just the ones in a mixed list: rt_container_eq
 					// compares (payload, tag) pairs, and a slot whose tag was never written holds
 					// whatever the previous tenant of that heap slot left (ADR 0187, ADR 0189).
@@ -10732,7 +10785,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		return fmt.Errorf("codegen: unsupported augmented-assignment target %T", n.Target)
 
 	case *IfStmt:
-		cond := g.truthyValue(b, n.Cond)
+		cond, cerr := g.truthyValue(b, n.Cond)
+		if cerr != nil {
+			return cerr
+		}
 		thenL := g.newLabel("if.then")
 		endL := g.newLabel("if.end")
 		var elseL string
@@ -10814,7 +10870,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", orTmp, bodyL, fallL))
 			b.WriteString(fmt.Sprintf("%s:\n", bodyL))
 			if c.Guard != nil {
-				gok := g.truthyValue(b, c.Guard)
+				gok, gerr := g.truthyValue(b, c.Guard)
+				if gerr != nil {
+					return gerr
+				}
 				bodyAfter := g.newLabel("match.case.body")
 				b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", gok, bodyAfter, fallL))
 				b.WriteString(fmt.Sprintf("%s:\n", bodyAfter))
@@ -10837,7 +10896,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		endL := g.newLabel("while.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
 		b.WriteString(fmt.Sprintf("%s:\n", condL))
-		cond := g.truthyValue(b, n.Cond)
+		cond, cerr := g.truthyValue(b, n.Cond)
+		if cerr != nil {
+			return cerr
+		}
 		// normal completion (cond false) enters else if present; break skips else
 		normalL := endL
 		if len(n.Else) > 0 {

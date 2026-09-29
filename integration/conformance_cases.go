@@ -108,6 +108,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// ADR 0224 in one file: comparison, `in`, f-strings, instance attributes and a method's
 		// string result, all through the @str_tab index that replaced the literal's address.
 		"string_values",
+		// ADR 0225: what `s[1]` is -- a one-character string counted in code points, on both
+		// backends, where both used to answer the byte.
+		"string_subscript",
+		// The promoted L11.5 probe: the same rule through a literal, a variable, and the two ends
+		// of a non-ASCII string.
+		"string_index",
+		// The promoted code-point probe: len, indexing and iteration over non-ASCII text measured
+		// the same way on both backends and in CPython (ADR 0225).
+		"unicode_text",
 		// Gap R.23 (ADR 0222): a deferred `finally` body runs on every exit from the
 		// try -- fall-through, handled, propagating, and the transfers that leave it.
 		"deferred_bodies",
@@ -215,8 +224,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_module_scope",   // Gap R.35 — a function cannot read the module's names (compiled)
 		// Gap R.40 (ADR 0221): a literal list holding a float emits a module llc rejects.
 		"probe_float_list_equal",
-		"probe_unicode",       // L11.5 — strings are bytes, not code points
-		"probe_string_index",  // L11.5 — s[i] is a byte value, not a character
 		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
 		"probe_float_numeric", // L11.6 — //, /=, float % and float params
 		"probe_enumerate",     // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
@@ -348,13 +355,9 @@ var oracleLedger = map[string]oracleDecl{
 	"merged/features": {oracle: lang.OracleNA,
 		reason: "inherits features_b's positional set subscript, which CPython rejects; features_a's \"abc\"[1] == 98 divergence is pinned on its own row",
 		ref:    "roadmap L11.5 (code-point strings)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}, {Backend: "aot", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}}},
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}, {Backend: "aot", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}}},
 
 	// ---- measured divergences: valid CPython programs that print something else --
-	"programs/features_a": {oracle: lang.OracleDebt,
-		reason: "\"abc\"[1] prints the byte 98; CPython prints the one-character string 'b'",
-		ref:    "roadmap L11.5 (code-point strings, closes Gap N.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n"}, {Backend: "aot", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx 98\nsup ABC\nslow abc\n"}}},
 	"programs/print_args": {oracle: lang.OracleDebt,
 		reason: "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
@@ -372,9 +375,9 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"}, {Backend: "aot", Stdout: "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"}}},
 	"programs/string_escapes": {oracle: lang.OracleDebt,
-		reason: "two rules fire: comparisons print 1/0 instead of True/False, and len(\"café\") is 5 because len counts bytes",
-		ref:    "roadmap L11.2 (bools as values) + L11.5 (code-point strings)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "tab\there\nquoted \"inside\"\nback\\slash\nbell\x07end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"}, {Backend: "aot", Stdout: "tab\there\nquoted \"inside\"\nback\\slash\nbell\x07end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n5\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"}}},
+		reason: "comparisons print 1/0 where CPython prints True/False (roadmap L11.2). len(\"café\") is no longer part of this row: ADR 0225 made the string unit the code point on both backends, and the program now prints 4 as CPython does",
+		ref:    "roadmap L11.2 (bools as values); the L11.5 half of this row closed with ADR 0225",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "tab\there\nquoted \"inside\"\nback\\slash\nbell\x07end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"}, {Backend: "aot", Stdout: "tab\there\nquoted \"inside\"\nback\\slash\nbell\x07end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"}}},
 	"programs/string_params": {oracle: lang.OracleDebt,
 		reason: "string equality predicates print 1/0 where CPython prints True/False",
 		ref:    "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
@@ -435,14 +438,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a function whose return paths have different types is lowered as returning one of them, so the compiled caller reads the integer as an interned-string index and prints (null) where the interpreter and CPython print 3 — silently, with exit 0",
 		ref:    "roadmap Gap R.22 (mixed return types; ADR 0213 refiled the original Gap R.21 reading, which blamed try/except)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\n"}, {Backend: "aot", Stdout: "(null)\n"}}},
-	"programs/probe_unicode": {oracle: lang.OracleDebt,
-		reason: "strings are bytes, not code points: len(\"café\") is 5 where CPython answers 4, and \"héllo\"[1] is the byte 195 where CPython answers \"é\". The loop itself is no longer part of the debt — iterating text used to emit an invalid `store i32 @.str1`, which Gap R.15 (ADR 0208) fixed, so both backends now run the program and agree on the wrong answer",
-		ref:    "roadmap L11.5 (code-point strings, closes Gap N.2); ADR 0208 for the loop",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "5\n195\na\né\n"}, {Backend: "aot", Stdout: "5\n195\na\né\n"}}},
-	"programs/probe_string_index": {oracle: lang.OracleDebt,
-		reason: "s[i] yields a byte value (98 for \"abc\"[1]) instead of a one-character string, and a non-literal string index is refused in AOT",
-		ref:    "roadmap L11.5 (code-point strings, closes Gap N.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "98\n104\n108\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_math_const": {oracle: lang.OracleNA,
 		reason: "Python spells these math.pi / math.e, so the source is not a CPython program; what the row pins is that the on-disk data-only fold loses the float type",
 		ref:    "roadmap L11.6 (a stdlib constant keeps its type)",

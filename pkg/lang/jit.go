@@ -1657,11 +1657,18 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			}
 			return 0, exnError("KeyError", "not in set")
 		case "str":
-			i := normPosIndex(idx, int64(len(o.sval)))
-			if i < 0 || i >= int64(len(o.sval)) {
+			// `s[1]` is a one-character *string*, counted in code points — not the byte. Answering
+			// the code point was a type error that propagated everywhere the value went:
+			// `s[0] + s[2]` did arithmetic and printed 196, `s[1] == "b"` said false, `len(s[1])`
+			// and `s[1].upper()` and `ord(s[1])` all trapped (roadmap Gap R.45, ADR 0225). A
+			// byte-wise index was also wrong for any text outside ASCII, which `len` and slicing
+			// already count in code points.
+			runes := []rune(o.sval)
+			i := normPosIndex(idx, int64(len(runes)))
+			if i < 0 || i >= int64(len(runes)) {
 				return 0, exnError("IndexError", "string index out of range")
 			}
-			return int64(o.sval[i]), nil
+			return e.allocStr(string(runes[i])), nil
 		default:
 			return 0, exnError("TypeError", e.valueTypeName(objV)+" object is not subscriptable")
 		}
@@ -1705,9 +1712,14 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 				return 0, &EvalError{Msg: "slice step cannot be zero"}
 			}
 		}
+		// A string is a sequence of code points, not of bytes, everywhere its position is
+		// asked about: `s[1]`, `len(s)` and `s[1:3]` count the same things (ADR 0225). A
+		// byte-wise slice could also cut a multi-byte character in half.
+		var runes []rune
 		length := int64(0)
 		if o.kind == "str" {
-			length = int64(len(o.sval))
+			runes = []rune(o.sval)
+			length = int64(len(runes))
 		} else {
 			length = int64(len(o.elems))
 		}
@@ -1715,7 +1727,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		if o.kind == "str" {
 			var sb strings.Builder
 			for i := start; (stp > 0 && i < stop) || (stp < 0 && i > stop); i += stp {
-				sb.WriteByte(o.sval[i])
+				sb.WriteRune(runes[i])
 			}
 			return e.allocStr(sb.String()), nil
 		}
@@ -3901,7 +3913,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				case "list", "set", "dict":
 					return int64(len(o.elems)), nil
 				case "str":
-					return int64(len(o.sval)), nil
+					// `len("caf\u00e9")` is 4, the way every other position-counting question in
+					// the language counts (ADR 0225) -- bytes answered 5.
+					return int64(len([]rune(o.sval))), nil
 				}
 			}
 			return 0, exnError("TypeError", "object of type "+e.valueTypeName(v)+" has no len()")
@@ -4171,10 +4185,13 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if !ok {
 				return 0, &EvalError{Msg: "ord needs a string"}
 			}
-			if len(o.sval) == 0 {
+			runes := []rune(o.sval)
+			if len(runes) == 0 {
 				return 0, &EvalError{Msg: "ord of empty string"}
 			}
-			return int64(o.sval[0]), nil
+			// the first *code point*, which is what ord means; the byte was the same answer for
+			// ASCII and a wrong one for everything else (ADR 0225).
+			return int64(runes[0]), nil
 		case "round":
 			// round(x) is the identity for ints; truncates floats.
 			x, err := e.eval(n.Args[0])

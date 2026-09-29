@@ -54,19 +54,18 @@ func TestStringValuesMatchCPythonOnBothEngines(t *testing.T) {
 	}
 }
 
-// TestStringSubscriptOnTheInterpreterIsPinned records a divergence this cycle's measurement turned
-// up, on the *interpreter* rather than in codegen: `s[1]` answers the character code, where CPython
-// answers the one-character string. It is pinned rather than smoothed over because both engines
-// currently print something and only the oracle leg says it is wrong (roadmap Gap R.45); delete the
-// expectation when the subscript starts returning text.
-func TestStringSubscriptOnTheInterpreterIsPinned(t *testing.T) {
+// TestStringSubscriptPrintsTextInTheInterpreter: the row this cycle closed. Both backends used to
+// answer the byte code (98, 99) where CPython answers b and c; the interpreter is asserted here
+// because the compiled leg is covered in string_subscript_test.go, and a two-engine table would have
+// let one leg drift unnoticed again (ADR 0225).
+func TestStringSubscriptPrintsTextInTheInterpreter(t *testing.T) {
 	path := writeSrc(t, t.TempDir(), "str_index.gy", "s = \"abc\"\nprint(s[1])\nprint(s[-1])\n")
 	out, code := cliRunCode(t, "--interp", path)
 	if code != 0 {
 		t.Fatalf("interp exited %d:\n%s", code, out)
 	}
-	if out != "98\n99\n" {
-		t.Fatalf("interp printed %q — the pinned character-code divergence has changed; if it now says \"b\\nc\", make this a parity case (Gap R.45)", out)
+	if out != "b\nc\n" {
+		t.Fatalf("interp printed %q, want CPython's \"b\\nc\\n\" (the pinned byte-code divergence 98/99 is meant to be gone)", out)
 	}
 }
 
@@ -91,7 +90,6 @@ func TestPrintingAnElementOfAFreshComprehensionListIsPinned(t *testing.T) {
 // still out of reach: each is a refusal (exit 1, a message) rather than an `llc` rejection (exit 2).
 func TestCompiledStringHolesRefuseRatherThanReject(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"index_a_variable_string", "s = \"abc\"\nprint(s[1])\n"},
 		{"index_a_sorted_result", "xs = [\"b\", \"a\"]\nprint(sorted(xs)[0])\n"},
 		{"str_of_a_number_compiled", "x = 5\nprint(str(x) == \"5\")\n"},
 	} {

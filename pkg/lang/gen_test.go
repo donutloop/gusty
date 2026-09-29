@@ -240,9 +240,14 @@ func TestGenStrIndex(t *testing.T) {
 		}
 		return v
 	}
-	// "abc"[1] -> 98 ('b')
-	if v := evalInt(`"abc"[1]`); v != 98 {
-		t.Fatalf("string index: expected 98, got %d", v)
+	// `"abc"[1]` is the one-character string "b" (ADR 0225), so the question the generated program
+	// can answer with a number is the one that asks about it: comparison with text and length. The
+	// old expectation here was the byte -- 98 -- which was the bug, not the contract.
+	if v := evalInt(`1 if "abc"[1] == "b" else 0`); v != 1 {
+		t.Fatalf("string index compared with text: expected 1, got %d", v)
+	}
+	if v := evalInt(`len("abc"[1])`); v != 1 {
+		t.Fatalf("len of a one-character subscript: expected 1, got %d", v)
 	}
 }
 
@@ -1034,7 +1039,6 @@ func TestGenDictGet(t *testing.T) {
 	}
 }
 
-
 func TestGenTypedExceptions(t *testing.T) {
 	evalErr := func(src string) error {
 		prog, err := Parse(src)
@@ -1267,7 +1271,6 @@ func TestGenIntFloat(t *testing.T) {
 		t.Fatalf("float string: got id %v kind=%v", rv, o.kind)
 	}
 }
-
 
 func TestWithContextManager(t *testing.T) {
 	src := `
