@@ -2150,6 +2150,42 @@ Closed by: `pkg/lang/string_value_test.go`, `TestStringElementFilterCompiles`,
 `comp_str_filter.gy` (the last two are promoted probes; the matrix no longer carries their rows).
 What remains is recorded as R.46 and R.45 rather than left implicit.
 
+### R.40 — a container slot is a word: ask what fits before writing it (CLOSED, ADR 0226)
+
+```gusty
+print(1 if [1] == [1.0] else 0)   # before: exit 2 -- [1 x i32] [@env_store = internal global ...
+print([1.5, 2])                    # before: exit 2 -- %t1 = sitofp i32  to double
+print(1 if 1.0 == [1] else 0)      # before: exit 2 -- %t2 = sitofp i32 @.lst1 to double
+xs = [1.5]
+print(xs[0])                       # before: printed 1   (a truncated float, silently)
+print(1 if {1.5} == {1.6} else 0)  # before: printed 1   (CPython: 0 -- true by truncation)
+```
+
+Recorded from two repros, measured at six, and the measurement also found three answers that had been
+green: `{1.0} == {1.0}` compiled to True through the same truncation that made `{1.5} == {1.6}` True.
+The rule is one question asked in one place — `heapElemKind`, which every container path already goes
+through, now asks whether the compiled word can hold the element, and refuses with the element kind,
+the missing representation and the roadmap item that owns it (L11.6).
+
+Two mechanism fixes came out of reading the emitted text rather than the error strings:
+
+- `emitList` wrote the global's opening text *before* validating elements, so a refusal mid-loop left
+  an unterminated `@.lstN = private global ...` in the module, and every downstream path that caught
+  and ignored that error shipped it. It builds the whole definition, then writes it once.
+- `valueText` was `v, _ := g.value(b, e); return v` — the third error-swallow this loop has found (after
+  `truthyValue` in ADR 0225 and the method emitter in ADR 0223), and the one that produced
+  `sitofp i32  to double`. Failures now report into the generator and `GenerateIR` refuses: nothing that
+  is about to be refused may also be executed.
+
+`1.0 == [1]` is answered by kind (ADR 0215 with ADR 0221's numeric exception), not by coercing a
+container global through a float conversion.
+
+Closed by: `pkg/lang/container_element_test.go` (including the artifact blacklist —
+`sitofp i32  to double`, `sitofp i32 @.lst`, `[1 x i32] [@`, `ret i32 @.`, `icmp eq i32 @.` — run over
+the whole family), `integration/container_element_test.go`, parity program
+`integration/programs/kind_mismatch_equality.gy`. What remains is L11.6 (a float that can live in a
+slot, which turns each refusal into an answer) and R.37 for the ordering comparisons.
+
 ### R.46 — printing an element of a freshly built comprehension list prints its index (OPEN, compiled)
 
 ```gusty

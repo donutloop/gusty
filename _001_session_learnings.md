@@ -3910,3 +3910,33 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
   message*, fails on exit 2, and fails on exit 0 — so if the leg ever starts answering, the test shouts
   instead of quietly agreeing. The seven shapes only the interpreter gets are asserted on that leg
   alone, because a two-engine table would have hidden the compiled hole behind the interpreter's answer.
+
+## Cycle 174 — Gap R.40 / ADR 0226: a container slot is a word, ask what fits before writing it
+
+- **A green row can be a bug that happens to agree with the oracle.** `{1.0} == {1.0}` printed `1` in
+  the compiled backend and read like support for floats in containers; the same code said
+  `{1.5} == {1.6}` → `1`. When a "working" shape is one float value deep, ask what its *neighbour*
+  does before believing it — the neighbour costs one line and settles whether you have a feature or a
+  truncation. My matrix had `lit_dict_float_eq` as OK until I measured the pair; the refusal that
+  replaced it is a regression only against a wrong answer.
+- **Third error-swallow found in this loop, same shape each time.** `truthyValue` returned a false
+  branch (`if` conditions), the method emitter dropped a body (`ret`), `valueText` returned `""`
+  (`sitofp i32  to double`). All three were `x, _ := f(); return <plausible default>` in a function with
+  no error channel, each justified by a comment claiming somebody upstream had it. Grep the codebase for
+  `, _ := ` next to a returned default; the pattern is a silent-wrong-answer factory, and the fix is a
+  channel into the generator plus a refusal at assembly, not a patch at the call site that happened to
+  be noticed.
+- **Write the artifact, then the error.** `emitList` wrote the global's opening text into the module and
+  *then* discovered an element it couldn't hold, so a refusal left an unterminated `@.lstN = ...` for
+  downstream paths to ship. Partial output plus a swallowed error is how an "internal" exit-2 reaches a
+  user with a perfectly ordinary program: build the whole thing, then commit the write.
+- **Fix the exit-code class by measuring the family, not the repro.** The gap recorded two invalid
+  modules; the family had six. Had I fixed the two named cases the commit message would have claimed a
+  class closed while four instances remained. The blacklist test (`sitofp i32  to double`,
+  `icmp eq i32 @.`, `[1 x i32] [@`, `ret i32 @.`) is what makes the claim checkable instead of
+  anecdotal — it fails for any program in the family, present or future.
+- **Answer the kind question before the numeric one.** `1.0 == [1]` is not "convert both to double";
+  CPython answers False without looking inside the list. Routing it through the float path is precisely
+  what produced the container-shaped operand. ADR 0215's gate is the place this belongs, with ADR 0221's
+  numeric pair as the deliberate exception — and where the honest answer would be a runtime TypeError
+  (`1.0 < [1]`), refuse and cite the gap (R.37) rather than inventing a value.

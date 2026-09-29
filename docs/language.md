@@ -1207,6 +1207,21 @@ backends and the same text CPython prints: `str(None)` is `"None"` (not `"0"`), 
 string may be printed but never stored as a global; where it is stored, the text is interned
 and the handle kept (ADR 0183).
 
+A **container slot is an i32 word**, so the element kinds a compiled container can hold are the kinds
+a word can carry: integers, interned strings (`@str_tab` indices, ADR 0224) and `None` — each with its
+own tag (ADR 0187/0189). A **float does not fit**, so `xs = [1.5]`, `print([1.5, 2])` and
+`[1] == [1.0]` are refused with a message naming the element kind and the item that owns the fix
+(roadmap L11.6), never emitted as an instruction LLVM has to reject (ADR 0166). The refusal replaces a
+silence that was worse than either: the fold truncated floats to words, so `{1.5} == {1.6}` and
+`{"a": 1.5} == {"a": 1.6}` compiled to **True** and `print(xs[0])` of `[1.5]` printed `1`
+(roadmap Gap R.40, ADR 0226). The interpreter answers all of those correctly today.
+
+An operator between **two operands of different runtime kinds** is not a numeric question:
+`1.0 == [1]` is False, as CPython answers it, decided by kind rather than by coercing a container
+through a float conversion (ADR 0215, with ADR 0221's numeric cross-kind pair as the deliberate
+exception). Ordering a number against a container is a `TypeError` in CPython and is refused today,
+because this backend cannot raise a runtime `TypeError` yet (roadmap Gap R.37).
+
 A compiled list can hold numbers, interned strings and `None` together: each element slot
 carries its own tag, so `print([1, "a", None])` gives `[1, 'a', None]` on both backends and on
 CPython (ADR 0184). What a mixed list may hold is decided by what the tag can honestly describe

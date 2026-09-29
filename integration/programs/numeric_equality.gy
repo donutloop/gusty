@@ -28,16 +28,15 @@ print(1 if d < c else 0)
 print(1 if c == c else 0)
 print(1 if a < d else 0)
 
-# Containers compare element by element, so the same rule reaches inside them.
+# Containers compare element by element, so the same rule reaches inside them. The float-carrying
+# containers (the shapes that used to compare equal by truncating 2.0 to 2) are a probe of their own
+# -- probe_float_container_equality -- because the compiled backend refuses them rather than truncating
+# (roadmap Gap R.40 closed by ADR 0226; the answers await L11.6).
 p = [1, 2]
-q = [1, 2.0]
 r = [1, 3]
-print(1 if p == q else 0)
 print(1 if p == r else 0)
 km = {"a": 1}
-kn = {"a": 1.0}
 ko = {"a": 2}
-print(1 if km == kn else 0)
 print(1 if km == ko else 0)
 
 # A number is not equal to a container, and `is` still asks about identity.

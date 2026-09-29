@@ -117,6 +117,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// The promoted code-point probe: len, indexing and iteration over non-ASCII text measured
 		// the same way on both backends and in CPython (ADR 0225).
 		"unicode_text",
+		// ADR 0226: which question an operator asks. A number against a container is answered by
+		// kind, not by coercing a container global through a float conversion.
+		"kind_mismatch_equality",
 		// Gap R.23 (ADR 0222): a deferred `finally` body runs on every exit from the
 		// try -- fall-through, handled, propagating, and the transfers that leave it.
 		"deferred_bodies",
@@ -221,7 +224,8 @@ func conformanceProbes() []lang.ConformanceCase {
 		"sequence_ops",
 		"probe_operand_types",  // Gap R.26 — an operator applied to the wrong operands
 		"probe_percent_format", // Gap R.31 — no `%` string formatting; both legs refuse
-		"probe_module_scope",   // Gap R.35 — a function cannot read the module's names (compiled)
+		"probe_module_scope",
+		"probe_float_container_equality", // Gap R.35 — a function cannot read the module's names (compiled)
 		// Gap R.40 (ADR 0221): a literal list holding a float emits a module llc rejects.
 		"probe_float_list_equal",
 		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
@@ -415,6 +419,14 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap Gap R.40",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n"}, {Backend: "aot", Missing: true}}},
 
+	// Gap R.40 (ADR 0226): these are the shapes whose compiled answers came from truncating a float
+	// into an i32 slot -- True for [1.5] == [1.6] where CPython says False. The emitter now refuses;
+	// the answers belong to L11.6, and until then this row is the record that the human path answers
+	// them and the compiled path does not.
+	"programs/probe_float_container_equality": {oracle: lang.OracleDebt,
+		reason: "the interpreter and CPython agree on all six lines; the compiled backend refuses, because a container slot is an i32 word and a float has no representation in one (it previously truncated, which is how [1.5] == [1.6] printed 1)",
+		ref:    "roadmap Gap R.40 (closed, ADR 0226) and L11.6 (the answers); ADR 0166 for refusal-not-invalid-module",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n1\n0\n0\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_module_scope": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all five values (a module constant read by a function, one defined below the def, a method reading one, a nested def reaching past both frames, and a local shadowing the global) — but the compiled backend refuses to lower the program at all: `undefined name \"MAX\" (no binding for it; assign it before use)`, whose claim that the interpreter reports the same error is false here too (it reports no error). Two other shapes -- a method reading a module name, a nested def reading one -- do not even refuse: they compile and print 0",
 		ref:    "roadmap Gap R.35 (compiled half); ADR 0220 (the interpreter and checker half); Gap R.38 for the untrue refusal",

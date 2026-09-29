@@ -3788,22 +3788,31 @@ func (g *irGen) emitList(ln *ListLit) (string, error) {
 	n := len(ln.Elems)
 	g.lstIdx++
 	name := fmt.Sprintf("@.lst%d", g.lstIdx)
+	// Build the whole definition before touching the globals buffer. This emitter used to write the
+	// opening `@.lstN = private global {i32, [N x i32]} { i32 N, [N x i32] [` and only then look at the
+	// elements; when one of them was not an int it returned an error and left an unterminated global
+	// definition in the module. Whatever caught that error -- the container-equality path, the print
+	// path -- shipped the broken line, and the user got exit 2, `expected type`, for a program like
+	// `print([1.5, 2])` whose answer CPython prints in one line (roadmap Gap R.40, ADR 0166).
+	var def strings.Builder
+	parts := make([]string, 0, n)
+	for i, el := range ln.Elems {
+		il, ok := el.(*IntLit)
+		if !ok {
+			if _, isFloat := el.(*FloatLit); isFloat {
+				return "", fmt.Errorf("a compiled container cannot hold a float yet: the element slot is an i32 word and %s has no representation in one (the interpreter and CPython both answer this program; compiled floats in containers are roadmap L11.6)", exprTyName(el))
+			}
+			return "", fmt.Errorf("list literal elements must be integers, not %s", exprTyName(el))
+		}
+		_ = i
+		parts = append(parts, fmt.Sprintf("i32 %d", il.Value))
+	}
+	def.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, strings.Join(parts, ", ")))
 	if g.staticLists == nil {
 		g.staticLists = map[string]*ListLit{}
 	}
 	g.staticLists[name] = ln
-	g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [", name, n, n, n))
-	for i, el := range ln.Elems {
-		il, ok := el.(*IntLit)
-		if !ok {
-			return "", fmt.Errorf("list literal elements must be integers")
-		}
-		if i > 0 {
-			g.globals.WriteString(", ")
-		}
-		g.globals.WriteString(fmt.Sprintf("i32 %d", il.Value))
-	}
-	g.globals.WriteString("] }\n")
+	g.globals.WriteString(def.String())
 	g.listNames[ln] = name
 	return name, nil
 }
@@ -4325,8 +4334,30 @@ func (g *irGen) isFloat(e Expr) bool {
 
 // valueText returns the i32 operand text for e, discarding any codegen error.
 func (g *irGen) valueText(b *strings.Builder, e Expr) string {
-	v, _ := g.value(b, e)
+	v, err := g.value(b, e)
+	if err != nil {
+		// This line used to discard the error and hand back "". The float path then emitted
+		//     %t1 = sitofp i32  to double
+		// into the module -- an instruction with no operand -- which llc rejected, so an ordinary
+		// program like `print([1.5, 2])` came back as exit 2, a toolchain rejection blaming the
+		// compiler for a program whose answer CPython prints in one line (roadmap Gap R.40,
+		// ADR 0166). The failure is recorded instead; the module is refused at assembly. "0" keeps
+		// the half-written instruction parseable purely so that the refusal, not the garbage, is
+		// what a user reads -- nothing that is about to be refused may also be executed.
+		g.noteUnlowered(e, err)
+		return "0"
+	}
 	return v
+}
+
+// noteUnlowered records the first expression a helper could not lower. It shares the field the
+// method emitter uses (ADR 0223) because the rule is the same one: an emission path with no error
+// channel of its own reports into the generator, and GenerateIR refuses rather than shipping IR it
+// knows to be wrong.
+func (g *irGen) noteUnlowered(e Expr, err error) {
+	if g.emitErr == nil {
+		g.emitErr = fmt.Errorf("codegen: %s cannot be compiled: %v", exprTyName(e), err)
+	}
 }
 
 // floatValue emits a double IR operand for a float-typed expression e.
@@ -4908,6 +4939,19 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 // node kinds whose binding a container registration depends on.
 func exprTyName(e Expr) string {
 	switch n := e.(type) {
+	case *FloatLit:
+		// Naming matters in a refusal: this helper filled the blank in "an element slot is an i32
+		// word and <blank> has no representation in one", which told the reader nothing about
+		// what to change (ADR 0226).
+		return "a float value"
+	case *IntLit:
+		return "an integer"
+	case *StrLit:
+		return "a string"
+	case *BoolLit:
+		return "a bool"
+	case *NoneLit:
+		return "None"
 	case *Call:
 		return n.Ty
 	case *Name:
@@ -5300,6 +5344,29 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return res, nil
 		}
 		if g.isFloat(n.L) || g.isFloat(n.R) {
+			// Which question is this? Two operands of different runtime kinds are not equal
+			// (ADR 0215's rule; ADR 0221 makes the numeric cross-kind pair the exception), and
+			// CPython answers `1.0 == [1]` with False without ever converting the list. Handing
+			// it to the float path instead emitted `sitofp i32 @.lst1 to double` -- a container
+			// global fed to a float conversion -- and llc rejected the module, so the program
+			// got a toolchain rejection for asking an ordinary question (Gap R.40, ADR 0166).
+			other := n.R
+			if !g.isFloat(n.L) {
+				other = n.L
+			}
+			if g.isContainerExpr(other) && !(g.isContainerExpr(n.L) && g.isContainerExpr(n.R)) {
+				switch n.Op {
+				case "==", "!=", "is", "is not":
+					eq := n.Op == "!=" || n.Op == "is not"
+					v := "0"
+					if eq {
+						v = "1"
+					}
+					return v, nil
+				default:
+					return "", fmt.Errorf("codegen: ordering a number against a %s is a TypeError this backend cannot raise at runtime (roadmap Gap R.37)", exprTyName(other))
+				}
+			}
 			switch n.Op {
 			case "==", "!=", "<", "<=", ">", ">=":
 				return g.floatBinOp(b, n), nil

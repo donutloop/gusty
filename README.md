@@ -300,6 +300,15 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **A container slot is a word — ask what fits before writing it** (ADR 0226) — `[1] == [1.0]`,
+  `print([1.5, 2])` and `1.0 == [1]` reached `llc` as invented operands (`[1 x i32] [@env_store = ...`,
+  `%t1 = sitofp i32  to double`, `%t2 = sitofp i32 @.lst1 to double`) and came back as exit 2, while
+  three neighbouring shapes were *green* on truncation: `{1.5} == {1.6}` compiled to True. A container
+  now holds what a word can carry — ints, interned strings, `None` — and a float element is refused with
+  a message naming the missing representation. Two mechanisms were behind it: a global written into the
+  module before its elements were validated (leaving an unterminated definition that downstream paths
+  shipped), and `valueText` discarding a lowering error and returning `""`. A number compared with a
+  container is also answered by kind now, the way CPython answers it, not by coercing the container.
 - **A subscript of a string is a one-character string** (ADR 0225) — both backends answered `s[1]`
   with `98`, and the missing type spread to everything the value touched: `s[0] + s[2]` did arithmetic
   and printed `196`, `s[1] == "b"` said false (compiled as well as interpreted — the two backends

@@ -131,7 +131,10 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		{"xs = [1, \"a\"]\nxs.append([1])\nprint(xs)\n", "must carry a tag"},
 		// Mixing the still-unsupported kinds keeps the original, pre-tag refusal.
 		{"xs = [True, \"a\"]\nprint(xs)\n", "either strings or numbers"},
-		{"xs = [1.5, \"a\"]\nprint(xs)\n", "either strings or numbers"},
+		// A float in the literal is refused by the element-kind gate (ADR 0226), which fires first
+		// and is the more specific truth about that program: the float cannot be in the slot at all,
+		// mixed kinds or not.
+		{"xs = [1.5, \"a\"]\nprint(xs)\n", "cannot hold a float"},
 		// A container inside a container is the nested case: it refuses with the reason the
 		// collector gives (an element handle is never marked), not the mixed-kind message.
 		{"xs = [[1], \"a\"]\nprint(xs)\n", "cannot hold another container"},

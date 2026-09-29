@@ -264,7 +264,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2463862650/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3359920181/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -275,7 +275,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2463862650/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3359920181/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -351,7 +351,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1687810669/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle426272011/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -362,7 +362,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1687810669/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle426272011/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -612,7 +612,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle1447172285/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1412463012/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -623,7 +623,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1447172285/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1412463012/prog.py\", line 5"
       ]
     },
     {
@@ -653,7 +653,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2147872193/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle1356740452/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -664,7 +664,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2147872193/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1356740452/prog.py\", line 3"
       ]
     },
     {
@@ -694,7 +694,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3554725312/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3990106649/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -705,7 +705,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3554725312/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3990106649/prog.py\", line 5"
       ]
     },
     {
@@ -873,7 +873,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2905120520/prog.py\", line 11",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle623573320/prog.py\", line 11",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -884,7 +884,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2905120520/prog.py\", line 11"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle623573320/prog.py\", line 11"
       ]
     },
     {
@@ -1070,17 +1070,17 @@
       "case": {
         "id": "programs/numeric_equality",
         "name": "numeric_equality.gy",
-        "source": "# Equal numbers are equal whatever order the operands came in, and whatever their representation\n# (roadmap Gap R.29, ADR 0221). Printed as 1/0 so CPython can be run on this exact file.\nprint(1 if 1 == 1.0 else 0)\nprint(1 if 1.0 == 1 else 0)\nprint(1 if 1 != 1.0 else 0)\nprint(1 if 1.0 != 1 else 0)\nprint(1 if 0 == 0.0 else 0)\nprint(1 if 0.0 == -0.0 else 0)\nprint(1 if -3 == -3.0 else 0)\nprint(1 if 2 == 2.5 else 0)\nprint(1 if 2.5 == 2.5 else 0)\nprint(1 if 7 == 7.0 else 0)\nprint(1 if 1 == 2 else 0)\nprint(1 if 1 \u003c 1.0 else 0)\nprint(1 if 1.0 \u003c= 2 else 0)\nprint(1 if 2 \u003e 1.5 else 0)\nprint(1 if 1.0 \u003e= 1 else 0)\n\na = 1\nb = 1.0\nc = 2.5\nd = 2\nprint(1 if a == b else 0)\nprint(1 if b == a else 0)\nprint(1 if a != b else 0)\nprint(1 if c \u003c d else 0)\nprint(1 if d \u003c c else 0)\nprint(1 if c == c else 0)\nprint(1 if a \u003c d else 0)\n\n# Containers compare element by element, so the same rule reaches inside them.\np = [1, 2]\nq = [1, 2.0]\nr = [1, 3]\nprint(1 if p == q else 0)\nprint(1 if p == r else 0)\nkm = {\"a\": 1}\nkn = {\"a\": 1.0}\nko = {\"a\": 2}\nprint(1 if km == kn else 0)\nprint(1 if km == ko else 0)\n\n# A number is not equal to a container, and `is` still asks about identity.\nprint(1 if 1 == [1] else 0)\none = 1\nsame = b\nprint(1 if b is same else 0)\nprint(1 if a is b else 0)\nprint(1 if one is one else 0)\n",
+        "source": "# Equal numbers are equal whatever order the operands came in, and whatever their representation\n# (roadmap Gap R.29, ADR 0221). Printed as 1/0 so CPython can be run on this exact file.\nprint(1 if 1 == 1.0 else 0)\nprint(1 if 1.0 == 1 else 0)\nprint(1 if 1 != 1.0 else 0)\nprint(1 if 1.0 != 1 else 0)\nprint(1 if 0 == 0.0 else 0)\nprint(1 if 0.0 == -0.0 else 0)\nprint(1 if -3 == -3.0 else 0)\nprint(1 if 2 == 2.5 else 0)\nprint(1 if 2.5 == 2.5 else 0)\nprint(1 if 7 == 7.0 else 0)\nprint(1 if 1 == 2 else 0)\nprint(1 if 1 \u003c 1.0 else 0)\nprint(1 if 1.0 \u003c= 2 else 0)\nprint(1 if 2 \u003e 1.5 else 0)\nprint(1 if 1.0 \u003e= 1 else 0)\n\na = 1\nb = 1.0\nc = 2.5\nd = 2\nprint(1 if a == b else 0)\nprint(1 if b == a else 0)\nprint(1 if a != b else 0)\nprint(1 if c \u003c d else 0)\nprint(1 if d \u003c c else 0)\nprint(1 if c == c else 0)\nprint(1 if a \u003c d else 0)\n\n# Containers compare element by element, so the same rule reaches inside them. The float-carrying\n# containers (the shapes that used to compare equal by truncating 2.0 to 2) are a probe of their own\n# -- probe_float_container_equality -- because the compiled backend refuses them rather than truncating\n# (roadmap Gap R.40 closed by ADR 0226; the answers await L11.6).\np = [1, 2]\nr = [1, 3]\nprint(1 if p == r else 0)\nkm = {\"a\": 1}\nko = {\"a\": 2}\nprint(1 if km == ko else 0)\n\n# A number is not equal to a container, and `is` still asks about identity.\nprint(1 if 1 == [1] else 0)\none = 1\nsame = b\nprint(1 if b is same else 0)\nprint(1 if a is b else 0)\nprint(1 if one is one else 0)\n",
         "shared": true,
         "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "1\n1\n0\n0\n1\n1\n1\n0\n1\n1\n0\n0\n1\n1\n1\n1\n1\n0\n0\n1\n1\n1\n1\n0\n1\n0\n0\n1\n0\n1\n",
+      "interp_stdout": "1\n1\n0\n0\n1\n1\n1\n0\n1\n1\n0\n0\n1\n1\n1\n1\n1\n0\n0\n1\n1\n1\n0\n0\n0\n1\n0\n1\n",
       "aot_ok": true,
-      "aot_stdout": "1\n1\n0\n0\n1\n1\n1\n0\n1\n1\n0\n0\n1\n1\n1\n1\n1\n0\n0\n1\n1\n1\n1\n0\n1\n0\n0\n1\n0\n1\n",
+      "aot_stdout": "1\n1\n0\n0\n1\n1\n1\n0\n1\n1\n0\n0\n1\n1\n1\n1\n1\n0\n0\n1\n1\n1\n0\n0\n0\n1\n0\n1\n",
       "parity": true,
       "python_ok": true,
-      "python_stdout": "1\n1\n0\n0\n1\n1\n1\n0\n1\n1\n0\n0\n1\n1\n1\n1\n1\n0\n0\n1\n1\n1\n1\n0\n1\n0\n0\n1\n0\n1\n",
+      "python_stdout": "1\n1\n0\n0\n1\n1\n1\n0\n1\n1\n0\n0\n1\n1\n1\n1\n1\n0\n0\n1\n1\n1\n0\n0\n0\n1\n0\n1\n",
       "interp_matches_python": true,
       "aot_matches_python": true,
       "oracle": "match",
@@ -1229,6 +1229,29 @@
     },
     {
       "case": {
+        "id": "programs/kind_mismatch_equality",
+        "name": "kind_mismatch_equality.gy",
+        "source": "# Which question is an operator asking? Two operands of different runtime kinds are not equal --\n# except the numeric pair, which ADR 0221 decided is one question -- and this file is the answer both\n# backends and CPython agree on (ADR 0226). A number compared with a container used to reach the\n# float path and emit `sitofp i32 @.lst1 to double`, which is not an instruction LLVM can accept.\nprint(1 if 2.0 == 2 else 0)\nprint(1 if 1.5 == 2 else 0)\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1 if 1.0 == [1] else 0)\nprint(1 if [1] == 1.0 else 0)\nprint(1 if 1.0 != [1] else 0)\nprint(1 if 1 == [1] else 0)\nprint(1 if [1, 2] == [1, 2] else 0)\nprint(1 if [1, 2] == [1, 3] else 0)\nprint(1 if [\"a\"] == [\"a\"] else 0)\nprint(1 if [\"a\"] == [\"b\"] else 0)\nprint(1 if {\"k\": 1} == {\"k\": 1} else 0)\nprint(1 if {1, 2} == {2, 1} else 0)\nprint(len([1, 2, 3]))\nxs = [4, 5]\nprint(xs[0] + xs[1])\nprint(1 if xs == [4, 5] else 0)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "1\n0\n0\n0\n0\n0\n1\n0\n1\n0\n1\n0\n1\n1\n3\n9\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "1\n0\n0\n0\n0\n0\n1\n0\n1\n0\n1\n0\n1\n1\n3\n9\n1\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "1\n0\n0\n0\n0\n0\n1\n0\n1\n0\n1\n0\n1\n1\n3\n9\n1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/deferred_bodies",
         "name": "deferred_bodies.gy",
         "source": "# A `finally` is a deferred body: it runs on every exit from its `try` -- fall-through, a handled\n# exception, a propagating one, and the transfers (`return`, `break`, `continue`) that leave the\n# block. An `except` arm catches exceptions, never a transfer (roadmap Gap R.23, ADR 0222).\n# CPython prints exactly this, on this file.\n\ndef value_before_finally() -\u003e int:\n    n = 1\n    try:\n        return n\n    finally:\n        n = 99\n        print(\"fin\", n)\n\n\ndef nested() -\u003e int:\n    try:\n        try:\n            return 1\n        finally:\n            print(\"inner\")\n    finally:\n        print(\"outer\")\n\n\ndef winner() -\u003e int:\n    try:\n        return 1\n    finally:\n        return 2\n\n\ndef propagates() -\u003e int:\n    try:\n        x = 1 / 0\n    finally:\n        print(\"prop fin\")\n    return 0\n\n\ndef from_arm() -\u003e int:\n    try:\n        x = 1 / 0\n    except:\n        return 7\n    finally:\n        print(\"arm fin\")\n    return 0\n\n\ndef twice() -\u003e int:\n    try:\n        return 5\n    finally:\n        print(\"once\")\n\n\nprint(twice())\nprint(twice())\nprint(value_before_finally())\nprint(nested())\nprint(winner())\nprint(from_arm())\n\ntry:\n    print(propagates())\nexcept:\n    print(\"caught\")\n\nfor i in range(3):\n    try:\n        continue\n    finally:\n        print(\"cont fin\", i)\n\nfor i in range(3):\n    try:\n        break\n    finally:\n        print(\"brk fin\", i)\n\nfor i in range(4):\n    try:\n        print(\"body\", i)\n    except:\n        print(\"arm that never runs\")\n    finally:\n        print(\"loop fin\", i)\n\ndef ignores_transfers() -\u003e int:\n    try:\n        return 1\n    except:\n        print(\"an arm cannot catch a return\")\n    return 3\n\nprint(ignores_transfers())\n",
@@ -1323,7 +1346,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2721251253/prog.py\", line 46",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle585387007/prog.py\", line 46",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1334,7 +1357,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2721251253/prog.py\", line 46"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle585387007/prog.py\", line 46"
       ]
     },
     {
@@ -1909,7 +1932,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2120933733/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1454967229/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1920,7 +1943,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2120933733/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1454967229/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1950,7 +1973,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2661093480/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1551182532/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1961,7 +1984,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2661093480/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1551182532/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -2423,6 +2446,47 @@
     },
     {
       "case": {
+        "id": "programs/probe_float_container_equality",
+        "name": "probe_float_container_equality.gy",
+        "source": "# Oracle probe (ADR 0192) -- the float-in-container shapes that Gap R.40 turned from a silent truncation\n# into a refusal. The interpreter agrees with CPython on all six lines; the compiled backend refuses until\n# a float can live in a container slot (roadmap L11.6). Before ADR 0226 the compiled leg printed 1 for\n# every line here, including the ones CPython answers 0 -- `1.5 == 1.6 in a slot` was true by truncation.\np = [1, 2]\nq = [1, 2.0]\nprint(1 if p == q else 0)\nprint(1 if [1.5] == [1.5] else 0)\nprint(1 if [1.5] == [1.6] else 0)\nkm = {\"a\": 1}\nkn = {\"a\": 1.0}\nprint(1 if km == kn else 0)\nprint(1 if {\"a\": 1.5} == {\"a\": 1.6} else 0)\nprint(1 if {1.5} == {1.6} else 0)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "the interpreter and CPython agree on all six lines; the compiled backend refuses, because a container slot is an i32 word and a float has no representation in one (it previously truncated, which is how [1.5] == [1.6] printed 1)",
+        "ref": "roadmap Gap R.40 (closed, ADR 0226) and L11.6 (the answers); ADR 0166 for refusal-not-invalid-module",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "1\n1\n0\n1\n0\n0\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "1\n1\n0\n1\n0\n0\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "a compiled container cannot hold a float yet: an element slot is an i32 word and a float value has no representation in one (the interpreter and CPython answer this program; compiled floats in containers are roadmap L11.6)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "1\n1\n0\n1\n0\n0\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "the interpreter and CPython agree on all six lines; the compiled backend refuses, because a container slot is an i32 word and a float has no representation in one (it previously truncated, which is how [1.5] == [1.6] printed 1)",
+      "oracle_ref": "roadmap Gap R.40 (closed, ADR 0226) and L11.6 (the answers); ADR 0166 for refusal-not-invalid-module",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: a compiled container cannot hold a float yet: an element slot is an i32 word and a float value has no representation in one (the interpreter and CPython answer this program; compiled floats in containers are roadmap L11.6)"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_float_list_equal",
         "name": "probe_float_list_equal.gy",
         "source": "# Roadmap Gap R.40 (ADR 0221): a literal list containing a float emits an invalid module, so the\n# compiled leg answers this with a toolchain rejection instead of the 1 CPython and the interpreter\n# print. Same comparison through variables compiles and prints 1 -- the emitter's literal path is the\n# bug. Delete this probe when the emitted module verifies.\nprint(1 if [1] == [1.0] else 0)\n",
@@ -2445,7 +2509,7 @@
       "interp_stdout": "1\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/076/prog.ll:10:62: error: expected type",
+      "aot_error": "codegen: list[float] cannot be compiled: a compiled container cannot hold a float yet: the element slot is an i32 word and a float value has no representation in one (the interpreter and CPython both answer this program; compiled floats in containers are roadmap L11.6)",
       "parity": false,
       "python_ok": true,
       "python_stdout": "1\n",
@@ -2459,7 +2523,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/076/prog.ll:10:62: error: expected type"
+        "compiled leg failed: codegen: list[float] cannot be compiled: a compiled container cannot hold a float yet: the element slot is an i32 word and a float value has no representation in one (the interpreter and CPython both answer this program; compiled floats in containers are roadmap L11.6)"
       ]
     },
     {
@@ -2818,7 +2882,7 @@
       "interp_stdout": "2.5\n3.0\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/080/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2150425029/080/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
       "parity": false,
       "python_ok": true,
       "python_stdout": "2.5\n3.0\n",
@@ -2832,7 +2896,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2111508597/080/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2150425029/080/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
       ]
     },
     {
@@ -2862,7 +2926,7 @@
       "parity": false,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle4082734364/prog.py\", line 10",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3361769106/prog.py\", line 10",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -2873,16 +2937,16 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle4082734364/prog.py\", line 10"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3361769106/prog.py\", line 10"
       ]
     }
   ],
-  "rows": 94,
-  "skipped": 21,
-  "pass": 73,
+  "rows": 96,
+  "skipped": 22,
+  "pass": 74,
   "fail": 0,
-  "oracle_match": 55,
-  "oracle_debt": 25,
+  "oracle_match": 56,
+  "oracle_debt": 26,
   "oracle_not_applicable": 14,
   "oracle_drift": 0
 }

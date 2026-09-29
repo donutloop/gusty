@@ -120,43 +120,36 @@ func TestNumericEqualityMatchesCPythonOnBothEngines(t *testing.T) {
 	}
 }
 
-// TestMixedNumericListEqualityIsAPinnedCompiledDebt records the part of this rule the compiled backend
-// still gets wrong in the worst of the two available ways: a *literal* list containing a float emits
-// an invalid module (`@.lst2 = private global {i32, [1 x i32]} { i32 1, [1 x i32] [@env_store = ...`,
-// llc: "expected type"), so the user sees a toolchain rejection (exit 2) instead of an answer or a
-// refusal — the Gap K.10 / ADR 0166 class. The same comparison through variables is correct, which is
-// why this is a codegen emitter bug and not a semantics one. Delete the exit-2 assertion when the
-// module verifies; roadmap Gap R.40.
-func TestMixedNumericListEqualityIsAPinnedCompiledDebt(t *testing.T) {
-	dir := t.TempDir()
-	literal := filepath.Join(dir, "mixed_literal.gy")
-	if err := os.WriteFile(literal, []byte("print(1 if [1] == [1.0] else 0)\n"), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
+// TestMixedNumericListEqualityRefusesRatherThanTruncates is Gap R.40 closed (ADR 0226). This test used
+// to pin two defects: a *literal* list holding a float emitted an invalid module
+// (`@.lst2 = private global {i32, [1 x i32]} { i32 1, [1 x i32] [@env_store = ...`, llc: "expected
+// type") so the user got a toolchain rejection for an ordinary program; and the *bound* form "worked",
+// which this cycle established was truncation -- the same code said [1.5] == [1.6] was True where
+// CPython says False. Both halves now refuse with something to act on; the answers belong to L11.6, and
+// integration/programs/probe_float_container_equality.gy is the debt row that keeps them visible.
+func TestMixedNumericListEqualityRefusesRatherThanTruncates(t *testing.T) {
+	for _, src := range []string{
+		"print(1 if [1] == [1.0] else 0)\n",
+		"xs = [1]\nys = [1.0]\nprint(1 if xs == ys else 0)\n",
+		"print(1 if [1.5] == [1.6] else 0)\n",
+	} {
+		path := writeSrc(t, t.TempDir(), "mixed.gy", src)
+		out, code := cliRunCode(t, "--aot", path)
+		if code == 2 {
+			t.Fatalf("%q rejected the compiler's own module (ADR 0166):\n%s", src, cliRun(t, "--aot", path))
+		}
+		if code == 0 {
+			t.Fatalf("%q compiled and printed %q; a float in a container slot must refuse until L11.6, not answer from a truncated word", src, out)
+		}
+		msg := cliRun(t, "--aot", path)
+		if !strings.Contains(msg, "float") || !strings.Contains(msg, "container") {
+			t.Fatalf("%q refused without naming the kind and the slot:\n%s", src, msg)
+		}
 	}
-	bin := filepath.Join(dir, "gustyc")
-	buildCLI(t, bin)
-	// Through variables, the compiled backend already answers this correctly.
-	bound := filepath.Join(dir, "mixed_bound.gy")
-	if err := os.WriteFile(bound, []byte("xs = [1]\nys = [1.0]\nprint(1 if xs == ys else 0)\n"), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	if code := runCode(t, bin, "--interp", bound); code != 0 {
-		t.Fatalf("interp exited %d; the interpreter answers the bound form correctly", code)
-	}
-	if code := runCode(t, bin, "--aot", bound); code != 0 {
-		t.Fatalf("compiled bound form exited %d; it is expected to work", code)
-	}
-	out, code := cliRunCode(t, "--aot", literal)
-	if code != 2 {
-		t.Fatalf("the literal form exited %d, want the recorded toolchain rejection (2):\n%s", code, out)
-	}
-	// Assert the artifact, not the tool's prose: the emitted module is what is broken, and this is
-	// the line llc refuses — an int-typed array element position holding a `@` with no name.
+	// The artifact assertion, flipped: the malformed initializer this gap was about must no longer be
+	// emittable at all -- the refusal happens before anything reaches the module.
 	ir, irc := cliRunCode(t, "--emit-llvm", "print(1 if [1] == [1.0] else 0)\n")
-	if irc != 0 {
-		t.Fatalf("--emit-llvm exited %d:\n%s", irc, ir)
-	}
-	if !strings.Contains(ir, "[1 x i32] [@") {
-		t.Fatalf("the emitted module no longer contains the malformed list initializer this gap is about:\n%s", ir)
+	if irc == 0 && strings.Contains(ir, "[1 x i32] [@") {
+		t.Fatalf("the malformed list initializer is still being emitted:\n%s", ir)
 	}
 }

@@ -609,6 +609,15 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 	if err := g.rejectRuntimeString(e, "container element", "store"); err != nil {
 		return "", false, err
 	}
+	// The one question every container emitter must ask, asked here so it is asked once: can the
+	// compiled word hold this? A slot is an i32 and a float has no representation in one, so the
+	// alternatives were a truncated read (`xs = [1.5]; print(xs[0])` answered 1), or -- as the
+	// literal path did -- an operand the compiler invented, which llc rejected and the exit-code
+	// contract called a compiler bug for an ordinary program (roadmap Gap R.40, ADR 0166; the
+	// compiled float story belongs to L11.6).
+	if _, isFloatLit := e.(*FloatLit); isFloatLit || g.isFloat(e) {
+		return "", false, fmt.Errorf("a compiled container cannot hold a float yet: an element slot is an i32 word and %s has no representation in one (the interpreter and CPython answer this program; compiled floats in containers are roadmap L11.6)", exprTyName(e))
+	}
 	v, err := g.value(b, e)
 	return v, false, err
 }
