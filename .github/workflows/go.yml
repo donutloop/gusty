@@ -7,23 +7,49 @@ on:
     branches: [ "main" ]
 
 jobs:
+  # The toolchains this job installs are the pinned ones documented in
+  # docs/operations.md: LLVM 20 for the compiled leg, and a CPython at or above the
+  # oracle pin for the conformance leg. They are pinned here rather than left to the
+  # runner image because the conformance matrix asserts against CPython itself: when
+  # CI ran ubuntu-22.04 (Python 3.10) the row for programs/typealias "drifted" from
+  # match to not_applicable — `type Count = int` is PEP 695 syntax and 3.10 cannot
+  # parse it, so the oracle leg died on line 1 and the note blamed the compiler.
+  # Ubuntu 24.04 ships Python 3.12, which is the pin.
   test-on-ubuntu-with-llvm-20:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install LLVM 20
         run: |
-          echo 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main' | sudo tee /etc/apt/sources.list.d/llvm.list
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo mkdir -p /etc/apt/keyrings
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/keyrings/llvm.asc > /dev/null
+          gpg --dearmor --yes --output /etc/apt/keyrings/llvm.gpg /etc/apt/keyrings/llvm.asc
+          echo "deb [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends llvm-20 llvm-20-dev
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.20.x
+          go-version: '1.20'
+
+      - name: Toolchain versions (the matrix is only meaningful against these)
+        run: |
+          set -e
+          echo "go:   $(go version)"
+          echo "llc:  $(llc-20 --version | head -n1)"
+          echo "python: $(python3 --version)"
+          # Fail here, loudly, if the runner stopped providing the pinned oracle: a
+          # matrix produced by an older CPython reports drift that is not the
+          # compiler's, which is a worse signal than a red setup step.
+          python3 - <<'PY'
+          import sys
+          if sys.version_info < (3, 12):
+              sys.exit("oracle is %s; the corpus is validated against >= 3.12 (docs/operations.md)" % ".".join(map(str, sys.version_info[:3])))
+          print("oracle satisfies the pin")
+          PY
 
       - name: Build
         run: go build -tags=llvm20 ./...

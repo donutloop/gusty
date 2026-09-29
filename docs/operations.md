@@ -438,10 +438,38 @@ The oracle interpreter is `python3` unless `GUSTY_PYTHON` names another, and it 
 in the artifact itself (`toolchain.python`, alongside `toolchain.llvm`), because "matches
 Python" is a claim about a named toolchain, not an abstraction.
 
-### The matrix (schema 1.1)
+### The oracle is a versioned toolchain, and the pin is enforced
+
+The oracle is pinned the way LLVM is: **CPython >= 3.12** (`lang.OracleMinPython`, recorded in the
+matrix as `toolchain.min_python`, alongside `toolchain.python` = the banner of the interpreter that
+actually ran and `toolchain.llvm`). The pin is a requirement, not a preference — the corpus contains
+rows whose expected answer can only come from a CPython that can *parse* the construct under test.
+`programs/typealias.gy` opens with `type Count = int`, which is PEP 695 syntax: on Ubuntu 22.04's
+Python 3.10 the oracle leg died with `SyntaxError` on line 1, the row flipped from `match` to
+`not_applicable`, and CI reported it as **oracle drift on a compiler case** — the note said only
+"the CPython leg did not complete". A stale oracle is an environment fault, and an environment fault
+has to read like one, so:
+
+- `TestConformanceMatrix` runs `requirePinnedOracle` first and fails with
+  `the oracle is Python 3.10.12 but the corpus is validated against 3.12 … install a newer python3 or set GUSTY_PYTHON`,
+  instead of emitting a pile of drift that points at the compiler.
+- `.github/workflows/go.yml` pins the runner to `ubuntu-24.04` (Python 3.12) and has a setup step
+  that prints `go` / `llc-20` / `python3` versions and exits non-zero if the oracle is below the
+  pin. A red setup step is a better signal than a green build with a meaningless matrix.
+- `lang.OracleVersion` parses a version banner, and an **unidentifiable** banner counts as unknown,
+  never as too old — a machine whose oracle cannot be read must not be told it is unsupported.
+- A python leg that fails with a `SyntaxError` gets an extra note naming the pin and the remedy
+  (`lang.OracleTooOldHint`), because "line 1 SyntaxError" on a program the interpreter accepts is
+  almost always the toolchain.
+
+Override the oracle with `GUSTY_PYTHON=/path/to/python3.12` when the default `python3` is too old.
+
+### The matrix (schema 1.2)
 
 `go test ./integration/ -run TestConformanceMatrix` writes `integration/conformance-matrix.json`:
-one row per program, three legs each. New in 1.1 — `python_stdout` / `python_ok` /
+one row per program, three legs each. New in 1.2 — `toolchain.min_python`, the pinned minimum
+CPython the ledger's declared verdicts presuppose (see "The oracle is a versioned toolchain"
+below). Everything from 1.1 still stands: `python_stdout` / `python_ok` /
 `python_error`, `interp_matches_python` / `aot_matches_python`, the computed `oracle` with its
 `oracle_declared` counterpart, `oracle_reason` / `oracle_ref` / `oracle_rules` /
 `oracle_notes` / `oracle_drift`, the `rows` / `skipped` counters, the `oracle_match` /

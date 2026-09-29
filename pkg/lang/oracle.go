@@ -21,7 +21,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Oracle verdicts for one case. The vocabulary is part of the machine-readable
@@ -66,6 +68,83 @@ func PythonBinary() string {
 		return p
 	}
 	return "python3"
+}
+
+// OracleMinPython is the pinned minimum CPython the corpus is validated against,
+// in the same spirit as the pinned LLVM version (docs/operations.md). It is a real
+// requirement, not a preference: the ledger has rows whose expected answer comes
+// from a CPython that can parse the construct under test — `type Count = int` is
+// PEP 695, so `programs/typealias` has no oracle answer below 3.12, and the leg
+// dies with a SyntaxError on line 1.
+//
+// Without a pin that fact shows up as oracle *drift* on a row declared `match`, and
+// reads like a compiler bug: the drift note said only "the CPython leg did not
+// complete", and the CI runner's Python was the difference between green and red.
+// So the pin is recorded in the matrix, and the harness says "upgrade the oracle"
+// instead of pointing at the compiler (ADR 0193).
+const OracleMinPython = "3.12"
+
+// OracleVersion reads a `python3 --version` banner (`Python 3.12.3`) into
+// major.minor. It returns ok=false when the text is not recognisable, which callers
+// treat as "unknown" rather than "old": a machine whose oracle cannot be identified
+// must not be told it is unsupported.
+func OracleVersion(banner string) (major, minor int, ok bool) {
+	fields := strings.Fields(banner)
+	for _, f := range fields {
+		if !strings.Contains(f, ".") || !strings.ContainsFunc(f, unicode.IsDigit) {
+			continue
+		}
+		parts := strings.Split(f, ".")
+		if len(parts) < 2 {
+			continue
+		}
+		ma, err1 := strconv.Atoi(parts[0])
+		mi, err2 := strconv.Atoi(parts[1])
+		if err1 == nil && err2 == nil && ma > 0 {
+			return ma, mi, true
+		}
+	}
+	return 0, 0, false
+}
+
+// OracleVersionTooOld reports a *known* oracle older than the pin, and is false for
+// an unidentifiable version — see OracleVersion for why unknown is not too old.
+func OracleVersionTooOld(banner string) bool {
+	major, minor, ok := OracleVersion(banner)
+	if !ok {
+		return false
+	}
+	wantM, wantN, _ := parseVersionPair(OracleMinPython)
+	if major != wantM {
+		return major < wantM
+	}
+	return minor < wantN
+}
+
+func parseVersionPair(s string) (int, int, bool) {
+	parts := strings.Split(s, ".")
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	a, err1 := strconv.Atoi(parts[0])
+	b, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return a, b, true
+}
+
+// OracleTooOldHint explains a python leg that died on line 1 of a program the
+// interpreter accepts. The honest reading is usually the toolchain, not the
+// language, so the note says so and names the remedy.
+func OracleTooOldHint(pythonErr string) string {
+	if !strings.Contains(pythonErr, "SyntaxError") {
+		return ""
+	}
+	return "the oracle interpreter is older than the pinned " + OracleMinPython +
+		" (docs/operations.md): a SyntaxError on line 1 usually means the program uses a construct this " +
+		"CPython predates (PEP 695 `type X = int` needs 3.12), not a compiler bug — install a newer " +
+		"python3 or point GUSTY_PYTHON at one"
 }
 
 // PythonRun runs src through the oracle interpreter and returns its stdout, its
@@ -151,6 +230,9 @@ func BuildOracleReport(interpOK bool, interpOut, interpErr string,
 	case !pythonOK:
 		r.Status = OracleNA
 		r.Notes = append(r.Notes, "the CPython leg did not complete: "+firstLine(pythonErr))
+		if hint := OracleTooOldHint(pythonErr); hint != "" {
+			r.Notes = append(r.Notes, hint)
+		}
 	case interpMatch && aotMatch:
 		r.Status = OracleMatch
 	default:

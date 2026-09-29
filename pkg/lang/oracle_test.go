@@ -312,3 +312,74 @@ func TestPythonBinaryIsOverridable(t *testing.T) {
 		t.Errorf("default oracle = %q, want python3", got)
 	}
 }
+
+// The pinned oracle (ADR 0193). The corpus is validated against a *named* CPython,
+// and a row declared `match` means "matches that oracle": on Ubuntu 22.04's Python
+// 3.10, `type Count = int` is a SyntaxError on line 1, so programs/typealias drifted
+// from match to not_applicable and the note pointed at the compiler instead of at the
+// runner. These tests hold the pieces that make that read correctly.
+
+func TestOracleVersionParsesTheVersionBanner(t *testing.T) {
+	for _, tc := range []struct {
+		banner       string
+		major, minor int
+		ok           bool
+	}{
+		{"Python 3.12.3", 3, 12, true},
+		{"Python 3.10.12", 3, 10, true},
+		{"Python 3.13", 3, 13, true},
+		{"Python 2.7.18", 2, 7, true},
+		// Unidentifiable text is "unknown", never "too old": a machine whose oracle
+		// cannot be read must not be told it is unsupported.
+		{"no version here", 0, 0, false},
+		{"", 0, 0, false},
+	} {
+		major, minor, ok := OracleVersion(tc.banner)
+		if major != tc.major || minor != tc.minor || ok != tc.ok {
+			t.Fatalf("OracleVersion(%q) = %d.%d ok=%v, want %d.%d ok=%v",
+				tc.banner, major, minor, ok, tc.major, tc.minor, tc.ok)
+		}
+	}
+}
+
+func TestOracleTooOldIsComparedAgainstThePin(t *testing.T) {
+	if OracleVersionTooOld("Python 3.12.3") {
+		t.Fatal("the pinned oracle must not be too old for itself")
+	}
+	if !OracleVersionTooOld("Python 3.10.12") {
+		t.Fatal("3.10 is older than the 3.12 pin — that is the CI case that produced the false drift")
+	}
+	if OracleVersionTooOld("Python 3.13.0") {
+		t.Fatal("a newer oracle is supported")
+	}
+	if OracleVersionTooOld("something else") {
+		t.Fatal("an unidentifiable banner is not evidence of an old oracle")
+	}
+}
+
+func TestOracleTooOldHintNamesTheRemedy(t *testing.T) {
+	hint := OracleTooOldHint("  File \"prog.py\", line 1\n    type Count = int\n    ^^^^^\nSyntaxError: invalid syntax")
+	for _, want := range []string{"SyntaxError", "3.12", "GUSTY_PYTHON"} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("hint must mention %q to be actionable: %q", want, hint)
+		}
+	}
+	// A runtime error is not a version problem, and must not be answered with one.
+	if got := OracleTooOldHint("ZeroDivisionError: division by zero"); got != "" {
+		t.Fatalf("a genuine program error should not be blamed on the oracle: %q", got)
+	}
+}
+
+func TestBuildOracleReportKeepsAnOldOracleDiagnosingItself(t *testing.T) {
+	// The python leg died on a SyntaxError: the row is not_applicable (no oracle
+	// answer exists), and the note must say the oracle may be the problem rather than
+	// leaving a reader to conclude the compiler regressed.
+	rep := BuildOracleReport(true, "42\n", "", true, "42\n", "", nil, false, "", "line 1: SyntaxError: invalid syntax")
+	if rep.Status != OracleNA {
+		t.Fatalf("status = %s, want %s", rep.Status, OracleNA)
+	}
+	joined := strings.Join(rep.Notes, "\n")
+	if !strings.Contains(joined, "SyntaxError") || !strings.Contains(joined, OracleMinPython) {
+		t.Fatalf("notes should name the failure and the pin:\n%s", joined)
+	}
+}

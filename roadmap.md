@@ -6,7 +6,7 @@ through LLVM. It lives next to `AGENTS.md` and is the single source of truth
 for *what exists*, *what is next*, and *what is gap-shaped*.
 
 > Status snapshot (verified against the code, 2026): version `0.10.0`
-> (`pkg/lang/compile.go`). ADRs run `0001`..`0192`. `go test -tags=llvm20 ./...`
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0193`. `go test -tags=llvm20 ./...`
 > is green. Conformance corpus: 74 programs under `integration/programs/` (18 of
 > them pinned probes), 66 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
 > parity cases plus 18 pinned probes; oracle 32 `match` / 24 `debt` / 10 `not_applicable`, 0 drift.
@@ -826,6 +826,13 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     program into `conformanceStandalone()` — that promotion is the definition of done.
   - **Nothing may crash the harness** — all three legs run behind `recover()`, so a compiler
     panic is one row whose aot error reads `compiler panic: …` instead of a dead test binary.
+  - **Machine path (1.2, ADR 0193)** — `toolchain.min_python` records the pinned oracle the
+    declared verdicts presuppose (CPython >= 3.12; `lang.OracleMinPython`), `TestConformanceMatrix`
+    fails with the remedy when a stale oracle would otherwise present as compiler drift, and CI pins
+    the runner that provides it. Found because `programs/typealias.gy` opens with `type Count = int`
+    — PEP 695, unparseable by Ubuntu 22.04's Python 3.10 — so CI reported oracle drift on a compiler
+    row while the compiler was right. An expectation copied from an external tool is a **versioned
+    dependency of the test suite**: recording the version is worth nothing until a check reads it.
   - **Machine path** — matrix `schema_version` 1.1 adds `python_stdout`/`python_ok`/
     `python_error`, `interp_matches_python`/`aot_matches_python`, `oracle` with its
     `oracle_declared` counterpart, `oracle_reason`/`oracle_ref`/`oracle_rules`/`oracle_notes`/

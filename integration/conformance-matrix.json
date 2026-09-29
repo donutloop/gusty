@@ -1,9 +1,10 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "generated_by": "integration/conformance_test.go",
   "toolchain": {
     "python": "Python 3.12.3",
-    "llvm": "Ubuntu LLVM version 20.1.2"
+    "llvm": "Ubuntu LLVM version 20.1.2",
+    "min_python": "3.12"
   },
   "results": [
     {
@@ -263,7 +264,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1581995388/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1383196940/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -274,7 +275,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1581995388/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1383196940/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -368,7 +369,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1542932975/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3555116860/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -379,7 +380,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1542932975/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3555116860/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -629,7 +630,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2133339812/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3436134908/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -640,7 +641,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2133339812/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3436134908/prog.py\", line 5"
       ]
     },
     {
@@ -670,7 +671,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2158518175/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3394795497/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -681,7 +682,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2158518175/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3394795497/prog.py\", line 3"
       ]
     },
     {
@@ -711,7 +712,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle4237693113/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2941200363/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -722,7 +723,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle4237693113/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2941200363/prog.py\", line 5"
       ]
     },
     {
@@ -1297,7 +1298,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle728131279/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3592137042/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1308,7 +1309,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle728131279/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3592137042/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1338,7 +1339,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1675741766/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle1369153425/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1349,7 +1350,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1675741766/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1369153425/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -1674,7 +1675,7 @@
       "interp_stdout": "5\n195\na\né\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/051/prog.ll:160:13: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3605312314/051/prog.ll:160:13: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "4\né\na\né\n",
@@ -1689,7 +1690,7 @@
       ],
       "oracle_notes": [
         "interpreter stdout differs from CPython",
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/051/prog.ll:160:13: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3605312314/051/prog.ll:160:13: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -2008,7 +2009,7 @@
       "interp_stdout": "a\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/055/prog.ll:1973:30: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3605312314/055/prog.ll:1973:30: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "a\n",
@@ -2022,7 +2023,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2387363595/055/prog.ll:1973:30: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3605312314/055/prog.ll:1973:30: error: global variable reference must have pointer type"
       ]
     },
     {

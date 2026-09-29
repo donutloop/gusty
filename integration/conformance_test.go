@@ -89,9 +89,13 @@ func safeOracleRun(t *testing.T, src string) (out string, err error) {
 	return out, nil
 }
 
-// toolchainRecord names the interpreters that produced this artifact.
+// toolchainRecord names the interpreters that produced this artifact, including the
+// pinned minimum the ledger's declared verdicts presuppose. Recording it is the point:
+// a matrix row that says "match" means "matches the pinned oracle", and without the
+// version in the artifact two machines can produce different matrices from the same
+// code and neither can tell why (ADR 0193).
 func toolchainRecord() lang.OracleToolchain {
-	rec := lang.OracleToolchain{Python: lang.PythonBinary()}
+	rec := lang.OracleToolchain{Python: lang.PythonBinary(), MinPython: lang.OracleMinPython}
 	if out, err := exec.Command(lang.PythonBinary(), "--version").CombinedOutput(); err == nil {
 		rec.Python = strings.TrimSpace(firstNonEmptyLine(string(out)))
 	}
@@ -99,6 +103,25 @@ func toolchainRecord() lang.OracleToolchain {
 		rec.LLVM = strings.TrimSpace(firstNonEmptyLine(string(out)))
 	}
 	return rec
+}
+
+// requirePinnedOracle fails the run with the remedy rather than letting an oracle older
+// than the pin present as a pile of oracle drift. `type Count = int` (PEP 695) is the
+// live example: on CPython 3.10 it is a SyntaxError on line 1, so programs/typealias
+// "drifted" from match to not_applicable on a CI runner and the note blamed the
+// compiler. A stale oracle is an environment fault, and an environment fault has to
+// read like one.
+func requirePinnedOracle(t *testing.T) {
+	t.Helper()
+	out, err := exec.Command(lang.PythonBinary(), "--version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("oracle %q is not runnable: %v", lang.PythonBinary(), err)
+	}
+	banner := strings.TrimSpace(firstNonEmptyLine(string(out)))
+	if lang.OracleVersionTooOld(banner) {
+		t.Fatalf("the oracle is %s but the corpus is validated against %s (docs/operations.md): install a newer python3 or set GUSTY_PYTHON. A matrix run on an older oracle reports drift that is not the compiler's.",
+			banner, lang.OracleMinPython)
+	}
 }
 
 // runLegs is the three legs of one case, and nothing else: interpreter, compiled
@@ -206,6 +229,7 @@ func buildConformanceMatrix(t *testing.T) lang.ConformanceMatrix {
 // implementations to each other. The artifact goes to
 // integration/conformance-matrix.json for agent and script consumption.
 func TestConformanceMatrix(t *testing.T) {
+	requirePinnedOracle(t)
 	matrix := conformanceMatrix(t)
 
 	// Assert the shared-lowering contract: every shared case must pass parity.

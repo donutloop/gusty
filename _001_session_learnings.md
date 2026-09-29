@@ -2380,3 +2380,54 @@ exactly the thing nobody tells you.
 
 **Next**: the interned-string comparison (`probe_str_loop_eq`) — a crash, older than my cycle, and
 the only one of today's findings that fails a program which looks completely normal.
+
+## CI went red on a row nobody touched: the oracle was a version, not a constant (ADR 0193)
+
+`programs/typealias` drifted from `match` to `not_applicable` in CI and passed on my machine. The
+program starts `type Count = int` — gusty's type-alias spelling, which happens to also be CPython's
+PEP 695 syntax, so it needs **Python 3.12**. My laptop has 3.12.3; the CI runner was
+`ubuntu-22.04` with Python 3.10, whose oracle leg died with `SyntaxError` on line 1. The drift
+detector did its job; the *cause* was in the runner image, and the note ("the CPython leg did not
+complete") read like a compiler problem.
+
+**What I did not do**, and it matters more than what I did: the harness offered the "fix" of
+reclassifying the row to `not_applicable`. That would have deleted a real assertion — the compiler is
+right on that program and CPython agrees wherever CPython can read it — to satisfy the environment.
+Editing a declared expectation to match the environment is the mistake ADR 0186 exists to prevent,
+just one layer up: I would have been tuning the *oracle claim* the way you're forbidden to tune an
+expected output.
+
+**The fix had four parts, and only one of them was the CI bump.**
+1. Pin the oracle: `lang.OracleMinPython = "3.12"`, documented beside the LLVM pin. I had written
+   "the oracle is a named toolchain" in `docs/operations.md` and never made it a constant — words
+   are not a pin.
+2. CI provides it: `ubuntu-24.04` (Python 3.12), LLVM repo moved to `noble` with a `signed-by`
+   keyring because `apt-key` is gone there, plus a step printing go/llc/python and failing below the
+   pin. A red *setup* step tells you which world is broken; a green build with a meaningless matrix
+   tells you nothing.
+3. Fail loudly at the top: `requirePinnedOracle` before any leg, saying *install a newer python3 or
+   set GUSTY_PYTHON* — one clear failure beats twenty drift lines each accusing the compiler.
+4. Record it: `toolchain.min_python` in the matrix, schema 1.1 → 1.2, and `--schema` now says
+   `oracle: "match"` means "matches **the pinned** oracle".
+
+**The part I got wrong first, and the test caught it.** My version parser said
+`strings.Contains(f, "0123456789")` — that looks for the literal substring `0123456789`, so every
+banner was "unknown" and nothing was ever too old. `TestOracleTooOldIsComparedAgainstThePin` failed
+immediately; `ContainsFunc(f, unicode.IsDigit)` fixed it. Fifth cycle now where a test I wrote caught
+me in the hour, and the habit that keeps paying is writing the table of cases *before* believing the
+helper.
+
+**Unknown is not too old.** `OracleVersionTooOld` returns false for a banner it cannot parse: telling
+a machine with an exotic interpreter that it's unsupported would be failing closed on someone who is
+just different. That asymmetry is deliberate and it's in a test.
+
+**Stub-check, because I've been burned.** I verified the preflight by putting a fake `python3` on
+`GUSTY_PYTHON` that prints `Python 3.10.12`: the suite fails with the remedy line, not with drift.
+Had I only run it on my own machine, where the check never fires, I'd have shipped an untested
+branch — which is the same class of thing as a test that passes with the fix deleted.
+
+**The generalisable bit:** any expectation you copy from an external tool — CPython here, `llc` and
+`cc` there — is a **versioned dependency of the test suite**. Recording the version in the artifact
+is cheap and worth nothing until a check reads it; the value is that a mismatch then says
+"environment" instead of "compiler". The matrix already recorded `toolchain.python` before this and
+still produced a confusing CI failure, which is the whole argument.

@@ -25,7 +25,7 @@ import (
 // classification with its declared counterpart, reason, roadmap reference, notes
 // and the matrix-level oracle counters. 1.0 rows compared the two backends to
 // each other only; a 1.1 row compares them to CPython as well.
-const ConformanceSchemaVersion = "1.1"
+const ConformanceSchemaVersion = "1.2"
 
 // ConformanceCase is one whole-program conformance case. Every case is a single
 // merged source that both backends lower independently. Shared marks whether
@@ -116,6 +116,12 @@ type ConformanceMatrix struct {
 type OracleToolchain struct {
 	Python string `json:"python"`
 	LLVM   string `json:"llvm,omitempty"`
+	// MinPython is the pinned minimum the corpus is validated against
+	// (OracleMinPython). It is recorded rather than implied because the ledger's
+	// declared verdicts presuppose it: `type Count = int` has no oracle answer on a
+	// CPython that cannot parse PEP 695, and on an older interpreter a whole set of
+	// rows drifts for reasons that have nothing to do with the compiler (ADR 0193).
+	MinPython string `json:"min_python,omitempty"`
 }
 
 // InterpreterRunOptions tunes the interpreter for harnesses that need to prove
