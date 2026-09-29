@@ -251,6 +251,15 @@ falls back to dynamic dispatch.
   found the interpreter's untagged values colliding with ordinary arithmetic: a bench loop computing
   `i * i` reached the heap's id range at `i = 1024` and read back the class's own method object, so the
   heap now starts at `1 << 48` and one predicate decides what an object is.
+- **`//` and `%` floor, and they are one rule** (ADR 0216) — `print(-7 // 2)` printed `-3` compiled
+  and `-4` interpreted, and `print(-7 % 2)` printed `-1` on *both*, because Go's `/` and `%` truncate
+  toward zero while Python floors (the remainder carries the divisor's sign, so `-7 % 2` is `1`).
+  Both backends now emit the correction (`sdiv`/`srem` plus a `select`; `frem` plus `fadd` and
+  `copysign` for floats), and 312 integer and 392 float sign combinations are checked against CPython
+  on both paths. Two integration tests had pinned `-3.5 % 2.0 == -1.5` as correct — with a comment
+  naming `frem` — because they had been written from the emitted IR rather than from the language; the
+  new tests assert `a == (a // b) * b + (a % b)` instead, which a consistently truncating pair can
+  never satisfy.
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

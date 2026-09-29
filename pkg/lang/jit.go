@@ -2155,8 +2155,7 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			return 0, zeroDivisionErr("division by zero")
 		}
 		if floor {
-			// Python floors, Go truncates: -7 // 2 is -4, not -3.
-			return int64(math.Floor(float64(l) / float64(r))), nil
+			return floorDiv(l, r), nil
 		}
 		// `/` on two integers is *true* division (PEP 238): 7 / 2 is 3.5. Truncating
 		// it silently turned the language's most common operator into C's, and the
@@ -2171,18 +2170,18 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			if rf == 0 {
 				return 0, zeroDivisionErr("float modulo")
 			}
-			return e.allocFloat(math.Mod(lf, rf)), nil
+			return e.allocFloat(floorModFloat(lf, rf)), nil
 		}
 		if rf, ok := e.floatOf(r); ok {
 			if rf == 0 {
 				return 0, zeroDivisionErr("float modulo")
 			}
-			return e.allocFloat(math.Mod(float64(l), rf)), nil
+			return e.allocFloat(floorModFloat(float64(l), rf)), nil
 		}
 		if r == 0 {
 			return 0, zeroDivisionErr("integer modulo by zero")
 		}
-		return l % r, nil
+		return floorMod(l, r), nil
 	case "==":
 		if e.eqVal(l, r) {
 			return 1, nil
@@ -4176,6 +4175,46 @@ func reverseStr(s string) string {
 // exnError builds an EvalError carrying a typed exception (type name + message).
 func exnError(exnType, msg string) *EvalError {
 	return &EvalError{Msg: msg, ExnType: exnType, ExnMsg: msg}
+}
+
+// floorDiv and floorMod are the pair, defined together because they are only correct
+// together. Go's `/` and `%` truncate toward zero, so mixed-sign operands break the
+// identity Python guarantees — a == (a // b) * b + (a % b) — which is why `-7 // 2` must
+// be -4 with `-7 % 2` equal to 1, not -3 with -1 (roadmap Gaps R.28, R.30: the compiled
+// backend had both halves wrong, the interpreter only the modulo half). One definition,
+// used by the interpreter, the codegen constant folder and, in IR form, the emitted
+// sdiv/srem corrections, so no backend can drift toward C again.
+func floorDiv(a, b int64) int64 {
+	q := a / b
+	if a%b != 0 && ((a < 0) != (b < 0)) {
+		q--
+	}
+	return q
+}
+
+func floorMod(a, b int64) int64 {
+	r := a % b
+	if r != 0 && ((r < 0) != (b < 0)) {
+		r += b
+	}
+	return r
+}
+
+// floorModFloat is the same rule for floats. libm's fmod (Go's math.Mod, LLVM's frem) is
+// the *truncated* remainder, so `-7.0 % 2.0` answers -1 unless it is corrected the same
+// way; the result carries the sign of the divisor.
+func floorModFloat(a, b float64) float64 {
+	r := math.Mod(a, b)
+	if r == 0 {
+		// An exact remainder keeps the divisor's sign, as IEEE requires: `7.5 % -0.5` is
+		// -0.0, not 0.0. fmod's zero carries the dividend's sign instead, so the two
+		// languages would print different renderings of the same number.
+		return math.Copysign(0, b)
+	}
+	if (r < 0) != (b < 0) {
+		r += b
+	}
+	return r
 }
 
 // valueTypeName names a value the way an exception message does: quoted, and for an instance

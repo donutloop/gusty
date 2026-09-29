@@ -494,9 +494,13 @@ func TestExecForOverGeneratorList(t *testing.T) {
 }
 
 func TestExecFloatFloorModNegNeg(t *testing.T) {
-	// Negative float floor/mod/neg must match in the AOT binary:
-	// -3.5//2.0 == -2, -3.5%%2.0 == -1.5, abs(-3.5) == 3.5, round(-3.5) == -4.
-	assertOutput(t, "a = -3.5\nb = 2.0\nprint(a // b)\nprint(a % b)\nprint(abs(a))\nprint(round(a))", "-2.0\n-1.5\n3.5\n-4\n")
+	// Floor division and modulo on a negative dividend. This test used to pin `-1.5` for
+	// `-3.5 % 2.0` — the *truncated* remainder, C's answer, described in the comment as if
+	// it were the language's. CPython gives 0.5 (the result carries the divisor's sign), so
+	// the assertion was recording the emission (`frem`) rather than the semantics, and both
+	// backends could satisfy a wrong expectation (roadmap Gaps R.28, R.30, closed with ADR
+	// 0216). Values checked against `python3`, not against the IR.
+	assertOutput(t, "a = -3.5\nb = 2.0\nprint(a // b)\nprint(a % b)\nprint(abs(a))\nprint(round(a))", "-2.0\n0.5\n3.5\n-4\n")
 }
 
 func TestExecAbsFloat(t *testing.T) {
@@ -848,11 +852,13 @@ func TestNestedListCallRun(t *testing.T) {
 }
 
 func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
-	// Lock float floor-division (`//`), frem modulo (`%`), abs, and round
-	// semantics across negative operands, exact multiples, and half-values —
-	// the AOT codegen emits fdiv+floor, frem, llvm.fabs, and llvm.round.
+	// Floor division, modulo, abs and round across negative operands, exact multiples and
+	// half-values. The modulo row used to assert `-1.0` for `-5.0 % 2.0` and `1.0` for
+	// `5.0 % -2.0` — both operands' signs reversed relative to the language, because the
+	// expectation described the emitted `frem`. Python's `%` takes the divisor's sign:
+	// `-5.0 % 2.0` is 1.0 and `5.0 % -2.0` is -1.0.
 	assertOutput(t, "print(8.0 // 2.0)\nprint(-8.0 // 3.0)\nprint(-5.0 // 2.0)", "4.0\n-3.0\n-3.0\n")
-	assertOutput(t, "print(5.0 % 2.0)\nprint(-5.0 % 2.0)\nprint(5.0 % -2.0)", "1.0\n-1.0\n1.0\n")
+	assertOutput(t, "print(5.0 % 2.0)\nprint(-5.0 % 2.0)\nprint(5.0 % -2.0)", "1.0\n1.0\n-1.0\n")
 	assertOutput(t, "print(abs(-3.5))\nprint(abs(-2.0))", "3.5\n2.0\n")
 	assertOutput(t, "print(round(2.5))\nprint(round(-2.5))", "3\n-3\n")
 }

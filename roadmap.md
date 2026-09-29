@@ -2160,18 +2160,26 @@ static type cannot pin down and `raiseTo(exnCode("TypeError"), …)` rather than
 same `branchRaise`/`raiseTo` machinery the division guards use, and promote
 `programs/probe_operator_operand_types.gy`.
 
-### R.28 — `%` truncates toward zero instead of flooring (OPEN, both backends)
+### R.28 — `%` truncated toward zero instead of flooring (CLOSED, ADR 0216)
 
 ```gusty
-print(-7 % 2)   # both backends: -1      CPython: 1
-print(7 % -2)   # both backends: 1      CPython: -1
+print(-7 % 2)   # was -1 on both backends   CPython: 1
+print(7 % -2)   # was 1  on both backends   CPython: -1
 ```
 
-`//` was fixed to floor (ADR 0212's neighbourhood) but `%` was not given its counterpart, and the
-two must move together: Python's invariant is `a == (a // b) * b + (a % b)`, so a truncating `%`
-also implies a truncating `//` somewhere. One rule, both backends, and the invariant as a test over
-a grid of signs — the invariant catches the pair in one assertion where per-case outputs catch each
-half separately.
+Measured over the whole sign grid: **88 integer cases wrong in the compiled backend (44 of them
+`%`) and 44 in the interpreter** — plus 14 float cases on each, because `frem`/`fmod` is the
+truncated remainder too. Fixed with `floorDiv`/`floorMod`/`floorModFloat` as the single definition,
+used by the interpreter, the constant folder and (in IR form, `srem` + `select`) the emitted module.
+The float case needed the IEEE detail as well: an exact remainder carries the *divisor's* sign, so
+`7.5 % -0.5` prints `-0.0`, not `0.0`.
+
+Worth reading with ADR 0216: two integration tests had **pinned the truncated values as the expected
+output** — with comments naming `frem` — so the bug had a certificate of correctness. The assertions
+were written from the emitted IR rather than from the language. They stay, corrected, with the
+history in the comment; the new tests assert the identity
+`a == (a // b) * b + (a % b)` over the grid, which a consistently truncating pair satisfies per
+operator but cannot satisfy as a pair.
 
 ### R.29 — `1 == 1.0` is false, and the two backends disagree about it (OPEN, both backends)
 
@@ -2187,16 +2195,22 @@ implementation agreeing twice but two different wrongs. Containers compare by ha
 compares identity. Test both backends against CPython on the same grid, because "the backends agree"
 was exactly what hid this.
 
-### R.30 — the compiled backend truncates `//` toward zero (OPEN, compiled backend)
+### R.30 — the compiled backend truncated `//` toward zero (CLOSED, ADR 0216)
 
 ```gusty
-print(-7 // 2)   # interpreter: -4    compiled: -3    CPython: -4
+print(-7 // 2)   # was: interpreter -4, compiled -3   CPython: -4
 ```
 
-The interpreter has the floor correction (`math.Floor` on the quotient); the emitted IR does a plain
-`sdiv`, which truncates. One operator, two answers, one source. Fix in codegen with the same floor
-correction and pin `-7 // 2`, `7 // -2`, `-7 // -2` together so the sign combinations cannot drift
-apart.
+The interpreter already floored (via `math.Floor` on a float quotient — itself a precision hazard
+for large operands); the emitted IR was a bare `sdiv`. Fixed in the same commit as Gap R.28, because
+the two operators are one rule: `sdiv`/`srem` followed by `icmp ne`/`icmp slt`/`xor`/`and` and a
+`select` that steps the quotient down when there is a remainder and the signs disagree. The
+interpreter now uses the same `floorDiv` on integers instead of going through a double, and the
+constant folder uses it, so `print(-7 // 2)` cannot be folded to a third answer.
+
+Pinned by `pkg/lang/floor_division_test.go` (behaviour *and* the presence of the corrections in the
+module) and `integration/floor_division_test.go` (312 integer and 392 float cases against CPython on
+both backends, plus the identity on the compiled path).
 
 ### R.31 — `%` on a string is not formatting (OPEN, feature)
 

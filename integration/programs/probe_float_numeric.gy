@@ -1,6 +1,9 @@
-# Oracle probe (L11.9, ADR 0186) — numeric truth in the compiled backend (L11.6):
-# floored // on negatives, `/=` producing a float, Python-floored % on floats
-# (wrong on both backends today), and a float surviving an untyped parameter.
+# Oracle probe (L11.9, ADR 0186) — what is still untrue about float *state* in the compiled
+# backend (roadmap L11.6): `x /= 2` leaves x an int, and a float through an untyped parameter
+# arrives as 0. The two flooring lines used to be part of the divergence — `-7 // 2` compiled to
+# -3 and `-3.5 % 2.0` answered -1.5, C's truncated remainder — and are now right on both backends
+# (roadmap Gaps R.28, R.30, ADR 0216), so they stay here as the pair that keeps the identity
+# a == (a // b) * b + (a % b) honest rather than as a report of a current defect.
 print(-7 // 2)
 print(-3.5 % 2.0)
 x = 8

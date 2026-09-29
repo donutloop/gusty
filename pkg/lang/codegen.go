@@ -4254,7 +4254,33 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
 	case "%":
 		g.guardNonZeroFloat(b, r, n.Span(), "float modulo")
-		fmt.Fprintf(b, "  %s = frem double %s, %s\n", t, l, r)
+		// `frem` is libm's fmod — the truncated remainder — so `-7.0 % 2.0` would answer
+		// -1. Same correction as the integer path: add the divisor back when the
+		// remainder's sign differs from the divisor's (floorModFloat says it in Go).
+		rm := g.newTmp()
+		fmt.Fprintf(b, "  %s = frem double %s, %s\n", rm, l, r)
+		// An exact remainder carries the divisor's sign (7.5 % -0.5 is -0.0); fmod gives it
+		// the dividend's, which prints as a different number.
+		zsig := g.newTmp()
+		fmt.Fprintf(b, "  %s = call double @llvm.copysign.f64(double 0.0, double %s)\n", zsig, r)
+		iszero := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp oeq double %s, 0.0\n", iszero, rm)
+		base := g.newTmp()
+		fmt.Fprintf(b, "  %s = select i1 %s, double %s, double %s\n", base, iszero, zsig, rm)
+		rm = base
+		nz := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", nz, rm)
+		rneg := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp olt double %s, 0.0\n", rneg, rm)
+		bneg := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp olt double %s, 0.0\n", bneg, r)
+		diff := g.newTmp()
+		fmt.Fprintf(b, "  %s = xor i1 %s, %s\n", diff, rneg, bneg)
+		adj := g.newTmp()
+		fmt.Fprintf(b, "  %s = and i1 %s, %s\n", adj, nz, diff)
+		sum := g.newTmp()
+		fmt.Fprintf(b, "  %s = fadd double %s, %s\n", sum, rm, r)
+		fmt.Fprintf(b, "  %s = select i1 %s, double %s, double %s\n", t, adj, sum, rm)
 	case "**":
 		fmt.Fprintf(b, "  %s = call double @llvm.pow.f64(double %s, double %s)\n", t, l, r)
 	case "==":
@@ -5141,12 +5167,19 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				case "*":
 					res, folded = lv*rv, true
 				case "/", "//":
+					// `//` folds to the *floor* quotient (`/` never reaches here: true
+					// division is always a float). A folder that truncates would be a
+					// third opinion disagreeing with both backends (Gap R.28, R.30).
 					if rv != 0 {
-						res, folded = lv/rv, true
+						if n.Op == "//" {
+							res, folded = floorDiv(lv, rv), true
+						} else {
+							res, folded = lv/rv, true
+						}
 					}
 				case "%":
 					if rv != 0 {
-						res, folded = lv%rv, true
+						res, folded = floorMod(lv, rv), true
 					}
 				case "**":
 					if rv >= 0 {
@@ -5317,10 +5350,60 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			op = "sub"
 		case "*":
 			op = "mul"
-		case "/", "//":
+		case "/":
+			// True division reaches the i32 domain only where no float is expected (a
+			// float-valued assignment is emitted in the double domain instead, and prints
+			// 3.5 for 7 / 2); the zero guard below is what makes `1 / 0` a trap here.
 			op = "sdiv"
+		case "//":
+			// Floor division, not truncation. `sdiv` truncates toward zero, so the
+			// quotient steps down one whenever there is a remainder and the operands
+			// have opposite signs — the same rule as floorDiv in the interpreter, said in
+			// IR (roadmap Gap R.30: `-7 // 2` compiled to -3 and printed it happily).
+			// The zero guard is emitted here as well as for the shared path below, because
+			// this case returns before reaching it.
+			g.guardNonZeroInt(b, r, n.Span(), "integer division or modulo by zero")
+			q := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = sdiv i32 %s, %s\n", q, l, r))
+			rm := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = srem i32 %s, %s\n", rm, l, r))
+			rne := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", rne, rm))
+			ls := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", ls, l))
+			rs := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", rs, r))
+			diff := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = xor i1 %s, %s\n", diff, ls, rs))
+			adj := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", adj, rne, diff))
+			qm := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = sub i32 %s, 1\n", qm, q))
+			b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, adj, qm, q))
+			return t, nil
 		case "%":
-			op = "srem"
+			// Floor modulo: the remainder carries the divisor's sign, which is what keeps
+			// a == (a // b) * b + (a % b) true for every sign combination. `srem` alone
+			// truncates (`-7 % 2` answered -1), so add the divisor back when the signs
+			// disagree and there is a remainder (roadmap Gap R.28). Guarded here, too:
+			// this case returns before the shared `sdiv`/`srem` guard below.
+			g.guardNonZeroInt(b, r, n.Span(), "integer modulo by zero")
+			rm := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = srem i32 %s, %s\n", rm, l, r))
+			rne := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", rne, rm))
+			rneg := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", rneg, rm))
+			bneg := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, 0\n", bneg, r))
+			diff := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = xor i1 %s, %s\n", diff, rneg, bneg))
+			adj := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", adj, rne, diff))
+			sum := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = add i32 %s, %s\n", sum, rm, r))
+			b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, adj, sum, rm))
+			return t, nil
 		case "**":
 			ld := g.newTmp()
 			fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", ld, l)

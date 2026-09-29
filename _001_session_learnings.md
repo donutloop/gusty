@@ -3521,3 +3521,37 @@ the system.
   and left alone, because each is its own rule. The two that this commit *had* to fix — the collision
   and the generator — are recorded in the commit and the ADR as exposures, not as separate features:
   the gate did not cause them, it made them visible.
+
+## Cycle 164 — Gaps R.28 + R.30: `//` and `%` are one rule (ADR 0216)
+
+- **A test written from the emission launders a bug into a requirement.** Two integration tests
+  asserted `-3.5 % 2.0 == -1.5` and `-5.0 % 2.0 == -1.0`, with comments explaining that the codegen
+  emits `frem`. Someone had read the IR and pinned it. That is why the fix's tests assert the
+  *invariant* `a == (a // b) * b + (a % b)` over the sign grid and run the grid through CPython: a
+  truncating pair is self-consistent, so per-operator tables can certify the wrong pair, and did, for
+  the entire life of the feature. Second instance in three cycles (the first was the property
+  generator emitting `9 + [1, 7, 6]`); the pattern is real, not two anecdotes. Rule: *derive a test's
+  expectation from the specification or the oracle, never from what the program currently does* — and
+  when you catch yourself writing "the backend emits X, so the answer is X", stop and go read the
+  language's definition.
+- **Two operators, one rule, one definition.** `//` and `%` were fixed in one commit because fixing
+  one and leaving the other keeps a pair that is only wrong together. `floorDiv`/`floorMod`/
+  `floorModFloat` in the interpreter, the same rule in the constant folder, and the same rule in IR
+  (`sdiv`/`srem` + `icmp`/`xor`/`and`/`select`, `frem` + `fadd` + `@llvm.copysign.f64`). The constant
+  folder mattered: a folding rule would otherwise have been a *third* answer, and three engines that
+  agree twice is how these bugs hide.
+- **`frem` is not Python's `%`.** LLVM/`fmod` give the truncated remainder, so flooring floats needs
+  the same correction as ints, plus the IEEE detail that an exact remainder keeps the divisor's sign
+  (`7.5 % -0.5` is `-0.0`; printing `0.0` prints a different number). I had my own grid expectations
+  wrong first (`7 % -2` is `-1`, not `-0`) — checked against `python3` before shipping the assertion,
+  which is the only reason that mistake cost one test run instead of becoming a pinned lie.
+- **Structural assertions earn their keep when behaviour tests were once written from the bug.**
+  `TestEmittedFloorCorrectionsAreInTheModule` requires the `select`/`fadd`/`copysign` corrections to
+  exist in the module. If someone "simplifies" back to a bare `srem` and re-pins the behaviour tests
+  from the output, this one still fails.
+- **An early `return` in a switch is how a guard disappears.** My new `//`/`%` cases returned before
+  the shared zero-division guard, and two existing ZeroDivisionError tests caught it within seconds —
+  the strongest argument yet in this loop for keeping guard coverage tests next to every trap.
+- **Discipline:** measured 704 cases first (both backends, both operator families, CPython as the
+  oracle), and stayed inside the pair. R.29 (`1 == 1.0`) and R.31 (`"%s" % 2`) surfaced in the same
+  files and stayed recorded rather than being fixed while I was here.

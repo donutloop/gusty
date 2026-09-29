@@ -935,12 +935,17 @@ match p:
 - `and` / `or` are boolean operators: both operands are evaluated and the
   result is a `0`/`1` integer (`and` is 1 iff both are non-zero, `or` is 1 iff
   either is non-zero). Lowered in the AOT codegen to i1 logic zero-extended to
-  `i32`, mirroring the interpreter. On constant operands, `%` folds at compile
-  time. Note an unresolved divergence the operand rule made visible: the
-  interpreter floors (`-7 // 2` is `-4`, `-7 % 2` is `1`, as in Python) while the
-  compiled backend emits a plain `sdiv`/`srem`, which truncate (`-3`, `-1`). That
-  is roadmap Gap R.30 for `//` and Gap R.28 for `%` — the pair must move together,
-  because Python's invariant is `a == (a // b) * b + (a % b)`.
+  `i32`, mirroring the interpreter.
+
+  **`//` and `%` floor; they are one rule, not two operators.** Go's `/` and `%` truncate
+  toward zero, so with mixed signs the answers differ: Python's `-7 // 2` is `-4` and `-7 % 2`
+  is `1`, because the remainder carries the *divisor's* sign. The two are only correct together
+  — the invariant is `a == (a // b) * b + (a % b)`, which a truncating pair also satisfies, so
+  testing each against its own table can certify a wrong pair. Both backends now emit the
+  correction (`floorDiv`/`floorMod` in the interpreter, an `sdiv`/`srem` plus a `select`
+  adjustment in the module, `frem` plus `fadd` for floats), constant folding uses the same pair,
+  and the whole sign grid is checked against CPython on both backends (roadmap Gaps R.28, R.30,
+  ADR 0216). An exact float remainder keeps the divisor's sign — `7.5 % -0.5` prints `-0.0`.
 - `Call` to user functions or builtins (`print`, `range`).
 - Attribute access (`obj.attr`) and indexing are parsed for future features.
 
