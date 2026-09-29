@@ -775,6 +775,31 @@ for i in range(n):
 
   (The interpreter used to abort on these instead of unwinding, and the AOT used to read
   back whatever memory sat at that slot.)
+
+  **Arithmetic traps are raised the same way** (ADR 0212): division, floor division and
+  modulo by zero raise `ZeroDivisionError`, with CPython's wording for the operation, so the
+  handler that reads like Python's reads like ours:
+
+  ```py
+  try:
+      print(7 % 0)
+  except ZeroDivisionError:
+      print("caught")          # both backends, and CPython
+  ```
+
+  | operation | message |
+  |-----------|---------|
+  | `a / 0` (ints) | `division by zero` |
+  | `a / 0.0`, `1.0 / 0` | `float division by zero` |
+  | `a // 0` | `integer division or modulo by zero` |
+  | `7.0 // 0` | `float floor division by zero` |
+  | `a % 0` | `integer modulo by zero` |
+  | `7.0 % 0` | `float modulo` |
+
+  A trap never prints a value: the compiled backend used to emit the instruction and keep
+  walking, which printed `inf` for `1 / 0` and a fresh garbage integer for `7 % 0` (an
+  unguarded `srem` does not fault on AArch64). Where a trap is not implemented the backend
+  refuses with a message — it does not answer with a substitute value.
 - **An uncaught exception is reported and fails the process, identically on both
   backends.** The report goes to **stderr**, so `prog 2>/dev/null` sees only what the
   program printed, and the exit status is non-zero, so a script cannot mistake a trapped

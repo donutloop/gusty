@@ -1,0 +1,12 @@
+# Oracle probe (L11.9) — the compiled backend dispatches only the *first* `except` arm. When the
+# matching class sits in a later arm, no arm runs, nothing is printed, and the program continues
+# after the try as if the exception had been handled: no traceback, exit 0 (Gap R.20). The
+# interpreter and CPython both print "right".
+try:
+    xs = [1]
+    print(xs[5])
+except ValueError:
+    print("wrong")
+except IndexError:
+    print("right")
+print("after")

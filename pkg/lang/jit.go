@@ -2098,7 +2098,7 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 				rf = float64(r)
 			}
 			if rf == 0 {
-				return 0, &EvalError{Msg: "division by zero"}
+				return 0, zeroDivisionErr(floorMessage(floor))
 			}
 			q := lf / rf
 			if floor {
@@ -2108,7 +2108,7 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		if rf, ok := e.floatOf(r); ok {
 			if rf == 0 {
-				return 0, &EvalError{Msg: "division by zero"}
+				return 0, zeroDivisionErr(floorMessage(floor))
 			}
 			q := float64(l) / rf
 			if floor {
@@ -2117,7 +2117,10 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			return e.allocFloat(q), nil
 		}
 		if r == 0 {
-			return 0, &EvalError{Msg: "division by zero"}
+			if floor {
+				return 0, zeroDivisionErr("integer division or modulo by zero")
+			}
+			return 0, zeroDivisionErr("division by zero")
 		}
 		if floor {
 			// Python floors, Go truncates: -7 // 2 is -4, not -3.
@@ -2134,18 +2137,18 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 				rf = float64(r)
 			}
 			if rf == 0 {
-				return 0, &EvalError{Msg: "division by zero"}
+				return 0, zeroDivisionErr("float modulo")
 			}
 			return e.allocFloat(math.Mod(lf, rf)), nil
 		}
 		if rf, ok := e.floatOf(r); ok {
 			if rf == 0 {
-				return 0, &EvalError{Msg: "division by zero"}
+				return 0, zeroDivisionErr("float modulo")
 			}
 			return e.allocFloat(math.Mod(float64(l), rf)), nil
 		}
 		if r == 0 {
-			return 0, &EvalError{Msg: "division by zero"}
+			return 0, zeroDivisionErr("integer modulo by zero")
 		}
 		return l % r, nil
 	case "==":
@@ -4199,6 +4202,28 @@ func reverseStr(s string) string {
 // exnError builds an EvalError carrying a typed exception (type name + message).
 func exnError(exnType, msg string) *EvalError {
 	return &EvalError{Msg: msg, ExnType: exnType, ExnMsg: msg}
+}
+
+// zeroDivisionErr is the one place the arithmetic traps are raised. The sites used to build
+// a bare `&EvalError{Msg: "division by zero"}`, which printed a message with no exception
+// class and — the part that made it a language defect rather than a cosmetic one — could not
+// be caught: `except ZeroDivisionError:` matched nothing, because matching is on the class.
+// The wording follows CPython's so the two tracebacks are comparable line for line
+// (roadmap Gap R.18, ADR 0212).
+func zeroDivisionErr(kind string) *EvalError {
+	e := exnError("ZeroDivisionError", kind)
+	return e
+}
+
+// floorMessage is the other half of the same rule: `7.0 // 0` is a *floor* division and says
+// so, where `7.0 / 0` does not. Sharing the arithmetic branch made both say "float division by
+// zero", which CPython never does — and a message that differs from the reference for no
+// reason is a message nobody can grep for.
+func floorMessage(floor bool) string {
+	if floor {
+		return "float floor division by zero"
+	}
+	return "float division by zero"
 }
 
 // loopSignal carries break/continue control out of a loop body.

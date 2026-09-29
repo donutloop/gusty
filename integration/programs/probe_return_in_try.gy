@@ -1,0 +1,10 @@
+# Oracle probe (L11.9) — a `return` inside `try:` loses its value in the compiled backend: the
+# function comes back holding nothing and `print` renders `(null)`, where the interpreter and
+# CPython print 3. Silent, exit 0 (Gap R.21).
+def guarded(a, b):
+    try:
+        return a % b
+    except ValueError:
+        return "nope"
+
+print(guarded(7, 4))

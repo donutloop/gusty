@@ -4244,13 +4244,16 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 	case "*":
 		fmt.Fprintf(b, "  %s = fmul double %s, %s\n", t, l, r)
 	case "//":
+		g.guardNonZeroFloat(b, r, n.Span(), g.floorDivMessage(n.L, n.R))
 		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
 		q := g.newTmp()
 		fmt.Fprintf(b, "  %s = call double @llvm.floor.f64(double %s)\n", q, t)
 		return q
 	case "/":
+		g.guardNonZeroFloat(b, r, n.Span(), g.trueDivMessage(n.L, n.R))
 		fmt.Fprintf(b, "  %s = fdiv double %s, %s\n", t, l, r)
 	case "%":
+		g.guardNonZeroFloat(b, r, n.Span(), "float modulo")
 		fmt.Fprintf(b, "  %s = frem double %s, %s\n", t, l, r)
 	case "**":
 		fmt.Fprintf(b, "  %s = call double @llvm.pow.f64(double %s, double %s)\n", t, l, r)
@@ -5356,6 +5359,20 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			res := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, t))
 			return res, nil
+		}
+		if op == "sdiv" || op == "srem" {
+			// Division by zero is a language event, not an instruction: on x86 an unguarded
+			// `sdiv` is a SIGFPE, and on AArch64 it does not trap at all — `print(7 % 0)`
+			// answered a different garbage number each run and exited 0 (roadmap Gap R.18,
+			// ADR 0212).
+			kind := "division by zero"
+			if n.Op == "//" {
+				kind = "integer division or modulo by zero"
+			}
+			if op == "srem" {
+				kind = "integer modulo by zero"
+			}
+			g.guardNonZeroInt(b, r, n.Span(), kind)
 		}
 		b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
 		return t, nil
@@ -8904,6 +8921,57 @@ func (g *irGen) normalizeIndex(b *strings.Builder, h, idx string, sp Span) strin
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 	g.heapUsed = true
 	return ix
+}
+
+// trueDivMessage and floorDivMessage pick the wording CPython uses for the same operation, so
+// the two tracebacks can be compared line for line. The distinction is not cosmetic: `7 / 0`
+// divides two integers and the answer is "division by zero", even though this backend lowers
+// int `/` to a double division (PEP 238) and the emitted instruction is a fdiv. Naming the
+// instruction would describe our codegen at the expense of describing the program.
+func (g *irGen) trueDivMessage(l, r Expr) string {
+	if g.isFloat(l) || g.isFloat(r) {
+		return "float division by zero"
+	}
+	return "division by zero"
+}
+
+func (g *irGen) floorDivMessage(l, r Expr) string {
+	if g.isFloat(l) || g.isFloat(r) {
+		return "float floor division by zero"
+	}
+	return "integer division or modulo by zero"
+}
+
+// guardNonZeroInt emits the ZeroDivisionError trap in front of an integer sdiv/srem. It goes
+// through raiseTo rather than a runtime abort because the trap must be catchable:
+// `except ZeroDivisionError:` matches on the exception code, and a program that handles a
+// division has run to completion — the same distinction ADR 0211 made for exit statuses.
+func (g *irGen) guardNonZeroInt(b *strings.Builder, divisor string, sp Span, kind string) {
+	isZero := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", isZero, divisor))
+	g.markI1(isZero)
+	g.branchRaise(b, isZero, "ZeroDivisionError", kind, sp, "div")
+}
+
+// guardNonZeroFloat is the same trap for the double paths. `fdiv x, 0.0` is not an error to
+// LLVM — it returns ±inf, which is how the compiled backend came to print `inf` for
+// `print(1 / 0)` and exit 0 — so the test is ours to emit. A NaN divisor is not zero, exactly
+// as in Python, and -0.0 compares equal to 0.0, which is what Python does too.
+func (g *irGen) guardNonZeroFloat(b *strings.Builder, divisor string, sp Span, kind string) {
+	isZero := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = fcmp oeq double %s, 0.000000e+00\n", isZero, divisor))
+	g.markI1(isZero)
+	g.branchRaise(b, isZero, "ZeroDivisionError", kind, sp, "fdiv")
+}
+
+// branchRaise emits `cond ? raise(class, kind) : continue` as its own pair of blocks, the
+// shape every emitted bounds/member check already uses.
+func (g *irGen) branchRaise(b *strings.Builder, cond, class, kind string, sp Span, tag string) {
+	badL, okL := g.newLabel(tag+".bad"), g.newLabel(tag+".ok")
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, badL, okL))
+	b.WriteString(fmt.Sprintf("%s:\n", badL))
+	g.raiseTo(b, exnCode(class), class, kind, sp)
+	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
 func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string, sp Span) {

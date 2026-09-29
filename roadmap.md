@@ -1948,22 +1948,78 @@ tool is not), and `integration/trap_exit_test.go` (the same trap is class 3 on `
 `--interp`; the traceback stays off stdout; the JSON `exit` cannot contradict the process; a
 manufactured `llc` failure through the run path is class 2 with a real-toolchain control).
 
-### R.18 — division by zero answers `inf` instead of raising (OPEN, both backends)
+### R.18 — division by zero answered `inf` instead of raising (CLOSED, ADR 0212)
+
+Fixed as the first instance of a rule: **a built-in trap is a typed raise, in every backend**.
+Interpreter: six hand-built `&EvalError{Msg: "division by zero"}` literals went through one funnel,
+`zeroDivisionErr(kind)`, with CPython's wording per operation — the class is what makes
+`except ZeroDivisionError:` fire, and three of the six wordings had also drifted (`7.0 // 0` said
+"float division by zero"). Codegen: `guardNonZeroInt` / `guardNonZeroFloat` test the divisor in
+front of every `sdiv`/`srem`/`fdiv`/`frem` and raise through `raiseTo`, the same entry an explicit
+`raise` uses, so a handler unwinds and a handled error leaves the program exiting 0.
+
+The compiled half was the dangerous one and looked like nothing: an unguarded `srem` does not
+fault on AArch64, so `print(7 % 0)` printed a *different garbage integer on every run* and exited
+0; the float path printed `inf`. Now no trap puts anything on stdout — asserted by printing
+nothing at all, over six shapes including a divisor computed at run time (`x % z()`), because a
+guard that only works on constants guards nothing.
+
+### R.20 — the compiled backend dispatches only the first `except` arm (OPEN, codegen bug)
+
+Measured with three engines; the interpreter and CPython are both right, so this is purely the
+compiled lowering. Matching arm first works; matching arm later runs **no arm at all**, silently:
+
+| source (abridged)                          | interpreter / CPython | compiled |
+|----------------------------------------------|-----------------------|----------|
+| `except ValueError: … except IndexError: …`  | `right`               | *(nothing)*, exit 0 |
+| three arms, match the third                  | `c`                   | *(nothing)*, exit 0 |
+| `except ValueError: … except: …` (bare)      | `bare`                | *(nothing)*, exit 0 |
+| the same inside a function, then continue    | `right`               | *(nothing)*, execution continues after the `try` |
+
+So a handler that exists does not run, the exception is dropped rather than propagated, and there
+is no traceback. Pinned as `programs/probe_except_arm_order.gy` (debt row with the measured pin
+`after\n`). Presumed cause: the raise site jumps to the innermost handler block, which tests only
+the first arm's `@exn_code` and then falls through to the normal continuation. The fix is one
+dispatch chain per `try` — compare each arm's code in order, then the bare arm, then re-raise to
+the enclosing scope.
+
+### R.21 — a `return` inside `try:` loses its value in the compiled backend (OPEN, codegen bug)
 
 ```gusty
-try:
-    print(1 / 0)          # compiled: prints `inf`, exit 0, no report at all
-except ZeroDivisionError:
-    print("caught zero")  # never runs, on either backend
+def guarded(a, b):
+    try:
+        return a % b
+    except ValueError:
+        return "nope"
+
+print(guarded(7, 4))      # interpreter and CPython: 3 · compiled: (null), exit 0
 ```
 
-Measured (ADR 0211's sweep): the compiled backend prints `inf` and exits **0** with nothing on
-stderr; the interpreter traps with an error whose text is `division by zero` and **no exception
-class**, so `except ZeroDivisionError:` cannot match it and the handler never runs; CPython raises
-`ZeroDivisionError`. Two backends, three wrong answers, one root: a built-in trap that reports a
-message instead of raising a typed exception. The fix is one rule, not a patch — every runtime
-error the language raises goes through `exnError(<Class>, msg)` (interpreter) and the raise path
-(codegen), and the arithmetic belongs with L11.6's numeric work.
+Verified pre-existing (present before ADR 0212's guards, and independent of them — the same shape
+with `a + b` behaves the same). The value the `return` produced never reaches the caller: the
+compiled function comes back holding nothing and `print` renders `(null)`. Silent, exit 0, and
+wide-reaching, since `return` inside `try` is how people write guarded helpers. Pinned as
+`programs/probe_return_in_try.gy`. Likely the same lowering region as R.20: the try/except block
+structure swallows the return-value slot.
+
+### R.22 — a function returning a float on one path and a string on another emits invalid IR (OPEN, L11.8 violation)
+
+```gusty
+def div_or(a, b, fallback):
+    if b == 0:
+        return fallback     # a string
+    return a / b            # a float  →  sitofp i32 @.str3 to double, llc rejects the module
+
+print(div_or(10, 5, "none"))
+```
+
+Confirmed pre-existing. The function is specialised as float-returning and the string path is then
+`sitofp`'d — and a `sitofp` of a *global string reference* rather than a pointer is not even a
+value, so `llc` rejects the module: "global variable reference must have pointer type". That is
+exactly what roadmap L11.8 forbids for a tested shape (an `llc` rejection where a refusal is
+required) — and note the *tool* now reports it honestly as the compiler-bug class, exit **2**, per
+ADR 0211, which is how it came to light. Fix: a capability diagnostic naming the mixed return
+types, or real tagged values (L11.1) which subsume the problem.
 
 ### R.19 — a missing attribute answers `0` instead of raising (OPEN, both backends)
 

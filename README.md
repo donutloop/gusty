@@ -227,6 +227,10 @@ falls back to dynamic dispatch.
   whether the interpreter or native code ran it, an `llc` rejection of our own module is the
   compiler-bug class 2 on the run path too, and `--json`'s `exit` field is derived from the
   process status rather than written down (ADR 0211)
+- **A built-in trap is a typed exception everywhere** — `7 % 0` raises `ZeroDivisionError` with
+  CPython's wording and `except ZeroDivisionError:` catches it on both backends; the compiled
+  backend used to emit the instruction and keep walking, printing `inf` or a fresh garbage integer
+  and exiting 0 (`programs/zero_division.gy`, ADR 0212)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

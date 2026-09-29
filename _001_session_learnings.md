@@ -3344,3 +3344,48 @@ What I'm keeping:
   the exact source and the exact observed outputs of all three engines, because the entry is how the
   next cycle decides whether the gap is real.
 
+## Cycle 160 — a trap that prints a value is not a trap (Gap R.18, ADR 0212)
+
+`print(7 % 0)` printed `-1724971560` and exited 0. The next run printed a different number.
+
+Two defects were hiding in that one line, and they were *different defects on the two sides*, which
+is why neither parity check could see them:
+
+- The compiled backend had no trap at all: unguarded `sdiv`/`srem`/`fdiv`/`frem`. On x86 that would
+  at least SIGFPE; on AArch64 integer division by zero does not fault, it returns junk — so the
+  program answered a question it should have refused, merrily, with a fresh number each run.
+- The interpreter did trap, but with `&EvalError{Msg: "division by zero"}` — a message with no
+  `ExnType`. Matching is on the class, so `except ZeroDivisionError:` matched nothing. The trap was
+  invisible to the language.
+
+The rule I'm taking from it: **a runtime error that reports a message instead of raising a typed
+exception is not a trap in this language.** Handling is by class; a bare string is something the
+user cannot program against. That makes `zeroDivisionErr(kind)` the one funnel, and it's the rule
+the remaining untyped sites (missing attribute, `int("abc")`, unpacking, calling a non-function,
+`len` of an int, undefined name) will follow — measured this cycle and recorded.
+
+Other things worth writing down:
+
+- **Wording is normally UI; for traps it is contract.** operations.md says branch on `code`, not
+  `msg` — right, and still: the traceback is the *only* surface an uncaught error has. Three of the
+  six wordings had drifted from the reference (`7.0 // 0` said "float division by zero"), and the
+  reason nobody noticed is that both backends drifted together. So the six wording pairs are now
+  pinned against CPython. The `/` and `//` branches had been written as one branch with a flag, and
+  the message had been written once — that's how it happens.
+- **Name the program, not the instruction.** Int `/` is lowered to `fdiv` (PEP 238), so the naive
+  guard said "float division by zero" for `7 / 0`. Choosing the message from the *source* operands
+  was right; the residual case (a parameter our float-param lowering turned into a double) is
+  documented as R.3c's, not fixed by string-editing.
+- **Three new gaps fell out of testing one.** Multi-arm `except` in codegen runs no arm when the
+  match isn't first (R.20); `return` inside `try:` comes back as `(null)` (R.21); a function
+  returning float-or-string emits `sitofp i32 @.str3 to double` and llc rejects it (R.22). All
+  pre-existing — I checked against the pre-change binary before believing them — all recorded with
+  measurements, R.20/R.21 as pinned probes. What made this legible was writing the *corpus program
+  first* and running it on all three engines: each mismatch was a concrete byte diff, not a hunch.
+- **Last cycle's work paid for itself immediately.** R.22's invalid IR surfaced as exit **2**, the
+  compiler-bug class, because ADR 0211 made `llc` rejections on the run path say what they are.
+  Yesterday it would have been reported as "your program does not compile".
+- Discipline kept: I did **not** fix R.20/R.21/R.22 in this commit even though they're adjacent, and
+  did not fold the remaining untyped-trap sites in either — one rule, one instance per commit, the
+  rest by name in the roadmap.
+

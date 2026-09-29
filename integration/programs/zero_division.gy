@@ -1,0 +1,36 @@
+# Division by zero is a ZeroDivisionError, on every path: it is raised, it is catchable, and
+# the message is the one CPython uses for the same operation. The compiled backend used to
+# lower the instruction and keep walking — `print(1 / 0)` printed `inf`, and `print(7 % 0)`
+# printed a different garbage number on every run — while the interpreter reported a message
+# with no exception class, so `except ZeroDivisionError:` matched nothing (Gap R.18, ADR 0212).
+def zero():
+    return 0
+
+print(10 / 5)
+print(6 // 3)
+print(7 % 4)
+
+try:
+    print(1 / 0)
+except ZeroDivisionError:
+    print("caught division")
+
+try:
+    print(7 % 0)
+except ZeroDivisionError:
+    print("caught modulo")
+
+try:
+    print(7 // 0)
+except ZeroDivisionError:
+    print("caught floor division")
+
+try:
+    print(1.0 % 0)
+except ZeroDivisionError:
+    print("caught float modulo")
+
+try:
+    print(10 / zero())
+except ZeroDivisionError:
+    print("caught a divisor computed at run time")
