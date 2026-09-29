@@ -423,10 +423,16 @@ annotations as static-only, as it does for the rest of the annotation surface.
 `gustyc` (in `cmd/gustyc`) provides:
 
 - `--eval <src>` / `--file <path>`: run the program. stdout is **only** what the program
-  printed — the CLI no longer appends the value of the last statement (`print(1)` used to be
-  followed by a stray `0`, the void `print` returned before ADR 0172). A *snippet* whose last
-  statement is a bare expression still echoes its value, so `--eval "x = 1 + 2\nx"` prints
-  `3`; a program ending in a call that yields `None` prints nothing extra.
+  printed, in both backends: the echo of the last value is keyed on *where the source came from*,
+  not on what the last statement looks like (ADR 0204).
+  - **A file** (`--file`, the default interpreted run, `--interp`) echoes nothing at all, so
+    a program ending in `f(5)` prints exactly what it printed — identical to `--aot` and to
+    `python prog.py`. Nothing is ever appended to piped stdout.
+  - **A snippet** (`--eval`) keeps the prompt courtesy: a final bare expression echoes, so
+    `--eval "x = 1 + 2\nx"` prints `3`, while `--eval "print(7)"` prints just `7`.
+  - **`--json` reports `result` either way.** For a file it is the evaluated value of the last
+    statement — metadata about the evaluation, *not* program output; do not concatenate it onto
+    what the program printed.
 - `--verify <src>`: parse + analyze, exit 1 on diagnostics
 - `--emit-llvm <src>` / `--emit-ast <src>`: machine-readable IR / AST JSON
 - `--lang`: self-describing feature list for agents

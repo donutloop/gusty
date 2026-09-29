@@ -449,16 +449,18 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		// program being malformed (exit 1) or the CLI being mis-invoked (exit 4).
 		return exitRuntime
 	}
-	// Echoing the last value is a REPL courtesy for *snippets*, not a program feature:
-	// `gustyc --file prog.gy` used to append a stray "0" (the void value print() returned)
-	// to every program's stdout, corrupting piped output. Echo only when the program's last
-	// statement is a bare expression whose value is a real value (`--eval "x = 1 + 2\nx"`
-	// still prints 3); a program ending in a call that yields None prints nothing, matching
-	// `python prog.py`. Tracebacks and diagnostics are already stderr-only (ADR 0169).
+	// Echoing the last value is a REPL courtesy for *snippets*, not a program feature.
+	// The distinction is where the source came from, not what it contains: `--eval "x = 1 +\n2\nx"`
+	// is a snippet, so it echoes 3; `gustyc --file prog.gy` is a program, and a program's stdout is
+	// only what the program printed — matching `python prog.py`, and matching the compiled backend,
+	// which never echoed anything (roadmap Gap R.13, ADR 0204). The earlier narrowing (only a bare
+	// final expression, only a non-`None` value) still left `--file` appending `10` to a program that
+	// ends in `f(5)`, so the same source had two different stdouts depending on which backend ran it.
 	finalExpr := false
 	if n := len(prog.Stmts); n > 0 {
 		_, finalExpr = prog.Stmts[n-1].(*lang.ExprStmt)
 	}
+	snippet := src != ""
 	isNone := ev.IsNone(v)
 	if jsonOut {
 		// The backend is part of the result, not an inference from the flag list:
@@ -468,7 +470,7 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		} else {
 			fmt.Printf("{\"result\": %q, \"type\": %q, \"backend\": %q, \"exit\": 0%s}\n", ev.Repr(v), ev.TypeOf(v), backend, gcJSON(gc, gcStats))
 		}
-	} else if finalExpr && !isNone {
+	} else if snippet && finalExpr && !isNone {
 		fmt.Println(ev.Repr(v))
 	}
 	if gcStats && !jsonOut {

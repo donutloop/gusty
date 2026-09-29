@@ -1498,7 +1498,8 @@ messages where nobody would look:
 - **R.12, R.13, R.14 (OPEN)** — found while building the program that proves R.9: a program-defined
   built-in name is visible to codegen *above* its definition, so `for i in range(2)` iterates the
   program's value while the interpreter uses the built-in; a file's final bare expression statement is
-  echoed by the interpreter and by nobody else; and `for x in 5` iterates on both backends while
+  echoed by the interpreter and by nobody else (closed below, ADR 0204); and `for x in 5` iterates on
+  both backends while
   being undocumented and refused by CPython.
 - **R.11 (OPEN)** — a non-default parameter after a defaulted one parses, and is only caught at the
   call, while CPython refuses the definition.
@@ -1767,7 +1768,7 @@ ADR 0197 gave the front end a rule about which names a *deferred* scope may see;
 been given the same one. Until then, the ledger's shadowing programs must avoid using a built-in that
 the same program also defines (`programs/builtin_names_as_defs.gy` says so in its header comment).
 
-### R.13 — a file's final bare expression statement is echoed by the interpreter only (OPEN)
+### R.13 — a file's final bare expression statement was echoed by the interpreter only (CLOSED, ADR 0204)
 
 ```gusty
 def f(x):
@@ -1776,12 +1777,23 @@ def f(x):
 f(5)
 ```
 
-`--file` and `--interp` print `10`; `--aot` and CPython print nothing. Echoing the last value is a
-REPL courtesy for *snippets* — the code says so, and the earlier fix for the stray trailing `0`
-narrowed it to "a final bare expression whose value is not `None`" — but a file is not a snippet, and
-`python prog.py` never echoes. The intent and the guard disagree, and the observable consequence is
-that a program whose last statement is a call to a value-returning function has two different stdouts
-depending on which backend ran it.
+`--file` and `--interp` printed `10`; `--aot` and CPython printed nothing. Echoing the last value is
+a courtesy for *snippets* — the code comment said so, in more precise words than the code implemented
+— and the surviving guard asked "is the final statement a bare expression with a non-None value?"
+when the question is "did this source arrive as a snippet or as a file?". A program ending in a
+value-returning call is ordinary (`main()` last, a `render()` call, a benchmark), so piped stdout —
+the path scripts and agents use — was being appended to.
+
+Closed by keying the echo on provenance: `evalSrcOrFile` already knows whether it received source text
+or a path, so a file echoes nothing in any interpreted mode (identical to `--aot` and to
+`python prog.py`), `--eval` keeps echoing a final bare expression, and `--json` still reports `result`
+for a file because that field describes the evaluation rather than the program's output. The tests
+compare the two backends against each other rather than against a wish, and pin the asymmetry so
+neither half gets "simplified" away later.
+
+A process note worth keeping: the gap was written up while its neighbouring gap (R.9) was being closed,
+because the ledger program built to prove R.9 ended in a call. Corollary — **a comment that describes
+its intent more precisely than its code does is a defect report waiting to be filed.**
 
 ### R.14 — `for x in 5` iterates, on both backends, undocumented (OPEN)
 

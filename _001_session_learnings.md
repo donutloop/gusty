@@ -2995,3 +2995,44 @@ Process notes:
   actual output, and left in the queue in severity order. Resisting the urge to fix a one-line-looking
   thing mid-cycle is what keeps commits one-feature and ADRs one-per-decision.
 
+## Cycle 152 — the echo asked the wrong question (Gap R.13, ADR 0204)
+
+`--file prog.gy` on
+
+```gusty
+def f(x):
+    return x * 2
+
+f(5)
+```
+
+printed `10`. `--aot` printed nothing. CPython printed nothing. The same source, two stdouts — and the
+one that was wrong was the path scripts and agents pipe.
+
+The mechanism was a courtesy that had outlived its predicate. An earlier cycle had already fixed this
+once, after `--file` was found appending a stray `0` to every program (the void value `print()`
+returned); the fix narrowed the echo to "a bare final expression whose value is not None". Right
+direction, wrong question: the distinction that matters is **where the source came from** (a snippet
+typed at a prompt vs a file on disk), not what shape the last statement happens to have. Once R.13 was
+written as a predicate on provenance — `evalSrcOrFile` already knew, it just wasn't asked — the file
+path echoes nothing in any mode, `--eval` keeps printing `3` for `x = 1 + 2\nx`, and both backends
+agree with CPython.
+
+Three things to keep:
+
+- **A comment that states its intent more precisely than its code does is a defect report.** The code
+  said "a REPL courtesy for *snippets*, not a program feature … matching `python prog.py`". The guard
+  implemented something narrower than that sentence. Reading comments as *claims* — then testing them —
+  finds gaps no test would have thought to ask about.
+- **Compare backends to each other, not to a wish.** The tests assert `--file`/`--interp` output equals
+  `--aot` output for the same source, and both equal the oracle. "No stray echo" is only meaningful
+  relative to what the other engine does; asserting against a literal string would have passed while
+  both engines were wrong in the same way.
+- **Some asymmetries are correct and must be pinned as such.** `--json` still returns `result` for a
+  file, because that field describes the *evaluation* while stdout belongs to the *program*. Without a
+  test naming that intent, the natural future cleanup is "consistency!" — either dropping the field or
+  re-adding the print. The test says: this difference is on purpose.
+- Gaps keep arriving through the corpus, not through reading: R.13 was discovered by the ledger program
+  written to prove R.9 (it ended in a call). Writing a program to demonstrate a fix is a better gap
+  finder than auditing, and the reason `programs/*.gy` keeps paying for itself.
+

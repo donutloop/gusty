@@ -205,6 +205,9 @@ falls back to dynamic dispatch.
   named `range`, a keyword argument named `print` and a method named `range` all failed to parse;
   built-ins are ordinary names, and the keyword table is now exactly the words that change grammar
   (`programs/builtin_names_as_defs.gy`, ADR 0203)
+- **A program's stdout is only what it printed** — the interpreter used to echo a file's final bare
+  expression (`f(5)` last printed `10`) while the compiled backend and CPython printed nothing, so the
+  same source had two stdouts depending on the engine (ADR 0204)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case
