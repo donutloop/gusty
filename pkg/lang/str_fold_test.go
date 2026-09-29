@@ -31,7 +31,7 @@ func TestStrFoldAgreesBetweenTheTwoFolders(t *testing.T) {
 			t.Fatalf("%q did not parse to one expression statement", c.src)
 		}
 		// The AST-level folder.
-		got, ok := stringConst(expr.Expr)
+		got, ok := stringConst(expr.Expr, nil)
 		if !ok || got != c.want {
 			t.Errorf("stringConst(%s) = (%q, %v), want (%q, true)", c.src, got, ok, c.want)
 		}

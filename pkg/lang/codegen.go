@@ -3136,13 +3136,18 @@ func isStringExpr(e Expr) bool {
 // stringConst resolves a string literal or a chain of `+`-concatenated string
 // literals to its concrete value. Returns (s, true) when the expression is a
 // compile-time-known string constant.
-func stringConst(e Expr) (string, bool) {
+// stringConst folds an expression to a string constant. `shadowed` reports whether the
+// program defines a function of a given name; when it does, the call is the program's and
+// no fold through the built-in's meaning is allowed (`str`/`chr` here) — that fold is how
+// `def str(x): return x + 7` printed a string the program never returned (Gap R.6, ADR 0199).
+// Callers without program context pass nil, which folds only what cannot be a call.
+func stringConst(e Expr, shadowed func(string) bool) (string, bool) {
 	if sl, ok := e.(*StrLit); ok {
 		return sl.Value, true
 	}
 	if b, ok := e.(*BinOp); ok && b.Op == "+" {
-		ls, lok := stringConst(b.L)
-		rs, rok := stringConst(b.R)
+		ls, lok := stringConst(b.L, shadowed)
+		rs, rok := stringConst(b.R, shadowed)
 		if lok && rok {
 			return ls + rs, true
 		}
@@ -3150,7 +3155,7 @@ func stringConst(e Expr) (string, bool) {
 	if c, ok := e.(*Call); ok {
 		attr, ok := c.Fn.(*Attr)
 		if ok {
-			v, ok := stringConst(attr.Obj)
+			v, ok := stringConst(attr.Obj, shadowed)
 			if ok {
 				switch attr.Name.Value {
 				case "upper":
@@ -3173,11 +3178,11 @@ func stringConst(e Expr) (string, bool) {
 					if len(c.Args) != 2 {
 						return "", false
 					}
-					oldv, ok := stringConst(c.Args[0])
+					oldv, ok := stringConst(c.Args[0], shadowed)
 					if !ok {
 						return "", false
 					}
-					newv, ok := stringConst(c.Args[1])
+					newv, ok := stringConst(c.Args[1], shadowed)
 					if !ok {
 						return "", false
 					}
@@ -3192,7 +3197,7 @@ func stringConst(e Expr) (string, bool) {
 					}
 					parts := []string{}
 					for _, el := range ll.Elems {
-						sv, ok := stringConst(el)
+						sv, ok := stringConst(el, shadowed)
 						if !ok {
 							return "", false
 						}
@@ -3207,7 +3212,7 @@ func stringConst(e Expr) (string, bool) {
 		// because that is what str(None) is: the int 0 is a different value, and a
 		// fold that says "0" both prints the wrong thing and hands back a string
 		// constant the assignment path cannot elide (ADR 0183).
-		if n, ok := c.Fn.(*Name); ok && n.Value == "str" && len(c.Args) == 1 {
+		if n, ok := c.Fn.(*Name); ok && n.Value == "str" && len(c.Args) == 1 && !nameShadowed(shadowed, n.Value) {
 			switch arg := c.Args[0].(type) {
 			case *IntLit:
 				return strconv.FormatInt(arg.Value, 10), true
@@ -3226,8 +3231,8 @@ func stringConst(e Expr) (string, bool) {
 }
 
 // stringConstLen is len() over a compile-time-known string constant.
-func stringConstLen(e Expr) (int, bool) {
-	if s, ok := stringConst(e); ok {
+func stringConstLen(e Expr, shadowed func(string) bool) (int, bool) {
+	if s, ok := stringConst(e, shadowed); ok {
 		return len(s), true
 	}
 	return 0, false
@@ -3739,7 +3744,7 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		// str(float-constant) folds to its %g decimal string (matches the
 		// interpreter's Repr), so print(str(3.5)) emits a valid %s printf
 		// with the string-global pointer rather than a %d printf fed an i8*.
-		if name, ok := n.Fn.(*Name); ok && name.Value == "str" && len(n.Args) == 1 {
+		if name, ok := n.Fn.(*Name); ok && name.Value == "str" && len(n.Args) == 1 && !g.builtinShadowed(name.Value) {
 			if il, ok := n.Args[0].(*IntLit); ok {
 				return strconv.FormatInt(il.Value, 10), true
 			}
@@ -3756,7 +3761,7 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				return pyFloatRepr(fv), true
 			}
 		}
-		if name, ok := n.Fn.(*Name); ok && name.Value == "chr" {
+		if name, ok := n.Fn.(*Name); ok && name.Value == "chr" && !g.builtinShadowed(name.Value) {
 			if il, ok := n.Args[0].(*IntLit); ok {
 				return string(rune(il.Value)), true
 			}
@@ -3896,10 +3901,17 @@ func (g *irGen) isFloat(e Expr) bool {
 	case *Call:
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok {
-				if id.Value == "float" {
+				// A function the program defined and that returns a float is a fact about
+				// the program, and it outranks everything below.
+				if g.floatFuncs[id.Value] {
 					return true
 				}
-				if g.floatFuncs[id.Value] {
+				// A program that defines `float`, `abs`, `sum` ... owns that name: nothing
+				// below may read the call through the built-in's shape (Gap R.6).
+				if g.builtinShadowed(id.Value) {
+					return false
+				}
+				if id.Value == "float" {
 					return true
 				}
 				if id.Value == "abs" || id.Value == "min" || id.Value == "max" {
@@ -3962,6 +3974,16 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		return g.floatBinOp(b, n)
 	case *Call:
 		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && g.builtinShadowed(id.Value) && !g.floatFuncs[id.Value] {
+				// The name is the program's, so this is an ordinary call — and a call in this
+				// backend returns i32 unless the program's own definition says otherwise. Lift
+				// its result the way a plain int expression is lifted into float arithmetic
+				// (what the switch's own default does), rather than folding it as the built-in
+				// conversion, which is what produced an i32 operand in an fadd (Gap R.6).
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, n))
+				return t
+			}
 			if id, ok := n.Fn.(*Name); ok {
 				if g.floatFuncs[id.Value] {
 					t, err := g.call(b, n)
@@ -4196,6 +4218,9 @@ func (g *irGen) floatEval(e Expr) (float64, bool) {
 		return 0, false
 	case *Call:
 		if n.Fn != nil {
+			if id, ok := n.Fn.(*Name); ok && g.builtinShadowed(id.Value) && !g.floatFuncs[id.Value] {
+				return 0, false
+			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
 				switch a := n.Args[0].(type) {
 				case *IntLit:
@@ -4682,6 +4707,51 @@ func (g *irGen) emitDunderBinOp(b *strings.Builder, n *BinOp) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// nameShadowed applies a (possibly nil) shadow predicate.
+func nameShadowed(shadowed func(string) bool, name string) bool {
+	return shadowed != nil && shadowed(name)
+}
+
+// builtinShadowed reports whether the program defines a function of this name itself —
+// in which case the name belongs to the program, and codegen must not read a call to it
+// as the built-in of that name.
+//
+// Both the interpreter and CPython let a `def` shadow a built-in, and the interpreter
+// already resolves it that way; the compiled path read the call by name instead, so
+//
+//	def float(x):
+//	    return x + 7
+//	print(float(1))
+//
+// printed 8 interpreted and 1.0 compiled — the float-shape helpers saw the *name* `float`
+// and folded the call as the conversion, never asking whether the program had defined it.
+// `str` and `chr` were worse still: the call was emitted as the user's function and then
+// *used* as the builtin's string result, which llc rejected (roadmap Gap R.6, ADR 0199).
+//
+// The rule is not "refuse the name" — `float`, `str`, `len`, `sum` are names people choose
+// deliberately — it is that the program's definition wins, the way every other scope rule
+// in the language says the innermost declaration wins.
+func (g *irGen) builtinShadowed(name string) bool {
+	if name == "" {
+		return false
+	}
+	if g.funcs[name] {
+		return true
+	}
+	if fd, ok := g.fds[name]; ok && fd != nil {
+		return true
+	}
+	return false
+}
+
+// builtinCallAs reports whether a call may still be read as the built-in `name`: the callee
+// has to be that bare name, and the program must not have defined it. Every shape decision
+// keyed on a built-in name goes through this, so there is one place that decides.
+func (g *irGen) builtinCallAs(c *Call, name string) bool {
+	n, ok := c.Fn.(*Name)
+	return ok && n.Value == name && !g.builtinShadowed(name)
 }
 
 func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
@@ -6630,7 +6700,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							return g.value(b, dl.Vals[i])
 						}
 					}
-				} else if sv, ok := stringConst(c.Args[0]); ok {
+				} else if sv, ok := stringConst(c.Args[0], g.builtinShadowed); ok {
 					// string key lookup
 					for i, k := range dl.Keys {
 						if sl, ok := k.(*StrLit); ok && sl.Value == sv {
@@ -7621,7 +7691,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("len expects one argument")
 		}
-		if n, ok := stringConstLen(c.Args[0]); ok {
+		if n, ok := stringConstLen(c.Args[0], g.builtinShadowed); ok {
 			return fmt.Sprintf("%d", n), nil
 		}
 		// imported string module global (data imports): len(mod.str)
@@ -8226,7 +8296,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("ord expects one argument")
 		}
-		sv, ok := stringConst(c.Args[0])
+		sv, ok := stringConst(c.Args[0], g.builtinShadowed)
 		if !ok {
 			// imported string module global (data imports): ord(mod.str)
 			if attr, ok2 := c.Args[0].(*Attr); ok2 {
@@ -8292,7 +8362,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if il, ok := c.Args[0].(*IntLit); ok {
 			return fmt.Sprintf("%d", il.Value), nil
 		}
-		if sv, ok := stringConst(c.Args[0]); ok {
+		if sv, ok := stringConst(c.Args[0], g.builtinShadowed); ok {
 			f, err := strconv.ParseFloat(sv, 64)
 			if err != nil {
 				return "", fmt.Errorf("float: cannot parse %q", sv)

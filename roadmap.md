@@ -1476,12 +1476,17 @@ messages where nobody would look:
   collided with the generated entry point, which made the program unbuildable). Program-owned
   symbols now carry a `gy_` prefix and nothing else keeps its name unless the program did not
   define it — which is why `extern fn` still binds the C name it declares.
-- **R.6, R.7, R.8 (OPEN)** — three defects measured while closing the others, all of them
+- **R.6, closed by ADR 0199** — a program that defined `str`, `float`, `sqrt`, `chr` ...
+  had its call read through the *built-in's meaning* by codegen: `float(1)` folded to a conversion
+  (printing `1.0` for a function returning `x + 7`), and `str(1)` was emitted as the program's call
+  and then printed as the built-in's string, which `llc` rejected. One predicate now decides —
+  does the program own this name? — in front of every shape reading keyed on a built-in name.
+- **R.7, R.8, R.9 (OPEN)** — three defects measured while closing the others, all of them
   discovered by writing a corpus program rather than by reading code:
-  `def abs` answers with the *builtin's* value on the compiled path (R.6); one source line can
-  report the same diagnostic two or three times, because return inference re-walks a callee per
-  call site (R.7); and a module function and a method that share a name share the checker's
-  function key, which refuses an ordinary program that every other layer runs (R.8).
+  one source line can report the same diagnostic two or three times, because return inference
+  re-walks a callee per call site (R.7); a module function and a method that share a name share
+  the checker's function key, which refuses an ordinary program that every other layer runs
+  (R.8); and `def print` / `def range` do not parse at all, though CPython runs them (R.9).
 
 ### R.1 — the compiled backend runs a coroutine at the call, not at the await (OPEN)
 
@@ -1658,20 +1663,59 @@ call still gets its arity and argument-type checks against the declared annotati
 `programs/forward_defs.gy` is in the ledger with `oracle: "match"`: interpreter, compiled
 binary and CPython byte-identical.
 
-### R.6 — a user function shadowing a builtin answers with the builtin (OPEN)
+### R.6 — a built-in name shadowed by a `def` was read through the built-in (CLOSED, ADR 0199)
 
 ```gusty
-def abs(x):
+def float(x):
     return x + 7
 
-print(abs(1))
+print(float(1))
 ```
 
-`--interp` prints `8`; the compiled binary prints **`1`** — the call is resolved against the
-builtin table before the program's own `def abs` is consulted. Silent, and these are names
-people choose deliberately (`abs`, `len`, `min`, `max`, `sum`, `str`). The interpreter and
-CPython both let a user `def` shadow a builtin; the codegen call path must consult the
-module's own function table first, in the same order both of them use.
+`--interp` printed `8`; the compiled binary printed **`1.0`**. And with `str`/`chr` the program did
+not compile at all: the call was emitted as the program's own function and then *used* as the
+built-in's string result — `printf("%s", i32 %t5)` — which `llc` rejected.
+
+The measured split across `def NAME(x): return x + 7` was: `float`, `sqrt`, `floor`, `ceil` folded
+to the float conversion; `str`, `chr` produced an invalid module; `abs`, `int`, `ord`, `round`,
+`sum`, `len`, `min`, `max`, `sorted`, `any`, `all` were already fine. That pattern is the whole
+story: the *dispatch* was ordered correctly (user functions are consulted before the built-in
+`switch`), but an LLVM backend also needs a call's **shape** — is it a float, does it fold, is it a
+string, how does `print` render it — and this codegen answered many of those from the callee's
+*name*.
+
+Closed by asking one question in one place — `builtinShadowed(name)`, "does the program define
+this name?" — in front of every shape reading keyed on a built-in name: `isFloat`'s call case, the
+`float`/`abs`/`min`/`max`/`sum`/`sqrt`/`floor`/`ceil` readings in `floatValue`/`floatEval`, and the
+`str`/`chr` folds in `stringConst`/`stringVal` (which now take the predicate as a parameter, since
+they are pure helpers). Two rules came out of getting it wrong first:
+
+- **a fact about the program outranks a fact about the built-in** — `floatFuncs` must be consulted
+  before the guard, or `def half(x): return x / 2.0` loses its float arithmetic (the first patch
+  did exactly that, and `programs/floatfn.gy` failed parity within the minute);
+- **with the fold gone, lift** — the program's call returns `i32`, so float arithmetic needs
+  `sitofp i32 … to double`, the same lift any int expression gets; skipping it produced the
+  mirror-image failure (an `i32` inside an `fadd`).
+
+`programs/shadowed_builtins.gy` is in the ledger with `oracle: "match"` — six shadowed names,
+shadowed calls in print position, in float arithmetic, and over a real list — and
+`TestShadowedBuiltinBatteryCompiles` compiles and runs one program per name, because each fold lives
+in a different helper: `float` passing said nothing about `chr`. Unshadowed programs keep their
+folds: `print(str(42))` is still constant-folded.
+
+### R.9 — `def print` and `def range` do not parse (OPEN)
+
+```gusty
+def print(x):
+    return x
+```
+
+`parse error at 1:5: expected identifier` — consistently on `--check`, `--interp` and `--aot`, so it
+is a refusal and not a wrong answer, which is why it is a footnote rather than a blocker. CPython
+accepts the program (`print` and `range` are ordinary globals), so the difference is a portability
+trap for code carried over, and for a generated program that happens to choose one of these names.
+The fix is in the parser's statement position — accept these names as `def` targets, and let the
+resolver decide (R.6 already guarantees the program's definition wins once it parses).
 
 ### R.8 — a module function and a method of one name share the checker's key (OPEN)
 

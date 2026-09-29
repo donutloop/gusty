@@ -55,6 +55,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `time`, `exit`, `main` — which used to be emitted under those very names and
 		// answered by libc (roadmap Gap R.4, ADR 0198).
 		"host_symbol_names",
+		// Built-in call names are names, not keywords: `def str`, `def float`, `def len`
+		// shadow the built-in on both backends, where the compiled path used to read those
+		// calls through the built-in's meaning by name (roadmap Gap R.6, ADR 0199).
+		"shadowed_builtins",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).

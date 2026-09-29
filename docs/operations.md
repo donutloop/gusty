@@ -79,6 +79,17 @@ names come from one table (`pkg/lang/predeclared.go`) shared by the checker, the
 unbound-name guard and LSP completion, so a real built-in (`sum`, `enumerate`, `zip`, …) is
 never "undefined" and a name that is not bound is never lowered.
 
+**A built-in name is shadowable, and the program's definition wins** (Gap R.6, ADR 0199).
+`def str`, `def float`, `def len`, `def abs` are legal, and after them `str(1)` calls the program's
+function on both backends. Agents should not warn themselves out of this: it is not a lint, it is
+the language (CPython behaves the same way). What changed is that codegen no longer reads a call
+through the built-in's *meaning* — its float shape, its constant fold, its `%s` print — for a name
+the program owns; the fold still applies when nothing shadows the name, so an ordinary program pays
+nothing. `def print` / `def range` remain parse-time refusals, and a module function colliding with
+a *method* name is the open R.8. The predeclared-name table lives in one place
+(`pkg/lang/predeclared.go`), shared by the checker, the codegen guard and LSP completion; the shadow
+decision lives in `builtinShadowed`, so "is this name the program's?" has exactly one answer.
+
 **`undefined name` follows the declaration-order rule, not the file's order** (Gap R.5,
 ADR 0197). Inside a function body — and inside a class body — a name resolves to any `def` of
 that scope, wherever it is written, so mutually recursive functions and helpers declared

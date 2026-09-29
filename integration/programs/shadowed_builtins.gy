@@ -1,0 +1,43 @@
+# Built-in call names are names, not keywords. A program may define `str`, `float`, `len`,
+# `abs`, `min`, `round` for its own reasons, and then `str(1)` means what the program's `def`
+# says — the interpreter and CPython both resolve it that way. The compiled backend used to
+# read those calls by *name* through the built-in's meaning: `float(1)` folded to a conversion
+# (printing 1.0 for a function that returns x + 7), and `str(1)` was emitted as the program's
+# call and then *used* as the built-in's string, which llc rejected (roadmap Gap R.6, ADR 0199).
+
+def str(x):
+    return x + 7
+
+
+def float(x):
+    return x + 7
+
+
+def len(x):
+    return 3
+
+
+def abs(x):
+    return x + 7
+
+
+def round(x):
+    return x + 7
+
+
+def min(a, b):
+    return a + b
+
+
+s1 = str(1)
+print(s1)
+print(str(2))
+y = float(1)
+print(y)
+print(float(2) + 0.5)
+print(len([1, 2, 3, 4]))
+print(abs(-3))
+print(round(2))
+print(min(1, 2))
+items = [1, 2, 3]
+print(str(len(items)))

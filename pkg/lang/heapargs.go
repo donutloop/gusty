@@ -946,7 +946,7 @@ func stringConstOf(e Expr) (string, bool) {
 	if sl, ok := e.(*StrLit); ok {
 		return sl.Value, true
 	}
-	if s, ok := stringConst(e); ok {
+	if s, ok := stringConst(e, nil); ok {
 		return s, true
 	}
 	return "", false

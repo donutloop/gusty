@@ -186,6 +186,10 @@ falls back to dynamic dispatch.
   `gy_main`, `gy_exit`, so the linker can never answer the program's own call from libc, while
   `extern fn` keeps the C name it binds; `nm` on the built binary and the source map's `symbol`
   field both show the link name (`programs/host_symbol_names.gy`, ADR 0198)
+- **Built-ins are shadowable, on both paths** — `def str`, `def float`, `def len` mean what the
+  program says they mean, exactly as in CPython, instead of being answered by the compiler's own
+  reading of the name (`float(1)` printed `1.0` for a function returning `x + 7`); the constant
+  folding still runs whenever nothing shadows the name (`programs/shadowed_builtins.gy`, ADR 0199)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

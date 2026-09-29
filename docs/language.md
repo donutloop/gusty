@@ -1710,6 +1710,44 @@ shows `gy_sync` and never `sync` — and in the source map, where `name` is what
 Shadowing a *built-in* name (`def abs(x): ...`) is a separate, known defect: the compiled call is
 resolved against the builtin table and answers with the builtin (roadmap R.6).
 
+## Built-ins are shadowable (ADR 0199)
+
+`str`, `float`, `len`, `abs`, `min`, `sum`, `round`, `sorted` are ordinary names. Defining one
+shadows the built-in, and the definition wins — in both backends and in CPython:
+
+```gy
+def str(x):
+    return x + 7
+
+
+def len(x):
+    return 3
+
+
+print(str(1))          # 8
+print(len([1, 2, 3]))  # 3
+```
+
+This matters because a compiled backend decides a lot from a call's *name*: whether its result is a
+float, whether it folds to a constant, whether it may be printed with `%s`. Each of those readings
+is the built-in's meaning, so each one is now guarded by a single question — does the program define
+this name? — and a program that does gets its own function called:
+
+```gy
+def float(x):
+    return x + 7
+
+
+print(float(1) + 0.5)   # 9.5 — the call is the program's, its int result lifted to double
+```
+
+What a program does *not* get by shadowing is a slower program: when nobody shadows `str`, the
+constant folding still runs (`print(str(42))` is still folded at compile time).
+
+Two neighbouring things stay refusals rather than wrong answers, both documented in the roadmap:
+`def print` and `def range` do not parse (the parser reserves the tokens), and a module function
+that shares a name with a *method* still confuses the checker (R.8).
+
 ## Docstrings and `__doc__` (Round 9, ADR 0141)
 
 A leading bare string literal in a `def` or `class` body is captured as a

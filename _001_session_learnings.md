@@ -2763,3 +2763,56 @@ Process notes worth keeping:
   front-end gate lives in the build pipeline (ADR 0177), so an agent sees a *diagnostic*, not a
   Go error — worth remembering when writing assertions about "the compiler refuses".
 
+## Cycle 147 — the compiler read the built-in's meaning into a call the program owned (Gap R.6, ADR 0199)
+
+`def float(x): return x + 7` then `print(float(1))`: interpreter `8`, compiled **`1.0`**. With
+`str` and `chr` the program did not compile at all — the call was emitted as the program's own
+function and then *used* as the built-in's string result, `printf("%s", i32 %t5)`, which `llc`
+rejected. A battery of 18 names split cleanly: `float`/`sqrt`/`floor`/`ceil` folded to the float
+conversion, `str`/`chr` produced an invalid module, and 12 others (`abs`, `int`, `ord`, `round`,
+`sum`, `len`, `min`, `max`, `sorted`, `any`, `all`, `chr`-adjacent) were already fine.
+
+That split is the diagnosis. I had assumed the roadmap's framing — "the call is resolved against the
+builtin table before the program's own `def`" — and went looking for a dispatch-order bug. Dispatch
+was **already correct**: `if g.funcs[fnName]` sits ahead of the built-in `switch`. What was wrong
+was subtler and worse: an LLVM backend needs facts a call expression does not carry — is its result
+a float, does it fold to a constant, is it a string, how should `print` render it — and this codegen
+answered many of them **from the callee's name**. So the fix was not reordering a table; it was
+putting one question in front of every name-keyed shape reading:
+
+```go
+if g.builtinShadowed(id.Value) { /* this name is the program's */ }
+```
+
+Three lessons worth keeping:
+
+- **A guard placed before a program-level fact is a new bug.** My first patch put the shadow check
+  ahead of `g.floatFuncs` in `isFloat`/`floatValue`, which meant a *program-defined* float-returning
+  function stopped being float. `programs/floatfn.gy` — four lines, `def half(x): return x / 2.0`,
+  in the ledger for years — failed parity within the minute. Correct precedence is: what the program
+  says (`floatFuncs`) → is the name claimed → only then what the built-in's name implies. The
+  regression test `TestProgramFloatFunctionKeepsItsShape` is that lesson with an executable form.
+- **Removing a fold can expose a missing lift.** With the `float(...)` fold gone, the program's call
+  returned `i32` and got fed straight into an `fadd`. `programs/shadowed_builtins.gy` caught it as an
+  llc failure; the fix is the ordinary `sitofp i32 … to double` lift every plain int expression gets.
+  Silent-fold bugs often hide the absent conversion behind them.
+- **Pure fold helpers need the program's state handed to them.** `stringConst`/`stringConstLen` are
+  free functions with no `irGen`, and the `str`/`chr` folds live inside them. Rather than make them
+  methods, they take `shadowed func(string) bool`; callers pass `g.builtinShadowed`, or `nil` where
+  no program is in scope. It keeps them testable and makes "which program am I folding?" an explicit
+  argument — the same shape as `floatFromSyntax(g, …)` from Cycle 144.
+
+Process notes:
+
+- **IR-level assertions about printing have to follow the register.** `strings.Contains(ir, "%s")`
+  found the GC report's `snprintf` argument list, and a whole-module search for `@rt_list_len(`
+  matched the container's own machinery rather than the shadowed `len`. `printFormatFor` now walks
+  call-site → result register → the printf in that same function body → the `@.fmtN` global's bytes.
+  Anything less asserts on the runtime sitting in the module.
+- One name passing proves nothing about its neighbour: `float` passed while `chr` produced an
+  invalid module, because the folds live in different helpers. Hence the 18-name compile-and-run
+  battery, not one representative.
+- Ledger grew 73 -> 74 rows; `programs/shadowed_builtins.gy` is `oracle: "match"`, and the matrix
+  caught nothing this time only because I ran the corpus before writing the guard for `str` —
+  which is the intended way for these to feel.
+
