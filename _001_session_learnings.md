@@ -2640,3 +2640,76 @@ answer looks like, and a match row has none. I pinned the probe's compiled leg w
 `llc` line, and the harness quoted me back the difference. The drift check exists to keep
 the registry describing reality rather than my memory of it, and it caught both of my
 aspirational entries before they could mislead the next agent to read them.
+
+## Cycle 145 — the checker was refusing the most Python program there is (Gap R.5, ADR 0197)
+
+A small AOT repro grew into something more basic: a program that both backends run happily was
+refused outright by the front end.
+
+```gusty
+def is_even(n):
+    if n == 0:
+        return True
+    return is_odd(n - 1)
+
+def is_odd(n):
+    if n == 0:
+        return False
+    return is_even(n - 1)
+
+print(is_even(4))
+```
+
+`--interp` printed `1`; `--check` and `--aot` said `error at 4:12: undefined name "is_odd"`.
+Mutual recursion — the shape every tutorial reaches for — could not be compiled, because the
+compiled path refuses to emit IR for a program the front end rejected (ADR 0177). Codegen was
+never the problem: `Compile` emitted both functions and the call between them, and `llc`
+accepted the module. The bug was that `Analyze` walks the statement list in order and defines
+each `def` as it reaches it, so anything above the definition line looked unbound. Classes had
+already been given a pre-pass for exactly this reason (`indexClasses`, comment and all);
+functions never were.
+
+**The fix had to be narrower than the bug.** The obvious patch — define all of a scope's
+`def`s before walking it — was written, tested, and rejected, because it quietly swallowed two
+errors that must stay:
+
+- `print(later())` at module level with `later` defined below: that call runs as the file is
+  read, so the name genuinely does not exist. The interpreter raises, and the checker must too.
+- `@identity` above `def identity`: a decorator is evaluated where it is written.
+
+What makes both cases fall out of a single condition is *deferral*. The names are collected
+into a table (`collectFuncs`) that the lookup consults only while `an.inFunc` — inside a
+function body, where code runs later. Module and class top level never consult the table, so
+code that runs now keeps its order-sensitivity for free. The table stores the `*FuncDef` rather
+than a type, which is what lets `userFunc(name)` route a forward call into the ordinary arity
+and argument-type checks: `take("text")` against `def take(n: int)` declared below it is still
+reported as `argument "n": expected int, got str`. Only an *inferred* return type stays dynamic
+for a body the walk has not reached, which is exactly where gradual typing already puts
+unannotated code.
+
+**The lesson about hoisting rules:** a "visible everywhere" fix is almost always too wide, and
+what breaks it is code that *executes eagerly* — decorators, top-level calls, default
+arguments. Put those shapes in the same test table as the accepted ones with `wantErr: true`,
+or the feature quietly becomes a hole.
+
+Process notes:
+
+- This corpus entry is a parity+oracle program rather than a probe, because the defect class
+  ends with all three paths agreeing: `programs/forward_defs.gy` (mutual recursion, a helper
+  below its caller, `describe` → `classify` → `is_even`) prints `1 1 zero even odd 42` on the
+  interpreter, the compiled binary and CPython — `oracle: "match"`, no ledger exception.
+  Writing the program first caught two *other* limitations by hitting them: runtime string
+  concatenation is not lowerable in codegen (documented Gap J.5 — a refusal, not a wrong
+  answer), and printing a boolean prints `1` where CPython prints `True`, so the program
+  compares in `1 if … else 0` to keep the oracle leg literal.
+- Counting warnings around the new resolution path exposed **R.7**: `inferReturn` re-walks a
+  callee per call site, so one source line can report the same diagnostic two or three times.
+  Pre-existing, but now written down where the next cycle can pick it up.
+- The ledger file's structure beat my guess twice: `oracleLedger` is a map keyed by program id
+  and `conformanceStandalone()` is a list of *basenames* — a program with a clean oracle needs
+  an entry in neither, only in the name list. `TestConformanceMatrixIsCurrent` then grows the
+  artifact (70 → 71 rows) and reports drift if the description is wrong.
+- `gofmt -l pkg/lang` lists fourteen files this repo has never formatted (parser.go, token.go,
+  ast.go…). Only files I touched are kept gofmt-clean; reformatting the parser inside a checker
+  cycle would make the diff unreadable for no benefit.
+

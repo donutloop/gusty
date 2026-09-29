@@ -79,6 +79,15 @@ names come from one table (`pkg/lang/predeclared.go`) shared by the checker, the
 unbound-name guard and LSP completion, so a real built-in (`sum`, `enumerate`, `zip`, …) is
 never "undefined" and a name that is not bound is never lowered.
 
+**`undefined name` follows the declaration-order rule, not the file's order** (Gap R.5,
+ADR 0197). Inside a function body — and inside a class body — a name resolves to any `def` of
+that scope, wherever it is written, so mutually recursive functions and helpers declared
+below their callers check clean and compile. What runs where it is written still demands the
+name above it: a call at module or class top level, and a decorator expression. An agent
+therefore never has to order declarations to satisfy the checker, and a refusal with this
+message always means the name does not exist in the scope, not that it appears later in the
+file.
+
 The produced binary is a real native executable: `./prog` runs the program
 (its `print` output goes to stdout).
 

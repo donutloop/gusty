@@ -47,6 +47,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"async_basic",
 		"async_for",
 		"async_multi",
+		// A def is a binding the whole enclosing body can see: mutually recursive
+		// functions, and helpers called from above their own def line — the shape the
+		// checker used to refuse as `undefined name` (Gap R.6, ADR 0197).
+		"forward_defs",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).

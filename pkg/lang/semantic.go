@@ -46,12 +46,18 @@ type SemanticAnalyzer struct {
 	// walk it. It is filled by a pre-pass so a subclass may be referenced before
 	// its declaration site (L6.6).
 	classList *ClassIndex
-	inFunc    bool
-	loopDepth int
-	inferring map[string]bool
-	definite  map[string]bool
-	locals    map[string]bool
-	branchDef map[string]bool
+	// moduleDefs and fnDefs are the bindings that only *deferred* code may see ahead of
+	// their declaration site: function bodies (see collectFuncs). They are consulted by
+	// the name lookup while an.inFunc, and never at module or class top level, where a
+	// statement runs the moment it is reached.
+	moduleDefs map[string]*FuncDef
+	fnDefs     []map[string]*FuncDef
+	inFunc     bool
+	loopDepth  int
+	inferring  map[string]bool
+	definite   map[string]bool
+	locals     map[string]bool
+	branchDef  map[string]bool
 }
 
 func (an *SemanticAnalyzer) markDefinite(nm string) {
@@ -96,6 +102,10 @@ func Analyze(prog *Program) []Diagnostic {
 	// Pre-pass: record every class (with its bases) before analyzing, so class
 	// annotations and nominal subtyping work regardless of declaration order.
 	an.indexClasses(prog.Stmts)
+	// The same reason, for functions: a def is a binding the whole *enclosing function
+	// body* can see, not only the text below the call (see collectFuncs).
+	an.moduleDefs = map[string]*FuncDef{}
+	an.collectFuncs(prog.Stmts, an.moduleDefs)
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
@@ -143,6 +153,125 @@ func (an *SemanticAnalyzer) warnf(sp Span, msg string, args ...interface{}) {
 		msg = fmt.Sprintf(msg, args...)
 	}
 	an.Diags = append(an.Diags, Diagnostic{Level: LevelWarning, Span: sp, Msg: msg})
+}
+
+// hoistFuncs collects the def's of a statement list into a table that the *deferred*
+// code of that scope may consult ahead of the declaration site.
+//
+// Python's rule is that a name has to exist when the call *runs*. A function body does
+// not run when it is defined — it runs later, when somebody calls it — so two functions
+// that call each other, or a helper declared below the code that uses it, are ordinary
+// programs:
+//
+//	def is_even(n):
+//	    if n == 0:
+//	        return True
+//	    return is_odd(n - 1)      # defined five lines later, and runs long after
+//
+//	def is_odd(n):
+//	    ...
+//
+// Both backends run that program — codegen resolves a call by name, which the module
+// already knows — while the checker called it `undefined name "is_odd"` and the compiled
+// path refused to build it at all (Gap R.6, ADR 0197).
+//
+// What is deliberately *not* hoisted is code that runs immediately: a call at module or
+// class top level, and a decorator expression, both evaluate where they are written, so
+// their names must already be bound. That is why these names live in a table the lookup
+// consults only while analyzing a function body, instead of being defined in the scope
+// up front — a decorator naming a function defined further down the file stays the error
+// it should be.
+//
+// The declared signature is carried in with the name, so a call to a function the walk
+// has not reached still checks its arguments against the parameter annotations; what it
+// cannot know is a return type the checker would have *inferred* from a body it has not
+// analyzed, and that stays dynamic — where gradual typing already puts unannotated code.
+//
+// The traversal mirrors indexClasses: a def inside an if / while / for / try / match arm
+// belongs to the containing scope, since those statements create no scope of their own.
+// A nested def is collected when the body that contains it is analyzed, so a pair of
+// sibling nested defs can call each other too.
+func (an *SemanticAnalyzer) collectFuncs(list []Stmt, into map[string]*FuncDef) {
+	var walk func([]Stmt)
+	walk = func(stmts []Stmt) {
+		for _, st := range stmts {
+			switch s := st.(type) {
+			case *FuncDef:
+				if _, have := into[s.Name]; !have {
+					into[s.Name] = s
+				}
+				// Its body is analyzed by analyzeFunc, which collects that body's own
+				// defs; a def inside it is not visible to the outer scope by name.
+			case *ClassDef:
+				// A class body is a scope of its own: nothing inside it hoists here.
+			case *IfStmt:
+				walk(s.Then)
+				for _, e := range s.Elifs {
+					walk(e.Then)
+				}
+				walk(s.Else)
+			case *WhileStmt:
+				walk(s.Body)
+				walk(s.Else)
+			case *ForStmt:
+				walk(s.Body)
+				walk(s.Else)
+			case *WithStmt:
+				walk(s.Body)
+			case *TryStmt:
+				walk(s.Body)
+				for _, e := range s.Excepts {
+					walk(e.Body)
+				}
+				walk(s.Finally)
+			case *MatchStmt:
+				for _, c := range s.Cases {
+					walk(c.Body)
+				}
+			}
+		}
+	}
+	walk(list)
+}
+
+// lookupDeferredFunc resolves a name that only function bodies may see ahead of its
+// declaration: innermost enclosing function first, then the module.
+func (an *SemanticAnalyzer) lookupDeferredFunc(name string) *FuncDef {
+	if !an.inFunc {
+		return nil
+	}
+	for i := len(an.fnDefs) - 1; i >= 0; i-- {
+		if fd, ok := an.fnDefs[i][name]; ok {
+			return fd
+		}
+	}
+	if fd, ok := an.moduleDefs[name]; ok {
+		return fd
+	}
+	return nil
+}
+
+// lookupDeferred is its type-level form, used by the name lookup.
+func (an *SemanticAnalyzer) lookupDeferred(name string) *Type {
+	if fd := an.lookupDeferredFunc(name); fd != nil {
+		return funcSignature(fd)
+	}
+	return nil
+}
+
+// funcSignature is the function type a `def` contributes to its enclosing scope:
+// the DECLARED parameter annotations and the declared return. An unannotated part is
+// dynamic, so untyped code stays gradual (no diagnostics).
+func funcSignature(fd *FuncDef) *Type {
+	var ptys []*Type
+	for _, p := range fd.Params {
+		if p.Annot != nil {
+			ptys = append(ptys, p.Annot)
+		} else {
+			ptys = append(ptys, TDyn())
+		}
+	}
+	return TFunc(ptys, fd.ReturnAnno)
 }
 
 // indexClasses walks the statement tree (including nested blocks) recording
@@ -605,18 +734,17 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 	// Callable[[...], R] bound is checked by the variance rules: parameters
 	// CONTRAVARIANTLY, the return covariantly (L6.6). An unannotated parameter is
 	// dynamic, so untyped code stays gradual (no diagnostics).
-	var ptys []*Type
-	for _, p := range fd.Params {
-		if p.Annot != nil {
-			ptys = append(ptys, p.Annot)
-		} else {
-			ptys = append(ptys, TDyn())
-		}
-	}
-	ft := TFunc(ptys, fd.ReturnAnno)
+	ft := funcSignature(fd)
 	old.define(fd.Name, ft)
 	an.scope = fscope
 	an.curFn = fd
+	// A def nested inside this body is visible to the whole body, above its own line as
+	// much as below: sibling nested defs may call each other. The table is pushed for
+	// the duration of the body and popped with it, so nothing leaks to the outer scope.
+	bodyDefs := map[string]*FuncDef{}
+	an.collectFuncs(fd.Body, bodyDefs)
+	an.fnDefs = append(an.fnDefs, bodyDefs)
+	defer func() { an.fnDefs = an.fnDefs[:len(an.fnDefs)-1] }()
 	for _, p := range fd.Params {
 		pt := p.Annot
 		if pt == nil {
@@ -720,6 +848,13 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 	case *Name:
 		t := an.scope.lookup(n.Value)
 		if t == nil {
+			// A function body may call a def declared below it: the body runs later,
+			// when the name is bound, and refusing it here was refusing a program both
+			// backends run (Gap R.6, ADR 0197). Module and class top level do not get
+			// this — a statement there runs the moment it is reached.
+			if dt := an.lookupDeferred(n.Value); dt != nil {
+				return dt
+			}
 			if an.classes[n.Value] {
 				return TDyn()
 			}
@@ -883,6 +1018,18 @@ func (an *SemanticAnalyzer) inferReturn(fd *FuncDef, argTypes []*Type) *Type {
 	return ret
 }
 
+// userFunc finds the definition a call names. The ordered walk has already analyzed it
+// when the def comes first; a function body may also name a def that comes later, since
+// the body runs after the module has finished defining it (Gap R.6, ADR 0197) — that is
+// how a forward call still gets its arity and argument-type checking rather than being
+// waved through as an unknown dynamic call.
+func (an *SemanticAnalyzer) userFunc(name string) *FuncDef {
+	if fd, ok := an.funcs[name]; ok {
+		return fd
+	}
+	return an.lookupDeferredFunc(name)
+}
+
 func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 	if name, ok := n.Fn.(*Name); ok {
 		if an.classes[name.Value] {
@@ -906,7 +1053,7 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			}
 			return TDyn()
 		}
-		if fd, ok2 := an.funcs[name.Value]; ok2 {
+		if fd := an.userFunc(name.Value); fd != nil {
 			return an.inferUserCall(fd, n)
 		}
 		switch name.Value {

@@ -178,6 +178,10 @@ falls back to dynamic dispatch.
   agent can tell "the compiler emitted bad IR" apart from "my program is wrong" —
   without scraping `llc` output. A missing toolchain is reported as `skipped`, never
   as a pass. Turning it on is how Gap I.3 was found.
+- **Declaration order that matches the language** — mutually recursive functions, and helpers
+  declared below the code that calls them, check clean and compile; a call at module level and a
+  decorator still require the name above them, because that code runs where it is written
+  (`programs/forward_defs.gy`, ADR 0197)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

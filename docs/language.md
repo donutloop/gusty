@@ -1616,6 +1616,62 @@ body, and after the loop the variable still holds the last element (`for i in
 range(3)` leaves `2`, never `3`). A `for` whose `else:` clause runs on normal completion
 is unaffected.
 
+## Declaration order (ADR 0197)
+
+A `def` is a binding of the scope that contains it — not only of the text below its line.
+Python's rule is that a name has to exist when the call *runs*, and a function body does
+not run when it is defined:
+
+```gy
+def is_even(n):
+    if n == 0:
+        return True
+    return is_odd(n - 1)      # is_odd is declared five lines below
+
+
+def is_odd(n):
+    if n == 0:
+        return False
+    return is_even(n - 1)
+
+
+print(1 if is_even(4) else 0)   # 1
+```
+
+Mutually recursive functions, and helpers declared below the code that uses them, are
+ordinary programs and check clean — inside a function body, and inside a class body, a
+name resolves to any `def` of that scope, wherever it is written. A `def` inside an
+`if` / `while` / `for` / `try` / `match` arm belongs to the enclosing scope, since those
+statements create no scope of their own; a nested `def` is visible to the whole body it is
+written in, so sibling nested defs may call each other.
+
+What is **not** hoisted is code that runs immediately. A call at module or class top level
+and a decorator expression both evaluate where they are written, so their names must
+already be bound:
+
+```gy
+print(later())          # error: undefined name "later"
+
+
+def later():
+    return 1
+
+
+@identity              # error: undefined name "identity"
+def target():
+    return 3
+
+
+def identity(f):
+    return f
+```
+
+A forward call is still *checked*: the declared parameter annotations and `-> T` travel
+with the hoisted name, so arity and argument-type errors are reported for a function the
+walk has not reached. What it cannot know is a return type the checker would have
+*inferred* from a body it has not analyzed — that stays dynamic, which is where gradual
+typing already puts unannotated code.
+
 ## Docstrings and `__doc__` (Round 9, ADR 0141)
 
 A leading bare string literal in a `def` or `class` body is captured as a

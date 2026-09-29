@@ -1,0 +1,43 @@
+# Helpers are declared where they read best, not in call order. This is the shape the
+# checker used to refuse: a body calls a function whose def is further down the file,
+# including a pair of functions that call each other. A body runs later, when the name is
+# bound — which is what both backends already assumed.
+
+def is_even(n):
+    if n == 0:
+        return True
+    return is_odd(n - 1)
+
+
+def is_odd(n):
+    if n == 0:
+        return False
+    return is_even(n - 1)
+
+
+def describe(n):
+    return classify(n)
+
+
+def classify(n):
+    if n == 0:
+        return "zero"
+    if is_even(n):
+        return "even"
+    return "odd"
+
+
+def pair(n):
+    return two(n)
+
+
+def two(n):
+    return n * 2
+
+
+print(1 if is_even(4) else 0)
+print(1 if is_odd(3) else 0)
+print(describe(0))
+print(describe(6))
+print(describe(7))
+print(pair(21))

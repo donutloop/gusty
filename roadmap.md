@@ -1459,6 +1459,23 @@ are published as data — `gustyc --effects`, `--json`, `definitions.effectSumma
 `--schema` — so the facts behind every verdict are readable without re-deriving them, and
 `docs/language.md` now has the async section the language never had.
 
+Three more came out of the same measuring, and are recorded here rather than left in commit
+messages where nobody would look:
+
+- **R.3 / R.3b, closed by ADR 0196** — a parameter was a constant in the compiled backend
+  (assigning to one was ignored, an accumulator loop never terminated), and a `for` loop over
+  `range` wrote its counter through the user's variable. Both were refusals to run ordinary
+  programs, and the `--aot` leg of a pinned program could hang forever, taking the whole
+  package timeout with it.
+- **R.5, closed by ADR 0197** — a `def` below the code that uses it was refused as
+  `undefined name`, so mutual recursion could not be compiled at all while the interpreter
+  ran it. The checker now resolves a name to any `def` of the enclosing *function* scope,
+  and still refuses what runs where it is written: a module-level call, or a decorator.
+- **R.6, R.7 (OPEN)** — a user `def abs` answers with the builtin's value on the compiled
+  path, and one source line can report the same diagnostic two or three times because
+  return-type inference re-walks a callee per call site. Both measured this cycle; both are
+  silent rather than fatal, which is why they are next.
+
 ### R.1 — the compiled backend runs a coroutine at the call, not at the await (OPEN)
 
 `programs/probe_async_eager` is accepted by the checker and disagrees with itself:
@@ -1586,3 +1603,57 @@ this class is worse than a link error because it is silent: a wrong answer from 
 host ABI already owns. Either prefix emitted user functions (`gy_<name>`) or refuse a name
 the ABI owns — both are cheap, and L11.8 says a shape this ordinary must not be answerable
 with a wrong number.
+
+### R.5 — a `def` below the code that uses it was refused as an undefined name (CLOSED, ADR 0197)
+
+```gusty
+def is_even(n):
+    if n == 0:
+        return True
+    return is_odd(n - 1)
+
+def is_odd(n):
+    if n == 0:
+        return False
+    return is_even(n - 1)
+
+print(is_even(4))
+```
+
+`--interp` printed `1`; `--check` and `--aot` reported `error at 4:12: undefined name
+"is_odd"`. Because the compiled path refuses to emit IR for a program the front end rejected
+(ADR 0177), the canonical Python shape could not be compiled at all — a false positive in the
+checker is a false refusal by the compiler. Codegen had no such problem: it resolves calls by
+name against the module's function table.
+
+Fixed in the checker by `collectFuncs`: the `def`s of a statement list are collected into a
+table that the name lookup consults **only while analyzing a function body**, so a deferred
+call sees the whole scope while a call at module or class top level — and a decorator
+expression — still require the name above them. The table holds the `*FuncDef`, so a forward
+call still gets its arity and argument-type checks against the declared annotations.
+`programs/forward_defs.gy` is in the ledger with `oracle: "match"`: interpreter, compiled
+binary and CPython byte-identical.
+
+### R.6 — a user function shadowing a builtin answers with the builtin (OPEN)
+
+```gusty
+def abs(x):
+    return x + 7
+
+print(abs(1))
+```
+
+`--interp` prints `8`; the compiled binary prints **`1`** — the call is resolved against the
+builtin table before the program's own `def abs` is consulted. Silent, and these are names
+people choose deliberately (`abs`, `len`, `min`, `max`, `sum`, `str`). The interpreter and
+CPython both let a user `def` shadow a builtin; the codegen call path must consult the
+module's own function table first, in the same order both of them use.
+
+### R.7 — one source line can report the same diagnostic two or three times (OPEN)
+
+`inferReturn` re-walks a callee body per call site, so a warning inside that body is emitted
+once per call: the same span and the same message, two or three times in `--json`. It predates
+the forward-reference work — two copies were already visible on a program whose callee the
+walk reached — and it is a machine-interface defect as much as a human one: an agent reading
+a build report counts three problems where there is one. The fix is a dedupe at emission time
+keyed on (level, span, message), or memoizing return inference per `(fd, argument types)`.
