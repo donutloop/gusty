@@ -1140,6 +1140,11 @@ func (an *SemanticAnalyzer) inferUserCall(fd *FuncDef, n *Call) *Type {
 	provided, argExprs, err := an.bindParams(fd.Params, n)
 	if err != nil {
 		an.errorf(n.Span(), "%s", err)
+		// The call does not fit the definition, so there is nothing meaningful to infer from
+		// the callee's body: walking it with a parameter left unbound is how one arity mistake
+		// used to arrive as three diagnostics, two of them blaming the callee's own source for
+		// an undefined name (Gap R.10, and the noise side of R.7).
+		return TDyn()
 	}
 	argTypes := make([]*Type, len(fd.Params))
 	for i, p := range fd.Params {
@@ -1198,7 +1203,7 @@ func (an *SemanticAnalyzer) bindParams(params []*Param, n *Call) (map[int]*Type,
 			return provided, exprs, fmt.Errorf("positional argument after keyword argument")
 		}
 		if pos >= len(params) {
-			return provided, exprs, fmt.Errorf("too many arguments")
+			return provided, exprs, fmt.Errorf("%s accepts %d argument%s, got more", callName(n), len(params), plural(len(params)))
 		}
 		if _, dup := provided[pos]; dup {
 			return provided, exprs, fmt.Errorf("multiple values for argument %q", params[pos].Name)
@@ -1207,7 +1212,50 @@ func (an *SemanticAnalyzer) bindParams(params []*Param, n *Call) (map[int]*Type,
 		exprs[pos] = a
 		pos++
 	}
+	// A parameter that received nothing and has no default is a bug in the *caller*, and it
+	// used to be invisible: the argument types that were supplied got checked, "too many
+	// arguments" was reported, and a missing one simply left the parameter unbound — to be read
+	// later as an undefined name, or as whatever the backend happened to emit. That is the
+	// failure mode of every renamed parameter and dropped argument (roadmap Gap R.10).
+	for i, p := range params {
+		if p == nil {
+			continue
+		}
+		if _, ok := exprs[i]; ok {
+			continue
+		}
+		if p.Default != nil {
+			continue
+		}
+		if seenKw {
+			// The call named parameters explicitly, so the useful fact is which name it skipped
+			// rather than how many it passed.
+			return provided, exprs, fmt.Errorf("%s is missing argument %q", callName(n), p.Name)
+		}
+		return provided, exprs, fmt.Errorf("%s expects %d argument%s, got %d", callName(n), len(params), plural(len(params)), len(exprs))
+	}
 	return provided, exprs, nil
+}
+
+// callName renders a callee for a diagnostic: the bare name or attribute path the program wrote.
+func callName(n *Call) string {
+	switch fn := n.Fn.(type) {
+	case *Name:
+		return "function " + quoteName(fn.Value)
+	case *Attr:
+		return "method " + quoteName(fn.Name.Value)
+	default:
+		return "this call"
+	}
+}
+
+func quoteName(s string) string { return `"` + s + `"` }
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (an *SemanticAnalyzer) inferComp(n *Comp) *Type {

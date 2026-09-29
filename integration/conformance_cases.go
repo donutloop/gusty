@@ -63,6 +63,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// method used to overwrite the module function in the checker's table and the module
 		// call was then read against the method's `self`-inclusive arity (Gap R.8, ADR 0200).
 		"method_function_name_clash",
+		// Every legitimate way to pass fewer arguments than a definition lists: a trailing
+		// default, all defaults, keyword arguments, and a call mixing both — the shapes the
+		// new missing-argument rule must not refuse (Gap R.10, ADR 0201).
+		"arity_defaults",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).

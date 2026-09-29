@@ -79,6 +79,16 @@ names come from one table (`pkg/lang/predeclared.go`) shared by the checker, the
 unbound-name guard and LSP completion, so a real built-in (`sum`, `enumerate`, `zip`, …) is
 never "undefined" and a name that is not bound is never lowered.
 
+**The calling contract is enforced in both directions** (Gap R.10, ADR 0201). A user-defined
+function is checked for arity at the call: `function "f" expects N arguments, got M` (positional
+shortfall), `function "f" accepts N arguments, got more` (too many), `function "f" is missing
+argument "p"` (a keyword call that skipped a name), and `method "m" ...` for attribute calls — the
+callee is always named, so an agent can act on the message without re-reading the file. A
+parameter with a default counts as supplied. Built-ins keep their own rules and are not measured
+against user definitions. Once arity fails, the callee's body is not analysed for that call, so a
+single mistake yields exactly one diagnostic — do not expect, or program against, follow-on
+`undefined name` errors inside the callee.
+
 **Name-based lookups are keyed by where the definition lives, not only by what it is called**
 (Gap R.5/R.8, ADRs 0197, 0200). A `def` in a class body is a method of that class and never a
 binding of the file; a `def` in a function body is visible to that whole body, wherever it is

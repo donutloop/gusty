@@ -2866,3 +2866,43 @@ Process notes:
   repro, its own section, and — for the closed ones — the program that proved it, moved from probe to
   corpus rather than deleted.
 
+## Cycle 149 — the missing half of a contract: too few arguments was nobody's business (Gap R.10, ADR 0201)
+
+`def build(a, b)` called as `build(1)` compiled to `ok`. Too *many* arguments had been refused all
+along; too *few* left the parameter unbound, and the program was then blamed at the **callee's**
+line for an `undefined name "b"` — and inconsistently, since that walk only ran for annotated
+callees. The interpreter had been refusing the same program at run time with the message the
+checker never offered: `missing argument b`.
+
+The fix was nine lines in the function that already had the answer (`bindParams` fills parameters by
+index; an index with no entry and no default *is* the mistake). The interesting parts were
+elsewhere:
+
+- **Half a contract is worse than none.** Because one direction was enforced, the missing direction
+  looked covered. When adding a rule, ask what its mirror already does and whether the asymmetry is
+  accidental — this one hid a whole class of ordinary bugs (renamed parameter, dropped argument,
+  call written against yesterday's signature).
+- **Derived diagnostics can be actively false.** One dropped argument produced three diagnostics,
+  two pointing at source the programmer had written correctly. So `inferUserCall` now stops when the
+  call does not fit its definition, instead of re-inferring a return type from a body with
+  half-bound parameters. "One mistake, one diagnostic, at the place the mistake was made" is a
+  contract with the reader, not a cosmetic preference — and it is testable (`TestOneErrorPerArityMistake`
+  counts errors, not just messages).
+- **Two mistakes need two messages.** A positional shortfall is "you lost count"
+  (`expects 2 arguments, got 1`); a keyword call that skips a name is "you skipped this"
+  (`is missing argument "b"`). Reporting a count for the second one — as my first draft did, `got 0`
+  for `build(a=1)` — is technically true and useless. Both now name the callee; "too many arguments"
+  without a callee name is half a diagnostic in a file with four calls.
+- **The over-refusal guard is a program, not a test string.** `programs/arity_defaults.gy`
+  (trailing defaults, all defaults, keyword-only, keyword-plus-default, zero-parameter) runs on all
+  three engines and is in the ledger — a new refusal rule needs its positive space executable and
+  compared, not asserted. Measured across the whole corpus: nothing was newly refused, which is the
+  evidence that the rule aims at mistakes rather than style.
+- **A test that passes the source path to `--check` proves nothing.** My first CLI test did exactly
+  that and "failed to refuse" — `--check` takes *source text*, only the build paths take a filename
+  (the same interface trap we fixed for `--emit-nova-llvm` in Cycle 142). The lesson generalises: when
+  a negative test does not fire, suspect the harness before the rule.
+- **Measure the neighbour before declaring the family closed.** Writing the arity tests surfaced
+  `def f(a, b=1, c)`, which we only catch at the call while CPython refuses the definition — recorded
+  as R.11 rather than silently folded into this commit or quietly dropped.
+

@@ -1,0 +1,36 @@
+# Arity is a contract, and the checker used to keep only half of it: too many arguments was
+# reported, too few was not. A dropped argument left the callee's parameter unbound, and the
+# program was blamed later — with an undefined-name error pointing inside the function it called —
+# or the backends answered differently (roadmap Gap R.10, ADR 0201).
+#
+# What has to keep working is every legitimate shape that calls *fewer* arguments than the
+# definition lists, because that is exactly what a default is for: a trailing default, all
+# defaults, a call that names its arguments, and a call that mixes the two.
+
+def add(a, b=10):
+    return a + b
+
+
+def add3(a, b, c=10):
+    return a + b + c
+
+
+def scale(x, factor=2, offset=1):
+    return x * factor + offset
+
+
+def constant():
+    return 42
+
+
+print(add(1))
+print(add(1, 5))
+print(add(b=7, a=1))
+print(add3(1, 2))
+print(add3(1, 2, 3))
+print(add3(c=30, a=1, b=2))
+print(scale(3))
+print(scale(3, 10))
+print(scale(3, offset=5))
+print(scale(factor=4, offset=2, x=3))
+print(constant())

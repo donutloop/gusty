@@ -1744,6 +1744,38 @@ print(float(1) + 0.5)   # 9.5 — the call is the program's, its int result lift
 What a program does *not* get by shadowing is a slower program: when nobody shadows `str`, the
 constant folding still runs (`print(str(42))` is still folded at compile time).
 
+### A call must fill every parameter without a default
+
+```gy
+def build(a, b):
+    return a + b
+
+
+print(build(1))     # error: function "build" expects 2 arguments, got 1
+```
+
+Too many arguments and too few are both refusals, at the call, and both name the function they are
+complaining about (`method "m" ...` for an attribute call). A call that names its arguments and
+leaves one out is told which name it skipped — `function "build" is missing argument "b"` — because
+the count is not the useful fact there.
+
+A **default is a way of being supplied**, so every shape that passes fewer arguments than the
+definition lists stays legal (`programs/arity_defaults.gy`):
+
+```gy
+def greet(name, punct="!"):
+    return name + punct
+
+
+print(greet("ada"))                # ada!
+print(greet("ada", "?"))           # ada?
+print(greet(name="bob", punct="."))  # bob.
+```
+
+A call that does not fit its definition is not analysed any further: the compiler reports the arity
+mistake and stops, rather than also walking the callee's body with a parameter left unbound and
+reporting the callee's own source as undefined (ADR 0201). One mistake, one diagnostic, at the call.
+
 ### A method and a helper may share a name
 
 The words that describe what a class does are usually the words that describe a helper, so this

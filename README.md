@@ -194,6 +194,10 @@ falls back to dynamic dispatch.
   ordinary vocabulary, and the two definitions are keyed apart instead of the method overwriting the
   module function (a call then measured against `self`-inclusive arity, refusing a program every
   other layer ran) (`programs/method_function_name_clash.gy`, ADR 0200)
+- **A dropped argument is refused at the call** — too many arguments was already an error, too few
+  was not, so an unbound parameter came back later as an `undefined name` blamed on the callee's
+  correct source while the interpreter had been refusing it all along (`programs/arity_defaults.gy`,
+  ADR 0201)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

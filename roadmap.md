@@ -1485,12 +1485,16 @@ messages where nobody would look:
   checker's function key too, so the module call was measured against the method's
   `self`-inclusive arity and the program was refused with an undefined-name error on the callee's
   own parameter — while the evaluator, the compiled module and CPython all ran it.
-- **R.7, R.9, R.10 (OPEN)** — defects measured while closing the others, all of them
+- **R.10, closed by ADR 0201** — calling a function with too few arguments was reported by nobody:
+  the parameter arrived unbound and the program was blamed afterwards, at the callee's line, for an
+  undefined name — while the interpreter already refused it at run time with the message the
+  checker never gave.
+- **R.7, R.9, R.11 (OPEN)** — defects measured while closing the others, all of them
   discovered by writing a corpus program rather than by reading code:
   one source line can report the same diagnostic two or three times, because return inference
   re-walks a callee per call site (R.7); `def print` / `def range` do not parse at all, though
-  CPython runs them (R.9); and calling a function with too few arguments is not reported at all
-  (R.10).
+  CPython runs them (R.9); a non-default parameter after a defaulted one is only caught at the
+  call (R.11).
 
 ### R.1 — the compiled backend runs a coroutine at the call, not at the await (OPEN)
 
@@ -1768,24 +1772,52 @@ argument-checked through this table, "the collision is gone" could also be satis
 nothing: the tests therefore assert *which parameter the diagnostic names* (`argument "x"`, never
 `"label"`) to prove the call is measured against the right definition.
 
-### R.10 — too few arguments is not reported at all (OPEN)
+### R.10 — too few arguments is not reported at all (CLOSED, ADR 0201)
 
 ```gusty
 def build(a, b):
     return a
 
 
-print(build(1))
+print(build(1))        # used to be: ok
 ```
 
-`--check` says `ok`, and so it did before any of this: the checker verifies the argument types it is
-given and the parameters it can see, but does not report a parameter that received no argument,
-annotated or not. The same call with **too many** arguments is reported. The consequence is that a
-whole class of ordinary mistakes — a renamed parameter, a dropped argument, a call written against
-an older signature — is invisible until one backend's lowering happens to fail or the program prints
-something surprising at runtime. Fix in `bindParams`, where positional/keyword binding already
-knows which parameters went unfilled, plus the same rule for keyword-only calls. (Found while writing
-an arity assertion for R.8, which had to be phrased as "which parameter does the error name" instead.)
+The checker enforced half the calling contract: too **many** arguments was refused, too **few** was
+not. The unfilled parameter was left unbound, and the program was blamed afterwards for a mistake
+nobody had made — one dropped argument arrived as three diagnostics, two of them pointing at the
+callee's correct source (`undefined name "b"`), and inconsistently at that, because the walk that
+produced them only ran for annotated callees. Meanwhile the interpreter already refused, at run
+time, with the message the checker never offered: `missing argument b`.
+
+Closed in `bindParams`, which already knew the answer — it fills parameters by index, so an index
+with no entry and no default is a parameter that received nothing. Two messages for two mistakes:
+`function "build" expects 2 arguments, got 1` for a positional shortfall, and
+`function "build" is missing argument "b"` when the call named its arguments and skipped one. Both
+name the callee, because "too many arguments" without a callee is only half a diagnostic in a file
+with four calls. And a call that does not fit its definition is no longer walked into the callee's
+body: one mistake now produces one error, at the call.
+
+Measured against the whole corpus: nothing was newly refused — every legitimate short call in the
+corpus passes fewer arguments because a default supplies the rest, which is the evidence that the
+rule targets mistakes rather than style. `programs/arity_defaults.gy` was added as a three-engine
+parity program for exactly that reason (trailing defaults, all defaults, keyword-only,
+keyword-plus-default, zero-parameter).
+
+### R.11 — a non-default parameter after a defaulted one is only caught at the call (OPEN)
+
+```gusty
+def f(a, b=1, c):
+    return a
+
+
+print(f(1))
+```
+
+CPython refuses this at the `def`: such a function can never be called correctly, because positional
+binding can't reach `c` without also filling `b`. Ours parses it happily and reports a call-site
+arity error instead — right verdict, wrong place, and the definition itself remains a latent trap for
+every other call. The rule belongs at the definition site, where the fact is. (Found while writing
+the R.10 tests.)
 
 ### R.7 — one source line can report the same diagnostic two or three times (OPEN)
 
