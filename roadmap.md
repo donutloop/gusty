@@ -1536,27 +1536,11 @@ in machine code: `rt_coro_new` + a per-`async def` trampoline, so a call constru
 of executing. Named as **L7.6a** in the plan; the probe pins both orders so paying the debt
 flips the row rather than going unnoticed.
 
-### R.2 — `await` in a loop-exit position emits an undefined intern function (OPEN)
+### R.2 — see the re-scoped entry below (closed by ADR 0209)
 
-```gusty
-async def f(x):
-    return x + 1
-async def g():
-    await f(1)
-    while True:
-        return "ok"
-print(await g())
-```
-
-The checker accepts it, the interpreter prints `ok`, and the compiled module ends with
-`%t9 = call i32 @rt_str_intern2(i8* @.str1, i8* @.str2)` for an `@rt_str_intern2` that is
-never defined — `llc` rejects the module ("use of undefined value '@rt_str_intern2'") and
-the link fails with "undefined symbol". The interned-string table is filled by a pass that
-misses a literal returned from inside a `while True` body that follows an `await`; without
-either ingredient the same program compiles (`def g(): f(1); while True: return "ok"` is
-fine), so this is the await path's intern accounting, not the loop's. Credit where due:
-`--verify-llvm` catches it ("LLVM rejected the module; this is a compiler bug, not a source
-error") instead of the module verifying clean and the link dying — the L8.2 gate did its job.
+This entry once read "`await` in a loop-exit position emits an undefined intern function", and its
+analysis — "this is the await path's intern accounting, not the loop's" — was wrong on both counts. The
+re-scoped entry further down has the await-free repro, the real cause, and the fix.
 
 ### R.3 — a parameter was read-only in the compiled backend (CLOSED, ADR 0196)
 
@@ -1872,35 +1856,56 @@ printed the right thing *while* the compiler was dying: an output test alone wou
 `programs/for_string_chars.gy` is the three-engine parity program
 (`a b c x y 1 a 2 < h > < i > ab cd`).
 
-### R.2 — a module that interns without saying so emits a call to an undefined helper (OPEN, compiler bug, re-scoped)
+### R.2 — a module that interned without saying so emitted a call to an undefined helper (CLOSED, ADR 0209)
 
-Same `llc` error as R.15 had, different cause, and the R.15 investigation found a deterministic,
-await-free repro:
+The original entry blamed the await path; both of its ingredients were red herrings. What the failing
+programs shared was a codegen site that emits `call i32 @rt_str_intern2(...)` without setting
+`g.heapUsed` — the flag that decides whether `heapRuntimeIR`, which *defines* that helper, travels with
+the module. The deterministic repro needs no async and no loop:
+
+```gusty
+def txt():
+    return "hi"
+
+for c in txt():      # llc: use of undefined value '@rt_str_intern2'
+    print(c)
+```
+
+The string-returning path returns the interned index, which is correct (ADR 0174) — it just never
+announced the helper. Two such sites were found: the `strFuncs` return path and one comparison fold.
+
+Fixed by deriving the decision from the artifact rather than from a flag any of N call sites could
+forget. At assembly the emitted body is scanned, and every runtime block whose defined names
+(`define … @name(` or `@name = internal global`) the module mentions gets emitted — applied to
+`heapRuntimeIR`, `raiseRuntimeIR` and `floatRuntimeIR`, with the name list parsed from the blocks
+themselves so a newly added helper cannot be referenced without being defined. The flags stay, because a
+program that prints no float should not carry the snprintf/strtod machinery; they can now only add,
+never omit.
+
+The unit test states the invariant `llc` enforces at build time, over seven shapes that reach helpers by
+different paths: every `@rt_*`/`@gc.*` call in a module has a matching `define`/`declare`. The predicate
+is tested in both directions — a libc-only module must stay lean, and a name mentioned in a comment is
+not a reference. The async repro now builds and runs; its compiled output is still wrong (`0` where the
+interpreter and CPython print `ok`), which is R.1, and the R.2 test skips loudly if the compiled leg ever
+starts agreeing, so the two gaps cannot be mistaken for each other.
+
+### R.16 — iterating a string computed at run time is AOT-unsupported, and now refused (OPEN)
 
 ```gusty
 def txt():
     return "hi"
 
 for c in txt():
-    print(c)
+    print(c)          # interpreter and CPython: h i
 ```
 
-```
-llc-20: error: use of undefined value '@rt_str_intern2'
-```
-
-The "function returns a string" path returns the interned index — correct, ADR 0174 — but never sets
-`g.heapUsed`, and `heapRuntimeIR` (which *defines* `@rt_str_intern2`) travels with the module only when
-that flag is set. The async repro in this entry's original wording (`await` + `while True: return "ok"`)
-is the same defect through the same flag: the flag, not the await path and not the loop. Two codegen sites
-were found emitting `@rt_str_intern2` without it (the `strFuncs` return path and one comparison fold).
-
-Fix in the assembly step, as a derived rule rather than another `g.heapUsed = true`: a runtime block
-travels with the module whenever the module **references** it — scan the block's `define`s and test the
-emitted text — so a helper cannot be called without being defined, no matter which path calls it. Same
-treatment for `raiseRuntimeIR` (containers raise without an explicit `raise`) and `floatRuntimeIR`. This
-is the ADR 0177 stance applied to the runtime blocks themselves: the verifier should never be the one to
-notice.
+Once R.2 was fixed this compiled cleanly and printed **nothing**: the call hands back its `@str_tab`
+index and the counted-loop fall-through reads that index as a repeat count — zero iterations for `"hi"`.
+A silent wrong answer is worse than a refusal, so the shape is named instead: *iterating a string
+computed at run time is not supported in the AOT backend yet; the interpreter prints its characters —
+iterate a string literal, or index a string with a constant (s[0]); strings need the runtime string value
+model*. String **literals** iterate (ADR 0208). The real implementation belongs with L11.5 (code-point
+strings / runtime string values); until then the compiled backend declines rather than pretends.
 
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)

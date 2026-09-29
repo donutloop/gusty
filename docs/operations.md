@@ -104,6 +104,14 @@ compiled backend (definitions visible module-wide) would run different programs 
 inside function bodies and methods named after built-ins are unaffected. For a code generator: emit
 your `def`s before the code that calls them, or rename.
 
+**A compiled backend that cannot do something says so, and never emits a broken module** (Gap R.2,
+ADR 0209). Which runtime helper definitions a module carries is derived from what the emitted code
+*references*, so `llc` should never be the one to notice a missing `@rt_*` helper — an LLVM rejection is
+classified as a compiler bug by the exit-code contract, and shapes that used to trigger one are either
+lowered or refused. Related: iterating a string computed at run time is refused with a message naming
+the interpreter as the backend that runs it, and pointing at the shapes that do work (string literals,
+constant indexing) rather than compiling to a loop that silently runs zero times (Gap R.16).
+
 **`for x in <integer>` is a repeat count** (Gap R.14, ADR 0207): it binds `0 … n-1` in both backends,
 `n` may be any integer expression, and `n <= 0` runs the body zero times. CPython rejects the construct,
 so `programs/for_int_count.gy` carries an oracle-excluded ledger row. For a code generator the useful

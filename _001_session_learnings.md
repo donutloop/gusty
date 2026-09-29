@@ -3211,3 +3211,58 @@ What I'm taking from this:
   *adjacent* shapes (list variable, literal list, mixed literal, call-derived string) instead of only the
   reported case — every one of those cost one command and changed a roadmap entry.
 
+## Cycle 157 — a flag with many writers is the wrong mechanism (Gap R.2, ADR 0209)
+
+The roadmap said: `await` + `while True: return "ok"` emits a call to `@rt_str_intern2` that is never
+defined, and "this is the await path's intern accounting, not the loop's" — because removing either
+ingredient made the program compile. I went to implement an await-path fix and instead asked what the two
+programs had in common. This one has no async and no loop:
+
+```gusty
+def txt():
+    return "hi"
+
+for c in txt():      # llc: use of undefined value '@rt_str_intern2'
+    print(c)
+```
+
+The real shape: `heapRuntimeIR` (which *defines* the helper) is appended to a module only when
+`g.heapUsed` is set, and the string-returning-function path — correct in every other respect, ADR 0174 —
+emits the intern call without setting it. Two sites did that. So the emission decision had been living in
+a boolean that N call sites had to remember, and the two "mysterious" ingredients in the repro were just
+one path where nobody happened to try the other combinations.
+
+Now the decision is derived from the artifact: at assembly the emitted body is scanned, and every runtime
+block whose defined names the module mentions is emitted — names parsed out of the blocks themselves, so
+there is nothing left to remember. The flags stay (no float printed → no snprintf machinery) but they can
+only add, never omit.
+
+Also found on the way: with the module finally valid, `for c in txt()` **compiled cleanly and printed
+nothing** — the function returns its `@str_tab` index and the counted-loop fall-through read it as a
+repeat count. Fixed as a refusal with a real message (name what's unsupported, name the backend that runs
+it, name a shape that works); opened as R.16 for the actual implementation, which is L11.5's runtime
+string values.
+
+What I'm keeping:
+
+- **`git log`-adjacent discipline for roadmap entries: when a diagnosis turns out wrong, rewrite the
+  entry.** R.2's stale async analysis sat in the roadmap for cycles and would have pointed the next agent
+  at an async bug that doesn't exist. I left a three-line pointer where the old entry was, so the record
+  of what we *thought* survives (that's useful context) but can't be mistaken for current fact. Note the
+  roadmap had **two** R.2 sections — the original and last cycle's re-scope — which is exactly how a stale
+  diagnosis stays alive: fix the duplicate too, not just the wording.
+- **"It compiles now" is not "it works".** The R.2 fix could have ended with the repro building. The
+  compiled async program prints `0` where everyone else prints `ok` (that's R.1), and the string loop
+  printed nothing (R.16). Each got its own entry and its own test; the R.2 test *skips loudly* if the
+  compiled async leg ever starts agreeing, so a future cycle can't accidentally fold R.1 into R.2's
+  closure.
+- **A refusal message is a user-facing API.** "not supported in the AOT backend yet" alone would be a
+  dead end; the shipped message says the interpreter prints the characters, that a string *literal* works,
+  and that constant indexing works. The rule I can apply again: a refusal must contain the next thing the
+  reader can do.
+- **Derive, don't remember.** This is the third or fourth time this loop has converged on the same
+  shape of fix (linker prefixes in ADR 0198, one predicate for built-in shadowing in ADR 0199, one funnel
+  for diagnostics in ADR 0202): when correctness depends on every one of N sites doing the same thing, the
+  mechanism is wrong, and the fix is to compute the answer from the artifact. If I ever catch myself
+  adding "remember to also set X", that's the tell.
+

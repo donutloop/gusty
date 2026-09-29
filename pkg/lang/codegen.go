@@ -2124,18 +2124,27 @@ func GenerateIR(prog *Program) (string, error) {
 	// assemble output
 	var out strings.Builder
 	g.emitEnvGlobals()
-	// Container reads raise as well (IndexError / KeyError), so the raise runtime
-	// travels with the heap runtime, not only with an explicit `raise`.
-	if g.raiseUsed || g.heapUsed {
+	// Which runtime blocks a module needs is derived from what the module *references*,
+	// not only from a flag each emitting path remembers. The flags (`heapUsed`,
+	// `raiseUsed`, `floatFmtUsed`) are how a path announces what it lowers, and the ones
+	// that forgot are exactly the invalid modules LLVM catches and the exit-code contract
+	// calls a compiler bug: `def txt(): return "hi"` returns the interned index — correct,
+	// ADR 0174 — but never marked the heap runtime used, so the module called
+	// `@rt_str_intern2` with no definition of it, the same signature the roadmap blamed on
+	// the await path (roadmap Gap R.2, ADR 0209). The flags stay: a container read raises
+	// without an explicit `raise`, a printed float needs the formatter. But no block is
+	// omitted while the emitted code mentions one of its names.
+	bodyText := b.String()
+	if g.raiseUsed || g.heapUsed || runtimeBlockReferenced(raiseRuntimeIR, bodyText) {
 		g.globals.WriteString(raiseRuntimeIR)
 	}
-	if g.floatFmtUsed {
+	if g.floatFmtUsed || runtimeBlockReferenced(floatRuntimeIR, bodyText) {
 		// rt_fmt_double is only referenced by Python-style float rendering, so it
 		// travels in its own block: a program that never prints a float does not
 		// pay for the snprintf/strtod declarations.
 		g.globals.WriteString(floatRuntimeIR)
 	}
-	if g.heapUsed {
+	if g.heapUsed || runtimeBlockReferenced(heapRuntimeIR, bodyText) {
 		g.globals.WriteString(heapRuntimeIR)
 	}
 	// The precise-root stack runtime (ADR 0181) is emitted whether or not the program
@@ -2167,6 +2176,98 @@ func GenerateIR(prog *Program) (string, error) {
 	// Every variable slot has to be allocated once per call for its *address* to
 	// identify it — see hoistAllocas (ADR 0181).
 	return hoistAllocas(out.String()), nil
+}
+
+// iterableIsRuntimeString reports whether a `for … in` right-hand side is text that codegen
+// cannot walk: an interpolated or concatenated string, a folded string expression, a variable
+// holding a @str_tab index, or a call to a function known to return one. A *literal* is not
+// included: the loop unrolls it above (ADR 0208).
+func (g *irGen) iterableIsRuntimeString(e Expr) bool {
+	if e == nil {
+		return false
+	}
+	if _, ok := e.(*StrLit); ok {
+		return false
+	}
+	if _, ok := e.(*ListLit); ok {
+		return false
+	}
+	if isStringExpr(e) {
+		return true
+	}
+	if _, ok := g.stringVal(e); ok {
+		return true
+	}
+	if nm, ok := e.(*Name); ok {
+		if g.internedVars[nm.Value] {
+			return true
+		}
+		if g.strVals != nil {
+			if _, isStr := g.strVals[nm.Value]; isStr {
+				return true
+			}
+		}
+		return false
+	}
+	if c, ok := e.(*Call); ok {
+		if fn, ok2 := c.Fn.(*Name); ok2 {
+			return g.strFuncs[fn.Value]
+		}
+	}
+	return false
+}
+
+// runtimeBlockReferenced reports whether emitted module code mentions any name that the
+// given runtime block defines. The decision is derived from the artifact rather than from a
+// flag, so a helper cannot be called without being defined no matter which codegen path
+// emits the call — and a data global (@str_tab, @gc.roots) cannot be referenced while its
+// definition is missing.
+//
+// The block is scanned for `define … @name(` and `@name = internal global/constant` lines,
+// which is what those files already look like; nothing is maintained by hand, so adding a
+// helper to a block cannot reintroduce the bug.
+func runtimeBlockReferenced(block, module string) bool {
+	for _, ln := range strings.Split(block, "\n") {
+		t := strings.TrimSpace(ln)
+		var name string
+		callForm := false
+		switch {
+		case strings.HasPrefix(t, "define "):
+			i := strings.Index(t, "@")
+			if i < 0 {
+				continue
+			}
+			name = t[i+1:]
+			if j := strings.IndexAny(name, "( "); j >= 0 {
+				name = name[:j]
+			}
+			callForm = true
+		case strings.HasPrefix(t, "@"):
+			rest := t[1:]
+			sp := strings.IndexAny(rest, " =")
+			if sp < 0 {
+				continue
+			}
+			tail := strings.TrimLeft(strings.TrimSpace(rest[sp:]), "= ")
+			if !strings.HasPrefix(tail, "internal global") && !strings.HasPrefix(tail, "internal constant") && !strings.HasPrefix(tail, "private") && !strings.HasPrefix(tail, "common") {
+				continue
+			}
+			name = rest[:sp]
+		}
+		if name == "" {
+			continue
+		}
+		if callForm {
+			if strings.Contains(module, "@"+name+"(") {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(module, "@"+name) {
+			return true
+		}
+	}
+	return false
 }
 
 // isAllocaLine reports whether a module line defines a stack slot, e.g.
@@ -10298,6 +10399,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		endL := g.newLabel("for.end")
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", initL))
 		b.WriteString(fmt.Sprintf("%s:\n", initL))
+		// Iterating text that only exists at run time is not implementable in this backend,
+		// and the fall-through below would not refuse it: `def txt(): return "hi"` hands back
+		// its @str_tab index, which the count path reads as a repeat count — so
+		// `for c in txt(): print(c)` compiled cleanly and printed nothing, where the
+		// interpreter and CPython print `h i`. A silent wrong answer is worse than a refusal,
+		// so the shape is named instead (roadmap Gap R.16, ADR 0209). A string *literal*
+		// iterates fine — it became a list of one-rune literals above (ADR 0208).
+		if g.iterableIsRuntimeString(n.Iter) {
+			return fmt.Errorf("codegen: iterating a string computed at run time is not supported in the AOT backend yet; the interpreter prints its characters — iterate a string literal, or index a string with a constant (s[0]); strings need the runtime string value model (roadmap L11.5)")
+		}
 		start, stop, step, err := g.rangeBounds(b, n.Iter)
 		if err != nil {
 			return err

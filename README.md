@@ -214,6 +214,11 @@ falls back to dynamic dispatch.
 - **A default may sit anywhere in a signature** — `def f(a, b=1, c)` is a `SyntaxError` in CPython and
   ordinary source here, because positional binding fills left to right and a keyword call names what it
   fills, so every parameter is reachable (`programs/param_default_order.gy`, ADR 0206)
+- **A module never calls a runtime helper it does not define** — which runtime blocks a module carries is
+  derived from the code it emits, not from flags each codegen path had to remember, so the failure that
+  surfaced as an `llc` "undefined value" error is gone; and where the compiled backend cannot act
+  (iterating a run-time string) it refuses with a message instead of compiling a loop that silently does
+  nothing (ADR 0209)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case
