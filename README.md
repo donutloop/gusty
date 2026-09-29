@@ -300,6 +300,28 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **A deferred body belongs to every exit** (ADR 0222) — this ran the cleanup on the boring path only:
+
+  ```py
+  def f() -> int:
+      try:
+          return 1
+      finally:
+          print("fin")      # was: prints nothing, returns 1 · CPython: fin, then 1
+  ```
+
+  Eleven shapes measured against CPython, nine wrong, and **both backends wrong identically** — the
+  deferred body ran on fall-through and after a handled exception and was skipped for `return`,
+  `break`, `continue`, and for an exception no arm matched. Parity could not see it because the two
+  implementations agreed. The same statement hid a second bug: transfers travel as Go errors in the
+  interpreter, exactly like raised exceptions, and the arms asked "did something come out?" instead of
+  "did an *exception* come out?", so a bare `except:` **caught a `return`** and dropped the value.
+  Now a `finally` runs once on every exit in both paths, innermost first, with Python's ordering —
+  the return value is taken by the `return`, so `return n` hands back the old `n` even if the `finally`
+  reassigns it — and a `return`/`raise` inside the `finally` replaces what was in flight. In codegen an
+  escaping exception runs only the *innermost* pending body (the outer ones run on their own way out,
+  and running the whole stack printed `outer fin` twice), and whether a body already left the block is
+  judged by where control went, not by opcode, because an `if` also ends its block with a `br`.
 - **Two numbers are one question** (ADR 0221) — this printed two different answers depending on
   which flag you used:
 

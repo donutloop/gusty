@@ -3768,3 +3768,43 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
   ran, and the commit's matrix numbers (`65/90 parity, oracle 46 match / 30 debt / 14 not-applicable
   over 90 cases`) are pasted from the run rather than recalled — the previous commit cited counts I had
   written from memory, and they were wrong.
+
+## Cycle 170 — a deferred body belongs to every exit (Gap R.23, ADR 0222)
+
+- **Nine silent wrong answers, and both backends gave the same nine.** `finally` was skipped on
+  `return`, `break`, `continue` and on a propagating exception, identically in the interpreter and in
+  codegen. Nothing in the parity contract can see that shape — it is the third leg, CPython, that
+  makes this class visible, and this is the fourth cycle in a row where the oracle caught something the
+  two-implementation comparison could not.
+- **Read the code after measuring, not before.** The measured bug was "finally does not run". While
+  reading `case *TryStmt` to fix it I found a second bug nobody had asked about: the arms matched
+  "something came out" rather than "an exception came out", and since transfers travel as Go errors in
+  this interpreter, a bare `except:` was *catching `return`* and dropping the function's value. One
+  statement, two wrong halves, one commit — because both are the meaning of `try`.
+- **Cascade and walk are different, and the difference is the bug.** An exception escaping a `try`
+  runs only that statement's own deferred body, because the hand-off reaches the outer `try`'s handler
+  and *that* statement runs its own body on its way out. A `return`/`break`/`continue` leaves them all
+  at once, so it must walk the whole stack. The first version ran the whole stack everywhere and printed
+  `outer fin` twice — the doubling only shows up in a shape with two levels and an exception, which is
+  exactly why the matrix had to include one.
+- **Judge an escape by destination, not by opcode.** `blockEndsInTerminator` (bought in cycle 166)
+  treats any `br` as a terminator, but a `finally` whose last statement is an `if` or a `for` also ends
+  its block with an ordinary forward branch — reusing it would have stopped the walk to outer bodies
+  silently, and every simple shape I had measured would still have passed. `escapedTerminator` looks
+  for `ret`, `unreachable`, or a branch headed to the raise-exit.
+- **Write exit codes from the contract, not from the oracle.** My trap shapes were first asserted at
+  exit 1 because CPython exits 1. Ours is class **3** on both backends — the documented runtime-error
+  class (ADR 0211) — and a test written by watching Python would have asserted our interface wrongly
+  and then been "fixed" by breaking it. `docs/operations.md` is the authority for status codes; CPython
+  is the authority for output.
+- **Check pre-existingness before owning a defect.** The compiled method-with-`try` case exits 2 on an
+  emitted `br label %` with an empty target. The same source fails identically on the binary from before
+  this cycle, so it went into the roadmap as Gap R.41 with that evidence rather than into my change as a
+  regression to patch under pressure. Third cycle running that this habit is what keeps OPEN items honest.
+- **Two helper reuses that saved reinvention:** `captureStdout` Fatalfs when the program traps, so the
+  replacing-raise unit test uses the existing `trapRun` and asserts `ExnType`; and `cliRunCode` returns
+  stdout only, so the traceback assertion uses `cliRun` (combined) — the diagnostic lives on stderr
+  where diagnostics belong, and a test that greps stdout for it would have "found" a missing feature.
+- **Last cycle's lesson applied immediately:** after adding two programs I checked that the matrix count
+  actually moved (88 → 92, parity 65 → 66) and grepped the artifact for both names, instead of trusting
+  a green run over a corpus that had not been registered.

@@ -2472,8 +2472,18 @@ type irGen struct {
 	// the arm (`return`, `break`, `continue`) has to leave the pending-exception flag cleared
 	// like the arm's normal exit does — otherwise the transfer escapes the clear and the next
 	// user-function call reports the exception all over again (roadmap Gap R.21, compiled half).
-	handledArms   int
-	funcRaiseExit string
+	handledArms int
+	// deferred is the stack of `finally` bodies belonging to the `try` statements currently
+	// being lowered, outermost first. A control transfer that leaves a `try` for good -- a
+	// `return`, `break`, `continue`, a raise that its arms do not catch -- has to run them,
+	// innermost first, before it goes (roadmap Gap R.23, ADR 0222). The straight-line path
+	// does not consult this stack: `tryStmt` emits its own deferred body once, directly.
+	deferred [][]Stmt
+	// emittingDeferred is set while a deferred body is being lowered, so that a raise from
+	// inside one still walks the remaining (outer) deferred bodies instead of jumping out
+	// and skipping them.
+	emittingDeferred bool
+	funcRaiseExit    string
 
 	classInfos map[string]*classInfo // class name -> info
 	classIDs   map[string]int        // class name -> runtime dispatch id
@@ -9115,12 +9125,94 @@ func (g *irGen) raiseStmt(b *strings.Builder, rs *RaiseStmt) error {
 		typeName = n.Value
 	}
 	g.setExn(b, code, typeName, msg, rs.Span())
+	// A raise that leaves an arm it already accepted, or that comes out of a `finally`, has
+	// deferred bodies still owed to it: they run now, before the jump hands the exception to
+	// the next handler, or they would never run at all (Gap R.23, ADR 0222). A raise from an
+	// ordinary `try` body does not: this `try`'s own arms may still catch it, and they run
+	// before its deferred body.
+	if g.handledArms > 0 && !g.emittingDeferred {
+		if err := g.runDeferredInnermost(b); err != nil {
+			return err
+		}
+	}
 	if len(g.handlerStack) > 0 {
 		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
 	} else {
 		b.WriteString("  br label %" + g.funcRaiseExit + "\n")
 	}
 	return nil
+}
+
+// escapedTerminator reports whether the text a deferred statement emitted left the block for
+// good: a `ret`, an `unreachable`, or a branch toward this function's raise-exit or a try
+// handler. An `if` or a loop ends its block with an ordinary forward `br` too, and calling that
+// an escape would silently stop the walk before the outer `finally` bodies -- so the test is
+// about where control went, not about the opcode.
+func (g *irGen) escapedTerminator(text string) bool {
+	for _, ln := range strings.Split(text, "\n") {
+		ln = strings.TrimSpace(ln)
+		if ln == "unreachable" || strings.HasPrefix(ln, "ret ") {
+			return true
+		}
+		if strings.HasPrefix(ln, "br ") && (strings.Contains(ln, "%"+g.funcRaiseExit) || strings.Contains(ln, "raiseexit")) {
+			return true
+		}
+	}
+	return false
+}
+
+// runDeferredLevel lowers one pending `finally` body -- the one at index i -- and reports whether
+// it transferred out (its own `return` or raise), in which case nothing after it may be emitted.
+// Levels below i are taken off the stack for the duration, so a `return` inside this body sees
+// only the *outer* pending bodies and a raise in it cannot re-enter this level.
+func (g *irGen) runDeferredLevel(b *strings.Builder, i int) (escaped bool, err error) {
+	if i < 0 || i >= len(g.deferred) {
+		return false, nil
+	}
+	level := g.deferred[i]
+	saved := g.deferred
+	g.deferred = saved[:i]
+	g.emittingDeferred = true
+	for _, st := range level {
+		before := b.Len()
+		if err := g.stmt(b, st); err != nil {
+			g.emittingDeferred = false
+			g.deferred = saved
+			return false, err
+		}
+		if g.escapedTerminator(b.String()[before:]) {
+			escaped = true
+			break
+		}
+	}
+	g.emittingDeferred = false
+	g.deferred = saved
+	return escaped, nil
+}
+
+// runDeferred lowers every pending `finally` body, innermost first: the walk a `return`,
+// `break` or `continue` owes, because that transfer leaves all of the enclosing `try`
+// statements at once and nothing else is going to run them (Gap R.23, ADR 0222).
+func (g *irGen) runDeferred(b *strings.Builder) error {
+	for i := len(g.deferred) - 1; i >= 0; i-- {
+		escaped, err := g.runDeferredLevel(b, i)
+		if err != nil {
+			return err
+		}
+		if escaped {
+			return nil
+		}
+	}
+	return nil
+}
+
+// runDeferredInnermost lowers only the innermost pending `finally` body. This is what an
+// exception leaving a `try` owes: the *outer* bodies are run by those statements themselves when
+// the hand-off reaches their handler blocks, so running them here would run them twice -- once
+// on the way out and once again on their own straight-line path.
+func (g *irGen) runDeferredInnermost(b *strings.Builder) error {
+	_, err := g.runDeferredLevel(b, len(g.deferred)-1)
+	return err
 }
 
 // clearExn marks the pending exception as finished. A handled exception has to leave the
@@ -9174,6 +9266,13 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 	finally := g.newLabel("try.finally")
 	after := g.newLabel("try.after")
 	g.handlerStack = append(g.handlerStack, handler)
+	// This `try`'s deferred body is pending for the body and for every arm: a transfer out of
+	// either one owes it a run (Gap R.23, ADR 0222). It is popped before the straight-line
+	// `finally:` block below, which emits the body itself exactly once.
+	if len(ts.Finally) > 0 {
+		g.deferred = append(g.deferred, ts.Finally)
+		defer func(saved [][]Stmt) { g.deferred = saved }(g.deferred[:len(g.deferred)-1])
+	}
 	for _, st := range ts.Body {
 		if err := g.stmt(b, st); err != nil {
 			return err
@@ -9231,6 +9330,11 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 	// hand it to the next handler out, or to the function's raise-exit — the same destination an
 	// explicit `raise` with no handler in sight uses.
 	b.WriteString("  store i32 1, i32* @exn_flag\n")
+	// Nobody in this statement caught it, so this `try` is being left by an exception: its
+	// deferred body (and any outer one still pending) runs before the hand-off.
+	if err := g.runDeferredInnermost(b); err != nil {
+		return err
+	}
 	if len(g.handlerStack) > 0 {
 		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
 	} else {
@@ -9238,6 +9342,13 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 	}
 
 	b.WriteString(finally + ":\n")
+	// Straight-line exit: the deferred body is emitted here, not from the stack, so the stack
+	// is dropped first -- otherwise a `return` inside it would emit this body a second time.
+	// A `try` with arms but no `finally` clause pushed nothing (the block above still runs, as
+	// the single continuation label), so the pop belongs to the same guard the push does.
+	if len(ts.Finally) > 0 {
+		g.deferred = g.deferred[:len(g.deferred)-1]
+	}
 	for _, st := range ts.Finally {
 		if err := g.stmt(b, st); err != nil {
 			return err
@@ -9379,6 +9490,11 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	prevHandledArms := g.handledArms
 	g.handledArms = 0
 	defer func() { g.handledArms = prevHandledArms }()
+	// Nor is it inside the caller's `try`: a `return` in a nested function body must not run the
+	// enclosing statement's deferred bodies (Gap R.23, ADR 0222).
+	prevDeferred := g.deferred
+	g.deferred = nil
+	defer func() { g.deferred = prevDeferred }()
 	// The traceback frame names the function the raise is written in.
 	prevFnSrc := g.curFnSrc
 	g.curFnSrc = fd.Name
@@ -10764,6 +10880,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// bare `return` yields None (ADR 0172). A float function reaching this is
 			// a type error the checker reports; 0.0 keeps the module valid.
 			if g.floatFuncs[g.curFunc] {
+				if err := g.runDeferred(b); err != nil {
+					return err
+				}
 				g.gcCloseFrame(b)
 				b.WriteString("  ret double 0.000000\n")
 				return nil
@@ -10771,12 +10890,18 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			g.heapUsed = true
 			t := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_none()\n", t))
+			if err := g.runDeferred(b); err != nil {
+				return err
+			}
 			g.gcCloseFrame(b)
 			b.WriteString(fmt.Sprintf("  ret i32 %s\n", t))
 			return nil
 		}
 		if g.floatFuncs[g.curFunc] {
 			fv := g.floatValue(b, n.Expr)
+			if err := g.runDeferred(b); err != nil {
+				return err
+			}
 			g.gcCloseFrame(b)
 			b.WriteString(fmt.Sprintf("  ret double %s\n", fv))
 			return nil
@@ -10790,6 +10915,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if txt, ok := g.stringVal(n.Expr); ok {
 				it := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_intern2(i8* %s, i8* %s)\n", it, g.strConst(txt), g.strConst(pyReprString(txt))))
+				if err := g.runDeferred(b); err != nil {
+					return err
+				}
 				g.gcCloseFrame(b)
 				b.WriteString(fmt.Sprintf("  ret i32 %s\n", it))
 				return nil
@@ -10797,6 +10925,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		v, err := g.value(b, n.Expr)
 		if err != nil {
+			return err
+		}
+		// The return value is computed by the `return` statement, and only then do the
+		// deferred bodies run -- which is why `return n` in a `try` hands back the `n` from
+		// before the `finally` reassigned it, as it does in Python (Gap R.23, ADR 0222).
+		if err := g.runDeferred(b); err != nil {
 			return err
 		}
 		g.gcCloseFrame(b)
@@ -10809,6 +10943,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		if g.handledArms > 0 {
 			g.clearExn(b) // leaving an arm we already accepted the exception in
 		}
+		if err := g.runDeferred(b); err != nil {
+			return err
+		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.breakLabel))
 	case *ContinueStmt:
 		if len(g.loopStack) == 0 {
@@ -10817,6 +10954,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		info := g.loopStack[len(g.loopStack)-1]
 		if g.handledArms > 0 {
 			g.clearExn(b)
+		}
+		if err := g.runDeferred(b); err != nil {
+			return err
 		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.continueLabel))
 	case *PassStmt, *TypeAliasStmt:

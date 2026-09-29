@@ -1041,9 +1041,17 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 			}
 			continue
 		case *TryStmt:
+			// A `try` is a chain of arms (ADR 0213) and `finally` is a deferred body, and the two
+			// rules meet here: the deferred body runs on EVERY exit from the statement --
+			// fall-through, a handled exception, a propagating one, and the transfers
+			// (`return`/`break`/`continue`) that leave the block -- and an arm catches
+			// exceptions only. Transfers travel as Go errors because that is how this
+			// interpreter moves control, so matching them against an arm swallowed a
+			// `return`: `try: return 1 / except: print("caught")` printed "caught" and
+			// returned the next value, where CPython returns 1 (roadmap Gap R.23, ADR 0222).
 			_, bodyErr := e.runBodyRooted(s.Body)
-			if bodyErr != nil {
-				caught := false
+			caught, armErr := false, error(nil)
+			if bodyErr != nil && catchesException(bodyErr) {
 				for _, ec := range s.Excepts {
 					// bare except, or except Exception, matches any exception;
 					// otherwise match the raised exception class name exactly.
@@ -1053,23 +1061,25 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 							ec.Exn.Value == ee.ExnType
 					}
 					if matches {
-						_, err2 := e.runBodyRooted(ec.Body)
-						if err2 != nil {
-							return 0, err2
-						}
+						_, armErr = e.runBodyRooted(ec.Body)
 						caught = true
 						break
 					}
 				}
-				if !caught {
-					return 0, bodyErr
+			}
+			// Exactly once, after whichever arm ran, and before the pending transfer is
+			// released: a raise or a return inside `finally` replaces what was in flight,
+			// which falls out of returning the finally body's own error unchanged.
+			if len(s.Finally) > 0 {
+				if _, ferr := e.runBodyRooted(s.Finally); ferr != nil {
+					return 0, ferr
 				}
 			}
-			if len(s.Finally) > 0 {
-				_, err := e.runBodyRooted(s.Finally)
-				if err != nil {
-					return 0, err
-				}
+			if armErr != nil {
+				return 0, armErr
+			}
+			if bodyErr != nil && !caught {
+				return 0, bodyErr
 			}
 		case *WithStmt:
 			m, err := e.eval(s.Expr)
@@ -4620,6 +4630,22 @@ func (l *loopSignal) Error() string { return "loop signal: " + l.kind }
 type returnSignal struct{ val int64 }
 
 func (r *returnSignal) Error() string { return "return signal" }
+
+// catchesException answers the only question an `except` arm is allowed to ask: is the
+// thing in flight an exception at all? A `return`, `break` or `continue` is a transfer, and
+// this interpreter moves transfers with the same Go `error` mechanism it uses for raises, so
+// an arm that matched on "some error came out" swallowed control flow -- a bare `except:`
+// used to catch a `return` and drop the function's value (roadmap Gap R.23, ADR 0222).
+// Anything that is not one of these three propagates uncaught, which is the safe direction.
+func catchesException(err error) bool {
+	switch err.(type) {
+	case *returnSignal, *loopSignal:
+		return false
+	case *EvalError:
+		return true
+	}
+	return false
+}
 
 // EvalExpr compiles src and evaluates it, returning the integer result and diagnostics.
 func EvalExpr(src string) (int64, []Diagnostic, error) {

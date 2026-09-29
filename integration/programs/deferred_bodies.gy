@@ -1,0 +1,96 @@
+# A `finally` is a deferred body: it runs on every exit from its `try` -- fall-through, a handled
+# exception, a propagating one, and the transfers (`return`, `break`, `continue`) that leave the
+# block. An `except` arm catches exceptions, never a transfer (roadmap Gap R.23, ADR 0222).
+# CPython prints exactly this, on this file.
+
+def value_before_finally() -> int:
+    n = 1
+    try:
+        return n
+    finally:
+        n = 99
+        print("fin", n)
+
+
+def nested() -> int:
+    try:
+        try:
+            return 1
+        finally:
+            print("inner")
+    finally:
+        print("outer")
+
+
+def winner() -> int:
+    try:
+        return 1
+    finally:
+        return 2
+
+
+def propagates() -> int:
+    try:
+        x = 1 / 0
+    finally:
+        print("prop fin")
+    return 0
+
+
+def from_arm() -> int:
+    try:
+        x = 1 / 0
+    except:
+        return 7
+    finally:
+        print("arm fin")
+    return 0
+
+
+def twice() -> int:
+    try:
+        return 5
+    finally:
+        print("once")
+
+
+print(twice())
+print(twice())
+print(value_before_finally())
+print(nested())
+print(winner())
+print(from_arm())
+
+try:
+    print(propagates())
+except:
+    print("caught")
+
+for i in range(3):
+    try:
+        continue
+    finally:
+        print("cont fin", i)
+
+for i in range(3):
+    try:
+        break
+    finally:
+        print("brk fin", i)
+
+for i in range(4):
+    try:
+        print("body", i)
+    except:
+        print("arm that never runs")
+    finally:
+        print("loop fin", i)
+
+def ignores_transfers() -> int:
+    try:
+        return 1
+    except:
+        print("an arm cannot catch a return")
+    return 3
+
+print(ignores_transfers())

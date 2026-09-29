@@ -2034,24 +2034,65 @@ Still open in this family, and not the same statement: **Gap R.23** (`finally` d
 compile-time refusal instead of a runtime trap the arm could catch — which is why the grids above use
 `1 // 0`, the one trap the compiled path folds correctly).
 
-### R.23 — `finally` does not run when the `try` body returns or raises (OPEN, both backends)
+### R.23 — `finally` did not run when the `try` body returned, broke, continued, or raised (CLOSED, ADR 0222)
 
 ```gusty
-def f():
+def f() -> int:
     try:
         return 1
     finally:
-        print("fin")      # gusty (both backends): prints nothing, then 1 · CPython: fin, then 1
+        print("fin")      # was: both backends print 1 and nothing else · CPython: fin, then 1
 ```
 
-Measured on three engines: `finally` runs on the fall-through path and after a handled exception
-(both correct), but not when the body leaves by `return` or by `raise` — the transfer paths skip the
-deferred body entirely, silently, in both backends. Fix: deferred actions must be attached to the
-exit paths, not just the straight-line one — for the interpreter, the unwind/return has to run the
-enclosing `finally` bodies before propagating (and a `return` in `finally` overriding the pending
-value follows Python); for codegen, the function's return/raise-exit blocks have to walk the pending
-`finally` list. The ADR 0213 chain is testable evidence that the arm wiring is right, so this is the
-remaining `try` semantics gap.
+Measured on eleven shapes against CPython before touching anything: **nine were wrong, and both
+backends were wrong identically** — the deferred body ran on fall-through and after a handled
+exception, and was skipped for `return`, `break`, `continue`, and for an exception no arm matched.
+Parity could not see it; only the third leg could.
+
+The same statement had a second wrong half, found in the interpreter's arm matching. Transfers
+(`returnSignal`, `loopSignal`) travel as Go errors — the same channel raised exceptions use — and the
+arms asked "did something come out?" instead of "did an *exception* come out?", so a bare `except:`
+**caught a `return`**: it printed its body and dropped the function's value, where CPython returns.
+
+Fixed in both paths. The interpreter runs the arms (only for `catchesException`) and then the deferred
+body, exactly once, before releasing the pending transfer; a `return`/`raise` inside the `finally`
+returns its own signal, which is Python's last-transfer-wins for free. The compiler keeps a
+`deferred [][]Stmt` stack in `irGen`: `tryStmt` pushes its body for its body and arms, and each
+transfer site consults it — `return` emits the value, then the pending bodies, then the frame close and
+`ret`; `break`/`continue` do the same before branching; the "no arm matched" edge and a `raise` inside an
+arm run **only the innermost** body, because the outer ones are run by their own statements when the
+hand-off reaches their handlers (running the whole stack there printed `outer fin` twice). Judging
+whether a body already left the block is done by *where control went* — `ret`, `unreachable`, a branch
+to the raise-exit — not by opcode, since an `if` or a loop also ends its block with a `br`.
+
+Value-before-deferred ordering is Python's and is observable: `return n` with a `finally` of
+`n = 99; print("fin", n)` prints `fin 99` then `1` on both backends.
+
+Tests: `pkg/lang/deferred_bodies_test.go` (10 units incl. the arms-cannot-catch-transfers half and a
+control that a "just run it everywhere" fix would have passed) and `integration/deferred_bodies_test.go`
+(20 shapes × 2 engines, expectations written from CPython, and the trap shapes asserted at exit class 3
+from the documented contract rather than from observation). `programs/deferred_bodies.gy` is a
+standalone parity program. Matrix: 66/92 parity, oracle 47 match / 31 debt / 14 not-applicable.
+
+### R.41 — a method containing a `try` emits a branch to an empty label (OPEN, compiled)
+
+```gusty
+class C:
+    def m(self) -> int:
+        try:
+            return 3
+        finally:
+            print("m fin")
+```
+
+The interpreter and CPython print `m fin` then `3`; the compiled backend emits
+`br label %` — an empty target, because `g.funcRaiseExit` is never set on the method-emission path —
+and `llc` rejects the module, so the run exits 2 with a temp-file path. **Verified pre-existing**: the
+binary from before Gap R.23 fails identically on the same source, so this is not a consequence of the
+deferred-body work, it is what that work stepped on. Pinned by `programs/probe_method_try.gy` (debt
+row) and `TestMethodWithTryIsPinnedAsPreExistingCompiledDebt`, which also asserts the malformed
+emission through `--emit-llvm` and says to delete itself when the shape compiles. Fix: give the method
+path the same raise-exit block a `def` gets, and make the raise-outward edge of a method land there.
 
 ### R.24 — the checker lost names bound inside compound statements (CLOSED, ADR 0217)
 

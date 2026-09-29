@@ -885,17 +885,30 @@ for i in range(n):
 
   An arm's own `raise` is a new exception and keeps travelling outward; an exception no arm matches
   still propagates (above), and an uncaught one still reports and fails.
-- **`finally:` runs on the paths that reach it.** Its body runs when the `try` completes and when
-  an arm handled the error. It does **not** yet run when the `try` body leaves via `return` or
-  `raise`, on either backend, where Python runs it before the transfer (roadmap Gap R.23):
+- **`finally:` is a deferred body: it runs on *every* exit from its `try`** (ADR 0222). Its body
+  runs when the `try` completes, when an arm handled the error, when an exception propagates out
+  of it, and when the block is left by a `return`, `break` or `continue` — once per exit,
+  innermost first, on both backends:
 
   ```py
-  def f():
+  def f() -> int:
       try:
           return 1
       finally:
-          print("fin")        # gusty: prints nothing, then 1 · CPython: fin, then 1
+          print("fin")        # fin, then 1 — on both backends, as in CPython
   ```
+
+  Three consequences, each with a test:
+  - The **return value is taken by the `return` statement**, before the deferred body runs, so
+    `return n` hands back the old `n` even if the `finally` reassigns it.
+  - A `return` or a `raise` **inside the `finally` replaces** whatever transfer was in flight —
+    Python's last-transfer-wins.
+  - **An `except` arm catches exceptions, never a transfer.** `try: return 1` / `except: ...`
+    does not run the arm: a `return`, `break` or `continue` is not an exception, whatever the
+    implementation uses to move it.
+
+  Known limit: a `try` written inside a **method** body is still broken in the compiled backend
+  (it emits a branch to an empty label — roadmap Gap R.41, pre-existing and pinned).
 - **A compound statement is not a scope** (ADR 0217). Python has one flat scope per `def` and one
   per module, so a name assigned inside a `try` body, an `except` arm, a `finally` clause, a
   `while` body or a `match` arm belongs to the enclosing function or module and is readable after
