@@ -2816,3 +2816,53 @@ Process notes:
   caught nothing this time only because I ran the corpus before writing the guard for `str` —
   which is the intended way for these to feel.
 
+## Cycle 148 — one table, two definitions: a method overwrote a module function (Gap R.8, ADR 0200)
+
+`def time(x)` beside `class Timer: def time(self, x)` was refused with
+`error at 7:16: undefined name "x"` — an error pointing at the *method's own parameter*. The
+interpreter, the compiled module and CPython all printed `6 7`. Only `Analyze` thought the program
+was broken, and the build gate trusts it (ADR 0177), so an ordinary program could not be compiled.
+
+What cost real time was that every plausible explanation was wrong, and each was killed by a
+*smaller program* rather than by reading more code:
+
+| hypothesis | killed by |
+|---|---|
+| method calls are argument-checked wrongly | `self.time(x)` is a dynamic attr call, never argument-checked at all |
+| the name `time` is special (a builtin-ish name) | identical programs with `tick`, `zork`, `f` behaved fine |
+| the class alone, or the module def alone, causes it | removing either half checks clean |
+
+What survived the bisect: one function table, keyed by bare name, into which methods registered
+(`an.funcs[fd.Name] = fd` while walking a class body). The method, analyzed after the module
+function, *replaced* it; `time(1)` then resolved to a definition with parameters `(self, x)`, one
+argument was bound to two parameters, the second stayed unbound, and the per-call-site body walk
+reported the method's own `x` as undefined. An error at the callee and never at the call — that
+asymmetry is the tell for "resolution, not scoping", and it is worth remembering: **when a
+diagnostic points somewhere the programmer did not write, believe the position over the message.**
+
+Fix: `SemanticAnalyzer.methods`, keyed `Class.method`, and `inClass`/`curClass` saved and restored
+around a class body so a def in an outer scope cannot inherit the class name. A bare-name call can
+now only resolve to a module function or a nested def — the only definition whose arity a call site
+could possibly match.
+
+Process notes:
+
+- **A test that can be satisfied by checking nothing is not a test.** Methods were never
+  argument-checked through this table, so `expect no error` passes both after the fix and if methods
+  stopped being analyzed entirely. The assertions therefore pin *which parameter the diagnostic
+  names* — with `def time(x: int)` and `Timer.time(self, label: str)`, a bad argument must come back
+  as `argument "x": expected int, got str`; `"label"` in the message means the wrong definition was
+  used — plus a separate test that an error inside a method body is still reported.
+- **The probe promoted itself.** `TestOracleProbeRowsAreRecordedAsDebt` failed the moment the fix
+  landed, saying "a probe that now matches CPython is a paid debt — promote the program to
+  conformanceStandalone and delete its ledger row". That is the harness converting a known divergence
+  into regression coverage by itself; the correct response to those failures is the rename it asks
+  for, never a relaxed assertion. Measured: `6 7 6 12` on all three legs, `oracle: "match"`.
+- **Measuring an assertion found the next gap.** I tried to assert "calling `build(a, b)` with one
+  argument is reported"; the base compiler says `ok`, so the assertion was describing behaviour that
+  has never existed. Opened as R.10 (too few arguments unreported, annotated or not) and the test
+  rephrased to what is actually observable.
+- Roadmap numbering discipline kept paying off: R.4 → R.5 → … → R.10 each with its own measured
+  repro, its own section, and — for the closed ones — the program that proved it, moved from probe to
+  corpus rather than deleted.
+

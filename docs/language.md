@@ -1744,6 +1744,33 @@ print(float(1) + 0.5)   # 9.5 — the call is the program's, its int result lift
 What a program does *not* get by shadowing is a slower program: when nobody shadows `str`, the
 constant folding still runs (`print(str(42))` is still folded at compile time).
 
+### A method and a helper may share a name
+
+The words that describe what a class does are usually the words that describe a helper, so this
+pair is ordinary rather than clever:
+
+```gy
+def time(x):
+    return x + 5
+
+
+class Timer:
+    def time(self, x):
+        return x * 3
+
+    def run(self, x):
+        return self.time(x) + 1
+
+
+print(time(1))         # 6 — the module function
+print(Timer().run(2))  # 7 — the method
+```
+
+`time(1)` means the module function and `self.time(x)` means the method: a `def` inside a class is
+a definition *of that class*, not a definition of the surrounding file (ADR 0200). The same rule
+holds across classes — `A.m` and `B.m` are two definitions — and it is checked, not assumed: a call
+to the module function is checked against the module function's annotations.
+
 Two neighbouring things stay refusals rather than wrong answers, both documented in the roadmap:
 `def print` and `def range` do not parse (the parser reserves the tokens), and a module function
 that shares a name with a *method* still confuses the checker (R.8).

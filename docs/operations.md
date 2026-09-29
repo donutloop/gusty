@@ -79,6 +79,14 @@ names come from one table (`pkg/lang/predeclared.go`) shared by the checker, the
 unbound-name guard and LSP completion, so a real built-in (`sum`, `enumerate`, `zip`, …) is
 never "undefined" and a name that is not bound is never lowered.
 
+**Name-based lookups are keyed by where the definition lives, not only by what it is called**
+(Gap R.5/R.8, ADRs 0197, 0200). A `def` in a class body is a method of that class and never a
+binding of the file; a `def` in a function body is visible to that whole body, wherever it is
+written; a bare-name call resolves to module functions and nested defs only. For an agent this means
+a refusal like `undefined name "x"` pointing *inside a callee* is a resolution story about which
+definition the call was measured against, not a scoping fact about the source — and the fix belongs
+under `Analyze`, not in the program.
+
 **A built-in name is shadowable, and the program's definition wins** (Gap R.6, ADR 0199).
 `def str`, `def float`, `def len`, `def abs` are legal, and after them `str(1)` calls the program's
 function on both backends. Agents should not warn themselves out of this: it is not a lint, it is

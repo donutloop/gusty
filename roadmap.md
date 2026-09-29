@@ -1481,12 +1481,16 @@ messages where nobody would look:
   (printing `1.0` for a function returning `x + 7`), and `str(1)` was emitted as the program's call
   and then printed as the built-in's string, which `llc` rejected. One predicate now decides —
   does the program own this name? — in front of every shape reading keyed on a built-in name.
-- **R.7, R.8, R.9 (OPEN)** — three defects measured while closing the others, all of them
+- **R.8, closed by ADR 0200** — a module function and a method that shared a name shared the
+  checker's function key too, so the module call was measured against the method's
+  `self`-inclusive arity and the program was refused with an undefined-name error on the callee's
+  own parameter — while the evaluator, the compiled module and CPython all ran it.
+- **R.7, R.9, R.10 (OPEN)** — defects measured while closing the others, all of them
   discovered by writing a corpus program rather than by reading code:
   one source line can report the same diagnostic two or three times, because return inference
-  re-walks a callee per call site (R.7); a module function and a method that share a name share
-  the checker's function key, which refuses an ordinary program that every other layer runs
-  (R.8); and `def print` / `def range` do not parse at all, though CPython runs them (R.9).
+  re-walks a callee per call site (R.7); `def print` / `def range` do not parse at all, though
+  CPython runs them (R.9); and calling a function with too few arguments is not reported at all
+  (R.10).
 
 ### R.1 — the compiled backend runs a coroutine at the call, not at the await (OPEN)
 
@@ -1717,7 +1721,7 @@ trap for code carried over, and for a generated program that happens to choose o
 The fix is in the parser's statement position — accept these names as `def` targets, and let the
 resolver decide (R.6 already guarantees the program's definition wins once it parses).
 
-### R.8 — a module function and a method of one name share the checker's key (OPEN)
+### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)
 
 ```gusty
 def time(x):
@@ -1736,17 +1740,52 @@ print(time(1))
 print(Timer().run(2))
 ```
 
-`error at 7:16: undefined name "x"`, from `--check` and from the build. The checker keys its
-function table by bare name, so the method `Timer.time` overwrote the entry for the module
-function `time`, and the call `time(x)` is then checked against the *method's* parameters —
-including a `self` that is not in scope at the call site.
+`error at 7:16: undefined name "x"` — pointing at the *method's own parameter*. The interpreter
+printed `6 7`, CPython printed `6 7`, and a binary built from the module codegen emitted for this
+source printed `6 7` too: only the front end thought the program was broken, and the build gate
+trusts the front end (ADR 0177), so it could not be compiled.
 
-The disagreement is the interesting part: the evaluator prints `6 7`, CPython prints `6 7`, and
-so does a binary built from the module codegen emits for this same source. Only the front end
-thinks the program is broken, and because the build gate trusts the front end (ADR 0177), an
-ordinary program — a module-level helper and a method with the same name — cannot be compiled.
-`programs/probe_method_function_name_clash.gy` pins all of it. The fix is to key methods by
-`(class, name)` rather than by name, the way codegen's class index already does.
+The bisect was the interesting part, because each plausible story was killed by a smaller program:
+`self.time(x)` is a dynamic attribute call and is not argument-checked at all (so it was not a
+method-call bug); `tick`, `zork` and `f` behaved identically (so the name was not special); and
+removing either the module def or the class made it check clean. What survived: the checker had
+**one** function table keyed by bare name, methods registered into it, the method analyzed later
+replaced the module function, and the call `time(1)` resolved to a definition with parameters
+`(self, x)` — one argument for two parameters, so the second stayed unbound and the method body's
+`x` was reported as undefined. An error at the callee, never at the call, which is what made it look
+like a scoping bug.
+
+Closed by registering methods under `Class.method` in their own table (`SemanticAnalyzer.methods`),
+with the enclosing class name saved and restored around the class body so a def in an outer scope
+cannot inherit it. A bare-name call can now only resolve to a module function or a nested def, which
+is the only definition whose arity the call site could possibly match.
+
+`programs/probe_method_function_name_clash.gy` was promoted to `programs/method_function_name_clash.gy`
+in the parity corpus (`oracle: "match"`), and its ledger row deleted — `TestOracleProbeRowsAreRecordedAsDebt`
+fails a probe whose debt has been paid, which is how a known divergence gets turned back into
+regression coverage rather than left as a permanent carve-out. Because methods were never
+argument-checked through this table, "the collision is gone" could also be satisfied by checking
+nothing: the tests therefore assert *which parameter the diagnostic names* (`argument "x"`, never
+`"label"`) to prove the call is measured against the right definition.
+
+### R.10 — too few arguments is not reported at all (OPEN)
+
+```gusty
+def build(a, b):
+    return a
+
+
+print(build(1))
+```
+
+`--check` says `ok`, and so it did before any of this: the checker verifies the argument types it is
+given and the parameters it can see, but does not report a parameter that received no argument,
+annotated or not. The same call with **too many** arguments is reported. The consequence is that a
+whole class of ordinary mistakes — a renamed parameter, a dropped argument, a call written against
+an older signature — is invisible until one backend's lowering happens to fail or the program prints
+something surprising at runtime. Fix in `bindParams`, where positional/keyword binding already
+knows which parameters went unfilled, plus the same rule for keyword-only calls. (Found while writing
+an arity assertion for R.8, which had to be phrased as "which parameter does the error name" instead.)
 
 ### R.7 — one source line can report the same diagnostic two or three times (OPEN)
 

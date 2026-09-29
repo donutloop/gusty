@@ -43,33 +43,6 @@ func TestHostSymbolNamedProgramRuns(t *testing.T) {
 	}
 }
 
-// interpCapturingEval runs the evaluator alone — no front-end gate — and returns what the
-// program printed. It exists to pin the difference between a program that does not run and
-// a checker that will not look at it.
-func interpCapturingEval(t *testing.T, src string) string {
-	t.Helper()
-	prog, err := lang.Parse(src)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	old := os.Stdout
-	r, w, perr := os.Pipe()
-	if perr != nil {
-		t.Fatalf("pipe: %v", perr)
-	}
-	os.Stdout = w
-	ev := lang.NewEvaluator()
-	_, evalErr := ev.EvalProgram(prog)
-	os.Stdout = old
-	w.Close()
-	buf := make([]byte, 1<<20)
-	n, _ := r.Read(buf)
-	if evalErr != nil {
-		t.Fatalf("evaluate: %v", evalErr)
-	}
-	return string(buf[:n])
-}
-
 // TestBuiltBinaryCarriesThePrefixedSymbols looks at the artifact rather than its stdout: the
 // program's function must be a defined symbol under the link prefix, and must NOT be defined
 // under the name libc already exports. That is the difference between "the program ran and
@@ -125,67 +98,5 @@ func TestBuiltBinaryCarriesThePrefixedSymbols(t *testing.T) {
 	}
 	if got := string(run); got != "1\n2\n3\n4\n5\n6\n7\n28\n6\n7\n" {
 		t.Errorf("binary output =\n%q", got)
-	}
-}
-
-// TestMethodAndModuleFunctionNameClashIsKnownDebt pins the boundary of this fix: prefixing
-// the link names made host-ABI collisions impossible, but the *checker* still keys functions
-// by bare name, so a module `def time` and a method `Timer.time` share a key and the module
-// call is read against the method's parameters. The refusal belongs to the front end alone:
-// CPython runs the program, the evaluator runs it, and so does the module the codegen emits
-// for it (roadmap R.8).
-func TestMethodAndModuleFunctionNameClashIsKnownDebt(t *testing.T) {
-	src := readProgramSrc("probe_method_function_name_clash")
-	// The checker refuses it. That refusal is the defect: everything below the front end
-	// disagrees with it, including the compiled binary built from this very source.
-	prog, err := lang.Parse(src)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	var refused string
-	for _, d := range lang.Analyze(prog) {
-		if d.Level == lang.LevelError {
-			refused = d.Msg
-		}
-	}
-	if refused == "" {
-		t.Errorf("while R.8 is open the checker is expected to refuse this program; if it no longer does, close R.8 and move the program into the parity corpus")
-	} else if !strings.Contains(refused, "undefined name") {
-		t.Errorf("expected the refusal to be an undefined-name error, got %q", refused)
-	}
-	// `Compile` itself emits whatever codegen can lower; it is the build pipeline that
-	// refuses to ship a module for a program the front end rejected (ADR 0177). The
-	// refusal an agent sees is therefore a diagnostic, not a Go error.
-	res, cerr := lang.Compile(src)
-	if cerr != nil {
-		t.Fatalf("compile: %v", cerr)
-	}
-	var buildRefused bool
-	for _, d := range res.Diagnostics {
-		if d.Level == lang.LevelError {
-			buildRefused = true
-		}
-	}
-	if !buildRefused {
-		t.Errorf("the build is expected to be refused while R.8 is open; if the checker no longer rejects this program, close R.8 and move it into the parity corpus")
-	}
-
-	// The evaluator, run directly, executes it exactly as CPython does — the code that
-	// runs is fine; what is wrong is that `time(x)` is read as the method
-	// `Timer.time(self, x)`, whose `self` is not in scope at the call.
-	ev := lang.NewEvaluator()
-	_, err = ev.EvalProgram(prog)
-	if got := interpCapturingEval(t, src); got != "6\n7\n" {
-		t.Errorf("interpreted output = %q, want %q (eval error: %v)", got, "6\n7\n", err)
-	}
-
-	// And the sharpest form of the disagreement: the module codegen produces for this
-	// program links and runs, printing what CPython prints. Nothing below the checker
-	// agrees with the refusal.
-	built, berr := runAOTWithTimeout(t, src, 90*time.Second)
-	if berr != nil {
-		t.Errorf("the emitted module is expected to build and run: %v", berr)
-	} else if built != "6\n7\n" {
-		t.Errorf("compiled output = %q, want %q", built, "6\n7\n")
 	}
 }

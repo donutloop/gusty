@@ -59,6 +59,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// shadow the built-in on both backends, where the compiled path used to read those
 		// calls through the built-in's meaning by name (roadmap Gap R.6, ADR 0199).
 		"shadowed_builtins",
+		// A module function and a method of one name are two definitions, not one key: the
+		// method used to overwrite the module function in the checker's table and the module
+		// call was then read against the method's `self`-inclusive arity (Gap R.8, ADR 0200).
+		"method_function_name_clash",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -178,11 +182,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// Pinned by the await/return discipline (ADR 0195): the checker now refuses the
 		// dishonest async programs, so what is left is the honest one that still disagrees.
 		"probe_async_eager", // L7.1 — the compiled backend runs a coroutine at the call
-
-		// Found while writing programs/host_symbol_names.gy for the link-name fix (ADR 0198):
-		// the prefix closed the host-ABI class, and this one is what the checker's single
-		// function key still costs.
-		"probe_method_function_name_clash", // R.8 — a method and a module function of one name
 	}
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
@@ -391,10 +390,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a function's argument type is read from the shape of its return expression, so `x = x + 1.5; return x` is emitted as an int function: interpreted and in CPython 1.0 becomes 2.5, compiled the module is rejected",
 		ref:    "roadmap L11.6 (floats are half-implemented) — found closing Gap R.3",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2.5\n3.0\n"}, {Backend: "aot", Missing: true}}},
-	"programs/probe_method_function_name_clash": {oracle: lang.OracleDebt,
-		reason: "a module function and a method of the same name share the checker's function key, so the module call is read against the method's parameters and the front end refuses the program with an undefined-name error on the call argument — while the compiled backend lowers, links and runs it, printing what CPython prints: the two halves of the toolchain disagree about whether this program exists",
-		ref:    "roadmap R.8 (method/function name keying), found writing programs/host_symbol_names.gy for Gap R.4",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: `verify: undefined name "x"`}, {Backend: "aot", Stdout: "6\n7\n"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",

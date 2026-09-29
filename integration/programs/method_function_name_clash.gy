@@ -1,0 +1,37 @@
+# A module function and a method may share a name: they live in different places, and the
+# checker's function table used to give them one key. The method overwrote the module function,
+# so `time(1)` below was analyzed against the *method* — whose arity includes `self` — and the
+# last parameter came out unbound, reporting `undefined name "x"` on the method's own body while
+# the program was ordinary and correct (roadmap Gap R.8, ADR 0200).
+#
+# The same shape recurs whenever a class's vocabulary matches a helper's: `area`, `run`, `time`,
+# `send`, `open`. All four paths now agree on the answer.
+
+def time(x):
+    return x + 5
+
+
+class Timer:
+    def time(self, x):
+        return x * 3
+
+    def run(self, x):
+        return self.time(x) + 1
+
+
+def area(w, h):
+    return w * h
+
+
+class Rect:
+    def area(self):
+        return 6
+
+    def doubled(self):
+        return self.area() * 2
+
+
+print(time(1))
+print(Timer().run(2))
+print(area(2, 3))
+print(Rect().doubled())

@@ -34,10 +34,15 @@ func (s *Scope) define(name string, t *Type) {
 
 // SemanticAnalyzer walks the AST, builds scopes, and infers types.
 type SemanticAnalyzer struct {
-	scope      *Scope
-	Diags      []Diagnostic
-	curFn      *FuncDef
-	funcs      map[string]*FuncDef
+	scope *Scope
+	Diags []Diagnostic
+	curFn *FuncDef
+	funcs map[string]*FuncDef
+	// methods holds the same definitions keyed by `Class.method`, so a method and a module
+	// function of one name are two entries rather than one overwriting the other (Gap R.8).
+	methods    map[string]*FuncDef
+	curClass   string
+	inClass    bool
 	externs    map[string]*ExternDecl
 	exceptions map[string]bool
 	classes    map[string]bool
@@ -98,7 +103,7 @@ func Analyze(prog *Program) []Diagnostic {
 	if prog == nil {
 		return nil
 	}
-	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: builtinExceptions(), classList: NewClassIndex()}
+	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, methods: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: builtinExceptions(), classList: NewClassIndex()}
 	// Pre-pass: record every class (with its bases) before analyzing, so class
 	// annotations and nominal subtyping work regardless of declaration order.
 	an.indexClasses(prog.Stmts)
@@ -556,6 +561,11 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 	case *ClassDef:
 		an.classes[s.Name] = true
 		an.scope = newScope(an.scope)
+		// The defs in this body are methods of `s.Name`. Inheriting the outer class name is
+		// deliberate: a class nested inside a method body is not itself a class scope.
+		outerClass, outerInClass := an.curClass, an.inClass
+		an.curClass, an.inClass = s.Name, true
+		defer func() { an.curClass, an.inClass = outerClass, outerInClass }()
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
 		}
@@ -721,7 +731,14 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 	for _, dec := range fd.Decorators {
 		an.inferExpr(dec)
 	}
-	an.funcs[fd.Name] = fd
+	// A method is registered under its class, never under its bare name: the bare-name table
+	// is what `userFunc` resolves calls through, and a method landing there was read as the
+	// module's function of that name.
+	if an.inClass && an.curClass != "" {
+		an.methods[an.curClass+"."+fd.Name] = fd
+	} else {
+		an.funcs[fd.Name] = fd
+	}
 	an.inFunc = true
 	outerDefinite := copyDefinite(an.definite)
 	outerLocals := copyDefinite(an.locals)

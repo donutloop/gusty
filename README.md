@@ -190,6 +190,10 @@ falls back to dynamic dispatch.
   program says they mean, exactly as in CPython, instead of being answered by the compiler's own
   reading of the name (`float(1)` printed `1.0` for a function returning `x + 7`); the constant
   folding still runs whenever nothing shadows the name (`programs/shadowed_builtins.gy`, ADR 0199)
+- **A method and a helper may share a name** — `def time` beside `class Timer: def time(self, x)` is
+  ordinary vocabulary, and the two definitions are keyed apart instead of the method overwriting the
+  module function (a call then measured against `self`-inclusive arity, refusing a program every
+  other layer ran) (`programs/method_function_name_clash.gy`, ADR 0200)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case
