@@ -2906,3 +2906,44 @@ elsewhere:
   `def f(a, b=1, c)`, which we only catch at the call while CPython refuses the definition — recorded
   as R.11 rather than silently folded into this commit or quietly dropped.
 
+## Cycle 150 — a fact said twice is not more true (Gap R.7, ADR 0202)
+
+The gap was on the roadmap from the L7.6 round, but the L7.6 work kept it as a note instead of
+measuring it. This cycle started by measuring, and the measurement was beautifully mechanical: the
+same `match is not exhaustive` warning, printed a number of times equal to **call sites + 1** —
+never called → 1, called once → 2, called twice → 3. Five corpus programs emitted a byte-identical
+line twice. That table went into the ADR and the roadmap verbatim; a scaling law is worth more than
+a paragraph of description.
+
+Cause: per-call-site return inference (ADR 0190) re-walks a callee's body with each call's argument
+types, and every *source-level* fact in that body is re-derived — and re-reported — per call. The
+walk is deliberate and stays; the reporting was the bug.
+
+Fix: one funnel (`addDiag`/`addDiagFull`) keyed by `(level, line, col, code, message)`.
+
+What this cycle taught:
+
+- **"How would a consumer compute this?" is a defect detector.** `len(diagnostics)` was not a count
+  of findings; an agent reading `--json` would have had to dedupe by hand — over a format whose whole
+  purpose (ADR 0004) is to make scraping unnecessary. Ask of every structured output: which naive
+  reading of it is currently wrong?
+- **The dedupe key's *narrowness* is the real requirement**, so each non-collapse is its own test:
+  different messages at one position; same message at two positions (the count is the signal); same
+  sentence as a warning and as an error (only the error decides runnability, so the key carries the
+  level — a warning must never swallow an error); same message under two codes (codes are the
+  machine-readable identity, ADR 0004/0006). A one-line dedupe is trivial; proving it is not an
+  information-loss machine is the work.
+- **Fix at the source, not at the printers.** Deduping in the CLI or JSON encoder would leave LSP,
+  schema dumps and tests each re-implementing the rule while the analyzer kept lying to anyone who
+  read `Diags` directly.
+- **Memoization was the tempting wrong fix.** Memoizing `inferReturn` per `(fd, argTypes)` removes
+  most repeats and keeps the rest — turning the invariant probabilistic. Invariants have to be
+  structural; performance work is allowed to be heuristic, and this is the moment to record the
+  difference so a future cycle doesn't confuse the two.
+- **Turn the measurement into a test.** `TestWholeCorpusReportsNoDiagnosticTwice` walks every corpus
+  program and fails on any repeat — the exact loop I ran by hand, promoted to CI. Gaps found by
+  sweeping the corpus should end as corpus-wide assertions; that is how a fixed class stays fixed.
+- **Two helper-name collisions in one cycle** (`contains`, `analyzeSrc` in `pkg/lang`; `checkJSON` in
+  `integration`) is a hint that this repo's test packages are large enough that new helpers need a
+  topic prefix — cheap rule to adopt, saves a compile cycle each time.
+

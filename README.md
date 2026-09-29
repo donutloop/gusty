@@ -198,6 +198,9 @@ falls back to dynamic dispatch.
   was not, so an unbound parameter came back later as an `undefined name` blamed on the callee's
   correct source while the interpreter had been refusing it all along (`programs/arity_defaults.gy`,
   ADR 0201)
+- **A diagnostic is said once** — per-call-site return inference used to re-report everything inside
+  a callee, so one warning appeared two or three times and the length of the JSON `diagnostics` array
+  was not a count of findings (ADR 0202)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

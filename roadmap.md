@@ -1489,10 +1489,13 @@ messages where nobody would look:
   the parameter arrived unbound and the program was blamed afterwards, at the callee's line, for an
   undefined name — while the interpreter already refused it at run time with the message the
   checker never gave.
-- **R.7, R.9, R.11 (OPEN)** — defects measured while closing the others, all of them
+- **R.7, closed by ADR 0202** — the checker repeated itself structurally (per-call-site return
+  inference re-walks a callee's body), so one warning appeared two or three times and the length of
+  the JSON diagnostic array was not a count of findings.
+- **R.9, R.11 (OPEN)** — defects measured while closing the others, both of them
   discovered by writing a corpus program rather than by reading code:
   one source line can report the same diagnostic two or three times, because return inference
-  re-walks a callee per call site (R.7); `def print` / `def range` do not parse at all, though
+  `def print` / `def range` do not parse at all, though
   CPython runs them (R.9); a non-default parameter after a defaulted one is only caught at the
   call (R.11).
 
@@ -1819,11 +1822,31 @@ arity error instead — right verdict, wrong place, and the definition itself re
 every other call. The rule belongs at the definition site, where the fact is. (Found while writing
 the R.10 tests.)
 
-### R.7 — one source line can report the same diagnostic two or three times (OPEN)
+### R.7 — one source line can report the same diagnostic two or three times (CLOSED, ADR 0202)
 
-`inferReturn` re-walks a callee body per call site, so a warning inside that body is emitted
-once per call: the same span and the same message, two or three times in `--json`. It predates
-the forward-reference work — two copies were already visible on a program whose callee the
-walk reached — and it is a machine-interface defect as much as a human one: an agent reading
-a build report counts three problems where there is one. The fix is a dedupe at emission time
-keyed on (level, span, message), or memoizing return inference per `(fd, argument types)`.
+Measured scaling, before the fix — the same `match is not exhaustive` warning, once per call site of
+the function that contains it:
+
+| call sites for `f` | times the warning was printed |
+|---|---|
+| 0 | 1 |
+| 1 | 2 |
+| 2 | 3 |
+
+and five corpus programs (`dispatch_gc`, `dispatch_gc_stress`, `dispatch_nested`, `gc_precise`,
+`match_literal`) each printed a byte-identical line twice.
+
+The cause is deliberate and stays: per-call-site return inference (ADR 0190) walks a callee's body
+with each call's argument types, and source-level facts inside that body get re-derived each time.
+What was wrong is that re-derivation was allowed to *re-report*. Every diagnostic now passes through
+one funnel keyed by `(level, line, column, code, message)` — a fact about a position is either true
+or not, and cannot become more true by being said again — so `len(diagnostics)` means what it looks
+like, `--json` output is safe to group and diff, and the CLI never prints the same line twice.
+
+The narrowness of the key is the tested part: different messages at one position, the same message at
+two positions, the same sentence at two levels, and the same message under two codes are all still
+separate findings — collapsing any of those would turn deduplication into information loss. And the
+dedupe lives at the analyzer rather than at the printers, so LSP, schema dumps and tests all see the
+same truth. `TestWholeCorpusReportsNoDiagnosticTwice` walks every corpus program and fails on any
+repeat: the measurement that found the gap is now the test that keeps it closed.
+

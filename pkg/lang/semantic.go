@@ -41,6 +41,7 @@ type SemanticAnalyzer struct {
 	// methods holds the same definitions keyed by `Class.method`, so a method and a module
 	// function of one name are two entries rather than one overwriting the other (Gap R.8).
 	methods    map[string]*FuncDef
+	seenDiag   map[string]struct{}
 	curClass   string
 	inClass    bool
 	externs    map[string]*ExternDecl
@@ -150,14 +151,37 @@ func (an *SemanticAnalyzer) errorf(sp Span, msg string, args ...interface{}) {
 	if len(args) > 0 {
 		msg = fmt.Sprintf(msg, args...)
 	}
-	an.Diags = append(an.Diags, Diagnostic{Level: LevelError, Span: sp, Msg: msg})
+	an.addDiag(LevelError, sp, msg)
 }
 
 func (an *SemanticAnalyzer) warnf(sp Span, msg string, args ...interface{}) {
 	if len(args) > 0 {
 		msg = fmt.Sprintf(msg, args...)
 	}
-	an.Diags = append(an.Diags, Diagnostic{Level: LevelWarning, Span: sp, Msg: msg})
+	an.addDiag(LevelWarning, sp, msg)
+}
+
+// addDiag records one fact about the source, once.
+//
+// A diagnostic is identified by (level, position, code, message): a fact about a position is either
+// true or it is not, and cannot become more true by being said again. Repetition was structural,
+// not accidental — per-call-site return inference walks a callee's body once per call site, so a
+// function called three times reported everything inside it three times, and an agent consuming
+// `--json` had to deduplicate an already-structured result by hand (roadmap Gap R.7, ADR 0202).
+func (an *SemanticAnalyzer) addDiag(level Level, sp Span, msg string) {
+	an.addDiagFull(Diagnostic{Level: level, Span: sp, Msg: msg})
+}
+
+func (an *SemanticAnalyzer) addDiagFull(d Diagnostic) {
+	if an.seenDiag == nil {
+		an.seenDiag = map[string]struct{}{}
+	}
+	key := fmt.Sprintf("%s|%d:%d|%s|%s", d.Level, d.Span.Line, d.Span.Col, d.Code, d.Msg)
+	if _, ok := an.seenDiag[key]; ok {
+		return
+	}
+	an.seenDiag[key] = struct{}{}
+	an.Diags = append(an.Diags, d)
 }
 
 // hoistFuncs collects the def's of a statement list into a table that the *deferred*
@@ -351,7 +375,7 @@ func (an *SemanticAnalyzer) flowCheckAt(sp Span, e Expr, got, want *Type, ctxPre
 		if v.Kind != RuleKindMismatch {
 			msg += " — " + v.Msg
 		}
-		an.Diags = append(an.Diags, Diagnostic{Level: LevelError, Span: sp, Msg: msg, Code: v.Code, Suggestion: v.Suggestion})
+		an.addDiagFull(Diagnostic{Level: LevelError, Span: sp, Msg: msg, Code: v.Code, Suggestion: v.Suggestion})
 		return false
 	}
 	if freshContainer(e, want) {

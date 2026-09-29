@@ -79,6 +79,14 @@ names come from one table (`pkg/lang/predeclared.go`) shared by the checker, the
 unbound-name guard and LSP completion, so a real built-in (`sum`, `enumerate`, `zip`, …) is
 never "undefined" and a name that is not bound is never lowered.
 
+**A diagnostic is never repeated** (Gap R.7, ADR 0202). The analyzer records each fact once, keyed
+by level, position, code and message, so `diagnostics` in `--json` is a set: its length is a count
+of findings, grouping by `code` is meaningful, and the CLI prints no line twice. Distinct findings
+are preserved by contract — two messages at one position, one message at two positions, the same
+sentence as a warning and as an error, and one message under two codes are all separate entries. Do
+not post-process to remove duplicates, and do not treat a repeated count as "the same issue in two
+places" — if two positions are wrong, you are told twice.
+
 **The calling contract is enforced in both directions** (Gap R.10, ADR 0201). A user-defined
 function is checked for arity at the call: `function "f" expects N arguments, got M` (positional
 shortfall), `function "f" accepts N arguments, got more` (too many), `function "f" is missing
