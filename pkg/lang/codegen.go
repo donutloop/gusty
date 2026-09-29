@@ -2464,9 +2464,15 @@ type irGen struct {
 	raiseUsed bool
 	// floatFmtUsed records that a float is rendered at run time, which pulls in
 	// floatRuntimeIR (rt_fmt_double).
-	floatFmtUsed  bool
-	heapSeq       int
-	handlerStack  []string
+	floatFmtUsed bool
+	heapSeq      int
+	handlerStack []string
+	// handledArms counts the `except` arms whose body is currently being lowered. Inside one,
+	// the exception in flight has been *accepted by the program*, so a control transfer out of
+	// the arm (`return`, `break`, `continue`) has to leave the pending-exception flag cleared
+	// like the arm's normal exit does — otherwise the transfer escapes the clear and the next
+	// user-function call reports the exception all over again (roadmap Gap R.21, compiled half).
+	handledArms   int
 	funcRaiseExit string
 
 	classInfos map[string]*classInfo // class name -> info
@@ -9117,6 +9123,36 @@ func (g *irGen) raiseStmt(b *strings.Builder, rs *RaiseStmt) error {
 	return nil
 }
 
+// clearExn marks the pending exception as finished. A handled exception has to leave the
+// flag behind cleared, because @exn_flag is one module-wide bit: anything still reading it
+// takes the exception as still in flight. That is what happened — an arm ran, the program
+// continued, and the next user-function call's check branched to the handler again (or to the
+// raise-exit when no handler was in scope any more), reporting an exception the program had
+// already handled. The interpreter cleared it in Gap R.21 (ADR 0213: "falling out of a `try`
+// clears it"); this is the same rule on the compiled side (roadmap Gap R.21, compiled half).
+func (g *irGen) clearExn(b *strings.Builder) {
+	g.raiseUsed = true
+	b.WriteString("  store i32 0, i32* @exn_flag\n")
+}
+
+// blockEndsInTerminator reports whether the block being built already ended in a terminator,
+// in which case another instruction would be dead weight: an arm whose last statement is
+// `return` or `raise` has already left, and it did so with the exception's own state.
+func blockEndsInTerminator(b *strings.Builder) bool {
+	lines := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		ln := strings.TrimSpace(lines[i])
+		if ln == "" {
+			continue
+		}
+		if strings.HasSuffix(ln, ":") {
+			return false // a label: a fresh block, nothing emitted in it yet
+		}
+		return strings.HasPrefix(ln, "ret ") || strings.HasPrefix(ln, "br ") || ln == "unreachable"
+	}
+	return false
+}
+
 // checkExn emits a check of @exn_flag after a user-function call.
 func (g *irGen) checkExn(b *strings.Builder) {
 	f := g.newTmp()
@@ -9171,12 +9207,24 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 			b.WriteString("  br label %" + armBody + "\n")
 		}
 		b.WriteString(armBody + ":\n")
+		armed := false
+		g.handledArms++
 		for _, st := range ec.Body {
 			if err := g.stmt(b, st); err != nil {
+				g.handledArms--
 				return err
 			}
+			if blockEndsInTerminator(b) {
+				armed = true // this arm returned or raised: it left by its own path
+				break
+			}
 		}
-		b.WriteString("  br label %" + finally + "\n")
+		g.handledArms--
+		if !armed {
+			// The arm took the exception, so the exception is over.
+			g.clearExn(b)
+			b.WriteString("  br label %" + finally + "\n")
+		}
 		b.WriteString(notThis + ":\n")
 	}
 	// Nothing matched. The exception belongs to an enclosing scope now: restore the flag and
@@ -9326,6 +9374,11 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	prevRaise := g.funcRaiseExit
 	prevHandlers := g.handlerStack
 	g.handlerStack = nil
+	// A function body is not inside its caller's `except` arm, however it was reached — a `def`
+	// written inside an arm must not have its `return` clear the enclosing arm's exception.
+	prevHandledArms := g.handledArms
+	g.handledArms = 0
+	defer func() { g.handledArms = prevHandledArms }()
 	// The traceback frame names the function the raise is written in.
 	prevFnSrc := g.curFnSrc
 	g.curFnSrc = fd.Name
@@ -10701,6 +10754,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		}
 		fmt.Fprintf(b, "  store i32 %s, i32* @%s_slot\n", env, n.Name)
 	case *ReturnStmt:
+		if g.handledArms > 0 {
+			// Returning out of an `except` arm ends the handler's work: the exception this
+			// arm accepted must not survive the return, or the caller's next call-site check
+			// hands it back as though nothing had handled it (Gap R.21, compiled half).
+			g.clearExn(b)
+		}
 		if n.Expr == nil {
 			// bare `return` yields None (ADR 0172). A float function reaching this is
 			// a type error the checker reports; 0.0 keeps the module valid.
@@ -10747,12 +10806,18 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return fmt.Errorf("codegen: break outside loop")
 		}
 		info := g.loopStack[len(g.loopStack)-1]
+		if g.handledArms > 0 {
+			g.clearExn(b) // leaving an arm we already accepted the exception in
+		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.breakLabel))
 	case *ContinueStmt:
 		if len(g.loopStack) == 0 {
 			return fmt.Errorf("codegen: continue outside loop")
 		}
 		info := g.loopStack[len(g.loopStack)-1]
+		if g.handledArms > 0 {
+			g.clearExn(b)
+		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", info.continueLabel))
 	case *PassStmt, *TypeAliasStmt:
 		// no-op statement: type aliases are compile-time only (L5.7); emit nothing

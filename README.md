@@ -280,6 +280,15 @@ falls back to dynamic dispatch.
   what the program actually does. Two compiled-backend defects surfaced on the way and are recorded
   with their measurements rather than bundled: a handled exception that the next call re-raises
   (Gap R.21's compiled half), and an untouched slot being loaded and printed as a value (Gap R.36).
+- **A handled exception is over** (ADR 0218) — the compiled half of that first finding, fixed the
+  cycle after it was measured. The compiled backend holds the exception in one module-wide bit, and
+  nothing was ever told the search had ended: the arm ran, the program continued, and the next call to
+  a user-defined function found the bit still set and reported the exception a second time — after the
+  handler had already handled it. `print(5)` after the `try` was safe, `print(f())` was not, and
+  `print("handled")` inside the arm printed `handled` before dying, which is what proved the arm had
+  run. Every edge that leaves an accepting arm now clears the flag, including the `return`, `break` and
+  `continue` that stepped past the one edge the clear was on; an arm's own `raise` and the unmatched
+  re-raise deliberately do not, and a program whose only arm always raises must emit no clear at all.
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

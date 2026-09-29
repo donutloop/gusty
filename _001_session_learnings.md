@@ -3603,3 +3603,44 @@ the system.
 iled` names Gap R.36, says what to delete when it is fixed, and asserts the one thing that must never
   appear — a plausible answer (`1` is `z`, not `y`). Its sibling asserts the interpreter traps with
   `NameError` like CPython, so the pair keeps both the debt and the duty visible.
+
+## Cycle 166 — Gap R.21 compiled half: a handled exception is over (ADR 0218)
+
+- **A shared bit needs a rule for who ends it.** `@exn_flag` means "an exception is in flight and
+  unhandled"; `setExn` sets it, the no-match path re-sets it, `checkExn` reads it — and nothing had
+  ever cleared it, so an exception stayed in flight forever after being handled. The dispatch was
+  always right, which is why the earlier reading ("the compiled `try` finds no handler") pointed at the
+  wrong file: the handler was found every time, it just kept being found again. When state is shared
+  module-wide, the interesting question is not who writes it but which edge is allowed to say it is
+  finished.
+- **Characterise the trigger before naming the cause, again.** The cycle before this one, the same
+  defect had been recorded since cycle 161 as "the AOT leg does not support raises from function
+  bodies", written from probes whose calls came *before* their `try`. Testing the statement after the
+  `try` is what cracked it: `print(5)` fine, `print(len("ab"))` fine, `print(f())` dies. Then
+  `print("handled")` inside the arm printed `handled` and died — the arm had run. Two observations, no
+  reading of the lowering, and the diagnosis was forced. A probe set that never puts a call after the
+  `try` cannot find this bug, which is the version of "a test that cannot fail is not a test".
+- **One edge is not "every edge".** The first fix cleared the flag on the arm's fall-through into
+  `finally` and stopped there; the measured grid then failed two shapes — `except: return 42` and a
+  `break` out of an arm — because a control transfer leaves before the fall-through happens. The
+  complete rule is "every edge that leaves an accepting arm", which needed `handledArms` on the
+  generator so `return`/`break`/`continue` know they are inside an arm, plus `funcDef` zeroing it (a
+  `def` written inside an arm is not that arm). Positive grids earn their keep here: eleven shapes, and
+  two of them disagreed after the "fix".
+- **Pair every silencing fix with a control that must still fail.** A fix that simply never set the
+  flag would have passed all eleven positive cases. So the cycle ships `raise` from inside an arm must
+  still reach the outer handler (integration), a program whose only arm always raises must emit no
+  clear at all, and an uncaught exception must still report and exit non-zero (unit + `TestUncaughtTrap
+StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural assertions: assert what the
+  fix must not touch, not only what it fixes.
+- **IR honesty is part of the fix, not a follow-up.** `blockEndsInTerminator` exists because the
+  alternative is a `store` and a `br` after a `ret` — dead instructions LLVM tolerated today, and a
+  stricter toolchain (or an optimizer pass reading block structure) would make them someone else's
+  bug. Note the pre-existing emissions of that kind are a recorded gap, not this commit's.
+- **Docs can lie about evidence.** Writing this ADR meant re-reading the R.21 entry, and the probes it
+  cited as "standing evidence" — `probe_raise_in_func.gy`, `probe_try_return_except.gy` — do not exist
+  in `integration/programs/`. Checking every cited program name repo-wide turned up nine dangling ones,
+  three of them (`probe_percent_format`, `probe_sort_methods`, `nested_data`) claimed as pinned debt
+  with no file and no ledger row. Recorded for the next commit: repair the names, create or retract the
+  claims, and add a test that a citation to `programs/<name>.gy` resolves — a claim about an artifact
+  that does not exist is worse than no claim, because it stops anyone looking.

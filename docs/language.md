@@ -864,6 +864,27 @@ for i in range(n):
   The compiled backend used to lower only the first arm and then clear the exception flag, so a
   later arm never ran, a nested `try` never reached its outer arm, and an unmatched exception was
   deleted: no report, exit 0.
+- **Once an arm accepts an exception, the exception is over** (ADR 0218). On both backends, the code
+  after the `try` runs as if nothing had happened — the pending state does not survive the arm, in
+  any direction the arm leaves by: falling through, `return`, `break` or `continue`. The compiled
+  backend keeps that state in one module-wide flag, so an arm that accepted an exception without
+  clearing it handed the program a second copy: the next call to a user-defined function found the
+  flag still set and reported the exception again, after the handler had already run and printed.
+
+  ```py
+  try:
+      crash = 1 // 0
+  except:
+      recovered = 1
+
+  def f() -> int:
+      return 5
+
+  print(recovered, f())      # 1 5 — this died with an uncaught ZeroDivisionError
+  ```
+
+  An arm's own `raise` is a new exception and keeps travelling outward; an exception no arm matches
+  still propagates (above), and an uncaught one still reports and fails.
 - **`finally:` runs on the paths that reach it.** Its body runs when the `try` completes and when
   an arm handled the error. It does **not** yet run when the `try` body leaves via `return` or
   `raise`, on either backend, where Python runs it before the transfer (roadmap Gap R.23):

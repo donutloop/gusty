@@ -1992,7 +1992,7 @@ interned-string index — `(null)`. That is the mixed-return-type defect below. 
 the value of pinning the output rather than the theory. Keep the standing lesson: characterise the
 trigger before naming the cause — a wrong cause sends the next cycle to the wrong file.
 
-#### R.21 again — the compiled half, measured properly (cycle 165)
+#### R.21 again — the compiled half, measured and fixed (cycles 165–166, ADR 0218)
 
 Cycle 161 closed the interpreter half and deferred the AOT one as "raises from function bodies are
 unsupported", quoting probes built on `raise` statements. Measured now with plain built-in traps, the
@@ -2019,11 +2019,20 @@ before the try is harmless. In a function body, putting `print("handled")` after
 `handled` and then dies — so the handler fired, the arm completed, and the exception came back at the
 next call site. Reproduces with `1 // 0`, `[][0]`, `int("x")` and a user `raise`.
 
-That makes the fix the codegen half of `@exn_flag`'s clearing discipline rather than another landing
-pad, and it means ADR 0211's "one failure class, one code, whatever the path" is still false for every
-program that catches a trap and then calls something. `probe_raise_in_func.gy` and
-`probe_try_return_except.gy` stay the standing evidence; their pins are what will make the fix
-checkable.
+**Fixed the same cycle it was characterised** (cycle 166, ADR 0218): `@exn_flag` is now cleared on
+every edge that leaves an accepting arm — the fall-through into `finally`, and the `return`, `break`
+or `continue` that would otherwise escape it, with `irGen.handledArms` telling the codegen when it is
+in an arm and `funcDef` zeroing that for a nested function. What is deliberately not cleared is an
+arm's own `raise` and the no-arm-matched re-raise, so the exception that is genuinely travelling still
+travels; `TestUncaughtTrapStillTrapsOnBothBackends` is the control that a mute-shaped "fix" could not
+pass. Eleven shapes now print the same thing on the interpreter, the compiled binary and CPython
+(`integration/exception_clear_test.go`), and the module shape is pinned too
+(`pkg/lang/exception_clear_test.go`).
+
+Still open in this family, and not the same statement: **Gap R.23** (`finally` does not run when the
+`try` body leaves via `return`/`raise`) and **Gap R.37** (a constant `[][0]`/`int("x")` is a
+compile-time refusal instead of a runtime trap the arm could catch — which is why the grids above use
+`1 // 0`, the one trap the compiled path folds correctly).
 
 ### R.23 — `finally` does not run when the `try` body returns or raises (OPEN, both backends)
 
