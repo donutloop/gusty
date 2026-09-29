@@ -96,6 +96,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// exception outward (Gap R.20, ADR 0213); five shapes, three engines.
 		"except_arm_order",
 		"compound_scoping", // Gap R.24 — a compound statement binds in the enclosing scope (ADR 0217)
+		// Gap R.29 (ADR 0221): `==` across int and float in both operand orders, and
+		// container equality through the same rule; printed 1/0 so CPython runs this file.
+		"numeric_equality",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -195,14 +198,16 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_operand_types",  // Gap R.26 — an operator applied to the wrong operands
 		"probe_percent_format", // Gap R.31 — no `%` string formatting; both legs refuse
 		"probe_module_scope",   // Gap R.35 — a function cannot read the module's names (compiled)
-		"probe_unicode",        // L11.5 — strings are bytes, not code points
-		"probe_string_index",   // L11.5 — s[i] is a byte value, not a character
-		"probe_math_const",     // L11.6 — a stdlib float constant folds to int
-		"probe_float_numeric",  // L11.6 — //, /=, float % and float params
-		"probe_enumerate",      // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
-		"probe_fn_value",       // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",        // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",   // Gap L.5 — print writes while it evaluates
+		// Gap R.40 (ADR 0221): a literal list holding a float emits a module llc rejects.
+		"probe_float_list_equal",
+		"probe_unicode",       // L11.5 — strings are bytes, not code points
+		"probe_string_index",  // L11.5 — s[i] is a byte value, not a character
+		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
+		"probe_float_numeric", // L11.6 — //, /=, float % and float params
+		"probe_enumerate",     // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
+		"probe_fn_value",      // L11.7 — a lambda cannot be called through a parameter
+		"probe_fn_name",       // L11.7 — a def'd name is not a value at all
+		"probe_print_atomic",  // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 
@@ -384,6 +389,15 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
 		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n"}, {Backend: "aot", Missing: true}}},
+
+	// Gap R.40 (ADR 0221): the literal path of the list emitter cannot hold a float -- it writes
+	// `[1 x i32] [@` into the initializer, so llc rejects the module and the compiled leg gives a
+	// toolchain rejection where CPython and the interpreter print 1. Through variables the same
+	// comparison compiles and prints 1, which is what pins this to the literal emitter.
+	"programs/probe_float_list_equal": {oracle: lang.OracleDebt,
+		reason: "a literal list holding a float emits an invalid module (llc: expected type), so the compiled leg rejects a program whose answer is 1",
+		ref:    "roadmap Gap R.40",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n"}, {Backend: "aot", Missing: true}}},
 
 	"programs/probe_module_scope": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all five values (a module constant read by a function, one defined below the def, a method reading one, a nested def reaching past both frames, and a local shadowing the global) — but the compiled backend refuses to lower the program at all: `undefined name \"MAX\" (no binding for it; assign it before use)`, whose claim that the interpreter reports the same error is false here too (it reports no error). Two other shapes -- a method reading a module name, a nested def reading one -- do not even refuse: they compile and print 0",

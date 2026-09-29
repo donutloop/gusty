@@ -2238,19 +2238,62 @@ history in the comment; the new tests assert the identity
 `a == (a // b) * b + (a % b)` over the grid, which a consistently truncating pair satisfies per
 operator but cannot satisfy as a pair.
 
-### R.29 — `1 == 1.0` is false, and the two backends disagree about it (OPEN, both backends)
+### R.29 — `1 == 1.0` was false in the interpreter (CLOSED, ADR 0221)
 
 ```gusty
-print(1 == 1.0)          # interpreter: 0    compiled: 1    CPython: True
-print({"a": 1} == {"a": 1})   # both: 1 (handle comparison)   CPython: True
+print(1 == 1.0)     # was: interpreter 0, compiled 1, CPython True
+print(1.0 == 1)     # was: interpreter 1, compiled 1, CPython True
 ```
 
-The interpreter compares an int handle against a float object pointer, so an int never equals the
-float with the same value; the compiled path happens to answer `1`, which is not the same
-implementation agreeing twice but two different wrongs. Containers compare by handle too. One rule:
-`==` compares numeric values across int/float, and compares containers element-wise; everything else
-compares identity. Test both backends against CPython on the same grid, because "the backends agree"
-was exactly what hid this.
+The interpreter compared an integer's raw word against a float object's handle, so an int was never
+equal to the float with the same value, and `!=` was wrong the matching way. The compiled backend was
+right. Measured as a grid before touching anything — five integers × five floats × six operators ×
+both orders, 300 comparisons — the compiled leg answered all 300 correctly and the interpreter was
+wrong on exactly 8, every one of them `==`/`!=` with the **integer on the left**. All the ordering
+operators were fine everywhere, and so was the float-on-left direction: the test that had been written
+from the working direction is why this survived.
+
+Fixed in `Evaluator.eqVal`: a float on the right now coerces a plain-integer left instead of returning
+`false`, gated by `isHandle` so nothing that is an object gets coerced (`1 == [1]`, `1.0 == "a"` stay
+False, not errors — ADR 0215's single predicate). Container equality inherited the fix rather than
+needing one of its own: `[1] == [1.0]` and `{"a": 1} == {"a": 1.0}` are True because element equality
+*is* this predicate. `is` deliberately did not change, and a test says so. The compiled path needed no
+edit, which is recorded so nobody "fixes" it to match the old interpreter.
+
+`programs/numeric_equality.gy` is a standalone parity program — 30 comparisons printed as `1`/`0`,
+byte-identical to CPython on both legs — and `TestNumericEqualityMatchesCPythonOnBothEngines` runs the
+300-case grid through the interpreter, the compiler and `python3`, checking its own expectations
+against CPython before letting them judge the backends. Matrix: 65/90 parity, oracle 46 match / 30
+debt / 14 not-applicable over 90 cases.
+
+### R.40 — a literal container holding a float, or `float == str`, emits a module `llc` rejects (OPEN, compiled)
+
+Two shapes answer with a toolchain rejection (exit 2) where the answer is known and the interpreter
+prints it:
+
+```gusty
+print(1 if [1] == [1.0] else 0)     # llc: expected type
+print(1 if 1.0 == "a" else 0)       # llc: global variable reference must have pointer type
+```
+
+The emissions, verbatim from `--emit-llvm`:
+
+```
+@.lst2 = private global {i32, [1 x i32]} { i32 1, [1 x i32] [@env_store = internal global [4096 x i32] zeroinitializer
+%t222 = sitofp i32 @.str13 to double
+```
+
+The literal-list emitter writes a `@` with no name into an int-typed element slot; the equality path
+feeds a string global to `sitofp`. Both are the Gap K.10 / ADR 0166 class — the front end owes a
+refusal and instead hands `llc` a module it rejects, so the user sees exit 2 and a temp-file path
+instead of a diagnostic. Neither is a semantics hole: the same comparisons **through variables**
+(`xs = [1]; ys = [1.0]; print(1 if xs == ys else 0)`) compile and print the right answer, so this is
+the literal emitter plus a missing operand-kind gate (Gap R.38's `checkBinOp` covers arithmetic, not
+this path). `TestMixedNumericListEqualityIsAPinnedCompiledDebt` pins the first — including an assertion
+on the emitted IR text, and a demand that the second leg's exit code stop being 2 — and
+`programs/probe_float_list_equal.gy` is the debt row. Fix: fold literal float elements to the same
+representation the bound path uses, and refuse a comparison whose operand kinds cannot be compared
+instead of emitting a conversion the type system forbids.
 
 ### R.30 — the compiled backend truncated `//` toward zero (CLOSED, ADR 0216)
 

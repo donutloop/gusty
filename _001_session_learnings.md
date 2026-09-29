@@ -3725,3 +3725,46 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
 - **Also:** the citation test now covers 130+ names across roadmap, README, docs and the ADRs, and it
   caught this within one run of being written — the value of a hygiene test is highest in the cycle
   right after the one that writes it.
+
+## Cycle 169 — two numbers are one question (Gap R.29, ADR 0221)
+
+- **The direction that works is the direction the test covers.** `1 == 1.0` was False and `1.0 == 1`
+  was True. Whoever wrote a comparison test wrote one example, and one example picks a direction. The
+  grid — 5 ints × 5 floats × 6 operators × both orders = 300 cases — is what turned "sometimes wrong"
+  into "exactly 8 cases, all integer-on-left `==`/`!=`", and that shape is what made the fix a two-line
+  gate instead of a rewrite of `eqVal`.
+- **Write down which side needed no change.** The compiled backend was right on all 300, in both
+  orders, for literals and for variables. That goes in the ADR and the roadmap explicitly, because the
+  next reader who sees "the interpreter was wrong about equality" will otherwise go looking for the
+  same bug in codegen and may well "fix" the thing that was correct.
+- **A three-leg test has to check its own expectation first.** `TestNumericEqualityMatchesCPythonOn
+  BothEngines` compares its hand-written expectation against `python3` *before* letting it judge the
+  backends. That ordering is not ceremony: my own measurement script had an inverted operand swap, and
+  it "proved" four correct comparisons were bugs until I ran one case by hand. A surprising result from
+  a harness is a suspect until it is reproduced outside the harness — the compiler and the script are
+  equally capable of being wrong, and the script is the one nobody reviews.
+- **`print(True)` is `1` here and `True` in Python**, so an oracle program that prints booleans can
+  never be a `match` row. Printing `1 if cond else 0` costs nothing and makes the CPython leg direct —
+  and it forced the real question, which is whether the ternary and the comparison compile at all,
+  rather than whether they render prettily.
+- **Adding a file to `programs/` does not add it to the matrix.** The case lists in
+  `conformance_cases.go` are explicit, and my two new programs sat outside the run: the count stayed
+  88 after adding two cases. The tell was a number that did not move, so numbers that do not move get
+  interrogated — `grep` the generated JSON for the new names before believing a green matrix. A corpus
+  that silently omits its newest case is a test that cannot fail.
+- **Assert on the artifact through the right door.** `--emit-llvm` takes a *source string*, not a path;
+  passing a file gave me `parse error at 1:1` and nearly produced a test asserting the wrong thing. The
+  pinned R.40 defect now asserts that the emitted IR literally contains `[1 x i32] [@` — the malformed
+  initializer itself, not the tool's prose about it.
+- **Local style beats remembered style.** My new ledger row used `Reason:`/`Pins:`/`Backend: "interp"`
+  and the build refused: the rows are lowercase unexported fields with `Backend: "interpreter"`. Copy
+  the neighbouring entry rather than reconstructing it — the previous cycle's rows were right there.
+- **Two new holes, recorded instead of smuggled in.** `print(1 if [1] == [1.0] else 0)` and
+  `print(1 if 1.0 == "a" else 0)` emit modules `llc` rejects (`[1 x i32] [@…`, `sitofp i32 @.str13`), so
+  those programs exit 2 with a temp path where they should refuse — the ADR 0166 class again, now Gap
+  R.40 with the emissions quoted and a test that demands the exit code stop being 2. Fixing them here
+  would have made a two-line semantics change unreadable.
+- **Last cycle's lesson applied:** docs, ADR, README and learnings were written *before* the full suite
+  ran, and the commit's matrix numbers (`65/90 parity, oracle 46 match / 30 debt / 14 not-applicable
+  over 90 cases`) are pasted from the run rather than recalled — the previous commit cited counts I had
+  written from memory, and they were wrong.

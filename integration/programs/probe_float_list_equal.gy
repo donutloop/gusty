@@ -1,0 +1,5 @@
+# Roadmap Gap R.40 (ADR 0221): a literal list containing a float emits an invalid module, so the
+# compiled leg answers this with a toolchain rejection instead of the 1 CPython and the interpreter
+# print. Same comparison through variables compiles and prints 1 -- the emitter's literal path is the
+# bug. Delete this probe when the emitted module verifies.
+print(1 if [1] == [1.0] else 0)

@@ -300,6 +300,24 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **Two numbers are one question** (ADR 0221) — this printed two different answers depending on
+  which flag you used:
+
+  ```py
+  print(1 == 1.0)     # CPython True · interpreter 0 · compiled 1
+  print(1.0 == 1)     # CPython True · interpreter 1 · compiled 1
+  ```
+
+  An integer was compared as a word against a float object's handle, so an int never equalled the
+  float with the same value — and only when the **integer was on the left**, which is why it survived:
+  a test written from the direction that worked never saw the one that didn't. Measured as 300
+  comparisons (5 ints × 5 floats × 6 operators × both orders) the compiled leg was right on all of them
+  and the interpreter was wrong on exactly 8. Equality between two numbers is now one question about
+  their values in either order, gated by the same `isHandle` predicate operators use, so `1 == [1]` and
+  `1.0 == "a"` remain False rather than becoming errors — and container equality inherited it for free
+  (`[1] == [1.0]`, `{"a": 1} == {"a": 1.0}`). What the tests turned up on the way is recorded rather
+  than bundled: a *literal* `[1] == [1.0]`, and `1.0 == "a"`, emit modules `llc` rejects, so those
+  programs exit 2 with a temp-file path where they should refuse (roadmap Gap R.40).
 - **The module is a scope too** (ADR 0220) — this program did not exist:
 
   ```py

@@ -1043,8 +1043,14 @@ index into the interned table, so the container holding the number `0` and the c
 the first interned string would otherwise be called equal. That is why every operation that writes
 a container slot writes its tag with it (ADR 0187), including the builders a call argument uses.
 
+- **A number equals the same number written the other way** (ADR 0221): `1 == 1.0`, `1.0 == 1`,
+  `0 == -0.0` and `3 == 3.0` are all True, in either operand order, on both backends. An `int`
+  compared with a `float` is one question about two values, not a comparison of representations;
+  the interpreter used to answer `1 == 1.0` with False while answering `1.0 == 1` with True.
+  This coercion reaches only numbers: `1 == [1]` and `1.0 == "a"` are False, not errors.
 - Lists compare position by position; sets and dicts by containment — a positional walk would make
-  `{1, 2} == {2, 1}` False.
+  `{1, 2} == {2, 1}` False. Because element equality is this same predicate, `[1] == [1.0]` and
+  `{"a": 1} == {"a": 1.0}` are True too.
 - A container compared with a scalar is unequal (`[1] == 1` is False, not an error), and the
   operands are still evaluated, so `f() == xs` keeps `f`'s side effects.
 - Comparing a container with something whose kind the compiler cannot see — `xs == make()` —

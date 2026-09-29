@@ -1925,10 +1925,16 @@ func (e *Evaluator) eqVal(l, r int64) bool {
 		return lf == rf
 	}
 	if rf, ok := e.floatOf(r); ok {
-		if lf, ok := e.floatOf(l); ok {
-			return lf == rf
+		// A float on the RIGHT with a plain integer on the left is still a numeric question:
+		// `1 == 1.0` is True in Python, and answering False was an answer rather than a
+		// refusal — the asymmetry (1.0 == 1 worked) is what made it survive, because a test
+		// written from the working direction never sees it (roadmap Gap R.29, ADR 0221).
+		// Anything else that is an object — a container, a string — is a different type, and
+		// Python says False for `1 == [1.0]`, so the handle test is what keeps this honest.
+		if e.isHandle(l) {
+			return false
 		}
-		return false
+		return rf == float64(l)
 	}
 	if lo, ok := e.heap[l]; ok && lo.kind == "str" {
 		if ro, ok := e.heap[r]; ok && ro.kind == "str" {
