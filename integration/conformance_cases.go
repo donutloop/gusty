@@ -92,6 +92,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// program below is ledger-free because the oracle, the interpreter and the
 		// compiled binary print the same nine lines.
 		"zero_division",
+		// Gap R.36 + R.39 (ADR 0228): a local written on one path only is unbound on the other. All
+		// three engines print `1` and then raise UnboundLocalError; the compiled leg used to print 0
+		// for the second call and exit 0, and the interpreter used to call it the wrong class.
 		// The compiled `try` dispatches every arm in order and hands an unmatched
 		// exception outward (Gap R.20, ADR 0213); five shapes, three engines.
 		"except_arm_order",
@@ -224,10 +227,11 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
 		"sequence_ops",
-		"probe_operand_types",  // Gap R.26 — an operator applied to the wrong operands
-		"probe_percent_format", // Gap R.31 — no `%` string formatting; both legs refuse
-		"probe_float_container_equality",
-		"probe_unwritten_slot", // Gap R.36 — a slot written on one path only reads as 0 (ADR 0227) // Gap R.35 — a function cannot read the module's names (compiled)
+		"probe_operand_types",            // Gap R.26 — an operator applied to the wrong operands
+		"probe_percent_format",           // Gap R.31 — no `%` string formatting; both legs refuse
+		"probe_global_statement",         // Gap R.48 — no `global` statement; all three engines differ
+		"unwritten_slot_trap",            // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
+		"probe_float_container_equality", // Gap R.35 — a function cannot read the module's names (compiled)
 		// Gap R.40 (ADR 0221): a literal list holding a float emits a module llc rejects.
 		"probe_float_list_equal",
 		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
@@ -429,11 +433,20 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the interpreter and CPython agree on all six lines; the compiled backend refuses, because a container slot is an i32 word and a float has no representation in one (it previously truncated, which is how [1.5] == [1.6] printed 1)",
 		ref:    "roadmap Gap R.40 (closed, ADR 0226) and L11.6 (the answers); ADR 0166 for refusal-not-invalid-module",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n1\n0\n0\n"}, {Backend: "aot", Missing: true}}},
-	// Gap R.36 (pinned while closing R.35's compiled half, ADR 0227).
-	"programs/probe_unwritten_slot": {oracle: lang.OracleNA,
-		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError and exits 1; the interpreter traps too, but with the wrong class (NameError — that half is Gap R.39); the compiled backend prints 0 for the unbound call and exits 0, because the alloca exists and nothing wrote that edge. Reading a slot the program never assigned is the silent wrong answer, and it is the one failure a compiler is never allowed to have",
-		ref:    "roadmap Gap R.36 (definite assignment in the checker); Gap R.39 (which class an unwritten local raises); ADR 0227 (measured while closing R.35's compiled half)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "name 'x' is not defined"}, {Backend: "aot", Stdout: "1\n0\n"}}},
+	// Gap R.36 + R.39 closed (ADR 0228): the parity assertion for this program is that both backends
+	// print `1` and then raise the class CPython raises. The oracle leg itself exits 1 (an uncaught
+	// raise), which is why this is not_applicable rather than match -- the CPython leg cannot
+	// complete, and the two legs are pinned instead.
+	"programs/unwritten_slot_trap": {oracle: lang.OracleNA,
+		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError; both gusty backends now print the same first line and raise the same class, which they did not before ADR 0228 -- the compiled leg printed 0 for the unbound call and exited 0, and the interpreter called it a NameError",
+		ref:    "roadmap Gap R.36 (definite assignment) + Gap R.39 (which class an unwritten local raises); ADR 0228",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n", Missing: true, Err: "cannot access local variable 'x'"}, {Backend: "aot", Stdout: "1\n", Missing: true, Err: "exit status 3"}}},
+
+	// Gap R.48 (found while closing R.36, ADR 0228's probe pass).
+	"programs/probe_global_statement": {oracle: lang.OracleNA,
+		reason: "there is no `global` statement: CPython reads `global gz` as a declaration and the read afterwards raises NameError, the interpreter parses it as the *expression* `global gz` and reports `name 'global' is not defined`, and the compiled backend refuses the program outright. The two backends disagree with CPython and with each other, on a construct every Python reader expects",
+		ref:    "roadmap Gap R.48 (`global` is not in the language); Gap R.36 (the probe pass that found it)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: `undefined name "global"`}, {Backend: "aot", Missing: true}}},
 
 	"programs/probe_percent_format": {oracle: lang.OracleDebt,
 		reason: "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",

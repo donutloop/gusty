@@ -30,10 +30,16 @@ type Evaluator struct {
 	classIDs    map[string]int64
 	curRet      *Type  // return annotation of the function currently executing
 	fnName      string // name of the function whose body is being evaluated
-	cur         Span   // source span of the statement currently being evaluated
-	yieldList   int64  // list handle accumulating yields (0 = not in generator)
-	curClass    string // class name of the method currently executing (for super())
-	curSelf     int64  // receiver of the method currently executing (for super())
+	// curFD is the *FuncDef whose body is executing, and curBodies caches which names each body
+	// binds anywhere inside itself. A name the body binds is local to that body whatever the module
+	// holds, so reading it before any path assigned it is UnboundLocalError rather than a lookup
+	// that quietly finds the module's value (roadmap Gap R.36 + R.39, ADR 0228).
+	curFD     *FuncDef
+	curBodies map[*FuncDef]map[string]bool
+	cur       Span   // source span of the statement currently being evaluated
+	yieldList int64  // list handle accumulating yields (0 = not in generator)
+	curClass  string // class name of the method currently executing (for super())
+	curSelf   int64  // receiver of the method currently executing (for super())
 	// classList records the declared base chain (L6.6) so a nominal class
 	// annotation (`a: Animal`) can also be enforced for subclass instances.
 	classList *ClassIndex
@@ -649,11 +655,37 @@ func (e *Evaluator) recordCall(err error, callee string, caller string, callSite
 	return err
 }
 
+// bodyBinds reports whether a function body binds `name` anywhere inside itself: an assignment to
+// it, a tuple element, an augmented assignment, a `for` target, a `with ... as`. It deliberately does
+// not look inside a nested `def` or a `class` body -- those are separate scopes, and a binding there
+// says nothing about this one (ADR 0220). The answer is cached per body because the question is asked
+// at every name read.
+func (e *Evaluator) bodyBinds(fd *FuncDef, name string) bool {
+	if e.curBodies == nil {
+		e.curBodies = map[*FuncDef]map[string]bool{}
+	}
+	if set, ok := e.curBodies[fd]; ok {
+		return set[name]
+	}
+	set := map[string]bool{}
+	for _, pa := range fd.Params {
+		set[pa.Name] = true
+	}
+	for _, st := range fd.Body {
+		moduleBindingNames(st, set)
+	}
+	e.curBodies[fd] = set
+	return set[name]
+}
+
 func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64, bodySafe bool) (int64, error) {
 	caller := e.fnName
 	callSite := e.cur
 	savedFn := e.fnName
 	e.fnName = fd.Name
+	savedFD := e.curFD
+	e.curFD = fd
+	defer func() { e.curFD = savedFD }()
 	// The callee's global scope is the module it was written in (Gap R.35). Restored on
 	// the way out so a nested call cannot leave its module visible to its caller.
 	savedModule := e.curModule
@@ -1474,6 +1506,15 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 	case *Name:
 		if v, ok := e.Vars[n.Value]; ok {
 			return v, nil
+		}
+		// A name this body binds anywhere inside itself is local to it, so neither the closure
+		// environment nor the module is consulted -- and reading it on a path that never assigned
+		// it is UnboundLocalError, the class a handler matches on, not the NameError an
+		// never-local name gets (CPython's split; roadmap Gap R.36 + R.39, ADR 0228). Without this
+		// the fallback found the module's value and `def f(): print(v); v = 2` printed a number
+		// where CPython raises.
+		if e.curFD != nil && e.bodyBinds(e.curFD, n.Value) {
+			return 0, exnError("UnboundLocalError", "cannot access local variable '"+n.Value+"' where it is not associated with a value")
 		}
 		if v, ok := e.globalLookup(n.Value); ok {
 			return v, nil
@@ -3802,7 +3843,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			callSite := e.cur
 			savedFn := e.fnName
 			e.fnName = fd.Name
-			defer func() { e.fnName = savedFn }()
+			savedFD := e.curFD
+			e.curFD = fd
+			defer func() { e.fnName = savedFn; e.curFD = savedFD }()
 			// Bind the parameters into the callee's scope and root that scope (and
 			// the caller's) for the duration of the call (L7.2). Restoring on the
 			// error paths too is what keeps the frame stack balanced.

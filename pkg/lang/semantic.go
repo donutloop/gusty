@@ -72,6 +72,151 @@ type SemanticAnalyzer struct {
 	definite    map[string]bool
 	locals      map[string]bool
 	branchDef   map[string]bool
+	// unwrittenReads records, per function (and under "" for the module's own statements), the
+	// names read on a path that does not assign them. The checker only warned about these; the
+	// compiled backend has to act on them, because reading a slot the program never wrote is the
+	// silent wrong answer no exit code describes (roadmap Gap R.36, ADR 0228).
+	unwrittenReads map[*FuncDef]map[string]bool
+}
+
+// noteUnwritten records that a name was read on a path that does not assign it, under the function
+// whose body the read sits in (nil key: the module's own statements). Only the checker's own notion
+// of "local" reaches here -- isDefinite answers true for anything that is not a local of the frame --
+// so what lands in this table is exactly the set of frame slots a compiled body might read unwritten.
+func (an *SemanticAnalyzer) noteUnwritten(nm string) {
+	if an.unwrittenReads == nil {
+		an.unwrittenReads = map[*FuncDef]map[string]bool{}
+	}
+	set := an.unwrittenReads[an.curFn]
+	if set == nil {
+		set = map[string]bool{}
+		an.unwrittenReads[an.curFn] = set
+	}
+	set[nm] = true
+}
+
+// UnwrittenReads runs the checker over a program and reports which names each function body (and the
+// module's top level, under the nil key) may read before assigning. The compiled backend consults it
+// to put a bound flag on exactly those slots, so an unwritten read becomes a typed, catchable
+// UnboundLocalError / NameError instead of the value the allocator happened to leave behind (roadmap
+// Gap R.36, ADR 0228). One analysis, asked a second question: the checker already knew, and only
+// warned.
+func UnwrittenReads(prog *Program) map[*FuncDef]map[string]bool {
+	if prog == nil {
+		return nil
+	}
+	return analyzeProgram(prog).unwrittenReads
+}
+
+// seedLocalsFromBody pre-records the names a body binds, so "which names are locals of this frame"
+// is answered from the source rather than from how far the walk has got. CPython's rule is syntactic
+// and forward-looking: a name the body binds *anywhere* is local to it, so a read above the write is
+// an UnboundLocalError at runtime -- not a lookup that walks off to the module, and not a compile
+// error either. `def f(): print(v); v = 2` is a program; whether it raises depends on the call
+// (roadmap Gap R.36 + R.37, ADR 0228).
+func (an *SemanticAnalyzer) seedLocalsFromBody(body []Stmt) {
+	if an.locals == nil {
+		an.locals = map[string]bool{}
+	}
+	for nm := range bodyBoundNames(body) {
+		an.locals[nm] = true
+	}
+}
+
+// bodyBoundNames lists every name a function body binds anywhere inside itself: assignments and
+// augmented assignments, tuple and list unpacking, loop variables, `with ... as`, comprehension
+// targets, match captures and walrus bindings, and the names of nested defs and classes. It does not
+// descend into a nested def's body or a class body -- those are their own frames, and a binding there
+// says nothing about this one (ADR 0220's rule, ADR 0228's use).
+func bodyBoundNames(body []Stmt) map[string]bool {
+	out := map[string]bool{}
+	var expr func(e Expr)
+	expr = func(e Expr) {
+		switch n := e.(type) {
+		case nil:
+			return
+		case *Name:
+			out[n.Value] = true
+		case *Tuple:
+			for _, el := range n.Elems {
+				expr(el)
+			}
+		case *ListLit:
+			for _, el := range n.Elems {
+				expr(el)
+			}
+		}
+	}
+	var walk func(st Stmt)
+	walk = func(st Stmt) {
+		switch n := st.(type) {
+		case nil:
+			return
+		case *AssignStmt:
+			expr(n.Target)
+		case *AugAssignStmt:
+			expr(n.Target)
+		case *ForStmt:
+			expr(n.Var)
+			for _, s := range n.Body {
+				walk(s)
+			}
+			for _, s := range n.Else {
+				walk(s)
+			}
+		case *WithStmt:
+			if n.As != nil {
+				out[n.As.Value] = true
+			}
+			for _, s := range n.Body {
+				walk(s)
+			}
+		case *IfStmt:
+			for _, s := range n.Then {
+				walk(s)
+			}
+			for _, s := range n.Else {
+				walk(s)
+			}
+		case *WhileStmt:
+			for _, s := range n.Body {
+				walk(s)
+			}
+			for _, s := range n.Else {
+				walk(s)
+			}
+		case *TryStmt:
+			for _, s := range n.Body {
+				walk(s)
+			}
+			for _, arm := range n.Excepts {
+				for _, s := range arm.Body {
+					walk(s)
+				}
+			}
+			for _, s := range n.Finally {
+				walk(s)
+			}
+		case *MatchStmt:
+			for _, c := range n.Cases {
+				expr(c.Pattern)
+				for _, orp := range c.Or {
+					expr(orp)
+				}
+				for _, s := range c.Body {
+					walk(s)
+				}
+			}
+		case *FuncDef:
+			out[n.Name] = true // the def binds its own name here; its body is another frame
+		case *ClassDef:
+			out[n.Name] = true
+		}
+	}
+	for _, st := range body {
+		walk(st)
+	}
+	return out
 }
 
 func (an *SemanticAnalyzer) markDefinite(nm string) {
@@ -139,6 +284,22 @@ func Analyze(prog *Program) []Diagnostic {
 	if prog == nil {
 		return nil
 	}
+	an := analyzeProgram(prog)
+	// Effect/async exhaustiveness (L7.6): the await/return discipline, proven over
+	// the same AST the backends consume. It runs as its own pass because it needs
+	// the whole program indexed (which names are `async def`) and a path analysis
+	// of each body, which the name/type walk does not do.
+	all := append([]Diagnostic{}, prog.Diags...)
+	all = append(all, an.Diags...)
+	all = append(all, analyzeEffects(prog)...)
+	return all
+}
+
+// analyzeProgram runs the whole checking walk and hands back the analyzer, so a caller can ask the
+// same pass a second question rather than re-implementing its prologue and drifting from it — the
+// prologue (class index, function index, module bindings, built-in predeclarations) is a checklist
+// the checker depends on, and a copy of it is a second rule waiting to disagree (ADR 0228).
+func analyzeProgram(prog *Program) *SemanticAnalyzer {
 	an := &SemanticAnalyzer{scope: newScope(nil), funcs: map[string]*FuncDef{}, methods: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, classes: map[string]bool{}, exceptions: builtinExceptions(), classList: NewClassIndex()}
 	// Pre-pass: record every class (with its bases) before analyzing, so class
 	// annotations and nominal subtyping work regardless of declaration order.
@@ -188,14 +349,7 @@ func Analyze(prog *Program) []Diagnostic {
 	for _, st := range prog.Stmts {
 		an.analyzeStmt(st)
 	}
-	// Effect/async exhaustiveness (L7.6): the await/return discipline, proven over
-	// the same AST the backends consume. It runs as its own pass because it needs
-	// the whole program indexed (which names are `async def`) and a path analysis
-	// of each body, which the name/type walk does not do.
-	all := append([]Diagnostic{}, prog.Diags...)
-	all = append(all, an.Diags...)
-	all = append(all, analyzeEffects(prog)...)
-	return all
+	return an
 }
 
 func (an *SemanticAnalyzer) errorf(sp Span, msg string, args ...interface{}) {
@@ -689,6 +843,15 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		for _, nm := range loopVarNames(s.Var) {
 			an.scope.define(nm, elem)
 		}
+		defBefore := copyDefinite(an.definite)
+		// The loop variable is bound before the body runs -- that is what iterating means -- so
+		// inside the body it is certain, and `for i in range(n): total = total + i` must not be
+		// warned about as an unbound read. After the loop it is not, which the restore below says:
+		// zero iterations leave it unbound, which is CPython's NameError (ADR 0228).
+		for _, nm := range loopVarNames(s.Var) {
+			an.markLocal(nm)
+			an.markDefinite(nm)
+		}
 		an.loopDepth++
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
@@ -697,6 +860,13 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			an.analyzeStmt(b)
 		}
 		an.loopDepth--
+		// A `for` iterates zero or more times, so -- exactly as for `while` above -- a name first
+		// assigned inside its body is visible afterwards but not certain. It was being carried out as
+		// certain, which cost the compiled backend two ways at once: no written-flag for the slot,
+		// and (when the loop folded away entirely) no slot either, so `for i in []: z = 1` then
+		// `print(z)` reached a refusal that blamed the program for a name it plainly wrote
+		// (roadmap Gap R.36, ADR 0228; CPython raises NameError there, and now both backends do).
+		an.definite = defBefore
 
 	case *ExternDecl:
 		an.externs[s.Name] = s
@@ -816,11 +986,23 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		}
 		// A capture in one arm (`case y:`) or an assignment in one arm is visible after the
 		// match but not certain; only names every arm assigned count as definite.
-		an.definite = definiteOnEveryPath(defBefore, armPaths)
+		if irrefutable {
+			an.definite = definiteOnEveryPath(defBefore, armPaths)
+		} else {
+			// A match with no wildcard has a path that reaches the point after it having run no arm
+			// at all, and armPaths does not contain that path -- so intersecting the arms alone would
+			// call a captured name certain when it is not (Gap R.36, ADR 0228).
+			an.definite = copyDefinite(defBefore)
+		}
 		for n := range boundAll {
-			// every arm binds it, so after the match it is certain
+			// Every arm binds it -- but the match itself may match nothing, so it is only certain
+			// when some case is irrefutable. `match v: case 1: hit = 1` binds nothing when v is 2,
+			// and reading `hit` afterwards is an error on both backends, not a value (Gap R.36,
+			// ADR 0228; the exhaustiveness warning above is the same fact seen from the other side).
 			an.scope.define(n, TDyn())
-			an.markDefinite(n)
+			if irrefutable {
+				an.markDefinite(n)
+			}
 		}
 	case *TryStmt:
 		// A `try` is not a scope. Python has one flat scope per function and per module, so a
@@ -880,9 +1062,12 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 	if n, ok := as.Target.(*Name); ok {
 		an.scope.define(n.Value, valTy)
 		an.markDefinite(n.Value)
-		if an.inFunc {
-			an.markLocal(n.Value)
-		}
+		// The module's statements have a frame too (ADR 0220 says so for reads; the same is true of
+		// writes), so its names are locals of that frame and the definite-assignment rule applies to
+		// them. Without it the checker called every module name certain, and the compiled backend
+		// read whatever the top-level alloca happened to hold -- `if 0: x = 1` then `print(x)`
+		// printed 64 (roadmap Gap R.36, ADR 0228).
+		an.markLocal(n.Value)
 	}
 	if t, ok := as.Target.(*Tuple); ok {
 		var elemTypes []*Type
@@ -896,6 +1081,11 @@ func (an *SemanticAnalyzer) analyzeAssign(as *AssignStmt) {
 					et = elemTypes[i]
 				}
 				an.scope.define(n.Value, et)
+				// Unpacking binds every element, so each is a local of this frame and the
+				// definite-assignment rule applies to it: `if c: p, q = 1, 2` then `return p` leaves p
+				// unbound on the untaken edge, which the compiled backend used to answer with 0
+				// (roadmap Gap R.36, ADR 0228).
+				an.markLocal(n.Value)
 			}
 		}
 		if valTy != nil && valTy.Kind == KindTuple && len(valTy.Elems) != len(t.Elems) {
@@ -929,6 +1119,7 @@ func (an *SemanticAnalyzer) analyzeFunc(fd *FuncDef) {
 	outerLocals := copyDefinite(an.locals)
 	an.definite = map[string]bool{}
 	an.locals = map[string]bool{}
+	an.seedLocalsFromBody(fd.Body)
 	old := an.scope
 	fscope := newScope(old)
 	// define the function itself in the outer scope. Carry the DECLARED parameter
@@ -1070,10 +1261,20 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 			if an.exceptions[n.Value] {
 				return TDyn()
 			}
+			// A name this body binds somewhere is local to it, even where the read sits above the
+			// write: that is not an undefined name, it is a read that may happen too early, which the
+			// checker reports as possibly-unbound and both backends turn into a runtime trap
+			// (UnboundLocalError in a frame, NameError at module level -- ADR 0228).
+			if an.locals != nil && an.locals[n.Value] {
+				an.noteUnwritten(n.Value)
+				an.warnf(n.Span(), "possibly unbound: %q is read before any path assigns it", n.Value)
+				return TDyn()
+			}
 			an.errorf(n.Span(), "undefined name %q", n.Value)
 			return TDyn()
 		}
 		if !an.isDefinite(n.Value) {
+			an.noteUnwritten(n.Value)
 			an.warnf(n.Span(), "possibly unbound: %q is not definitely assigned on all paths", n.Value)
 		}
 		return t
@@ -1213,6 +1414,11 @@ func (an *SemanticAnalyzer) inferReturn(fd *FuncDef, argTypes []*Type) *Type {
 		}
 	}
 	an.scope = fscope
+	// The same body analysed a second time per call site is the same body: the rule about what its
+	// names are has to be stated once, or the second walk disagrees with the first -- here it
+	// reported `undefined name "v"` for a read the first walk had already excused, and the compiler
+	// refused a program both interpreters run (ADR 0228).
+	an.seedLocalsFromBody(fd.Body)
 	var ret *Type
 	for _, st := range fd.Body {
 		an.analyzeStmt(st)

@@ -1,0 +1,18 @@
+# There is no `global` statement (roadmap Gap R.48, found by ADR 0228's probe pass).
+#
+# CPython reads `global gz` as a declaration, so the read below is a NameError for a module name that
+# was never bound. gusty has no such statement: the interpreter parses `global gz` as an expression
+# and reports `name 'global' is not defined`, and the compiled backend refuses the program. Three
+# engines, three answers -- and the two that are "wrong" are wrong in ways a Python reader will not
+# predict. The fix is the statement: declare the names a body means to write in the module, and make
+# reads and writes go to module state (@gy_mod_* the way ADR 0227 already stores it).
+
+
+def touch():
+    global gz
+    if 0:
+        gz = 1
+    return gz
+
+
+print(touch())

@@ -2005,6 +2005,10 @@ func GenerateIR(prog *Program) (string, error) {
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
 	g.moduleSlots = moduleSlotNames(prog, g.moduleConsts, g.moduleNames)
+	// Which names a body may read before assigning them is the checker's question, asked once here
+	// so codegen does not grow a second, subtly different dataflow rule (ADR 0228).
+	g.unwritten = UnwrittenReads(prog)
+	g.fdAlias = map[*FuncDef]*FuncDef{}
 	for nm, sym := range g.moduleSlots {
 		g.moduleSlotDecls += fmt.Sprintf("@%s = global i32 0 ; module binding %q, read by a function body (ADR 0227)\n", sym, nm)
 	}
@@ -2097,6 +2101,16 @@ func GenerateIR(prog *Program) (string, error) {
 	// Module-level code is its own scope too (see beginScope).
 	restoreScope := g.beginScope()
 	defer restoreScope()
+	// The module's own statements get written-flags too: an unwritten read at top level is a
+	// NameError in CPython and must not read the alloca's previous contents (ADR 0228). The nil key
+	// is the module's entry in the checker's table, and `inFunc` being false is what makes the trap
+	// raise NameError rather than UnboundLocalError. It goes *after* beginScope: that reset clears the
+	// slot bookkeeping, and flagging before it emitted a second alloca for the same name -- a module
+	// `llc` rejects as "multiple definition of local value", which the exit-code contract calls a
+	// compiler bug (ADR 0166).
+	doneModuleFlags := g.enterBoundFlags(nil, prog.Stmts)
+	defer doneModuleFlags()
+	g.emitBoundAllocas(&b)
 	for _, ap := range g.applyCalls {
 		b.WriteString(fmt.Sprintf("  call void %s()\n", ap))
 	}
@@ -2135,11 +2149,16 @@ func GenerateIR(prog *Program) (string, error) {
 	b.WriteString("main.raiseexit:\n")
 	// An uncaught exception used to fall off the end of main and exit 0 printing
 	// nothing, so a program that raised looked like a program that succeeded to any
-	// script that ran it. Report it on stderr and exit non-zero, like the interpreter.
+	// script that ran it. Report it on stderr and exit non-zero, like the interpreter --
+	// and with the *same code as every other trap*, because ADR 0211 says a failure class
+	// has one code whichever path produced it. This is the compiled binary's own exit code,
+	// not the CLI's: `gustyc --aot prog.gy` and `./prog` must not disagree about whether the
+	// program trapped, and 1 belongs to a compile error, so leaving 1 here made a trap look
+	// like a compiler bug to any script running the binary directly.
 	if g.raiseUsed {
 		b.WriteString("  %exn.m = load i8*, i8** @exn_msg\n")
 		b.WriteString("  call void @rt_die(i8* %exn.m)\n")
-		b.WriteString("  ret i32 1\n")
+		b.WriteString("  ret i32 3\n")
 	} else {
 		b.WriteString("  ret i32 0\n")
 	}
@@ -2585,6 +2604,21 @@ type irGen struct {
 	// the module never rebinds. A compiled function body may read those as values, because a value
 	// that cannot change needs no slot to read it from (ADR 0227, roadmap Gap R.35's compiled half).
 	moduleConsts map[string]Expr
+	// unwritten is the checker's answer to "which names may this body read before assigning them",
+	// keyed by the FuncDef whose body the read sits in (nil key: the module's own statements). It is
+	// the same walk the checker runs and already warns about, asked a second question (ADR 0228) --
+	// codegen does not get its own copy of the rule.
+	unwritten map[*FuncDef]map[string]bool
+	// fdAlias points an emitted clone (a decorator's `_impl`) at the FuncDef the checker saw, so the
+	// clone inherits its unwritten-read set.
+	fdAlias map[*FuncDef]*FuncDef
+	// boundFlags is the entry from `unwritten` for the body being emitted, after eligibility filtering;
+	// boundSlots names the i8 flag alloca for each of those names, and boundOrder lists them in a
+	// deterministic order so the entry block does not depend on map iteration. A name outside this set pays nothing:
+	// the flag exists only where the checker could not prove the write happens.
+	boundFlags map[string]bool
+	boundSlots map[string]string
+	boundOrder []string
 	// decoratorNames holds the names used as decorators anywhere in the program (`@add1` -> add1).
 	// While emitting such a function, a nested closure body that cannot be lowered is reported in the
 	// module comment instead of refusing: the decorated call goes through the trampoline, whose own
@@ -2857,6 +2891,9 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	prevFnSrc := g.curFnSrc
 	g.curFnSrc = className + "." + fd.Name
 	g.globals.WriteString(fmt.Sprintf("define i32 @%s(%s) {\n", funcName, strings.Join(paramRegs, ", ")))
+	// The written-flags for this body's possibly-unwritten locals, immediately inside the brace
+	// (ADR 0228).
+	g.emitBoundAllocas(&g.globals)
 	// A method is a call like any other: it opens its own root frame and pops it on
 	// the way out. Without this the roots its body pushes (self, container args,
 	// locals) piled up on the root stack one frame per call, so a loop that made
@@ -2867,6 +2904,9 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	// other rebinding body (Gap R.3).
 	g.copyInReboundParams(&g.globals, fd, false)
 	g.inFunc = true
+	// A method's locals are frame slots like any other body's, so they carry the same flags (ADR 0228).
+	doneMethodFlags := g.enterBoundFlags(fd, fd.Body)
+	defer doneMethodFlags()
 	for _, st := range fd.Body {
 		// A refusal inside a method body used to be dropped on the floor, which turned a source
 		// error the front end should name into an incomplete function definition and a toolchain
@@ -3373,6 +3413,7 @@ func (g *irGen) gcClearRoot(b *strings.Builder, allocaName string) {
 // handful of entries and cannot grow the stack.
 func (g *irGen) gcStoreHandle(b *strings.Builder, h, name string) {
 	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", h, name))
+	g.markBound(b, name) // a handle store binds the name too (ADR 0228)
 	b.WriteString("  call void @rt_root_put(i32* %_" + name + ")\n")
 	g.rooted = true
 	g.gcRootIdx++
@@ -5604,6 +5645,8 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				g.allocd[name] = true
 			}
 			b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, name))
+			// A walrus binds, so the slot is written: ADR 0228's flag has to know.
+			g.markBound(b, name)
 		}
 		t := g.newTmp()
 		if g.isFloat(n.Value) {
@@ -5647,6 +5690,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// a rebound parameter reads its slot, which the entry copied over (Gap R.3).
 			return reg, nil
 		}
+		// A slot the checker could not prove was written carries a flag, and the read tests it: an
+		// unwritten local raises UnboundLocalError here, catchably, instead of loading whatever the
+		// frame happened to hold (roadmap Gap R.36, ADR 0228).
+		g.checkBound(b, n.Value, n.Span())
 		// Always load fresh from the alloca so the value dominates its use.
 		g.ldN++
 		if off, ok := g.envCaptures[n.Value]; ok && g.envMode {
@@ -9722,6 +9769,13 @@ func (g *irGen) nameIsBound(nm string) bool {
 	if g.allocd[nm] || g.funcs[nm] {
 		return true
 	}
+	if g.boundFlags[nm] {
+		// A name carrying a written-flag has a slot: emitBoundAllocas gave it one, precisely because
+		// no store had to have run for it to be readable. Refusing here would be codegen blaming the
+		// program for a name the body itself binds -- `def f(): print(v); v = 2` is a program, and
+		// CPython runs it (raising UnboundLocalError at the read, which is what the flag does too).
+		return true
+	}
 	if _, ok := g.params[nm]; ok {
 		return true
 	}
@@ -10362,6 +10416,8 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	// decorator (ADR 0227).
 	doneBody := g.enterBody(fd.Body)
 	defer doneBody()
+	doneFlags := g.enterBoundFlags(fd, fd.Body)
+	defer doneFlags()
 	wasDecorator := g.emittingDecorator
 	g.emittingDecorator = g.decoratorNames != nil && g.decoratorNames[fd.Name]
 	defer func() { g.emittingDecorator = wasDecorator }()
@@ -10412,6 +10468,9 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		fmt.Fprintf(b, "%s %%p%d", paramTy, i)
 	}
 	fmt.Fprintf(b, ") {\n")
+	// The written-flags for this body's possibly-unwritten locals, immediately inside the brace:
+	// they must be instructions, not module-level text (ADR 0228).
+	g.emitBoundAllocas(b)
 	// A call opens its own root frame (ADR 0181). Everything this body pushes as a
 	// root is dropped when it returns, so a dead frame cannot retain a list — and a
 	// recursive call gets its own entries instead of overwriting the outer frame's.
@@ -10545,6 +10604,8 @@ func (g *irGen) bindPat(b *strings.Builder, name, val string) {
 		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", name))
 	}
 	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, name))
+	// A capture binds, and bindPat is the only writer of that slot: the flag follows (ADR 0228).
+	g.markBound(b, name)
 }
 
 func (g *irGen) hasBase(bases []string, class string) bool {
@@ -10778,6 +10839,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			for i, tgt := range tup.Elems {
 				if nm, ok2 := tgt.(*Name); ok2 {
 					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", vals[i], nm.Value))
+					g.markBound(b, nm.Value) // unpacking binds every element (ADR 0228)
 				}
 			}
 			return nil
@@ -10928,6 +10990,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					}
 					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, nm.Value))
 					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tag, nm.Value))
+					g.markBound(b, nm.Value) // the tagged slot is written too (ADR 0228)
 					g.taggedVars[nm.Value] = true
 					return nil
 				}
@@ -11212,6 +11275,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					return nil
 				}
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
+				// Every write to a possibly-unwritten slot sets its flag; a read that follows any of
+				// them is then legitimate (ADR 0228).
+				g.markBound(b, nm.Value)
 				if g.floatVars != nil {
 					delete(g.floatVars, nm.Value)
 				}

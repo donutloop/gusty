@@ -2252,6 +2252,31 @@ needs a buffer allocation). Fix: a boxed string in the runtime — bytes plus le
 char-method path reading it, and the `for`-over-string loop taking the runtime iterator the container
 loops already use.
 
+### R.48 — there is no `global` statement (OPEN, language surface)
+
+```gusty
+def touch():
+    global gz
+    if 0:
+        gz = 1
+    return gz
+
+print(touch())
+```
+
+CPython reads `global gz` as a declaration and the read raises `NameError: name 'gz' is not defined`.
+gusty has no such statement, so the line parses as the *expression* `global gz`: the interpreter reports
+`name 'global' is not defined`, and the compiled backend refuses the program. Three engines, three
+answers, on a construct every Python reader will reach for — and the worst property of the three is that
+two of them are wrong in ways no one reading the file would predict.
+
+Pinned as `programs/probe_global_statement.gy` (an oracle row with both legs' behaviour recorded), found
+during ADR 0228's probe pass and left out of that cycle rather than folded in, because the fix is the
+statement itself: a declaration that routes reads and writes of the named entries to module state — which
+is exactly the `@gy_mod_<name>` storage ADR 0227 already built for rebound module scalars, so the
+machinery is there and only the surface is missing. The checker side needs the mirror rule of ADR 0228's
+`seedLocalsFromBody`: a `global` name is *not* a local of the frame, whatever the body assigns.
+
 ### R.30 — the compiled backend truncated `//` toward zero (CLOSED, ADR 0216)
 
 ```gusty
@@ -2378,7 +2403,7 @@ module (`; note: closure wrap: body not lowered …`) where `--emit-llvm` can se
 (both legs `3 1`) are the oracle rows; `TestModuleScalarsReachCompiledFunctionBodies` replaced the test
 that pinned the refusals and the silent zero, and names the container refusal that is still owed.
 
-### R.39 — reading a name the body also assigns below should be UnboundLocalError (OPEN, interpreter)
+### R.39 — reading a name the body also assigns below should be UnboundLocalError (CLOSED, ADR 0228)
 
 ```gusty
 v = 10
@@ -2390,12 +2415,17 @@ def f() -> int:
 
 A consequence of Gap R.35's lenient fallback, recorded rather than glossed: the frame does not know
 which names are locals before it runs, so the read falls through to the module instead of refusing.
-The divergence is toward the forgiving answer, and the checker covers the shape with
-`possibly unbound`, but the runtime should raise `UnboundLocalError` (a `NameError` subclass, so a
-program catching `NameError` behaves like CPython). The plumbing is the checker's per-function local
-set reaching `callFunc`, where it can seed the frame.
+**Closed (ADR 0228).** The plumbing was exactly that: `seedLocalsFromBody` pre-records the names a body
+binds anywhere inside itself, and `Evaluator.bodyBinds` consults it at the read — a name the frame owns
+is looked for in the frame alone, never in the module, and an unbound one raises `UnboundLocalError`
+with CPython's own message. The compiled backend raises the same class from the same rule (a written-flag
+on the slot), so the two backends and CPython now agree on stdout, on class, and on exit 3. Measured
+before the change: CPython `UnboundLocalError`, both gusty engines `NameError`, and the compiled leg for
+the sibling shape (`if c: x = 1`) printed `0` and exited 0. `UnboundLocalError` got its own code in the
+canonical exception table, so `except UnboundLocalError:` matches on both engines (ADR 0212's rule that a
+built-in trap is a typed raise).
 
-### R.36 — an unwritten variable slot reads as raw memory instead of raising NameError (OPEN, compiled only)
+### R.36 — an unwritten variable slot reads as raw memory instead of raising (CLOSED, ADR 0228)
 
 Any name whose only assignment sits on a path that did not run, read at module level:
 
@@ -2408,10 +2438,31 @@ Any name whose only assignment sits on a path that did not run, read at module l
 | `for i in []: f = 1` then `print(f)` | compile refusal (`codegen:`) | NameError | NameError |
 | `def f(c): if c: x = 1` then `return x`, called with `False` | prints `0`, **exits 0** | traps (NameError — the class is R.39's) | UnboundLocalError |
 
-The last row is the plainest form of the bug and was measured while closing R.35's compiled half
-(ADR 0227): the slot exists, the untaken edge never wrote it, and the callee reads the alloca's previous
-contents — here a clean `0`, elsewhere a stale handle. It is pinned as `programs/probe_unwritten_slot.gy`
-plus `TestUnwrittenSlotIsGapR36`, both naming their own deletion.
+**Closed (ADR 0228).** Fourteen shapes measured across three engines; nine were compiled-only silent
+wrong answers (`0`, `64`, `8555776`, `518208` — frame leftovers and stale handles), four were compile-time
+refusals for programs CPython runs, and every one of them now prints what CPython prints and traps with
+the class CPython raises. The mechanism is one byte per slot *the checker cannot prove was written*: the
+checker answers which (`UnwrittenReads`, the same walk that already warns `possibly unbound`), codegen
+adds a flag only where it can hook every write to that name, entry clears it, writes set it, reads test
+it, and the failure is a typed raise through the ordinary unwind path.
+
+Three checker rules were the underlying cause and were fixed as part of it: a `for` body may run zero
+times (names assigned in it were being carried out as certain, which `while` already got right); a
+`match` may match nothing (names every arm binds are certain only under an irrefutable pattern); and a
+loop variable *is* certain inside its own body — over-correcting the first rule warned about `for i in
+range(n): total = total + i`, which is nonsense, and that test is now in the suite.
+
+Also fixed on the way, because the probes exposed it: `main.raiseexit` returned 1 — the compile-error
+code — so the *linked binary* reported a compiler bug for a program that merely raised, while the CLI
+said 3. ADR 0211 says one class, one code, whichever path produced it; the binary now returns 3, and the
+two tests that pinned the `1` were updated with the cause named.
+
+`programs/unwritten_slot_trap.gy` is the pinned artifact (its oracle row records what all three legs do);
+`pkg/lang/bound_flag_test.go` asserts the flag exists where it is needed and *nowhere else*, and
+`integration/unwritten_slot_test.go` runs twelve shapes against CPython on both engines. What remains
+open in this family is the deliberately narrow part: names bound by a `for` header or `with ... as` carry
+no flag (a check whose flag some writer forgot would be a spurious trap, which is worse than the bug), and
+float- and container-valued slots store elsewhere, so they are still uncovered.
 
 The numbers are the slot's previous contents — a tagged word from whatever the allocator handed out —
 so the compiled program is not merely wrong, it reads memory it was never given and prints it as a
@@ -2463,7 +2514,13 @@ supports this yet (Gap …)". A refusal is the last thing a stuck program prints
 the other path that is true for the operator two lines above and false for this one is how someone
 ends up trusting an answer that was never available.
 
-### R.37 — a constant operation that should trap is refused at compile time (OPEN, compiled only)
+### R.37 — a constant operation that should trap is refused at compile time (OPEN, compiled only; one instance closed by ADR 0228)
+
+**One instance closed (ADR 0228).** Four of the R.36 shapes were this bug in the same costume: `for i in
+[]: z = 1` then `print(z)`, and `print(v)` above `v = 2`, were refused at compile time with `undefined
+name` while CPython runs them and traps at the read. They now compile and raise. The remainder of this
+entry is about constant-folded arithmetic (`1 // 0`, `"a" * 3` in a position the folder can see), where
+the same argument — a refusal is a different event from a trap — still applies.
 
 `[][0]` and `int("x")` anywhere in a program, even inside a `try` the handler of which would catch
 it, exit 1 with `gustyc: jit: codegen: list index out of range` / `int on non-integer string`. CPython

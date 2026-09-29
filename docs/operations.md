@@ -395,7 +395,7 @@ asserts each row.
 | 0 | success | any mode |
 | 1 | **compile error** — the program never ran: parse, analysis, a codegen refusal, or `llc`/`cc` failed. Diagnostics were emitted | `--eval`, `--check`, `--verify`, `--build`, `--emit-*`, `--fmt-check` |
 | 2 | **LLVM rejected the module we emitted** — a compiler bug, not a source error (see ADR 0164/0166). Reached through `errors.As(err, *lang.ToolchainRejectionError)`, never by matching message text; a toolchain that is *not installed* is not a rejection and stays class 1 | `--build` (when the verifier stage rejects), `--verify-llvm`, `--aot`/`--jit` (when `llc` refuses what codegen produced) |
-| 3 | **runtime error** — the program compiled and ran, then trapped (an uncaught exception, a failed built-in). Every run path reports it identically: the compiled backend's status comes from the generated `main`'s return value, which `lang.JITResult.Code` carries (ADR 0211) | `--eval`, `--file`, `--repl`, `--aot`/`--jit` |
+| 3 | **runtime error** — the program compiled and ran, then trapped (an uncaught exception, a failed built-in). Every run path reports it identically: the compiled backend's status comes from the generated `main`'s return value, which `lang.JITResult.Code` carries (ADR 0211), and since ADR 0228 so does the *linked binary itself* — `./prog` and `gustyc --aot prog.gy` agree, because 1 is the compile-error code and a trap must never borrow it | `--eval`, `--file`, `--repl`, `--aot`/`--jit`, and the binary `--build` leaves behind |
 | 4 | **usage error** — bad/unknown flags, no source given, unreadable file, empty `--bench-dir`, missing baseline file | any mode |
 | 5 | **benchmark regression** (`--bench-baseline` gate fired; see `docs/benchmark.md`) | `--bench-*` |
 | 6 | **divergence from CPython** — the program compiled, ran, and printed something other than what CPython prints for the same source (a wrong value, or a leg that refused it) | `--oracle`, `--oracle-file` |
@@ -1040,6 +1040,12 @@ code (only `LevelError` does). Reading a name bound by an irrefutable case
 on every path is accepted (definitely assigned); a name that only some paths bind is visible but
 flagged at the use with `possibly unbound: "x" is not definitely assigned on all paths` — a warning,
 because the name does exist on the other paths and only this one may not have assigned it (ADR 0217).
+The warning is a hint, not the enforcement: the same read at runtime raises `UnboundLocalError` in a
+function and `NameError` at module level, on both backends, and exits 3 (ADR 0228). Reading a name the
+body binds only *below* the read is in the same class — `possibly unbound: "v" is read before any path
+assigns it` — and is likewise a runtime trap, not a compile error, because whether it raises depends on
+the call (ADR 0228 closed Gaps R.36 and R.39 here; the old behaviour printed the frame's stale contents,
+or refused the program).
 A name no path binds at all is an `undefined name` error. A function-name reference (bare `fn`) is
 assignable to any Callable bound under gradual typing.
 

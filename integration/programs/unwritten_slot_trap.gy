@@ -1,0 +1,18 @@
+# A local assigned on one path only is unbound on the other (roadmap Gap R.36, ADR 0228).
+#
+# `x` is written inside `if c:` with no else, so `f(False)` reads a slot no path assigned. CPython
+# raises UnboundLocalError; so does the interpreter, and so does the compiled backend — which used to
+# print 0 for the second call and exit 0, the silent wrong answer this program exists to keep dead.
+# The class matters as much as the trap: `except UnboundLocalError:` has to match on both backends,
+# and a name the frame does not own at all (`mod_` shape below, or Gap R.39's read-above-the-write)
+# is a NameError instead. Neither leg may invent a value for a slot the program never wrote.
+
+
+def f(c):
+    if c:
+        x = 1
+    return x
+
+
+print(f(True))
+print(f(False))

@@ -4023,9 +4023,11 @@ def f(c):
 print(f(False))   # CPython: UnboundLocalError (exit 1); interpreter: traps (exit 3); compiled: 0, exit 0
 ```
 
-It is pinned as `programs/probe_unwritten_slot.gy` + `TestUnwrittenSlotIsGapR36` rather than fixed here,
-because one item per cycle is the contract — but "record it in the same commit as the shape that found
-it" is what keeps the next cycle from having to rediscover it.
+It was pinned as a probe program in the corpus plus a test named for the gap, each naming its own
+deletion, rather than fixed here, because one item per cycle is the contract — but "record it in the same
+commit as the shape that found it" is what let the next cycle (ADR 0228) close it in one pass: the
+measurements were already written down, the artifact was already in the corpus, and the pinned test said
+out loud when it stopped being true.
 
 ### Ledger mechanics that paid for themselves
 
@@ -4056,3 +4058,103 @@ but the episode produced two rules:
   they were written against code that isn't in this repo; a missed `s.replace(...)` in a patch script is
   invisible until a capability fails to appear. Re-grep after scripted edits — it caught `emittingDecorator`
   having landed in the async-only branch of `funcDef`, which made the decorator exemption do nothing.
+
+## The frame that was never written still answered — until a byte said otherwise (Gaps R.36 + R.39, ADR 0228)
+
+### What the table looked like before
+
+Fourteen unwritten-slot shapes, three legs. Nine of them were compiled-only silent wrong answers:
+
+```
+def f(c):                 while 0:              try: a = 1//0
+    if c:                     w = 1                   b = 2
+        x = 1             return w              except: pass
+    return x                                      return b
+f(False) -> 0, exit 0     f() -> 8555776, 0      f() -> 518208, 0
+```
+
+`0`, `8555776`, `518208`, `64` — the frame's previous occupants, words and stale heap handles, printed as
+values with a success status. The interpreter got the *event* right and the *class* wrong (NameError where
+CPython says UnboundLocalError, which was Gap R.39), and four more shapes were compile-time refusals for
+programs CPython simply runs.
+
+### Why "refuse it" was the wrong instinct
+
+`def f(c): if c: x = 1; return x` is a program. Whether the read is an error is decided by the caller. A
+compiler that refuses it is not being safe, it is being wrong in a different direction — and three of the
+fourteen were already doing that, with a message claiming the interpreter said the same thing, which it
+does not. So this became the clearest case yet for the rule the last few cycles kept circling: **a static
+refusal is only correct when the program can never be right.**
+
+### The design, and the one question codegen is allowed to answer
+
+The names that need a flag come from the checker (`UnwrittenReads` re-runs the same walk that already
+warns `possibly unbound`), not from a second dataflow implementation in codegen — because two answers to
+"is this certain?" is how `for` and `while` ended up disagreeing in the first place. Codegen adds exactly
+one question of its own, and it is a *safety* question rather than a semantics one: can I hook every write
+to this name? If a name's bindings include a form I don't emit a set-flag for (a `for` header, a
+`with ... as`), the name gets no flag at all. That asymmetry is deliberate: a check whose flag some writer
+forgot converts a silent zero into a spurious trap on *correct* code, which is a worse bug than the one
+being fixed. Eligibility is computed from the source, never from what the emitter happened to reach.
+
+### Three checker rules were the actual cause
+
+The compiled symptom hid three defects in the certainty model, each found by a probe rather than by
+reading:
+
+- `for` carried names assigned in its body out of the loop as *definite*; `while` already restored the
+  pre-loop state. One rule stated in two places, drifted apart.
+- `match` marked names that every arm binds as certain — forgetting the path where no arm matches, which
+  is not in the list of paths being intersected. Certainty now needs an irrefutable pattern.
+- Over-correcting the first made `for i in range(n): total = total + i` warn about `i`, which is absurd:
+  the header binds the variable before the body runs. So the rule is directional — inside the body the
+  loop variable is certain, after it is not — and that sentence is now a test.
+
+### Seeding, not walking
+
+The class rule (UnboundLocalError vs NameError) and the "read above the write" case both came down to one
+distinction: a name is local because the **body** binds it somewhere, not because the analysis has passed
+an assignment yet. `seedLocalsFromBody` states that once, and it had to be applied to the per-call-site
+re-walk of a callee too — otherwise the second walk reported `undefined name "v"` for a read the first
+walk had already excused, and the program was refused by a checker that disagreed with itself within one
+pass. Any "which names does this frame own?" decision must be made before the walk begins.
+
+### The exit-code hole the probes fell over
+
+`main.raiseexit` ended `ret i32 1`. The CLI reported 3 for `--aot`, so the mismatch had been invisible —
+but `./prog`, the binary `--build` leaves behind, exited with the *compile-error* code for a program that
+merely raised. ADR 0211 ("a failure class has one code, whichever path produced it") is not satisfied by
+the CLI translating; the artifact has to carry it. Two tests pinned the old `1`, which is worth saying
+plainly: a suite can be green while the contract is broken, when the tests assert the implementation.
+
+### Two LLVM lessons from the flag emission
+
+- An instruction written before the `define` line is a *global* to `llc`. My first version emitted the
+  flags where the flags were decided (early in `funcDef`) and produced `expected 'type' after name` — exit
+  2, the toolchain blamed for an ordinary program. Emission belongs just inside the brace.
+- Emitting them *before* `beginScope()` in main produced `multiple definition of local value named '_x'`,
+  because that reset clears the slot bookkeeping and the assignment path then allocated the same name
+  again. Scope entry and emission are two moments, and conflating them shows up as a duplicate symbol
+  rather than a clear error.
+
+### Zero cost where it is not needed
+
+`if c: r = 1 else: r = 2` compiles with no flag, no load, no branch — asserted by a test that greps for the
+absence of `bnd_` in the module, because "the expensive interpretation of a safety rule" is a real way to
+fail this kind of change.
+
+### Ledger mechanics that earned their keep
+
+The probe I pinned last cycle (`TestUnwrittenSlotIsGapR36`, naming its own deletion) fired the moment the
+fix landed, telling me to delete it rather than soften it; the drift test then complained until the
+program's oracle row described the *new* truth, which forced me to record what all three legs do now.
+Two discoveries along the way were recorded rather than bundled: the missing `global` statement (Gap R.48,
+three engines giving three answers for a construct every Python reader reaches for) and the fact that
+parity cases cannot be trapping programs — parity is defined as both legs *completing*, so a trap program
+belongs in the probe list with its pins carrying the assertion.
+
+### Still open in this family
+
+No flag covers names bound by a `for` header or `with ... as` (unhooked writers), or float/container-valued
+slots (which store elsewhere). Those are stated in the roadmap rather than half-fixed, because the failure
+mode of getting them wrong is a trap on correct code.

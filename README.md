@@ -300,6 +300,18 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **An unwritten slot raises — it does not answer** (ADR 0228) — `def f(c): if c: x = 1; return x`
+  called with `False` printed `0` and exited 0; `while 0: w = 1` in a function printed `8555776`; a `try`
+  cut short before its second assignment printed `518208`; `if 0: x = 1` then `print(x)` at module level
+  printed `64`. Those numbers were the frame's previous contents — leftover words and stale heap
+  handles — read as values and reported as successes. Both backends now raise what CPython raises:
+  `UnboundLocalError` when the frame owns the name, `NameError` when nothing does, catchable by class on
+  either engine, exit 3 either way. The mechanism is one byte on each slot *the checker* cannot prove was
+  written (codegen gets no dataflow rule of its own), cleared on entry, set by every write, tested at the
+  read — and absent, with no instruction emitted, wherever assignment is provably definite. Three checker
+  rules turned out to be the cause: a `for` body may run zero times, a `match` may match nothing, and a
+  loop variable is certainly bound inside its own body. The probes also caught the linked binary exiting
+  1 — the compile-error code — for a program that merely raised, which ADR 0211 does not permit.
 - **A container slot is a word — ask what fits before writing it** (ADR 0226) — `[1] == [1.0]`,
   `print([1.5, 2])` and `1.0 == [1]` reached `llc` as invented operands (`[1 x i32] [@env_store = ...`,
   `%t1 = sitofp i32  to double`, `%t2 = sitofp i32 @.lst1 to double`) and came back as exit 2, while

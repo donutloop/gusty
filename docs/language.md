@@ -1006,9 +1006,29 @@ for i in range(n):
   What a body still cannot reach is module *containers* (`len(xs)`, `xs.append(v)` for a module-level
   list) and module names holding floats: those are refused, with a message naming module state and the
   missing machinery rather than misdescribing the value (roadmap Gap R.35's remaining half, Gap L11.6).
-  The other known difference is unchanged: reading a name that the same body assigns further down
-  returns the module's value where CPython raises `UnboundLocalError` (roadmap Gap R.39), and a local
-  assigned on one branch only reads as `0` in the compiled backend rather than trapping (Gap R.36).
+
+- **A name the body binds is the body's own, and an unwritten read raises** (ADR 0228). Whether a name
+  is local is decided by what the body binds *anywhere inside itself*, not by how far the text has got,
+  so a read above the write does not quietly find the module's value:
+
+  ```py
+  def f(c):
+      if c:
+          x = 1
+      return x          # f(False): UnboundLocalError, not 0
+
+  print(f(True))        # 1
+  ```
+
+  A local assigned on only one path is unbound on the others, and gusty raises where the value would
+  otherwise be whatever the frame previously held. The class follows the frame, as CPython's does: a
+  name this frame owns but has not bound is `UnboundLocalError`, a name no frame owns is `NameError`
+  (so a module-level `if 0: x = 1` then `print(x)` is a `NameError`). Both are ordinary raises —
+  `try: … except UnboundLocalError:` catches them on the interpreter and on the compiled backend — and
+  both exit 3, the trap code, whichever engine ran the program. A `for` body that runs zero times and a
+  `match` that matches nothing leave their captures unbound the same way; a loop variable is bound
+  inside its own body, as it must be. Names the checker can prove were assigned cost nothing: no flag,
+  no test, one fewer branch.
 - `while`/`for` loops accept an optional `else:` clause that runs on normal
   completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.

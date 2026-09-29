@@ -103,8 +103,8 @@ print(f(False))   # CPython: UnboundLocalError, exit 1; interpreter: traps, exit
 ```
 
 CPython raises; the interpreter traps (with a class Gap R.39 owns); the compiled backend reads the
-unwritten alloca and prints 0. `programs/probe_unwritten_slot.gy` + `TestUnwrittenSlotIsGapR36` pin
-it, and the fix — a definite-assignment rule in the checker, extended past `IfStmt` — is its own cycle.
+unwritten alloca and prints 0. `programs/unwritten_slot_trap.gy` pinned it, and ADR 0228 closed the gap while leaving this ADR's module
+rules untouched.
 It is listed here so a reader of this ADR does not mistake the closure fix for the whole gap.
 
 ## Alternatives rejected
@@ -131,6 +131,6 @@ rule, the two honest refusals, the closure body that no longer defaults to 0);
 expectations, module verifier, compiled output; `TestUnwrittenSlotIsGapR36` names its own deletion);
 `programs/module_scope_in_functions.gy` (both legs `80 7 5 40 1`) and
 `programs/module_calltime_lookup.gy` (both legs `3 1`) are oracle match rows — the first of these was
-this family's debt row until the compiled leg paid it; `programs/probe_unwritten_slot.gy` is the pinned
-divergence. `TestRecordCitationsResolveToRealPrograms` caught the two records still pointing at the
+this family's debt row until the compiled leg paid it; `programs/unwritten_slot_trap.gy` is the pinned
+artifact — its oracle row says what all three legs do now that ADR 0228 closed the gap. `TestRecordCitationsResolveToRealPrograms` caught the two records still pointing at the
 renamed probe.

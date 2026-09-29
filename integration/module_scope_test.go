@@ -101,24 +101,3 @@ func TestModuleScalarsReachCompiledFunctionBodies(t *testing.T) {
 		t.Fatalf("the refusal must name module state, not misdescribe the value as a string: %q", err.Error())
 	}
 }
-
-// TestUnwrittenSlotIsGapR36 pins a KNOWN defect, roadmap Gap R.36, and names its own deletion. A
-// local assigned on one branch only is unbound on the other: the interpreter traps (exit 3) and
-// CPython raises UnboundLocalError (exit 1), but the compiled backend reads the unwritten alloca,
-// prints 0 and exits 0. That is the silent wrong answer; the day the checker refuses the program,
-// delete this test rather than soften it.
-func TestUnwrittenSlotIsGapR36(t *testing.T) {
-	src := "def f(c):\n    if c:\n        x = 1\n    return x\n\nprint(f(True))\nprint(f(False))\n"
-	if _, _, err := lang.PythonRun(src); err == nil {
-		t.Fatalf("CPython stopped raising for an unbound local; the expectation needs re-deriving")
-	}
-	interpSrc := writeSrc(t, t.TempDir(), "unwritten.gy", src)
-	if _, code := cliRunCode(t, "--interp", interpSrc); code != 3 {
-		t.Fatalf("interpreter exit = %d, want 3 (a trap: the name is never bound on that path) — see Gap R.39 for which class it names", code)
-	}
-	aotSrc := writeSrc(t, t.TempDir(), "unwritten_aot.gy", src)
-	out, code := cliRunCode(t, "--aot", aotSrc)
-	if code != 0 || strings.TrimSpace(out) != "1\n0" {
-		t.Fatalf("compiled output %q exit %d is no longer the pinned silent zero — Gap R.36 looks fixed, delete this test", out, code)
-	}
-}

@@ -192,7 +192,7 @@ func TestRaiseCarriesTheMessageIntoCodegen(t *testing.T) {
 		"@exn_msg",
 		"ValueError: boom",
 		"call void @rt_die",
-		"ret i32 1",
+		"ret i32 3",
 	} {
 		if !strings.Contains(res.IR, want) {
 			t.Errorf("raise IR missing %q:\n%s", want, res.IR)

@@ -235,6 +235,8 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 		fmt.Fprintf(b, ", i32 %%p%d", i)
 	}
 	fmt.Fprintf(b, ") {\n")
+	// Written-flags for the closure's possibly-unwritten locals, inside the brace (ADR 0228).
+	g.emitBoundAllocas(b)
 	// The closure body is a call too: it opens its own root frame and pops it on the
 	// way out, so its locals retain nothing once it returns (ADR 0181).
 	savedFrame := g.frameOpen
@@ -259,6 +261,8 @@ func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef)
 	g.copyInReboundParams(b, fd, false)
 	doneBody := g.enterBody(fd.Body)
 	defer doneBody()
+	doneFlags := g.enterBoundFlags(fd, fd.Body)
+	defer doneFlags()
 	for _, st := range fd.Body {
 		if err := g.stmt(b, st); err != nil {
 			// The body of a closure used to be emitted with its errors thrown away. A statement
@@ -334,6 +338,12 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 		origClone := *fd
 		origClone.Decorators = nil
 		origClone.Name = fd.Name + "_orig"
+		// A clone is a different pointer, and the checker only saw the original: record the alias so
+		// the clone's body gets the same bound-flag treatment (ADR 0228).
+		if g.fdAlias == nil {
+			g.fdAlias = map[*FuncDef]*FuncDef{}
+		}
+		g.fdAlias[&origClone] = fd
 		if err := g.funcDef(b, &origClone); err != nil {
 			return err
 		}
@@ -342,6 +352,10 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 		clone := *wrap
 		clone.Decorators = nil
 		clone.Name = implName
+		if g.fdAlias == nil {
+			g.fdAlias = map[*FuncDef]*FuncDef{}
+		}
+		g.fdAlias[&clone] = fd
 		g.funcBind[gParam] = fd.Name + "_orig"
 		if err := g.funcDef(b, &clone); err != nil {
 			return err

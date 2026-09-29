@@ -217,9 +217,12 @@ func TestUncaughtReportIsNotEmittedForCleanPrograms(t *testing.T) {
 			t.Errorf("raise IR missing %q:\n%s", want, res2.IR)
 		}
 	}
-	// main's raise-exit path must exit 1, not fall off the end.
-	if !strings.Contains(res2.IR, "ret i32 1") {
-		t.Errorf("the uncaught path should return 1 from main:\n%s", res2.IR)
+	// The uncaught path must exit with the *trap* code, not fall off the end. It used to be 1,
+	// which is the compile-error code: ADR 0211 says a failure class has one code whichever path
+	// produces it, and a script running the linked binary was being told "the compiler failed" about
+	// a program that simply raised (ADR 0228).
+	if !strings.Contains(res2.IR, "ret i32 3") {
+		t.Errorf("the uncaught path should return the trap code 3 from main:\n%s", res2.IR)
 	}
 }
 
