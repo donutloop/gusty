@@ -3424,3 +3424,60 @@ Things worth pinning to memory:
   checker refusing `try: x = a + b … return x` with `undefined name "x"` went in as R.24. Both are
   one-file fixes; both would have made this commit unreviewable.
 
+
+## Cycle 162 — Gap R.25: a trap with no class is a trap with no handler (ADR 0214)
+
+- **Measured before writing, again, and it earned its keep.** Nine interpreter sites raised
+  `*EvalError` with an empty `ExnType`, found by grepping `&EvalError{Msg:` rather than by reading
+  tracebacks. Two of the nine were not just untyped but *wrong about the program*: `x = 5` then
+  `x[0]` reported `cannot index null`, and `x()` reported `unsupported call for eval`. The first is
+  a lie — the variable held an int — and the second is our dispatch table leaking into the user's
+  error. Both would have stayed invisible if I had only checked "does an error come out".
+  A message that describes the implementation instead of the program is a defect even when the
+  control flow is correct, because the reader acts on the message.
+- **The class is not decoration; it is the only handle the language has.** Exception matching reads
+  `ExnType`, so every `except AttributeError:` written against those nine shapes was dead code and
+  the program exited 0-ish with a sentence on stderr instead. The test suite now asserts class
+  **and** exact message per shape (`pkg/lang/builtin_trap_classes_test.go`), because asserting only
+  the class would let the wording drift back to internal vocabulary, and asserting only the wording
+  would let the class go empty again — the two assertions are the contract.
+- **The wrong-class case is half of "the class means something."** `except ValueError:` around `x()`
+  must *not* catch. Asserted explicitly; otherwise a permissive matcher would satisfy every other
+  test in the file.
+- **Wording parity is contract, not cosmetics — and now I can name the line where it stops being
+  mine.** `valueTypeName` renders `'int'`, `'NoneType'`, and an instance's class name so
+  `'P' object has no attribute 'nope'` reads here the way it reads in CPython. Deliberate
+  consequence: the reference implementation's messages are now an oracle for traps, so rewording one
+  is a spec change with a failing test, not a copy edit. That is the trade I wanted — greppable
+  errors for a little freedom.
+- **`type object 'type'` would have been a second leak.** Class objects don't carry their own name
+  here, so the first draft of the class-attribute message printed `type object 'type' has no
+  attribute 'x'` — technically true of the internal object, useless to the reader. `classDisplayName`
+  recovers the declared name. Rule worth keeping: *when a message names a type, check that some part
+  of the program actually says that word.*
+- **What stays open stays open, with a pointer to its own deletion.** The AOT backend still answers
+  a missing attribute with `0` (R.19), so the interpreter is right and the compiled leg is not; that
+  divergence is pinned in `programs/probe_builtin_traps_untyped.gy` (debt row: interpreter five
+  handler lines, `aot` missing), and `TestCompiledMissingAttributeIsStillAGap` exists to say "delete
+  me and close R.19" when it starts agreeing. Same for the refusals' missing codes: three of the four
+  AOT refusals in this cycle are bare prose (`int on non-integer string`, `len requires an inline
+  list/dict/set literal`, `index of a non-literal variable`) with no stable code — that is L11.8's
+  remaining item, so my test asserts honesty (refused, or traps naming a class, never answers) rather
+  than a prefix nobody defined. Inventing a code vocabulary here would have given us two competing
+  ones.
+- **Discipline kept:** found while measuring, `"a" * "b"` answers `1099516870662` and exits 0 in the
+  interpreter. That is a missing operand test printing a number, in the same family and worse — it
+  went into the roadmap as R.26 for the next cycle rather than into this commit, which would have
+  made one commit out of two unrelated rules.
+
+### Process lesson: a launcher's exit code is not the program's
+
+My first draft of the new JSON test asserted `exit == 3` and failed with 1 — while the payload it
+was reading said `"exit": 3`. The helper ran the CLI through `go run`, and **`go run` reports its own
+status: a program exiting 2 or 3 comes back as 1.** So every exit-code assertion written through that
+helper (`cliExit`, 11 call sites, its doc comment promising "0/1/2") was measuring the launcher, and
+could not have noticed Gap R.17's exit-code split — the thing I fixed two cycles ago — at all. The
+helper now runs the built binary. Lesson kept: *assert exit codes on the real artifact* (ADR 0180 says
+exactly this, and a helper quietly violating it is how the rule stops being enforced); and when a test
+disagrees with the system under test, check what the harness is standing in front of before changing
+the system.

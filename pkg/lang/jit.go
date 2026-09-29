@@ -1183,10 +1183,10 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 			if t, ok := s.Target.(*Tuple); ok {
 				obj := e.heap[v]
 				if obj == nil {
-					return 0, &EvalError{Msg: "cannot unpack non-iterable value"}
+					return 0, exnError("TypeError", "cannot unpack non-iterable value")
 				}
 				if len(obj.elems) != len(t.Elems) {
-					return 0, &EvalError{Msg: "cannot unpack value into tuple"}
+					return 0, unpackArityErr(len(t.Elems), len(obj.elems))
 				}
 				for i, nm := range t.Elems {
 					if n2, ok2 := nm.(*Name); ok2 {
@@ -1370,7 +1370,11 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		if id, ok := e.classIDs[n.Value]; ok {
 			return id, nil
 		}
-		return 0, &EvalError{Msg: "undefined name " + n.Value}
+		// The program asked for a name that was never bound. That is a NameError — a
+		// catchable language event — and not an interpreter complaint: the untyped variant
+		// could not be handled by `except NameError:` and read like an internal report
+		// (roadmap Gap R.25, ADR 0214).
+		return 0, exnError("NameError", "name '"+n.Value+"' is not defined")
 	case *BinOp:
 		return e.evalBin(n)
 	case *UnOp:
@@ -1441,13 +1445,13 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 				e.heap[mID].recv = objV
 				return mID, nil
 			}
-			return 0, &EvalError{Msg: "no attribute " + n.Name.Value}
+			return 0, exnError("AttributeError", "'"+o.class+"' object has no attribute '"+n.Name.Value+"'")
 		}
 		if o.kind == "class" {
 			if mID, ok := e.resolveMethod(e.classIDFor(objV), n.Name.Value); ok {
 				return mID, nil
 			}
-			return 0, &EvalError{Msg: "no method " + n.Name.Value}
+			return 0, exnError("AttributeError", "type object '"+e.classDisplayName(o)+"' has no attribute '"+n.Name.Value+"'")
 		}
 		if o.kind == "superproxy" {
 			// super() proxy: resolve methods on the base class only, bound to
@@ -1457,9 +1461,9 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 				e.heap[mID].recv = o.recv
 				return mID, nil
 			}
-			return 0, &EvalError{Msg: "no method " + n.Name.Value}
+			return 0, exnError("AttributeError", "super object has no attribute '"+n.Name.Value+"'")
 		}
-		return 0, &EvalError{Msg: "attribute access on method"}
+		return 0, exnError("AttributeError", "method object has no attribute '"+n.Name.Value+"'")
 	case *AwaitExpr:
 		v, err := e.eval(n.Expr)
 		if err != nil {
@@ -1515,7 +1519,10 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		}
 		o := e.heap[objV]
 		if o == nil {
-			return 0, &EvalError{Msg: "cannot index null"}
+			// `x[0]` where x holds no object at all. "cannot index null" was both
+			// untyped and wrong about the program — the value is not null, it is
+			// whatever the variable holds (Gap R.25).
+			return 0, exnError("TypeError", e.valueTypeName(objV)+" object is not subscriptable")
 		}
 		switch o.kind {
 		case "list":
@@ -1545,7 +1552,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			}
 			return int64(o.sval[i]), nil
 		default:
-			return 0, exnError("TypeError", "cannot index this value")
+			return 0, exnError("TypeError", e.valueTypeName(objV)+" object is not subscriptable")
 		}
 
 	case *Slice:
@@ -3819,7 +3826,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 					return int64(len(o.sval)), nil
 				}
 			}
-			return 0, &EvalError{Msg: "len expects a list, set, dict, or string"}
+			return 0, exnError("TypeError", "object of type "+e.valueTypeName(v)+" has no len()")
 
 		case "min", "max":
 			if len(n.Args) != 1 {
@@ -4012,7 +4019,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if o, ok := e.heap[av]; ok && o.kind == "str" {
 				f, err := strconv.ParseFloat(o.sval, 64)
 				if err != nil {
-					return 0, &EvalError{Msg: "int: cannot parse string"}
+					return 0, exnError("ValueError", "invalid literal for int() with base 10: '"+o.sval+"'")
 				}
 				return int64(f), nil
 			}
@@ -4025,7 +4032,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if o, ok := e.heap[av]; ok && o.kind == "str" {
 				f, err := strconv.ParseFloat(o.sval, 64)
 				if err != nil {
-					return 0, &EvalError{Msg: "float: cannot parse string"}
+					return 0, exnError("ValueError", "could not convert string to float: '"+o.sval+"'")
 				}
 				return e.allocFloat(f), nil
 			}
@@ -4168,7 +4175,17 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			return h, nil
 		}
 	}
-	return 0, &EvalError{Msg: "unsupported call for eval"}
+	// Nothing took the call. `x = 5` then `x()` is Python's "'int' object is not callable" —
+	// a TypeError the program can catch — and the old text ("unsupported call for eval")
+	// leaked the interpreter's own dispatch into the user's traceback while leaving the
+	// exception class empty, so no handler could ever have matched it (Gap R.25, ADR 0214).
+	if name, ok := n.Fn.(*Name); ok {
+		if v, bound := e.Vars[name.Value]; bound {
+			return 0, exnError("TypeError", e.valueTypeName(v)+" object is not callable")
+		}
+		return 0, exnError("NameError", "name '"+name.Value+"' is not defined")
+	}
+	return 0, exnError("TypeError", "object of this kind is not callable")
 }
 
 // EvalError is a runtime eval error. When a raised exception is the cause,
@@ -4202,6 +4219,59 @@ func reverseStr(s string) string {
 // exnError builds an EvalError carrying a typed exception (type name + message).
 func exnError(exnType, msg string) *EvalError {
 	return &EvalError{Msg: msg, ExnType: exnType, ExnMsg: msg}
+}
+
+// valueTypeName names a value the way an exception message does: quoted, and for an instance
+// its class name, so `'int' object is not subscriptable` reads here the way it reads in the
+// reference implementation. A trap the user cannot grep for is a trap they cannot learn.
+func (e *Evaluator) valueTypeName(v int64) string {
+	o, ok := e.heap[v]
+	if !ok {
+		return "'int'"
+	}
+	switch o.kind {
+	case "none":
+		return "'NoneType'"
+	case "instance":
+		if o.class == "" {
+			return "'object'"
+		}
+		return "'" + o.class + "'"
+	case "closure", "method", "function":
+		return "'function'"
+	case "class":
+		return "'type'"
+	case "float":
+		return "'float'"
+	}
+	return "'" + o.kind + "'"
+}
+
+// classDisplayName recovers the name a class object was defined with, for the AttributeError
+// message: `type object 'P' has no attribute 'x'`, as the reference words it.
+func (e *Evaluator) classDisplayName(o *obj) string {
+	if o == nil {
+		return "type"
+	}
+	if o.class != "" {
+		return o.class
+	}
+	for name, id := range e.classIDs {
+		if e.heap[id] == o {
+			return name
+		}
+	}
+	return "type"
+}
+
+// unpackArityErr is CPython's wording for the two ways an unpack can fail to line up, raised
+// under ValueError. Both used to be interpreter-shape prose with no exception class
+// ("cannot unpack value into tuple"), which made them uncatchable and un-searchable.
+func unpackArityErr(want, got int) error {
+	if got < want {
+		return exnError("ValueError", fmt.Sprintf("not enough values to unpack (expected %d, got %d)", want, got))
+	}
+	return exnError("ValueError", fmt.Sprintf("too many values to unpack (expected %d)", want))
 }
 
 // zeroDivisionErr is the one place the arithmetic traps are raised. The sites used to build

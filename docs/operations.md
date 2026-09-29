@@ -681,7 +681,12 @@ against its own ability to fail).
   are in the payload, so no agent has to parse `gustyc: parse error at 1:7: …` off stderr
 - runtime errors → `{"error": "...", "traceback": "...", "exit": 3}` (the interpreted path
   renders the traceback into `traceback`; the compiled path forwards the program's fd 2 in
-  `stderr`, which is where an uncaught-exception report belongs)
+  `stderr`, which is where an uncaught-exception report belongs). A failure raised by the
+  language itself also carries `"exception": "TypeError"` and `"exception_message": "…"`,
+  decoded from `*lang.EvalError` rather than scraped out of the report — the class the program
+  would have matched with `except TypeError:`, as data, so a caller branches on a name instead of
+  on prose. Every built-in trap has a class now (roadmap Gap R.25, ADR 0214); where the field is
+  absent the error came from a front-end gate, not from a running program
 - `--json --verify-llvm <src>` → the `irVerification` record, e.g.
   `{"ok":true,"tool":"/usr/bin/opt-20","skipped":false,"pipeline":["verify"],"toolchain":"LLVM 20"}`
   (see [Module verification](#module-verification-irverification-l82))

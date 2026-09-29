@@ -800,6 +800,29 @@ for i in range(n):
   walking, which printed `inf` for `1 / 0` and a fresh garbage integer for `7 % 0` (an
   unguarded `srem` does not fault on AArch64). Where a trap is not implemented the backend
   refuses with a message — it does not answer with a substitute value.
+
+  **Every built-in trap carries its class** (ADR 0214). A trap that reported a message with no
+  class was invisible to the language: `except TypeError:` cannot match what has none, and the
+  traceback printed a bare sentence. The wording below is the reference implementation's, so one
+  search finds the same phrase in either language:
+
+  | shape | raised |
+  |-------|--------|
+  | `p.nope` on an instance without it | `AttributeError: 'P' object has no attribute 'nope'` |
+  | `int("abc")` | `ValueError: invalid literal for int() with base 10: 'abc'` |
+  | `float("zzz")` | `ValueError: could not convert string to float: 'zzz'` |
+  | `a, b = [1]` | `ValueError: not enough values to unpack (expected 2, got 1)` |
+  | `a, b = [1, 2, 3]` | `ValueError: too many values to unpack (expected 2)` |
+  | `x = 5` then `x()` | `TypeError: 'int' object is not callable` |
+  | `len(5)` | `TypeError: object of type 'int' has no len()` |
+  | `x = 5` then `x[0]` | `TypeError: 'int' object is not subscriptable` |
+
+  Several are refused at compile time by the AOT backend rather than trapping (an honest refusal,
+  class 1: `int on non-integer string`, `len requires an inline list/dict/set literal`, `index of a
+  non-literal variable` — messages that still need stable codes, roadmap L11.8). The missing
+  attribute is the one shape where the compiled backend still answers with a value (roadmap Gap
+  R.19), and it is pinned as `programs/probe_builtin_traps_untyped.gy` rather than left to be
+  discovered.
 - **An uncaught exception is reported and fails the process, identically on both
   backends.** The report goes to **stderr**, so `prog 2>/dev/null` sees only what the
   program printed, and the exit status is non-zero, so a script cannot mistake a trapped

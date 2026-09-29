@@ -2028,6 +2028,42 @@ disagree with — the assignment is in a scope the checker never walks. Same lik
 `TryStmt` arms. Fix in the analyzer's scope pass, with a test that the shape analyses clean and
 runs everywhere.
 
+### R.25 — built-in traps carried a message but no exception class (CLOSED, ADR 0214)
+
+Nine interpreter sites raised `*EvalError` with an empty `ExnType`, which made them invisible to the
+language: matching is on the class, so `except AttributeError:` / `except ValueError:` /
+`except TypeError:` were dead code, and the traceback printed a bare sentence where an exception
+should have been named. Each now raises what CPython raises, in CPython's words — measured first with
+`errors.As` rather than by eyeballing tracebacks, which is how the ADR's table got its right-hand
+column.
+
+One row justifies the whole exercise: `x = 5` then `x[0]` reported **"cannot index null"**. Not
+untyped — *false about the program*. The variable held an int; the message described our internal
+representation because that was the easiest thing to say, and a reader who believed it would go
+looking for a null that was never there. `valueTypeName` renders `'int'`, `'NoneType'`, and an
+instance's class name, so the messages are about the user's program again.
+
+Pinned by `pkg/lang/builtin_trap_classes_test.go` (class **and** exact message per shape; the handler
+runs; the wrong class does not catch it) and `integration/builtin_trap_classes_test.go` (interpreter
+equals CPython on all five handler lines; the shapes AOT will not lower stay honest refusals — class
+1, non-zero, never a substitute answer). `programs/probe_builtin_traps_untyped.gy` keeps the family
+in the matrix while R.19 and R.26 stay open.
+
+
+### R.26 — `"a" * "b"` answers a number instead of raising (OPEN, both backends)
+
+```gusty
+print("a" * "b")     # interpreter: 1099516870662, exit 0 · compiled: refused · CPython: TypeError
+```
+
+A silent wrong answer from the interpreter: the operand kind test is missing and the multiply
+proceeds on the interned-index representation of the right-hand string, printing whatever number
+came out — no report, no failure, exit 0. CPython raises `TypeError: can't multiply sequence by
+non-int of type 'str'`, and the compiled backend refuses the shape (an honest refusal, which is why
+this is a divergence rather than a crash). Fix with the same rule as R.25 — a typed `TypeError` at
+the operand check — and it should be found by sweeping every operator for the same missing test,
+not just this operator.
+
 ### R.22 — a function returning a float on one path and a string on another emits invalid IR (OPEN, L11.8 violation)
 
 ```gusty
@@ -2047,7 +2083,7 @@ required) — and note the *tool* now reports it honestly as the compiler-bug cl
 ADR 0211, which is how it came to light. Fix: a capability diagnostic naming the mixed return
 types, or real tagged values (L11.1) which subsume the problem.
 
-### R.19 — a missing attribute answers `0` instead of raising (OPEN, both backends)
+### R.19 — a missing attribute answers `0` instead of raising (OPEN, compiled half only)
 
 ```gusty
 class P:
@@ -2056,14 +2092,18 @@ p = P()
 try:
     print(p.nope)         # compiled: prints `0`, exit 0, no report
 except AttributeError:
-    print("caught attr")  # never runs, on either backend
+    print("caught attr")  # runs in the interpreter and CPython, not in AOT
 ```
 
-Same shape as R.18 and the same root: the compiled path substitutes a default value for a trap,
-and the interpreter's error carries `no attribute nope` without a class, so no `except` clause can
-catch it. CPython raises `AttributeError: 'P' object has no attribute 'nope'`. Fix with the same
-one rule (a built-in trap is a typed raise, everywhere), and add the class name to the traceback
-text so the report and the matcher read the same string.
+The interpreter half is **done** (ADR 0214): the trap now carries
+`AttributeError: 'P' object has no attribute 'nope'`, the handler runs, and the output is
+byte-for-byte CPython. What is left is the compiled backend, which still substitutes a default value
+for the trap — the expression evaluates, the handler never fires, the program exits 0. Fix it the way
+ADR 0210 emits bounds tests and ADR 0212 emits division guards: a member test plus
+`raiseTo(exnCode("AttributeError"), …)` at the attribute-read sites (instance and class). Then
+promote `programs/probe_builtin_traps_untyped.gy` and delete
+`TestCompiledMissingAttributeIsStillAGap` in `integration/builtin_trap_classes_test.go`, which exists
+only to say out loud what to remove.
 
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)

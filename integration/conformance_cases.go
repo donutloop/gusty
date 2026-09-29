@@ -188,15 +188,16 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_heterogeneous", // L11.1 — one element kind per compiled container
 		"probe_tuple",         // L11.3 — no tuple lowering at all
 
-		"probe_mixed_return_value", // Gap R.22 — returns of differing types share one lowering
-		"probe_unicode",            // L11.5 — strings are bytes, not code points
-		"probe_string_index",       // L11.5 — s[i] is a byte value, not a character
-		"probe_math_const",         // L11.6 — a stdlib float constant folds to int
-		"probe_float_numeric",      // L11.6 — //, /=, float % and float params
-		"probe_enumerate",          // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
-		"probe_fn_value",           // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",            // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",       // Gap L.5 — print writes while it evaluates
+		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
+		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
+		"probe_unicode",               // L11.5 — strings are bytes, not code points
+		"probe_string_index",          // L11.5 — s[i] is a byte value, not a character
+		"probe_math_const",            // L11.6 — a stdlib float constant folds to int
+		"probe_float_numeric",         // L11.6 — //, /=, float % and float params
+		"probe_enumerate",             // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
+		"probe_fn_value",              // L11.7 — a lambda cannot be called through a parameter
+		"probe_fn_name",               // L11.7 — a def'd name is not a value at all
+		"probe_print_atomic",          // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 
@@ -374,6 +375,10 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.3 (tuples are values)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n2\n3\n4\n5\n[1, 2]\n"}, {Backend: "aot", Missing: true}}},
 
+	"programs/probe_builtin_traps_untyped": {oracle: lang.OracleDebt,
+		reason: "the interpreter and CPython agree on all five handler lines, but the compiled backend answers the missing-attribute case with a value instead of raising (Gap R.19) and refuses the others at compile time with prose diagnostics, so the compiled leg never completes",
+		ref:    "roadmap Gap R.25 (typed built-in traps) and Gap R.19 (attribute answers 0 in AOT); ADR 0214",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "attr ok\nvalue ok\nunpack ok\ncall ok\nlen ok\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_mixed_return_value": {oracle: lang.OracleDebt,
 		reason: "a function whose return paths have different types is lowered as returning one of them, so the compiled caller reads the integer as an interned-string index and prints (null) where the interpreter and CPython print 3 — silently, with exit 0",
 		ref:    "roadmap Gap R.22 (mixed return types; ADR 0213 refiled the original Gap R.21 reading, which blamed try/except)",

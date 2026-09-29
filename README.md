@@ -235,6 +235,13 @@ falls back to dynamic dispatch.
   bare `except:` works in any position, a nested `try` reaches its outer arm, and an exception no
   arm matches propagates instead of being deleted (the compiled backend used to lower only the
   first arm and clear the flag, exiting 0 on a program whose error nobody handled, ADR 0213)
+- **A trap the program cannot name is not a trap it can handle** (ADR 0214) — nine interpreter
+  shapes (a missing attribute, `int("abc")`, a bad unpack, `x()` on an int, `len(5)`, `5[0]`) raised
+  errors with a message and *no exception class*, so every `except` clause written for them was dead
+  code. They raise what CPython raises, in CPython's words, and the tests pin class *and* wording:
+  `'P' object has no attribute 'nope'`, `invalid literal for int() with base 10: 'abc'`, `not enough
+  values to unpack (expected 2, got 1)`. One of them had reported `cannot index null` about an
+  integer — not untyped, just false, and the kind of wrong that sends someone hunting a null.
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

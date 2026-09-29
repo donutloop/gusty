@@ -454,8 +454,15 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		if isRT && len(ee.Traceback) > 0 {
 			tb = ee.RenderTraceback()
 		}
+		// A runtime failure always carries its exception class now (ADR 0214), so the machine
+		// path exposes it as data: an agent branching on `exception` never has to match on the
+		// message text, and does not have to parse the traceback it is also given.
+		exn := ""
+		if isRT && ee.ExnType != "" {
+			exn = fmt.Sprintf(", \"exception\": %q, \"exception_message\": %q", ee.ExnType, ee.ExnMsg)
+		}
 		if jsonOut {
-			fmt.Printf("{\"error\": %q, \"traceback\": %q, \"backend\": %q, \"exit\": %d%s}\n", err.Error(), tb, backend, exitRuntime, gcJSON(gc, gcStats))
+			fmt.Printf("{\"error\": %q%s, \"traceback\": %q, \"backend\": %q, \"exit\": %d%s}\n", err.Error(), exn, tb, backend, exitRuntime, gcJSON(gc, gcStats))
 		} else if tb != "" {
 			// Tracebacks are diagnostics, not program output: they belong on stderr so
 			// `prog 2>/dev/null | ...` sees only what the program printed (the AOT

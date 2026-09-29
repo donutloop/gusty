@@ -1,0 +1,35 @@
+# Oracle probe (L11.9) — a trap that carries a message but no exception class cannot be caught
+# (Gap R.25, ADR 0214). Each of these arms used to be dead code and the exception used to leak out
+# as a bare sentence; they now raise what CPython raises. The interpreter and CPython agree on all
+# five lines. The compiled backend answers the attribute case with a value instead of trapping
+# (Gap R.19) and refuses the others at compile time, so the leg does not complete.
+class P:
+    pass
+
+p = P()
+
+try:
+    print(p.nope)
+except AttributeError:
+    print("attr ok")
+
+try:
+    print(int("abc"))
+except ValueError:
+    print("value ok")
+
+try:
+    a, b = [1]
+except ValueError:
+    print("unpack ok")
+
+try:
+    x = 5
+    x()
+except TypeError:
+    print("call ok")
+
+try:
+    print(len(5))
+except TypeError:
+    print("len ok")

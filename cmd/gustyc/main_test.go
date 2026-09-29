@@ -185,18 +185,24 @@ func TestCLIJITJSON(t *testing.T) {
 // failing on a non-zero exit, which check mode uses for its exit contract.
 func cliExit(t *testing.T, args ...string) (string, int) {
 	t.Helper()
-	cmd := exec.Command("go", append([]string{"run", "-tags=llvm20", "./cmd/gustyc"}, args...)...)
-	cmd.Dir = "../.."
-	out, err := cmd.Output()
+	// The built binary, not `go run`. `go run` reports its *own* status: a program that
+	// exits 2 or 3 comes back as 1, so every exit-code assertion written through it was
+	// measuring the launcher rather than the CLI, and could never have noticed Gap R.17's
+	// split (ADR 0211) at all.
+	bin := combinedBin(t)
+	cmd := exec.Command(bin, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
 	ec := 0
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			ec = ee.ExitCode()
-		} else {
-			t.Fatalf("cliExit: %v", err)
+		ee, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("cliExit: %v (%s)", err, stderr.String())
 		}
+		ec = ee.ExitCode()
 	}
-	return string(out), ec
+	return stdout.String(), ec
 }
 
 func TestCheckModeExitCodes(t *testing.T) {
