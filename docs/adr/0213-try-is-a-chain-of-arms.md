@@ -106,3 +106,30 @@ verifies, the program still runs, and the only symptom is a branch that never fi
   `try: x = a + b` … `return x` fails analysis with `undefined name "x"`, refusing a program the
   interpreter and CPython both run). Rejected as bundling — it is front-end scope registration, not
   lowering.
+
+## Addendum (cycle 165) — the compiled leg never clears a handled exception
+
+The deferral above ("the AOT leg does not support raises from function bodies") was written from
+`raise`-statement probes and understated the defect. Measured with built-in traps, one mechanism
+explains the whole compiled family: **the arm's exit does not clear `@exn_flag`, so the next
+user-function call re-raises the exception the program already handled.**
+
+```gusty
+try:
+    crash = 1 // 0
+except:
+    recovered = 1
+
+def f() -> int:
+    return 5
+
+print(f())
+```
+
+Interpreter and CPython print `5`; the compiled program dies with an uncaught `ZeroDivisionError`
+(exit 3). `print(5)`, `print(len("ab"))` and `print(recovered)` afterwards are harmless — a call to a
+user-defined function is not. And the arm demonstrably ran: a `print("handled")` placed after the
+handler reaches the compiled program's stdout before the trap. So the missing piece is the clear on
+the exit edge, exactly the interpreter's rule from this ADR ("falling out of a `try` clears it, and
+ending the chain with a real re-raise"), not a missing landing pad. This is now the highest-priority
+exception work; see roadmap "R.21 again".

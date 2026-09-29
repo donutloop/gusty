@@ -260,6 +260,26 @@ falls back to dynamic dispatch.
   naming `frem` — because they had been written from the emitted IR rather than from the language; the
   new tests assert `a == (a // b) * b + (a % b)` instead, which a consistently truncating pair can
   never satisfy.
+- **A compound statement is not a scope** (ADR 0217) — this refused to compile:
+
+  ```py
+  def f() -> int:
+      try:
+          a = 7
+      except:
+          a = 0
+      return a
+  ```
+
+  `--check` said `undefined name "a"` and `--aot` exited 1, while `--interp` printed `7` and CPython
+  printed `7`. The analyser put a `try` body, each arm, the `finally` clause, a `while` body and each
+  `match` arm in a child scope it then threw away — and never walked `finally` at all, so nothing
+  inside a `finally` was ever checked, a call to a nonexistent function included. Visibility and
+  definiteness are now separate questions: bindings join the enclosing function or module, and a name
+  only some paths assign is read with a `possibly unbound` warning instead of the old error, which is
+  what the program actually does. Two compiled-backend defects surfaced on the way and are recorded
+  with their measurements rather than bundled: a handled exception that the next call re-raises
+  (Gap R.21's compiled half), and an untouched slot being loaded and printed as a value (Gap R.36).
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

@@ -3555,3 +3555,51 @@ the system.
 - **Discipline:** measured 704 cases first (both backends, both operator families, CPython as the
   oracle), and stayed inside the pair. R.29 (`1 == 1.0`) and R.31 (`"%s" % 2`) surfaced in the same
   files and stayed recorded rather than being fixed while I was here.
+
+## Cycle 165 — Gap R.24: a compound statement is not a scope (ADR 0217)
+
+- **The gap's own name was too small.** R.24 was filed as "the checker loses names assigned inside a
+  `try` body". Measured before touching anything it was five shapes — `try` body, `except` arm,
+  `finally` clause, `while` body, `match` arm — and the fifth discovery was worse than any of them:
+  `finally` bodies were not analysed *at all*, so a call to a function that does not exist inside a
+  `finally` was invisible to the checker. The test that proves the fix is not the parity program but
+  `TestFinallyBodyIsAnalysedAtAll`, which asserts an error *appears*. A skipped body can report
+  nothing, so "silence is not evidence" is the reusable form of this lesson.
+- **One wrong mechanism can be both a refusal and a false all-clear.** The same child scopes made
+  legal programs fail (`undefined name`) and made a genuinely suspicious program fail for the wrong
+  reason (`case y:` captured in one arm, read after the match). Fixing visibility naively would have
+  made the second one silent; keeping the old error would have kept refusing the first five. The
+  separation is visibility (does some path bind it?) versus definiteness (does every path?), and the
+  analyser now computes the second with `definiteOnEveryPath` — per-path sets for `try` (each handler
+  starting from before the `try`, because the body can raise anywhere), zero-run possibility for
+  `while`, and an intersection over `match` arms.
+- **A trade has to be said out loud.** `possibly unbound` is a warning and warnings do not fail
+  `--check`, so the partial-capture program that used to exit 1 now exits 0. I first wrote, in the ADR
+  and in `docs/language.md`, that `--check` still fails on warnings — a nice-sounding claim I had not
+  measured, and false. Both files now say what was traded and what enforces it instead (the runtime),
+  and `docs/operations.md`'s stale "reading one bound on only some paths is an `undefined name` error"
+  is gone. An unverified claim about your own tool is a bug in the documentation, not a detail.
+- **Three findings arrived while building the parity program, and all three were recorded instead of
+  fixed.** `compound_scoping.gy` died with an uncaught `ZeroDivisionError` under `--aot`; the bisect
+  came out as "the statement after the `try` decides" — `print(5)`, `print(len("ab"))` fine, any
+  user-function call resurrects the handled exception. Putting `print("handled")` after the arm
+  printed `handled` and *then* died, so the handler had run: this is Gap R.21's compiled half, one
+  mechanism (`@exn_flag` never cleared on the arm's exit), not the "raises from function bodies are
+  unsupported" story the earlier probes had written. A second finding became R.37 (`[][0]` anywhere is
+  a compile-time refusal — constant folding evaluating code the program may never execute), and a
+  third R.36 (a slot whose write never ran is loaded and printed: `64`, `518304`, `1630496` where
+  CPython raises `NameError`).
+- **Check whether your fix exposed a bug or merely found it.** Before calling R.36 a regression I
+  built the pre-fix binary in a throwaway worktree: `if 0: x = 1` then `print(x)` printed `64` with
+  the *old* checker too, because `if` always shared its scope. So R.36 is older and independent; what
+  R.24 did was make the `match`/`try` shapes reachable. That distinction belongs in the roadmap — it
+  is the difference between "this cycle broke something" and "this cycle stopped hiding something",
+  and only the second one lets the next cycle trust the queue.
+- **A parity program must not lean on a known-broken path.** The final `print(sign(-3), …)` after a
+  module-level `try` was R.21's trigger, so the calls now sit before the `try` with a comment saying
+  why and naming the gap. A ledger case that accidentally tests two defects reports a failure nobody
+  can act on.
+- **Write the divergence test so it can be deleted.** `TestUnboundAfterPartialMatchReadsGarbageInComp
+iled` names Gap R.36, says what to delete when it is fixed, and asserts the one thing that must never
+  appear — a plausible answer (`1` is `z`, not `y`). Its sibling asserts the interpreter traps with
+  `NameError` like CPython, so the pair keeps both the debt and the duty visible.

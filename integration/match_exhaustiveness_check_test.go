@@ -45,6 +45,19 @@ func hasError(t *testing.T, res *lang.CheckResult, substr string) bool {
 	return false
 }
 
+// hasDiag is hasError with the level as a question rather than an assumption: some checks are
+// about what must NOT be reported, and reading those off an errors-only helper hides the
+// difference between "silent" and "answered with a different severity".
+func hasDiag(t *testing.T, res *lang.CheckResult, level lang.Level, substr string) bool {
+	t.Helper()
+	for _, d := range res.Diagnostics {
+		if d.Level == level && strings.Contains(d.Msg, substr) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCheckNonExhaustiveMatchWarns(t *testing.T) {
 	// Two literal cases and no wildcard / bare-name case: the match cannot
 	// cover all possible subjects, so the checker warns (mypy-style).
@@ -125,9 +138,19 @@ func TestCheckDefiniteAssignmentEveryBranch(t *testing.T) {
 }
 
 func TestCheckNoDefiniteAssignmentPartialBranch(t *testing.T) {
-	// `y` is only bound by `case y:`, which fires only when x does not match
-	// the earlier literal case; on the literal path y is unbound, so reading
-	// it after the match IS undefined.
+	// `y` is only bound by `case y:`, which fires only when x does not match the earlier
+	// literal case; on the literal path y is unbound, so reading it after the match is not
+	// certain.
+	//
+	// The checker used to answer that with an `undefined name` ERROR, produced by the very
+	// mechanism that threw away every compound statement's bindings — the same one that refused
+	// legal `try`/`while`/`match` programs outright (roadmap Gap R.24, ADR 0217). The name IS
+	// bound when the arm runs; what this path may not do is assign it. That is what the
+	// `possibly unbound` warning says. It is a warning, and warnings do not fail `--check`, so this
+	// did trade away a build-time stop; what replaces it is the runtime, which traps correctly:
+	// see TestUnboundAfterPartialMatchTrapsLikeCPythonInInterpreter, and
+	// TestUnboundAfterPartialMatchReadsGarbageInCompiled for the compiled leg that still does not
+	// (roadmap Gap R.36).
 	src := `def f(x):
     match x:
         case 1:
@@ -140,8 +163,11 @@ func TestCheckNoDefiniteAssignmentPartialBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckSource: %v", err)
 	}
-	if !hasError(t, res, "undefined name") {
-		t.Fatalf("y is not definitely assigned on every path, diags=%v", res.Diagnostics)
+	if hasDiag(t, res, lang.LevelError, "undefined name") {
+		t.Fatalf("a name every arm can bind is not undefined; diags=%v", res.Diagnostics)
+	}
+	if !hasDiag(t, res, lang.LevelWarning, "possibly unbound") {
+		t.Fatalf("y is bound on only one path, so the use should be flagged; diags=%v", res.Diagnostics)
 	}
 }
 

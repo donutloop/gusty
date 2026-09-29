@@ -1,0 +1,67 @@
+# Compound statements do not create scopes.
+
+def sign(n: int) -> int:
+    try:
+        s = 1
+        if n < 0:
+            s = -1
+    except:
+        s = 0
+    finally:
+        touched = 1
+    return s + touched - 1
+
+
+# A `finally` clause runs whatever happened, so what it assigns is definite afterwards.
+def shifted(n: int) -> int:
+    try:
+        v = n
+    except:
+        v = 0
+    finally:
+        base = 40
+    return v + base
+
+
+# The calls come before the module-level `try` below on purpose: a call after a handled
+# trap is the standing compiled-leg defect (roadmap Gap R.21, "R.21 again"), and this
+# program is here to pin scoping, not that.
+print(sign(-3), sign(3), shifted(1))
+
+# A `while` body may run any number of times, but its bindings still belong to
+# the enclosing scope: the loop variable and `k` are readable after the loop.
+i = 0
+k = 0
+while i < 4:
+    k = k * 10 + i
+    i = i + 1
+
+# Both `match` arms bind, so the name is there whichever arm ran.
+grade = 2
+match grade:
+    case 1:
+        label = "low"
+    case _:
+        label = "high"
+
+# Nested: a try inside a loop, with the handler path able to assign too.
+total = 0
+j = 0
+while j < 3:
+    try:
+        total = total + j
+    except:
+        total = 0
+    j = j + 1
+
+# A handler that fires at module level recovers, and both its own and the
+# finally clause's bindings are readable afterwards.
+recovered = 0
+try:
+    crash = 1 // 0
+except:
+    recovered = 1
+finally:
+    cleanup_ran = 1
+
+print(k, label, total, recovered, cleanup_ran)

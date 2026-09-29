@@ -95,6 +95,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// The compiled `try` dispatches every arm in order and hands an unmatched
 		// exception outward (Gap R.20, ADR 0213); five shapes, three engines.
 		"except_arm_order",
+		"compound_scoping", // Gap R.24 — a compound statement binds in the enclosing scope (ADR 0217)
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -190,16 +191,16 @@ func conformanceProbes() []lang.ConformanceCase {
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
-		"sequence_ops",                // Gap R.26 — sequence repeat/concat/order are operands, not handles
-		"probe_operand_types",         // Gap R.26 — an operator applied to the wrong operands
-		"probe_unicode",               // L11.5 — strings are bytes, not code points
-		"probe_string_index",          // L11.5 — s[i] is a byte value, not a character
-		"probe_math_const",            // L11.6 — a stdlib float constant folds to int
-		"probe_float_numeric",         // L11.6 — //, /=, float % and float params
-		"probe_enumerate",             // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
-		"probe_fn_value",              // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",               // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",          // Gap L.5 — print writes while it evaluates
+		"sequence_ops",
+		"probe_operand_types", // Gap R.26 — an operator applied to the wrong operands
+		"probe_unicode",       // L11.5 — strings are bytes, not code points
+		"probe_string_index",  // L11.5 — s[i] is a byte value, not a character
+		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
+		"probe_float_numeric", // L11.6 — //, /=, float % and float params
+		"probe_enumerate",     // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
+		"probe_fn_value",      // L11.7 — a lambda cannot be called through a parameter
+		"probe_fn_name",       // L11.7 — a def'd name is not a value at all
+		"probe_print_atomic",  // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 

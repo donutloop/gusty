@@ -1992,6 +1992,39 @@ interned-string index — `(null)`. That is the mixed-return-type defect below. 
 the value of pinning the output rather than the theory. Keep the standing lesson: characterise the
 trigger before naming the cause — a wrong cause sends the next cycle to the wrong file.
 
+#### R.21 again — the compiled half, measured properly (cycle 165)
+
+Cycle 161 closed the interpreter half and deferred the AOT one as "raises from function bodies are
+unsupported", quoting probes built on `raise` statements. Measured now with plain built-in traps, the
+compiled failure is one mechanism and it is simpler to state: **a handled exception is never cleared,
+so the next call re-raises it.**
+
+```gusty
+try:
+    crash = 1 // 0
+except:
+    recovered = 1
+
+def f() -> int:
+    return 5
+
+print(f())
+```
+
+The handler runs — the interpreter and CPython both print `5`; the compiled program dies with an
+uncaught `ZeroDivisionError`, exit 3. What decides whether it appears is the statement *after* the
+try: `print(5)`, `print(len("ab"))` and `print(recovered)` pass, while anything that calls a
+user-defined function (`print(f())`, `v = f()`, `print(1, f())`) resurrects the exception. A call
+before the try is harmless. In a function body, putting `print("handled")` after the handler prints
+`handled` and then dies — so the handler fired, the arm completed, and the exception came back at the
+next call site. Reproduces with `1 // 0`, `[][0]`, `int("x")` and a user `raise`.
+
+That makes the fix the codegen half of `@exn_flag`'s clearing discipline rather than another landing
+pad, and it means ADR 0211's "one failure class, one code, whatever the path" is still false for every
+program that catches a trap and then calls something. `probe_raise_in_func.gy` and
+`probe_try_return_except.gy` stay the standing evidence; their pins are what will make the fix
+checkable.
+
 ### R.23 — `finally` does not run when the `try` body returns or raises (OPEN, both backends)
 
 ```gusty
@@ -2011,22 +2044,37 @@ value follows Python); for codegen, the function's return/raise-exit blocks have
 `finally` list. The ADR 0213 chain is testable evidence that the arm wiring is right, so this is the
 remaining `try` semantics gap.
 
-### R.24 — the checker does not register names assigned inside a `try` body (OPEN, front end)
+### R.24 — the checker lost names bound inside compound statements (CLOSED, ADR 0217)
 
-```gusty
-def f(a, b):
-    try:
-        x = a + b
-    except ValueError:
-        return -1
-    return x            # gustyc: error at 6:12: undefined name "x"
-```
+Recorded in cycle 161 as "does not register names assigned inside a `try` body". Measured properly in
+cycle 165 it was five shapes, not one, and the analyser's child scopes were the whole cause:
 
-A valid program is refused with a compile error (exit 1) that the interpreter and CPython both
-disagree with — the assignment is in a scope the checker never walks. Same likely cause as any
-`except`/`finally` body: the scope collector visits only `Body`/`IfStmt`/loop statements, not the
-`TryStmt` arms. Fix in the analyzer's scope pass, with a test that the shape analyses clean and
-runs everywhere.
+| shape | `--check` before | interpreter | CPython |
+|-------|------------------|-------------|---------|
+| name assigned in a `try` body, read after | `undefined name` (exit 1) | `2` | `2` |
+| name assigned in an `except` arm, read after | `undefined name` | NameError (matches) | NameError |
+| name assigned in a `finally` clause | `undefined name` — and the clause was **never analysed at all** | `4` | `4` |
+| name first assigned in a `while` body | `undefined name` | `1` | `1` |
+| name assigned in both `match` arms | `undefined name` | `1` | `1` |
+
+`if` and `for` already analysed in the enclosing scope, with comments saying why ("assignments there
+flow outward (like Python)", "runtime uses shared vars"); `try`, its handlers, `finally`, `while` and
+`match` had simply never been brought to that rule. All five now share the enclosing scope, `finally`
+is walked (so a typo inside it is a check-time error — the sharpest proof, in
+`TestFinallyBodyIsAnalysedAtAll`), and `--aot` compiled all of them as soon as the front end stopped
+refusing, because codegen had always collected assignments across nested blocks.
+
+Definiteness was kept as a separate, correct question via `definiteOnEveryPath`: a `match` capture in
+one arm, or an assignment in one handler, or anything first assigned in a `while` body is *visible*
+but not *certain*, and reads get the `possibly unbound` warning rather than the old error. See ADR
+0217 for the trade that makes — `--check` no longer fails that program — and for why the runtime is
+what enforces it now. `programs/compound_scoping.gy` is a standalone conformance case with no ledger row — the registry's
+way of saying it must print what Python prints — and it prints `-1 1 41 / 123 high 3 1 1` on all
+three engines.
+
+Two gaps fell out of the work and are recorded rather than bundled: **Gap R.21 compiled half** (a
+handled exception is re-raised by the next call — the reason this program's calls sit before its
+module-level `try`) and **Gap R.36** (an untouched slot is loaded and printed instead of trapping).
 
 ### R.25 — built-in traps carried a message but no exception class (CLOSED, ADR 0214)
 
@@ -2242,6 +2290,86 @@ the CLI reports the compiler-bug class (exit 2) rather than answering. Same sign
 operand-kind dispatch the interpreter uses, so one rule decides both backends. Until then
 `programs/sequence_ops.gy` stays a debt row, and `TestCompiledSequenceOpsNeverAnswerWrong` allows a
 refusal or a verification failure but never a wrong value.
+
+
+
+### R.35 — a function cannot read a module-level name (OPEN, both backends)
+
+Found while measuring Gap R.24, and much the larger of the two. This is ordinary Python:
+
+```gusty
+v = 1
+def g() -> int:
+    return v
+print(g())
+```
+
+CPython prints `1`. The interpreter raises `NameError: name 'v' is not defined` (exit 3) and the
+compiled backend refuses with `undefined name "v" (no binding for it; assign it before use) — the
+interpreter reports the same error`, exit 1. That message claims the two backends agree, and they
+do — on a wrong answer, the failure mode this loop keeps meeting. Measured:
+
+| shape | interpreter | compiled | CPython |
+|-------|-------------|----------|---------|
+| read a module int defined before the `def` | NameError | refusal | `1` |
+| read a module int defined **after** the `def` (Python resolves at call time) | NameError | refusal | `40` |
+| `len(xs)` on a module-level list | NameError | refusal | `3` |
+| a method reading a module name | NameError | refusal | `5` |
+| a closure reading an enclosing **function** variable | works | works | same |
+
+The closure path has a scope chain; the module scope is simply not on the end of it. Fix in the
+order AGENTS.md sets — interpreter first (a call's lookup falls back to module scope; assignment
+inside a function still creates a local, as Python does), then the codegen half, which is why its
+refusal is worded as a missing binding. A parity program accompanies the fix; until then this row is
+the evidence, measured rather than recalled.
+
+Until it lands the language cannot express a module constant read by a function — the most common
+shape in a script — so this is the highest-priority item in Gap R, alongside the compiled exception-clearing half of R.21 and R.36.
+
+
+
+### R.36 — an unwritten variable slot reads as raw memory instead of raising NameError (OPEN, compiled only)
+
+Any name whose only assignment sits on a path that did not run, read at module level:
+
+| shape | compiled | interpreter | CPython |
+|-------|----------|-------------|---------|
+| `if 0: x = 1` then `print(x)` | prints `64` | NameError | NameError |
+| `while 0: w = 1` then `print(w)` | prints `64` | NameError | NameError |
+| `try: a = 1 // 0` / `b = 2` / `except: pass`, then `print(b)` | prints `1630496` | NameError | NameError |
+| untaken `match` arm's capture, then `print(y)` | prints `518304` | NameError | NameError |
+| `for i in []: f = 1` then `print(f)` | compile refusal (`codegen:`) | NameError | NameError |
+
+The numbers are the slot's previous contents — a tagged word from whatever the allocator handed out —
+so the compiled program is not merely wrong, it reads memory it was never given and prints it as a
+value. The interpreter's answer (NameError, matching CPython's exit-1-with-NameError class) is the
+correct one, and it is what the interpreter does in all five rows.
+
+Checked against the pre-fix binary before calling this a regression: the `if` and `while` shapes
+already printed `64` with the old checker too, because `if` always shared its enclosing scope — so
+this defect is older than Gap R.24 and independent of it. What Gap R.24 did was extend the *reachable*
+set to the `match`-capture and `try`-body shapes, which the old front end refused to compile. That
+makes it the first thing to fix after R.24, not a reason to have kept the refusals: the alternative was
+a checker that rejects working programs to hide a codegen hole, which is the trade this loop has
+repeatedly refused to make.
+
+The fix is a per-slot written-ness check in codegen for names the analyser reports as not definite on
+every path (the machinery Gap R.24 added — `definiteOnEveryPath` — is exactly the input needed): emit
+the same `NameError` trap the interpreter raises, with the same wording, instead of loading the slot.
+Names definite on every path keep their direct load, so no cost is paid by ordinary code. Until then
+`TestUnboundAfterPartialMatchReadsGarbageInCompiled` pins the divergence and says what to delete.
+
+### R.37 — a constant operation that should trap is refused at compile time (OPEN, compiled only)
+
+`[][0]` and `int("x")` anywhere in a program, even inside a `try` the handler of which would catch
+it, exit 1 with `gustyc: jit: codegen: list index out of range` / `int on non-integer string`. CPython
+traps at runtime and the handler runs; the interpreter agrees (`41`). Constant folding has become an
+evaluation of code the program may never execute, and its failure is reported as a compilation error
+rather than as the runtime trap the source asks for. Two consequences: a program that *deliberately*
+provokes and catches such an error cannot be compiled at all, and a refusal appears for a line that
+would never have run (`if debug: x = [][0]`). The fold must produce an IR-level trap — the same
+`gy_trap` call the dynamic path emits, with the same class — whenever the operation would raise; the
+only constants it may resolve are ones the program cannot avoid executing.
 
 
 

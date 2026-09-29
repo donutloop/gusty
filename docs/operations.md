@@ -1018,8 +1018,10 @@ cases and no irrefutable case (`case _:` or a bare-name `case y:`) is
 non-exhaustive; `gusty check` emits a mypy-style *warning*. Warnings appear
 in the human output and the `--json` machine path but do not change the exit
 code (only `LevelError` does). Reading a name bound by an irrefutable case
-on every path is accepted (definitely assigned); reading one bound on only
-some paths is an `undefined name` error. A function-name reference (bare `fn`) is
+on every path is accepted (definitely assigned); a name that only some paths bind is visible but
+flagged at the use with `possibly unbound: "x" is not definitely assigned on all paths` — a warning,
+because the name does exist on the other paths and only this one may not have assigned it (ADR 0217).
+A name no path binds at all is an `undefined name` error. A function-name reference (bare `fn`) is
 assignable to any Callable bound under gradual typing.
 
 ## Effect signatures (`gustyc --effects`, L7.6, ADR 0195)

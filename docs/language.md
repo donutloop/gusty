@@ -875,6 +875,41 @@ for i in range(n):
       finally:
           print("fin")        # gusty: prints nothing, then 1 · CPython: fin, then 1
   ```
+- **A compound statement is not a scope** (ADR 0217). Python has one flat scope per `def` and one
+  per module, so a name assigned inside a `try` body, an `except` arm, a `finally` clause, a
+  `while` body or a `match` arm belongs to the enclosing function or module and is readable after
+  the statement — on both backends:
+
+  ```py
+  def pick() -> int:
+      try:
+          a = 7
+      except:
+          a = 0
+      return a          # 7 — `a` is a local of pick(), not of the try
+  ```
+
+  Pattern captures (`case y:`) bind the same way. The checker keeps the two questions apart: a name
+  is **visible** from wherever some path binds it, and **definite** only where every path reaching
+  the use binds it. A use of a visible-but-not-definite local gets
+  `possibly unbound: "y" is not definitely assigned on all paths` warning — warnings do not fail
+  `--check` — rather than the `undefined name` error the front end used to raise for programs that
+  run fine. The runtime is what enforces it: reading such a name where nothing assigned it is a
+  `NameError`. A name no path binds at all is still an `undefined name` error.
+
+  ```py
+  def f(x):
+      match x:
+          case 1:
+              pass
+          case y:
+              pass
+      return y          # warning: possibly unbound — correct, the literal arm skips the binding
+  ```
+
+  Reading a name that this run never assigned is a `NameError` in the interpreter, matching
+  CPython; the compiled backend currently loads the untouched slot and prints its contents (roadmap
+  Gap R.36).
 - `while`/`for` loops accept an optional `else:` clause that runs on normal
   completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.

@@ -86,6 +86,33 @@ func copyDefinite(m map[string]bool) map[string]bool {
 	}
 	return out
 }
+
+// definiteOnEveryPath is the rule behind "possibly unbound": a name counts as definitely
+// assigned after a compound statement only when every path that reaches that point assigned
+// it (or it was definite already). Intersecting rather than unioning is what keeps a name
+// bound in one `except` arm or one `match` arm from being treated as certain; visibility and
+// definiteness are separate questions and the two used to be conflated, which is how the
+// checker both refused legal programs (Gap R.24) and called a partial binding undefined.
+func definiteOnEveryPath(base map[string]bool, paths []map[string]bool) map[string]bool {
+	out := copyDefinite(base)
+	if len(paths) == 0 {
+		return out
+	}
+	for n := range paths[0] {
+		inAll := true
+		for _, p := range paths[1:] {
+			if !p[n] {
+				inAll = false
+				break
+			}
+		}
+		if inAll {
+			out[n] = true
+		}
+	}
+	return out
+}
+
 func intersectDef(dst, src map[string]bool) {
 	for n := range dst {
 		if !src[n] {
@@ -545,9 +572,11 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		intersectDef(defAfter, an.branchDef)
 		an.definite = defAfter
 	case *WhileStmt:
+		// Body and else share the enclosing scope, exactly as ForStmt's does: a name first
+		// assigned inside a loop is readable after it, which is what the runtime's single
+		// flat vars map already means (roadmap Gap R.24).
 		an.inferExpr(s.Cond)
-		old := an.scope
-		an.scope = newScope(old)
+		defBefore := copyDefinite(an.definite)
 		an.loopDepth++
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
@@ -556,7 +585,9 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			an.analyzeStmt(b)
 		}
 		an.loopDepth--
-		an.scope = old
+		// The body may never run, so names first assigned inside it are visible but not
+		// certain — the same distinction the `match` and `try` paths above make.
+		an.definite = defBefore
 	case *ForStmt:
 		it := an.inferExpr(s.Iter)
 		elem := it
@@ -622,11 +653,17 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		first := true
 		irrefutable := false
 		covered := map[int64]bool{}
+		defBefore := copyDefinite(an.definite)
+		var armPaths []map[string]bool
 		for _, c := range s.Cases {
-			an.scope = newScope(an.scope)
-			// Narrow the subject inside a constant case: if the subject is a
-			// Name and the pattern is an integer constant, shadow it with the
-			// Literal[v] type in this case's scope.
+			// The constant-case narrowing is a *temporary shadow*, not a scope: the arm's
+			// own assignments have to flow outward (Gap R.24) while the subject must not
+			// keep the narrowed type once the match is over. Snapshot lets us undo exactly
+			// what the arm did not decide for itself.
+			pre := map[string]*Type{}
+			for k, v := range an.scope.Vars {
+				pre[k] = v
+			}
 			if subj, ok := s.Subject.(*Name); ok {
 				if il, ok := c.Pattern.(*IntLit); ok {
 					covered[il.Value] = true
@@ -635,7 +672,14 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			}
 			for _, p := range append([]Expr{c.Pattern}, c.Or...) {
 				for n := range matchPatternNames(p) {
+					// A capture binds like an assignment does: visible from here on, definite
+					// inside this arm, and a *local* of the enclosing function so the
+					// every-path rule can say `possibly unbound` when another arm skips it.
 					an.scope.define(n, TDyn())
+					an.markDefinite(n)
+					if an.inFunc {
+						an.markLocal(n)
+					}
 				}
 			}
 			bound := map[string]bool{}
@@ -664,7 +708,15 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 			for _, b := range c.Body {
 				an.analyzeStmt(b)
 			}
-			an.scope = an.scope.Parent
+			for k, v := range pre {
+				// Undo the shadow unless the arm assigned the name itself; names the arm
+				// introduced stay visible, which is the flat-scope answer Python gives.
+				if cur, stillThere := an.scope.Vars[k]; !stillThere || cur == v {
+					an.scope.Vars[k] = v
+				}
+			}
+			armPaths = append(armPaths, copyDefinite(an.definite))
+			an.definite = copyDefinite(defBefore)
 		}
 		if !irrefutable {
 			if vals := literalValues(subTy); vals != nil {
@@ -683,21 +735,41 @@ func (an *SemanticAnalyzer) analyzeStmt(st Stmt) {
 		if !irrefutable {
 			an.warnf(s.Src, "match is not exhaustive: add a wildcard `_` or always-matching binding case")
 		}
+		// A capture in one arm (`case y:`) or an assignment in one arm is visible after the
+		// match but not certain; only names every arm assigned count as definite.
+		an.definite = definiteOnEveryPath(defBefore, armPaths)
 		for n := range boundAll {
+			// every arm binds it, so after the match it is certain
 			an.scope.define(n, TDyn())
+			an.markDefinite(n)
 		}
 	case *TryStmt:
-		an.scope = newScope(an.scope)
+		// A `try` is not a scope. Python has one flat scope per function and per module, so a
+		// name assigned in a try body, a handler or the finally clause is readable afterwards.
+		// Each of those bodies was analysed in a child scope that was then thrown away — and
+		// `finally` was never analysed at all, so `--check` reported `undefined name` and the
+		// compiled backend refused programs the interpreter ran and CPython agreed with
+		// (roadmap Gap R.24, ADR 0217). The convention is the one IfStmt and ForStmt above
+		// already follow: analyse in the enclosing scope, because the runtime does.
+		defBefore := copyDefinite(an.definite)
+		var paths []map[string]bool
 		for _, b := range s.Body {
 			an.analyzeStmt(b)
 		}
-		an.scope = an.scope.Parent
+		paths = append(paths, copyDefinite(an.definite))
 		for _, e := range s.Excepts {
-			an.scope = newScope(an.scope)
+			// Each handler is a separate path into the code after the try, and it starts
+			// from what was definite *before* the try: the body may have raised anywhere.
+			an.definite = copyDefinite(defBefore)
 			for _, b := range e.Body {
 				an.analyzeStmt(b)
 			}
-			an.scope = an.scope.Parent
+			paths = append(paths, copyDefinite(an.definite))
+		}
+		an.definite = definiteOnEveryPath(defBefore, paths)
+		// `finally` always runs, so whatever it assigns is definite afterwards on any path.
+		for _, b := range s.Finally {
+			an.analyzeStmt(b)
 		}
 	case *YieldStmt:
 		if s.Expr != nil {
