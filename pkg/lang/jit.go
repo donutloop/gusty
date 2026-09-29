@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
@@ -42,6 +43,21 @@ type Evaluator struct {
 	// so a value that only a live frame references is never swept, and stops
 	// tracing them when the frame returns so a dead frame keeps nothing alive.
 	frames []map[string]int64
+	// A name a function reads is looked for in its own frame, then in the closure
+	// environment captured where it was written, then — Gap R.35, ADR 0220 — in the
+	// *module* the function was defined in. Python has one flat scope per def and one
+	// per module; without the last link a script could not read a module-level constant
+	// from a function at all, which is the most ordinary program there is.
+	// moduleVars is the program's top-level scope; curModule is the global scope of the
+	// call in flight (a function defined in an imported module resolves there).
+	moduleVars  map[string]int64
+	curModule   map[string]int64
+	funcModules map[*FuncDef]map[string]int64
+	// globalScopes holds every module scope whose bindings live for the whole run. They
+	// are not on the frame stack, so the collector needs them named explicitly —
+	// otherwise a collection sweeps objects that only a module global can still reach.
+	globalScopes  []map[string]int64
+	globalScopeAt map[uintptr]bool
 	// rootGroups are handles a statement holds in Go locals while it runs a
 	// nested body (a for-loop's iterable, a with-manager, a match subject, the
 	// previous statement's value). Each construct declares them explicitly.
@@ -638,7 +654,13 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64,
 	callSite := e.cur
 	savedFn := e.fnName
 	e.fnName = fd.Name
-	defer func() { e.fnName = savedFn }()
+	// The callee's global scope is the module it was written in (Gap R.35). Restored on
+	// the way out so a nested call cannot leave its module visible to its caller.
+	savedModule := e.curModule
+	if m, ok := e.funcModules[fd]; ok {
+		e.curModule = m
+	}
+	defer func() { e.fnName = savedFn; e.curModule = savedModule }()
 
 	scope := map[string]int64{}
 	for k, v := range env {
@@ -759,8 +781,80 @@ func NewEvaluator() *Evaluator {
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
 	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: heapIDBase, fnName: "<module>", gcThreshold: gcAllocThresholdDefault, gcStress: gcEnvStress()}
+	// The scope this evaluator starts in *is* the module scope; anchoring it keeps the
+	// collector from sweeping what a function's global lookup will read (Gap R.35).
+	ev.moduleVars = ev.Vars
+	ev.curModule = ev.Vars
+	ev.funcModules = map[*FuncDef]map[string]int64{}
+	ev.globalScopeAt = map[uintptr]bool{}
+	ev.anchorScope(ev.Vars)
 	ev.noneVal = ev.allocObj("none")
 	return ev
+}
+
+// rememberModuleScope records the scope a definition was executed in, so the code it
+// runs later resolves unqualified names against *that* module rather than whichever scope
+// happens to be current when it is called — the rule Python has, and the reason a function
+// imported from a module still sees its own module's globals. The scope is also anchored
+// as a GC root: nothing on the frame stack refers to it once the def has run.
+func (e *Evaluator) rememberModuleScope(fd *FuncDef) {
+	if e.funcModules == nil {
+		e.funcModules = map[*FuncDef]map[string]int64{}
+	}
+	scope := e.Vars
+	// A `def` executed *inside* a function body belongs to that function's module, not to its
+	// frame — the frame is local, and an inner function reading a module constant is the same
+	// ordinary program (`def outer(): def inner(): return G`). The current global scope is the
+	// right answer there, and it is e.Vars itself at module level and in a module being imported.
+	if e.curModule != nil {
+		scope = e.curModule
+	}
+	e.funcModules[fd] = scope
+	e.anchorScope(scope)
+}
+
+// sameScope compares two scopes by identity, since a Go map is not comparable.
+func sameScope(a, b map[string]int64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return reflect.ValueOf(a).Pointer() == reflect.ValueOf(b).Pointer()
+}
+
+// anchorScope keeps a module scope reachable for the collector, once.
+func (e *Evaluator) anchorScope(scope map[string]int64) {
+	if scope == nil {
+		return
+	}
+	if e.globalScopeAt == nil {
+		e.globalScopeAt = map[uintptr]bool{}
+	}
+	// A Go map is not comparable, so its identity is its address: one def per module
+	// would otherwise append the same scope a hundred times and multiply the GC's work.
+	k := reflect.ValueOf(scope).Pointer()
+	if e.globalScopeAt[k] {
+		return
+	}
+	e.globalScopeAt[k] = true
+	e.globalScopes = append(e.globalScopes, scope)
+}
+
+// globalLookup resolves a name against the global scope of the call in flight.
+func (e *Evaluator) globalLookup(name string) (int64, bool) {
+	scope := e.curModule
+	if scope == nil {
+		scope = e.moduleVars
+	}
+	if scope == nil {
+		return 0, false
+	}
+	// At module level e.Vars already *is* the module scope; comparing map identities is a
+	// pointer question, since a Go map is not comparable.
+	if reflect.ValueOf(scope).Pointer() == reflect.ValueOf(e.Vars).Pointer() {
+		return 0, false
+	}
+	v, ok := scope[name]
+	return v, ok
 }
 
 // EvalProgram evaluates prog's top-level statements and returns the value of
@@ -834,6 +928,9 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 				mo.class = s.Name
 				mo.mname = fd.Name
 				mo.fn = fd
+				// A method reads module globals the same way a function does — `k = 5`
+				// at module level is visible inside `def get(self)`.
+				e.rememberModuleScope(fd)
 				cls.attrs[fd.Name] = methodID
 			}
 		case *ImportStmt:
@@ -862,6 +959,7 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 				}
 				continue
 			}
+			e.rememberModuleScope(s)
 			if e.inCall {
 				e.Vars[s.Name] = e.allocClosure(s, e.Vars)
 			} else {
@@ -1365,6 +1463,9 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return v, nil
 	case *Name:
 		if v, ok := e.Vars[n.Value]; ok {
+			return v, nil
+		}
+		if v, ok := e.globalLookup(n.Value); ok {
 			return v, nil
 		}
 		if id, ok := e.classIDs[n.Value]; ok {
@@ -3401,9 +3502,14 @@ func (e *Evaluator) importModule(mod string) error {
 	// obj ids come from e's shared heap, so the module obj stays valid.
 	savedVars := e.Vars
 	savedFuncs := e.funcs
+	savedCurModule := e.curModule
 	e.Vars = map[string]int64{}
 	e.funcs = map[string]*FuncDef{}
 	e.externs = map[string]*ExternDecl{}
+	// While the module body runs, ITS scope is the global scope for everything it defines:
+	// a function in an imported module resolves its bare names there, not in the importer.
+	e.curModule = e.Vars
+	e.anchorScope(e.Vars)
 	// While the module body runs, neither the importing scope nor the module's own
 	// scope is reachable through e.Vars, so both are roots explicitly (L7.2) —
 	// otherwise a collection during an import would sweep live module globals.
@@ -3413,7 +3519,7 @@ func (e *Evaluator) importModule(mod string) error {
 	e.popFrame()
 	e.popFrame()
 	if err != nil {
-		e.Vars, e.funcs = savedVars, savedFuncs
+		e.Vars, e.funcs, e.curModule = savedVars, savedFuncs, savedCurModule
 		return err
 	}
 	modID := e.allocObj("module")
@@ -3431,7 +3537,7 @@ func (e *Evaluator) importModule(mod string) error {
 		c.env = map[string]int64{}
 		m.attrs[name] = cID
 	}
-	e.Vars, e.funcs = savedVars, savedFuncs
+	e.Vars, e.funcs, e.curModule = savedVars, savedFuncs, savedCurModule
 	e.Vars[mod] = modID
 	return nil
 }
@@ -4136,7 +4242,13 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 	// leaked the interpreter's own dispatch into the user's traceback while leaving the
 	// exception class empty, so no handler could ever have matched it (Gap R.25, ADR 0214).
 	if name, ok := n.Fn.(*Name); ok {
-		if v, bound := e.Vars[name.Value]; bound {
+		// A module-level binding counts as a binding here too: `cb = 5` then `cb()` is
+		// "'int' object is not callable", not a NameError for a name that does exist.
+		v, bound := e.Vars[name.Value]
+		if !bound {
+			v, bound = e.globalLookup(name.Value)
+		}
+		if bound {
 			return 0, exnError("TypeError", e.valueTypeName(v)+" object is not callable")
 		}
 		return 0, exnError("NameError", "name '"+name.Value+"' is not defined")

@@ -3680,3 +3680,48 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
   user could still have taken is the most expensive sentence in the compiler.
 - **Discipline held:** probes and ledger rows plus a test and doc repairs in one commit; the R.38
   finding recorded, not bundled. Matrix now 87 cases / 64 parity / 45 match / 28 debt / 14 n-a, 0 drift.
+
+## Cycle 168 — the module is a scope too (Gap R.35, ADR 0220)
+
+- **The most ordinary program can be the one missing.** `v = 1` then `def g(): return v` failed in
+  both backends — NameError in the interpreter, `undefined name "v" (no binding for it; assign it
+  before use)` in the compiled one — while a closure over an enclosing *function* worked fine. The
+  scope chain existed; the module was just not on the end of it. Nothing in a hundred ADRs had noticed,
+  because nobody had asked whether a script could read its own constants. Measure the everyday shapes,
+  not just the exotic ones.
+- **Fix the whole rule, but scope the fix to where the rule lives.** My first attempt pre-registered
+  every top-level assignment name in the module scope inside `Analyze`. `TestHoistingIsNotAFreeForAll`
+  and `TestForwardReferenceIsNotARefusal` failed within seconds — correctly, because module code runs
+  line by line and `print(total)` before `total = 3` *is* a bug. The right shape was narrower: collect
+  those names into a set and consult it only while analysing a function body, next to the existing
+  deferred-def rule from ADR 0197 ("the body runs later"), applied to data. Two existing tests earning
+  their keep is the best review you can get.
+- **Where a name resolves depends on where the function was written, not where it is called.**
+  Recording the defining scope per `*FuncDef` (`rememberModuleScope`) gave three behaviours at once: a
+  nested def reaches the module instead of its parent's frame; a function defined in an imported module
+  resolves bare names in that module rather than the importer's; and a rebound module value is seen
+  live between calls. A snapshot of the module at def time would have looked right on the first test
+  and been wrong on the other two.
+- **A new way to hold a value is a new thing the collector must know about.** Module scopes are not on
+  the frame stack, and now a function could read one arbitrarily late, so `anchorScope` registers each
+  as a permanent root and `rootHandles` scans them — with dedupe by map address (`reflect.ValueOf(m).Pointer()`,
+  since a Go map is not comparable) because one entry per `def` would have multiplied the GC's work. In
+  this collector's history, an unrooted live map is exactly how "the list reads back empty" is born.
+- **Name the lenient divergence instead of shipping it silently.** The fallback makes
+  `print(v)` before `v = 1` in the same body print the module's `10` where CPython raises
+  `UnboundLocalError`. It is the forgiving direction, the checker already says `possibly unbound`, and
+  the fix needs the checker's local set to reach the frame — so it is Gap R.39 with a measured repro,
+  in the ADR's rejected-alternatives list and in the roadmap, not a footnote in a commit message.
+- **The compiled half stays pinned, including the part that lies quietly.** Three shapes refuse with a
+  message whose "the interpreter reports the same error" is now demonstrably false (a second instance
+  for Gap R.38), and two shapes — a method and a nested def reading a module name — *compile and print
+  `0`*. A refusal you can test is a known gap; a silent zero is a wrong answer, so
+  `TestModuleScopeIsStillOutOfReachForCompiledCode` pins both, with the deletion instruction.
+- **Process lesson, at the third commit in a row:** the previous cycle shipped a failing test. I ran the
+  full suite, *then* wrote the ADR/README/learnings, then committed — and the new ADR, the one whose
+  subject was "citations must resolve", was itself the file with the most dangling citations, because it
+  listed the wrong names it was fixing. Documentation is part of the change, so the suite runs after it:
+  docs written after the last green run are code written after the last green run.
+- **Also:** the citation test now covers 130+ names across roadmap, README, docs and the ADRs, and it
+  caught this within one run of being written — the value of a hygiene test is highest in the cycle
+  right after the one that writes it.

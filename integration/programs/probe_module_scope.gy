@@ -1,0 +1,43 @@
+# A function reads the module's names (roadmap Gap R.35, ADR 0220).
+#
+# Python resolves a name that is neither local nor captured against the module, at CALL time —
+# so a module constant may be defined below the function that reads it. The interpreter and
+# CPython agree on all five lines; the compiled backend cannot reach a module binding at all,
+# which is why this program is a debt row with the compiled leg recorded missing rather than a
+# parity case. See the roadmap entry for what each compiled shape does today.
+
+MAX = 40
+BASE = 5
+
+
+def twice() -> int:
+    return MAX * 2
+
+
+def later() -> int:
+    # `late` is assigned below, after this def: Python looks it up when the call runs.
+    return late
+
+
+class Counter:
+    def base(self) -> int:
+        # A method reads module names the same way a function does.
+        return BASE
+
+
+def outer() -> int:
+    def inner() -> int:
+        # A nested def reaches past its own frame and its enclosing frame to the module.
+        return MAX
+
+    return inner()
+
+
+def shadowed() -> int:
+    MAX = 1  # an assignment in the body makes this MAX local, as Python's does
+    return MAX
+
+
+late = 7
+
+print(twice(), later(), Counter().base(), outer(), shadowed())

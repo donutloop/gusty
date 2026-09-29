@@ -352,6 +352,13 @@ func (e *Evaluator) rootHandles(mark func(int64)) (traced, skipped int) {
 			root(id)
 		}
 	}
+	// Module scopes are not on the frame stack, and since a function may read them at any
+	// later point (Gap R.35) their bindings are permanent roots.
+	for _, gs := range e.globalScopes {
+		for _, id := range gs {
+			root(id)
+		}
+	}
 	for _, grp := range e.rootGroups {
 		for _, id := range grp {
 			root(id)

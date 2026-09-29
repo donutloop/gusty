@@ -192,8 +192,9 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
 		"sequence_ops",
-		"probe_operand_types",
-		"probe_percent_format", // Gap R.31 — no `%` string formatting; both legs refuse // Gap R.26 — an operator applied to the wrong operands
+		"probe_operand_types",  // Gap R.26 — an operator applied to the wrong operands
+		"probe_percent_format", // Gap R.31 — no `%` string formatting; both legs refuse
+		"probe_module_scope",   // Gap R.35 — a function cannot read the module's names (compiled)
 		"probe_unicode",        // L11.5 — strings are bytes, not code points
 		"probe_string_index",   // L11.5 — s[i] is a byte value, not a character
 		"probe_math_const",     // L11.6 — a stdlib float constant folds to int
@@ -383,6 +384,11 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
 		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n"}, {Backend: "aot", Missing: true}}},
+
+	"programs/probe_module_scope": {oracle: lang.OracleDebt,
+		reason: "the interpreter and CPython agree on all five values (a module constant read by a function, one defined below the def, a method reading one, a nested def reaching past both frames, and a local shadowing the global) — but the compiled backend refuses to lower the program at all: `undefined name \"MAX\" (no binding for it; assign it before use)`, whose claim that the interpreter reports the same error is false here too (it reports no error). Two other shapes -- a method reading a module name, a nested def reading one -- do not even refuse: they compile and print 0",
+		ref:    "roadmap Gap R.35 (compiled half); ADR 0220 (the interpreter and checker half); Gap R.38 for the untrue refusal",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "80 7 5 40 1\n"}, {Backend: "aot", Missing: true}}},
 
 	"programs/probe_percent_format": {oracle: lang.OracleDebt,
 		reason: "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",

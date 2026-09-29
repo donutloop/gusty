@@ -931,6 +931,26 @@ for i in range(n):
   Reading a name that this run never assigned is a `NameError` in the interpreter, matching
   CPython; the compiled backend currently loads the untouched slot and prints its contents (roadmap
   Gap R.36).
+- **The module is a scope too** (ADR 0220). A name a function reads is looked for in its own frame,
+  then in the closure environment captured where the function was written, then in the **module** the
+  function was defined in — at call time, so the binding may sit below the `def`:
+
+  ```py
+  def twice() -> int:
+      return MAX * 2      # MAX is a module name, looked up when twice() runs
+
+  MAX = 40
+  print(twice())          # 80
+  ```
+
+  A method reads module names the same way, and so does a `def` nested inside another function (its
+  global scope is the module its enclosing function was written in, not that function's frame). An
+  assignment inside a body makes the name *local* to that body — the module keeps its own value — and
+  a name nothing binds anywhere is still a catchable `NameError`, with the checker reporting
+  `undefined name` for it. Two known differences: the compiled backend cannot reach a module binding
+  from a function body at all (roadmap Gap R.35's remaining half), and reading a name that the same
+  body assigns further down returns the module's value where CPython raises `UnboundLocalError`
+  (roadmap Gap R.39).
 - `while`/`for` loops accept an optional `else:` clause that runs on normal
   completion and is skipped when the loop exits via `break`.
 - `break` exits the innermost loop; `continue` skips to the next iteration.

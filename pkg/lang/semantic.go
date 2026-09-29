@@ -62,9 +62,16 @@ type SemanticAnalyzer struct {
 	inFunc     bool
 	loopDepth  int
 	inferring  map[string]bool
-	definite   map[string]bool
-	locals     map[string]bool
-	branchDef  map[string]bool
+	// moduleBound holds every name a top-level statement tree can bind. It is consulted
+	// only from inside a function body: a function reads a module name when it is *called*,
+	// so the assignment may sit below the def (`def get(): return c` then `c = 5`), and
+	// calling that undefined was refusing the most ordinary module program (Gap R.35,
+	// ADR 0220). Module and class top level never consult it — a statement there runs the
+	// moment it is reached, which TestHoistingIsNotAFreeForAll defends.
+	moduleBound map[string]bool
+	definite    map[string]bool
+	locals      map[string]bool
+	branchDef   map[string]bool
 }
 
 func (an *SemanticAnalyzer) markDefinite(nm string) {
@@ -140,6 +147,13 @@ func Analyze(prog *Program) []Diagnostic {
 	// body* can see, not only the text below the call (see collectFuncs).
 	an.moduleDefs = map[string]*FuncDef{}
 	an.collectFuncs(prog.Stmts, an.moduleDefs)
+	// The same argument for module *variables*: a function reads a module name when it is
+	// *called*, so the binding may be below the def — `def get(): return c` then `c = 5` is
+	// how a module constant works, and the checker used to call it `undefined name` while the
+	// interpreter printed the value and CPython agreed (roadmap Gap R.35, ADR 0220). Names
+	// nothing binds at module level are still undefined; the pre-pass only says that a name
+	// bound somewhere at top level is a module name, dynamically typed until inferred.
+	an.collectModuleBindings(prog.Stmts)
 	// Module-level definitions that claim a built-in's name. They are legal (ADR 0199), but a
 	// call above them means two different things to the two backends, so the checker keeps their
 	// positions to be able to say so (Gap R.12, ADR 0205).
@@ -257,6 +271,71 @@ func (an *SemanticAnalyzer) addDiagFull(d Diagnostic) {
 // belongs to the containing scope, since those statements create no scope of their own.
 // A nested def is collected when the body that contains it is analyzed, so a pair of
 // sibling nested defs can call each other too.
+// collectModuleBindings pre-registers every name a top-level statement tree can bind, so a
+// function body may read it regardless of where in the module the assignment sits. Nested
+// function and class bodies are not walked: their assignments bind in their own scopes.
+func (an *SemanticAnalyzer) collectModuleBindings(list []Stmt) {
+	if an.moduleBound == nil {
+		an.moduleBound = map[string]bool{}
+	}
+
+	for _, st := range list {
+		switch n := st.(type) {
+		case *AssignStmt:
+			if nm, ok := n.Target.(*Name); ok {
+				an.moduleBound[nm.Value] = true
+			} else if t, ok := n.Target.(*Tuple); ok {
+				for _, el := range t.Elems {
+					if nm, ok := el.(*Name); ok {
+						an.moduleBound[nm.Value] = true
+					}
+				}
+			}
+		case *AugAssignStmt:
+			if nm, ok := n.Target.(*Name); ok {
+				an.moduleBound[nm.Value] = true
+			}
+		case *ForStmt:
+			for _, nm := range loopVarNames(n.Var) {
+				an.moduleBound[nm] = true
+			}
+			an.collectModuleBindings(n.Body)
+			an.collectModuleBindings(n.Else)
+		case *WhileStmt:
+			an.collectModuleBindings(n.Body)
+			an.collectModuleBindings(n.Else)
+		case *IfStmt:
+			an.collectModuleBindings(n.Then)
+			for _, e := range n.Elifs {
+				an.collectModuleBindings([]Stmt{e})
+			}
+			an.collectModuleBindings(n.Else)
+		case *WithStmt:
+			if n.As != nil {
+				an.moduleBound[n.As.Value] = true
+			}
+			an.collectModuleBindings(n.Body)
+		case *TryStmt:
+			an.collectModuleBindings(n.Body)
+			for _, e := range n.Excepts {
+				an.collectModuleBindings(e.Body)
+			}
+			an.collectModuleBindings(n.Finally)
+		case *MatchStmt:
+			for _, c := range n.Cases {
+				for _, p := range append([]Expr{c.Pattern}, c.Or...) {
+					for nm := range matchPatternNames(p) {
+						an.moduleBound[nm] = true
+					}
+				}
+				an.collectModuleBindings(c.Body)
+			}
+		case *ImportStmt:
+			an.moduleBound[n.Module] = true
+		}
+	}
+}
+
 func (an *SemanticAnalyzer) collectFuncs(list []Stmt, into map[string]*FuncDef) {
 	var walk func([]Stmt)
 	walk = func(stmts []Stmt) {
@@ -977,6 +1056,13 @@ func (an *SemanticAnalyzer) inferExprTy(e Expr) *Type {
 			// this — a statement there runs the moment it is reached.
 			if dt := an.lookupDeferred(n.Value); dt != nil {
 				return dt
+			}
+			// The same "the body runs later" argument that admits a def declared below its
+			// caller (ADR 0197), applied to data: a module variable the module binds anywhere,
+			// below this def or above it, is a name this function will find at call time
+			// (roadmap Gap R.35, ADR 0220). Dynamic type, so gradual typing absorbs it.
+			if an.inFunc && an.moduleBound[n.Value] {
+				return TDyn()
 			}
 			if an.classes[n.Value] {
 				return TDyn()

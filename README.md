@@ -300,6 +300,26 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **The module is a scope too** (ADR 0220) — this program did not exist:
+
+  ```py
+  def twice() -> int:
+      return MAX * 2
+
+  MAX = 40
+  print(twice())      # CPython 80 · interpreter: NameError · compiled: refusal
+  ```
+
+  The scope chain reached an enclosing function but stopped before the module, so a script could not
+  read a constant from a function — the most ordinary shape there is. A function's name is now
+  resolved in its frame, then the captured closure environment, then the module it was *defined* in
+  (a nested def gets its enclosing function's module; a function in an imported module gets that
+  module), and because the lookup happens at call time the assignment may sit below the `def`. Each
+  module scope became a permanent GC root for the same reason. The checker pre-collects top-level
+  binding names and consults them *only* inside function bodies — module code still runs line by line,
+  and two existing tests caught my first attempt doing it globally. The compiled leg still cannot
+  reach a module binding (three shapes refuse, two print `0`), pinned as debt in
+  `programs/probe_module_scope.gy`.
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

@@ -2311,40 +2311,60 @@ refusal or a verification failure but never a wrong value.
 
 
 
-### R.35 — a function cannot read a module-level name (OPEN, both backends)
+### R.35 — a function cannot read a module-level name (HALF FIXED, compiled half OPEN, ADR 0220)
 
-Found while measuring Gap R.24, and much the larger of the two. This is ordinary Python:
+This program did not exist in the language:
 
 ```gusty
 v = 1
 def g() -> int:
     return v
-print(g())
+print(g())          # CPython: 1 — gusty: NameError (interp) / refusal (compiled)
 ```
 
-CPython prints `1`. The interpreter raises `NameError: name 'v' is not defined` (exit 3) and the
-compiled backend refuses with `undefined name "v" (no binding for it; assign it before use) — the
-interpreter reports the same error`, exit 1. That message claims the two backends agree, and they
-do — on a wrong answer, the failure mode this loop keeps meeting. Measured:
+Measured as a matrix before anything was touched: the interpreter raised `NameError` and the compiled
+backend refused, for a module int, for a name assigned **below** the `def`, for `len(xs)` on a module
+list, for a method reading a module name, and for a nested def reaching past two frames. A closure
+reading an enclosing *function* worked — the scope chain existed and the module was simply not on the
+end of it. So this was the most ordinary shape in a script, missing.
 
-| shape | interpreter | compiled | CPython |
-|-------|-------------|----------|---------|
-| read a module int defined before the `def` | NameError | refusal | `1` |
-| read a module int defined **after** the `def` (Python resolves at call time) | NameError | refusal | `40` |
-| `len(xs)` on a module-level list | NameError | refusal | `3` |
-| a method reading a module name | NameError | refusal | `5` |
-| a closure reading an enclosing **function** variable | works | works | same |
+**Interpreter and checker: fixed (cycle 168).** A name a function reads is resolved in its frame, then
+the captured closure env, then the module the function was *defined* in — recorded per `*FuncDef` by
+`rememberModuleScope`, so a nested def gets its enclosing function's module and a function defined in
+an imported module gets that module, not the importer's. Because a module scope can now be read
+arbitrarily late, each one is anchored as a permanent GC root (`globalScopes`, scanned by
+`rootHandles`) — an unrooted map here is how "the list reads back empty" happens in this collector.
+The checker pre-collects the names top-level statements can bind and consults that set **only inside a
+function body**, beside the deferred-def rule of ADR 0197; module top level stays order-sensitive, which
+two existing tests (`TestHoistingIsNotAFreeForAll`, `TestForwardReferenceIsNotARefusal`) caught red-handed
+when a first attempt pre-registered the names in the module scope itself. Twelve shapes now agree with
+CPython on the interpreter (`pkg/lang/module_scope_test.go`, `integration/module_scope_test.go`).
 
-The closure path has a scope chain; the module scope is simply not on the end of it. Fix in the
-order AGENTS.md sets — interpreter first (a call's lookup falls back to module scope; assignment
-inside a function still creates a local, as Python does), then the codegen half, which is why its
-refusal is worded as a missing binding. A parity program accompanies the fix; until then this row is
-the evidence, measured rather than recalled.
+**Compiled: still open.** Three shapes refuse with `undefined name "MAX" (no binding for it; assign it
+before use)` — a sentence whose claim that the interpreter reports the same error is now measurably
+false (Gap R.38 gained a second instance) — and two shapes are worse: a method reading a module name,
+and a nested def reading one, compile and print `0`, because the slot is never written (the Gap R.36
+signature). `programs/probe_module_scope.gy` is the debt row (interpreter pinned at `80 7 5 40 1`,
+compiled leg missing), and `TestModuleScopeIsStillOutOfReachForCompiledCode` pins both the refusals and
+the silent zeros, naming its own deletion. The fix is module bindings in real global slots the collector
+scans, which is a cycle of its own.
 
-Until it lands the language cannot express a module constant read by a function — the most common
-shape in a script — so this is the highest-priority item in Gap R, alongside the compiled exception-clearing half of R.21 and R.36.
+### R.39 — reading a name the body also assigns below should be UnboundLocalError (OPEN, interpreter)
 
+```gusty
+v = 10
+def f() -> int:
+    print(v      # CPython: UnboundLocalError — gusty: prints 10
+    v = 1
+    return v
+```
 
+A consequence of Gap R.35's lenient fallback, recorded rather than glossed: the frame does not know
+which names are locals before it runs, so the read falls through to the module instead of refusing.
+The divergence is toward the forgiving answer, and the checker covers the shape with
+`possibly unbound`, but the runtime should raise `UnboundLocalError` (a `NameError` subclass, so a
+program catching `NameError` behaves like CPython). The plumbing is the checker's per-function local
+set reaching `callFunc`, where it can seed the frame.
 
 ### R.36 — an unwritten variable slot reads as raw memory instead of raising NameError (OPEN, compiled only)
 

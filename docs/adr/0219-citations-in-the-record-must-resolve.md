@@ -7,16 +7,18 @@ Accepted (cycle 167). Enforced by `integration/docs_citations_test.go`.
 ## Context
 
 Writing the ADR for the compiled exception-clearing fix (0218) meant re-reading the roadmap entry it
-closed. That entry cited two programs as its standing evidence — `probe_raise_in_func.gy`,
-`probe_try_return_except.gy` — and neither file exists in `integration/programs/`. Sweeping the whole
+closed. That entry cited two programs as its standing evidence — `probe_raise_in_func` and
+`probe_try_return_except`, both written as `.gy` files that were never written — and neither exists in
+`integration/programs/`. Sweeping the whole
 normative record found seven dangling citations, of three different kinds:
 
 - **a rename nobody followed through**: the corpus file is `empty_set.gy`, the citation says
-  `probe_empty_set.gy`; `comprehension_calls.gy` vs `probe_comprehension_call.gy`;
-  `method_function_name_clash.gy` vs `probe_method_function_name_clash.gy`;
-  `probe_operand_types.gy` vs `probe_operator_operand_types.gy`.
+  `empty_set.gy` cited under `probe_empty_set`; `comprehension_calls.gy` cited under
+  `probe_comprehension_call`; `method_function_name_clash.gy` cited under
+  `probe_method_function_name_clash`; `probe_operand_types.gy` cited under
+  `probe_operator_operand_types`.
 - **a historical name kept in prose after the file was promoted**: ADR 0190 describes "two new probes
-  (`probe_sort_methods.gy`, `probe_comprehension_call.gy`)" which ADR 0191 records as having become
+  (`probe_sort_methods`, `probe_comprehension_call`)" which ADR 0191 records as having become
   `sorting.gy` and `comprehension_calls.gy`. Both sentences are true; read together, one cites files
   that no longer exist.
 - **a claim of pinned debt with no file and no ledger row**: Gap R.31 said two `%`-formatting shapes
