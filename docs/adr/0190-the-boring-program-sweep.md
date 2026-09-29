@@ -35,7 +35,8 @@ for corpus growth, not a test-coverage metric — the point is that the boring p
 someone with no reason to doubt it, which is precisely when a wrong answer is invisible.
 
 **2. Sweeps are a first-class cycle type, and their output is a ledger row.** This cycle's diff is
-corpus + ledger only: two new probes (`probe_sort_methods.gy`, `probe_comprehension_call.gy`), each
+corpus + ledger only: two new probes — `programs/sorting.gy` and `programs/comprehension_calls.gy`,
+under the names they were promoted to once their debts were paid — each
 with a reason, a roadmap owner, and per-leg pins of what both backends currently do — including
 the *diagnostic text* (`Err: "string method sort"`, `Err: "comprehension element must be
 constant"`), so a future cycle that changes the message without fixing the feature trips the drift

@@ -3644,3 +3644,39 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
   with no file and no ledger row. Recorded for the next commit: repair the names, create or retract the
   claims, and add a test that a citation to `programs/<name>.gy` resolves — a claim about an artifact
   that does not exist is worse than no claim, because it stops anyone looking.
+
+## Cycle 167 — the record must point at things that exist (ADR 0219)
+
+- **A citation is a claim, and claims get tested.** Writing ADR 0218 meant re-reading the roadmap entry
+  it closed, which cited `probe_raise_in_func.gy` and `probe_try_return_except.gy` as standing evidence.
+  Neither file exists. Sweeping every normative document found seven dangling citations in three
+  shapes: renames nobody followed (`empty_set.gy` cited as `probe_empty_set.gy`,
+  `comprehension_calls.gy` as `probe_comprehension_call.gy`, `probe_operand_types.gy` as
+  `probe_operator_operand_types.gy`), a historical name left in prose after the file was promoted (ADR
+  0190's two probes became `sorting.gy` and `comprehension_calls.gy` per ADR 0191), and the worst one:
+  Gap R.31 asserting two shapes "stay pinned as `programs/probe_percent_format.gy`" when no such
+  program, and no ledger row, had ever existed. A claim about an artifact that does not exist is worse
+  than no claim — it is the reason nobody looks.
+- **The stale claim was doubly stale.** R.31 said the interpreter *returns* `0` for `print("%s" % 2)`.
+  Measured now: it raises a catchable `TypeError`, because the operand gate (ADR 0215) landed after that
+  sentence was written. So the fix was not only to create the probe and its debt row, but to rewrite the
+  entry for what the language does today — `str % int: TypeError` ×3 plus `7 % 2`, `-7 % 2`, so the probe
+  distinguishes "no formatting" from "no percent at all".
+- **Future tense needs a marker, not a parser.** Two roadmap DoDs cite programs that do not exist yet,
+  legitimately. The rule that makes both readable is the `(planned)` marker: existence-checked citations
+  are claims about the corpus, a marked one is a promise. Detecting future tense from the surrounding
+  English would have failed in the direction that matters — passing silently.
+- **Write the checker so it cannot pass vacuously.** The test fails if it checked fewer than twenty
+  citations. Same instinct as the property generator having to be able to fail, and the reason the near-
+  miss rules (`probe_` prefix on/off, trailing `s`) exist: a bare `math.gy` in an `import` example is
+  prose, while `probe_empty_set.gy` is drift, and only the second should stop the build.
+- **Audit claims about the other backend while you are auditing claims at all.** Six refusal messages in
+  codegen assert what the interpreter would do. Five are true when you run them — `"ab" * 2` really does
+  print `abab`, sets really do raise `TypeError`. One is false: `print("%s" % 2)` gets "the interpreter
+  evaluates it" from a single operator-parameterised template, and the interpreter raises too. Recorded
+  as Gap R.38 with its measured table rather than fixed here, because the fix is to *generate* that
+  clause from `checkBinOp` — the interpreter's own operand predicate — and that is codegen's business, not
+  this commit's. A refusal is the last thing a stuck program reads; getting it wrong about the path the
+  user could still have taken is the most expensive sentence in the compiler.
+- **Discipline held:** probes and ledger rows plus a test and doc repairs in one commit; the R.38
+  finding recorded, not bundled. Matrix now 87 cases / 64 parity / 45 match / 28 debt / 14 n-a, 0 drift.

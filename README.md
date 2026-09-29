@@ -289,6 +289,17 @@ falls back to dynamic dispatch.
   run. Every edge that leaves an accepting arm now clears the flag, including the `return`, `break` and
   `continue` that stepped past the one edge the clear was on; an arm's own `raise` and the unmatched
   re-raise deliberately do not, and a program whose only arm always raises must emit no clear at all.
+- **Citations in the record must resolve (ADR 0219)** — the roadmap said two `%`-formatting shapes
+  "stay pinned as `programs/probe_percent_format.gy`"; that program did not exist, had no ledger row,
+  and its sentence had long since gone stale (the interpreter no longer returns `0` there, it raises).
+  It was one of seven dangling citations found in one pass — renamed files still cited under their old
+  names, a historical name left in prose after the file was promoted, a claim of measured debt with no
+  measurement. `TestRecordCitationsResolveToRealPrograms` now scans roadmap, README, `docs/` and every
+  ADR: `programs/NAME.gy` must exist unless marked `(planned)` (the notation for a program a roadmap
+  item still owes), a bare `probe_*.gy` must exist because the prefix is a claim about the corpus, and a
+  near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
+  allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
+  (R.31), but now it has the artifact its entry always claimed.
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

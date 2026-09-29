@@ -103,7 +103,7 @@ the program did not define keeps its name.**
   plus `class Timer: def time(self, x)` makes `time(x)` inside a body report
   `undefined name "x"`: it is being checked against the method's parameters, whose `self` is not
   in scope. The evaluator and CPython both run the program; pinned as
-  `programs/probe_method_function_name_clash.gy`.
+  `programs/method_function_name_clash.gy`.
 
 ## Alternatives considered
 

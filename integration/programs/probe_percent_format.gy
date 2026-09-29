@@ -1,0 +1,25 @@
+# String interpolation with the `%` operator (roadmap Gap R.31, ADR 0215).
+#
+# CPython formats these three lines. Pyre has no `%` formatting yet, so the interpreter refuses
+# with the operand TypeError the operand gate introduced (a catchable trap, not a substitute
+# answer), and the compiled backend refuses to lower the line at all -- which is why this program
+# is a debt row with the compiled leg recorded missing rather than a parity case.
+
+try:
+    print("%s" % 2)
+except TypeError:
+    print("str % int: TypeError")
+
+try:
+    print("%d-%d" % (1, 2))
+except TypeError:
+    print("str % tuple: TypeError")
+
+try:
+    print("hi %s" % "you")
+except TypeError:
+    print("str % str: TypeError")
+
+# Ordinary remainder still works, and is here so the probe distinguishes "no formatting" from
+# "no percent at all".
+print(7 % 2, -7 % 2)

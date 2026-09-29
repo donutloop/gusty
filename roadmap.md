@@ -606,7 +606,7 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
   tag, so the ADR 0175 refusal retires and the `@estr[h]` per-object flags
   (ADR 0174) collapse into the tag. Kills the whole `store i32 @.strN` /
   `ret i32 @.str1` / `rt_append(i32, i32 @.lstN)` / `store i32 @.setN` invalid-IR
-  family at the source. DoD: `programs/nested_data.gy` + `programs/heterogeneous.gy`
+  family at the source. DoD: `programs/nested_data.gy (planned)` + `programs/probe_heterogeneous.gy`
   byte-identical on both backends *and* equal to CPython; no
   `i32 @\.(str|lst|dict|set)` ever appears in an argument or store position
   (extend `runtime_ir_test.go` to assert it module-wide). Pairs with L7.2/L7.3 —
@@ -707,7 +707,7 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     `i32 @.strN` / `ret i32 @.str1` / `rt_append(i32, i32 @.lstN)` invalid-IR family
     (Gap J.6) disappears once elements are tagged, at which point `runtime_ir_test.go`
     should assert module-wide that no handle constant appears in a value position;
-    (4) `programs/nested_data.gy` + `programs/heterogeneous.gy` byte-identical across
+    (4) `programs/nested_data.gy (planned)` + `programs/probe_heterogeneous.gy` byte-identical across
     backends and equal to CPython; (5) `@heap` elements carrying tag-and-payload together
     rather than two parallel arrays — cleaner, but a layout change touching every container
     operation, and the pairing rule above already makes the failure mode unreachable.
@@ -2215,7 +2215,7 @@ Every other mistyped pair is a compile-time refusal there (exit 1, `codegen: …
 What is missing is the runtime guard ADR 0212 and ADR 0215 ask for: test the operand kinds the
 static type cannot pin down and `raiseTo(exnCode("TypeError"), …)` rather than fold. Fix with the
 same `branchRaise`/`raiseTo` machinery the division guards use, and promote
-`programs/probe_operator_operand_types.gy`.
+`programs/probe_operand_types.gy`.
 
 ### R.28 — `%` truncated toward zero instead of flooring (CLOSED, ADR 0216)
 
@@ -2272,14 +2272,23 @@ both backends, plus the identity on the compiled path).
 ### R.31 — `%` on a string is not formatting (OPEN, feature)
 
 ```gusty
-print("%s" % 2)          # interpreter: 0      CPython: 2
-print("%d-%d" % (1, 2))  # interpreter: %d-%d  CPython: 1-2
+print("%s" % 2)          # CPython: 2          gusty: TypeError, unsupported operand type(s)
+print("%d-%d" % (1, 2))  # CPython: 1-2        gusty: TypeError
+print("hi %s" % "you")   # CPython: hi you     gusty: TypeError
 ```
 
-String interpolation with the format operator is a feature, not a bug, and the interpreter currently
-returns the left operand (or 0) instead. Until it exists, mistyped `%` raises (ADR 0215) and these
-two shapes stay pinned as `programs/probe_percent_format.gy` so the gap keeps a measured output
-rather than a memory.
+String interpolation with the format operator is a feature, not a bug. It used to be a *lie*: the
+interpreter returned the left operand (`%d-%d`) or `0`, and `print("%s" % 2)` exited 0 having printed
+a number no one wrote. The operand gate (ADR 0215, Gap R.26) turned that into a catchable `TypeError`,
+so the shape is now an honest absence rather than a wrong answer — better, and still not what the line
+means. `programs/probe_percent_format.gy` is the ledger row: all three shapes reported from inside a
+`try`, plus `7 % 2` and `-7 % 2` so the probe distinguishes "no formatting" from "no percent at all".
+
+The compiled leg refuses to lower `str % x` at all, with a message worth fixing on the way: *"the
+interpreter evaluates it"* is false for this operator — the interpreter raises too. That sentence is
+written for string ordering, where the interpreter really does evaluate; a refusal that describes the
+other backend inaccurately is exactly the kind of claim this loop keeps having to retract, and a
+refusal message should be generated from what the other path does, not pasted from a neighbour's case.
 
 
 
@@ -2368,6 +2377,29 @@ the same `NameError` trap the interpreter raises, with the same wording, instead
 Names definite on every path keep their direct load, so no cost is paid by ordinary code. Until then
 `TestUnboundAfterPartialMatchReadsGarbageInCompiled` pins the divergence and says what to delete.
 
+### R.38 — a refusal message claims something false about the other backend (OPEN, diagnostics)
+
+The compiled backend refuses some programs by telling you what the interpreter would have done. Most
+of those sentences are true; one is not. Measured pair by pair:
+
+| refusal emitted by codegen | its claim | what the interpreter actually does |
+|------------------------------|-----------|-------------------------------------|
+| `operator "%s-format" on a string` — `print("%s" % 2)` | "the interpreter evaluates it" | **raises `TypeError`** (exit 3) |
+| `operator "*" on a string` — `print("ab" * 2)` | "the interpreter evaluates it" | prints `abab` ✓ true |
+| concatenating a runtime string | "the interpreter supports it" | prints `hello world` ✓ true |
+| compiled dict literal with string keys/values | "the interpreter supports string and other keys" | true, and the compiled leg supports it too now |
+| sets do not support item assignment | "the interpreter raises TypeError" | raises ✓ true |
+| `undefined name` | "the interpreter reports the same error" | NameError ✓ true |
+
+The message is one template, `operator %q on a string is not supported in the AOT backend; the
+interpreter evaluates it`, parameterised by operator — so it asserts the same thing about `%`, which
+no backend implements, and `*`, which one does. The fix is to stop pasting the claim and derive it:
+`checkBinOp(op, l, r)` in the interpreter is the single predicate that answers "would this operand pair
+raise?", so codegen can ask it and say either "the interpreter evaluates it" or "neither backend
+supports this yet (Gap …)". A refusal is the last thing a stuck program prints, and a sentence about
+the other path that is true for the operator two lines above and false for this one is how someone
+ends up trusting an answer that was never available.
+
 ### R.37 — a constant operation that should trap is refused at compile time (OPEN, compiled only)
 
 `[][0]` and `int("x")` anywhere in a program, even inside a `try` the handler of which would catch
@@ -2421,7 +2453,7 @@ with the enclosing class name saved and restored around the class body so a def 
 cannot inherit it. A bare-name call can now only resolve to a module function or a nested def, which
 is the only definition whose arity the call site could possibly match.
 
-`programs/probe_method_function_name_clash.gy` was promoted to `programs/method_function_name_clash.gy`
+`programs/method_function_name_clash.gy` was promoted to `programs/method_function_name_clash.gy`
 in the parity corpus (`oracle: "match"`), and its ledger row deleted — `TestOracleProbeRowsAreRecordedAsDebt`
 fails a probe whose debt has been paid, which is how a known divergence gets turned back into
 regression coverage rather than left as a permanent carve-out. Because methods were never

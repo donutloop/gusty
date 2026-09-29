@@ -192,15 +192,16 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
 		"sequence_ops",
-		"probe_operand_types", // Gap R.26 — an operator applied to the wrong operands
-		"probe_unicode",       // L11.5 — strings are bytes, not code points
-		"probe_string_index",  // L11.5 — s[i] is a byte value, not a character
-		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
-		"probe_float_numeric", // L11.6 — //, /=, float % and float params
-		"probe_enumerate",     // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
-		"probe_fn_value",      // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",       // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",  // Gap L.5 — print writes while it evaluates
+		"probe_operand_types",
+		"probe_percent_format", // Gap R.31 — no `%` string formatting; both legs refuse // Gap R.26 — an operator applied to the wrong operands
+		"probe_unicode",        // L11.5 — strings are bytes, not code points
+		"probe_string_index",   // L11.5 — s[i] is a byte value, not a character
+		"probe_math_const",     // L11.6 — a stdlib float constant folds to int
+		"probe_float_numeric",  // L11.6 — //, /=, float % and float params
+		"probe_enumerate",      // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
+		"probe_fn_value",       // L11.7 — a lambda cannot be called through a parameter
+		"probe_fn_name",        // L11.7 — a def'd name is not a value at all
+		"probe_print_atomic",   // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 
@@ -382,6 +383,11 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
 		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n"}, {Backend: "aot", Missing: true}}},
+
+	"programs/probe_percent_format": {oracle: lang.OracleDebt,
+		reason: "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
+		ref:    "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "str % int: TypeError\nstr % tuple: TypeError\nstr % str: TypeError\n1 1\n"}, {Backend: "aot", Missing: true}}},
 
 	"programs/probe_operand_types": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all seven handler lines, but the compiled backend answers `1 + None` with a value instead of raising and refuses the rest at compile time, so the compiled leg never completes",
