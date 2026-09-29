@@ -95,6 +95,15 @@ sentence as a warning and as an error, and one message under two codes are all s
 not post-process to remove duplicates, and do not treat a repeated count as "the same issue in two
 places" — if two positions are wrong, you are told twice.
 
+**A built-in name claimed by a `def` must be defined above every module-level use** (Gap R.12,
+ADR 0205). `def print`, `def range`, `def len` are legal, and the program's definition wins from its
+`def` onwards. A module-level call to that name *above* the definition is refused —
+`"range" is a built-in here, but this module defines it below, at line 5: … move the definition above
+every use, or rename it` — because that is the one place the interpreter (execution order) and the
+compiled backend (definitions visible module-wide) would run different programs from one file. Calls
+inside function bodies and methods named after built-ins are unaffected. For a code generator: emit
+your `def`s before the code that calls them, or rename.
+
 **The calling contract is enforced in both directions** (Gap R.10, ADR 0201). A user-defined
 function is checked for arity at the call: `function "f" expects N arguments, got M` (positional
 shortfall), `function "f" accepts N arguments, got more` (too many), `function "f" is missing

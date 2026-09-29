@@ -40,13 +40,14 @@ type SemanticAnalyzer struct {
 	funcs map[string]*FuncDef
 	// methods holds the same definitions keyed by `Class.method`, so a method and a module
 	// function of one name are two entries rather than one overwriting the other (Gap R.8).
-	methods    map[string]*FuncDef
-	seenDiag   map[string]struct{}
-	curClass   string
-	inClass    bool
-	externs    map[string]*ExternDecl
-	exceptions map[string]bool
-	classes    map[string]bool
+	methods         map[string]*FuncDef
+	predeclaredDefs map[string]*FuncDef
+	seenDiag        map[string]struct{}
+	curClass        string
+	inClass         bool
+	externs         map[string]*ExternDecl
+	exceptions      map[string]bool
+	classes         map[string]bool
 	// classList records the declared base chain so nominal subtyping (and the
 	// covariant/contravariant rules that reach into class-typed arguments) can
 	// walk it. It is filled by a pre-pass so a subclass may be referenced before
@@ -112,6 +113,15 @@ func Analyze(prog *Program) []Diagnostic {
 	// body* can see, not only the text below the call (see collectFuncs).
 	an.moduleDefs = map[string]*FuncDef{}
 	an.collectFuncs(prog.Stmts, an.moduleDefs)
+	// Module-level definitions that claim a built-in's name. They are legal (ADR 0199), but a
+	// call above them means two different things to the two backends, so the checker keeps their
+	// positions to be able to say so (Gap R.12, ADR 0205).
+	an.predeclaredDefs = map[string]*FuncDef{}
+	for nm, fd := range an.moduleDefs {
+		if predeclaredNames[nm] {
+			an.predeclaredDefs[nm] = fd
+		}
+	}
 	// predeclare builtins
 	an.scope.define("print", TFunc(nil, TVoid()))
 	an.scope.define("range", TIter(TInt()))
@@ -1096,6 +1106,22 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 		}
 		if fd := an.userFunc(name.Value); fd != nil {
 			return an.inferUserCall(fd, n)
+		}
+		// A module that claims a built-in name owns it — but only from its definition onwards,
+		// because that is when the binding exists. Above the definition the two backends disagree:
+		// the interpreter, executing in order, still reaches the built-in, while codegen, which emits
+		// every function before the body, resolves the call to the program's definition (roadmap Gap
+		// R.12, ADR 0205). Two engines printing different things from one file is not something a
+		// programmer can debug, so the program is refused where the ambiguity is written, with the
+		// line the definition is on.
+		if an.curFn == nil {
+			if fd, ok := an.predeclaredDefs[name.Value]; ok && fd.Src.Line > n.Src.Line {
+				an.errorf(n.Src, "%q is a built-in here, but this module defines it below, at line %d: the interpreter uses the built-in and the compiled backend uses that definition — move the definition above every use, or rename it", name.Value, fd.Src.Line)
+				// Analysis continues down the *built-in* path rather than bailing out: the loop
+				// variable, the argument types and everything derived from them keep the types they
+				// would have had, so the one real error is not followed by a trail of warnings about
+				// a call that was perfectly typed (ADR 0201's one-mistake-one-diagnostic).
+			}
 		}
 		switch name.Value {
 		case "range", "print", "len":

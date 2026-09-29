@@ -208,6 +208,9 @@ falls back to dynamic dispatch.
 - **A program's stdout is only what it printed** — the interpreter used to echo a file's final bare
   expression (`f(5)` last printed `10`) while the compiled backend and CPython printed nothing, so the
   same source had two stdouts depending on the engine (ADR 0204)
+- **A built-in name you claim must be defined above your uses** — `for i in range(2)` above a
+  `def range` was the built-in to the interpreter and the program's function to the compiled backend
+  (two different outputs, no diagnostic); it is refused at the call instead (`ADR 0205`)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

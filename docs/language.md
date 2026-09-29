@@ -1775,9 +1775,26 @@ print(range(4))                     # 12
 ```
 
 `print` and `range` used to be keywords, so these definitions did not parse (`expected identifier`)
-— see ADR 0203. A built-in name that a definition claims is honoured from that definition onwards,
-which is what CPython does too; how far that rule reaches into the compiled backend is roadmap
-R.12.
+— see ADR 0203.
+
+**A claimed built-in name must be defined above every use.** Taking a built-in's name means taking it
+everywhere below the `def`; above it, the two backends would mean different things by the same call —
+the interpreter, executing in order, still reaches the built-in, while the compiled backend resolves
+the call to your definition — so the program is refused at the call instead (ADR 0205):
+
+```gy
+for i in range(2):        # error at 1:15: "range" is a built-in here, but this module
+    print(i * 100)        #   defines it below, at line 5 — move the definition above
+                          #   every use, or rename it
+
+
+def range(x):
+    return x * 3
+```
+
+Write it the other way round and it is simply a program with its own helper. The rule is bounded to
+where order is real: inside a function body every module definition has already run, and a method
+named `range` is a method, not a module binding — neither is affected.
 
 ### A call must fill every parameter without a default
 

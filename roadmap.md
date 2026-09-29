@@ -1495,9 +1495,10 @@ messages where nobody would look:
 - **R.9, closed by ADR 0203** — `print` and `range` were in the lexer's keyword table, so a program
   could not define a function, a parameter, a keyword argument or a method with those names:
   `def print(x)` failed with `expected identifier` before anything else saw it.
-- **R.12, R.13, R.14 (OPEN)** — found while building the program that proves R.9: a program-defined
-  built-in name is visible to codegen *above* its definition, so `for i in range(2)` iterates the
-  program's value while the interpreter uses the built-in; a file's final bare expression statement is
+- **R.12, closed by ADR 0205** — a program-defined built-in name was visible to codegen *above* its
+  definition, so `for i in range(2)` iterated the program's value while the interpreter used the
+  built-in: two programs from one file, with no diagnostic anywhere on the way.
+- **R.13, R.14 (OPEN)** — found while building the program that proves R.9: a file's final bare expression statement is
   echoed by the interpreter and by nobody else (closed below, ADR 0204); and `for x in 5` iterates on
   both backends while
   being undocumented and refused by CPython.
@@ -1747,26 +1748,39 @@ themselves still working (`print(1, sep=",", end="!")`, `range(1, 9, 2)`, compre
 `range`), the whole real-keyword set still reserved with the specific message, and `Lex` asserted to
 produce `TokIdent` for every built-in name so this cannot regress silently.
 
-### R.12 — a program-defined built-in name is visible to codegen above its definition (OPEN)
+### R.12 — a program-defined built-in name was visible to codegen above its definition (CLOSED, ADR 0205)
 
 ```gusty
-for i in range(2):
-    print(i * 100)
+for i in range(2):          # interpreter: the built-in → 0 and 100
+    print(i * 100)          # codegen:     the program's range(2) = 6, as a count
+                            #              → 0 100 200 300 400 500
+
 
 def range(x):
     return x * 3
 
-print(range(4))
+print(range(4))             # 12 in both
 ```
 
-The interpreter and CPython print `0 100 12`; the compiled binary prints `0 100 200 300 400 500 12`,
-because codegen emits every function before the body and resolves `range` to the program's definition
-wherever it appears — so the loop iterated the *program's* `range(2)` = 6 as a count, starting at 0,
-while the interpreter used the built-in `range(2)` because the `def` had not executed yet.
+No diagnostic, no crash — two different programs from one file, found only because the ledger program
+written for R.9 had to be written to avoid it. The interpreter executes in order, so at the loop the
+`def` has not run and `range` is still the built-in; codegen emits every function before the module
+body, so the call resolves to the program's definition wherever it is written.
 
-ADR 0197 gave the front end a rule about which names a *deferred* scope may see; codegen has never
-been given the same one. Until then, the ledger's shadowing programs must avoid using a built-in that
-the same program also defines (`programs/builtin_names_as_defs.gy` says so in its header comment).
+Closed in the front end: `SemanticAnalyzer` keeps the positions of module-level `def`s whose names are
+predeclared (from the same `predeclaredNames` table the codegen guard and LSP share), and a module-level
+call to one of those names above its definition is refused at the call — naming the built-in, the
+definition's line, both readings, and the two ways out. Bounded to where order is real: inside a
+function body every module `def` has already run, so both engines agree and nothing is refused; a method
+named `range` is a method, not a module binding. Analysis continues down the built-in path after the
+error, so one mistake stays one diagnostic (ADR 0201's rule, applied again).
+
+The refusal carries its own death clause: `TestBackendsGenuinelyDifferOnTheRefusedProgram` runs the
+refused source through both engines around the gate and fails if they ever agree — a refusal outgrown
+by its cause is a restriction, and this is the only way to notice. The faithful alternative (dynamic
+built-in lookup in the compiled backend, so a shadow can take effect at run time the way Python's
+globals do) stays open deliberately: it is a runtime-design decision for the L11.x value-model work,
+not a checker patch, and until then the language does not silently pick a side.
 
 ### R.13 — a file's final bare expression statement was echoed by the interpreter only (CLOSED, ADR 0204)
 

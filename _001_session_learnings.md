@@ -3036,3 +3036,51 @@ Three things to keep:
   written to prove R.9 (it ended in a call). Writing a program to demonstrate a fix is a better gap
   finder than auditing, and the reason `programs/*.gy` keeps paying for itself.
 
+## Cycle 153 — one file, two programs: when a claimed built-in name takes effect (Gap R.12, ADR 0205)
+
+```gusty
+for i in range(2):          # interpreter: the built-in → 0 and 100
+    print(i * 100)          # codegen:  the program's range(2) = 6, as a count → 0 … 500
+def range(x):
+    return x * 3
+print(range(4))             # 12 in both
+```
+
+No error, no crash, no verification failure — just a different answer depending on which engine you
+asked. Found because the ledger program written to prove R.9 had to be written to *avoid* this shape
+to stay green; a corpus program that quietly depends on an open gap is a future false alarm, and
+writing that avoidance down in the program's header is what made the gap explicit enough to file.
+
+Why it exists: the interpreter executes in order, so at the loop the `def range` hasn't run and `range`
+is still the built-in. Codegen emits every function before the module body, so the call resolves to the
+program's definition wherever it is written. Both are individually defensible; that's what made it
+survive.
+
+Fix (front end): remember where module-level `def`s of predeclared names are, and refuse a module-level
+call to one of them *above* the definition — message names the built-in, the definition's line, both
+readings, and the two ways out (move it up, or rename). Corpus scanned: nothing newly refused, because
+the two programs that claim built-in names both define before use.
+
+What this cycle added to the toolbox:
+
+- **"Both backends are right separately" is a search heuristic.** Every previous cycle's divergence
+  had one engine doing something wrong. Here neither was locally wrong — the disagreement was in the
+  *specification* of when a binding exists. That class hides from IR asserts and output diffs run
+  separately per engine; it only appears when you diff engines against each other on the same source.
+- **Bound a refusal to where the problem is real.** Inside a function body the ordering question has
+  no content (module defs have all run by then) and methods aren't module bindings at all — so both
+  cases are asserted *not* to be refused. A refusal without a boundary is a restriction, and the
+  boundary tests are what make it a rule.
+- **Keep the honest error alone.** My first draft returned dynamic after reporting, which made the loop
+  variable dynamic too and produced a derived `arithmetic on non-numeric operands` warning about a
+  perfectly typed call. Falling through the built-in path instead keeps the one true diagnostic alone
+  (ADR 0201's rule, cited again — good signs when a rule from two cycles ago is the one you reach for).
+- **Refusals need expiry dates.** `TestBackendsGenuinelyDifferOnTheRefusedProgram` runs the refused
+  source through both engines *around the gate* and fails if they ever agree. Someone who later makes
+  built-in lookup dynamic in codegen will be told by a failing test to delete the rule — which is the
+  only way a defensive refusal doesn't fossilize into policy.
+- **Rejected: making the interpreter hoist module defs to match codegen.** It would have "fixed" the
+  disagreement by making working programs behave like the broken reading (six iterations on both
+  engines, and CPython disagrees everywhere instead of in one backend). Consistency obtained by moving
+  the *user-visible* semantics is usually the expensive kind of wrong.
+
