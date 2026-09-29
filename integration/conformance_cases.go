@@ -116,6 +116,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"string_subscript",
 		"module_scope_in_functions", // Gap R.35 compiled half (ADR 0227)
 		"module_calltime_lookup",    // Gap R.35 — a module lookup happens at call time (ADR 0220)
+		"runtime_string_ops",        // Gap R.47 — a character asked about at run time (ADR 0229)
 		// The promoted L11.5 probe: the same rule through a literal, a variable, and the two ends
 		// of a non-ASCII string.
 		"string_index",
@@ -437,6 +438,9 @@ var oracleLedger = map[string]oracleDecl{
 	// print `1` and then raise the class CPython raises. The oracle leg itself exits 1 (an uncaught
 	// raise), which is why this is not_applicable rather than match -- the CPython leg cannot
 	// complete, and the two legs are pinned instead.
+	// A conformant row carries no reason and no ref: what the program proves is recorded in the
+	// program's own header, in roadmap Gap R.47, and in ADR 0229.
+	"programs/runtime_string_ops": {oracle: lang.OracleMatch},
 	"programs/unwritten_slot_trap": {oracle: lang.OracleNA,
 		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError; both gusty backends now print the same first line and raise the same class, which they did not before ADR 0228 -- the compiled leg printed 0 for the unbound call and exited 0, and the interpreter called it a NameError",
 		ref:    "roadmap Gap R.36 (definite assignment) + Gap R.39 (which class an unwritten local raises); ADR 0228",

@@ -264,7 +264,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1395888503/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3930938362/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -275,7 +275,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1395888503/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3930938362/prog.py:4: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -351,7 +351,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle1051358898/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2744999616/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -362,7 +362,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle1051358898/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2744999616/prog.py:14: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -612,7 +612,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2537582114/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle3444076231/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -623,7 +623,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2537582114/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3444076231/prog.py\", line 5"
       ]
     },
     {
@@ -653,7 +653,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle1755317066/prog.py\", line 3",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2730549771/prog.py\", line 3",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -664,7 +664,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle1755317066/prog.py\", line 3"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2730549771/prog.py\", line 3"
       ]
     },
     {
@@ -694,7 +694,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3957537642/prog.py\", line 5",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2042181923/prog.py\", line 5",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -705,7 +705,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3957537642/prog.py\", line 5"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2042181923/prog.py\", line 5"
       ]
     },
     {
@@ -873,7 +873,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2176095835/prog.py\", line 11",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2607323776/prog.py\", line 11",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -884,7 +884,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2176095835/prog.py\", line 11"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2607323776/prog.py\", line 11"
       ]
     },
     {
@@ -1229,6 +1229,29 @@
     },
     {
       "case": {
+        "id": "programs/runtime_string_ops",
+        "name": "runtime_string_ops.gy",
+        "source": "# A string asked about at run time is answered by the runtime string table (roadmap Gap R.47,\n# ADR 0229). A compiled string value is an index into @str_tab (ADR 0224) and that table grows at\n# run time, so a character produced by a call, an index in a loop, or a char method has somewhere\n# to live: the answer is an ordinary string value — printable, comparable, subscriptable again.\n#\n# Before this, every shape below was a compile-time refusal for a program CPython runs, and one\n# class of them was worse: the char path answered with the right index and the print path, asking a\n# different question, rendered it as a number. `for c in s` and building a new string (concat,\n# slice) still need the buffer half of the runtime and are refused (Gap R.47's remainder).\n\n\ndef word():\n    return \"abc\"\n\n\ni = 1\nprint(word()[i])          # b — a subscript of a call result\nprint(word()[0], word()[2])\nprint(len(word()))        # 3 — measured in code points, not bytes\nprint(word()[1].upper())  # B — a char method on a runtime string\nprint(ord(word()[1]))     # 98 — ord of a computed character\nd = {\"k\": \"xyz\"}\nprint(d[\"k\"][2])          # z — a dict value subscripted at run time\nn = 0\nwhile n \u003c 3:\n    print(word()[n])      # a, b, c — an index that is not a constant\n    n = n + 1\nif word()[0] == \"a\":       # equality of runtime-built strings is by content, not by index\n    print(\"equal by content\")\nif word()[0] == \"z\":\n    print(\"wrong\")\nprint(word()[-1])         # c — a position from the end, like every other position\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "b\na c\n3\nB\n98\nz\na\nb\nc\nequal by content\nc\n",
+      "aot_ok": true,
+      "aot_stdout": "b\na c\n3\nB\n98\nz\na\nb\nc\nequal by content\nc\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "b\na c\n3\nB\n98\nz\na\nb\nc\nequal by content\nc\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/string_index",
         "name": "string_index.gy",
         "source": "# What `s[i]` yields: a one-character string counted in code points, on both backends (ADR 0225).\n# The row this came from was L11.5's byte-index debt -- `\"abc\"[1]` answered 98 and the compiled leg\n# refused the variable case outright. Note that the *index* is code-point correct on both legs even\n# where the compiled `len` of non-ASCII text is not (Gap R.47). CPython prints exactly this.\nprint(\"abc\"[1])\ns = \"héllo\"\nprint(s[0])\nprint(s[4])\n",
@@ -1392,7 +1415,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle3041812392/prog.py\", line 46",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2950511613/prog.py\", line 46",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1403,7 +1426,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle3041812392/prog.py\", line 46"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2950511613/prog.py\", line 46"
       ]
     },
     {
@@ -1978,7 +2001,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle4256534533/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle3526510725/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -1989,7 +2012,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle4256534533/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle3526510725/prog.py:13: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -2019,7 +2042,7 @@
       "parity": true,
       "python_ok": false,
       "python_stdout": "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\n",
-      "python_error": "exit status 1: /tmp/gusty-oracle2763795803/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
+      "python_error": "exit status 1: /tmp/gusty-oracle2674170138/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -2030,7 +2053,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2763795803/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
+        "the CPython leg did not complete: exit status 1: /tmp/gusty-oracle2674170138/prog.py:27: SyntaxWarning: 'set' object is not subscriptable; perhaps you missed a comma?"
       ]
     },
     {
@@ -2978,7 +3001,7 @@
       "interp_stdout": "2.5\n3.0\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4073969727/083/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2461229754/084/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'",
       "parity": false,
       "python_ok": true,
       "python_stdout": "2.5\n3.0\n",
@@ -2992,7 +3015,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4073969727/083/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2461229754/084/prog.ll:237:17: error: '%p0' defined with type 'double' but expected 'i32'"
       ]
     },
     {
@@ -3022,7 +3045,7 @@
       "parity": false,
       "python_ok": false,
       "python_stdout": "",
-      "python_error": "exit status 1: File \"/tmp/gusty-oracle2611598100/prog.py\", line 10",
+      "python_error": "exit status 1: File \"/tmp/gusty-oracle2702321534/prog.py\", line 10",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "not_applicable",
@@ -3033,15 +3056,15 @@
         "set-order"
       ],
       "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2611598100/prog.py\", line 10"
+        "the CPython leg did not complete: exit status 1: File \"/tmp/gusty-oracle2702321534/prog.py\", line 10"
       ]
     }
   ],
-  "rows": 99,
+  "rows": 100,
   "skipped": 23,
-  "pass": 76,
+  "pass": 77,
   "fail": 0,
-  "oracle_match": 58,
+  "oracle_match": 59,
   "oracle_debt": 25,
   "oracle_not_applicable": 16,
   "oracle_drift": 0

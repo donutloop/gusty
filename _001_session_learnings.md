@@ -4158,3 +4158,81 @@ belongs in the probe list with its pins carrying the assertion.
 No flag covers names bound by a `for` header or `with ... as` (unhooked writers), or float/container-valued
 slots (which store elsewhere). Those are stated in the roadmap rather than half-fixed, because the failure
 mode of getting them wrong is a trap on correct code.
+
+## The table already grew; what was missing was the question (Gap R.47, ADR 0229)
+
+### The measurement that set the shape
+
+Sixteen runtime-string shapes, three legs. Thirteen refused on the compiled path — but two rows were
+worse than a refusal, and they were the ones a green suite had been shipping:
+
+```
+def f(s): return s[1]          print(f("abc"))        → 1     (want b)
+print(get()[1].upper())                               → 2     (want B)
+```
+
+Exit 0, plausible output, right *value* produced. The char path had computed the correct interned index;
+the print path had asked a different question and rendered it as a number. Two predicates that should
+mean the same thing — "is this a string?" — had drifted, and the disagreement was visible only as a
+number where a letter belonged.
+
+### The rule
+
+A compiled string is an `@str_tab` index (ADR 0224) and `rt_str_intern` already appends by content. So
+the table grows at run time and nothing new was needed to hold a runtime string: the operations take
+indices and return indices, and `print`, `==`, `in`, container slots and dict keys keep working with no
+new representation anywhere. This is the third cycle in a row where the fix was smaller than it looked
+from the symptom, because the system already had the piece — a container slot is a word (0226), a module
+binding is a value or a global (0227), an index is a table entry (0229).
+
+What was missing was a *question*. Every refusal said, in effect, "can the compiler read this string's
+text?" when the question is "is this a string?". `"abc"[1]` answered and `get()[1]` refused;
+`s[1].lower()` printed text and `s[1].upper()` printed an index. One predicate now answers for all the
+consumers, and the two classification paths (operations and print) consult the same one, which is why
+they can no longer disagree.
+
+### Kind facts must be collected before the walk, and after the reset
+
+`scanStringBindings` asks, over the whole program: which names hold indices (`s = get()`, unpacking, a
+loop variable over a string container), and which functions hand one back — including an *unannotated*
+`def f(s): return s[1]`, whose parameter's kind comes from the call site. Two placement lessons learned
+once and re-learned here:
+
+- It must run **after `beginScope()`**, whose reset clears the per-scope kind maps: a scan answered
+  before it is silently thrown away, and the symptom was the exact shape it was meant to fix. ADR 0228
+  learned the identical fact about written-flags one cycle earlier, in the same file, and the fix had to
+  be rediscovered because the constraint was never written down as "anything consulting the kind maps
+  is scheduled after the scope reset".
+- It must not mark **async** functions: an `async def g(): return "ok"` yields a coroutine handle, so a
+  caller told "this returns a string index" read a handle as an index and `llc` rejected the module. The
+  suite caught it (`TestR2ReproCompilesAndRuns`), which is the argument for keeping a repro corpus.
+
+### The runtime may only reach for its own block
+
+`rt_str_intern` capped the table at 256 and, on overflow, **reused the last entry** — a string printed as
+a different string, forever, silently. Raising runtime-created strings made the cap reachable (iterating
+a text interns a one-char string per distinct character). Raising it to 4096 plus a `-2` sentinel that
+the *caller* turns into a catchable `RuntimeError` is the honest shape.
+
+Getting there cost two build breaks and taught a rule worth pinning: my first overflow path called
+`rt_die`, defined in a different runtime block, so a module that didn't include that block failed as
+`use of undefined value '@rt_die'`; declaring `write` locally instead failed as `invalid redefinition of
+function 'write'`. Runtime helpers must use what is in their own block, and where that is impossible,
+return a sentinel and let the code that knows the source raise — a printed sentence is not catchable, so
+a print from the runtime would have broken ADR 0212 while "fixing" it.
+
+### Two Go/IR traps, both cheap to avoid, both invisible until they bite
+
+- A backtick inside the runtime IR blob terminates the Go raw string: `; … `in` …` in a comment broke the
+  build with an error pointing into the middle of the blob.
+- An IR comment must start every line with `;`, not just the first — a wrapped line without one parses as
+  an instruction. Both were build-time, not test-time, failures; the diff is smaller than the debugging
+  time they cost, so they are recorded here rather than as code.
+
+### What stayed honest
+
+Concatenation, run-time slicing, `for c in <runtime string>`, `str(<runtime int>)` and `strip()` remain
+refusals with their measured messages — they need to *build* buffers, the write half of the same runtime.
+Compiled case folding is ASCII only, stated in the roadmap rather than quietly asserted. And the pinned
+"these shapes are unreachable" test fired exactly as designed when six of them started answering: it
+demanded promotion to a CPython-checked table instead of a softened expectation.

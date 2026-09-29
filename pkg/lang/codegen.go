@@ -163,11 +163,11 @@ entry:
 @.fmts = private unnamed_addr constant [3 x i8] c"%s\00"
 @.fmtcolon = private unnamed_addr constant [3 x i8] c": \00"
 @str_count = internal global i32 0
-@str_tab = internal global [256 x i8*] zeroinitializer
+@str_tab = internal global [4096 x i8*] zeroinitializer
 ; Parallel table holding each interned string's Python repr form (quoted, with the quote
 ; character chosen the way Python chooses it). Containers store the index; printing inside a
 ; container uses the repr slot, printing a single value uses the raw text.
-@str_repr_tab = internal global [256 x i8*] zeroinitializer
+@str_repr_tab = internal global [4096 x i8*] zeroinitializer
 ; Per-object element-kind flags, indexed by heap handle: bit 0 = elements are interned
 ; strings, bit 1 = dict keys are, bit 2 = dict values are. Whether a container holds strings
 ; is a property of the *object*, not of the variable — a helper can fill a list its caller
@@ -197,7 +197,7 @@ scan:
   %more = icmp slt i32 %i, %n0
   br i1 %more, label %cmp, label %add
 cmp:
-  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %i
+  %slot = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %i
   %q = load i8*, i8** %slot
   %r = call i32 @strcmp(i8* %p, i8* %q)
   %same = icmp eq i32 %r, 0
@@ -211,15 +211,22 @@ add:
   %oob = icmp sge i32 %n0, 256
   br i1 %oob, label %full, label %put
 put:
-  %slot2 = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %n0
+  %slot2 = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %n0
   store i8* %p, i8** %slot2
   %n1 = add i32 %n0, 1
   store i32 %n1, i32* @str_count
   ret i32 %n0
 full:
-  ; Out of table space: reuse the last entry rather than returning a wild index.
-  %last = sub i32 %n0, 1
-  ret i32 %last
+  ; Out of table space. Reusing the last entry — the old behaviour — made a runtime-built
+  ; string *print as a different string*, which is a wrong answer with no diagnostic at all.
+  ; Distinct runtime strings are now bounded by @str_tab's capacity (4096, ADR 0229) and
+  ; exceeding it is a trap with a message, the same honest shape as any other limit.
+  ; -2 is the sentinel for "the table is full". Nothing is printed here: a built-in trap is a
+  ; *typed raise*, and the raise belongs to the code that knows the source (ADR 0212, ADR 0214),
+  ; which checks for this value and raises RuntimeError the program can catch. Printing from the
+  ; runtime would be a sentence the program cannot intercept, and the old behaviour — silently
+  ; reusing the last entry — was a wrong answer with no diagnostic at all (ADR 0229).
+  ret i32 -2
 }
 
 ; rt_elem_gt answers whether one container element has to move past another. mode 0 compares
@@ -235,9 +242,9 @@ nums:
   %r = zext i1 %c to i32
   ret i32 %r
 strs:
-  %sa = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %a
+  %sa = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %a
   %pa = load i8*, i8** %sa
-  %sb = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %b
+  %sb = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %b
   %pb = load i8*, i8** %sb
   %c2 = call i32 @strcmp(i8* %pa, i8* %pb)
   %g = icmp sgt i32 %c2, 0
@@ -360,7 +367,7 @@ entry:
 
 define internal i8* @rt_str_ptr(i32 %i) {
 entry:
-  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %i
+  %slot = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %i
   %p = load i8*, i8** %slot
   ret i8* %p
 }
@@ -430,9 +437,238 @@ fin:
   ret i32 %n
 }
 
+@.strfull = private unnamed_addr constant [46 x i8] c"\52\75\6E\74\69\6D\65\45\72\72\6F\72\3A\20\74\6F\6F\20\6D\61\6E\79\20\64\69\73\74\69\6E\63\74\20\73\74\72\69\6E\67\20\76\61\6C\75\65\73\00"
+declare ptr @malloc(i64)
+
+; ---------------------------------------------------------------------------
+; Runtime string operations (ADR 0229). Everything above this line treated a string as a
+; compile-time fact: an @str_tab index chosen by the compiler, with the text already in the
+; module. But a string value is an index into a table the runtime can *add to* (rt_str_intern
+; is content-addressed), so an operation asked about at run time has somewhere to live after
+; all: these helpers take indices and return indices, and the compiled convention from
+; ADR 0224 never changes — print, ==, substring tests and the container paths keep working on
+; the result.
+; Counting is in code points, not bytes, because that is what a position means in this
+; language (ADR 0225): a byte is 0x80..0xBF if it is a UTF-8 continuation byte, and the bytes
+; that are not continuations are exactly the code points.
+; ---------------------------------------------------------------------------
+
+; rt_str_from_bytes is the only way a string that did not exist at compile time becomes a
+; value: copy the bytes, NUL-terminate, intern. Dedup is by content, so a runtime-built "b"
+; and the literal "b" are the same index and compare equal without being told to.
+define internal i32 @rt_str_from_bytes(i8* %p, i32 %n) {
+entry:
+  %n1 = add i32 %n, 1
+  %sz = zext i32 %n1 to i64
+  %buf = call ptr @malloc(i64 %sz)
+  br label %copy
+copy:
+  %i = phi i32 [ 0, %entry ], [ %inext, %body ]
+  %done = icmp sge i32 %i, %n
+  br i1 %done, label %term, label %body
+body:
+  %src = getelementptr i8, i8* %p, i32 %i
+  %ch = load i8, i8* %src
+  %dst = getelementptr i8, i8* %buf, i32 %i
+  store i8 %ch, i8* %dst
+  %inext = add i32 %i, 1
+  br label %copy
+term:
+  %t = getelementptr i8, i8* %buf, i32 %n
+  store i8 0, i8* %t
+  %idx = call i32 @rt_str_intern(i8* %buf)
+  ret i32 %idx
+}
+
+; rt_str_nchars counts code points: the bytes that are not UTF-8 continuation bytes.
+define internal i32 @rt_str_nchars(i32 %s) {
+entry:
+  %p = call i8* @rt_str_ptr(i32 %s)
+  br label %scan
+scan:
+  %n = phi i32 [ 0, %entry ], [ %nnext, %body ]
+  %o = phi i32 [ 0, %entry ], [ %onext, %body ]
+  %at = getelementptr i8, i8* %p, i32 %o
+  %b = load i8, i8* %at
+  %end = icmp eq i8 %b, 0
+  br i1 %end, label %fin, label %body
+body:
+  %m = and i8 %b, -64
+  %cont = icmp eq i8 %m, -128
+  %isz = zext i1 %cont to i32
+  %step = sub i32 1, %isz
+  %nnext = add i32 %n, %step
+  %onext = add i32 %o, 1
+  br label %scan
+fin:
+  ret i32 %n
+}
+
+; rt_str_char answers s[i] as a one-character string: walk to the i-th code point, measure it,
+; intern it. A negative index counts from the end, like every other position in this language
+; (ADR 0210). -1 says there is no such position — the caller raises IndexError, because a trap
+; the program can name has to be raisable by the code that knows the source (ADR 0212).
+define internal i32 @rt_str_char(i32 %s, i32 %i) {
+entry:
+  %n = call i32 @rt_str_nchars(i32 %s)
+  %neg = icmp slt i32 %i, 0
+  %addn = add i32 %i, %n
+  %iad = select i1 %neg, i32 %addn, i32 %i
+  %lo = icmp slt i32 %iad, 0
+  %hi = icmp sge i32 %iad, %n
+  %bad = or i1 %lo, %hi
+  br i1 %bad, label %oor, label %walk
+oor:
+  ret i32 -1
+walk:
+  %p = call i8* @rt_str_ptr(i32 %s)
+  br label %wloop
+wloop:
+  %o = phi i32 [ 0, %walk ], [ %onext, %advance ]
+  %c = phi i32 [ 0, %walk ], [ %cnext, %advance ]
+  %at = getelementptr i8, i8* %p, i32 %o
+  %b = load i8, i8* %at
+  %end = icmp eq i8 %b, 0
+  br i1 %end, label %oor, label %wbody
+wbody:
+  %m = and i8 %b, -64
+  %iscont = icmp eq i8 %m, -128
+  %isstart = icmp ne i8 %m, -128
+  %wanted = icmp eq i32 %c, %iad
+  %found = and i1 %isstart, %wanted
+  br i1 %found, label %measure, label %advance
+advance:
+  %csz = zext i1 %isstart to i32
+  %cnext = add i32 %c, %csz
+  %onext = add i32 %o, 1
+  br label %wloop
+measure:
+  %o1 = add i32 %o, 1
+  br label %mloop
+mloop:
+  %q = phi i32 [ %o1, %measure ], [ %qnext, %mstep ]
+  %at2 = getelementptr i8, i8* %p, i32 %q
+  %b2 = load i8, i8* %at2
+  %end2 = icmp eq i8 %b2, 0
+  br i1 %end2, label %mk, label %mbody
+mbody:
+  %m2 = and i8 %b2, -64
+  %cont2 = icmp eq i8 %m2, -128
+  br i1 %cont2, label %mstep, label %mk
+mstep:
+  %qnext = add i32 %q, 1
+  br label %mloop
+mk:
+  %len = sub i32 %q, %o
+  %base = getelementptr i8, i8* %p, i32 %o
+  %idx = call i32 @rt_str_from_bytes(i8* %base, i32 %len)
+  ret i32 %idx
+}
+
+; rt_str_codepoint is ord(): the value of the string's single code point, or -1 when the
+; string is empty or holds more than one. Decoding is the standard UTF-8 shape — lead byte
+; gives the length and the high bits, each continuation contributes six more.
+define internal i32 @rt_str_codepoint(i32 %s) {
+entry:
+  %p = call i8* @rt_str_ptr(i32 %s)
+  %at0 = getelementptr i8, i8* %p, i32 0
+  %b0 = load i8, i8* %at0
+  %empty = icmp eq i8 %b0, 0
+  br i1 %empty, label %bad, label %lead
+lead:
+  %m7 = and i8 %b0, -128
+  %asc = icmp eq i8 %m7, 0
+  %m32 = and i8 %b0, -32
+  %two = icmp eq i8 %m32, -64
+  %m16 = and i8 %b0, -16
+  %three = icmp eq i8 %m16, -32
+  %lenasc = select i1 %asc, i32 1, i32 4
+  %lentwo = select i1 %two, i32 2, i32 %lenasc
+  %lenthr = select i1 %three, i32 3, i32 %lentwo
+  %maskasc = and i8 %b0, 127
+  %masktwo = and i8 %b0, 31
+  %maskthr = and i8 %b0, 15
+  %maskfour = and i8 %b0, 7
+  %masctwo = select i1 %two, i8 %masktwo, i8 %maskfour
+  %mascth = select i1 %three, i8 %maskthr, i8 %masctwo
+  %mask = select i1 %asc, i8 %maskasc, i8 %mascth
+  %v0 = sext i8 %mask to i32
+  br label %walk
+walk:
+  %k = phi i32 [ 1, %lead ], [ %knext, %step ]
+  %v = phi i32 [ %v0, %lead ], [ %vnext, %step ]
+  %done = icmp sge i32 %k, %lenthr
+  br i1 %done, label %check, label %cont
+cont:
+  %at = getelementptr i8, i8* %p, i32 %k
+  %b = load i8, i8* %at
+  %m = and i8 %b, -64
+  %ok = icmp eq i8 %m, -128
+  br i1 %ok, label %step, label %bad
+step:
+  %low = and i8 %b, 63
+  %lz = zext i8 %low to i32
+  %shl = shl i32 %v, 6
+  %vnext = or i32 %shl, %lz
+  %knext = add i32 %k, 1
+  br label %walk
+check:
+  %atn = getelementptr i8, i8* %p, i32 %lenthr
+  %bn = load i8, i8* %atn
+  %just = icmp eq i8 %bn, 0
+  br i1 %just, label %fin, label %bad
+fin:
+  ret i32 %v
+bad:
+  ret i32 -1
+}
+
+; rt_str_case folds ASCII letters: mode 0 upper-cases, mode 1 lower-cases. Bytes outside the
+; ASCII range are copied unchanged, which is the documented limit of the first cut — the
+; interpreter folds Unicode case tables, the compiled backend folds ASCII (roadmap Gap R.47).
+define internal i32 @rt_str_case(i32 %s, i32 %mode) {
+entry:
+  %p = call i8* @rt_str_ptr(i32 %s)
+  %nb = call i32 @rt_str_len(i32 %s)
+  %n1 = add i32 %nb, 1
+  %sz = zext i32 %n1 to i64
+  %buf = call ptr @malloc(i64 %sz)
+  br label %scan
+scan:
+  %i = phi i32 [ 0, %entry ], [ %inext, %body ]
+  %done = icmp sge i32 %i, %nb
+  br i1 %done, label %term, label %body
+body:
+  %src = getelementptr i8, i8* %p, i32 %i
+  %b = load i8, i8* %src
+  %ub = icmp sgt i8 %b, 96
+  %ub2 = icmp slt i8 %b, 123
+  %upperable = and i1 %ub, %ub2
+  %lb = icmp sgt i8 %b, 64
+  %lb2 = icmp slt i8 %b, 91
+  %lowerable = and i1 %lb, %lb2
+  %upperMode = icmp eq i32 %mode, 0
+  %lowerMode = icmp eq i32 %mode, 1
+  %doUpper = and i1 %upperable, %upperMode
+  %doLower = and i1 %lowerable, %lowerMode
+  %flipU = select i1 %doUpper, i8 -32, i8 0
+  %flipL = select i1 %doLower, i8 32, i8 0
+  %flip = or i8 %flipU, %flipL
+  %out = add i8 %b, %flip
+  %dst = getelementptr i8, i8* %buf, i32 %i
+  store i8 %out, i8* %dst
+  %inext = add i32 %i, 1
+  br label %scan
+term:
+  %t = getelementptr i8, i8* %buf, i32 %nb
+  store i8 0, i8* %t
+  %idx = call i32 @rt_str_intern(i8* %buf)
+  ret i32 %idx
+}
+
 define internal i8* @rt_str_repr_ptr(i32 %i) {
 entry:
-  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_repr_tab, i32 0, i32 %i
+  %slot = getelementptr [4096 x i8*], [4096 x i8*]* @str_repr_tab, i32 0, i32 %i
   %p = load i8*, i8** %slot
   ret i8* %p
 }
@@ -448,7 +684,7 @@ scan:
   %more = icmp slt i32 %i, %n0
   br i1 %more, label %cmp, label %add
 cmp:
-  %slot = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %i
+  %slot = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %i
   %q = load i8*, i8** %slot
   %r = call i32 @strcmp(i8* %raw, i8* %q)
   %same = icmp eq i32 %r, 0
@@ -457,16 +693,16 @@ next:
   %inext = add i32 %i, 1
   br label %scan
 found:
-  %rs = getelementptr [256 x i8*], [256 x i8*]* @str_repr_tab, i32 0, i32 %i
+  %rs = getelementptr [4096 x i8*], [4096 x i8*]* @str_repr_tab, i32 0, i32 %i
   store i8* %repr, i8** %rs
   ret i32 %i
 add:
   %oob = icmp sge i32 %n0, 256
   br i1 %oob, label %full, label %put
 put:
-  %slot2 = getelementptr [256 x i8*], [256 x i8*]* @str_tab, i32 0, i32 %n0
+  %slot2 = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %n0
   store i8* %raw, i8** %slot2
-  %rs2 = getelementptr [256 x i8*], [256 x i8*]* @str_repr_tab, i32 0, i32 %n0
+  %rs2 = getelementptr [4096 x i8*], [4096 x i8*]* @str_repr_tab, i32 0, i32 %n0
   store i8* %repr, i8** %rs2
   %n1 = add i32 %n0, 1
   store i32 %n1, i32* @str_count
@@ -2029,6 +2265,14 @@ func GenerateIR(prog *Program) (string, error) {
 		if fd, ok := st.(*FuncDef); ok {
 			g.funcs[fd.Name] = true
 			g.fds[fd.Name] = fd
+			// A module-level function whose return is a string returns a @str_tab index, and
+			// saying so here — at the pre-scan, before any call site is lowered — is what lets
+			// `print(get()[1])` know that `get()` is a string at all. Methods were registered
+			// this way since ADR 0224; the module's own functions were not, which is why
+			// `s[1]` worked and `get()[1]` refused (ADR 0229).
+			if methodReturnsStr(fd) {
+				g.strFuncs[fd.Name] = true
+			}
 		}
 	}
 	g.decls = "declare i32 @printf(i8*, ...)\n"
@@ -2101,6 +2345,12 @@ func GenerateIR(prog *Program) (string, error) {
 	// Module-level code is its own scope too (see beginScope).
 	restoreScope := g.beginScope()
 	defer restoreScope()
+	// Which names hold @str_tab indices, and which functions hand one back — asked of the whole
+	// program before any of it is lowered, so a use after a binding knows the kind the binding
+	// gave it (ADR 0229). Asked *after* beginScope: that reset clears the per-scope kind maps, so
+	// a scan answered before it would be silently thrown away — the same lesson the module-level
+	// written-flags learned (ADR 0228), one cycle apart.
+	g.scanStringBindings(prog.Stmts)
 	// The module's own statements get written-flags too: an unwritten read at top level is a
 	// NameError in CPython and must not read the alloca's previous contents (ADR 0228). The nil key
 	// is the module's entry in the checker's table, and `inFunc` being false is what makes the trap
@@ -3009,7 +3259,19 @@ func (g *irGen) exprIsString(e Expr) bool {
 	case *Name:
 		return g.internedVars[v.Value]
 	case *Call:
-		return g.callReturnsStr(v)
+		if g.callReturnsStr(v) {
+			return true
+		}
+		// A string method on a string receiver returns a string: `get()[1].upper()` is text, and
+		// the print path and the operation path must ask that question the same way or one of them
+		// renders the interned index as a number (ADR 0229).
+		if at, ok := v.Fn.(*Attr); ok && len(v.Args) == 0 && g.exprIsString(at.Obj) {
+			switch at.Name.Value {
+			case "upper", "lower":
+				return true
+			}
+		}
+		return false
 	case *Attr:
 		if cls := g.receiverClass(v.Obj); cls != "" {
 			return g.strAttrs[cls+"."+v.Name.Value]
@@ -3026,6 +3288,11 @@ func (g *irGen) exprIsString(e Expr) bool {
 		// A subscript of a string the compiler can name is text (ADR 0225), and so is an element
 		// of a string container: that is what lets `xs = [s[1]]` remember that its elements are
 		// strings rather than print the index that means them.
+		// A subscript of a string the compiler *cannot* name is still a one-character string
+		// (ADR 0229) — being a string does not require being a constant.
+		if g.exprIsString(v.Obj) {
+			return true
+		}
 		if _, isStr := g.stringVal(v.Obj); isStr {
 			return true
 		}
@@ -6407,6 +6674,20 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return fmt.Sprintf("%%sl%d", r), nil
 
 	case *Index:
+		// A subscript of a string the compiler cannot read asks the table (ADR 0229): the
+		// base only has to *be* a string, not be a constant. The fold below still answers
+		// everything the compiler can name, so this path is reached exactly when the fold
+		// cannot — which used to be a refusal, so `print(s[1])` worked and `print(get()[1])`
+		// did not, one rule with two behaviours.
+		_, foldBase := g.stringVal(n.Obj)
+		_, foldIdx := n.Idx.(*IntLit)
+		if !foldBase || !foldIdx {
+			if ch, isStr, err := g.emitStrChar(b, n.Obj, n.Idx, n.Span()); err != nil {
+				return "", err
+			} else if isStr {
+				return ch, nil
+			}
+		}
 		// list/dict/set indexing against an inline literal with a constant
 		// index/key (this llc build accepts only constant GEP indices).
 		// Constant keys/elements are resolved at compile time.
@@ -7761,6 +8042,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", err
 				}
 			}
+			// upper() and lower() of a string the compiler cannot read ask the table
+			// (ADR 0229). The compiled fold covers ASCII and copies other bytes unchanged;
+			// the interpreter has the full case tables — the difference is recorded as a
+			// limit of this cycle, not hidden (roadmap Gap R.47).
+			if sreg, isStr, err2 := g.strReg(b, attr.Obj); err2 != nil {
+				return "", err2
+			} else if isStr {
+				switch attr.Name.Value {
+				case "upper":
+					return g.rtStrCall(b, "rt_str_case", "i32 "+sreg, "i32 0"), nil
+				case "lower":
+					return g.rtStrCall(b, "rt_str_case", "i32 "+sreg, "i32 1"), nil
+				}
+			}
 			return "", fmt.Errorf("string method %s on non-constant string", attr.Name.Value)
 		}
 		switch attr.Name.Value {
@@ -8759,6 +9054,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if n, ok := stringConstLen(c.Args[0], g.builtinShadowed); ok {
 			return fmt.Sprintf("%d", n), nil
 		}
+		// len of a string the compiler cannot read asks the table, and counts code points —
+		// the same unit every other position question in this language is asked in
+		// (ADR 0225, ADR 0229). Bytes would say 5 for "café" and be wrong about its own string.
+		if _, foldable := g.stringVal(c.Args[0]); !foldable {
+			if sreg, isStr, err := g.strReg(b, c.Args[0]); err != nil {
+				return "", err
+			} else if isStr {
+				// Code points, not bytes: the same unit every other position question in this
+				// language is asked in (ADR 0225). Bytes would call "café" 5 characters long.
+				return g.rtStrCall(b, "rt_str_nchars", "i32 "+sreg), nil
+			}
+		}
 		// imported string module global (data imports): len(mod.str)
 		if attr, ok := c.Args[0].(*Attr); ok {
 			if nm, ok2 := attr.Obj.(*Name); ok2 {
@@ -9390,6 +9697,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 		}
 		if !ok {
+			// ord of a string the compiler cannot read asks the table (ADR 0229). -1 means the
+			// string is not exactly one code point, which is CPython's TypeError and, being a
+			// raise, is catchable (ADR 0212).
+			if sreg, isStr, err2 := g.strReg(b, c.Args[0]); err2 != nil {
+				return "", err2
+			} else if isStr {
+				cp := g.rtStrCall(b, "rt_str_codepoint", "i32 "+sreg)
+				g.checkStrSentinels(b, cp, "TypeError", "ord() expected a character", c.Span(), "ordcp")
+				return cp, nil
+			}
 			return "", fmt.Errorf("ord: codegen folds only a constant string arg")
 		}
 		if len(sv) == 0 {
@@ -9663,13 +9980,29 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 	case *Call:
 		// echo("yo") returns an index into @str_tab; printing it must show the text
 		// (roadmap Gap J.5).
-		return g.callReturnsStr(v)
+		if g.callReturnsStr(v) {
+			return true
+		}
+		// A string method on a string receiver — `get()[1].upper()` — also prints as text. The
+		// print path and the operation path ask this question of the same predicate, or one of
+		// them renders the interned index as a number (ADR 0229).
+		if at, ok := v.Fn.(*Attr); ok && len(v.Args) == 0 && g.exprIsString(at.Obj) {
+			switch at.Name.Value {
+			case "upper", "lower":
+				return true
+			}
+		}
+		return false
 	case *BinOp:
 		// `s[0] + s[2]` folds to text; every operand question is the same question.
 		return g.exprIsString(v)
 	case *Index:
 		// A subscript of a string is a one-character string (ADR 0225), so printing it is a
 		// text question. Answering with %d printed the interned index: `print(s[1])` said `0`.
+		// The base being a runtime string changes nothing about the answer's kind (ADR 0229).
+		if g.exprIsString(v.Obj) {
+			return true
+		}
 		if _, isStr := g.stringVal(v.Obj); isStr {
 			return true
 		}
@@ -10502,6 +10835,13 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		if g.strParamOf[g.fnName(fd)][i] {
 			g.internedVars[p.Name] = true
 		}
+	}
+	// The call sites decide a parameter's kind, so this is the first moment the body's own
+	// returns can be judged: `def f(s): return s[1]` called with a string hands back a string
+	// index, and the caller has to read it as one (ADR 0229). Without this the value was
+	// correct and the print was not — the index leaked out as a number.
+	if !fd.Async && returnsStringExpr(g, fd) {
+		g.strFuncs[g.fnName(fd)] = true
 	}
 	isGen := containsYield(fd.Body)
 	if isGen {

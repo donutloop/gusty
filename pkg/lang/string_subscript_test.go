@@ -76,8 +76,13 @@ func TestStringSubscriptTrapIsTyped(t *testing.T) {
 func TestUnlowerableConditionIsAnErrorNotAFalseBranch(t *testing.T) {
 	for _, src := range []string{
 		"s = \"abc\"\nprint(1 if s[9] == \"b\" else 0)\n",
-		"s = \"abc\"\nx = 0\nprint(1 if s[x] == \"b\" else 0)\n",
 		"s = \"abc\"\nif s[9] == \"b\":\n    print(1)\nelse:\n    print(0)\n",
+		// The shape with a run-time position (`s[x]`) is not here any more: ADR 0229 gave the
+		// subscript an answer, so the condition lowers and the program prints CPython's 0. It
+		// moved to TestCompiledStringSubscriptAnswersAtRuntime in integration/, where a wrong
+		// answer — not just a refusal — is what gets caught. An unlowerable condition is still
+		// an error, never `icmp ne i32 0, 0`.
+
 	} {
 		res, err := Compile(src)
 		if err == nil {

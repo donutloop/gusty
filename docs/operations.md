@@ -1049,6 +1049,24 @@ or refused the program).
 A name no path binds at all is an `undefined name` error. A function-name reference (bare `fn`) is
 assignable to any Callable bound under gradual typing.
 
+### The compiled string table is bounded (ADR 0229)
+
+A compiled string value is an index into `@str_tab`; literals are interned at compile time and a
+program that builds strings while running (subscripting a string, `ord`, `upper`/`lower`) interns them
+on first use. The table holds 4096 entries. Exceeding that is a program condition, not a toolchain one:
+the runtime returns a "no value" sentinel and the generated code raises
+
+```
+RuntimeError: the program created too many distinct string values
+```
+
+through the ordinary unwind path, so `try: … except RuntimeError:` catches it and the exit code is the
+usual 3 (ADR 0212, ADR 0214). The previous behaviour was worse than a trap: on overflow the runtime
+reused the table's last entry, so a string printed as a *different* string and nothing said so.
+Machine consumers get the same shape as any other trap — `--json` reports the class, the message and
+`"exit": 3` — and no flag tunes the capacity; a program that needs more is outgrown by the table, not
+configured into it.
+
 ## Effect signatures (`gustyc --effects`, L7.6, ADR 0195)
 
 `gustyc --effects <src>` (or `gusty effects <file>...`) answers *what a function does*

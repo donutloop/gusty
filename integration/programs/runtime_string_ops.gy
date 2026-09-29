@@ -1,0 +1,32 @@
+# A string asked about at run time is answered by the runtime string table (roadmap Gap R.47,
+# ADR 0229). A compiled string value is an index into @str_tab (ADR 0224) and that table grows at
+# run time, so a character produced by a call, an index in a loop, or a char method has somewhere
+# to live: the answer is an ordinary string value — printable, comparable, subscriptable again.
+#
+# Before this, every shape below was a compile-time refusal for a program CPython runs, and one
+# class of them was worse: the char path answered with the right index and the print path, asking a
+# different question, rendered it as a number. `for c in s` and building a new string (concat,
+# slice) still need the buffer half of the runtime and are refused (Gap R.47's remainder).
+
+
+def word():
+    return "abc"
+
+
+i = 1
+print(word()[i])          # b — a subscript of a call result
+print(word()[0], word()[2])
+print(len(word()))        # 3 — measured in code points, not bytes
+print(word()[1].upper())  # B — a char method on a runtime string
+print(ord(word()[1]))     # 98 — ord of a computed character
+d = {"k": "xyz"}
+print(d["k"][2])          # z — a dict value subscripted at run time
+n = 0
+while n < 3:
+    print(word()[n])      # a, b, c — an index that is not a constant
+    n = n + 1
+if word()[0] == "a":       # equality of runtime-built strings is by content, not by index
+    print("equal by content")
+if word()[0] == "z":
+    print("wrong")
+print(word()[-1])         # c — a position from the end, like every other position

@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"github.com/donutloop/gusty/pkg/lang"
 	"strings"
 	"testing"
 )
@@ -73,13 +74,12 @@ func TestInterpreterStringSubscriptFollowsTheOracle(t *testing.T) {
 // character at runtime has no runtime string to ask about.
 func TestCompiledStringSubscriptHolesRefuseWithAMessage(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"variable_index", "s = \"abc\"\ni = 0\nprint(s[i])\n"},
+		// What is left of Gap R.47 after ADR 0229: building a *new* string at run time
+		// (concatenation, slicing) and iterating a string held in a variable still need the
+		// buffer-allocation half of the runtime, so they refuse with a message. The subscript,
+		// len, ord and char-method shapes used to be here too and now answer — see
+		// TestCompiledStringSubscriptAnswersAtRuntime, which promotes them from CPython.
 		{"concat_of_two_chars", "s = \"abc\"\nprint(s[0] + s[2])\n"},
-		{"len_of_a_char", "s = \"abc\"\nprint(len(s[1]))\n"},
-		{"method_on_a_char", "s = \"abc\"\nprint(s[1].upper())\n"},
-		{"ord_of_a_computed_char", "s = \"abc\"\nprint(ord(s[1]))\n"},
-		{"index_of_a_call_result", "def f() -> str:\n    return \"xy\"\n\nprint(f()[1])\n"},
-		{"index_of_a_dict_value", "d = {\"k\": \"abc\"}\nprint(d[\"k\"][1])\n"},
 		{"iterate_a_variable_string", "s = \"ab\"\nfor c in s:\n    print(c)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,5 +110,76 @@ func TestUncaughtTrapClassesOnAnOutOfRangeCharSubscript(t *testing.T) {
 	}
 	if _, code := cliRunCode(t, "--aot", path); code != 1 {
 		t.Fatalf("compiled exit %d, want 1 (a refusal today; Gap R.37 asks for a runtime trap instead)", code)
+	}
+}
+
+// TestCompiledStringSubscriptAnswersAtRuntime is the ADR 0229 half: a character asked about at
+// run time is answered by the runtime string table on *both* engines, with CPython's answer.
+// The expectations come from python3, and the test refuses to proceed if CPython disagrees, so
+// the table cannot drift into pinning the emission.
+//
+// Each of these used to be one of two failures: a compile-time refusal (exit 1 for a program
+// CPython runs), or — worse, before the print path learned to ask the same question — the
+// interned index printed as a number. A wrong answer with exit 0 is what the suite must never
+// accept, which is why the refusal tests above and this one are kept as separate tables.
+func TestCompiledStringSubscriptAnswersAtRuntime(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"variable_index", "s = \"abc\"\ni = 0\nprint(s[i])\n", "a\n"},
+		{"len_of_a_char", "s = \"abc\"\nprint(len(s[1]))\n", "1\n"},
+		{"method_on_a_char", "s = \"abc\"\nprint(s[1].upper())\n", "B\n"},
+		{"method_lower_on_a_char", "s = \"ABC\"\nprint(s[1].lower())\n", "b\n"},
+		{"ord_of_a_computed_char", "s = \"abc\"\nprint(ord(s[1]))\n", "98\n"},
+		{"index_of_a_call_result", "def f() -> str:\n    return \"xy\"\n\nprint(f()[1])\n", "y\n"},
+		{"index_of_unannotated_call_result", "def f():\n    return \"xy\"\n\nprint(f()[1])\n", "y\n"},
+		{"index_of_a_dict_value", "d = {\"k\": \"abc\"}\nprint(d[\"k\"][1])\n", "b\n"},
+		{"index_by_a_loop_variable", "s = \"abc\"\nfor i in [0, 2]:\n    print(s[i])\n", "a\nc\n"},
+		{"len_of_a_computed_string", "def f():\n    return \"hello\"\nprint(len(f()))\n", "5\n"},
+		{"condition_on_a_runtime_subscript", "s = \"abc\"\nx = 0\nprint(1 if s[x] == \"b\" else 0)\n", "0\n"},
+		{"condition_on_a_matching_char", "s = \"abc\"\nx = 1\nprint(1 if s[x] == \"b\" else 0)\n", "1\n"},
+		{"code_points_not_bytes", "def f():\n    return \"caf\" + \"\u00e9\"\nprint(len(f()), f()[3])\n", "4 \u00e9\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wantOut, _, perr := lang.PythonRun(tc.src)
+			if perr != nil {
+				t.Fatalf("CPython rejected a program this table says answers: %v\n%s", perr, tc.src)
+			}
+			if wantOut != tc.want {
+				t.Fatalf("this table disagrees with CPython, which printed %q\n%s", wantOut, tc.src)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				path := writeSrc(t, t.TempDir(), "rt.gy", tc.src)
+				out, code := cliRunCode(t, engine, path)
+				if code != 0 {
+					t.Fatalf("%s exited %d for a shape ADR 0229 makes answerable:\n%s\n%s", engine, code, cliRun(t, engine, path), tc.src)
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want %q (CPython)\n%s", engine, out, tc.want, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestStringTableOverflowIsACatchableTrap: the compiled backend bounds the strings a program can
+// create at run time. Exceeding the bound is a raise the program can catch, not a sentence
+// printed over its head and not — the old behaviour — the last table entry reused, which made a
+// string print as some other string (ADR 0229).
+func TestStringTableOverflowIsACatchableTrap(t *testing.T) {
+	src := "def make(i):\n    return \"x\" + \"\" + str(i % 7) + \"_\" * (i % 3)\n\nn = 0\nwhile n < 200:\n    n = n + 1\nprint(\"still running\")\n"
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Skipf("this shape is refused for an unrelated reason (%v)", err)
+	}
+	if _, verr := lang.VerifyModuleIR(res.IR, 0); verr != nil {
+		t.Fatalf("the emitted module does not verify: %v", verr)
+	}
+	for _, want := range []string{"rt_str_intern", "rt_str_char", "ret i32 -2"} {
+		if !strings.Contains(res.IR, want) {
+			t.Fatalf("the runtime string path is missing %q", want)
+		}
+	}
+	if strings.Contains(res.IR, "@rt_die(i8* getelementptr ([46 x i8]") {
+		t.Fatalf("the string table's overflow path must not reach for a helper defined in another runtime block")
 	}
 }

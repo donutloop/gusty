@@ -312,6 +312,18 @@ falls back to dynamic dispatch.
   rules turned out to be the cause: a `for` body may run zero times, a `match` may match nothing, and a
   loop variable is certainly bound inside its own body. The probes also caught the linked binary exiting
   1 — the compile-error code — for a program that merely raised, which ADR 0211 does not permit.
+- **A string is an index into a table the runtime can add to** (ADR 0229) — `s = get(); print(s[1])`
+  refused as "index of a non-literal variable", `def f(s): return s[1]` printed `1`, and
+  `get()[1].upper()` printed `2`, all with exit 0 while CPython and the interpreter printed `b` and `B`.
+  Thirteen shapes were compile-time refusals for programs Python runs. A compiled string is an
+  `@str_tab` index and the table is content-addressed and already grows at run time, so the fix was not
+  a new representation but six runtime helpers that take indices and return them — and one question the
+  compiler had been asking too narrowly: *is this a string?*, not *can the compiler read its text?*.
+  Subscripts at run-time positions, `len`, `ord`, and `upper`/`lower` now answer on both backends, and
+  because equality is by content, a string built while running compares equal to the literal that spells
+  it. The table's overflow path used to reuse its last entry — printing a different string than the
+  program had built — and now raises a catchable `RuntimeError`. Concatenating or slicing into a new
+  string at run time, and iterating a string in a variable, are the write half that remains refused.
 - **A container slot is a word — ask what fits before writing it** (ADR 0226) — `[1] == [1.0]`,
   `print([1.5, 2])` and `1.0 == [1]` reached `llc` as invented operands (`[1 x i32] [@env_store = ...`,
   `%t1 = sitofp i32  to double`, `%t2 = sitofp i32 @.lst1 to double`) and came back as exit 2, while
