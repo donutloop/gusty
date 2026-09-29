@@ -67,6 +67,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// default, all defaults, keyword arguments, and a call mixing both — the shapes the
 		// new missing-argument rule must not refuse (Gap R.10, ADR 0201).
 		"arity_defaults",
+		// Built-in names are program-owned: a helper, a parameter, a keyword argument and a
+		// method all called `print`/`range`/`shape`, which used not to parse at all because
+		// those words were keywords (Gap R.9, ADR 0203).
+		"builtin_names_as_defs",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).

@@ -79,6 +79,14 @@ names come from one table (`pkg/lang/predeclared.go`) shared by the checker, the
 unbound-name guard and LSP completion, so a real built-in (`sum`, `enumerate`, `zip`, …) is
 never "undefined" and a name that is not bound is never lowered.
 
+**The reserved words are only the grammatical ones** (Gap R.9, ADR 0203). A built-in name — `print`,
+`range`, `len`, `str`, `int`, `abs`, `sum`, … — is an ordinary identifier: generating a function, a
+parameter, a keyword-argument name or a method called `print` or `range` is legal and never produced
+`parse error: expected identifier`, so an agent need not keep a list of taboo names. Real keywords
+(`def`, `if`, `while`, `for`, `in`, `class`, `return`, `match`, `case`, `try`, `except`, `finally`,
+`yield`, `lambda`, `import`, `with`, `as`, `not`, `and`, `or`, `is`, `None`, `True`, `False`) stay
+reserved, and a name that collides with one is reported as `expected identifier` at the definition.
+
 **A diagnostic is never repeated** (Gap R.7, ADR 0202). The analyzer records each fact once, keyed
 by level, position, code and message, so `diagnostics` in `--json` is a set: its length is a count
 of findings, grouping by `code` is meaningful, and the CLI prints no line twice. Distinct findings

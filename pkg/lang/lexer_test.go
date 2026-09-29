@@ -159,21 +159,22 @@ func TestLexLineContinuation(t *testing.T) {
 	// a long call argument list split with a continuation must lex as one line
 	src := "print(1 + \\\n    2)\nprint(3)\n"
 	got := lexKinds(src)
-	want := "Keyword Op Int Op Int Op Newline\nKeyword Op Int Op Newline\nEOF\n"
+	// `print` is a built-in name, not a keyword (ADR 0203), so it lexes as an identifier.
+	want := "Ident Op Int Op Int Op Newline\nIdent Op Int Op Newline\nEOF\n"
 	if got != want {
 		t.Fatalf("lex line continuation:\n got %q\nwant %q", got, want)
 	}
 
 	// multiple continuations chain within one logical line
 	got = lexKinds("x = 1 + \\\n    2 + \\\n    3\nprint(x)\n")
-	want = "Ident Op Int Op Int Op Int Newline\nKeyword Op Ident Op Newline\nEOF\n"
+	want = "Ident Op Int Op Int Op Int Newline\nIdent Op Ident Op Newline\nEOF\n"
 	if got != want {
 		t.Fatalf("lex chained continuation:\n got %q\nwant %q", got, want)
 	}
 
 	// blank and comment-only continuation lines are skipped
 	got = lexKinds("x = 1 + \\\n\n    # note\n    2\nprint(x)\n")
-	want = "Ident Op Int Op Int Newline\nKeyword Op Ident Op Newline\nEOF\n"
+	want = "Ident Op Int Op Int Newline\nIdent Op Ident Op Newline\nEOF\n"
 	if got != want {
 		t.Fatalf("lex continuation with blank/comment lines:\n got %q\nwant %q", got, want)
 	}

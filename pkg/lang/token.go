@@ -41,18 +41,18 @@ type Token struct {
 	// (Start inclusive, End exclusive); StartRune/EndRune are the same
 	// boundaries measured in runes (0-based). Multiline reports whether the
 	// token spans more than one physical source line.
-	Start      int
-	End        int
-	StartRune  int
-	EndRune    int
-	Multiline  bool
+	Start     int
+	End       int
+	StartRune int
+	EndRune   int
+	Multiline bool
 
 	// Literal payloads.
-	Int   int64
-	Float float64
-	Str   string
+	Int     int64
+	Float   float64
+	Str     string
 	FStrRaw string // raw inner content of an f-string token
-	ErrMsg string // message carried by a TokError token
+	ErrMsg  string // message carried by a TokError token
 }
 
 func (t Token) Is(kind TokenKind, text string) bool {
@@ -129,14 +129,14 @@ func (c *Cursor) skipNewlines() {
 // keywords in the language.
 var keywords = map[string]bool{
 	"def": true, "return": true, "if": true, "elif": true, "else": true,
-	"while": true, "for": true, "in": true, "range": true, "print": true,
+	"while": true, "for": true, "in": true,
 	"class": true, "import": true,
 	"extern": true, "match": true, "case": true, "try": true,
 	"except": true, "finally": true, "yield": true, "lambda": true,
 	"None": true, "True": true, "False": true, "not": true, "and": true, "or": true,
-	"is": true,
+	"is":   true,
 	"with": true, "from": true, "as": true,
 	"async": true, "await": true,
-	"type": true,
+	"type":  true,
 	"break": true, "continue": true, "raise": true, "pass": true,
 }

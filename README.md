@@ -201,6 +201,10 @@ falls back to dynamic dispatch.
 - **A diagnostic is said once** — per-call-site return inference used to re-report everything inside
   a callee, so one warning appeared two or three times and the length of the JSON `diagnostics` array
   was not a count of findings (ADR 0202)
+- **Only grammar words are reserved** — `print` and `range` were keywords, so `def print`, a parameter
+  named `range`, a keyword argument named `print` and a method named `range` all failed to parse;
+  built-ins are ordinary names, and the keyword table is now exactly the words that change grammar
+  (`programs/builtin_names_as_defs.gy`, ADR 0203)
 - **The corpus has a third opinion (L11.9)** — parity between the two backends can be satisfied
   by two implementations that share a bug, and for a hundred ADRs it was. The conformance matrix
   runs each program through the interpreter, the compiled binary **and CPython**, and each case

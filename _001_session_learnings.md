@@ -2947,3 +2947,51 @@ What this cycle taught:
   `integration`) is a hint that this repo's test packages are large enough that new helpers need a
   topic prefix — cheap rule to adopt, saves a compile cycle each time.
 
+## Cycle 151 — the words that change grammar (Gap R.9, ADR 0203)
+
+`def print(x): ...` produced `parse error at 1:5: expected identifier`. Not a checker bug, not a
+codegen bug — the lexer had `print` and `range` in its **keyword** table, so no name in the program
+could use those words: not a function, not a parameter, not a keyword argument, not a method.
+
+The fix was deleting two entries from a map, and that is the whole lesson: **a defect's severity is
+not proportional to its size.** Two stray booleans in a table made the two most natural names in a
+Python-like language unusable, and everything downstream had quietly worked around them — the parser
+accepted the keyword tokens in expression position by *text*, and the checker, codegen
+(`case "print"`, `case "range"`), the interpreter's loop fast path, the closure builtin set and LSP
+completion all dispatch on text too. Keyword status bought nothing; it only forbade naming.
+
+How it was found, and what that suggests: I did not go looking for it. R.9 was already on the
+roadmap, and the program I wrote to *prove* it closed (a helper named `range`, a method named
+`range`, parameters named `print`/`range`) immediately exposed three more behaviours that differed
+across backends:
+
+- **R.12** — `for i in range(2)` above `def range(x)`: the interpreter uses the built-in (2 lines),
+  the compiled binary uses the *program's* `range` because codegen emits all functions before the
+  body, so it iterated `range(2)` = 6 as a count. ADR 0197 gave the front end a declaration-order
+  rule; codegen never got one.
+- **R.13** — a file ending in a bare expression statement is echoed by `--file`/`--interp` (`f(5)` →
+  `10`) and by nobody else. The code comment states the intent ("a REPL courtesy for snippets, not a
+  program feature… matching `python prog.py`") and the guard does something narrower than the intent,
+  so **a comment that describes intent more precisely than the code is a defect report waiting to be
+  filed**.
+- **R.14** — `for i in 5:` iterates `0..4` on both backends, undocumented, while CPython raises
+  `TypeError`. Agreement between our two backends makes it a feature rather than a bug; agreement
+  with Python does not, so it is documented in language.md as a deliberate extension and tracked
+  rather than silently blessed or silently removed.
+
+Process notes:
+
+- **Ledger programs should say what they avoid.** `builtin_names_as_defs.gy` defines `range` and never
+  asks for the built-in, and its header comment says why (R.12 is open). A parity program that
+  quietly depends on an open gap is a future false alarm.
+- **Test both sides of a narrowing.** Removing two keywords risks two failure directions — built-ins
+  stop working, or real keywords stop being reserved — so the tests assert all three: names usable in
+  every name position, built-ins still functioning (including `sep`/`end` and the 3-argument `range`),
+  and the *entire* real keyword set still refused with the specific message, plus a direct `Lex`
+  assertion that every built-in name produces `TokIdent`. That last one is the test that fails for the
+  right person: whoever re-adds a built-in to the table, not whoever notices a parse error three
+  months later.
+- **Three new gaps recorded, none fixed** — measured, written as reproducible programs with expected/
+  actual output, and left in the queue in severity order. Resisting the urge to fix a one-line-looking
+  thing mid-cycle is what keeps commits one-feature and ADRs one-per-decision.
+

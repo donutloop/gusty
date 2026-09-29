@@ -712,6 +712,9 @@ for i in range(n):
 - `while` loops while the condition is non-zero.
 - `for ... in range(n)` iterates `i` from `0` to `n-1`.
 - `for ... in range(a, b)` iterates `i` from `a` to `b-1`.
+- `for x in 5:` iterates `0, 1, 2, 3, 4` — an integer on the right-hand side is a repeat count.
+  Both backends agree on this; CPython refuses it (`'int' object is not iterable`), so it is a
+  deliberate extension rather than a Pythonism, and it is tracked as roadmap R.14.
 - `for x in [1, 2, 3]:` iterates the elements of a list literal — in the
   interpreter over a boxed list, and in the AOT codegen over an inline list
   literal (unrolled per element).
@@ -1743,6 +1746,38 @@ print(float(1) + 0.5)   # 9.5 — the call is the program's, its int result lift
 
 What a program does *not* get by shadowing is a slower program: when nobody shadows `str`, the
 constant folding still runs (`print(str(42))` is still folded at compile time).
+
+### Which words are reserved
+
+Only words that change grammar are keywords: `def`, `return`, `if`/`elif`/`else`, `while`,
+`for`/`in`, `class`, `import`/`from`/`as`, `match`/`case`, `try`/`except`/`finally`, `with`, `yield`,
+`lambda`, `not`/`and`/`or`/`is`, `None`/`True`/`False`, and the declaration keywords `extern`/`type`.
+
+Everything else — including every built-in — is an ordinary name a program may define, shadow, and
+pass around (`programs/builtin_names_as_defs.gy`):
+
+```gy
+def range(x):                 # a helper of your own, not the built-in
+    return x * 3
+
+
+def use_both(print, range):   # parameters may be called print and range
+    return print + range
+
+
+class Counter:
+    def range(self, n):       # and so may methods
+        return n * 4
+
+
+print(use_both(print=7, range=8))   # 15
+print(range(4))                     # 12
+```
+
+`print` and `range` used to be keywords, so these definitions did not parse (`expected identifier`)
+— see ADR 0203. A built-in name that a definition claims is honoured from that definition onwards,
+which is what CPython does too; how far that rule reaches into the compiled backend is roadmap
+R.12.
 
 ### A call must fill every parameter without a default
 

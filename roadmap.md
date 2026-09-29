@@ -1492,12 +1492,19 @@ messages where nobody would look:
 - **R.7, closed by ADR 0202** — the checker repeated itself structurally (per-call-site return
   inference re-walks a callee's body), so one warning appeared two or three times and the length of
   the JSON diagnostic array was not a count of findings.
-- **R.9, R.11 (OPEN)** — defects measured while closing the others, both of them
-  discovered by writing a corpus program rather than by reading code:
-  one source line can report the same diagnostic two or three times, because return inference
-  `def print` / `def range` do not parse at all, though
-  CPython runs them (R.9); a non-default parameter after a defaulted one is only caught at the
-  call (R.11).
+- **R.9, closed by ADR 0203** — `print` and `range` were in the lexer's keyword table, so a program
+  could not define a function, a parameter, a keyword argument or a method with those names:
+  `def print(x)` failed with `expected identifier` before anything else saw it.
+- **R.12, R.13, R.14 (OPEN)** — found while building the program that proves R.9: a program-defined
+  built-in name is visible to codegen *above* its definition, so `for i in range(2)` iterates the
+  program's value while the interpreter uses the built-in; a file's final bare expression statement is
+  echoed by the interpreter and by nobody else; and `for x in 5` iterates on both backends while
+  being undocumented and refused by CPython.
+- **R.11 (OPEN)** — a non-default parameter after a defaulted one parses, and is only caught at the
+  call, while CPython refuses the definition.
+
+Each of these was discovered by writing a corpus program rather than by reading code, which is why
+they are all reproducible as programs.
 
 ### R.1 — the compiled backend runs a coroutine at the call, not at the await (OPEN)
 
@@ -1714,19 +1721,76 @@ shadowed calls in print position, in float arithmetic, and over a real list — 
 in a different helper: `float` passing said nothing about `chr`. Unshadowed programs keep their
 folds: `print(str(42))` is still constant-folded.
 
-### R.9 — `def print` and `def range` do not parse (OPEN)
+### R.9 — `def print` and `def range` did not parse (CLOSED, ADR 0203)
 
 ```gusty
 def print(x):
-    return x
+    return x + 1
 ```
 
-`parse error at 1:5: expected identifier` — consistently on `--check`, `--interp` and `--aot`, so it
-is a refusal and not a wrong answer, which is why it is a footnote rather than a blocker. CPython
-accepts the program (`print` and `range` are ordinary globals), so the difference is a portability
-trap for code carried over, and for a generated program that happens to choose one of these names.
-The fix is in the parser's statement position — accept these names as `def` targets, and let the
-resolver decide (R.6 already guarantees the program's definition wins once it parses).
+`--check` answered `error at 1:5: expected identifier` — the lexer refused the program before the
+checker, the codegen or the interpreter ever saw it. So did a parameter called `range`, a keyword
+argument called `print`, and a method named `range`: words a program needs, unspellable because the
+lexer's `keywords` map listed `print` and `range` as keywords.
+
+Nothing needed them to be keywords. The parser accepted them in expression position with a special
+case that produced a plain `Name`, and every downstream component — the checker's built-in tables,
+`codegen.go`'s `case "print"` / `case "range"`, the interpreter's `n.Value == "range"` loop fast path,
+the closure built-in set, LSP completion — dispatches on the *text*. Keyword status bought nothing
+and cost the ability to name those words, which also made ADR 0199 ("a built-in name is a name")
+unexpressible for its two most-used members.
+
+Closed by narrowing the keyword table to the words that actually change grammar, with tests on both
+sides: built-in names usable as function, method, parameter and keyword-argument names, the built-ins
+themselves still working (`print(1, sep=",", end="!")`, `range(1, 9, 2)`, comprehensions over
+`range`), the whole real-keyword set still reserved with the specific message, and `Lex` asserted to
+produce `TokIdent` for every built-in name so this cannot regress silently.
+
+### R.12 — a program-defined built-in name is visible to codegen above its definition (OPEN)
+
+```gusty
+for i in range(2):
+    print(i * 100)
+
+def range(x):
+    return x * 3
+
+print(range(4))
+```
+
+The interpreter and CPython print `0 100 12`; the compiled binary prints `0 100 200 300 400 500 12`,
+because codegen emits every function before the body and resolves `range` to the program's definition
+wherever it appears — so the loop iterated the *program's* `range(2)` = 6 as a count, starting at 0,
+while the interpreter used the built-in `range(2)` because the `def` had not executed yet.
+
+ADR 0197 gave the front end a rule about which names a *deferred* scope may see; codegen has never
+been given the same one. Until then, the ledger's shadowing programs must avoid using a built-in that
+the same program also defines (`programs/builtin_names_as_defs.gy` says so in its header comment).
+
+### R.13 — a file's final bare expression statement is echoed by the interpreter only (OPEN)
+
+```gusty
+def f(x):
+    return x * 2
+
+f(5)
+```
+
+`--file` and `--interp` print `10`; `--aot` and CPython print nothing. Echoing the last value is a
+REPL courtesy for *snippets* — the code says so, and the earlier fix for the stray trailing `0`
+narrowed it to "a final bare expression whose value is not `None`" — but a file is not a snippet, and
+`python prog.py` never echoes. The intent and the guard disagree, and the observable consequence is
+that a program whose last statement is a call to a value-returning function has two different stdouts
+depending on which backend ran it.
+
+### R.14 — `for x in 5` iterates, on both backends, undocumented (OPEN)
+
+`for i in 5:` prints `0 1 2 3 4` identically in the interpreter and in the compiled binary, while
+CPython raises `TypeError: 'int' object is not iterable`. Two backends agreeing makes it a feature
+rather than a bug, but `docs/language.md` describes only the `range(...)` forms, so an undocumented
+construct is load-bearing for whichever corpus program discovered it (this one: a shadowed `range`
+being iterated as a count). Decide one way: document it as a deliberate extension with a probe to pin
+the CPython divergence, or refuse it and say so at the check.
 
 ### R.8 — a module function and a method of one name share the checker's key (CLOSED, ADR 0200)
 

@@ -1,0 +1,36 @@
+# `print` and `range` used to be *keywords*, so a program could not name anything after them:
+# `def print(x): ...` failed to parse with `expected identifier`, and so did a parameter, a keyword
+# argument, or a class method called `range`. They are built-ins, not keywords — ordinary names a
+# program owns (ADR 0199: a built-in name is a name), and Python never reserved them either. The
+# lexer's keyword table is now only the words that genuinely change grammar (Gap R.9, ADR 0203).
+#
+# This program defines `range` as its own helper and never asks for the built-in one, because the
+# two backends still disagree about *when* a shadowing definition takes effect (roadmap R.12) — a
+# name being program-owned is this gap; the moment it becomes program-owned is not.
+
+def shape(w, h=2, unit="px"):
+    return w * h
+
+
+def use_both(print, range):
+    return print + range
+
+
+class Counter:
+    def range(self, n):
+        return n * 4
+
+    def total(self, n):
+        return self.range(n) + 1
+
+
+def range(x):
+    return x * 3
+
+
+print(shape(3))
+print(shape(3, 4))
+print(use_both(print=7, range=8))
+print(Counter().total(2))
+print(range(4))
+print(sum([1, 2, 3]))
