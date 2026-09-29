@@ -300,6 +300,36 @@ falls back to dynamic dispatch.
   near-miss fails with "did you mean programs/X.gy". The session-learnings file is exempt — it is
   allowed to name a file precisely to report that it is missing. `%` formatting itself remains a gap
   (R.31), but now it has the artifact its entry always claimed.
+- **A method is a call like any other** (ADR 0223) — three different wrong interfaces came out of one
+  emitter that had never been brought back to parity with functions:
+
+  ```py
+  class C:
+      def m(self) -> int:
+          try:
+              return 3
+          finally:
+              print("fin")      # compiled: exit 2, `br label %` — an empty target
+
+      def raiser(self) -> int:
+          raise ValueError("boom")
+
+  print(C().raiser())          # compiled: prints 0 and exits 0 · CPython: traceback
+  ```
+
+  A `try` in a method emitted a branch to an empty label because only `funcDef` set a raise-exit; a
+  `raise` out of a method was invisible because no call site checked the exception flag after a method
+  call — the program printed a value and carried on; and `emitClassMethod` threw away the error
+  `g.stmt` returned, so any construct the compiler refuses inside a method became half a function and
+  an `llc` rejection: exit 2, blaming the compiler for a source error (ADR 0166's rule). Methods now
+  own their unwind path (which closes the GC frame they opened), clear the enclosing statement's
+  handler/deferred state, name their traceback frame `Class.method`, report their refusals as compile
+  errors, and every call site into program code — static dispatch, `super()`, the class-id `switch`,
+  and a constructor's `__init__` — checks the flag. Inside the `switch` the check had to finish the
+  arm and the join's `phi` name the check's continuation: a call site that can raise cannot also be a
+  value producer for the join. What is still wrong is recorded with a minimal repro and a
+  pre-existingness check against two older binaries: a method returning a `str` returns the raw string
+  global (roadmap Gap R.42).
 - **A deferred body belongs to every exit** (ADR 0222) — this ran the cleanup on the boring path only:
 
   ```py

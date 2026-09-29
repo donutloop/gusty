@@ -101,9 +101,10 @@ that are recorded rather than papered over:
 - `g.funcRaiseExit` is not set for **methods**, so any method containing a `try` emits
   `br label %` and `llc` rejects the module — exit 2, a toolchain rejection for a program whose answer
   is `m fin\n3`. Verified against the binary from before this cycle, which fails identically: it is
-  Gap R.41, pinned by `programs/probe_method_try.gy` and
-  `TestMethodWithTryIsPinnedAsPreExistingCompiledDebt`, whose IR assertion (`br label %` with an empty
-  target) is deleted when the shape compiles.
+  Gap R.41, pinned at the time by a debt row for this shape and a test asserting the malformed
+  emission. Gap R.41 landed in the next cycle (ADR 0223): that probe was promoted to the parity program
+  `programs/method_try.gy`, its ledger row was deleted, and the pinned test was replaced by
+  `TestMethodWithTryCompiles` — exactly the life cycle a pinned wrong answer is supposed to have.
 
 The honest long-term shape is LLVM's own: `invoke` plus a cleanup landingpad per `try`, where the
 runtime walks the pending cleanups instead of the compiler duplicating them per exit edge (already

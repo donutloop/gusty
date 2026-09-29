@@ -57,6 +57,10 @@ func TestModuleScopeIsStillOutOfReachForCompiledCode(t *testing.T) {
 		{"module constant", "v = 1\n\ndef g() -> int:\n    return v\n\nprint(g())\n", `undefined name "v"`},
 		{"two functions, one constant", "T = 6\n\ndef a() -> int:\n    return T\n\ndef b() -> int:\n    return T * 2\n\nprint(a(), b())\n", `undefined name "T"`},
 		{"constant read by a nested def", "c = 1\n\ndef get() -> int:\n    return c\n\nprint(get())\n", `undefined name "c"`},
+		// Measured again in cycle 171: this shape used to compile and print `0`, because the
+		// refusal below was emitted into a method body and thrown away (Gap R.41, ADR 0223).
+		// A refusal is a bad answer but an honest one; a silent zero is not.
+		{"constant read by a method", "k = 5\n\nclass C:\n    def get(self) -> int:\n        return k\n\nprint(C().get())\n", `undefined name "k"`},
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
@@ -70,7 +74,10 @@ func TestModuleScopeIsStillOutOfReachForCompiledCode(t *testing.T) {
 		})
 	}
 	silentZero := []struct{ name, src string }{
-		{"method reads a module name", "k = 5\n\nclass C:\n    def get(self) -> int:\n        return k\n\nprint(C().get())\n"},
+		// Still a silent zero. A nested `def` reaching past its parent frame to the module is
+		// lowered to a slot nothing writes; the method-shaped version of this no longer appears
+		// here, because a method body's codegen refusal used to be thrown away (ADR 0223) and now
+		// surfaces as the honest refusal in the table above.
 		{"nested def reaches the module", "G = 2\n\ndef outer() -> int:\n    def inner() -> int:\n        return G\n    return inner()\n\nprint(outer())\n"},
 	}
 	for _, tc := range silentZero {

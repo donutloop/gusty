@@ -2101,6 +2101,12 @@ func GenerateIR(prog *Program) (string, error) {
 		}
 	}
 	g.inMain = false
+	// A refusal recorded while a method body was being emitted is a compile error and is
+	// reported as one; it must never reach `llc` as a half-built function (ADR 0166,
+	// roadmap Gap R.41).
+	if g.emitErr != nil {
+		return "", g.emitErr
+	}
 	g.gcCall(&b)
 	if GCReportEnabled() {
 		// The compiled backend's own collector self-report (--gc-stats). The numbers
@@ -2473,6 +2479,11 @@ type irGen struct {
 	// like the arm's normal exit does — otherwise the transfer escapes the clear and the next
 	// user-function call reports the exception all over again (roadmap Gap R.21, compiled half).
 	handledArms int
+	// emitErr carries the first codegen refusal raised inside a body emitted outside GenerateIR's
+	// statement walk -- a class method, whose emitter writes into the globals buffer and has no
+	// error return. Dropping it built an incomplete function and let `llc` report the problem as
+	// a toolchain rejection, blaming the compiler for a source error (ADR 0166, roadmap Gap R.41).
+	emitErr error
 	// deferred is the stack of `finally` bodies belonging to the `try` statements currently
 	// being lowered, outermost first. A control transfer that leaves a `try` for good -- a
 	// `return`, `break`, `continue`, a raise that its arms do not catch -- has to run them,
@@ -2762,6 +2773,22 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 		g.params[fd.Params[i].Name] = fmt.Sprintf("%%p%d", i)
 	}
 	g.selfClass = className
+	// A method is a call like any other, so it needs what `funcDef` gives a `def`: its own
+	// raise-exit block, no handler inherited from whatever was being emitted when the class
+	// happened to be registered, and no deferred bodies belonging to an enclosing `try`. The
+	// missing raise-exit was the visible half of roadmap Gap R.41 (ADR 0223): a `try` or a
+	// `raise` in a method body branched to `br label %` with an empty target and `llc`
+	// rejected the module, so a program whose answer was `m fin\n3` exited 2 with a temp path.
+	prevRaise := g.funcRaiseExit
+	g.funcRaiseExit = funcName + ".raiseexit"
+	prevHandlers := g.handlerStack
+	g.handlerStack = nil
+	prevHandled := g.handledArms
+	g.handledArms = 0
+	prevDeferred := g.deferred
+	g.deferred = nil
+	prevFnSrc := g.curFnSrc
+	g.curFnSrc = className + "." + fd.Name
 	g.globals.WriteString(fmt.Sprintf("define i32 @%s(%s) {\n", funcName, strings.Join(paramRegs, ", ")))
 	// A method is a call like any other: it opens its own root frame and pops it on
 	// the way out. Without this the roots its body pushes (self, container args,
@@ -2774,12 +2801,31 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	g.copyInReboundParams(&g.globals, fd, false)
 	g.inFunc = true
 	for _, st := range fd.Body {
-		g.stmt(&g.globals, st)
+		// A refusal inside a method body used to be dropped on the floor, which turned a source
+		// error the front end should name into an incomplete function definition and a toolchain
+		// rejection -- the ADR 0166 class, and the reason a method could not contain a construct
+		// a plain function could (roadmap Gap R.41, ADR 0223).
+		if err := g.stmt(&g.globals, st); err != nil {
+			if g.emitErr == nil {
+				g.emitErr = err
+			}
+			break
+		}
 	}
+	g.gcCloseFrame(&g.globals)
+	g.globals.WriteString("  ret i32 0\n")
+	// The method's own unwind target: it closes the frame it opened and returns; the caller's
+	// call-site check (ADR 0218) is what turns the flag into a propagation.
+	fmt.Fprintf(&g.globals, "%s:\n", g.funcRaiseExit)
 	g.gcCloseFrame(&g.globals)
 	g.globals.WriteString("  ret i32 0\n}\n")
 	g.inFunc = false
 	g.frameOpen = savedFrame
+	g.curFnSrc = prevFnSrc
+	g.deferred = prevDeferred
+	g.handledArms = prevHandled
+	g.handlerStack = prevHandlers
+	g.funcRaiseExit = prevRaise
 	g.selfClass = prevSelf
 	g.params = prevParams
 	g.paramSlot = prevSlot
@@ -6626,6 +6672,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						b.WriteString(", i32 " + av)
 					}
 					b.WriteString(")\n")
+					// A method is program code, and program code raises: without the
+					// call-site check the exception stayed in flight, the method returned
+					// its unwind value, and the caller carried on printing (Gap R.41, ADR 0223).
+					g.checkExn(b)
 					return ret, nil
 				}
 			}
@@ -6648,6 +6698,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					b.WriteString(", i32 " + av)
 				}
 				b.WriteString(")\n")
+				g.checkExn(b) // a method call propagates like any other call (Gap R.41, ADR 0223)
 				return ret, nil
 			}
 		}
@@ -6677,13 +6728,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				argvals[i] = v
 			}
 			type dynCase struct {
-				id           int
-				fn, lab, ret string
+				id int
+				// cont is the block the exception check branches into; the join below has to be
+				// entered from there, not from the call's own arm, once the call can raise (ADR 0223).
+				fn, lab, ret, cont string
 			}
 			var cases []dynCase
 			for _, cls := range g.classOrder {
 				if fn, ok := g.resolveMethod(cls, mname); ok {
-					cases = append(cases, dynCase{g.classIDs[cls], fn, g.newLabel("dyn.c"), g.newTmp()})
+					cases = append(cases, dynCase{id: g.classIDs[cls], fn: fn, lab: g.newLabel("dyn.c"), ret: g.newTmp()})
 				}
 			}
 			done := g.newLabel("dyn.done")
@@ -6693,13 +6746,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(fmt.Sprintf("    i32 %d, label %%%s\n", dc.id, dc.lab))
 			}
 			b.WriteString("  ]\n")
-			for _, dc := range cases {
+			for i := range cases {
+				dc := &cases[i]
 				b.WriteString(fmt.Sprintf("%s:\n", dc.lab))
 				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s", dc.ret, dc.fn, h))
 				for _, av := range argvals {
 					b.WriteString(fmt.Sprintf(", i32 %s", av))
 				}
 				b.WriteString(")\n")
+				// The check has to happen inside the arm, and the arm's `phi` incoming label
+				// becomes the check's continuation -- a call site that raises cannot also be a
+				// value producer for the join (Gap R.41, ADR 0223).
+				dc.cont = g.checkExnLabel(b)
 				b.WriteString(fmt.Sprintf("  br label %%%s\n", done))
 			}
 			b.WriteString(fmt.Sprintf("%s:\n", miss))
@@ -6711,7 +6769,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			phi := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = phi i32 [ 0, %%%s ]", phi, miss))
 			for _, dc := range cases {
-				b.WriteString(fmt.Sprintf(", [ %s, %%%s ]", dc.ret, dc.lab))
+				b.WriteString(fmt.Sprintf(", [ %s, %%%s ]", dc.ret, dc.cont))
 			}
 			b.WriteString("\n")
 			return phi, nil
@@ -7249,6 +7307,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(", i32 " + av)
 			}
 			b.WriteString(")\n")
+			// A constructor that raises has failed to construct: the exception propagates
+			// before the instance is ever used (Gap R.41, ADR 0223).
+			g.checkExn(b)
 		}
 		return h, nil
 	}
@@ -9247,6 +9308,12 @@ func blockEndsInTerminator(b *strings.Builder) bool {
 
 // checkExn emits a check of @exn_flag after a user-function call.
 func (g *irGen) checkExn(b *strings.Builder) {
+	g.checkExnLabel(b)
+}
+
+// checkExnLabel is checkExn with the continuation block's name, for a caller inside a `switch`
+// arm that has to name that block in a `phi` incoming list afterwards.
+func (g *irGen) checkExnLabel(b *strings.Builder) string {
 	f := g.newTmp()
 	c := g.newTmp()
 	cont := g.newLabel("exn.cont")
@@ -9258,6 +9325,7 @@ func (g *irGen) checkExn(b *strings.Builder) {
 	}
 	b.WriteString("  br i1 " + c + ", label %" + target + ", label %" + cont + "\n")
 	b.WriteString(cont + ":\n")
+	return cont
 }
 
 // tryStmt compiles a try/except/finally statement.

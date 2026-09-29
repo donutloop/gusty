@@ -2074,238 +2074,57 @@ control that a "just run it everywhere" fix would have passed) and `integration/
 from the documented contract rather than from observation). `programs/deferred_bodies.gy` is a
 standalone parity program. Matrix: 66/92 parity, oracle 47 match / 31 debt / 14 not-applicable.
 
-### R.41 — a method containing a `try` emits a branch to an empty label (OPEN, compiled)
+### R.41 — a method is now a call like any other (CLOSED, ADR 0223)
+
+`emitClassMethod` was a code path that had never been brought back to parity with `funcDef`, and
+three separate wrong interfaces came out of it. Measured before the change, re-checked after:
+
+| shape | compiled before | CPython |
+|-------|-----------------|---------|
+| `try`/`finally`, `try`/`except`, `break` through a `finally` in a method | exit 2 — `br label %`, an empty target | `m fin`/`3`, `handled`/`4`, `fin`/`9` |
+| `raise` out of a method, uncaught | **prints `0`, exit 0** | traceback, exit 1 |
+| `raise` out of a method, caught by the caller | **prints `0`, then the arm** | the arm alone |
+| nested `self.bad()` that raises | **prints `0`, the arm never runs** | the arm |
+| a construct codegen refuses, inside a method | **exit 2** (half a function emitted) | — |
+
+The empty label was `g.funcRaiseExit`, set by `funcDef` and never by the method path. The silent `0`
+was that plus no call-site exception check: the flag was set, and the caller had already taken its
+value. The dropped `g.stmt` error was the sneakiest — any refused construct inside a method produced a
+truncated function and an `llc` rejection, exit 2 blaming the compiler for a source error (ADR 0166).
+
+Now: the method gets its own `Class_method.raiseexit` block (which closes the root frame it opened, so
+an unwind does not leak a frame — ADR 0181), its `handlerStack`/`handledArms`/`deferred` are cleared
+for its body, its traceback frame is named `Class.method`, its first refusal is recorded in
+`g.emitErr` and returned by `GenerateIR`, and **every** call site into program code checks the flag —
+static dispatch, `super().m()`, the class-id `switch`, and a constructor's `__init__`. Inside a
+`switch` arm the check has to finish the arm, so `checkExnLabel` hands back the continuation block and
+the join's `phi` names *that* as its predecessor: a call site that can raise cannot also be a value
+producer for the join.
+
+Tests: `pkg/lang/method_unwind_test.go` asserts the artifacts — the raise-exit block present, no
+branch to an empty label, an `@exn_flag` load after a method call, `rt_frame_close` on the unwind
+path, no branch from inside a method to `main.raiseexit`, `VerifyModuleIR` clean, and a refusal inside
+a method reported as a compile error — and `integration/method_exceptions_test.go` runs seven shapes on
+both engines plus the exit-code contract. `programs/method_try.gy` is a standalone parity program, and
+the debt row for this shape was deleted by the drift test that demands exactly that when a debt is paid.
+
+### R.42 — a method that returns a string returns the raw string global (OPEN, compiled)
 
 ```gusty
-class C:
-    def m(self) -> int:
-        try:
-            return 3
-        finally:
-            print("m fin")
+class Dog:
+    def sound(self) -> str:
+        return "woof"
+
+print(Dog().sound())        # interpreter and CPython: woof · compiled: exit 2
 ```
 
-The interpreter and CPython print `m fin` then `3`; the compiled backend emits
-`br label %` — an empty target, because `g.funcRaiseExit` is never set on the method-emission path —
-and `llc` rejects the module, so the run exits 2 with a temp-file path. **Verified pre-existing**: the
-binary from before Gap R.23 fails identically on the same source, so this is not a consequence of the
-deferred-body work, it is what that work stepped on. Pinned by `programs/probe_method_try.gy` (debt
-row) and `TestMethodWithTryIsPinnedAsPreExistingCompiledDebt`, which also asserts the malformed
-emission through `--emit-llvm` and says to delete itself when the shape compiles. Fix: give the method
-path the same raise-exit block a `def` gets, and make the raise-outward edge of a method land there.
-
-### R.24 — the checker lost names bound inside compound statements (CLOSED, ADR 0217)
-
-Recorded in cycle 161 as "does not register names assigned inside a `try` body". Measured properly in
-cycle 165 it was five shapes, not one, and the analyser's child scopes were the whole cause:
-
-| shape | `--check` before | interpreter | CPython |
-|-------|------------------|-------------|---------|
-| name assigned in a `try` body, read after | `undefined name` (exit 1) | `2` | `2` |
-| name assigned in an `except` arm, read after | `undefined name` | NameError (matches) | NameError |
-| name assigned in a `finally` clause | `undefined name` — and the clause was **never analysed at all** | `4` | `4` |
-| name first assigned in a `while` body | `undefined name` | `1` | `1` |
-| name assigned in both `match` arms | `undefined name` | `1` | `1` |
-
-`if` and `for` already analysed in the enclosing scope, with comments saying why ("assignments there
-flow outward (like Python)", "runtime uses shared vars"); `try`, its handlers, `finally`, `while` and
-`match` had simply never been brought to that rule. All five now share the enclosing scope, `finally`
-is walked (so a typo inside it is a check-time error — the sharpest proof, in
-`TestFinallyBodyIsAnalysedAtAll`), and `--aot` compiled all of them as soon as the front end stopped
-refusing, because codegen had always collected assignments across nested blocks.
-
-Definiteness was kept as a separate, correct question via `definiteOnEveryPath`: a `match` capture in
-one arm, or an assignment in one handler, or anything first assigned in a `while` body is *visible*
-but not *certain*, and reads get the `possibly unbound` warning rather than the old error. See ADR
-0217 for the trade that makes — `--check` no longer fails that program — and for why the runtime is
-what enforces it now. `programs/compound_scoping.gy` is a standalone conformance case with no ledger row — the registry's
-way of saying it must print what Python prints — and it prints `-1 1 41 / 123 high 3 1 1` on all
-three engines.
-
-Two gaps fell out of the work and are recorded rather than bundled: **Gap R.21 compiled half** (a
-handled exception is re-raised by the next call — the reason this program's calls sit before its
-module-level `try`) and **Gap R.36** (an untouched slot is loaded and printed instead of trapping).
-
-### R.25 — built-in traps carried a message but no exception class (CLOSED, ADR 0214)
-
-Nine interpreter sites raised `*EvalError` with an empty `ExnType`, which made them invisible to the
-language: matching is on the class, so `except AttributeError:` / `except ValueError:` /
-`except TypeError:` were dead code, and the traceback printed a bare sentence where an exception
-should have been named. Each now raises what CPython raises, in CPython's words — measured first with
-`errors.As` rather than by eyeballing tracebacks, which is how the ADR's table got its right-hand
-column.
-
-One row justifies the whole exercise: `x = 5` then `x[0]` reported **"cannot index null"**. Not
-untyped — *false about the program*. The variable held an int; the message described our internal
-representation because that was the easiest thing to say, and a reader who believed it would go
-looking for a null that was never there. `valueTypeName` renders `'int'`, `'NoneType'`, and an
-instance's class name, so the messages are about the user's program again.
-
-Pinned by `pkg/lang/builtin_trap_classes_test.go` (class **and** exact message per shape; the handler
-runs; the wrong class does not catch it) and `integration/builtin_trap_classes_test.go` (interpreter
-equals CPython on all five handler lines; the shapes AOT will not lower stay honest refusals — class
-1, non-zero, never a substitute answer). `programs/probe_builtin_traps_untyped.gy` keeps the family
-in the matrix while R.19 and R.26 stay open.
-
-
-### R.26 — operators answered a number for operands they cannot apply (CLOSED, ADR 0215)
-
-```gusty
-print("a" * "b")   # was 1099516870662, exit 0
-print(1 + None)   # was 1048578, exit 0
-print([1] + 1)    # was 2097157, exit 0
-```
-
-Measured as a matrix before anything was written — 23 mistyped shapes and 30 legal ones, each run
-on the interpreter, the compiled backend and CPython — and it came back with three defects rather
-than one, all from the same root: `evalBin` never consulted an operand's kind, so a heap handle
-that reached an arithmetic path was added or multiplied as an integer.
-
-1. Every mistyped pair answered a number (this row).
-2. **Legal programs answered numbers too**: `[1] + [2]` was `2097157`, `[1] * 3` was `3145734`,
-   `"ab" * 2` was `2097156`. List concatenation and sequence repeat simply did
-   not exist. A refusal-only gate would have made these worse — refusing a program the reference
-   runs is still a divergence — so the rule shipped with the missing operations.
-3. Ordered comparison compared handles, so `"a" < "b"` was a question about allocation order.
-
-Now: `checkBinOp` after dunder dispatch and before every arithmetic path; the reference's four
-refusal message shapes; 22 shapes byte-identical to CPython, asserted by running `python3` rather
-than by pasting strings; sequence repeat and concatenation computing real values (negative and zero
-counts empty, either operand order); ordering by value for strings and lists including the nested
-`[1] < ["a"]` raise; `==`/`in`/`is` deliberately outside the gate, with a test that they stay total.
-`"a" + ""` is in the test table on purpose — the old path used "the string is empty" as the test for
-"the operand is not a string".
-
-Two things this exposed, both fixed here:
-
-- **The interpreter's untagged values.** Heap handles started at `1 << 20`, so a loop computing
-  `i * i` reached the object space: at `i = 1024`, `self.x * self.x` is `1048576`, the bench
-  accumulator reached `1048580`, which *was* the class's own method object, and `s + p.norm()` read
-  as int-plus-method. Correct to ~1000 iterations, wrong past that. `heapIDBase` is now `1 << 48`,
-  and `isHandle` is the single predicate answering "is this value an object?" for the collector, the
-  gate and every kind test — two answers to that question is how a value becomes an int to one
-  subsystem and a method to another. Tags are still the real answer (L11.1); the regression test
-  computes its expectation in Go, so a reintroduced collision cannot hide behind the language's own
-  arithmetic.
-- **The property generator could not fail.** It bound a list to a name and read that name as an
-  operand of `+` (`v1 = [1, 7, 6, 3, 4]` … `v2 = 9 + v1`), while its own test promises every
-  generated program runs cleanly. The promise had been untrue all along because nothing could make
-  it false. The generator now records the kind of each binding and reads a name only where that kind
-  is accepted.
-
-Pinned by `pkg/lang/operator_operand_test.go` (refusals, totals, sequence values, the collision
-regressions) and `integration/operator_operand_test.go` (report lines against a real `python3`, the
-parity program, compiled-leg honesty), with `programs/sequence_ops.gy` and
-`programs/probe_operand_types.gy` keeping both halves in the matrix. The compiled half is R.27 and
-R.33.
-
-
-### R.22 — a function returning a float on one path and a string on another emits invalid IR (OPEN, L11.8 violation)
-
-```gusty
-def div_or(a, b, fallback):
-    if b == 0:
-        return fallback     # a string
-    return a / b            # a float  →  sitofp i32 @.str3 to double, llc rejects the module
-
-print(div_or(10, 5, "none"))
-```
-
-Confirmed pre-existing. The function is specialised as float-returning and the string path is then
-`sitofp`'d — and a `sitofp` of a *global string reference* rather than a pointer is not even a
-value, so `llc` rejects the module: "global variable reference must have pointer type". That is
-exactly what roadmap L11.8 forbids for a tested shape (an `llc` rejection where a refusal is
-required) — and note the *tool* now reports it honestly as the compiler-bug class, exit **2**, per
-ADR 0211, which is how it came to light. Fix: a capability diagnostic naming the mixed return
-types, or real tagged values (L11.1) which subsume the problem.
-
-### R.19 — a missing attribute answers `0` instead of raising (OPEN, compiled half only)
-
-```gusty
-class P:
-    pass
-p = P()
-try:
-    print(p.nope)         # compiled: prints `0`, exit 0, no report
-except AttributeError:
-    print("caught attr")  # runs in the interpreter and CPython, not in AOT
-```
-
-The interpreter half is **done** (ADR 0214): the trap now carries
-`AttributeError: 'P' object has no attribute 'nope'`, the handler runs, and the output is
-byte-for-byte CPython. What is left is the compiled backend, which still substitutes a default value
-for the trap — the expression evaluates, the handler never fires, the program exits 0. Fix it the way
-ADR 0210 emits bounds tests and ADR 0212 emits division guards: a member test plus
-`raiseTo(exnCode("AttributeError"), …)` at the attribute-read sites (instance and class). Then
-promote `programs/probe_builtin_traps_untyped.gy` and delete
-`TestCompiledMissingAttributeIsStillAGap` in `integration/builtin_trap_classes_test.go`, which exists
-only to say out loud what to remove.
-
-
-### R.27 — operators never consulted operand kinds (OPEN, compiled half)
-
-Measured as a matrix, not as one anecdote — see R.26 for the interpreter half, closed by ADR 0215.
-The compiled backend answers a number for two shapes where a heap handle reaches arithmetic:
-
-| program | `--aot` prints | CPython |
-|---------|----------------|---------|
-| `print(1 + None)` | `1` | `TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'` |
-| `print(None * 2)` | `0` | `TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'` |
-
-Every other mistyped pair is a compile-time refusal there (exit 1, `codegen: …`), which is honest.
-What is missing is the runtime guard ADR 0212 and ADR 0215 ask for: test the operand kinds the
-static type cannot pin down and `raiseTo(exnCode("TypeError"), …)` rather than fold. Fix with the
-same `branchRaise`/`raiseTo` machinery the division guards use, and promote
-`programs/probe_operand_types.gy`.
-
-### R.28 — `%` truncated toward zero instead of flooring (CLOSED, ADR 0216)
-
-```gusty
-print(-7 % 2)   # was -1 on both backends   CPython: 1
-print(7 % -2)   # was 1  on both backends   CPython: -1
-```
-
-Measured over the whole sign grid: **88 integer cases wrong in the compiled backend (44 of them
-`%`) and 44 in the interpreter** — plus 14 float cases on each, because `frem`/`fmod` is the
-truncated remainder too. Fixed with `floorDiv`/`floorMod`/`floorModFloat` as the single definition,
-used by the interpreter, the constant folder and (in IR form, `srem` + `select`) the emitted module.
-The float case needed the IEEE detail as well: an exact remainder carries the *divisor's* sign, so
-`7.5 % -0.5` prints `-0.0`, not `0.0`.
-
-Worth reading with ADR 0216: two integration tests had **pinned the truncated values as the expected
-output** — with comments naming `frem` — so the bug had a certificate of correctness. The assertions
-were written from the emitted IR rather than from the language. They stay, corrected, with the
-history in the comment; the new tests assert the identity
-`a == (a // b) * b + (a % b)` over the grid, which a consistently truncating pair satisfies per
-operator but cannot satisfy as a pair.
-
-### R.29 — `1 == 1.0` was false in the interpreter (CLOSED, ADR 0221)
-
-```gusty
-print(1 == 1.0)     # was: interpreter 0, compiled 1, CPython True
-print(1.0 == 1)     # was: interpreter 1, compiled 1, CPython True
-```
-
-The interpreter compared an integer's raw word against a float object's handle, so an int was never
-equal to the float with the same value, and `!=` was wrong the matching way. The compiled backend was
-right. Measured as a grid before touching anything — five integers × five floats × six operators ×
-both orders, 300 comparisons — the compiled leg answered all 300 correctly and the interpreter was
-wrong on exactly 8, every one of them `==`/`!=` with the **integer on the left**. All the ordering
-operators were fine everywhere, and so was the float-on-left direction: the test that had been written
-from the working direction is why this survived.
-
-Fixed in `Evaluator.eqVal`: a float on the right now coerces a plain-integer left instead of returning
-`false`, gated by `isHandle` so nothing that is an object gets coerced (`1 == [1]`, `1.0 == "a"` stay
-False, not errors — ADR 0215's single predicate). Container equality inherited the fix rather than
-needing one of its own: `[1] == [1.0]` and `{"a": 1} == {"a": 1.0}` are True because element equality
-*is* this predicate. `is` deliberately did not change, and a test says so. The compiled path needed no
-edit, which is recorded so nobody "fixes" it to match the old interpreter.
-
-`programs/numeric_equality.gy` is a standalone parity program — 30 comparisons printed as `1`/`0`,
-byte-identical to CPython on both legs — and `TestNumericEqualityMatchesCPythonOnBothEngines` runs the
-300-case grid through the interpreter, the compiler and `python3`, checking its own expectations
-against CPython before letting them judge the backends. Matrix: 65/90 parity, oracle 46 match / 30
-debt / 14 not-applicable over 90 cases.
+The emitted module contains `ret i32 @.str1` — a string global in an `i32` return slot — and `llc`
+rejects it with *global variable reference must have pointer type*. `funcDef` solved this for functions
+in ADR 0174 by interning on return (`rt_str_intern2`) so callers read an index; the method emitter has
+no such path. Verified pre-existing on the binaries from before Gap R.23 and before Gap R.41, so it is
+not fallout from the unwind work — the unwind work just made methods reachable enough to notice. Fix:
+route a method's string return through the same interning `strFuncs` path uses, and decide what
+`str`-annotated means for a method's *parameters* while there, since the same emitter reads neither.
 
 ### R.40 — a literal container holding a float, or `float == str`, emits a module `llc` rejects (OPEN, compiled)
 
@@ -2424,13 +2243,17 @@ two existing tests (`TestHoistingIsNotAFreeForAll`, `TestForwardReferenceIsNotAR
 when a first attempt pre-registered the names in the module scope itself. Twelve shapes now agree with
 CPython on the interpreter (`pkg/lang/module_scope_test.go`, `integration/module_scope_test.go`).
 
-**Compiled: still open.** Three shapes refuse with `undefined name "MAX" (no binding for it; assign it
+**Compiled: still open.** Four shapes refuse with `undefined name "MAX" (no binding for it; assign it
 before use)` — a sentence whose claim that the interpreter reports the same error is now measurably
-false (Gap R.38 gained a second instance) — and two shapes are worse: a method reading a module name,
-and a nested def reading one, compile and print `0`, because the slot is never written (the Gap R.36
-signature). `programs/probe_module_scope.gy` is the debt row (interpreter pinned at `80 7 5 40 1`,
-compiled leg missing), and `TestModuleScopeIsStillOutOfReachForCompiledCode` pins both the refusals and
-the silent zeros, naming its own deletion. The fix is module bindings in real global slots the collector
+false (Gap R.38 gained a second instance) — and one shape is worse than the others: a nested `def`
+reading a module name compiles and prints `0`, because the slot is never written (the Gap R.36
+signature). The method-shaped silent zero that used to be in that list is gone: since ADR 0223 stopped
+`emitClassMethod` discarding its body's refusal, a method reading a module name reports the same
+`undefined name` error as everyone else — still the wrong answer for the front end to give, but an
+honest one, and it is asserted in the refusal table. `programs/probe_module_scope.gy` is the debt row
+(interpreter pinned at `80 7 5 40 1`, compiled leg missing), and
+`TestModuleScopeIsStillOutOfReachForCompiledCode` pins the refusals and the remaining silent zero,
+naming its own deletion. The fix is module bindings in real global slots the collector
 scans, which is a cycle of its own.
 
 ### R.39 — reading a name the body also assigns below should be UnboundLocalError (OPEN, interpreter)

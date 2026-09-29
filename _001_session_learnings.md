@@ -3808,3 +3808,40 @@ StillTrapsOnBothBackends`). Same reasoning as the `frem` cycle's structural asse
 - **Last cycle's lesson applied immediately:** after adding two programs I checked that the matrix count
   actually moved (88 → 92, parity 65 → 66) and grepped the artifact for both names, instead of trusting
   a green run over a corpus that had not been registered.
+
+## Cycle 171 — a method is a call like any other (Gap R.41, ADR 0223)
+
+- **Three unrelated wrong interfaces, one root cause.** `emitClassMethod` had no raise-exit block (a
+  `try` in a method emitted `br label %` with an empty target and `llc` rejected it), the call sites
+  never checked the exception flag after a method call (a `raise` out of a method printed `0` and
+  exited 0), and it discarded the error `g.stmt` returned (every refused construct inside a method
+  became half a function and an exit-2 toolchain rejection). None of these were reported by anyone; the
+  way I found all three was **reading the sibling code path** — `funcDef` — and asking what it sets that
+  the method path doesn't. When two code paths implement one concept, diff them against each other.
+- **The silent `0` was worse than the crash, and only appeared after the first fix.** With a raise-exit
+  in place, `print(C().raiser())` printed `0` — exit 0, a value, no diagnostic. A rejection you can
+  test is a known gap; a plausible value is a wrong answer nobody files a bug about. Re-running the
+  whole matrix after each sub-fix is not a formality, it is how the invisible class shows up.
+- **Audit for discarded returns.** `g.stmt(&g.globals, st)` with the error thrown away had been
+  quietly turning source errors into compiler bugs for as long as methods have existed. Any call whose
+  error is ignored is a defect factory; the fix was a field (`emitErr`) plus one check in `GenerateIR`,
+  because that emitter writes into the globals buffer and has no error to return up.
+- **The drift tests did my bookkeeping for me.** Two tests failed *because things had improved*: the
+  probe whose debt was now paid ("promote it and delete the row") and the R.35 test that had pinned a
+  method reading a module name as a silent `0` (it now refuses honestly, because refusals inside
+  methods are no longer dropped). Both failure messages said exactly what to change. Pinning a wrong
+  answer with a test that names its own deletion is what makes OPEN items safe to accumulate.
+- **`phi` predecessor labels follow control, not definitions.** Adding the exception check inside a
+  `switch` arm means the arm's terminator is the check's branch and the join is entered from the
+  check's continuation block — so the `phi` must name *that* block. Hence `checkExnLabel`, rather than
+  a duplicated emitter: a call site that can raise cannot also be a value producer for the join.
+- **Pre-existingness, fourth cycle running.** A method returning a string emits `ret i32 @.str1` and
+  `llc` refuses it. Reproduced on the binaries from before Gap R.23 and before Gap R.41, so it became
+  Gap R.42 with a minimal repro instead of a frantic last-minute patch inside my own change.
+- **Exit codes come from the contract, output comes from CPython** (learned last cycle, applied twice
+  here): an uncaught raise out of a method is class 3 on both backends, and `return [][0]` inside a
+  method is class 3 interpreted vs class 1 compiled — the second is Gap R.37 and the test says so
+  rather than asserting an average of the two.
+- **Read the artifact before naming it in a test:** I asserted the symbol `gy_C_m_bad` and the mangling
+  is `gy_C_bad`. Five lines of dumped IR settled it; guessing at a mangled name is how a test ends up
+  asserting something the compiler never emits and "fails" for the wrong reason.

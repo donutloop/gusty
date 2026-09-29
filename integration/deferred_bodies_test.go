@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,31 +173,17 @@ func TestUncaughtExceptionAfterDeferredBodiesTrapsOnBothEngines(t *testing.T) {
 	}
 }
 
-// TestMethodWithTryIsPinnedAsPreExistingCompiledDebt records a compiled hole this cycle's work
-// ran into and did not cause: a method containing a `try` emits `br label %` with an empty
-// raise-exit target, so `llc` rejects the module and the run exits 2 — verified against the
-// binary from before this change, which fails the same way on the same source. The interpreter
-// answers it correctly. Recorded as roadmap Gap R.41; delete this test when the shape compiles.
-func TestMethodWithTryIsPinnedAsPreExistingCompiledDebt(t *testing.T) {
+// TestMethodWithTryCompiles is the shape that used to be pinned as a toolchain rejection: a
+// method whose body contains a `try` emitted `br label %` with an empty target because the method
+// path never set a raise-exit block (roadmap Gap R.41, ADR 0223). It runs on both backends now,
+// and `programs/method_try.gy` carries it into the parity corpus.
+func TestMethodWithTryCompiles(t *testing.T) {
 	src := "class C:\n    def m(self) -> int:\n        try:\n            return 3\n        finally:\n            print(\"m fin\")\n\nc = C()\nprint(c.m())\n"
-	dir := t.TempDir()
-	path := filepath.Join(dir, "method_try.gy")
-	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	out, code := cliRunCode(t, "--interp", path)
-	if code != 0 || out != "m fin\n3\n" {
-		t.Fatalf("the interpreter leg is expected to work and print the deferred line, got (%d) %q", code, out)
-	}
-	out, code = cliRunCode(t, "--aot", path)
-	if code != 2 {
-		t.Fatalf("compiled leg exited %d, want the recorded toolchain rejection (2):\n%s", code, out)
-	}
-	ir, irc := cliRunCode(t, "--emit-llvm", src)
-	if irc != 0 {
-		t.Fatalf("--emit-llvm exited %d:\n%s", irc, ir)
-	}
-	if !strings.Contains(ir, fmt.Sprintf("br label %%%s\n", "")) {
-		t.Fatalf("the emitted module no longer contains the empty branch target this gap is about:\n%s", ir)
+	path := writeSrc(t, t.TempDir(), "method_try_run.gy", src)
+	for _, engine := range []string{"--interp", "--aot"} {
+		out, code := cliRunCode(t, engine, path)
+		if code != 0 || out != "m fin\n3\n" {
+			t.Fatalf("%s gave (%d) %q, want \"m fin\\n3\\n\"", engine, code, out)
+		}
 	}
 }

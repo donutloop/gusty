@@ -102,6 +102,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// Gap R.23 (ADR 0222): a deferred `finally` body runs on every exit from the
 		// try -- fall-through, handled, propagating, and the transfers that leave it.
 		"deferred_bodies",
+		// Gap R.41 (ADR 0223): a method is a call like any other -- its own unwind target,
+		// deferred bodies on every exit, and an exception that reaches its caller.
+		"method_try",
 		// A parameter is a local that starts out bound to an argument: an accumulator
 		// that decrements its argument, a clamp that overwrites it, a loop that reuses
 		// it as its variable (Gap R.3, ADR 0196).
@@ -203,8 +206,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_module_scope",   // Gap R.35 — a function cannot read the module's names (compiled)
 		// Gap R.40 (ADR 0221): a literal list holding a float emits a module llc rejects.
 		"probe_float_list_equal",
-		// Gap R.41 (ADR 0222): a method containing a `try` emits an empty br target.
-		"probe_method_try",
 		"probe_unicode",       // L11.5 — strings are bytes, not code points
 		"probe_string_index",  // L11.5 — s[i] is a byte value, not a character
 		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
@@ -399,14 +400,6 @@ var oracleLedger = map[string]oracleDecl{
 	// `[1 x i32] [@` into the initializer, so llc rejects the module and the compiled leg gives a
 	// toolchain rejection where CPython and the interpreter print 1. Through variables the same
 	// comparison compiles and prints 1, which is what pins this to the literal emitter.
-	// Gap R.41 (ADR 0222): a method whose body contains a `try` emits `br label %` with an empty
-	// funcRaiseExit, so llc rejects the module -- verified pre-existing against the pre-R.23 binary.
-	// The interpreter and CPython both print the deferred line and the value.
-	"programs/probe_method_try": {oracle: lang.OracleDebt,
-		reason: "a method containing a `try` emits a branch to an empty raise-exit label, so llc rejects the module and the compiled leg never runs a program whose answer is \"m fin\\n3\"",
-		ref:    "roadmap Gap R.41",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "m fin\n3\n"}, {Backend: "aot", Missing: true}}},
-
 	"programs/probe_float_list_equal": {oracle: lang.OracleDebt,
 		reason: "a literal list holding a float emits an invalid module (llc: expected type), so the compiled leg rejects a program whose answer is 1",
 		ref:    "roadmap Gap R.40",

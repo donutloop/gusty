@@ -1,0 +1,45 @@
+# A method is a call like any other: it has its own unwind target, and its body owes the same
+# duties a function body owes -- a deferred `finally` on every exit, and an exception that
+# propagates to whoever called it (roadmap Gap R.41, ADR 0223). CPython prints exactly this.
+class Worker:
+    def cleanup(self) -> int:
+        try:
+            return 3
+        finally:
+            print("fin")
+
+    def handled(self) -> int:
+        try:
+            x = 1 / 0
+        except:
+            print("handled")
+        return 4
+
+    def raiser(self) -> int:
+        raise ValueError("boom")
+
+    def calls_raiser(self) -> int:
+        return self.raiser()
+
+    def loops(self) -> int:
+        for i in range(3):
+            try:
+                break
+            finally:
+                print("loop fin")
+        return 9
+
+
+print(Worker().cleanup())
+print(Worker().handled())
+print(Worker().loops())
+
+try:
+    print(Worker().raiser())
+except ValueError:
+    print("caught value error")
+
+try:
+    print(Worker().calls_raiser())
+except:
+    print("caught from the nested call")

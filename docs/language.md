@@ -2105,6 +2105,36 @@ A call that does not fit its definition is not analysed any further: the compile
 mistake and stops, rather than also walking the callee's body with a parameter left unbound and
 reporting the callee's own source as undefined (ADR 0201). One mistake, one diagnostic, at the call.
 
+### A method is a call like any other
+
+A method body has the same duties as a function body, and the same rights (ADR 0223): it owns its
+unwind path, its `finally` runs on every exit, and an exception that leaves it reaches whoever called
+it.
+
+```gy
+class Worker:
+    def cleanup(self) -> int:
+        try:
+            return 3
+        finally:
+            print("fin")        # fin, then 3 — both backends
+
+    def raiser(self) -> int:
+        raise ValueError("boom")
+
+try:
+    print(Worker().raiser())    # the raise reaches the caller, which named the class
+except ValueError:
+    print("caught value error")
+```
+
+Three consequences, each with a test: a `raise` in a method (or in a method it calls, or in its
+`__init__`) propagates to the call site rather than leaving the method to return a plausible value;
+a construct the compiler cannot lower reports a compile error from inside a method exactly as it does
+from inside a `def` — it is never quietly dropped, which used to produce half a function and a
+toolchain rejection; and the traceback frame says `Class.method`. Known limit: a method whose result
+is a `str` is still broken in the compiled backend (roadmap Gap R.42).
+
 ### A method and a helper may share a name
 
 The words that describe what a class does are usually the words that describe a helper, so this
