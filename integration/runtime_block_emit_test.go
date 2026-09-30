@@ -75,18 +75,28 @@ print(txt())
 	}
 }
 
-// TestRuntimeStringIterableIsRefusedNotSilentlyWrong pins the refusal that replaced a clean compile
-// that printed nothing: a function's interned index read as a repeat count (roadmap Gap R.16).
-func TestRuntimeStringIterableIsRefusedNotSilentlyWrong(t *testing.T) {
+// TestRuntimeStringIterableAnswersRatherThanFallingThrough: this shape used to have two wrong
+// forms. First the loop was not implementable and the fall-through read the string's table index
+// as a repeat count, so `for c in txt(): print(c)` compiled cleanly and printed nothing (Gap
+// R.16); then it was an honest refusal. ADR 0229 gave the table a count and a character
+// operation, so the loop now runs — and it must run with the right output, not merely be accepted.
+func TestRuntimeStringIterableAnswersRatherThanFallingThrough(t *testing.T) {
 	src := "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n"
-	if got := runInterp(t, src); got != "h\ni\n" {
-		t.Errorf("interpreted output =\n%q\nwant h i", got)
+	want, _, perr := lang.PythonRun(src)
+	if perr != nil {
+		t.Fatalf("CPython disagreed with this table: %v", perr)
 	}
-	_, err := lang.Compile(src)
-	if err == nil {
-		t.Fatalf("the compiled backend accepted a program whose loop cannot run: it must refuse")
+	if got := runInterp(t, src); got != want {
+		t.Errorf("interpreted output =\n%q\nwant %q", got, want)
 	}
-	if !strings.Contains(err.Error(), "iterating a string computed at run time") {
-		t.Errorf("the refusal is not the actionable one: %v", err)
+	compiled, err := runAOTWithTimeout(t, src, 120*time.Second)
+	if err != nil {
+		t.Fatalf("compiled leg failed: %v", err)
+	}
+	if compiled != want {
+		t.Errorf("compiled output =\n%q\nwant %q — the loop must iterate code points, not read an index as a count", compiled, want)
+	}
+	if strings.Contains(compiled, "(null)") {
+		t.Errorf("the loop printed the table's empty entry instead of characters: %q", compiled)
 	}
 }

@@ -2229,7 +2229,7 @@ never a default value (asserted in `TestUnlowerableConditionIsAnErrorNotAFalseBr
 Closed by: `pkg/lang/string_subscript_test.go`, `integration/string_subscript_test.go`, parity program
 `integration/programs/string_subscript.gy`.
 
-### R.47 — a compiled string is a compile-time value only (OPEN, compiled)
+### R.47 — a compiled string is a compile-time value only (CLOSED, ADR 0229 + ADR 0230)
 
 ```gusty
 s = "abc"
@@ -2242,15 +2242,40 @@ for c in s:          # interpreter and CPython: a, b, c · compiled: refuses
     print(c)
 ```
 
-Each refusal is honest (exit 1 with a message — asserted shape in
-`TestCompiledStringSubscriptHolesRefuseWithAMessage`, which also fails the leg for exit 2 and for
-answering at all), but the family is one missing thing: there is no runtime string object, so a
-character asked about at run time has nowhere to live. It is the same root as the older "AOT supports
-only inline literals with constant indexing" line and as Gap J.5 (concatenating a computed string
-needs a buffer allocation). Fix: a boxed string in the runtime — bytes plus length in the heap, an
-`@str_tab` index still for constants — with `rt_str_index`, `rt_str_len`, `rt_slice_str` and the
-char-method path reading it, and the `for`-over-string loop taking the runtime iterator the container
-loops already use.
+**Closed — no new representation was needed** (ADR 0229 reads, ADR 0230 writes). A compiled string
+value is already an `@str_tab` index (ADR 0224) and `rt_str_intern` already appends by content, so
+the table grows while the program runs: the operations take indices and return indices, and print,
+equality, substring tests and container slots keep working on a string the compiler never saw. Ten
+runtime helpers in all — `rt_str_from_bytes`, `rt_str_nchars`, `rt_str_char`, `rt_str_codepoint`,
+`rt_str_case`, `rt_str_cat`, `rt_str_byteoff`, `rt_str_slice`, `rt_str_strip`, `rt_str_of_int` — plus
+a `for`-over-string that drives the ordinary counter loop with `rt_str_nchars`/`rt_str_char`.
+
+What was actually missing was a *question*: each operation asked "can the compiler read this string's
+text?" where the question is "is this a string?", which is why `"abc"[1]` answered and `get()[1]`
+refused, why `s[1].lower()` printed text while `s[1].upper()` printed `2`, and why a correct slice
+printed `1`. The whole-program kind scan (`scanStringBindings`) and the two classification predicates
+now answer once — and adding an operation means adding its case to operations, print and the scan in
+the same commit.
+
+Both halves are covered against CPython: `programs/runtime_string_ops.gy` (reads) and
+`programs/runtime_string_writes.gy` (writes) are matrix rows declared `match`, and
+`TestCompiledStringSubscriptAnswersAtRuntime` / `TestCompiledStringWritesAnswerAtRuntime` refuse to
+run if CPython disagrees with the table. Iterating a runtime string is the shape that had been
+*silently* wrong rather than refused — the table index read as a repeat count, printing nothing with
+exit 0 (Gap R.16) — so those tests assert output, not acceptance.
+
+Not claimed by the closure, and written down rather than half-implemented: compiled case folding is
+ASCII only and `strip` trims the ASCII whitespace set (the interpreter has both full tables);
+`str(<float>)` refuses rather than truncate a float it cannot yet hold (L11.6); `%s` formatting is
+Gap R.31; `str * int` and list concatenation are Gap R.33; the table's 4096-entry bound raises a
+catchable `RuntimeError` (ADR 0229).
+
+Process finding worth keeping: `for c in txt()` had quietly become the canonical "the compiled
+backend refuses" fixture in four tests — the exit-code contract, the trap-class contract, the
+oracle's refused-leg check and a diagnostics table. When the shape became answerable they went green
+while exercising nothing. Four fixtures moved to `print("ab" * 2)` (still refused) and the pinned
+refusal tables were emptied into CPython-checked answer tables. A pinned refusal is a claim about
+the future: when the gap closes, the pin has to move.
 
 ### R.48 — there is no `global` statement (OPEN, language surface)
 

@@ -128,7 +128,9 @@ func TestCLIOracleRecordsARefusedCompiledLegInsteadOfDying(t *testing.T) {
 	// *recorded* — the CLI stays alive, the exit code stays a verdict class, and the reason is
 	// readable in the payload. The panic classification itself is pinned where it can be pinned
 	// deterministically, in pkg/lang/oracle_test.go.
-	src := "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n"
+	// str * int still refuses on the compiled path (roadmap Gap R.33); the runtime-string
+	// loop that used to stand here has been answerable since ADR 0229.
+	src := "print(\"ab\" * 2)\n"
 	out, code := benchCLI(t, "--json", "--oracle", src)
 	if code != exitOracleDivergence && code != exitOracleNoVerdict {
 		t.Fatalf("--oracle on a refused compiled leg: exit = %d, want 6 or 7\n%s", code, out)

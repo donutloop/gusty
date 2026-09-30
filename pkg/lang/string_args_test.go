@@ -56,11 +56,9 @@ func TestUnsupportedStringUsesStayDiagnostics(t *testing.T) {
 		src  string
 		want string
 	}{
-		{
-			"concatenation needs an allocator",
-			"def f(s):\n    return s + \"!\"\n\nprint(f(\"hi\"))\n",
-			"concatenating a runtime string",
-		},
+		// Concatenating a runtime string is answered since ADR 0230 (rt_str_cat interns the
+		// buffer), so it is no longer a refusal — the arithmetic and ordering cases below are,
+		// and they are the ones that keep a compiled string from being computed as a number.
 		{
 			"arithmetic on a string parameter",
 			"def f(s):\n    return s * 2\n\nprint(f(\"hi\"))\n",
@@ -101,8 +99,20 @@ func TestMixedCallSitesAreNotGuessedAt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("integer arguments must keep compiling: %v", err)
 	}
-	if strings.Contains(res.IR, "rt_str_intern2") {
-		t.Errorf("an integer-only helper should not touch the string table:\n%s", res.IR)
+	// The check is scoped to the helper's own body: the runtime block defines the string
+	// helpers unconditionally since ADR 0229, so grepping the whole module would flag every
+	// program in the suite. What matters is that f's body does not intern anything.
+	if body := func() string {
+		i := strings.Index(res.IR, "define i32 @gy_f(")
+		if i < 0 {
+			return res.IR
+		}
+		if j := strings.Index(res.IR[i:], "\n}\n"); j >= 0 {
+			return res.IR[i : i+j]
+		}
+		return res.IR[i:]
+	}(); strings.Contains(body, "rt_str_intern2") {
+		t.Errorf("an integer-only helper should not touch the string table:\n%s", body)
 	}
 }
 

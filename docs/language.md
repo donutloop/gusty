@@ -553,15 +553,45 @@ Rules that both backends implement:
   used to be a Go panic inside the compiler rather than an answer or a diagnostic.
 - A container produced by a call (`d = make(3)`) is iterated through the runtime
   length, like any other container variable.
-- **A subscript of a string is a one-character string** (ADR 0225). `s[1]` is `b`, not `98`: the
-  character is text in both backends, so it compares with text, concatenates, takes methods, and
+- **A subscript of a string is a one-character string** (ADR 0225). `s[1]` is `b`, not `98`:
+  the character is text in both backends, so it compares with text, concatenates, takes methods, and
   `s[1] == 98` is false the way CPython says it is. A string is counted in **code points** wherever
   position is asked about — `s[i]`, `s[a:b]`, `len(s)`, `ord(s)` — so `len("café")` is 4 and
   `"café"[3]` is `é`; a byte-wise slice could also cut a character in half. An out-of-range character
-  subscript traps as `IndexError` in the interpreter. The compiled leg still refuses anything that
-  asks about a character at runtime (`s[i]` with a variable index, `len(s[1])`, `s[1].upper()`,
-  `ord(s[1])`, `for c in s` over a variable string), because a compiled string exists only as a
-  compile-time value: roadmap Gap R.47.
+  subscript traps as `IndexError` on both backends.
+
+- **A string is an index into a table the runtime can add to** (ADR 0229, ADR 0230). A compiled
+  string value is an index into the program's string table, and the table grows while the program
+  runs — so an operation asked about at run time has somewhere to live, and nothing about the value
+  changes: it prints, compares, subscript
+
+  ```py
+  def word():
+      return "abc"
+
+  i = 1
+  print(word()[i])           # b   — a subscript of a call result
+  print("a" + word()[i])     # bc  — a literal joined to a computed character
+  print(word()[i:i + 2])     # bc  — bounds that are values, not constants
+  print(word()[-2:])         # bc  — positions count from the end
+  print(len(word()), ord(word()[1]))   # 3 98
+  print(word()[1].upper())   # B
+  for c in word():           # a, b, c — code points, not bytes
+      print(c)
+  print(str(7), str(-7))     # 7 -7
+  ```
+
+  Interning is by content, so a string built while running equals the literal that spells it — no
+  special case in equality. An absent slice bound means the default end. Iterating binds the loop
+  variable to each character as the loop produces it, over the loop's own counter, so assigning to
+  the variable inside the body does not move the iteration (ADR 0196).
+
+  Three limits belong to the compiled backend and are stated rather than approximated: case folding
+  covers ASCII and `strip` trims the ASCII whitespace set (the interpreter folds and trims the full
+  Unicode sets); `str(<float>)` refuses rather than truncate a float it cannot yet hold (L11.6);
+  and `%s` formatting does not exist at all (Gap R.31). A program that creates more distinct strings
+  than the table holds (4096) raises `RuntimeError`, which it can catch — the alternative, which used
+  to happen, was silently reusing an entry and printing a different string than the program built.
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
   `s.add("q")`, `d["k"] = 1`, `d[1] = "v"`, `"a" in xs`, `for x in xs`, `len`, indexing
   and printing all work in both backends. **A string value is an index into a runtime interned

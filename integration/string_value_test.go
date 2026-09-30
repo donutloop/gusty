@@ -91,7 +91,9 @@ func TestPrintingAnElementOfAFreshComprehensionListIsPinned(t *testing.T) {
 func TestCompiledStringHolesRefuseRatherThanReject(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		{"index_a_sorted_result", "xs = [\"b\", \"a\"]\nprint(sorted(xs)[0])\n"},
-		{"str_of_a_number_compiled", "x = 5\nprint(str(x) == \"5\")\n"},
+		// str_of_a_number_compiled used to sit here as a hole: str(x) for a variable x refused.
+		// It answers since ADR 0230, and the answer is checked against CPython in
+		// TestCompiledStringWritesAnswerAtRuntime rather than pinned here.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "hole.gy", tc.src)

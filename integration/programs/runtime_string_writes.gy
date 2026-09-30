@@ -1,0 +1,38 @@
+# Building a string while the program runs (roadmap Gap R.47, ADR 0230).
+
+# A compiled string value is an index into @str_tab (ADR 0224) and that table is content-addressed
+# and growable, so a string that no constant produced has somewhere to live: concatenate, slice at
+# run-time bounds, iterate a string held in a variable, render a computed number. Each answer is an
+# ordinary string value — printable, comparable, subscriptable — and because interning dedups by
+# content, a built "ab" and the literal "ab" are the same value without being told to be.
+#
+# The iteration shape is the one that used to be silently wrong rather than refused: `for c in txt()`
+# read the string's table index as a repeat count and printed nothing at all (Gap R.16).
+
+
+def word():
+    return "abc"
+
+
+i = 1
+print("a" + word()[i])          # bc — a literal joined to a computed character
+print(word()[0] + word()[2])    # ac
+print(word()[i:i + 2])          # bc — bounds that are values, not constants
+print(word()[:2])               # ab — an absent bound is the helper's "to the end/start" value
+print(word()[-2:])              # bc — positions from the end, like every other position
+n = 0
+while n < 2:
+    print(word()[n:n + 1])      # a, b — a slice whose bounds move with the loop
+    n = n + 1
+for c in word():                # a, b, c — iterating text the compiler never saw
+    print(c)
+k = 7
+print(str(k))                   # 7 — a number rendered while running
+print(str(-k))                  # -7
+# Equality of built strings is by content, so a stripped copy equals the literal it came from.
+# The answer is tested rather than printed: this language renders a boolean as 1 or 0, which is
+# roadmap L11.2's separate divergence, and what is pinned here is the string question.
+if word().strip() == word():
+    print("equal by content")
+if str(k) == "7":
+    print("digits are text")

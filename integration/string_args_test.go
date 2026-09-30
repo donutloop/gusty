@@ -94,16 +94,18 @@ func TestStringParameterProgramsMatchPython(t *testing.T) {
 	}
 }
 
-// TestUnsupportedStringUseIsADiagnosticNotBadIR: concatenation needs a buffer the runtime does
-// not have, so it must report itself rather than emit IR the verifier rejects (ADR 0166).
+// TestUnsupportedStringUseIsADiagnosticNotBadIR: an operation the compiled backend declines must
+// report itself rather than emit IR the verifier rejects (ADR 0166). Concatenation used to be the
+// example here; it answers since ADR 0230, so the shape is repetition, which still has no
+// lowering — the contract under test is the refusal, not this particular operator.
 func TestUnsupportedStringUseIsADiagnosticNotBadIR(t *testing.T) {
-	src := "def shout(s):\n    return s + \"!\"\n\nprint(shout(\"hi\"))\n"
+	src := "def shout(s):\n    return s * 2\n\nprint(shout(\"hi\"))\n"
 	res, err := lang.Compile(src)
 	if err == nil {
 		t.Fatalf("expected a compile diagnostic; got IR:\n%s", res.IR)
 	}
 	msg := err.Error()
-	for _, want := range []string{"concatenating a runtime string", "interpreter"} {
+	for _, want := range []string{"on a string", "interpreter"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message %q should contain %q", msg, want)
 		}
@@ -111,7 +113,7 @@ func TestUnsupportedStringUseIsADiagnosticNotBadIR(t *testing.T) {
 	// The same message reaches the CLI's machine path unchanged, so an agent can branch on it
 	// instead of on an llc error.
 	out := cliRun(t, "--json", "--emit-llvm", src)
-	for _, want := range []string{`"ok": false`, `"phase": "compile"`, "concatenating a runtime string"} {
+	for _, want := range []string{`"ok": false`, `"phase": "compile"`, "on a string"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("CLI json %s should contain %q", out, want)
 		}

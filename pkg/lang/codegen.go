@@ -437,6 +437,7 @@ fin:
   ret i32 %n
 }
 
+@.strempty = private unnamed_addr constant [1 x i8] c"\00"
 @.strfull = private unnamed_addr constant [46 x i8] c"\52\75\6E\74\69\6D\65\45\72\72\6F\72\3A\20\74\6F\6F\20\6D\61\6E\79\20\64\69\73\74\69\6E\63\74\20\73\74\72\69\6E\67\20\76\61\6C\75\65\73\00"
 declare ptr @malloc(i64)
 
@@ -663,6 +664,198 @@ term:
   %t = getelementptr i8, i8* %buf, i32 %nb
   store i8 0, i8* %t
   %idx = call i32 @rt_str_intern(i8* %buf)
+  ret i32 %idx
+}
+
+; rt_str_byteoff is the byte offset where the k-th code point begins, with the clamping a
+; slice needs: negative counts from the end, out of range collapses to an end, and k=0 is 0.
+; Code points are the unit because a position in this language is a code point (ADR 0225).
+define internal i32 @rt_str_byteoff(i32 %s, i32 %k) {
+entry:
+  %p = call i8* @rt_str_ptr(i32 %s)
+  %n = call i32 @rt_str_nchars(i32 %s)
+  %neg = icmp slt i32 %k, 0
+  %kadd = add i32 %k, %n
+  %kad = select i1 %neg, i32 %kadd, i32 %k
+  %below = icmp slt i32 %kad, 0
+  %k0 = select i1 %below, i32 0, i32 %kad
+  %above = icmp sgt i32 %k0, %n
+  %kcl = select i1 %above, i32 %n, i32 %k0
+  br label %scan
+scan:
+  %o = phi i32 [ 0, %entry ], [ %onext, %step ]
+  %c = phi i32 [ 0, %entry ], [ %cnext, %step ]
+  %done = icmp sge i32 %c, %kcl
+  br i1 %done, label %fin, label %body
+body:
+  %at = getelementptr i8, i8* %p, i32 %o
+  %b = load i8, i8* %at
+  %end = icmp eq i8 %b, 0
+  br i1 %end, label %fin, label %step
+step:
+  %m = and i8 %b, -64
+  %iscont = icmp eq i8 %m, -128
+  ; A code point is a byte that is NOT a continuation byte, so the count advances on the
+  ; complement — counting the continuations instead walks past every ASCII character and the
+  ; offset lands on the terminator, which is how s[1:3] came back empty.
+  %isz = zext i1 %iscont to i32
+  %one = sub i32 1, %isz
+  %cnext = add i32 %c, %one
+  %onext = add i32 %o, 1
+  br label %scan
+fin:
+  ret i32 %o
+}
+
+; rt_str_slice answers s[a:b] when the bounds are values rather than constants. Two sentinels
+; stand in for a bound the source left out — INT_MIN means "from the start", INT_MAX means "to
+; the end" — because there is no absent i32; everything else is rt_str_byteoff plus a copy.
+define internal i32 @rt_str_slice(i32 %s, i32 %lo, i32 %hi) {
+entry:
+  %n = call i32 @rt_str_nchars(i32 %s)
+  %noLo = icmp eq i32 %lo, -2147483648
+  %loSel = select i1 %noLo, i32 0, i32 %lo
+  %noHi = icmp eq i32 %hi, 2147483647
+  %hiSel = select i1 %noHi, i32 %n, i32 %hi
+  %bo = call i32 @rt_str_byteoff(i32 %s, i32 %loSel)
+  %eo = call i32 @rt_str_byteoff(i32 %s, i32 %hiSel)
+  %rev = icmp slt i32 %eo, %bo
+  %d = sub i32 %eo, %bo
+  %len = select i1 %rev, i32 0, i32 %d
+  %p = call i8* @rt_str_ptr(i32 %s)
+  %base = getelementptr i8, i8* %p, i32 %bo
+  %idx = call i32 @rt_str_from_bytes(i8* %base, i32 %len)
+  ret i32 %idx
+}
+
+; rt_str_cat joins two interned strings: allocate both lengths plus a terminator, copy, intern.
+; Interning dedups by content, so a" + word() of "b" is the same index as the literal "ab"
+; wherever it appears, and equality between a built string and a literal needs no special case.
+define internal i32 @rt_str_cat(i32 %a, i32 %b) {
+entry:
+  %al = call i32 @rt_str_len(i32 %a)
+  %bl = call i32 @rt_str_len(i32 %b)
+  %tl = add i32 %al, %bl
+  %t1 = add i32 %tl, 1
+  %sz = zext i32 %t1 to i64
+  %buf = call ptr @malloc(i64 %sz)
+  %ap = call i8* @rt_str_ptr(i32 %a)
+  %bp = call i8* @rt_str_ptr(i32 %b)
+  br label %copyA
+copyA:
+  %i = phi i32 [ 0, %entry ], [ %ianext, %bodyA ]
+  %adone = icmp slt i32 %i, %al
+  br i1 %adone, label %bodyA, label %copyB
+bodyA:
+  %asrc = getelementptr i8, i8* %ap, i32 %i
+  %ach = load i8, i8* %asrc
+  %adst = getelementptr i8, i8* %buf, i32 %i
+  store i8 %ach, i8* %adst
+  %ianext = add i32 %i, 1
+  br label %copyA
+copyB:
+  %j = phi i32 [ 0, %copyA ], [ %jbnext, %bodyB ]
+  %bdone = icmp slt i32 %j, %bl
+  br i1 %bdone, label %bodyB, label %term
+bodyB:
+  %bsrc = getelementptr i8, i8* %bp, i32 %j
+  %bch = load i8, i8* %bsrc
+  %bdst = getelementptr i8, i8* %buf, i32 %j
+  %bdstof = getelementptr i8, i8* %bdst, i32 %al
+  store i8 %bch, i8* %bdstof
+  %jbnext = add i32 %j, 1
+  br label %copyB
+term:
+  %t = getelementptr i8, i8* %buf, i32 %tl
+  store i8 0, i8* %t
+  %idx = call i32 @rt_str_intern(i8* %buf)
+  ret i32 %idx
+}
+
+; rt_str_strip trims ASCII whitespace at both ends. The interpreter trims the full Unicode set
+; of spaces; the compiled backend trims bytes at or below space, which is the documented limit
+; of this cut (roadmap Gap R.47) rather than a silent approximation.
+define internal i32 @rt_str_strip(i32 %s) {
+entry:
+  %p = call i8* @rt_str_ptr(i32 %s)
+  %nb = call i32 @rt_str_len(i32 %s)
+  br label %lead
+lead:
+  %lo = phi i32 [ 0, %entry ], [ %lonext, %leadbody ]
+  %past = icmp slt i32 %lo, %nb
+  br i1 %past, label %leadcheck, label %done2
+leadcheck:
+  %la = getelementptr i8, i8* %p, i32 %lo
+  %lb = load i8, i8* %la
+  %lsp = icmp sgt i8 %lb, 32
+  br i1 %lsp, label %done2, label %leadbody
+leadbody:
+  %lonext = add i32 %lo, 1
+  br label %lead
+done2:
+  %lof = phi i32 [%lo, %lead], [%lo, %leadcheck]
+  br label %tail
+tail:
+  %hib = phi i32 [ %nb, %done2 ], [ %hinext, %tailbody ]
+  %above = icmp sgt i32 %hib, %lof
+  br i1 %above, label %tailcheck, label %empty
+tailcheck:
+  %ta = getelementptr i8, i8* %p, i32 %hib
+  %tam = getelementptr i8, i8* %ta, i32 -1
+  %tb = load i8, i8* %tam
+  %tsp = icmp sgt i8 %tb, 32
+  br i1 %tsp, label %fin, label %tailbody
+tailbody:
+  %hinext = sub i32 %hib, 1
+  br label %tail
+fin:
+  %len = sub i32 %hib, %lof
+  %base = getelementptr i8, i8* %p, i32 %lof
+  %idx = call i32 @rt_str_from_bytes(i8* %base, i32 %len)
+  ret i32 %idx
+empty:
+  %zero = call i32 @rt_str_intern(i8* getelementptr ([1 x i8], [1 x i8]* @.strempty, i32 0, i32 0))
+  ret i32 %zero
+}
+
+; rt_str_of_int is str(n) for a number the compiler cannot read: digits written backwards into
+; a block that is then interned from the first digit onward. The interpreter has always answered
+; this; the compiled backend refused, so str(get()) was unreachable while str(42) worked.
+define internal i32 @rt_str_of_int(i32 %v) {
+entry:
+  %buf = call ptr @malloc(i64 16)
+  %tail = getelementptr i8, i8* %buf, i32 15
+  store i8 0, i8* %tail
+  %neg = icmp slt i32 %v, 0
+  %negv = sub i32 0, %v
+  %u0 = select i1 %neg, i32 %negv, i32 %v
+  br label %digits
+digits:
+  %u = phi i32 [ %u0, %entry ], [ %unext, %digits ]
+  %p = phi i32 [ 15, %entry ], [ %pnext, %digits ]
+  %d = urem i32 %u, 10
+  %ch = add i32 %d, 48
+  %c8 = trunc i32 %ch to i8
+  %at = getelementptr i8, i8* %buf, i32 %p
+  %atm = getelementptr i8, i8* %at, i32 -1
+  store i8 %c8, i8* %atm
+  %unext = udiv i32 %u, 10
+  %pnext = sub i32 %p, 1
+  %more = icmp ne i32 %unext, 0
+  br i1 %more, label %digits, label %after
+after:
+  %p2 = phi i32 [ %pnext, %digits ]
+  br i1 %neg, label %putminus, label %fin
+putminus:
+  %ma = getelementptr i8, i8* %buf, i32 %p2
+  %mam = getelementptr i8, i8* %ma, i32 -1
+  store i8 45, i8* %mam
+  %p3 = sub i32 %p2, 1
+  br label %fin
+fin:
+  %start = phi i32 [ %p2, %after ], [ %p3, %putminus ]
+  %sp = getelementptr i8, i8* %buf, i32 %start
+  %idx = call i32 @rt_str_intern(i8* %sp)
   ret i32 %idx
 }
 
@@ -3267,9 +3460,14 @@ func (g *irGen) exprIsString(e Expr) bool {
 		// renders the interned index as a number (ADR 0229).
 		if at, ok := v.Fn.(*Attr); ok && len(v.Args) == 0 && g.exprIsString(at.Obj) {
 			switch at.Name.Value {
-			case "upper", "lower":
+			case "upper", "lower", "strip":
 				return true
 			}
+		}
+		// str(n) is text whatever n is (ADR 0229): the print path and the operation path ask
+		// one predicate, or a number's digits come out as an index.
+		if g.builtinCallAs(v, "str") {
+			return true
 		}
 		return false
 	case *Attr:
@@ -3284,6 +3482,9 @@ func (g *irGen) exprIsString(e Expr) bool {
 		_, lf := g.stringVal(v.L)
 		_, rf := g.stringVal(v.R)
 		return lf || rf || (g.exprIsString(v.L) && g.exprIsString(v.R))
+	case *Slice:
+		// s[a:b] of a string is a string whatever the bounds are, constant or not (ADR 0229).
+		return g.exprIsString(v.Obj)
 	case *Index:
 		// A subscript of a string the compiler can name is text (ADR 0225), and so is an element
 		// of a string container: that is what lets `xs = [s[1]]` remember that its elements are
@@ -6159,6 +6360,23 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 						break // both constant: folded below
 					}
 				}
+				// Building a string while the program runs is a buffer, an intern, and the
+				// same index convention (ADR 0229): the operands' values are indices, the
+				// result is an index, and print/==/in/container slots keep working on it.
+				ls, lok, lerr := g.strReg(b, n.L)
+				if lerr != nil {
+					return "", lerr
+				}
+				rs, rok, rerr := g.strReg(b, n.R)
+				if rerr != nil {
+					return "", rerr
+				}
+				if lok && rok {
+					return g.rtStrCall(b, "rt_str_cat", "i32 "+ls, "i32 "+rs), nil
+				}
+				if lok != rok {
+					return "", fmt.Errorf("codegen: concatenating a string with a value that is not a string is not supported in the AOT backend; CPython and the interpreter raise TypeError for it")
+				}
 				return "", fmt.Errorf("codegen: concatenating a runtime string is not supported in the AOT backend yet; the interpreter supports it — building a new string needs a buffer allocation (roadmap Gap J.5)")
 			}
 		}
@@ -6631,9 +6849,41 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// String slices are folded at compile time via stringVal; the fold is a string
 		// value, so it is emitted as its @str_tab index -- the pointer is for printf
 		// contexts, which fold the text themselves (Gap R.42, ADR 0224).
-		if _, isStr := g.stringVal(n.Obj); isStr {
+		// The gate is "is this a string?", not "can the compiler read its text?": a slice of a
+		// string the emitter only knows the *kind* of (`s = "abcdef"` inside a function body)
+		// still has an answer, and the table gives it (ADR 0229).
+		_, objIsFoldedStr := g.stringVal(n.Obj)
+		if objIsFoldedStr || g.exprIsString(n.Obj) {
 			if sv, ok := g.stringVal(n); ok {
 				return g.internStr(b, sv), nil
+			}
+			// Bounds that are values rather than constants are still a slice of the same
+			// string: an absent bound is spelled with the helper's own sentinel, because an
+			// i32 argument cannot be "missing" (ADR 0229).
+			if n.Step == nil {
+				if sreg, sok, serr := g.strReg(b, n.Obj); serr != nil {
+					return "", serr
+				} else if sok {
+					lo := "-2147483648"
+					hi := "2147483647"
+					if n.Low != nil {
+						v, lerr := g.strPosReg(b, n.Low)
+						if lerr != nil {
+							return "", lerr
+						}
+						lo = v
+					}
+					if n.High != nil {
+						v, herr := g.strPosReg(b, n.High)
+						if herr != nil {
+							return "", herr
+						}
+						hi = v
+					}
+					r := g.rtStrCall(b, "rt_str_slice", "i32 "+sreg, "i32 "+lo, "i32 "+hi)
+					g.checkStrSentinels(b, r, "IndexError", "string slice out of range", n.Span(), "stslice")
+					return r, nil
+				}
 			}
 			return "", fmt.Errorf("cannot fold string slice")
 		}
@@ -8054,6 +8304,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return g.rtStrCall(b, "rt_str_case", "i32 "+sreg, "i32 0"), nil
 				case "lower":
 					return g.rtStrCall(b, "rt_str_case", "i32 "+sreg, "i32 1"), nil
+				case "strip":
+					r := g.rtStrCall(b, "rt_str_strip", "i32 "+sreg)
+					g.checkStrSentinels(b, r, "RuntimeError", strFullMessage, c.Span(), "ststrip")
+					return r, nil
 				}
 			}
 			return "", fmt.Errorf("string method %s on non-constant string", attr.Name.Value)
@@ -9525,6 +9779,23 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
+			// str() of a number the compiler cannot read is digits written at run time and
+			// interned, so the answer is an ordinary string value (ADR 0229). It used to be
+			// reachable only for a literal argument, which made str(42) work and str(get())
+			// refuse — one rule, two behaviours.
+			// A float must keep refusing: the compiled backend has no float in a word-sized
+			// slot yet (L11.6, ADR 0226), and truncating one to render it would be the
+			// silent-truncation bug that gap exists to keep dead.
+			if !g.builtinShadowed("str") && len(c.Args) == 1 && !g.exprIsString(c.Args[0]) &&
+				!strings.Contains(exprTyName(c.Args[0]), "float") {
+				v, verr := g.value(b, c.Args[0])
+				if verr != nil {
+					return "", verr
+				}
+				r := g.rtStrCall(b, "rt_str_of_int", "i32 "+v)
+				g.checkStrSentinels(b, r, "RuntimeError", strFullMessage, c.Span(), "stoint")
+				return r, nil
+			}
 			return "", fmt.Errorf("str on non-integer")
 		}
 		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
@@ -9988,14 +10259,25 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		// them renders the interned index as a number (ADR 0229).
 		if at, ok := v.Fn.(*Attr); ok && len(v.Args) == 0 && g.exprIsString(at.Obj) {
 			switch at.Name.Value {
-			case "upper", "lower":
+			case "upper", "lower", "strip":
 				return true
 			}
+		}
+		// str(n) is text whatever n is, so printing it shows digits and not a count.
+		if g.builtinCallAs(v, "str") {
+			return true
 		}
 		return false
 	case *BinOp:
 		// `s[0] + s[2]` folds to text; every operand question is the same question.
 		return g.exprIsString(v)
+	case *Slice:
+		// s[a:b] of a string is a string, constant bounds or not (ADR 0229) — the print path
+		// asks the same question as the operation path, or a slice prints its index.
+		if g.exprIsString(v.Obj) {
+			return true
+		}
+		return false
 	case *Index:
 		// A subscript of a string is a one-character string (ADR 0225), so printing it is a
 		// text question. Answering with %d printed the interned index: `print(s[1])` said `0`.
@@ -12062,7 +12344,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// so the shape is named instead (roadmap Gap R.16, ADR 0209). A string *literal*
 		// iterates fine — it became a list of one-rune literals above (ADR 0208).
 		if g.iterableIsRuntimeString(n.Iter) {
-			return fmt.Errorf("codegen: iterating a string computed at run time is not supported in the AOT backend yet; the interpreter prints its characters — iterate a string literal, or subscript a string literal with a constant (\"abc\"[0]); a string held in a variable needs the runtime string value model (roadmap L11.5)")
+			// The refusal used to stand here because the fall-through read a string's table
+			// index as a repeat count and printed nothing — a silent wrong answer. The table
+			// now supplies the count and each character, so the loop is the counter loop with
+			// a code-point index for an element (ADR 0229, ADR 0196).
+			return g.emitForOverRuntimeString(b, n)
 		}
 		start, stop, step, err := g.rangeBounds(b, n.Iter)
 		if err != nil {

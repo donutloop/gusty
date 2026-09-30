@@ -4236,3 +4236,61 @@ refusals with their measured messages — they need to *build* buffers, the writ
 Compiled case folding is ASCII only, stated in the roadmap rather than quietly asserted. And the pinned
 "these shapes are unreachable" test fired exactly as designed when six of them started answering: it
 demanded promotion to a CPython-checked table instead of a softened expectation.
+
+## The write half of the string table — and the fixtures that stopped refusing (Gap R.47, ADR 0230)
+
+### What closed
+
+Concatenation with a runtime operand, slicing at run-time/open/negative bounds, `str()` of a
+computed number, `strip()`, and iteration of a string held in a variable. Five more runtime
+operations (`rt_str_cat`, `rt_str_byteoff`, `rt_str_slice`, `rt_str_strip`, `rt_str_of_int`) plus a
+`for`-over-string driving the ordinary counter loop. Every shape is checked against CPython on both
+engines; the matrix moved to 101 rows / 78 pass / 60 oracle-match, 0 fail, 0 drift.
+
+### The bug behind the empty slice
+
+`rt_str_byteoff` advanced its code-point counter on *continuation* bytes instead of their
+complement. Pure ASCII therefore never counted a character, the walk ran to the NUL, both slice
+bounds came back as the end, and `s[1:3]` returned `""`. Two things worth noting: the earlier
+`rt_str_char` got this right because it had been written with the complement, and the discrepancy
+survived every test until one asserted the *answer*. A counting rule stated in two places drifts —
+the same finding ADR 0228 made about `for` versus `while`.
+
+### Silent-zero, take four
+
+`for c in txt()` printed nothing and exited 0, because the string's table index was read as a
+repeat count (Gap R.16). Then it was an honest refusal. Now it is an answer, and the test that
+guards it asserts output rather than acceptance — the distinction that keeps this family from
+regressing into a green suite over a dead loop.
+
+### The process finding: a pinned refusal is a claim about the future
+
+`for c in txt(): print(c)` had become the canonical "the compiled backend refuses" fixture in four
+places — the exit-code contract (`--aot` must exit 1), the trap-class contract (a refusal must not
+blur into exit 3), the oracle's refused-leg check, and a diagnostics table. When the shape became
+answerable they all went green while exercising nothing. Same for the pinned refusal *tables* in
+`string_subscript_test.go` / `string_value_test.go` and the two `string_args_test.go` lists: each
+entry that starts answering has to be promoted into a CPython-checked answer table, and each
+fixture has to move to a shape that genuinely still refuses (`print("ab" * 2)`, Gap R.33 here).
+
+The mechanism that made this visible at all is the one that keeps firing: the pinned-refusal tests
+are written to fail when the leg *answers*, with the message "if it is right, promote this case".
+Sixteen cycles of that have converted every gap closure into a forced edit of the record instead of
+a quiet softening.
+
+### Assertions over the emission, again
+
+The classification layer is where the wrong answers live, not the lowering: the slice value was
+correct while `print(f(1))` printed `1`, because neither the whole-program return-kind scan nor the
+print predicate had a case for `return s[i:j]`. Restating ADR 0229's rule so it can be applied
+without re-deriving it: **one predicate answers "is this a string?" for every consumer — operations,
+print, and the kind scan — and adding an operation means adding its case to all three in the same
+commit.**
+
+### Where the honesty lives now
+
+Compiled case folding is ASCII-only, `strip` trims ASCII whitespace, `str(<float>)` refuses instead
+of truncating a float it cannot hold (L11.6), `%` formatting doesn't exist (R.31), `str * int` and
+list concatenation still refuse (R.33), and the 4096-entry string table raises a catchable
+`RuntimeError`. Each is written down where the next cycle will find it, rather than being quietly
+half-implemented behind a passing test.

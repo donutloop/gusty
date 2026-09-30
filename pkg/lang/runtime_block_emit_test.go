@@ -119,17 +119,28 @@ func TestRuntimeBlockReferencedIsATestOfTheCodeNotAFlag(t *testing.T) {
 	}
 }
 
-// TestRuntimeStringIterableIsRefusedRatherThanSilent: the shape that used to compile cleanly and print
-// nothing (a function's interned index read as a repeat count) is now named, because a silent wrong
-// answer is worse than a refusal (roadmap Gap R.16, ADR 0209).
+// TestRuntimeStringIterableIsRefusedRatherThanSilent: iterating text that only exists at run time
+// used to compile cleanly and print nothing, because the string's table index was read as a repeat
+// count — the archetypal silent wrong answer (roadmap Gap R.16, ADR 0209). It was a refusal for a
+// while, and ADR 0230 gave it an answer: the loop runs over code points through the string table.
+// What must never come back is the silent version, so the assertions are about the answer.
 func TestRuntimeStringIterableIsRefusedRatherThanSilent(t *testing.T) {
 	src := "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n"
-	_, err := Compile(src)
-	if err == nil {
-		t.Fatalf("iterating a run-time string compiled cleanly; it must be refused rather than loop zero times")
+	if got := captureStdout(t, src); got != "h\ni\n" {
+		t.Fatalf("interpreted output = %q, want h i", got)
 	}
-	if !strings.Contains(err.Error(), "iterating a string computed at run time") {
-		t.Errorf("the refusal is not the actionable one: %v", err)
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("the compiled backend refuses a loop it can answer: %v", err)
+	}
+	if !strings.Contains(res.IR, "@rt_str_char") || !strings.Contains(res.IR, "@rt_str_nchars") {
+		t.Fatalf("the loop does not go through the string table:\n%s", res.IR)
+	}
+	if !strings.Contains(res.IR, "_strctr") {
+		t.Fatalf("the loop shares its counter with the variable's slot (ADR 0196):\n%s", res.IR)
+	}
+	if true {
+		return
 	}
 	if !strings.Contains(err.Error(), "interpreter") || !strings.Contains(err.Error(), "string literal") {
 		t.Errorf("the refusal does not name the working backend and the usable shape: %v", err)

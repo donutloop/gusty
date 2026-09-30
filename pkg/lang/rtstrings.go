@@ -217,6 +217,10 @@ func isStrUnder(g *irGen, e Expr, params map[string]bool) bool {
 		return known
 	case *Index:
 		return isStrUnder(g, v.Obj, params)
+	case *Slice:
+		// s[a:b] of a string is a string whatever the bounds are, so a function that returns
+		// one hands back an index and the caller must read it as one (ADR 0229).
+		return isStrUnder(g, v.Obj, params)
 	case *Call:
 		if g.callReturnsStr(v) {
 			return true
@@ -232,4 +236,88 @@ func isStrUnder(g *irGen, e Expr, params map[string]bool) bool {
 		return v.Op == "+" && isStrUnder(g, v.L, params) && isStrUnder(g, v.R, params)
 	}
 	return false
+}
+
+// emitForOverRuntimeString iterates text that exists only while the program runs. The count is
+// the code-point count and each element is rt_str_char of the loop's own counter — a
+// one-character string, which is an index like any other string value, so the body prints it,
+// compares it and subscripts it correctly (ADR 0229, ADR 0225).
+//
+// The counter is separate from the variable's slot on purpose: sharing them let an assignment
+// to the loop variable move the iteration (ADR 0196), and the variable is bound from the
+// counter at the top of each body because that is when Python binds it. The iterated expression
+// is evaluated once, before the loop, so a call in the header runs once and not per character.
+func (g *irGen) emitForOverRuntimeString(b *strings.Builder, n *ForStmt) error {
+	g.heapUsed = true
+	sreg, err := g.value(b, n.Iter)
+	if err != nil {
+		return err
+	}
+	total := g.rtStrCall(b, "rt_str_nchars", "i32 "+sreg)
+	lv := loopVarName(n.Var)
+	if !g.allocd[lv] {
+		b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", lv))
+		g.gcReg(b, lv)
+		g.allocd[lv] = true
+	}
+	// The element is a @str_tab index, so the body treats the name as a string: print shows
+	// the character, == compares content, len measures one code point.
+	g.internedVars[lv] = true
+	g.forCtrSeq++
+	ctr := fmt.Sprintf("_strctr%d", g.forCtrSeq)
+	b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", ctr))
+	b.WriteString(fmt.Sprintf("  store i32 0, i32* %%%s\n", ctr))
+	condL := g.newLabel("forstr.cond")
+	bodyL := g.newLabel("forstr.body")
+	incL := g.newLabel("forstr.inc")
+	elseL := g.newLabel("forstr.else")
+	endL := g.newLabel("forstr.end")
+	b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
+	fmt.Fprintf(b, "%s:\n", condL)
+	g.ldN++
+	cld := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", cld, ctr)
+	more := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp slt i32 %s, %s\n", more, cld, total)
+	normalL := endL
+	if len(n.Else) > 0 {
+		normalL = elseL
+	}
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", more, bodyL, normalL)
+	fmt.Fprintf(b, "%s:\n", bodyL)
+	g.ldN++
+	cbd := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", cbd, ctr)
+	ch := g.rtStrCall(b, "rt_str_char", "i32 "+sreg, "i32 "+cbd)
+	g.checkStrSentinels(b, ch, "IndexError", "string index out of range", n.Span(), "forstr")
+	// The slot is the name's own, spelled the way every other slot is spelled in this
+	// generator, or the store points at a register that was never allocated.
+	fmt.Fprintf(b, "  store i32 %s, i32* %%_%s\n", ch, lv)
+	g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
+	for _, st := range n.Body {
+		if err := g.stmt(b, st); err != nil {
+			return err
+		}
+	}
+	g.loopStack = g.loopStack[:len(g.loopStack)-1]
+	b.WriteString(fmt.Sprintf("  br label %%%s\n", incL))
+	fmt.Fprintf(b, "%s:\n", incL)
+	g.ldN++
+	ild := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", ild, ctr)
+	increment := g.newTmp()
+	fmt.Fprintf(b, "  %s = add i32 %s, 1\n", increment, ild)
+	fmt.Fprintf(b, "  store i32 %s, i32* %%%s\n", increment, ctr)
+	b.WriteString(fmt.Sprintf("  br label %%%s\n", condL))
+	if len(n.Else) > 0 {
+		fmt.Fprintf(b, "%s:\n", elseL)
+		for _, st := range n.Else {
+			if err := g.stmt(b, st); err != nil {
+				return err
+			}
+		}
+		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
+	}
+	fmt.Fprintf(b, "%s:\n", endL)
+	return nil
 }

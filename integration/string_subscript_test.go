@@ -74,13 +74,12 @@ func TestInterpreterStringSubscriptFollowsTheOracle(t *testing.T) {
 // character at runtime has no runtime string to ask about.
 func TestCompiledStringSubscriptHolesRefuseWithAMessage(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		// What is left of Gap R.47 after ADR 0229: building a *new* string at run time
-		// (concatenation, slicing) and iterating a string held in a variable still need the
-		// buffer-allocation half of the runtime, so they refuse with a message. The subscript,
-		// len, ord and char-method shapes used to be here too and now answer — see
-		// TestCompiledStringSubscriptAnswersAtRuntime, which promotes them from CPython.
-		{"concat_of_two_chars", "s = \"abc\"\nprint(s[0] + s[2])\n"},
-		{"iterate_a_variable_string", "s = \"ab\"\nfor c in s:\n    print(c)\n"},
+		// Gap R.47 is closed: every shape this table used to hold now answers, so the rows
+		// live in TestCompiledStringSubscriptAnswersAtRuntime (checked against CPython) and
+		// TestCompiledStringWritesAnswerAtRuntime. What the compiled backend still declines is
+		// elsewhere in the roadmap: %s formatting (R.31), str * int and list concatenation
+		// (R.33), floats in containers (L11.6).
+		{"str_times_int", "print(\"ab\" * 2)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "hole.gy", tc.src)
@@ -181,5 +180,76 @@ func TestStringTableOverflowIsACatchableTrap(t *testing.T) {
 	}
 	if strings.Contains(res.IR, "@rt_die(i8* getelementptr ([46 x i8]") {
 		t.Fatalf("the string table's overflow path must not reach for a helper defined in another runtime block")
+	}
+}
+
+// TestCompiledStringWritesAnswerAtRuntime is the write half of Gap R.47 (ADR 0230): operations
+// that *build* a string while the program runs — concatenating a runtime string, slicing at
+// run-time bounds, iterating a string held in a variable, str() of a computed number, strip().
+//
+// Each of these used to be a compile-time refusal for a program CPython runs, and the shape that
+// came before the refusals was worse: iterating a function's string printed nothing at all,
+// because the string's table index was read as a repeat count (roadmap Gap R.16). Expectations
+// come from CPython; the test refuses to run if CPython disagrees with the table.
+func TestCompiledStringWritesAnswerAtRuntime(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"concat_of_two_chars", "s = \"abc\"\nprint(s[0] + s[2])\n", "ac\n"},
+		{"concat_with_a_call_result", "def get():\n    return \"b\"\nprint(\"a\" + get() + \"c\")\n", "abc\n"},
+		{"concat_is_deduped_by_content", "def get():\n    return \"b\"\nprint(1 if \"a\" + get() == \"ab\" else 0)\n", "1\n"},
+		{"slice_with_runtime_bounds", "def f(i):\n    s = \"abcdef\"\n    return s[i:i+2]\nprint(f(1))\n", "bc\n"},
+		{"slice_open_ended", "def f():\n    return \"abcdef\"\nprint(f()[:2], f()[4:])\n", "ab ef\n"},
+		{"slice_negative_bounds", "def f():\n    return \"abcdef\"\nprint(f()[-2:])\n", "ef\n"},
+		{"iterate_a_variable_string", "s = \"ab\"\nfor c in s:\n    print(c)\n", "a\nb\n"},
+		{"iterate_a_call_result", "def txt():\n    return \"hi\"\nfor c in txt():\n    print(c)\n", "h\ni\n"},
+		{"iterate_unicode_by_code_point", "def txt():\n    return \"caf\" + \"\u00e9\"\nfor c in txt():\n    print(c)\n", "c\na\nf\n\u00e9\n"},
+		{"str_of_a_computed_number", "def get():\n    return 42\nprint(str(get()))\n", "42\n"},
+		{"str_of_a_negative_number", "def get():\n    return -7\nprint(str(get()))\n", "-7\n"},
+		{"strip_trims_spaces", "def get():\n    return \"  hi \"\nif get().strip() == \"hi\":\n    print(\"stripped\")\n", "stripped\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wantOut, _, perr := lang.PythonRun(tc.src)
+			if perr != nil {
+				t.Fatalf("CPython rejected a program this table says answers: %v\n%s", perr, tc.src)
+			}
+			if wantOut != tc.want {
+				t.Fatalf("this table disagrees with CPython, which printed %q\n%s", wantOut, tc.src)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				path := writeSrc(t, t.TempDir(), "w.gy", tc.src)
+				out, code := cliRunCode(t, engine, path)
+				if code != 0 {
+					t.Fatalf("%s exited %d for a shape ADR 0230 makes answerable:\n%s", engine, code, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want %q (CPython)\n%s", engine, out, tc.want, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestCompiledStringLoopsAreNotSilentlyWrong guards the specific old failure: iterating text that
+// only exists at run time compiled cleanly and printed nothing, because the string's table index
+// was read as a repeat count (roadmap Gap R.16). The loop must produce exactly the characters, and
+// must not reach the table's empty entry.
+func TestCompiledStringLoopsAreNotSilentlyWrong(t *testing.T) {
+	src := "def txt():\n    return \"hi\"\nfor c in txt():\n    print(c)\n"
+	res, err := lang.Compile(src)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, verr := lang.VerifyModuleIR(res.IR, 0); verr != nil {
+		t.Fatalf("the emitted module does not verify: %v\n%s", verr, res.IR)
+	}
+	for _, want := range []string{"@rt_str_nchars", "@rt_str_char", "alloca i32"} {
+		if !strings.Contains(res.IR, want) {
+			t.Fatalf("the runtime string loop is missing %q\n%s", want, res.IR)
+		}
+	}
+	// The counter is the loop's own — sharing it with the variable's slot let a body
+	// assignment move the iteration (ADR 0196).
+	if !strings.Contains(res.IR, "_strctr") {
+		t.Fatalf("the loop has no counter of its own\n%s", res.IR)
 	}
 }

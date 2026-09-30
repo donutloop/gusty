@@ -322,8 +322,16 @@ falls back to dynamic dispatch.
   Subscripts at run-time positions, `len`, `ord`, and `upper`/`lower` now answer on both backends, and
   because equality is by content, a string built while running compares equal to the literal that spells
   it. The table's overflow path used to reuse its last entry — printing a different string than the
-  program had built — and now raises a catchable `RuntimeError`. Concatenating or slicing into a new
-  string at run time, and iterating a string in a variable, are the write half that remains refused.
+  program had built — and now raises a catchable `RuntimeError`.
+- **A string built at run time is a buffer, an intern, and the same index** (ADR 0230) — the write half
+  of the same gap: `"a" + word()`, `s[i:i+2]` where the bounds are values, `str(get())`, `.strip()`, and
+  `for c in <runtime string>` were compile-time refusals for programs Python runs. Iteration had been
+  worse than a refusal before it was refused: the string's table index was read as a repeat count, so
+  the loop printed *nothing* and exited 0 (Gap R.16). Five more runtime helpers close it, and since
+  interning dedups by content, a built `"ab"` and the literal `"ab"` are one value with no special case.
+  The suite lesson: `for c in txt()` had quietly become the canonical "the backend refuses" fixture in
+  four tests — a pinned refusal is a claim about the future, and when the gap closes its fixtures have
+  to move or those tests go green while saying nothing.
 - **A container slot is a word — ask what fits before writing it** (ADR 0226) — `[1] == [1.0]`,
   `print([1.5, 2])` and `1.0 == [1]` reached `llc` as invented operands (`[1 x i32] [@env_store = ...`,
   `%t1 = sitofp i32  to double`, `%t2 = sitofp i32 @.lst1 to double`) and came back as exit 2, while

@@ -46,7 +46,9 @@ func TestTrapIsTheSameClassOnEveryRunPath(t *testing.T) {
 	}
 	// A program the compiled backend will not lower is still class 1: propagating the
 	// program's status must not blur "it crashed" into "we refused to build it".
-	refused := writeTrapCase(t, dir, "refused.gy", "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n")
+	// str * int is a shape the compiled backend still declines (roadmap Gap R.33); the
+	// fixture used to be a runtime-string loop, which ADR 0229 made answerable.
+	refused := writeTrapCase(t, dir, "refused.gy", "print(\"ab\" * 2)\n")
 	if code := runCode(t, bin, "--aot", refused); code != 1 {
 		t.Errorf("gustyc --aot on a codegen refusal: exit = %d, want 1", code)
 	}
