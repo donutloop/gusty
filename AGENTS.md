@@ -38,7 +38,7 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 
 ## The loop
 
-1. Pick a new feature from the roadmap — `roadmap.md` (at the repo root) is the single source of truth for what exists and what is next. Each cycle selects the next planned (⏳ PLANNED) item from its phased plan and drives it to done; do not invent off-roadmap features.
+1. Pick a new feature from the roadmap — `roadmap.md` (at the repo root) is the single source of truth for what exists and what is next. Each cycle takes the **top row of its "Open queue" table** (the prioritized ⏳ `PLANNED` / ⏳ `OPEN` / 🟨 `PARTIAL` list) and drives it to done; do not invent off-roadmap features, and do not skip a row without naming the dependency in its `Blocked on` cell.
 2. Implement across the stack:
    - lexer/parser/AST for syntax, including indentation handling where relevant.
    - semantic analysis / gradual type inference for semantics (respect optional type annotations; fall back to dynamic dispatch where untyped).
@@ -61,6 +61,14 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 - Keep `agents.md` at the repo root; do not store prompts under `setup/prompts/`.
 - Every feature commit updates `docs/language.md` (language surface), `docs/operations.md` (CLI/agentic interface), `README.md`, `_001_session_learnings.md` (session learnings), and the ADR if relevant.
 - Record each cycle's decisions, discoveries, and process lessons in `_001_session_learnings.md` at the repo root; update it in the same commit as the change it documents.
+- **`roadmap.md` is a tracker, not a diary.** Every item and gap is one row
+  (`ID · item · status · path · ADR · evidence · record`), using only the status vocabulary
+  defined at the top of that file; the prioritized open queue is the only list of owed work.
+  Change a status by editing that cell — never by adding status-bearing prose. The *why*
+  (measurement, root cause, alternatives rejected) goes in `docs/roadmap-details.md`, whose
+  sections the rows link to. Item IDs (`L11.1`, `Gap R.33`, …) are permanent: never renumber
+  or reuse them, because `pkg/lang` comments, ADRs and the conformance ledger cite them. A
+  newly measured defect gets a fresh row and a fresh ID.
 - `docs/operations.md` is the single source of truth for the CLI, flags, JSON schemas, and exit codes.
 - `docs/language.md` is the single source of truth for language syntax and semantics.
 - Always push every commit; never leave a feature unpushed.
@@ -75,7 +83,7 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 
 ## Iteration contract (never stop)
 
-- Keep executing forever: after each feature is done, immediately begin the next one from `roadmap.md` — select the next planned (⏳ PLANNED) item from the phased plan (comprehensions, generators, classes/inheritance, decorators, exceptions, pattern matching, gradual typing, modules, standard library, memory model, optimization passes, agentic/JSON/schema paths) or any remaining gap, and drive it to done.
+- Keep executing forever: after each feature is done, immediately begin the next one from `roadmap.md` — take the next ⏳ `PLANNED` / ⏳ `OPEN` / 🟨 `PARTIAL` row from its **Open queue** table (comprehensions, generators, classes/inheritance, decorators, exceptions, pattern matching, gradual typing, modules, standard library, memory model, optimization passes, agentic/JSON/schema paths) or any remaining gap, and drive it to done.
 - Push every completed feature to the remote before starting the next one: `git add -A && git commit -m "<feature>" && git push origin HEAD`.
 - If the push fails or the remote diverged, `git pull --rebase origin HEAD` and push again.
 - There is no terminal state; the loop continues indefinitely.

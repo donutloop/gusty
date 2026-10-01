@@ -4467,3 +4467,59 @@ both backends store", and the whole suite told me which ones in seconds.
   the inconvenient one.
 * Push still blocked on the SSH agent refusing to sign (`ssh-add -l` lists the key, signing fails);
   the commit is local and the push is retried each cycle.
+
+## The roadmap became a tracker, and the tracker found bugs (roadmap tabulation, 2026-10-01)
+
+No compiler change this cycle: `roadmap.md` was 2,750 lines of prose with statuses embedded
+in sentences, and it was asked to be a table. It is now a tracker — status vocabulary,
+measured snapshot, component map, one **open queue**, one row per item and per gap — and the
+narrative moved, verbatim, to `docs/roadmap-details.md` (2,789 lines, one anchor per row).
+`AGENTS.md` says what the format obliges: a status is a cell, the queue is the only list of
+owed work, and item IDs are permanent because `pkg/lang` comments cite them.
+
+What the exercise taught, in the order it hurt:
+
+* **A status written twice is a status that is wrong.** The old file stated the same fact in
+  up to three places (the item bullet, a "R." summary list, and the sequencing note), and
+  they had drifted apart: the summary still said `R.13`/`R.15` were OPEN while their own
+  sections reported them closed by ADR 0204 and ADR 0208; `Gap E` still promised string
+  *variable* slicing that `rt_slice` had long since lowered; `Gap P.2` still claimed float `%`
+  was wrong on both backends after ADR 0216. Re-measuring each of those took seconds with the
+  built binary and changed four rows. Single-cell status is not tidiness, it is the mechanism
+  that keeps the file from lying.
+* **A snapshot paragraph rots fastest.** It claimed 74 programs / 18 probes / ADRs to `0194`;
+  the truth was 110 / 21 / `0232`. The snapshot now has a "measured by" column and every row
+  names an artifact (`integration/conformance-matrix.json`, `docs/adr/`, `pkg/lang/compile.go`).
+  A number nobody can re-measure is decoration.
+* **The tracker has to be the union of every citation, not of one file.** Eight IDs —
+  `R.19`, `R.22`, `R.24`–`R.29` — were cited by comments in `pkg/lang`, by ADRs and by the
+  conformance ledger's `ref:` fields, and had no row anywhere. They are recorded now, in a
+  clearly-marked *recovered* section of the record, each sourced from its ADR and its test.
+  The ledger's `ref:` strings and the code comments are now the two things a new row has to
+  agree with, which is the same "citations must resolve" rule ADR 0219 enforces for programs.
+* **Tabulating is measuring.** Checking an `Evidence` cell means running the program, and the
+  sweep turned up four defects that no test and no row knew about: **Gap R.49** (`def f(x)`
+  above `x = 8; x /= 2` leaves the module's `x` with no slot, `llc` rejects
+  `store i32 %t5, i32* %_x`, exit 2 — the compiler-bug code, for an ordinary program);
+  **Gap R.50** (`round(2.5)` is `3` here and `2` in CPython — identical on both backends, so
+  the parity matrix structurally cannot see it; only the oracle leg can); **Gap R.51**
+  (`floor`, `ceil`, `sqrt` are predeclared for the checker, `NameError` for the interpreter,
+  answered-by-fold for the compiler — three engines, three behaviours, and the answer has the
+  wrong type); **Gap R.52** (stdlib discovery walks up from the cwd, so an installed binary
+  cannot `import math` without `--stdlib`). Each got a row, an owner, and its story in the
+  record — no fixes smuggled into a docs commit.
+* **The citations test is what made the split safe.** Moving 2,700 lines into `docs/` moved
+  them *into* the scanner's scope (`docs/*.md` is checked too), so `programs/NAME.gy`
+  citations that were safe at the repo root had to resolve where they landed. 156 of them do.
+  The `(planned)` marker earns its keep in the queue's DoD cells: `programs/nested_data.gy
+  (planned)` is a promise, and the test knows the difference between a promise and a lie.
+* **Tables discipline the writing.** A cell cannot hold a paragraph, so the long version goes
+  to the record; `` `int | str` `` has to be escaped or it silently splits a row; and an
+  anchor per row turned "see the discussion above" into a link that either resolves or does
+  not. The format is doing the work the prose never did: it makes an unmaintained status
+  visible instead of merely long.
+* **Committed generated artifacts churn.** `integration/conformance-matrix.json` embeds
+  `/tmp/gusty-oracle4187099451/prog.py` in two rows' `python_error`, so any test run produces
+  a 22-line diff of pure noise; this commit reverts it. Follow-up owed: strip the temp path
+  from the oracle error text (or normalize it) so the artifact is byte-stable — a "measured"
+  claim that changes when nobody measures anything stops being evidence.

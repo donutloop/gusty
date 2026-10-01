@@ -674,4 +674,5 @@ stdlib/            on-disk modules: math.gy, string.gy, collections.gy, json.gy
 ---
 
 *The language spec lives in `docs/language.md`; the toolchain & CLI reference
-in `docs/operations.md`.*
+in `docs/operations.md`; the status of every item, gap and queued next step in
+`roadmap.md`, with the reasoning behind each row in `docs/roadmap-details.md`.*

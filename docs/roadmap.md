@@ -1,16 +1,23 @@
-# Roadmap (docs mirror)
+# Roadmap — pointers
 
-This is a pointer mirror. The living, concrete roadmap for **Pyre** (the
-`gusty` repo) lives at the repo root: **`../roadmap.md`** (next to
-`AGENTS.md`).
+This is a pointer mirror. The living plan for **Pyre** (the `gusty` repo) is split in two,
+and both halves are authoritative for what they own:
 
-The canonical documentation home is this `docs/` folder:
+- [`../roadmap.md`](../roadmap.md) — **the tracker.** The single source of truth for state:
+  the status vocabulary, the measured snapshot, the component map, the prioritized open
+  queue, and one row per item and per gap (`ID · item · status · path · ADR · evidence ·
+  record`). The agent loop reads the queue and writes one cell per finished item.
+- [`roadmap-details.md`](roadmap-details.md) — **the record.** The narrative: how each gap
+  was found, what the wrong answer looked like, which measurement settled it, what was
+  rejected. Statuses never live here.
+
+The rest of the canonical documentation lives beside this file:
 
 - `docs/language.md` — language surface (single source of truth).
-- `docs/operations.md` — CLI, agent operations, build/test pipeline.
-- `docs/adr/` — architecture decision records (`0001`..`0180`).
+- `docs/operations.md` — CLI, agent operations, build/test pipeline (single source of truth).
+- `docs/adr/` — architecture decision records (one per feature).
 - `docs/agentic/` — agent-facing notes (`ast-ir-schema.md`).
-- `../roadmap.md` — component map, current state, gaps, and the phased plan.
 
-Rule: keep `../roadmap.md`, `docs/language.md`, and `docs/operations.md` in
-sync; never let them drift apart.
+Rule: keep `../roadmap.md`, `docs/language.md`, and `docs/operations.md` in sync; never let
+them drift apart. A status change in the tracker and its story in the record belong in the
+same commit as the code that earned them.
