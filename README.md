@@ -115,8 +115,14 @@ read those numbers, and the compiled heap's own object-header kind is a projecti
 interned string"). `gustyc --lang` prints both tables and `--schema`'s `valueTag`
 definition documents the numbering (ADR 0182).
 
-A compiled list can mix numbers, strings and `None`: `print([1, "a", None])` prints
-`[1, 'a', None]` on both backends, because each element slot carries its own tag (ADR 0184).
+A compiled container can mix numbers, strings and `None`: `print([1, "a", None])` prints
+`[1, 'a', None]` on both backends, because each element slot carries its own tag (ADR 0184). Dicts
+and sets take the same rule, so `print({"a": 1, "b": "x", "c": None})` and `print({1, "a", None})`
+print correctly compiled, `for k in d` / `for x in s` bind the tag beside the value, and a container
+that grows a second kind is promoted rather than refused (ADR 0232). The tag is not only for mixed
+containers: a lookup compares payload *and* tag, because an interned string and an integer of the
+same number are the same bits — `{1: "one"}` asked for `"a"` raises `KeyError` compiled, where it
+used to answer `one` (ADR 0189 wrote the tags; ADR 0232 made the runtime read them).
 
 Where the tag does not decide yet, one rule does: `str(x)` folds to the same text on both
 backends and on CPython — `str(None)` is `"None"`, `str(1.5)` is `"1.5"`, `str("x")` is `x`

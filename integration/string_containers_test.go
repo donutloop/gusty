@@ -162,16 +162,50 @@ func TestContainerLiteralsMatchPython(t *testing.T) {
 
 func gotInterpHint(got string) string { return got }
 
-// A compiled container that *grows* with both strings and numbers still has one element kind
-// at the append site: `xs = [1]` then `xs.append("a")` cannot know the new slot's tag, so it is
-// reported instead of printing an integer through the string table — the shape that used to
-// render as [(null), 'a']. Heterogeneous *literals* left this list when per-element tags landed
-// (ADR 0184): see mixedLiteralCases. Item assignment overwrites, so it stays allowed.
+// These four used to be the refusal list. A container that *grows* with a second kind, and a
+// literal whose keys or values mix kinds, are now built: every slot carries its tag from the moment
+// it is written (ADR 0189), so the container stops claiming one kind and the slots answer for
+// themselves (ADR 0232). Asserted by output, because the failure mode of this whole area is a
+// plausible-looking wrong print — `(null)`, an index, a number where a word belongs.
+var promotedContainerCases = []struct {
+	src  string
+	want string
+}{
+	{"xs = [1]\nxs.append(\"a\")\nprint(xs)\n", "[1, 'a']\n"},
+	{"xs = [\"a\"]\nxs.append(1)\nprint(xs)\n", "['a', 1]\n"},
+	{"s = {1}\ns.add(\"a\")\nprint(s)\n", "{1, 'a'}\n"},
+	{"print({\"a\": 1, \"b\": \"c\"})\n", "{'a': 1, 'b': 'c'}\n"},
+}
+
+func TestGrowingAContainerPrintsInsteadOfRefusing(t *testing.T) {
+	for _, tc := range promotedContainerCases {
+		res, err := lang.Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q should compile since slots carry their own tags: %v", tc.src, err)
+		}
+		if !strings.Contains(res.IR, "@heap_tags") {
+			t.Errorf("%q compiled without the per-element tag array", tc.src)
+		}
+		jit, err := lang.JIT(tc.src, 0)
+		if err != nil {
+			t.Fatalf("compile %q: %v", tc.src, err)
+		}
+		if jit.Output != tc.want {
+			t.Errorf("%q printed %q, want %q (CPython)", tc.src, jit.Output, tc.want)
+		}
+	}
+}
+
+// What the container family still refuses, and why the refusal is the answer rather than a lazy
+// copy of the interpreter: each shape would store a word whose meaning the compiler cannot say
+// afterwards. The wording is checked because these messages are an agent's only input (a float has
+// no word yet — L11.6; a handle in a slot built for a word is unmarked by the collector — L11.1
+// (5); a call returning text on one path and a number on another has no single tag to write).
 var mixedContainerCases = []string{
-	"xs = [1]\nxs.append(\"a\")\nprint(xs)\n",
-	"xs = [\"a\"]\nxs.append(1)\nprint(xs)\n",
-	"s = {1}\ns.add(\"a\")\nprint(s)\n",
-	"print({\"a\": 1, \"b\": \"c\"})\n",
+	"xs = [1]\nxs.append(1.5)\nprint(xs)\n",
+	"print({\"a\": [1]})\n",
+	"s = {1}\ns.add([2])\nprint(s)\n",
+	"def f(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = [f(1), 2]\nprint(xs)\n",
 }
 
 // The case ADR 0175 refused and ADR 0184 fixed: a list literal that mixes numbers with
@@ -211,11 +245,13 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 			t.Errorf("%q must be refused (it used to print (null)); got IR", src)
 			continue
 		}
-		if !strings.Contains(err.Error(), "holds either strings or numbers") &&
-			!strings.Contains(err.Error(), "needs the new element tagged") {
+		if !strings.Contains(err.Error(), "cannot hold a float") &&
+			!strings.Contains(err.Error(), "cannot hold another container") &&
+			!strings.Contains(err.Error(), "cannot prove one kind") {
 			t.Errorf("%q: unexpected diagnostic: %v", src, err)
 		}
-		if !strings.Contains(err.Error(), "interpreter") && !strings.Contains(err.Error(), "printing it works") {
+		if !strings.Contains(err.Error(), "interpreter") && !strings.Contains(err.Error(), "interpreted") &&
+			!strings.Contains(err.Error(), "printing it works") {
 			t.Errorf("%q: should name the path that works: %v", src, err)
 		}
 		if res != nil {

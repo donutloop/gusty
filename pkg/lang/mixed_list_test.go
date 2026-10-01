@@ -23,7 +23,11 @@ func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
 		{`1`, int32(TagInt), true, "an integer"},
 		{`"a"`, int32(TagStr), true, "a string literal"},
 		{`None`, int32(TagNone), true, "the None singleton"},
-		{`True`, 0, false, "bools are not values in either backend yet"},
+		// A bool is tagged TagInt, because that is what both backends store today: the
+		// interpreter keeps bool as Int(1) and renders it through the number path, which is
+		// the difference probe_bool_value pins. When L11.2 gives bool its own kind this case
+		// flips to TagBool and every container follows (ADR 0232).
+		{`True`, int32(TagInt), true, "a bool, stored as the number it behaves like"},
 		{`1.5`, 0, false, "the mixed printer has no float rendering"},
 		{`[1]`, 0, false, "a nested container would need the collector to mark it"},
 		{`{"a": 1}`, 0, false, "a nested dict likewise"},
@@ -59,7 +63,8 @@ func TestTaggableMixedListRequiresActualMixing(t *testing.T) {
 		{`[1, "a"]`, true},
 		{`[1, "a", None]`, true},
 		{`[]`, false},
-		{`[1, True]`, false},    // bool gate
+		{`[1, True]`, false},    // a bool stored as a number is not a second kind
+		{`[True, "a"]`, true},   // number and string still mix
 		{`[1.5, "a"]`, false},   // float gate
 		{`[[1], "a"]`, false},   // container gate
 		{`[None, None]`, false}, // all one kind is not a mix
@@ -127,10 +132,9 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// a bool is not a value yet, and a nested container is not marked by the collector.
 		{"xs = [1, \"a\"]\nxs.append(1.5)\nprint(xs)\n", "must carry a tag"},
 		{"xs = [1, \"a\"]\nxs[0] = 2.5\nprint(xs)\n", "must carry a tag"},
-		{"xs = [1, \"a\"]\nxs[0] = True\nprint(xs)\n", "must carry a tag"},
+
 		{"xs = [1, \"a\"]\nxs.append([1])\nprint(xs)\n", "must carry a tag"},
-		// Mixing the still-unsupported kinds keeps the original, pre-tag refusal.
-		{"xs = [True, \"a\"]\nprint(xs)\n", "either strings or numbers"},
+
 		// A float in the literal is refused by the element-kind gate (ADR 0226), which fires first
 		// and is the more specific truth about that program: the float cannot be in the slot at all,
 		// mixed kinds or not.

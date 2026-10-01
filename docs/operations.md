@@ -831,6 +831,10 @@ Match these messages rather than scraping diagnostics prose:
 | `concatenating a runtime string is not supported in the AOT backend yet` | building a new string (`s + "!"` where a side is not a compile-time constant) needs a buffer allocation the compiled runtime does not have; passing the string itself is fine (ADR 0174) | run it on the interpreter, or concatenate the constant parts and pass the result |
 | `operator "<op>" on a string is not supported in the AOT backend` | arithmetic or ordering on a compiled string would compute with its string-table index, where the interpreter raises `TypeError` (ADR 0174) | check the value before the operation, or run it on the interpreter |
 | `string method <name> on non-constant string` | a method that would build a new string (`upper`, `strip`, …) needs an allocator; `len`, `==` and container use of a string parameter are supported | run it on the interpreter, or compare/measure instead |
+| `cannot hold a float yet` | a float in a container slot: an element is one `i32` word and a compiled float is a `double` (roadmap L11.6, ADR 0226) | interpreter, or keep the float in a variable |
+| `cannot hold another container yet` | a container inside a container: an element that is a handle is not marked by the collector, so its tag would be a guess (roadmap L11.1 (5), ADR 0188) | interpreter, or build the inner container separately and index it |
+| `cannot prove one kind for` | an element the compiler cannot label — typically a call that returns text on one path and a number on another. `print` asks at print time; a slot is labelled once, and the wrong label prints `(null)` (ADR 0232) | interpreter, or give the function one return kind (the tagged value word, L11.1 (5), retires this) |
+| `needs a needle whose kind the compiler can prove` | `x in c` where `c`'s slots describe themselves and `x`'s kind is not provable (ADR 0232) | interpreter, or compare a literal/tagged variable |
 
 Every container that crosses a function boundary is passed as a runtime heap
 handle (see `docs/language.md` § Containers across function boundaries); the
@@ -882,6 +886,24 @@ keys, [n x i32] vals}`; sets: `{i32 count, [n x i32] elems}`). Constant-key
 lookup folds at compile time; literals must be used inline (no assignment-to-
 variable indirection), matching the list-literal limitation. Interpreter
 indexes dicts/sets at runtime and is unchanged.
+
+A container variable is a heap object, and since ADR 0232 its slots are
+`(payload, tag)` pairs: `d = {"a": 1, "b": "x", "c": None}` and `s = {1, "a",
+None}` build, print, index, iterate, grow (`d[k] = v`, `s.add`) and compare
+compiled, identically to the interpreter and to CPython. Two runtime entry
+points carry the whole surface for agents reading emitted IR: the tagged
+writers (`rt_dict_put_tagged`, `rt_set_add_tagged`, `rt_tag_elem`) and the
+tagged readers (`rt_dict_find`, `rt_dict_get_tagged`, `rt_dict_value_tag`,
+`rt_dict_has_tagged`, `rt_set_contains_tagged`, `rt_contains_tagged`,
+`rt_mixed_eq`). A container whose slots describe themselves is marked with
+`@rt_mark_estr(h, 8)`, which is what routes `rt_dict_print`/`rt_set_print` to
+the per-slot printers; a single-kind container does not set the bit and keeps
+the static printers, so programs that worked before emit what they always
+emitted. Lookups compare tags whenever the needle's kind is provable — that is
+what makes `{1: "one"}` raise `KeyError` for `d["a"]` instead of answering
+`one`, an interned string and an integer of the same number being the same bits
+(see `docs/language.md` § Containers hold any value, and ADR 0189 for why the
+tags can be trusted on read).
 
 ## String-constant concatenation + len (AOT codegen)
 

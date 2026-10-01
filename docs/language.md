@@ -1342,18 +1342,57 @@ Reading one element out produces the pair as well, and two uses of it are open:
 `print(xs)` renders `repr()` (`'a'`), and rebinding `v = 5` retires the tag (ADR 0185, ADR 0187).
 What still reports — rather than computing on a string-table index — is any context that needs
 one static kind: `xs[i] + 1`, `xs[i] > 2`, passing `xs[i]` to a function, `xs[i]` in a format
-spec, and reading a `dict`/`set` by key (those containers have no tag array yet).
+spec.
+
+**Dicts and sets take the same rule** (ADR 0232). A compiled dict may mix kinds on either side of
+an entry and a compiled set may mix kinds among its members, because a slot is always the pair
+(payload, tag):
+
+```gy
+d = {"a": 1, "b": "x", "c": None}   # values: number, string, None
+print(d)            # {'a': 1, 'b': 'x', 'c': None}   — both backends, and CPython
+print(d["b"])       # x        — the value's slot says it is a string
+for k in d:         # a, b, c — keys carry tags too
+    print(k)
+s = {1, "a", None}
+print(s)            # {1, 'a', None}
+s.add("b")          # a member arrives with its tag; discard moves the tags down with the members
+print(1 if 1 in s else 0)          # 1
+```
+
+A dict or set of a single kind is unaffected: it builds through the plain runtime calls, prints
+through the static printers, and sets no "my slots describe themselves" bit on the object.
+
+What a mixed container may hold is decided by what a tag can honestly describe — integers,
+interned strings, `None`, and bools (stored as the number both backends store them as). A float in
+any slot reports (no `i32` holds it: L11.6), a container inside a container reports (the collector
+cannot mark an element), and a needle whose kind the compiler cannot prove reports *when the
+container mixes* — `1 in s` where `s` is `{1, 'a'}` and the needle is a call whose return kind
+nobody knows.
+
+And the tag is not only for mixed containers, which is the part that was wrong before: **a lookup
+compares the payload and the tag whenever the needle's kind is provable**, uniform container or
+not. Strings are `@str_tab` indices, so an interned string and an integer of the same number are
+the same bits, and this program used to have a compiled answer of `one`:
+
+```gy
+d = {1: "one"}
+print(d["a"])   # KeyError, on both backends and on CPython — used to print `one` compiled
+```
+
+The same rule covers `"a" in s`, `1 in ["a"]`, and the `KeyError` a missing `d[k]` raises
+(ADR 0189 wrote the tags; ADR 0232 made the runtime read them).
 
 A container **inside** a container (`[[1], "a"]`, `[["a"], ["b"]]`, `xs.append(other_list)`)
 reports rather than runs: the collector marks containers held by a variable (ADR 0181), and an
 element that is a handle has no variable to be marked from. Printing one used to print the
 interned indices of its inner strings as numbers (ADR 0188).
 
-The tag is what makes a value's kind a fact rather than a guess, and it is what the
-compiled backend currently lacks per *element*: a compiled list records one element kind
-for the whole container, which is why a heterogeneous `xs = [1, "a"]` is refused rather
-than printed wrong (ADR 0175), and why `print(True)` still says `1` — a bool has no tag to
-print from yet. Both are the remaining work of L11.1.
+The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
+value that *is* a tag: a compiled float still has no word to hold it (L11.6), a bool still prints
+as the number it is stored as — `print(True)` says `1` (L11.2) — and a container inside a
+container is still a handle in a slot built for a word (L11.1 (5), the tagged value word, which
+also collapses the parallel tag array into the value itself).
 
 ### Generics / structural protocols
 
@@ -1898,12 +1937,20 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
 - Strings are ordinary container elements in both backends (ADR 0173, ADR 0175): lists,
   dictionaries and sets of strings, written as literals (`["a"]`, `{"a": 1}`, `{"a", "b"}`) or
   built with `append` / `add` / item assignment, and printed the way Python renders `repr`.
-- **One element kind per container.** A compiled container records whether its elements (and,
-  for dicts, its keys and values separately) are strings or numbers, so a container that *grows*
-  with both is reported — `xs = [1]; xs.append("a")` — rather than printing its integers through
-  the string table. Item assignment is not growth: `xs = [1]` then `xs[0] = "s"` replaces the
-  element and the list prints as `['s']`. Python's heterogeneous lists need per-element tagging,
-  which is a representation change rather than a printer fix (roadmap Gap J.6).
+- **A container that grows a second kind is promoted, not refused.** A compiled container used to
+  record one kind for everything it holds, so `xs = [1]; xs.append("a")` was reported rather than
+  run, and — worse — `d = {"a": 1}; d["b"] = "x"` *relabelled* the whole dict and printed the number
+  1 as the string whose interned index happens to be 1 (`{'a': 'x', 'b': 'x'}`, where the answer is
+  `{'a': 1, 'b': 'x'}`). Writing one slot is a statement about that slot; it is not a statement about
+  the others. A contradiction now promotes the container to describing its own slots, which is sound
+  because every word that ever reached a slot arrived with its tag (ADR 0189, ADR 0232). So
+  `xs = [1, 2]; xs[0] = "s"` prints `['s', 2]` — where it printed `['s', 'b']` — and item assignment
+  stays allowed for exactly that reason.
+- A container element whose kind the compiler cannot prove is reported, not guessed. A function that
+  returns text on one path and a number on another is the case: `print` asks what the value is when
+  it prints and gets it right, but a slot is labelled once, and the number labelled as text came out
+  of the string table as `(null)` (ADR 0232). The tagged value word (roadmap L11.1 (5)) asks that
+  question per element and retires the refusal.
 
 ## `with` context managers
 

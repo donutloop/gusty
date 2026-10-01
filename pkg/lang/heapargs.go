@@ -684,6 +684,20 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 	h := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapDict)
 	bits := 0
+	// A dict whose keys or values mix kinds has no kind to record on the object or on the
+	// variable: each slot carries its own tag, and bit 8 tells the printer and the lookup to
+	// read them (roadmap L11.1 (1b), ADR 0232).
+	mixed := g.taggableMixedDict(dl)
+	if mixed {
+		bits |= 8
+		if name != "" {
+			g.mixedDicts[name] = true
+			g.dictKeyStr[name] = false
+			g.dictKeyInt[name] = false
+			g.dictValStr[name] = false
+			g.dictValInt[name] = false
+		}
+	}
 	for i := range dl.Keys {
 		kk, kIsStr, err := g.heapElemKind(b, dl.Keys[i])
 		if err != nil {
@@ -692,6 +706,12 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 		vv, vIsStr, err := g.heapElemKind(b, dl.Vals[i])
 		if err != nil {
 			return "", err
+		}
+		if mixed {
+			kt, _ := g.elemKindTag(dl.Keys[i])
+			vt, _ := g.elemKindTag(dl.Vals[i])
+			fmt.Fprintf(b, "  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, kk, vv, kt, vt)
+			continue
 		}
 		if kIsStr {
 			bits |= 2
@@ -724,10 +744,25 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapSet)
 	bits := 0
 	idx := 0
+	mixed := g.taggableMixedSet(sl)
+	if mixed {
+		bits |= 8
+		if name != "" {
+			g.mixedSets[name] = true
+			g.setElemStr[name] = false
+			g.setElemInt[name] = false
+		}
+	}
 	for _, el := range sl.Elems {
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
+		}
+		if mixed {
+			t, _ := g.elemKindTag(el)
+			fmt.Fprintf(b, "  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %d)\n", h, v, t)
+			idx++
+			continue
 		}
 		if interned {
 			bits |= 1
@@ -996,8 +1031,15 @@ func (g *irGen) taggableMixedList(ln *ListLit) bool {
 // string's *index* as a number is exactly the wrong-output bug the refusal exists to avoid.
 func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	switch e.(type) {
-	case *BoolLit, *FloatLit, *ListLit, *DictLit, *SetLit, *Tuple, *Lambda:
+	case *FloatLit, *ListLit, *DictLit, *SetLit, *Tuple, *Lambda:
 		return 0, false
+	case *BoolLit:
+		// Both backends store a bool as the number it behaves like today — the interpreter
+		// keeps bool as Int(1) and prints it through the number path, which is the pinned
+		// debt probe_bool_value records. Tagging it TagInt therefore agrees with both, and
+		// when L11.2 gives bool its own kind this line returns TagBool and every container
+		// follows without another change (ADR 0232).
+		return int32(TagInt), true
 	case *NoneLit:
 		return int32(TagNone), true
 	case *StrLit:
@@ -1009,6 +1051,13 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 		return int32(TagStr), true
 	}
 	if g.printsAsInternedStr(e) {
+		// A call that hands back text on one path and a number on another has no honest tag:
+		// print can render whichever value arrives, because it asks at print time, but a
+		// container slot is labelled once at build time — and a number labelled as text comes
+		// out of the string table as `(null)` where the interpreter prints 7 (ADR 0232).
+		if call, isCall := e.(*Call); isCall && !g.callReturnsOnlyStr(call) {
+			return 0, false
+		}
 		return int32(TagStr), true
 	}
 	if nm, ok := e.(*Name); ok {
@@ -1017,6 +1066,111 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 		}
 	}
 	return int32(TagInt), true
+}
+
+// taggableMixedDict reports a dict literal whose key and value slots can each carry a tag the
+// codegen can prove, and which therefore does not have one element kind: its keys mix, or its
+// values do. Such a dict is built with tagged puts, printed position by position and looked up by
+// (payload, tag) — the same rule ADR 0184 established for lists, extended to dicts by ADR 0232.
+// Anything the tag cannot describe (a bool, a float, a nested container) keeps the whole literal
+// on the refused path rather than storing a word whose meaning nobody can recover.
+func (g *irGen) taggableMixedDict(dl *DictLit) bool {
+	if len(dl.Keys) == 0 {
+		return false
+	}
+	keyStr, keyOther, valStr, valOther := false, false, false, false
+	for i := range dl.Keys {
+		kt, ok := g.elemKindTag(dl.Keys[i])
+		if !ok {
+			return false
+		}
+		if kt == int32(TagStr) {
+			keyStr = true
+		} else {
+			keyOther = true
+		}
+		vt, ok := g.elemKindTag(dl.Vals[i])
+		if !ok {
+			return false
+		}
+		if vt == int32(TagStr) {
+			valStr = true
+		} else {
+			valOther = true
+		}
+	}
+	return (keyStr && keyOther) || (valStr && valOther)
+}
+
+// taggableMixedSet is taggableMixedDict for a set literal: every member taggable, and members of
+// more than one kind present.
+func (g *irGen) taggableMixedSet(sl *SetLit) bool {
+	if len(sl.Elems) == 0 {
+		return false
+	}
+	sawStr, sawOther := false, false
+	for _, el := range sl.Elems {
+		t, ok := g.elemKindTag(el)
+		if !ok {
+			return false
+		}
+		if t == int32(TagStr) {
+			sawStr = true
+		} else {
+			sawOther = true
+		}
+	}
+	return sawStr && sawOther
+}
+
+// taggedOperand lowers an expression to the (payload, tag) pair it stands for, which is what a
+// mixed container's runtime helpers take. A variable bound by a loop over a mixed container
+// carries its tag beside it (ADR 0185), so the pair is read from those two slots; anything else
+// is an expression whose kind the codegen can prove, whose tag is a literal. ok is false when
+// neither holds — the caller refuses rather than guessing a tag, because a wrong tag prints and
+// compares as the wrong kind (ADR 0232).
+func (g *irGen) taggedOperand(b *strings.Builder, e Expr) (val, tag string, ok bool) {
+	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] {
+		v := g.newTmp()
+		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", v, nm.Value)
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s_tag\n", t, nm.Value)
+		return v, t, true
+	}
+	t, tok := g.elemKindTag(e)
+	if !tok {
+		return "", "", false
+	}
+	v, err := g.value(b, e)
+	if err != nil {
+		return "", "", false
+	}
+	return v, strconv.FormatInt(int64(t), 10), true
+}
+
+// mixedDictPair reads one entry of a dict whose values mix kinds: the value and the tag the
+// value's slot carries. `print(d[k])` and `v = d[k]` are the two uses, and both need the pair —
+// the payload alone is a number, a string index or the None singleton with nothing to say which.
+func (g *irGen) mixedDictPair(b *strings.Builder, dictName string, key Expr, sp Span) (val, tag string, err error) {
+	g.heapUsed = true
+	h := g.newTmp()
+	fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", h, dictName)
+	kv, kt, ok := g.taggedOperand(b, key)
+	if !ok {
+		return "", "", fmt.Errorf("codegen: reading %q from a dict whose values are of more than one kind needs a key whose kind the compiler can prove; a bool, float or container key needs the tagged value word (roadmap L11.1, ADR 0232)", dictName)
+	}
+	g.checkKeyReadTagged(b, h, kv, kt, sp)
+	val = g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, h, kv, kt)
+	tag = g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_dict_value_tag(i32 %s, i32 %s, i32 %s)\n", tag, h, kv, kt)
+	return val, tag, nil
+}
+
+// isMixedContainer names the containers whose slots describe themselves. Reads, membership tests
+// and printers consult it so a mixed container never goes down the one-static-kind path.
+func (g *irGen) isMixedContainer(name string) bool {
+	return g.mixedDicts[name] || g.mixedSets[name] || g.mixedLists[name]
 }
 
 // elemTagFor is the canonical ValueTag number an element's slot carries. Numbers are 0
@@ -1141,6 +1295,233 @@ func (g *irGen) mixedIndexRead(ix *Index) (string, bool) {
 	return nm.Value, true
 }
 
+// literalMixedIsTaggable is the one question every "this literal mixes kinds" site asks: can each
+// slot say what it holds? Lists, sets and dicts each have their own answer, and print, value and
+// assignment all consult it, so a program is not refused in one context and compiled in another
+// (ADR 0232).
+func (g *irGen) literalMixedIsTaggable(e Expr) bool {
+	switch lit := e.(type) {
+	case *ListLit:
+		return g.taggableMixedList(lit)
+	case *SetLit:
+		return g.taggableMixedSet(lit)
+	case *DictLit:
+		return g.taggableMixedDict(lit)
+	}
+	return false
+}
+
+// exprSummary names an expression inside a diagnostic. `%s` on an AST node dumps a Go struct with
+// pointers in it, which is unreadable for a person and unmatchable for an agent, and the
+// diagnostics of this compiler are an interface (docs/operations.md). The rule is to say what the
+// program wrote — the function called, the variable read — and fall back to the kind.
+func (g *irGen) exprSummary(e Expr) string {
+	switch n := e.(type) {
+	case *Call:
+		if nm, ok := n.Fn.(*Name); ok {
+			return nm.Value + "(...)"
+		}
+		if at, ok := n.Fn.(*Attr); ok {
+			return "." + at.Name.Value + "()"
+		}
+		return "a call"
+	case *Name:
+		return n.Value
+	case *StrLit:
+		return "a string"
+	case *IntLit:
+		return "a number"
+	case *FloatLit:
+		return "a float"
+	case *NoneLit:
+		return "None"
+	case *BoolLit:
+		return "a bool"
+	case *ListLit:
+		return "a list"
+	case *DictLit:
+		return "a dict"
+	case *SetLit:
+		return "a set"
+	case *Index:
+		return "an element read"
+	case *BinOp:
+		return "(" + n.Op + ")"
+	}
+	return exprTyName(e)
+}
+
+// containerKindProvable asks whether a container slot may be labelled for this expression at all.
+// A call that returns text on one path and a number on another is the case that may not: print can
+// ask when it prints, but a slot's label is fixed when it is built, and the number labelled as text
+// came out of the string table as `(null)` where the interpreter prints 7. The element is then not
+// "a number" or "a string", it is unlabelable, and the container says so (ADR 0232).
+func (g *irGen) containerKindProvable(e Expr) bool {
+	call, ok := e.(*Call)
+	if !ok {
+		return true
+	}
+	return !g.printsAsInternedStr(call) || g.callReturnsOnlyStr(call)
+}
+
+// containerSlotLabel names the position in the diagnostic ("set", "dict key", …).
+func containerSlotLabel(slot string) string {
+	if slot == "list" {
+		return "list"
+	}
+	return slot
+}
+
+// callReturnsOnlyStr answers the question a container slot needs, which is stricter than the one
+// print asks. print asks "can this call hand back text", and answers well either way — the value is
+// rendered at the moment it is printed. A slot cannot: it holds one tag chosen at build time, so a
+// function that hands back text on one path and a number on the other has no honest tag, and the
+// number printed through the string table is `(null)` where the interpreter prints 7 (ADR 0232).
+// Such an expression is *unprovable*, and the mixed gate refuses rather than guessing.
+func (g *irGen) callReturnsOnlyStr(c *Call) bool {
+	nm, ok := c.Fn.(*Name)
+	if !ok {
+		return g.printsAsInternedStr(c) // a method or a chained call keeps the printer's answer
+	}
+	fd, ok := g.fds[nm.Value]
+	if !ok {
+		return g.printsAsInternedStr(c)
+	}
+	seen, onlyStr := false, true
+	var walk func([]Stmt)
+	walk = func(body []Stmt) {
+		for _, st := range body {
+			switch n := st.(type) {
+			case *ReturnStmt:
+				seen = true
+				if n.Expr == nil {
+					onlyStr = false
+					continue
+				}
+				if _, isStrLit := n.Expr.(*StrLit); isStrLit {
+					continue
+				}
+				switch n.Expr.(type) {
+				case *IntLit, *FloatLit, *NoneLit, *BoolLit, *ListLit, *DictLit, *SetLit:
+					onlyStr = false
+					continue
+				}
+				if !g.exprIsString(n.Expr) {
+					onlyStr = false
+				}
+			case *IfStmt:
+				walk(n.Then)
+				for _, e := range n.Elifs {
+					walk(e.Then)
+				}
+				walk(n.Else)
+			case *WhileStmt:
+				walk(n.Body)
+			case *ForStmt:
+				walk(n.Body)
+			case *TryStmt:
+				walk(n.Body)
+				for _, h := range n.Excepts {
+					walk(h.Body)
+				}
+				walk(n.Finally)
+			}
+		}
+	}
+	walk(fd.Body)
+	if !seen {
+		return g.printsAsInternedStr(c)
+	}
+	return onlyStr
+}
+
+// elemTagOperand answers the tag of a value being written into a container slot, as a literal or
+// as a register holding it. Three sources, in order of honesty: the static tag when the codegen can
+// prove the kind; the companion slot when the value is a tagged variable (a loop variable over a
+// mixed container, or one bound from a mixed read); and the kind the writing site itself observed —
+// which word it just interned, an @str_tab index or a number. There is no fourth answer, because a
+// slot written without its tag is the bug ADR 0189 closed: the payload would be read tomorrow
+// through whatever meaning the slot held for its previous tenant.
+func (g *irGen) elemTagOperand(b *strings.Builder, e Expr, interned bool) string {
+	if t, ok := g.elemKindTag(e); ok {
+		return strconv.FormatInt(int64(t), 10)
+	}
+	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] {
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s_tag\n", t, nm.Value)
+		return t
+	}
+	if interned {
+		return strconv.FormatInt(int64(TagStr), 10)
+	}
+	return strconv.FormatInt(int64(TagInt), 10)
+}
+
+// promoteMixed is what a container becomes when a value arriving now contradicts the kind the
+// compiler had recorded for it: the container stops claiming one kind and lets its slots describe
+// themselves. That is not a relaxation — it is available only because every word that ever reached
+// a slot arrived with its tag (ADR 0189), so the slots already know what they hold and the mixed
+// paths can be trusted with them (ADR 0232). It answers false, and the caller keeps its refusal,
+// when the incoming value is one no tag can describe (a float, a nested container): there the old
+// answer would be a word whose meaning nobody can recover.
+//
+// `kind` is the position being written — "list", "set", "dict key" or "dict value". The object is
+// marked with the same bit 8 a mixed literal carries, so the runtime printer and the lookups agree
+// with what the compiler now believes.
+func (g *irGen) promoteMixed(b *strings.Builder, handle, name, kind string, elems ...Expr) bool {
+	for _, e := range elems {
+		if e == nil {
+			continue
+		}
+		if _, ok := g.elemKindTag(e); !ok {
+			return false
+		}
+	}
+	if handle == "" || name == "" {
+		return false
+	}
+	switch kind {
+	case "list":
+		g.mixedLists[name] = true
+		g.listElemStr[name] = false
+		g.listElemInt[name] = false
+	case "set":
+		g.mixedSets[name] = true
+		g.setElemStr[name] = false
+		g.setElemInt[name] = false
+	case "dict key", "dict value":
+		g.mixedDicts[name] = true
+		g.dictKeyStr[name] = false
+		g.dictKeyInt[name] = false
+		g.dictValStr[name] = false
+		g.dictValInt[name] = false
+	default:
+		return false
+	}
+	g.heapUsed = true
+	fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 8)\n", handle)
+	return true
+}
+
+// mixedDictIndexRead reports when ix reads `d[k]` out of a dict whose values mix kinds — the same
+// question mixedIndexRead asks of lists, one container on for later (roadmap L11.1 (1b)). The
+// answer only matters where the value's kind is observable (print, a binding); an arithmetic use
+// of such a value is the refusal mixedReadErr names.
+func (g *irGen) mixedDictIndexRead(ix *Index) (string, bool) {
+	if ix == nil {
+		return "", false
+	}
+	nm, ok := ix.Obj.(*Name)
+	if !ok || !g.mixedDicts[nm.Value] {
+		return "", false
+	}
+	switch ix.Idx.(type) {
+	case *Name, *IntLit, *StrLit:
+		return nm.Value, true
+	}
+	return "", false
+}
+
 // mixedKindErr is the diagnostic every mixed-container site reports.
 func mixedKindErr(what string) error {
 	return fmt.Errorf("codegen: a compiled %s holds either strings or numbers, not both; the interpreter allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)", what)
@@ -1150,7 +1531,10 @@ func mixedKindErr(what string) error {
 // position, and refuses the case where it has already been told the opposite. The compiled
 // container records one element kind per position, so mixing would print an integer through the
 // string table — an honest diagnostic beats that (roadmap Gap J.6, ADR 0166).
-func (g *irGen) recordElemKind(name, slot string, isStr bool) error {
+func (g *irGen) recordElemKind(name, slot string, isStr bool, e Expr) error {
+	if e != nil && !g.containerKindProvable(e) {
+		return fmt.Errorf("codegen: cannot put %s in a compiled %s: the compiler cannot prove one kind for it, because the function it calls hands back text on one path and a number on another. print asks that question when it prints and gets it right; a container slot is labelled once, and labelling it either way misprints the other (the interpreter answers this program; per-element asking is the tagged value word, roadmap L11.1, ADR 0232)", g.exprSummary(e), containerSlotLabel(slot))
+	}
 	strMap, numMap, label := g.kindMapsFor(slot)
 	if isStr {
 		if numMap[name] {

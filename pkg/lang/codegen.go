@@ -1423,9 +1423,10 @@ check:
   br i1 %c, label %body, label %add
 body:
   %idx = mul i32 %i, 2
-  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %idx
-  %ek = load i32, i32* %kp
-  %eq = icmp eq i32 %ek, %k
+  ; The key is compared as a (payload, tag) pair: {0: "n"} and {"0": "s"} are one entry each, and
+  ; they are different entries only because the tag says so (ADR 0232).
+  %km = call i32 @rt_slot_matches(i32 %h, i32 %idx, i32 %k, i32 %kt)
+  %eq = icmp ne i32 %km, 0
   br i1 %eq, label %upd, label %cont
 upd:
   %idx2 = add i32 %idx, 1
@@ -1490,6 +1491,42 @@ add:
   ret void
 }
 
+; rt_contains_tagged is rt_contains with the tag compared alongside the payload. It answers the
+; same question for lists (elements), dicts (keys) and sets (members), and answers it correctly:
+; an @str_tab index and an integer of the same number are different values, and only the tag says
+; which one a slot holds (ADR 0189 made the tags always-available, ADR 0232 makes them always
+; consulted). rt_contains stays for a needle whose kind the compiler cannot prove.
+define internal i32 @rt_contains_tagged(i32 %h, i32 %v, i32 %t) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
+  %kind = load i32, i32* %kp
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %islist = icmp eq i32 %kind, 1
+  br i1 %islist, label %loop, label %chkdict
+chkdict:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ 0, %chkdict ], [ %inext, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %miss
+body:
+  %isdict = icmp eq i32 %kind, 2
+  %idx = mul i32 %i, 2
+  %sel = select i1 %isdict, i32 %idx, i32 %i
+  %ok = call i32 @rt_slot_matches(i32 %h, i32 %sel, i32 %v, i32 %t)
+  %yes = icmp ne i32 %ok, 0
+  br i1 %yes, label %hit, label %cont
+cont:
+  %inext = add i32 %i, 1
+  br label %loop
+hit:
+  ret i32 1
+miss:
+  ret i32 0
+}
+
 define internal i32 @rt_contains(i32 %h, i32 %v) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -1552,6 +1589,277 @@ miss:
   ret i32 0
 }
 
+; --- tagged dict and set slots (roadmap L11.1 (1b), ADR 0232) -------------------
+;
+; rt_slot_matches answers "does this slot hold exactly this value?" — payload *and* tag. The
+; payload alone cannot answer it: a stored string is an index into @str_tab, so the key "0" and
+; the number 0 are the same i32, and a dict or set that compares payloads alone hands back the
+; wrong entry for one of them. This is the soundness hole ADR 0189 wrote down and left for here:
+; equality carried the tag, lookup and dedup did not.
+define internal i32 @rt_slot_matches(i32 %h, i32 %i, i32 %v, i32 %t) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
+  %e = load i32, i32* %ep
+  %sameP = icmp eq i32 %e, %v
+  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %et = load i32, i32* %tp
+  %sameT = icmp eq i32 %et, %t
+  %both = and i1 %sameP, %sameT
+  %r = zext i1 %both to i32
+  ret i32 %r
+}
+
+; rt_dict_find returns the entry whose key is the (payload, tag) pair, or -1 when the dict has no
+; such key. One scan, several readers: membership, a value read and the update path of a put all
+; ask this same question, and they must ask the same way or they disagree about the dict.
+define internal i32 @rt_dict_find(i32 %h, i32 %k, i32 %kt) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %miss
+body:
+  %slot = mul i32 %i, 2
+  %m = call i32 @rt_slot_matches(i32 %h, i32 %slot, i32 %k, i32 %kt)
+  %hit = icmp ne i32 %m, 0
+  br i1 %hit, label %found, label %cont
+found:
+  ret i32 %i
+cont:
+  %next = add i32 %i, 1
+  br label %check
+miss:
+  ret i32 -1
+}
+
+; rt_dict_get_tagged reads the value of the entry rt_dict_find names. Absent answers 0, the way
+; rt_dict_get always did; d[k] for a missing key is checkKeyRead's job, which raises KeyError.
+define internal i32 @rt_dict_get_tagged(i32 %h, i32 %k, i32 %kt) {
+entry:
+  %i = call i32 @rt_dict_find(i32 %h, i32 %k, i32 %kt)
+  %bad = icmp slt i32 %i, 0
+  br i1 %bad, label %miss, label %found
+miss:
+  ret i32 0
+found:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %slot = mul i32 %i, 2
+  %vslot = add i32 %slot, 1
+  %vp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %vslot
+  %v = load i32, i32* %vp
+  ret i32 %v
+}
+
+define internal i32 @rt_dict_has_tagged(i32 %h, i32 %k, i32 %kt) {
+entry:
+  %i = call i32 @rt_dict_find(i32 %h, i32 %k, i32 %kt)
+  %hit = icmp sge i32 %i, 0
+  %r = zext i1 %hit to i32
+  ret i32 %r
+}
+
+; rt_set_find is rt_dict_find for a set, whose members occupy slots 0..len-1 rather than pairs.
+define internal i32 @rt_set_find(i32 %h, i32 %v, i32 %t) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  br label %check
+check:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %c = icmp slt i32 %i, %len
+  br i1 %c, label %body, label %miss
+body:
+  %m = call i32 @rt_slot_matches(i32 %h, i32 %i, i32 %v, i32 %t)
+  %hit = icmp ne i32 %m, 0
+  br i1 %hit, label %found, label %cont
+found:
+  ret i32 %i
+cont:
+  %next = add i32 %i, 1
+  br label %check
+miss:
+  ret i32 -1
+}
+
+; rt_dict_value_tag answers the other half of a read from a dict whose values mix kinds: the
+; entry's value is one call away, and its tag is this one. Two scans of a short array is the
+; honest price of one word per slot; the layout change that would halve it is L11.1 (5).
+; rt_mixed_eq compares a (payload, tag) pair against a value whose kind the compiler knows. The
+; tag decides first: two words that mean different things are not equal however their bits
+; compare, which is the same rule rt_slot_matches applies to a container lookup (ADR 0232).
+define internal i32 @rt_mixed_eq(i32 %v, i32 %t, i32 %o, i32 %ot) {
+entry:
+  %tk = icmp eq i32 %t, %ot
+  br i1 %tk, label %same, label %diff
+same:
+  %eq = icmp eq i32 %v, %o
+  %yes = zext i1 %eq to i32
+  ret i32 %yes
+diff:
+  ret i32 0
+}
+
+define internal i32 @rt_dict_value_tag(i32 %h, i32 %k, i32 %kt) {
+entry:
+  %i = call i32 @rt_dict_find(i32 %h, i32 %k, i32 %kt)
+  %bad = icmp slt i32 %i, 0
+  br i1 %bad, label %miss, label %found
+miss:
+  ret i32 0
+found:
+  %slot = mul i32 %i, 2
+  %vslot = add i32 %slot, 1
+  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %vslot
+  %t = load i32, i32* %tp
+  ret i32 %t
+}
+
+define internal i32 @rt_set_contains_tagged(i32 %h, i32 %v, i32 %t) {
+entry:
+  %i = call i32 @rt_set_find(i32 %h, i32 %v, i32 %t)
+  %hit = icmp sge i32 %i, 0
+  %r = zext i1 %hit to i32
+  ret i32 %r
+}
+
+; rt_set_discard_tagged removes a member by (payload, tag) and shifts the tail of BOTH arrays.
+; Shifting the payloads while leaving the tags where they were would print every member after the
+; removed one through the kind of its neighbour.
+define internal void @rt_set_discard_tagged(i32 %h, i32 %v, i32 %t) {
+entry:
+  %at = call i32 @rt_set_find(i32 %h, i32 %v, i32 %t)
+  %absent = icmp slt i32 %at, 0
+  br i1 %absent, label %done, label %work
+work:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %last = sub i32 %len, 1
+  br label %shift
+shift:
+  %j = phi i32 [ %at, %work ], [ %jnext, %shiftdo ]
+  %go = icmp slt i32 %j, %last
+  br i1 %go, label %shiftdo, label %shrink
+shiftdo:
+  %src = add i32 %j, 1
+  %sp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %src
+  %sv = load i32, i32* %sp
+  %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %j
+  store i32 %sv, i32* %dp
+  %st = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %src
+  %stv = load i32, i32* %st
+  %dt = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %j
+  store i32 %stv, i32* %dt
+  %jnext = add i32 %j, 1
+  br label %shift
+shrink:
+  store i32 %last, i32* %lp
+  ret void
+done:
+  ret void
+}
+
+; rt_dict_print_mixed walks a dict whose key and value slots carry their own tags: each position
+; asks the tag what it is instead of asking the object what kind of dict it is. That is the
+; difference between {"a": 1} and {"a": 1, "b": "x"} — the second has no kind.
+define internal void @rt_dict_print_mixed(i32 %h, i32 %nl) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %cont ]
+  %more = icmp slt i32 %i, %len
+  br i1 %more, label %body, label %done
+body:
+  %idx = mul i32 %i, 2
+  %idx2 = add i32 %idx, 1
+  %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %idx
+  %k = load i32, i32* %kp
+  %vp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %idx2
+  %v = load i32, i32* %vp
+  %kt = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx
+  %keyTag = load i32, i32* %kt
+  %vt = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %idx2
+  %valTag = load i32, i32* %vt
+  %first = icmp eq i32 %i, 0
+  br i1 %first, label %emit, label %sepd
+sepd:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  br label %emit
+emit:
+  call void @rt_print_mixed_value(i32 %k, i32 %keyTag, i32 1)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtcolon, i32 0, i32 0))
+  call void @rt_print_mixed_value(i32 %v, i32 %valTag, i32 1)
+  br label %cont
+cont:
+  %next = add i32 %i, 1
+  br label %loop
+done:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
+
+; rt_set_print_mixed is the same walk for a set, empty included: Python renders the empty set as
+; set(), and {} is a dict, so the empty case cannot fall through to the general loop.
+define internal void @rt_set_print_mixed(i32 %h, i32 %nl) {
+entry:
+  %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len = load i32, i32* %lp
+  %isEmpty = icmp eq i32 %len, 0
+  br i1 %isEmpty, label %empty, label %open
+empty:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
+  br label %fin
+open:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %open ], [ %next, %cont ]
+  %more = icmp slt i32 %i, %len
+  br i1 %more, label %body, label %done
+body:
+  %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
+  %e = load i32, i32* %ep
+  %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %t = load i32, i32* %tp
+  %first = icmp eq i32 %i, 0
+  br i1 %first, label %emit, label %sepd
+sepd:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  br label %emit
+emit:
+  call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
+  br label %cont
+cont:
+  %next = add i32 %i, 1
+  br label %loop
+done:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
+
 define internal i32 @rt_dict_len(i32 %h) {
 entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
@@ -1567,6 +1875,15 @@ define internal void @rt_dict_print(i32 %h, i32 %nl) {
 entry:
   %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
   %flags = load i32, i32* %fsp
+  ; bit 8 says the slots describe themselves: a dict that mixes kinds has no single kind to
+  ; report, so it prints position by position (roadmap L11.1 (1b), ADR 0232).
+  %mixedBit = and i32 %flags, 8
+  %isMixed = icmp ne i32 %mixedBit, 0
+  br i1 %isMixed, label %mixed, label %static
+mixed:
+  call void @rt_dict_print_mixed(i32 %h, i32 %nl)
+  ret void
+static:
   %kb = and i32 %flags, 2
   %ksb = icmp ne i32 %kb, 0
   %ksi = zext i1 %ksb to i32
@@ -1600,9 +1917,10 @@ check:
   %c = icmp slt i32 %i, %len
   br i1 %c, label %body, label %add
 body:
-  %kp = getelementptr [256 x i32], [256 x i32]* %dp, i32 0, i32 %i
-  %ev = load i32, i32* %kp
-  %eq = icmp eq i32 %ev, %v
+  ; A member is already present only when payload and tag both agree; otherwise adding "0" to a
+  ; set holding 0 loses one of them (ADR 0232).
+  %m = call i32 @rt_slot_matches(i32 %h, i32 %i, i32 %v, i32 %t)
+  %eq = icmp ne i32 %m, 0
   br i1 %eq, label %ret, label %cont
 ret:
   ret void
@@ -1713,6 +2031,16 @@ entry:
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
+  ; bit 8: the members describe themselves, so ask each slot instead of the object (ADR 0232)
+  %fsp0 = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
+  %flags0 = load i32, i32* %fsp0
+  %mixedBit = and i32 %flags0, 8
+  %isMixed = icmp ne i32 %mixedBit, 0
+  br i1 %isMixed, label %mixed, label %notMixed
+mixed:
+  call void @rt_set_print_mixed(i32 %h, i32 %nl)
+  ret void
+notMixed:
   ; members are interned strings when the object says so (see rt_mark_estr), not when a
   ; static guess in this scope said so (roadmap Gap J.5)
   %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
@@ -2448,7 +2776,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// What a compiled function body may know about its module: literal bindings the module never
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
@@ -2917,6 +3245,12 @@ type irGen struct {
 	// other element-wise use refuses rather than reading a tag through one static kind
 	// (roadmap L11.1, ADR 0184).
 	mixedLists map[string]bool
+	// mixedDicts and mixedSets are the same rule for the other two containers: the slots
+	// describe themselves, so the container has no single element kind to record. A
+	// container in these maps prints, dedups and looks up by per-slot tag, and the static
+	// dictKey*/dictVal*/setElem* maps say nothing about it (roadmap L11.1 (1b), ADR 0232).
+	mixedDicts map[string]bool
+	mixedSets  map[string]bool
 	// taggedVars records variables bound by a loop over a mixed list: their value slot is an
 	// i32 whose meaning depends on the companion tag slot, so printing dispatches on the tag
 	// and every other use refuses (roadmap L11.1, ADR 0185).
@@ -5714,6 +6048,18 @@ func (g *irGen) truthOperand(b *strings.Builder, e Expr) string {
 }
 
 func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
+	// `if x == "a":` where x carries a runtime tag — a loop variable over a container that
+	// mixes kinds. An `if` condition is lowered here, not through the expression path, so the
+	// tagged comparison gets its hook in both places (ADR 0232).
+	if n, ok := e.(*BinOp); ok && (n.Op == "==" || n.Op == "!=") {
+		if res, handled, err := g.mixedTaggedCompare(b, n); err != nil {
+			return "", err
+		} else if handled {
+			p := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, res)
+			return g.markI1(p), nil
+		}
+	}
 	// Strings and containers test their *content*, never their representation: a
 	// string is an i8* and a container is a compile-time struct or a heap handle,
 	// so `if xs:` on a handle would be true even for [] and testing the string
@@ -5798,19 +6144,51 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		if err != nil {
 			return err
 		}
-		// Item assignment overwrites, so the new element's kind is the truth at that slot:
-		// d[k] = "s" after d[k] = 1 leaves a string-valued dict (Gap J.6).
-		g.replaceElemKind(nm.Value, "dict value", vIsStr)
-		g.replaceElemKind(nm.Value, "dict key", kIsStr)
-		// The pair and its two tags go in together: a dict entry that keeps the tag of the
-		// value it used to hold prints and compares as the old kind (ADR 0187, ADR 0189).
-		kt, ktOK := g.elemKindTag(ix.Idx)
-		vt, vtOK := g.elemKindTag(val)
-		if ktOK && vtOK {
-			b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, key, v, kt, vt))
-		} else {
-			b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		if g.printsAsInternedStr(val) {
+			vIsStr = true
 		}
+		// The pair and its two tags go in together: a dict entry that keeps the tag of the
+		// value it used to hold prints and compares as the old kind (ADR 0187, ADR 0189). And
+		// every entry is stored with both tags, because the lookup compares them (ADR 0232):
+		// an entry whose tag was never written would answer to the wrong needle. Where
+		// elemKindTag cannot describe an operand, this site knows which word it interned — an
+		// @str_tab index or a number — and says so.
+		//
+		// Storing a value of the kind this dict has not held before leaves it with no single
+		// kind to claim. It used to *replace* the recorded one, which is a statement about the
+		// slot being written and was read as a statement about every slot: `d = {"a": 1}` then
+		// `d["b"] = "x"` printed {'a': 'x', 'b': 'x'} — the number 1 printed as the string whose
+		// interned index happens to be 1. The slots carry their tags, so the container is
+		// promoted to describing itself, and the refusal stays for a value no tag can name.
+		contradicts := (vIsStr && g.dictValInt[nm.Value]) || (!vIsStr && g.dictValStr[nm.Value]) ||
+			(kIsStr && g.dictKeyInt[nm.Value]) || (!kIsStr && g.dictKeyStr[nm.Value])
+		if !g.mixedDicts[nm.Value] {
+			if contradicts {
+				if !g.promoteMixed(b, h, nm.Value, "dict value", val, ix.Idx) {
+					return mixedKindErr("dict")
+				}
+			} else {
+				g.replaceElemKind(nm.Value, "dict value", vIsStr)
+				g.replaceElemKind(nm.Value, "dict key", kIsStr)
+			}
+		}
+		kt, ktOK := g.elemKindTag(ix.Idx)
+		if !ktOK {
+			if kIsStr {
+				kt = int32(TagStr)
+			} else {
+				kt = int32(TagInt)
+			}
+		}
+		vt, vtOK := g.elemKindTag(val)
+		if !vtOK {
+			if vIsStr {
+				vt = int32(TagStr)
+			} else {
+				vt = int32(TagInt)
+			}
+		}
+		b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, key, v, kt, vt))
 		if kIsStr || vIsStr {
 			bits := 0
 			if kIsStr {
@@ -5855,12 +6233,33 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 			return nil
 		}
 		// A string element is stored as its @str_tab index (Gap I.2), like every other
-		// container slot write; the printed form follows from listElemStr.
+		// container slot write; the printed form follows from listElemStr. What counts as a
+		// string word is asked of the value twice, because heapElemKind answers for the word it
+		// interned and printsAsInternedStr answers for the value the source says it is: `xs[0] =
+		// d["a"]` reads a string out of a dict, and deciding "not a string" there promoted
+		// nothing and left the list printing its new string element through the number printer —
+		// the store happened, the print lied (ADR 0232).
 		sv, sIsStr, serr := g.heapElemKind(b, val)
 		if serr != nil {
 			return serr
 		}
-		g.replaceElemKind(nm.Value, "list", sIsStr)
+		if g.printsAsInternedStr(val) {
+			sIsStr = true
+		}
+		// Writing one slot is not the same statement as what the whole list holds. This site used
+		// to overwrite the recorded kind, so `xs = [1, 2]; xs[0] = "s"` left the list claiming
+		// strings and printed the untouched 2 as whatever string its index happens to name
+		// (`['s', 'b']`). Contradiction promotes the list to describing its slots (ADR 0232);
+		// agreement keeps the static path.
+		if !g.mixedLists[nm.Value] {
+			if contradicts := (sIsStr && g.listElemInt[nm.Value]) || (!sIsStr && g.listElemStr[nm.Value]); contradicts {
+				if !g.promoteMixed(b, h, nm.Value, "list", val) {
+					return mixedKindErr("list")
+				}
+			} else {
+				g.replaceElemKind(nm.Value, "list", sIsStr)
+			}
+		}
 		v = sv
 		// Bounds are checked so an out-of-range index raises IndexError through the
 		// The index is normalised and bounds-checked by the same helper the read path
@@ -5870,9 +6269,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		endL := g.newLabel("item.end")
 		key = g.normalizeIndex(b, h, key, ix.Span())
 		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, v))
-		if kt, ok := g.elemKindTag(val); ok {
-			b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %d)\n", h, key, kt))
-		}
+		b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %s)\n", h, key, g.elemTagOperand(b, val, sIsStr)))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 		return nil
@@ -5949,6 +6346,7 @@ func (g *irGen) beginScope() func() {
 	savedNone := g.noneVars
 	savedLStr, savedSStr, savedKStr, savedVStr, savedInt := g.listElemStr, g.setElemStr, g.dictKeyStr, g.dictValStr, g.internedVars
 	savedLNum, savedSNum, savedKNum, savedVNum := g.listElemInt, g.setElemInt, g.dictKeyInt, g.dictValInt
+	savedMixDict, savedMixSet := g.mixedDicts, g.mixedSets
 	g.allocd = map[string]bool{}
 	g.gcRootSeen = map[string]bool{}
 	g.listVars = map[string]bool{}
@@ -5964,6 +6362,8 @@ func (g *irGen) beginScope() func() {
 	g.setElemInt = map[string]bool{}
 	g.dictKeyInt = map[string]bool{}
 	g.dictValInt = map[string]bool{}
+	g.mixedDicts = map[string]bool{}
+	g.mixedSets = map[string]bool{}
 	g.internedVars = map[string]bool{}
 	return func() {
 		g.allocd, g.gcRootSeen = savedAlloc, savedRoots
@@ -5974,6 +6374,7 @@ func (g *irGen) beginScope() func() {
 		g.dictKeyStr, g.dictValStr, g.internedVars = savedKStr, savedVStr, savedInt
 		g.listElemInt, g.setElemInt = savedLNum, savedSNum
 		g.dictKeyInt, g.dictValInt = savedKNum, savedVNum
+		g.mixedDicts, g.mixedSets = savedMixDict, savedMixSet
 	}
 }
 
@@ -6317,6 +6718,29 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return "", fmt.Errorf("codegen: unsupported attr expression")
 
 	case *BinOp:
+		// Membership in a container whose slots describe themselves is decided by (payload,
+		// tag): comparing payloads alone would answer `0 in {"0": 1}` from the interned index
+		// the key's word happens to hold (ADR 0232's soundness rule). This is checked before
+		// the operands are lowered, because a tagged loop variable has no untagged lowering at
+		// all — `for x in s: x in t` is the shape this exists for.
+		if n.Op == "in" || n.Op == "not in" {
+			if res, ok, err := g.mixedMembership(b, n); err != nil {
+				return "", err
+			} else if ok {
+				return res, nil
+			}
+		}
+		// `if x == "a":` where x came from a loop over a container that mixes kinds: the
+		// comparison is between a (payload, tag) pair and a value whose kind the compiler
+		// knows, and the tag has to take part or `x == 1` answers true for the string whose
+		// interned index happens to be 1.
+		if n.Op == "==" || n.Op == "!=" {
+			if res, ok, err := g.mixedTaggedCompare(b, n); err != nil {
+				return "", err
+			} else if ok {
+				return res, nil
+			}
+		}
 		// Operator overloading: dispatch dunder methods on statically-known
 		// class instances before falling back to builtin arithmetic.
 		if res, ok := g.emitDunderBinOp(b, n); ok {
@@ -6893,8 +7317,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *DictLit:
 		// A literal with string keys or values cannot be the static {count, keys, vals}
 		// global — that layout is i32-only — so build a heap dict and intern (Gap J.6).
+		// A dict that mixes kinds is not a refusal when every slot can be tagged: it is a
+		// dict with no kind, and the tags carry the meaning (ADR 0232).
 		if literalNeedsHeap(n) {
-			if literalMixedKinds(n) {
+			if literalMixedKinds(n) && !g.taggableMixedDict(n) {
 				return "", mixedKindErr("dict")
 			}
 			return g.heapDictFrom(b, n, "")
@@ -6906,7 +7332,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return name, nil
 	case *SetLit:
 		if literalNeedsHeap(n) {
-			if literalMixedKinds(n) {
+			if literalMixedKinds(n) && !g.taggableMixedSet(n) {
 				return "", mixedKindErr("set")
 			}
 			return g.heapSetFrom(b, n, "")
@@ -7053,6 +7479,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				// string key becomes its @str_tab index, because rt_dict_get/rt_dict_has
 				// take i32 keys and a global pointer there is what LLVM rejected.
 				keyOp := strconv.FormatInt(key, 10)
+				// The key is compared as (payload, tag). A string needle's payload is an
+				// @str_tab index, and an int key holding the same number is a different key:
+				// {1: "one"} asked for "a" must raise KeyError, not answer "one" — which is
+				// what an untagged comparison did until the tag was consulted here too
+				// (ADR 0232, and ADR 0189's promise that the tag is always there to read).
+				keyTag := ""
 				if _, isLit := n.Idx.(*IntLit); !isLit {
 					kv, isStr, e := g.heapElemKind(b, n.Idx)
 					if e != nil {
@@ -7062,9 +7494,25 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 						g.dictKeyStr[obj.Value] = true
 					}
 					keyOp = kv
+					if t, ok := g.elemKindTag(n.Idx); ok {
+						keyTag = strconv.FormatInt(int64(t), 10)
+					} else if isStr {
+						keyTag = strconv.FormatInt(int64(TagStr), 10)
+					} else {
+						keyTag = strconv.FormatInt(int64(TagInt), 10)
+					}
+				} else if nm, ok := n.Idx.(*Name); ok && g.taggedVars[nm.Value] {
+					kt := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", kt, nm.Value))
+					keyTag = kt
 				}
-				g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Span())
-				b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
+				if keyTag != "" {
+					g.checkKeyReadTagged(b, fmt.Sprintf("%%h%d", hs), keyOp, keyTag, n.Span())
+					b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, hs, keyOp, keyTag))
+				} else {
+					g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Span())
+					b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
+				}
 				return fmt.Sprintf("%%g%d", hs), nil
 			}
 			if g.listVars[obj.Value] {
@@ -8142,16 +8590,41 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if len(c.Args) != 1 {
 					return "", fmt.Errorf("codegen: %s() takes exactly 1 argument", attr.Name.Value)
 				}
+				if g.mixedSets[nm.Value] {
+					// Growing a set whose members describe themselves has to keep that promise:
+					// the member travels with its tag, and adding without one would make the new
+					// member print as whatever kind its slot held last (ADR 0232).
+					mv, mt, ok := g.taggedOperand(b, c.Args[0])
+					if !ok {
+						return "", fmt.Errorf("codegen: %s.%s(%s) adds a member whose kind the compiler cannot prove to a set whose members are of more than one kind; a float or container member needs the tagged value word (roadmap L11.1, ADR 0232)", nm.Value, attr.Name.Value, g.exprSummary(c.Args[0]))
+					}
+					g.heapSeq++
+					hs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
+					fn := "rt_set_add_tagged"
+					if attr.Name.Value == "discard" {
+						fn = "rt_set_discard_tagged"
+					}
+					b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s, i32 %s)\n", fn, hs, mv, mt))
+					return "", nil
+				}
 				av, interned, err := g.heapElemKind(b, c.Args[0])
 				if err != nil {
 					return "", err
 				}
-				if err := g.recordElemKind(nm.Value, "set", interned); err != nil {
-					return "", err
+				if g.printsAsInternedStr(c.Args[0]) {
+					interned = true
 				}
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
+				if err := g.recordElemKind(nm.Value, "set", interned, c.Args[0]); err != nil {
+					// A set grown with a member of the other kind is promoted, not refused, for
+					// the same reason an appended element is (ADR 0232).
+					if !g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "set", c.Args[0]) {
+						return "", err
+					}
+				}
 				fn := "rt_set_add"
 				if attr.Name.Value == "discard" {
 					fn = "rt_set_discard"
@@ -8286,19 +8759,28 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
-				return "", err
+			// The value is asked twice what it is: heapElemKind answers for the word it interned,
+			// printsAsInternedStr for the value the source says it is, and `xs.append(d["a"])` is
+			// the shape where only the second one knows (ADR 0232).
+			if g.printsAsInternedStr(c.Args[0]) {
+				interned = true
 			}
 			g.heapSeq++
 			hs := g.heapSeq
 			b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
-			if kt, ok := g.elemKindTag(c.Args[0]); ok {
-				// Payload and tag are one operation, so an append cannot leave the new slot
-				// carrying the tag of whoever held it last (ADR 0187).
-				b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %%h%d, i32 %s, i32 %d)\n", hs, av, kt))
-			} else {
-				b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %%h%d, i32 %s)\n", hs, av))
+			if err := g.recordElemKind(nm.Value, "list", interned, c.Args[0]); err != nil {
+				// Growing a list with a value of the other kind used to be the refusal, because
+				// the container records one kind and would print the new element through the old
+				// one. The slots carry tags, so the honest move is to stop claiming a kind
+				// (ADR 0232); the refusal stays for a value no tag can describe.
+				if !g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "list", c.Args[0]) {
+					return "", err
+				}
 			}
+			// Payload and tag are one operation, so an append cannot leave the new slot carrying
+			// the tag of whoever held it last (ADR 0187, ADR 0189): there is no untagged append
+			// left to fall back to.
+			b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, av, g.elemTagOperand(b, c.Args[0], interned)))
 			if interned {
 				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 1)\n", hs))
 			}
@@ -9205,6 +9687,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
 					continue
 				}
+				if dictName, mixed := g.mixedDictIndexRead(ix); mixed {
+					// The value's slot carries its own tag, and that is the only thing that can
+					// tell "x" from the number 2 (ADR 0232).
+					val, tag, err := g.mixedDictPair(b, dictName, ix.Idx, ix.Span())
+					if err != nil {
+						return "", err
+					}
+					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
+					continue
+				}
 			}
 			// print([f(x) for x in xs]) — a comprehension is a container, so the runtime
 			// printer renders it. The constant path used to printf the folded global
@@ -9286,7 +9778,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
 						continue
 					}
-					if literalMixedKinds(a) {
+					// A literal that mixes kinds is printed through the same dispatching
+					// printers its variable-bound twin uses, whenever every slot can say what
+					// it holds (ADR 0232); only a slot that cannot is the refusal.
+					if literalMixedKinds(a) && !g.literalMixedIsTaggable(a) {
 						noun := "list"
 						switch a.(type) {
 						case *SetLit:
@@ -10657,6 +11152,105 @@ func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string, sp Span) {
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
+// mixedTaggedCompare answers `taggedVar == literal` (either order) for a variable that carries a
+// runtime tag — a loop variable over a mixed container, or one bound from a mixed read. The other
+// side must be an expression whose kind the compiler can prove; when it cannot, this declines and
+// the ordinary path reports whatever it reports (ADR 0232).
+func (g *irGen) mixedTaggedCompare(b *strings.Builder, n *BinOp) (string, bool, error) {
+	var taggedSide, otherSide Expr
+	if nm, ok := n.L.(*Name); ok && g.taggedVars[nm.Value] {
+		taggedSide, otherSide = n.L, n.R
+	} else if nm, ok := n.R.(*Name); ok && g.taggedVars[nm.Value] {
+		taggedSide, otherSide = n.R, n.L
+	} else {
+		return "", false, nil
+	}
+	nm := taggedSide.(*Name)
+	v := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", v, "_"+nm.Value))
+	t := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", t, "_"+nm.Value+"_tag"))
+	ov, ot, ok := g.taggedOperand(b, otherSide)
+	if !ok {
+		return "", false, nil // the other side's kind is not provable; the ordinary path decides
+	}
+	cmp := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_mixed_eq(i32 %s, i32 %s, i32 %s, i32 %s)\n", cmp, v, t, ov, ot))
+	res := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", res, cmp))
+	g.markI1(res)
+	if n.Op == "!=" {
+		inv := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = xor i1 %s, true\n", inv, res))
+		g.markI1(inv)
+		res = inv
+	}
+	return g.asBoolI32(b, res), true, nil
+}
+
+// mixedMembership lowers `x in s` / `k in d` where the container's slots carry tags. It answers
+// (handled, error): handled is false when the container is uniform (or not a named container at
+// all), and the untagged rt_contains path stays in charge — that path is sound for a container
+// whose one kind the compiler has proved, and only for one (ADR 0232).
+func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, error) {
+	nm, ok := n.R.(*Name)
+	if !ok || !g.allocd[nm.Value] {
+		return "", false, nil // not a container variable the codegen built a slot for
+	}
+	// Which container, and which lookup agrees with its slot layout. A uniform container takes
+	// the tagged call too whenever the needle's kind is provable: `1 in ["1"]` is false, and a
+	// payload-only scan answers it true because "1" interned to the index 1 (ADR 0232).
+	fn := ""
+	switch {
+	case g.mixedSets[nm.Value] || g.runtimeSets[nm.Value]:
+		fn = "rt_set_contains_tagged"
+	case g.mixedDicts[nm.Value] || g.runtimeDicts[nm.Value]:
+		fn = "rt_dict_has_tagged"
+	case g.mixedLists[nm.Value] || g.listVars[nm.Value]:
+		fn = "rt_contains_tagged"
+	default:
+		return "", false, nil
+	}
+	mixed := g.mixedSets[nm.Value] || g.mixedDicts[nm.Value] || g.mixedLists[nm.Value]
+	needle, tag, tok := g.taggedOperand(b, n.L)
+	if !tok {
+		if !mixed {
+			return "", false, nil // the untagged scan keeps the answer it always gave
+		}
+		return "", false, fmt.Errorf("codegen: testing %s against the container %q whose slots describe themselves needs a needle whose kind the compiler can prove; a bool, float or container needle needs the tagged value word (roadmap L11.1, ADR 0232)", n.L, nm.Value)
+	}
+	h := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", h, "_"+nm.Value))
+	hit := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s, i32 %s, i32 %s)\n", hit, fn, h, needle, tag))
+	cmp := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", cmp, hit))
+	g.markI1(cmp)
+	if n.Op == "not in" {
+		inv := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = xor i1 %s, true\n", inv, cmp))
+		g.markI1(inv)
+		cmp = inv
+	}
+	return g.asBoolI32(b, cmp), true, nil
+}
+
+// checkKeyReadTagged is checkKeyRead for a dict whose keys are tagged: the same KeyError, raised
+// by the same path, asked of the (payload, tag) key. Without the tag the check would answer "the
+// key is there" for {0: 1} when asked for "0", and the raise below would never come.
+func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, sp Span) {
+	ok := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has_tagged(i32 %s, i32 %s, i32 %s)\n", ok, h, key, keyTag))
+	isZero := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 0\n", isZero, ok))
+	g.markI1(isZero)
+	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
+	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isZero, badL, okL))
+	b.WriteString(fmt.Sprintf("%s:\n", badL))
+	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found", sp)
+	b.WriteString(fmt.Sprintf("%s:\n", okL))
+}
+
 // checkKeyRead emits the membership test for a heap-dict read: `d[k]` for a missing
 // key used to return 0, where Python raises KeyError.
 func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, sp Span) {
@@ -11654,6 +12248,43 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// the slot means nothing without its companion, and print(v) dispatches on the
 			// tag exactly as a loop variable over a mixed list does (ADR 0185, ADR 0187).
 			if ix, isIndex := n.Value.(*Index); isIndex {
+				if dictName, mixed := g.mixedDictIndexRead(ix); mixed {
+					// `v = d[k]` out of a dict whose values mix kinds binds the pair too; the
+					// block below this one is the list version of the same binding.
+					val, tag, err := g.mixedDictPair(b, dictName, ix.Idx, ix.Span())
+					if err != nil {
+						return err
+					}
+					if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
+						g.emitFreeOld(b, nm.Value)
+						if g.allocd[nm.Value] {
+							g.gcClearRoot(b, nm.Value)
+						}
+					}
+					g.listVars[nm.Value] = false
+					g.runtimeDicts[nm.Value] = false
+					g.runtimeSets[nm.Value] = false
+					g.mixedLists[nm.Value] = false
+					delete(g.strVals, nm.Value)
+					delete(g.internedVars, nm.Value)
+					delete(g.noneVars, nm.Value)
+					if g.floatVars != nil {
+						delete(g.floatVars, nm.Value)
+					}
+					if !g.allocd[nm.Value] {
+						b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+nm.Value))
+						g.allocd[nm.Value] = true
+					}
+					if !g.allocd[nm.Value+"_tag"] {
+						b.WriteString(fmt.Sprintf("  %%%s_tag = alloca i32\n", "_"+nm.Value))
+						g.allocd[nm.Value+"_tag"] = true
+					}
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, nm.Value))
+					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tag, nm.Value))
+					g.markBound(b, nm.Value)
+					g.taggedVars[nm.Value] = true
+					return nil
+				}
 				if listName, mixed := g.mixedIndexRead(ix); mixed {
 					val, tag, err := g.mixedElemPair(b, listName, ix.Idx, ix.Span())
 					if err != nil {
@@ -11738,7 +12369,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i, tag))
 					if !mixed {
-						if err := g.recordElemKind(nm.Value, "list", interned); err != nil {
+						if err := g.recordElemKind(nm.Value, "list", interned, el); err != nil {
 							return err
 						}
 					}
@@ -11781,6 +12412,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.runtimeSets[nm.Value] = false
 				}
 				g.runtimeSets[nm.Value] = true
+				// A set whose members describe themselves has no element kind to record: {1, "a"}
+				// is neither the number set nor the string set (roadmap L11.1 (1b), ADR 0232).
+				mixedSet := g.taggableMixedSet(sl)
+				if mixedSet {
+					g.mixedSets[nm.Value] = true
+					g.setElemStr[nm.Value] = false
+					g.setElemInt[nm.Value] = false
+				}
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindSet))
@@ -11790,12 +12429,23 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if err := g.recordElemKind(nm.Value, "set", interned); err != nil {
+					if mixedSet {
+						// Adding and tagging are one call: a member added without its tag dedups
+						// against the payload alone and prints through whatever the slot last held.
+						t, _ := g.elemKindTag(el)
+						b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %d)\n", hs, ev, t))
+						si++
+						continue
+					}
+					if err := g.recordElemKind(nm.Value, "set", interned, el); err != nil {
 						return err
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, ev))
 					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, si, elemTagFor(el, interned)))
 					si++
+				}
+				if mixedSet {
+					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 8)\n", hs))
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
@@ -11836,6 +12486,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.runtimeSets[nm.Value] = false
 				}
 				g.runtimeDicts[nm.Value] = true
+				// The set above and heapDictFrom share this rule: a dict whose keys or values mix
+				// kinds has no kind to record, so every slot carries its own tag (ADR 0232).
+				mixedDict := g.taggableMixedDict(dl)
+				if mixedDict {
+					g.mixedDicts[nm.Value] = true
+					g.dictKeyStr[nm.Value] = false
+					g.dictKeyInt[nm.Value] = false
+					g.dictValStr[nm.Value] = false
+					g.dictValInt[nm.Value] = false
+				}
 				g.heapSeq++
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindDict))
@@ -11851,10 +12511,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if err := g.recordElemKind(nm.Value, "dict key", kIsStr); err != nil {
+					if mixedDict {
+						// Put and tag in one call: an entry stored without its key tag would match
+						// another key with the same payload, and an entry without its value tag
+						// would print the kind the slot held last time.
+						kt, _ := g.elemKindTag(dl.Keys[i])
+						vt, _ := g.elemKindTag(dl.Vals[i])
+						b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %%h%d, i32 %s, i32 %s, i32 %d, i32 %d)\n", hs, kk, vv, kt, vt))
+						continue
+					}
+					if err := g.recordElemKind(nm.Value, "dict key", kIsStr, dl.Keys[i]); err != nil {
 						return err
 					}
-					if err := g.recordElemKind(nm.Value, "dict value", vIsStr); err != nil {
+					if err := g.recordElemKind(nm.Value, "dict value", vIsStr, dl.Vals[i]); err != nil {
 						return err
 					}
 					bits := 0
@@ -11870,6 +12539,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if bits != 0 {
 						b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, bits))
 					}
+				}
+				if mixedDict {
+					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 8)\n", hs))
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
@@ -12281,6 +12953,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				mixedIter = true
 			case g.listVars[name.Value]:
 				iterKind = "list"
+			case g.mixedSets[name.Value]:
+				// A mixed set binds payload and tag like a mixed list: the member's i32 is
+				// ambiguous on its own, and the tag is what prints it (ADR 0232).
+				iterKind = "set"
+				mixedIter = true
+			case g.mixedDicts[name.Value]:
+				// A dict yields keys, so it is the key slots (stride 2) whose tags travel.
+				iterKind = "dict"
+				mixedIter = true
 			case g.runtimeSets[name.Value]:
 				iterKind = "set"
 			case g.runtimeDicts[name.Value]:
@@ -12298,10 +12979,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// index into @str_tab; recording that keeps print(x) rendering the text instead
 			// of the index (roadmap Gap I.2). Dict iteration yields keys, so it is the key
 			// kind that matters.
+			if mixedIter {
+				// The tag decides per iteration; a static claim here would print every
+				// member through one kind, which is the bug the tag exists to prevent.
+				delete(g.internedVars, loopVar)
+				delete(g.noneVars, loopVar)
+			}
 			if name, ok := n.Iter.(*Name); ok {
 				switch iterKind {
 				case "list", "set":
-					if g.listElemStr[name.Value] || g.setElemStr[name.Value] {
+					if !mixedIter && (g.listElemStr[name.Value] || g.setElemStr[name.Value]) {
 						g.internedVars[loopVar] = true
 					}
 				case "dict":

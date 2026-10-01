@@ -707,13 +707,47 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
     tagged value" — which is L11.2 named precisely. `is` stays identity, and `!=` is `==`'s
     negation. New parity program `programs/container_equality.gy`, which reports verdicts through
     `if` so the row tests equality and not the bool-rendering debt `probe_bool_value` pins.
-    **Latent, and now written down**: dict key lookup and set dedup still compare payloads only,
-    so they become unsound the moment heterogeneous keys are allowed — L11.1 (1b) must carry the
-    tag into `rt_dict_get`/`rt_set_add`, not only into equality.
+    **Latent, and now closed (ADR 0232)**: dict key lookup and set dedup compared payloads only,
+    so they became unsound the moment a string and a number could collide — L11.1 (1b) carried the
+    tag into `rt_dict_get`/`rt_dict_has`/`rt_set_add`/`rt_contains`, not only into equality.
+  - ✅ **Done (ADR 0232): mixed dicts and sets, and the lookup that reads the tag.** The compiled
+    path refused `{"a": 1, "b": "x"}` and `{1, "a"}` outright ("either strings or numbers, not
+    both"), and — the part that mattered more — answered questions wrongly for the containers it
+    *did* accept. Strings are `@str_tab` indices, so an interned string and an integer of the same
+    number are the same bits: `d = {1: "one"}; print(d["a"])` answered `one` compiled while the
+    interpreter and CPython raise `KeyError`, and `1 in {"a"}` was True. That is the latent note at
+    the end of the ADR 0189 entry above, collected.
+    A slot is now the pair everywhere: `d[k] = v` writes key tag *and* value tag with the payloads
+    (`rt_dict_put_tagged`), membership and lookup compare both (`rt_dict_find`, `rt_dict_get_tagged`
+    + `rt_dict_value_tag`, `rt_dict_has_tagged`, `rt_set_contains_tagged`, `rt_contains_tagged`, and
+    `rt_mixed_eq` for `if x == "a":` on a tagged loop variable), `rt_set_discard_tagged` shifts tags
+    with payloads, and a mixed container announces itself with a new `@estr` bit 8 ("the slots
+    describe themselves") so `rt_dict_print`/`rt_set_print` dispatch to the mixed printers while
+    uniform containers keep their static paths untouched. `for k in d` / `for x in s` bind
+    `%_k`/`%_k_tag` exactly as ADR 0185's list loop does; `print(d[k])` and `v = d[k]` fetch the
+    value's tag at the read site. **Lookups compare tags whenever the needle's kind is provable,
+    uniform container or not** — bit 8 is not the gate, because the wrong answer was happening to
+    containers that never mix.
+    Growth stopped being a refusal too: `xs.append("a")` on a list of numbers, `s.add("a")` on a set
+    of numbers, and `d["b"] = "x"` on an int-valued dict now *promote* the container (available only
+    because ADR 0189 made every builder write tags). The dict case had been answering
+    `{'a': 'x', 'b': 'x'}` for `{"a": 1}` + `d["b"] = "x"`, because item assignment overwrote the
+    container's recorded kind and the print followed it; likewise `xs = [1, 2]; xs[0] = "s"` printed
+    `['s', 'b']` — the untouched 2 rendered as whatever string its index names. Both are pinned by
+    parity rows now, AOT ≡ interpreter ≡ CPython, and the two `string_containers_test.go` "must be
+    refused" rows for growth were inverted (ADR 0230's lesson, applied again).
+    Two refusals were added where an answer would have been a guess, both new to this cycle: an
+    element whose kind cannot be proven — `def pick(c): return "z" / return 7`, which printed
+    `(null)` for the 7 because `print` asks at print time and a *slot* is labelled once — and a
+    needle whose kind cannot be proven against a container that mixes. Bools inside containers are
+    accepted and tagged `TagInt`, matching what both backends store today; when L11.2 gives bool its
+    own kind, one line of `elemKindTag` changes and containers follow. New unit file
+    `pkg/lang/mixed_dict_set_test.go`, new integration file
+    `integration/mixed_container_test.go` (parity + oracle + refusal + verifier rows).
   - 🟢 **Remaining**, in order: (1a) ~~the other element-wise *reads*~~ — done (ADR 0187);
-    the next element-wise uses need tagged values at the *use* site, which is L11.2; (1b) mixed
-    *dicts* and *sets* (same storage trick, `rt_dict_print`/`rt_set_print` dispatch on one flag
-    today, and a key read answers through one static kind); (1c) floats in containers, which
+    the next element-wise uses need tagged values at the *use* site, which is L11.2; (1b) ~~mixed
+    *dicts* and *sets*~~ — done (ADR 0232), including the tagged lookup ADR 0189 left as a latent
+    note; (1c) floats in containers, which
     needs a float branch in `rt_print_mixed_value` — the tag exists, the renderer does not;
     (1d) retiring `@estr[h]` entirely once every read path is tagged; (2) **bools as values** — measured today `--json` reports
     `"type": "int"` for `True` on both backends, so `print(True)` prints `1`, and L11.2
@@ -973,8 +1007,11 @@ A gap is closed when the previously interpreter-only path also lowers on AOT
 ## Sequencing note
 Gaps A–H are closed; the 2026 phases (4–10) are largely closed too. The
 **current** next work is **Phase 11 (the value model)** — L11.9 (the CPython oracle
-harness) is ✅ DONE (ADR 0186), so the queue is now the 22 pinned `debt` rows: L11.1's
-remaining reads, L11.2 (bools as values), L11.3 (tuples), L11.4 (indexing), L11.5
+harness) is ✅ DONE (ADR 0186), and L11.1 has now taken its four steps for lists, dicts and
+sets (ADR 0182 tags, ADR 0184/0185/0187/0189 slots and reads, ADR 0232 mixed dicts/sets plus
+the tagged lookup that made them safe), so the queue is the 22 pinned `debt` rows: L11.1's
+remaining steps ((1c) floats in containers, (1d) retiring `@estr[h]`, and the tagged word
+itself), L11.2 (bools as values), L11.3 (tuples), L11.4 (indexing), L11.5
 (code-point strings), L11.6 (numerics), L11.7 (functions as values), then L11.8 (refusals and
 exit codes). L7.2/L7.3/L8.1/L8.4 all assume L11.1. The still-open gap-shaped items (Gap J.2,
 Gap K.8 part 2 — full AOT tracebacks, Gap M.2 — flipping `--file` to the compiled backend,

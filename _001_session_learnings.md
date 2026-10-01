@@ -4371,3 +4371,99 @@ the link step, wearing a different hat.
 `docs/operations.md` promised, in prose, that `--build --debug` "passes `-g` to the final `cc` link
 so the binary carries DWARF debug info (line tables)". That sentence was the bug, written down. When
 a flag's docs describe a mechanism nobody implemented, the docs are part of the test surface.
+
+## L11.1 (1b) — I came to add mixed dicts and sets, and found the wrong answers instead (ADR 0232)
+
+### The feature was the easy half
+
+The cycle was scheduled as "same storage trick as lists, two containers". It was that, and it was
+also the cycle in which the compiler stopped answering `{1: "one"}["a"]` with `one`.
+
+Nobody had noticed, because nobody had asked. Both backends had been refusing or agreeing, and the
+matrix compares backends. I asked only because the pinned-refusal test in `string_containers_test.go`
+had to be inverted to write the new positive rows, and inverting a refusal forces you to state what
+the program answers — so I ran the shape family through `python3` first, as the oracle rule says to.
+Two of the shapes answered `one` and `1` where CPython raised `KeyError` and printed `False`. Strings
+are `@str_tab` indices; a payload-only comparison in a container of one *declared* kind is a coin
+flip, and the coin had been landing heads for as long as the feature existed.
+
+**The lesson, filed under "run the oracle over what is already claimed, not only over what you are
+adding"**: a subsystem you arrive at to extend is also a subsystem you are now responsible for
+measuring.
+
+### ADR 0189's rule paid for itself three times in one commit
+
+"Whatever writes a slot's payload writes its tag, in the same operation" had been written down two
+cycles ago as a hygiene rule. This cycle it was the *precondition* for three separate things:
+
+* **Tagged lookups** became legal — you cannot compare a tag on read that nobody promised to write.
+* **Promotion** became sound — when `xs.append("a")` contradicts the container's recorded kind, the
+  compiler can stop claiming a kind precisely because the slots already describe themselves.
+* **`discard` on a mixed set** — deleting a member shifts payloads down; if tags are not shifted with
+  them, every survivor prints as the kind of the member before it.
+
+The converse also showed up, same shape, three times: `d = {"a": 1}; d["b"] = "x"` printed
+`{'a': 'x', 'b': 'x'}`, and `xs = [1, 2]; xs[0] = "s"` printed `['s', 'b']`. Both were a *claim*
+("this container holds strings") standing in for an *observation* ("this slot holds this word, with
+this tag"), and the claim was made about every slot by the operation that touched one. Verified at
+HEAD in a throwaway worktree — pre-existing, not introduced here — which is exactly why it went
+into the ADR as a wrong answer rather than a regression note.
+
+### I added two refusals while adding support
+
+`[pick(1), "a", pick(0)]`, where `pick` returns `"z"` on one path and `7` on another, printed
+`['z', 'a', (null)]`: the 7 looked up in the string table. `print` asks what a value is *when it
+prints*; a container slot is labelled *once*, when it is built, and `int | str` has no single label.
+The honest move was to refuse, not to pick. Same for a membership needle whose kind cannot be proven
+against a container that mixes. To a reviewer that reads as a regression ("less compiles now!"); the
+test that proves otherwise is the one that asserts the *text* of each new refusal, and the row in the
+refusal table asserting exit 1 — never exit 2, and never exit 0 with an answer nobody can justify.
+
+### Bools: agree with the interpreter today, let the pinned test keep the difference
+
+Tagging a bool `TagBool` would have made compiled `[1, True]` print `[1, True]`, disagreeing with the
+interpreter (which stores bool as `Int(1)` and prints `1`) and inventing a second, contradicting
+pinned difference. The tag chosen was the one both backends already store — `TagInt` — with the note
+that when L11.2 gives bool its own kind, one line of `elemKindTag` changes and every container
+follows. One pinned difference per commit, always.
+
+### The 5-minute loop, and `git worktree` as a memory
+
+Everything above was found with the same three commands in a loop, on throwaway programs in `/tmp`:
+
+```
+gustyc --file p.gy --aot    # the compiled leg
+gustyc --file p.gy          # the interpreter
+python3 p.gy                # the answer
+```
+
+…before any Go test existed. The test suite's job is to make the finding permanent, not to make the
+finding. And when the question is "did I break this, or was it already broken?", the answer is a
+`git worktree add /tmp/gh-head HEAD` and a second binary — cheaper than reasoning about it, and twice
+this session the reasoning would have been wrong. (One caveat learned the hard way: a stale worktree
+directory gets silently pruned, and `git worktree add` then succeeds without creating the checkout;
+`git worktree list` is the check.)
+
+### The suite's tripwires fired, on purpose
+
+Third time now that a pinned "this must be refused" test had to be inverted after the hole it pinned
+was closed (ADR 0230's lesson, twice applied). That is the design working: a refusal test that never
+fails is not testing a refusal, it is protecting one. Two rows moved from `mixedContainerCases` to a
+print-correctly table, the mixed-list element tests' bool rows flipped from "refused" to "prints what
+both backends store", and the whole suite told me which ones in seconds.
+
+### Small things worth writing down
+
+* `%s` on an AST node prints `&{%!s(*lang.Call=...)}` into a user-facing diagnostic. There was no
+  expression-summary helper in the codebase, so `exprSummary` is now one: name the call, name the
+  variable, otherwise name the kind. Diagnostics are an interface (docs/operations.md), including for
+  the compiler's own error paths.
+* A value can be asked what it is twice, and get two true answers: `heapElemKind` answers "which word
+  did I intern", `printsAsInternedStr` answers "what does the source say this is". `xs[0] = d["a"]`
+  satisfied the first and not the second, and the store happened while the print denied it.
+* The oracle cannot judge every row. `print({1, "a", None})` is `{1, 'a', None}` here and
+  `{'a', 1, None}` in CPython, because gusty documents insertion order for sets. The oracle table now
+  carries a comment saying which rows it is allowed to decide, instead of the test quietly dropping
+  the inconvenient one.
+* Push still blocked on the SSH agent refusing to sign (`ssh-add -l` lists the key, signing fails);
+  the commit is local and the push is retried each cycle.
