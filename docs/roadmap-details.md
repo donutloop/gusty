@@ -3079,6 +3079,35 @@ cycle that settles numeric typing — because `round` also has to keep its resul
 (`round(2.5)` is an `int` in Python). The pin should be an oracle row, not a parity row, so
 that the fix is what closes it.
 
+**Closed 2026-10-02 (ADR 0236).** Both backends now ask for the named IEEE operation — `math.RoundToEven`
+in the evaluator, `call double @llvm.roundeven.f64` in the compiled runtime, `math.RoundToEven` again in
+the compiled constant fold — and `round(2.5)`/`round(0.5)`/`round(-2.5)` print 2/0/-2 on all three
+engines.
+
+The interesting part is where the wrong rule lived. Not in `round` — in **four** places: the evaluator,
+the compiled runtime, the compiled fold, and four tests. Two of those tests stated the rule in prose
+(`must round half-away in the AOT binary`, `rounds half-away-from-zero in both interpreter and AOT`) and
+one pinned `i32 3` in the emitted IR. A test that restates a rule is not a check on it; it is a second
+authority for it, and four authorities agreeing is what makes a wrong answer survive. Parity could not
+see it by construction — it compares the two implementations to each other — and the CPython leg, the
+one instrument that could, was not in those tests. So the fix is recorded as the four inverted pins as
+much as the two code changes: each keeps its old expectation in a comment, because the record of what
+we asserted is how the next one gets caught.
+
+The corpus program `integration/programs/round_ties.gy` deliberately has **no ledger row**: under this
+repo's convention that means "must print what CPython prints", checked on both gusty legs, so the old
+answer is now a CI failure rather than a passing parity. Literal ties and variable ties are separate
+cases because the fold and the intrinsic are separate paths in codegen: fixing one and leaving the
+other would have kept half of every program wrong, and — as the fold's `math.Round` shows — that is
+exactly what happened originally.
+
+One stale claim in `docs/language.md` died with it: the builtin paragraph said `round(x)` truncates,
+and folds-and-is-a-no-op, and that "the AOT backend has no float representation" — three states of a
+builtin, in one paragraph, none of them current.
+
+**Found while writing its test (Gap R.69, below):** `round(x, ndigits)` — ignored by the interpreter,
+refused by the compiler with the *wrong exit class*.
+
 <a id="gap-r-51"></a>
 
 ### Gap R.51 — three names the checker knows, the interpreter traps on, and the compiler answers (found by the 2026-10-01 sweep)
@@ -3772,4 +3801,36 @@ representation decisions, and stay their own work where they are not (K.8's prer
 landed with L8.5's line tables (ADR 0231) — what is left there is the frame stack, not the
 metadata; M.2 flips only once the corpus is green through the compiled leg — which, since
 L11.9, is a measured claim rather than an assumption).
+
+<a id="gap-r-69"></a>
+
+### Gap R.69 — `round(x, ndigits)` is three behaviours, one of them the wrong exit code (found 2026-10-02 while closing Gap R.50)
+
+```
+print(round(2.345, 2))   # CPython 2.35 | --interp 2 | --aot exit 1: round expects one argument
+print(round(3.5, 0))     # CPython 4.0  | --interp 4 | --aot exit 1: round expects one argument
+```
+
+Three engines, three behaviours, all of them wrong in a different register:
+
+- **The interpreter ignores `ndigits` and returns an integer.** `round(2.345, 2)` gives `2` — not
+  `2.35`, and not a float. A caller that did `x * 100` afterwards gets an answer off by the whole
+  fractional part, with nothing said.
+- **The compiled backend refuses the call**, which is defensible as a refusal and indefensible as
+  emitted: `gustyc: jit: codegen: round expects one argument` comes back with **exit 1**, the contract's
+  "your program has a compile error" class (ADR 0211), for a program CPython runs. That is L11.8's and
+  Gap R.38's subject exactly — a refusal claiming something false about the program.
+- **CPython returns a float**, which is the part the row exists to pin: `round(3.5, 0)` is `4.0`, not
+  `4`. In a language whose float/int distinction reaches `print` (`4.0` vs `4`), getting the digits
+  right and the type wrong is still a wrong answer.
+
+The value half is small and already equipped: scale by `10**n`, ask for the named ties-to-even operation
+(`math.RoundToEven` / `@llvm.roundeven.f64`, both in the tree since ADR 0236), unscale. What is not small
+is the type: the compiled backend must *record* that the function returns a float, because ADR 0230 found
+a correct slice printing `1` for want of exactly that record — producing a value and announcing its kind
+are two separate facts here, and the second is what `print` reads.
+
+Until then `docs/language.md` says so out loud and points at the workaround (`round(x * 100) / 100`),
+so the refusal is at least discoverable from the language documentation rather than only from a failed
+compile.
 

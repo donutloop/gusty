@@ -4282,13 +4282,16 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			// ASCII and a wrong one for everything else (ADR 0225).
 			return int64(runes[0]), nil
 		case "round":
-			// round(x) is the identity for ints; truncates floats.
+			// round(x) is the identity for ints; a float goes to the nearest value, ties to EVEN —
+			// IEEE roundTiesToEven, which is CPython's rule and the rule the compiled backend emits
+			// (`@llvm.roundeven.f64`). `math.Round` here used to tie away from zero, so both backends
+			// answered round(2.5) = 3 and the parity matrix, comparing us to us, saw nothing.
 			x, err := e.eval(n.Args[0])
 			if err != nil {
 				return 0, err
 			}
 			if o, ok := e.heap[x]; ok && o.kind == "float" {
-				return int64(math.Round(o.fval)), nil
+				return int64(math.RoundToEven(o.fval)), nil
 			}
 			return x, nil
 

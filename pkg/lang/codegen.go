@@ -10783,16 +10783,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 	case "round":
 		// round(x) folds a constant integer literal to itself (mirroring the
 		// interpreter's int case; the AOT backend has no float representation).
+		// A float goes to the nearest value with ties to EVEN: `llvm.roundeven.f64` is IEEE
+		// roundTiesToEven and `math.RoundToEven` is the same operation on the host, so the constant
+		// fold, the runtime call and the interpreter cannot drift the way `llvm.round.f64` and
+		// `math.Round` did — both tied away from zero, both wrong where CPython ties to even.
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("round expects one argument")
 		}
 		if g.isFloat(c.Args[0]) {
 			if fv, ok := g.floatEval(c.Args[0]); ok {
-				return fmt.Sprintf("%d", int64(math.Round(fv))), nil
+				return fmt.Sprintf("%d", int64(math.RoundToEven(fv))), nil
 			}
 			fx := g.floatValue(b, c.Args[0])
 			rt := g.newTmp()
-			fmt.Fprintf(b, "  %s = call double @llvm.round.f64(double %s)\n", rt, fx)
+			fmt.Fprintf(b, "  %s = call double @llvm.roundeven.f64(double %s)\n", rt, fx)
 			t := g.newTmp()
 			fmt.Fprintf(b, "  %s = fptosi double %s to i32\n", t, rt)
 			return t, nil

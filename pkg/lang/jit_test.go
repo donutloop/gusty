@@ -1175,8 +1175,10 @@ func TestEvalFloatFloorModNeg(t *testing.T) {
 }
 
 func TestEvalRound(t *testing.T) {
-	// round(float) must round half-away-from-zero (math.Round), matching the
-	// AOT codegen's constant-folded math.Round — not truncate toward zero.
+	// round(float) goes to the nearest value, ties to EVEN — the IEEE rule CPython uses, matching the
+	// AOT codegen's fold and `llvm.roundeven.f64`, and not truncating toward zero either. The comment
+	// here used to say "must round half-away-from-zero (math.Round), matching the AOT codegen's
+	// constant-folded math.Round" — an accurate description of two backends agreeing on the wrong rule.
 	prog, err := Parse("print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -1185,7 +1187,10 @@ func TestEvalRound(t *testing.T) {
 	if _, err := ev.EvalProgram(prog); err != nil {
 		t.Fatalf("eval: %v", err)
 	}
-	want := []int64{3, 4, 2, -3}
+	// CPython's answers, not our own: a tie goes to the nearest EVEN value. This table used to read
+	// {3, 4, 2, -3} — the away-from-zero rule, asserted by the only test that looked, and agreed with
+	// itself across both backends so the parity matrix never noticed (roadmap Gap R.50, ADR 0236).
+	want := []int64{2, 4, 2, -2}
 	// round returns an unboxed int64 handle stored in the last expr's var? No:
 	// EvalProgram returns the last print's result; instead re-eval each round.
 	// Simpler: round is a builtin returning an int64; assert via evalExpr.

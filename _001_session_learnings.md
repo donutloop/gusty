@@ -4763,3 +4763,55 @@ interpreter-side feature; the AOT backend lowers `match` to expression-equality 
 had a 60-line class-pattern lowering in it, which is the documentation equivalent of the fallback
 branch — a stale claim that made the wrong answer look intended. The `patterns:` line in `--lang` is
 the machine-path fix for the same failure: nobody could discover the construct, so nobody tested it.
+
+## A numeric rule lives in one IEEE operation, not in two implementations that agree (Gap R.50, ADR 0236)
+
+**`round(2.5)` was 3, and the build was green.** CPython says 2. The gap row had said it plainly —
+"both backends agree with each other and disagree with Python" — and it had sat there since the
+2026-10-01 sweep, because that sentence describes a defect the suite is structurally unable to see:
+parity compares our two implementations to each other, and both had independently implemented the same
+wrong rule.
+
+**Where the wrongness lived is the finding.** Four places, not one: `math.Round` in the evaluator,
+`llvm.round.f64` in the compiled runtime, `math.Round` again in the compiled constant fold, and four
+tests — two of them asserting the rule *in prose* ("must round half-away in the AOT binary"), one
+pinning the string `i32 3` in emitted IR. A test that restates a rule is a second authority for it, not
+a check on it. When someone later reads why the tie rule is what it is, the four inverted pins are the
+useful part, which is why each keeps its old expectation in a comment instead of being quietly edited.
+
+**The fix removes the rule rather than correcting it.** Neither backend implements rounding any more;
+both ask for IEEE `roundTiesToEven` by name — `math.RoundToEven` on the host, `call double
+@llvm.roundeven.f64` in the module. Two standard libraries of different provenance agreeing is a much
+stronger claim than two of my own implementations agreeing, and "half away from zero" no longer appears
+in the tree in code or in comment.
+
+**Literals and variables are separate cases on purpose.** The fold path (`floatEval`) and the runtime
+intrinsic were wrong in different ways — the fold was wrong for literals, the call for variables — so a
+test that exercised only variables would have gone green on a program that still printed 3 for
+`round(2.5)`. `round_ties.gy` pins both, and it went into the corpus with *no ledger row*, which under
+this repo's convention is the strongest claim available: print what CPython prints, both legs.
+
+**The fold's assertion had to be written as an absence.** A check that only looks for the right call
+passes on a module whose fold is still wrong, because a folded constant emits no call at all. So the
+fold test asserts `!strings.Contains(mod, "llvm.round")` and `contains "i32 2"` — negatives are the only
+way to test a path that leaves no trace.
+
+**Found while writing the test, left owed (Gap R.69).** `round(2.345, 2)`: CPython `2.35`, interpreter
+`2` (the digit count is silently ignored — no error, no fractional part, a caller's `*100` off by the
+whole fraction), compiler an **exit 1** refusal for a program CPython runs. The exit code is the
+outrage: exit 1 is the contract's "your program has a compile error" class (ADR 0211), spent on valid
+Python. That is L11.8's and Gap R.38's subject with a fresh repro, and the value half is now cheap
+because the named operation exists in the tree — the expensive half is ADR 0230's lesson, that a
+compiled function must *record* it returns a float, not merely produce one.
+
+**The documentation was a fifth authority.** `docs/language.md`'s builtin paragraph said, about `round`
+in one breath, that it truncates, that it folds-and-is-a-no-op, and that "the AOT backend has no float
+representation" — three states, none current, all of them reading as settled. Rewritten, and the open
+`ndigits` case is now stated as an open gap with a workaround instead of being silently absent from the
+language description.
+
+**Process notes.** Suite green before and after; matrix 104 rows, 81 shared all at parity, oracle 62
+`match` (up one — the new program is a real oracle match, not a parity claim). Queue unchanged at 53:
+Gap R.50 closed, Gap R.69 opened while closing it. This was also the first piece of L11.6 (and of the
+one remaining Phase 2 item, P2.15), landed as a piece rather than as "the L11.6 cycle": the umbrella row
+now strikes the tie rule from its next-action list and keeps the rest.

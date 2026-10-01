@@ -512,13 +512,18 @@ func TestExecRoundIntVar(t *testing.T) {
 }
 
 func TestExecRoundVar(t *testing.T) {
-	// round(float variable) must round half-away in the AOT binary.
-	assertOutput(t, "a = 2.5\nb = -2.5\nprint(round(a))\nprint(round(b))", "3\n-3\n")
+	// round(float variable) ties to the nearest EVEN value, in the AOT binary and everywhere else.
+	// This asserted "3\n-3\n" — half-away — with the rule spelled out in the comment above it, which
+	// is the shape of mistake that survives review: the prose, the interpreter and the compiler all
+	// said the same wrong thing, and the only dissenting voice was CPython, which was not in the room
+	// (roadmap Gap R.50, ADR 0236).
+	assertOutput(t, "a = 2.5\nb = -2.5\nprint(round(a))\nprint(round(b))", "2\n-2\n")
 }
 
 func TestExecRound(t *testing.T) {
-	// round(float) rounds half-away-from-zero in both interpreter and AOT.
-	assertOutput(t, "print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))", "3\n4\n2\n-3\n")
+	// round(float) ties to even, the IEEE roundTiesToEven that CPython uses; round(3.9) and round(2.4)
+	// are not ties and must not move.
+	assertOutput(t, "print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))", "2\n4\n2\n-2\n")
 }
 
 func TestExecFloatFloorModNeg(t *testing.T) {
@@ -859,10 +864,14 @@ func TestExecFloatFloorModAbsEdgeCases(t *testing.T) {
 	// `5.0 % -2.0` — both operands' signs reversed relative to the language, because the
 	// expectation described the emitted `frem`. Python's `%` takes the divisor's sign:
 	// `-5.0 % 2.0` is 1.0 and `5.0 % -2.0` is -1.0.
+	// `-5.0 % 2.0` is 1.0 and `5.0 % -2.0` is -1.0. The `round` row below had the same shape of
+	// mistake one line further down: it asserted `3\n-3`, the away-from-zero tie rule that both of our
+	// backends implemented and CPython does not — a tie goes to the nearest EVEN value, so `round(2.5)`
+	// and `round(-2.5)` are both 2 and -2 (roadmap Gap R.50, ADR 0236).
 	assertOutput(t, "print(8.0 // 2.0)\nprint(-8.0 // 3.0)\nprint(-5.0 // 2.0)", "4.0\n-3.0\n-3.0\n")
 	assertOutput(t, "print(5.0 % 2.0)\nprint(-5.0 % 2.0)\nprint(5.0 % -2.0)", "1.0\n1.0\n-1.0\n")
 	assertOutput(t, "print(abs(-3.5))\nprint(abs(-2.0))", "3.5\n2.0\n")
-	assertOutput(t, "print(round(2.5))\nprint(round(-2.5))", "3\n-3\n")
+	assertOutput(t, "print(round(2.5))\nprint(round(-2.5))", "2\n-2\n")
 }
 
 func TestExecSqrt(t *testing.T) {

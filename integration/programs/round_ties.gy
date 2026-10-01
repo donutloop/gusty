@@ -1,0 +1,28 @@
+# round() sends a tie to the nearest EVEN value, the way CPython does (roadmap Gap R.50, ADR 0236).
+# Both gusty backends used to tie away from zero — `math.Round` in the interpreter and
+# `llvm.round.f64` in the compiled runtime, one rule each, both the wrong one, and agreeing with
+# each other so exactly: a parity matrix that compares the two implementations to each other
+# cannot see this class of defect at all. The oracle leg can, which is why this is a corpus
+# program with no ledger row: the expectation is whatever CPython prints.
+#
+# Literals exercise the constant fold and variables the runtime call. They are separate paths in
+# codegen — `floatEval` and `llvm.roundeven.f64` — and only the second one used to be wrong for a
+# variable while the first was wrong for a literal, so both spellings stay in the file.
+print(round(0.5))
+print(round(1.5))
+print(round(2.5))
+print(round(3.5))
+print(round(-0.5))
+print(round(-2.5))
+print(round(1.4))
+print(round(2.6))
+print(round(7))
+
+half = 4.5
+print(round(half))
+
+neg = -3.5
+print(round(neg))
+
+whole = 6.0
+print(round(whole))

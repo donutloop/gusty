@@ -1136,8 +1136,11 @@ print(f + 1.0)`)
 		t.Fatalf("float subtraction should emit fsub, got:\n%s", ir)
 	}
 	ir = llcCompiles(t, `print(round(2.5))`)
-	if !strings.Contains(ir, "i32 3") {
-		t.Fatalf("round(2.5) should round to 3, got:\n%s", ir)
+	if !strings.Contains(ir, "i32 2") || strings.Contains(ir, "i32 3") {
+		// Ties go to the nearest EVEN value: round(2.5) folds to 2, as CPython's does. This pin read
+		// `i32 3` — the constant-fold path tying away from zero, agreeing with the interpreter's
+		// `math.Round` and nobody asking CPython (roadmap Gap R.50, ADR 0236).
+		t.Fatalf("round(2.5) should fold to 2, got:\n%s", ir)
 	}
 	ir = llcCompiles(t, "if 0.5: print(1)")
 	if !strings.Contains(ir, "fcmp one double") {
@@ -1363,11 +1366,16 @@ func TestIRFloatFloorModNeg(t *testing.T) {
 }
 
 func TestIRRoundFloatVar(t *testing.T) {
-	// round(float variable) must emit llvm.round.f64 + fptosi (half-away),
-	// not error with "folds only a constant integer arg".
+	// round(float variable) must emit the ties-to-even intrinsic + fptosi, not error with
+	// "folds only a constant integer arg". This pin used to require `llvm.round.f64` and call it
+	// "(half-away)" — half of the reason both backends answered round(2.5) = 3 and the parity matrix,
+	// which compares us to ourselves, recorded nothing (roadmap Gap R.50, ADR 0236).
 	ir := llcCompiles(t, "a = 2.5\nb = -2.5\nprint(round(a))\nprint(round(b))")
-	if !strings.Contains(ir, "llvm.round.f64") || !strings.Contains(ir, "fptosi double") {
-		t.Fatalf("round(float var) missing llvm.round/fptosi:\n%s", ir)
+	if !strings.Contains(ir, "llvm.roundeven.f64") || !strings.Contains(ir, "fptosi double") {
+		t.Fatalf("round(float var) missing llvm.roundeven/fptosi:\n%s", ir)
+	}
+	if strings.Contains(ir, "@llvm.round.f64") {
+		t.Fatalf("round emitted the ties-away-from-zero intrinsic:\n%s", ir)
 	}
 }
 

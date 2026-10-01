@@ -381,6 +381,17 @@ falls back to dynamic dispatch.
   the file died on `expected keyword "else"` while the list twin parsed. One fold now produces the
   literal, and one binding rule binds it — plus the module-wide guard that a folded container global
   never appears in an operand position.
+- **A numeric rule is an IEEE operation, not a habit** (ADR 0236) — `round(2.5)` answered `3` on both
+  backends where CPython answers `2`: `math.Round` in the evaluator, `@llvm.round.f64` in the compiled
+  runtime, `math.Round` again in the compiled constant fold, and four tests — two of them stating
+  "half-away-from-zero" in a comment, one pinning `i32 3` in the IR. Four authorities agreeing is what
+  makes a wrong answer survive review, and parity cannot see this class at all: it compares the two
+  implementations to each other. Both backends now name the operation — `math.RoundToEven`,
+  `llvm.roundeven.f64` — and `programs/round_ties.gy` entered the corpus with no ledger row, which here
+  means "print what CPython prints", so the old answer is a CI failure. What the same probe found and
+  did not fix: `round(2.345, 2)` is `2.35` in CPython, `2` in the interpreter (the digit count is
+  ignored) and an exit-1 refusal compiled — a compile-error exit code for a program CPython runs, which
+  is Gap R.69 and the exit-code contract's own subject (ADR 0211).
 - **A class pattern asked two backends the same question, and got two answers** (ADR 0235) —
   `case Point(a, b):` on an instance with `x` and `y` **matched** compiled and printed `pt 0 0`, while
   the interpreter and `docs/language.md` both say a missing attribute fails the case: the compiled arm

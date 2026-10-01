@@ -83,14 +83,26 @@ Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,
 `all`, `chr`, `ord`, `round`, and the string methods `upper`/`lower`/
 `capitalize`/`title`/`swapcase`. `any(iter)` is 1 if any element is truthy;
 `all(iter)` is 1 if all are; `chr(n)` makes the single-char string for a
-codepoint; `ord(s)` reads the first char's codepoint. In the AOT codegen, `chr(n)` folds a constant codepoint to a single-character string global and `ord(s)` folds a constant string to its first-byte codepoint (mirroring the interpreter's `sval[0]`), both as literal folds; `round(x)` truncates
-`round(x)` folds a constant integer literal to itself in the AOT codegen
+codepoint; `ord(s)` reads the first char's codepoint. In the AOT codegen, `chr(n)` folds a constant codepoint to a single-character string global and `ord(s)` folds a constant string to its first-byte codepoint (mirroring the interpreter's `sval[0]`), both as literal folds.
+
+`round(x)` is the nearest-value rule with **ties to even** — IEEE `roundTiesToEven`, the rule CPython
+uses: `round(0.5)` and `round(1.5)` are `0` and `2`, `round(2.5)` and `round(3.5)` are both `2`, and
+`round(-2.5)` is `-2`. An integer argument is returned unchanged. Both backends ask for the named
+IEEE operation rather than implementing a rounding rule — `math.RoundToEven` in the evaluator,
+`llvm.roundeven.f64` (and the same fold for a constant) in the compiled backend — because two
+independent implementations of "half away from zero" agreed with each other for as long as nobody
+asked CPython (Gap R.50, ADR 0236).
+
+`round(x, ndigits)` is **not** implemented, and the two backends currently fail differently (Gap R.69):
+the interpreter ignores `ndigits` and returns an integer (`round(2.345, 2)` → `2`, where CPython gives
+`2.35`), and the compiler refuses the call (`round expects one argument`). Write `round(x * 100) / 100`
+or an explicit `int` conversion until that row closes.
+
 `float(x)` folds a constant int to itself and a constant string to its parsed
 then-truncated float value in the AOT codegen (the backend represents floats
 as truncated ints, mirroring value()'s FloatLit handling).
-(no-op: rounding an int returns it unchanged), mirroring the interpreter's
-int case; the AOT backend has no float representation.
-floats. See ADR 0090.
+floats. See ADR 0090 — and Phase 2's L11.6 for the float paths still open (a float reaching an
+untyped function parameter, `/=` → float, `floor`/`ceil` → `int`).
 
 ## Memory model
 
