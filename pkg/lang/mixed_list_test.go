@@ -29,9 +29,12 @@ func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
 		// flips to TagBool and every container follows (ADR 0232).
 		{`True`, int32(TagInt), true, "a bool, stored as the number it behaves like"},
 		{`1.5`, int32(TagFloat), true, "a float's slot is the handle of a float box, which the mixed printer renders and rt_payload_eq compares by value (ADR 0233)"},
-		{`[1]`, 0, false, "a nested container would need the collector to mark it"},
-		{`{"a": 1}`, 0, false, "a nested dict likewise"},
-		{`{1, 2}`, 0, false, "a nested set likewise"},
+		// A container element is stored as the inner object's handle; the tag is what routes the
+		// print to the container printer and the comparison to rt_container_eq instead of an
+		// integer compare (roadmap L11.1, ADR 0189).
+		{`[1]`, int32(TagList), true, "a nested list: the slot holds the inner object's handle"},
+		{`{"a": 1}`, int32(TagDict), true, "a nested dict likewise"},
+		{`{1, 2}`, int32(TagSet), true, "a nested set likewise"},
 	} {
 		prog, err := parseProgram(tc.src)
 		if err != nil {
@@ -67,7 +70,7 @@ func TestTaggableMixedListRequiresActualMixing(t *testing.T) {
 		{`[True, "a"]`, true},  // number and string still mix
 		{`[1.5, "a"]`, true},   // a float slot can only be read through its tag (ADR 0233)
 		{`[1.5]`, true},        // a literal of nothing but floats still has no untagged representation
-		{`[[1], "a"]`, false},  // container gate
+		{`[[1], "a"]`, true},   // a container slot is a handle: only its tag makes it readable
 		{`[None, None]`, true}, // a None slot holds nothing; the tag is the whole answer (ADR 0233)
 	} {
 		prog, err := parseProgram(tc.src)
@@ -129,13 +132,16 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		{"def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n", "needs a single static kind"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},
-		// An element the tag cannot describe: a bool is not a value yet, and a nested container is
-		// not marked by the collector.
-		{"xs = [1, \"a\"]\nxs.append([1])\nprint(xs)\n", "must carry a tag"},
+		// An element the tag table has no entry for at all. A bool is not in this set: it is
+		// tagged TagInt, which is what both backends store today (the rendering difference is the
+		// pinned probe_bool_value debt, L11.2), so appending one is answered, not refused.
+		{"xs = [1, \"a\"]\nxs.append(lambda x: x)\nprint(xs)\n", "must carry a tag"},
 
-		// A container inside a container is the nested case: it refuses with the reason the
-		// collector gives (an element handle is never marked), not the mixed-kind message.
-		{"xs = [[1], \"a\"]\nprint(xs)\n", "cannot hold another container"},
+		// The nested container answers when it is *read back* through its own printer; asking it
+		// to be a number is still the tagged-value gap, and the answer is a refusal, not 0.
+		{"xs = [[1, 2], [3]]\nprint(len(xs[0]))\n", "len requires an inline list/dict/set literal"},
+		{"xs = [[1, 2], [3]]\nprint(1 in xs[0])\n", "needs a single static kind"},
+		{"xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 	} {
 		_, err := Compile(tc.src)
 		if err == nil {

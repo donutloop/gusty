@@ -1414,11 +1414,9 @@ A dict or set of a single kind is unaffected: it builds through the plain runtim
 through the static printers, and sets no "my slots describe themselves" bit on the object.
 
 What a mixed container may hold is decided by what a tag can honestly describe — integers,
-interned strings, `None`, floats, and bools (stored as the number both backends store them as). A
-container inside a container reports (the collector
-cannot yet mark an element), and a needle whose kind the compiler cannot prove reports *when the
-container mixes* — `1 in s` where `s` is `{1, 'a'}` and the needle is a call whose return kind
-nobody knows.
+interned strings, `None`, floats, bools (stored as the number both backends store them as), and
+another container. A needle whose kind the compiler cannot prove reports *when the container mixes*
+— `1 in s` where `s` is `{1, 'a'}` and the needle is a call whose return kind nobody knows.
 
 A **float** in a slot is the handle of a *float box* (ADR 0238): a slot is one `i32` word and a
 double does not fit in one, so the bits live beside the heap and the tag says the payload is a box.
@@ -1457,10 +1455,36 @@ print(d["a"])   # KeyError, on both backends and on CPython — used to print `o
 The same rule covers `"a" in s`, `1 in ["a"]`, and the `KeyError` a missing `d[k]` raises
 (ADR 0189 wrote the tags; ADR 0232 made the runtime read them).
 
-A container **inside** a container (`[[1], "a"]`, `[["a"], ["b"]]`, `xs.append(other_list)`)
-reports rather than runs: the collector marks containers held by a variable (ADR 0181), and an
-element that is a handle has no variable to be marked from. Printing one used to print the
-interned indices of its inner strings as numbers (ADR 0188).
+A container **inside** a container is the same trick one level down (ADR 0239): the slot holds the
+inner object's handle and its tag says `TagList`/`TagDict`/`TagSet`, so the *object* — not the
+builder that saw a literal — decides how it prints (`rt_print_container_value` asks the inner
+object's kind and hands it to the printer that reads its own tags) and how it compares (a
+container pair goes to `rt_container_eq`, which compares slots with the one payload rule above).
+Nothing new is stored: a handle is still one `i32`, and the collector already marks every element
+word of a marked object.
+
+```gy
+print([[1, 2], [3, 4]])                    # [[1, 2], [3, 4]] — used to report; a mixed one used to
+                                           # print the interned indices of its inner strings
+print([[1, "a"], [2, "b"]])                # text stays text inside a container
+print([[1, 2]] == [[1, 2]])                # 1 — two literals build two objects; content decides
+print(1 if [1, 2] in [[1, 2], 3] else 0)   # 1 — a container needle is matched by content
+print({"a": [1, 2], 1: {2, 3}})            # {'a': [1, 2], 1: {2, 3}}
+print([[1, 2], [3, 4]][0])                 # [1, 2]
+for row in [[1, 2], [3, 4]]:
+    print(row)                             # [1, 2] then [3, 4] — a loop variable carries its tag
+xs = [[1], [2]]
+xs.append([9])
+xs[0] = [7]
+print(xs)                                  # [[7], [2], [9]]
+```
+
+What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
+raises `unhashable type: 'list'`, and this backend has no hashing rule for a handle), and *reading*
+a tagged element into a numeric or indexing position — `xs[0] + 1`, `len(m[0])`, `m[0][1]` — which
+needs a read that returns a usable `(payload, tag)` pair (roadmap L11.1). A fold (`sum`, `min`,
+`max`) over container elements reports too, rather than reaching for the elements' addresses the
+way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
 value that *is* a tag: a compiled float still has no word to hold it (L11.6), a bool still prints

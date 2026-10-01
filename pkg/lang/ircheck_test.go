@@ -504,22 +504,38 @@ func TestIRSumMinMaxAbs(t *testing.T) {
 		t.Fatalf("sum IR missing add:\n%s", res.IR)
 	}
 
-	// min: icmp slt + select fold.
+	// min: a list whose elements are all literals is the constant the winner denotes — comparing
+	// them at run time would be work the compiler already did. The compare IR belongs to the call
+	// with an element the compiler cannot see, which is the shape that still needs icmp + select.
 	res, err = Compile("min([3, 1, 2])")
 	if err != nil {
 		t.Fatalf("compile min: %v", err)
 	}
+	if strings.Contains(res.IR, "icmp slt") {
+		t.Fatalf("a fully-literal min should fold to its winner, got:\n%s", res.IR)
+	}
+	res, err = Compile("x = 3\nprint(min([x, 1]))")
+	if err != nil {
+		t.Fatalf("compile min with a runtime element: %v", err)
+	}
 	if !strings.Contains(res.IR, "icmp slt") || !strings.Contains(res.IR, "select i1") {
-		t.Fatalf("min IR missing icmp/select:\n%s", res.IR)
+		t.Fatalf("min with a runtime element missing icmp/select:\n%s", res.IR)
 	}
 
-	// max: icmp sgt + select fold.
+	// max: same pair — a literal list folds, a runtime element compares.
 	res, err = Compile("max([3, 1, 2])")
 	if err != nil {
 		t.Fatalf("compile max: %v", err)
 	}
+	if strings.Contains(res.IR, "icmp sgt") {
+		t.Fatalf("a fully-literal max should fold to its winner, got:\n%s", res.IR)
+	}
+	res, err = Compile("x = 3\nprint(max([x, 1]))")
+	if err != nil {
+		t.Fatalf("compile max with a runtime element: %v", err)
+	}
 	if !strings.Contains(res.IR, "icmp sgt") || !strings.Contains(res.IR, "select i1") {
-		t.Fatalf("max IR missing icmp/select:\n%s", res.IR)
+		t.Fatalf("max with a runtime element missing icmp/select:\n%s", res.IR)
 	}
 
 	// abs of a negative literal is constant-folded to the positive value.
@@ -1268,14 +1284,22 @@ func TestIRListCallConsumers(t *testing.T) {
 		t.Fatalf("sum(reversed([3,1,2])) should add 3+1, got:\n%s", ir)
 	}
 
-	// min/max over sorted/reversed select the underlying extrema.
+	// min/max over sorted/reversed are the extrema of the same elements, so a literal list folds to
+	// the constant they name — the compare would be the compiler recomputing what it already know.
+	// The answers are pinned by name in the integration conformance table; here the shape is that no
+	// compare survives (Gap R.71 keeps the case where an element is not a literal).
 	ir = llcCompiles(t, `print(min(sorted([3, 1, 2])))`)
-	if !strings.Contains(ir, "icmp slt") {
-		t.Fatalf("min(sorted([3,1,2])) should compare, got:\n%s", ir)
+	if strings.Contains(ir, "icmp slt") {
+		t.Fatalf("min(sorted([3,1,2])) should fold to its winner, got:\n%s", ir)
 	}
 	ir = llcCompiles(t, `print(max(reversed([3, 1, 2])))`)
-	if !strings.Contains(ir, "icmp sgt") {
-		t.Fatalf("max(reversed([3,1,2])) should compare, got:\n%s", ir)
+	if strings.Contains(ir, "icmp sgt") {
+		t.Fatalf("max(reversed([3,1,2])) should fold to its winner, got:\n%s", ir)
+	}
+	// And with an element the compiler cannot see, the compare is the code that answers.
+	ir = llcCompiles(t, "n = 3\nprint(min(sorted([n, 1])))")
+	if !strings.Contains(ir, "icmp slt") {
+		t.Fatalf("min(sorted([n,1])) with a runtime element should compare, got:\n%s", ir)
 	}
 
 	// any/all over sorted/reversed widen the boolean accumulator to i32.

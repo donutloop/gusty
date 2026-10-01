@@ -1125,13 +1125,28 @@ entry:
   br i1 %sameTag, label %same, label %mixed
 same:
   %isFloat = icmp eq i32 %ta, 1
-  br i1 %isFloat, label %floats, label %payloads
+  br i1 %isFloat, label %floats, label %chkContainer
 floats:
   %fa = call double @rt_float_of(i32 %a)
   %fb = call double @rt_float_of(i32 %b)
   %feq = fcmp oeq double %fa, %fb
   %fr = zext i1 %feq to i32
   ret i32 %fr
+chkContainer:
+  ; Two slots that both hold a container are equal when their *contents* are, which is
+  ; rt_container_eq's question — the payload alone would answer it with two addresses, and
+  ; [[1, 2]] == [[1, 2]] would be False for two literals that build two objects
+  ; (roadmap L11.1, ADR 0189). rt_container_eq compares slots with rt_slot_eq, which calls
+  ; back into this function, so the comparison recurses to any depth.
+  %isList = icmp eq i32 %ta, 5
+  %isDict = icmp eq i32 %ta, 6
+  %isSet = icmp eq i32 %ta, 7
+  %c1 = or i1 %isList, %isDict
+  %c2 = or i1 %c1, %isSet
+  br i1 %c2, label %containers, label %payloads
+containers:
+  %ce = call i32 @rt_container_eq(i32 %a, i32 %b)
+  ret i32 %ce
 payloads:
   %peq = icmp eq i32 %a, %b
   %pr = zext i1 %peq to i32
@@ -1295,6 +1310,40 @@ no:
   ret i32 0
 }
 
+; rt_print_container_value renders a container that some other container's slot holds. The slot's
+; tag says list, dict or set; only the object's own record says how its elements are stored — plain
+; numbers, interned text, or per-element tags — so that choice is made at run time from @heap's kind
+; and @estr's element bits instead of from what the builder happened to know. Guessing it statically
+; is how a nested list of text came to print its interned indexes (roadmap L11.1).
+define internal void @rt_print_container_value(i32 %h, i32 %quote) {
+entry:
+  %o = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
+  %kp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %o, i32 0, i32 0
+  %kind = load i32, i32* %kp
+  %isList = icmp eq i32 %kind, 1
+  br i1 %isList, label %list, label %chkDict
+list:
+  ; Each container printer asks its own object how its elements are stored — plain numbers,
+  ; interned text, or per-slot tags — so the delegate is chosen by kind here and by the object
+  ; there, never by a guess in this scope (roadmap Gap J.5, L11.1).
+  call void @rt_print_list(i32 %h, i32 0)
+  ret void
+chkDict:
+  %isDict = icmp eq i32 %kind, 2
+  br i1 %isDict, label %dict, label %chkSet
+dict:
+  call void @rt_dict_print(i32 %h, i32 0)
+  ret void
+chkSet:
+  %isSet = icmp eq i32 %kind, 3
+  br i1 %isSet, label %set, label %nothing
+set:
+  call void @rt_set_print(i32 %h, i32 0)
+  ret void
+nothing:
+  ret void
+}
+
 ; rt_print_mixed_value renders one element by its tag, using the same three texts the
 ; interpreter's Repr produces: numbers with %d, interned strings through the repr slot
 ; (Python quotes elements inside a container), and the None singleton as "None".
@@ -1328,11 +1377,26 @@ checkFloat:
   ; Python's 1.0 rather than printf's 1. Inside a container Python shows repr(), which for a
   ; float is its str() — the same call, not a second formatter (roadmap L11.1, ADR 0233).
   %isFloat = icmp eq i32 %t, 1
-  br i1 %isFloat, label %flt, label %num
+  br i1 %isFloat, label %flt, label %checkContainer
 flt:
   %d = call double @rt_float_of(i32 %v)
   %fp = call i8* @rt_fmt_double(double %d)
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %fp)
+  ret void
+checkContainer:
+  ; A slot that names another container is rendered by that container's own printer, chosen at
+  ; run time from its record rather than from what the builder knew — the tag says list, only
+  ; the object says whether its elements are numbers, text, or tagged (roadmap L11.1).
+  %isList = icmp eq i32 %t, 5
+  br i1 %isList, label %cont, label %checkDict
+checkDict:
+  %isDict = icmp eq i32 %t, 6
+  br i1 %isDict, label %cont, label %checkSet
+checkSet:
+  %isSet = icmp eq i32 %t, 7
+  br i1 %isSet, label %cont, label %num
+cont:
+  call void @rt_print_container_value(i32 %v, i32 %quote)
   ret void
 num:
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
@@ -1470,13 +1534,27 @@ entry:
   ; and the caller's scope has no idea what the callee stored (Gap J.5).
   %fsp = getelementptr [1024 x i32], [1024 x i32]* @estr, i32 0, i32 %h
   %flags = load i32, i32* %fsp
+  ; bit 8 says the slots describe themselves: a list that mixes kinds, or whose elements are
+  ; handles into other containers, has no single kind to report, so it prints element by element
+  ; (roadmap L11.1 (1b), ADR 0232). Without this arm a nested list is a handle printed as a number
+  ; when the printer was chosen by kind from outside — which is how an inner list reached through
+  ; rt_print_container_value used to answer [5].
+  %mixedBit = and i32 %flags, 8
+  %isMixed = icmp ne i32 %mixedBit, 0
+  br i1 %isMixed, label %mixed, label %notMixed
+mixed:
+  call void @rt_print_list_mixed(i32 %h, i32 %nl)
+  ret void
+notMixed:
   %eb = and i32 %flags, 1
   %isStr = icmp ne i32 %eb, 0
   %istr = zext i1 %isStr to i32
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
   br label %loop
 loop:
-  %i = phi i32 [ 0, %entry ], [ %i1, %cont ]
+  ; The predecessor is notMixed, not entry: a phi names the blocks that actually branch to it,
+  ; and the tag dispatch above sits in between (llc calls a wrong one a malformed PHI).
+  %i = phi i32 [ 0, %notMixed ], [ %i1, %cont ]
   %c = icmp slt i32 %i, %len
   br i1 %c, label %body, label %done
 body:
@@ -5452,6 +5530,15 @@ func (g *irGen) isFloat(e Expr) bool {
 					return true
 				}
 				if id.Value == "abs" || id.Value == "min" || id.Value == "max" {
+					// min/max return the element they choose, so the answer is a float when the
+					// *winner* is; the others ask whether any operand is (ADR 0221).
+					if (id.Value == "min" || id.Value == "max") && len(n.Args) == 1 {
+						if lst, isLit := n.Args[0].(*ListLit); isLit {
+							if isF, known := g.minMaxReturnsFloat(lst.Elems, id.Value == "min"); known {
+								return isF
+							}
+						}
+					}
 					for _, a := range n.Args {
 						if g.isFloatNumericOperand(a) {
 							return true
@@ -5473,6 +5560,51 @@ func (g *irGen) isFloat(e Expr) bool {
 		return false
 	}
 	return false
+}
+
+// numericFoldElems answers a min/max/sum argument's elements as numbers the compiler can hold,
+// and says which of them are floats. It is the question min/max must ask twice over: Python returns
+// the *element*, so the answer's type is the winner's own type — max([1, 2.5]) is the float 2.5 and
+// min([2.5, 1]) is the integer 1, printed 2.5 and 1. Comparing them in the i32 domain truncated the
+// float first, which answered max([1, 2.5]) as 2 (roadmap L11.1). ok is false when some element is
+// computed at runtime, because then no static winner exists.
+func (g *irGen) numericFoldElems(elems []Expr) (vals []float64, isFloatElem []bool, ok bool) {
+	vals = make([]float64, 0, len(elems))
+	isFloatElem = make([]bool, 0, len(elems))
+	for _, el := range elems {
+		if fv, isF := g.floatEval(el); isF {
+			vals = append(vals, fv)
+			isFloatElem = append(isFloatElem, true)
+			continue
+		}
+		if il, isI := el.(*IntLit); isI {
+			vals = append(vals, float64(il.Value))
+			isFloatElem = append(isFloatElem, false)
+			continue
+		}
+		return nil, nil, false
+	}
+	return vals, isFloatElem, true
+}
+
+// minMaxReturnsFloat answers whether min/max of these elements denotes a float — which is a question
+// about the *winning* element, not about whether any element is a float. When the winner is an
+// integer, printing the call must print an integer: CPython's min([2.5, 1]) is 1, not 1.0.
+func (g *irGen) minMaxReturnsFloat(elems []Expr, wantMin bool) (bool, bool) {
+	vals, floats, ok := g.numericFoldElems(elems)
+	if !ok || len(vals) == 0 {
+		return false, false
+	}
+	best := 0
+	for i := 1; i < len(vals); i++ {
+		if wantMin && vals[i] < vals[best] {
+			best = i
+		}
+		if !wantMin && vals[i] > vals[best] {
+			best = i
+		}
+	}
+	return floats[best], true
 }
 
 // isFloatNumericOperand is the question the numeric folds ask, which isFloat no longer answers
@@ -5897,6 +6029,15 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 					for _, elem := range lst.Elems {
 						fv, ok2 := g.floatEval(elem)
 						if !ok2 {
+							// An integer element of a sum that also holds a float is still a
+							// number. Refusing to lift it sent the whole call through the i32
+							// path, where 2.5 became 2: print(sum([1, 2.5])) answered 3.0 against
+							// CPython's 3.5 (roadmap L11.1).
+							if il, isInt := elem.(*IntLit); isInt {
+								fv, ok2 = float64(il.Value), true
+							}
+						}
+						if !ok2 {
 							okAll = false
 							break
 						}
@@ -5917,6 +6058,12 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 					for _, elem := range elems {
 						fv, ok2 := g.floatEval(elem)
 						if !ok2 {
+							// The same lift as sum's: max([1, 2.5]) is 2.5, not 2.
+							if il, isInt := elem.(*IntLit); isInt {
+								fv, ok2 = float64(il.Value), true
+							}
+						}
+						if !ok2 {
 							okAll = false
 							break
 						}
@@ -5934,6 +6081,23 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 						}
 						t := g.newTmp()
 						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(bestf))
+						return t
+					}
+					// The elements fold to numbers even when not every one of them is a float
+					// literal; the winner decides, and an integer winner is the i32 path's to
+					// answer (roadmap L11.1).
+					if vals, floats, foldable := g.numericFoldElems(lst.Elems); foldable && len(vals) > 0 {
+						best := 0
+						for i := 1; i < len(vals); i++ {
+							if (id.Value == "min" && vals[i] < vals[best]) || (id.Value == "max" && vals[i] > vals[best]) {
+								best = i
+							}
+						}
+						if !floats[best] {
+							return ""
+						}
+						t := g.newTmp()
+						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(vals[best]))
 						return t
 					}
 				}
@@ -6390,7 +6554,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		// An entry whose key or value is a float or None has a payload the dict's compiled kinds
 		// cannot render — a box handle and nothing — so the dict stops claiming them, the same move
 		// ADR 0232 made for an entry that mixes numbers with text (roadmap L11.1, ADR 0233).
-		if !g.mixedDicts[nm.Value] && (kt == int32(TagFloat) || kt == int32(TagNone) || vt == int32(TagFloat) || vt == int32(TagNone)) {
+		if !g.mixedDicts[nm.Value] && (slotTagSelfDescribing(kt) || slotTagSelfDescribing(vt)) {
 			if g.promoteMixed(b, h, nm.Value, "dict value", val, ix.Idx) {
 				g.floatFmtUsed = g.floatFmtUsed || kt == int32(TagFloat) || vt == int32(TagFloat)
 			}
@@ -7318,12 +7482,38 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// whose layout is a length plus an array: `rt_contains(i32 @.set1, i32 2)` is a global
 			// in an i32 slot, the module llc refuses, so it is materialised into the heap first
 			// (ADR 0166's rule one construct on; roadmap Gap J.2, ADR 0234).
-			if _, isComp := n.R.(*Comp); isComp {
+			if _, isComp := n.R.(*Comp); isComp || g.isContainerExpr(n.R) {
 				ch, chErr := g.containerOperand(b, n.R)
 				if chErr != nil {
 					return "", chErr
 				}
 				r = ch
+			}
+			// A needle that is itself a container is built as an object and matched by the tagged
+			// slot rule. Two reasons, both measured: the constant path hands back a folded global
+			// whose layout is a length plus an array, which llc refuses in an i32 parameter; and an
+			// untagged i32 compare of two slots against a handle would never notice that two
+			// literals holding the same elements denote the same value, so [1, 2] in [[1, 2], 3]
+			// would answer False forever (roadmap L11.1, ADR 0189).
+			if g.isContainerExpr(n.L) {
+				nh, nErr := g.containerOperand(b, n.L)
+				if nErr != nil {
+					return "", nErr
+				}
+				l = nh
+				nt, _ := g.elemKindTag(n.L)
+				t := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains_tagged(i32 %s, i32 %s, i32 %d)\n", t, r, l, nt))
+				bt := g.newTmp()
+				b.WriteString(fmt.Sprintf("\t%s = icmp ne i32 %s, 0\n", bt, t))
+				g.markI1(bt)
+				if n.Op == "not in" {
+					inv := g.newTmp()
+					b.WriteString(fmt.Sprintf("\t%s = xor i1 %s, true\n", inv, bt))
+					g.markI1(inv)
+					return g.asBoolI32(b, inv), nil
+				}
+				return g.asBoolI32(b, bt), nil
 			}
 			t := g.newTmp()
 			b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains(i32 %s, i32 %s)\n", t, r, l))
@@ -8060,7 +8250,7 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		elemExprs = []Expr{c.Elems[0]}
 	}
 	for _, el := range elemExprs {
-		if g.nestedContainerElem(el) {
+		if g.nestedContainerElem(el) && !g.taggableNestedElem(el) {
 			return "", nestedContainerErr(el)
 		}
 	}
@@ -8276,7 +8466,7 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 	if len(c.Elems) != 1 {
 		return "", fmt.Errorf("codegen: a runtime comprehension builds one element at a time (roadmap L11.1)")
 	}
-	if g.nestedContainerElem(c.Elems[0]) {
+	if g.nestedContainerElem(c.Elems[0]) && !g.taggableNestedElem(c.Elems[0]) {
 		return "", fmt.Errorf("codegen: %s", nestedContainerErr(c.Elems[0]).Error())
 	}
 	lv := loopVarName(c.ForVar)
@@ -9002,7 +9192,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// so the set stops claiming one — the same promotion an appended element gets
 				// (roadmap L11.1, ADR 0233).
 				if !g.mixedSets[nm.Value] {
-					if mt, mok := g.elemKindTag(c.Args[0]); mok && (mt == int32(TagFloat) || mt == int32(TagNone)) {
+					if mt, mok := g.elemKindTag(c.Args[0]); mok && slotTagSelfDescribing(mt) {
 						if g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "set", c.Args[0]) {
 							g.floatFmtUsed = g.floatFmtUsed || mt == int32(TagFloat)
 						}
@@ -9161,7 +9351,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// printer shows 1 where Python shows 1.5. The slots already carry tags, so the honest
 			// move is the one ADR 0232 made for strings — stop claiming a kind (roadmap L11.1, ADR 0233).
 			if !g.mixedLists[nm.Value] {
-				if t, ok := g.elemKindTag(c.Args[0]); ok && (t == int32(TagFloat) || t == int32(TagNone)) {
+				if t, ok := g.elemKindTag(c.Args[0]); ok && slotTagSelfDescribing(t) {
 					if g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "list", c.Args[0]) {
 						g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
 					}
@@ -10147,12 +10337,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// A loop variable unrolled from an inline list literal carries the tag its element was
 			// built with. Printing the i32 alone showed a float box's handle and None's zero where
 			// Python shows 1.5 and None; the tag travels with the element, and rt_print_mixed_value
-			// is the one place that knows how to read it. Only the two tags nothing else can render
+			// is the one place that knows how to read it. Only the tags nothing else can render
 			// take this branch — an integer and an interned string already have their answers from the
 			// paths above, and routing them here too dragged the string runtime into a module for a
-			// loop over plain numbers (roadmap L11.1, ADR 0233).
+			// loop over plain numbers. A container element is a handle, and printing it without its
+			// tag is how `for row in [[1, 2], [3, 4]]` printed 0 and 1 (roadmap L11.1, ADR 0233).
 			if nm, ok := a.(*Name); ok && g.loopElemTag != nil && !g.listVars[nm.Value] && !g.taggedVars[nm.Value] {
-				if tg, has := g.loopElemTag[nm.Value]; has && (tg == int32(TagFloat) || tg == int32(TagNone)) {
+				if tg, has := g.loopElemTag[nm.Value]; has && (tg == int32(TagFloat) || tg == int32(TagNone) ||
+					tg == int32(TagList) || tg == int32(TagDict) || tg == int32(TagSet)) {
 					vv := g.newTmp()
 					b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", vv, nm.Value))
 					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %d, i32 0)\n", vv, tg))
@@ -10187,6 +10379,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					// empty set has no literal spelling at all — so the constructor has to reach the
 					// printer too, not just the literal (Gap K.3).
 					a = lit
+				}
+				// print(xs[i]) with both parts literal folds to the element itself, and this branch
+				// has to see that element: a folded container element that reaches the number path
+				// emits printf("%d", i32 @.lst1), which llc refuses outright — the compiler rejecting
+				// its own module for an ordinary program (roadmap L11.1, ADR 0166).
+				if ix, isIx := a.(*Index); isIx {
+					if base, isLit := ix.Obj.(*ListLit); isLit {
+						if k, isConst := g.foldConstInt(ix.Idx); isConst && k >= 0 && k < int64(len(base.Elems)) {
+							a = base.Elems[k]
+						}
+					}
 				}
 				if isContainerLiteral(a) {
 					if _, isLL := a.(*ListLit); isLL && (literalMixedKinds(a) || literalNeedsTags(a)) && g.taggableMixedList(a.(*ListLit)) {
@@ -10456,6 +10659,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		default:
 			return "", fmt.Errorf("any/all need a list literal")
 		}
+		for _, elem := range elems {
+			if isContainerLiteral(elem) {
+				// The fold would test the element's compile-time global for truth, which is a
+				// global in an i32 slot: llc refuses it, and the exit-code contract calls that a
+				// compiler bug for an ordinary program (ADR 0166). The interpreter, whose elements
+				// are boxed values, answers `any([[1], [2]])` (roadmap L11.1).
+				return "", fmt.Errorf("%s asks each element whether it is truthy, and %s is a container the compiled fold has no word for; the interpreter answers this program (roadmap L11.1)", fnName, exprSnippet(elem))
+			}
+		}
 		if len(elems) == 0 {
 			if anyMode {
 				return "0", nil
@@ -10544,14 +10756,37 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// sum([]) folds to 0, matching the interpreter.
 			return "0", nil
 		}
+		for _, elem := range elems {
+			if isContainerLiteral(elem) {
+				// The fold would add the element's globals; Python answers this program with
+				// `unsupported operand type(s) for +: 'int' and 'list'`, and this backend has no
+				// operator dispatch to raise either, so the honest answer is the refusal
+				// (roadmap L11.1, ADR 0166).
+				return "", fmt.Errorf("sum adds numbers, and %s is a container: there is no numeric answer to give (Python raises TypeError for this program)", exprSnippet(elem))
+			}
+		}
 		anyFloat := false
 		fvals := make([]float64, 0, len(elems))
 		for _, elem := range elems {
+			// An element is asked what it adds. Text adds nothing here: Python raises
+			// `unsupported operand type(s) for +: 'int' and 'str'`, and this fold answering 0
+			// for sum(["a"]) is a number nobody asked for (roadmap L11.1, ADR 0166).
+			if isStringExpr(elem) || g.printsAsInternedStr(elem) {
+				return "", fmt.Errorf("sum adds numbers, and %s is text: Python raises TypeError for this program, and the compiled fold has no number to answer with (roadmap L11.1)", exprSnippet(elem))
+			}
 			if g.isFloat(elem) {
 				anyFloat = true
 			}
 			if fv, ok := g.floatEval(elem); ok {
 				fvals = append(fvals, fv)
+				continue
+			}
+			// An integer element of a sum that also holds a float contributes its value. The
+			// fold used to collect only the float elements and then, finding the list "not all
+			// float", added everything in the i32 domain — so sum([1, 2.5]) printed 3.0, the
+			// 2.5 truncated on the way through the integer path (roadmap L11.1).
+			if il, ok := elem.(*IntLit); ok {
+				fvals = append(fvals, float64(il.Value))
 			}
 		}
 		if anyFloat {
@@ -10564,6 +10799,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(total))
 				return t, nil
 			}
+			// Some element is computed at runtime and the answer is a float: there is no i32
+			// answer to fall back to, and truncating each element on the way through one is
+			// the wrong answer this fold used to give (roadmap L11.7, ADR 0192).
+			return "", fmt.Errorf("sum of a list whose elements are computed at runtime, with a float among them, needs a runtime reduction (roadmap L11.7)")
 		}
 
 		acc, err := g.value(b, elems[0])
@@ -10636,6 +10875,35 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		if len(elems) == 0 {
 			return "", fmt.Errorf("%s of an empty list", fnName)
+		}
+		for _, elem := range elems {
+			if isContainerLiteral(elem) {
+				// The fold compares the elements with icmp on i32, and an element that is a
+				// container is a compile-time global there — a global in an i32 slot, which llc
+				// refuses, and the exit-code contract counts as a compiler bug for an ordinary
+				// program (ADR 0166). Python compares lists element by element and answers this;
+				// the interpreter, whose elements are boxed, agrees with it (roadmap L11.1).
+				return "", fmt.Errorf("%s compares its elements, and %s is a container: the compiled fold has no word for comparing two containers, so it would compare globals (the interpreter answers this program; roadmap L11.1)", fnName, exprSnippet(elem))
+			}
+		}
+		// When every element is a number the compiler can hold, the winner is decided here and
+		// the answer is that element's own text. Comparing the i32 payloads instead truncated a
+		// float on the way past g.value, so max([1, 2.5]) answered 2 (roadmap L11.1).
+		if vals, floats, foldable := g.numericFoldElems(elems); foldable && len(vals) > 0 {
+			best := 0
+			for i := 1; i < len(vals); i++ {
+				if (fnName == "min" && vals[i] < vals[best]) || (fnName == "max" && vals[i] > vals[best]) {
+					best = i
+				}
+			}
+			if floats[best] {
+				// The winner is a float, so this is the wrong domain to be asked in: the caller
+				// that prints or binds the value asks g.isFloat first, and that question answers
+				// yes for exactly this shape. Reaching here means the two rules disagreed, and a
+				// truncated integer is what the disagreement used to produce.
+				return "", fmt.Errorf("%s of these elements is the float %s, which the integer fold cannot return; the float path answers this program (roadmap L11.1)", fnName, floatConst(vals[best]))
+			}
+			return fmt.Sprintf("%d", int64(vals[best])), nil
 		}
 		best, err := g.value(b, elems[0])
 		if err != nil {
@@ -13502,6 +13770,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					iterKind = "list"
 				}
 			}
+		} else if sl, ok := n.Iter.(*SetLit); ok {
+			// `for v in {1, 2}` is a container the program wrote where a variable would stand: it is
+			// built as an object and walked by the runtime, exactly like the variable form. Falling
+			// through to the range path did two wrong things — it compared the counter against @.set1,
+			// a global in an i32 slot, which llc refuses and the exit-code contract charges the
+			// compiler with (ADR 0166), and it bound the loop variable to the counter, which would
+			// have printed 0, 1 where CPython prints 1, 2 (roadmap L11.1).
+			iterKind = "set"
+			mixedIter = g.taggableMixedSet(sl)
+		} else if dl, ok := n.Iter.(*DictLit); ok {
+			// A dict literal yields its keys, in insertion order, like the dict it is (ADR 0188).
+			iterKind = "dict"
+			mixedIter = g.taggableMixedDict(dl)
 		}
 		if iterKind != "" {
 			// A loop over a container of interned strings binds the loop variable to an
@@ -13525,6 +13806,31 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						g.internedVars[loopVar] = true
 					}
 				}
+			} else if !mixedIter {
+				// The same claim for a literal iterable, asked of its elements: a loop over
+				// {"a", "b"} binds interned text, and printing the loop variable without that
+				// records the interned index instead of the text (Gap I.2).
+				var keys []Expr
+				switch it := n.Iter.(type) {
+				case *SetLit:
+					keys = it.Elems
+				case *DictLit:
+					keys = it.Keys
+				}
+				if keys != nil && len(keys) > 0 {
+					allText := true
+					for _, k := range keys {
+						// isStringExpr because a literal key is text the program wrote, and
+						// printsAsInternedStr because a key expression can hand back an index too.
+						if !isStringExpr(k) && !g.printsAsInternedStr(k) {
+							allText = false
+							break
+						}
+					}
+					if allText {
+						g.internedVars[loopVar] = true
+					}
+				}
 			}
 			lenFn := "rt_list_len"
 			elemStride := 1
@@ -13536,7 +13842,20 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				elemStride = 2 // keys only
 			}
 			if hVal == "" {
-				hv, err := g.value(b, n.Iter)
+				// The iterable is asked for its *handle*. g.value answers a literal with its folded
+				// global, whose layout is a length plus an array, so `for v in {1, 2}` compared the
+				// counter against @.set1 — a global in an i32 slot, which llc refuses and the
+				// exit-code contract then charges the compiler with for an ordinary program (ADR 0166).
+				// A container variable already holds a handle, which is why only the literal leg
+				// broke. Anything the container rule does not cover — a generator call's result is
+				// the live one — already carries a handle from its own lowering (ADR 0192).
+				var hv string
+				var err error
+				if g.isContainerExpr(n.Iter) {
+					hv, err = g.containerOperand(b, n.Iter)
+				} else {
+					hv, err = g.value(b, n.Iter)
+				}
 				if err != nil {
 					return err
 				}

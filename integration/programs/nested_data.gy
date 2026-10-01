@@ -1,0 +1,32 @@
+# Roadmap L11.1 step 2 (ADR 0239): a container whose element is a container. The slot holds the
+# inner object's handle and its tag says which printer and which comparison answer for it, so a
+# nested container is built, printed, compared, searched, appended to and looped over like the
+# interpreter and CPython do. Membership and equality verdicts are reported through `1 if ... else 0`
+# because a bare bool print is the separate pinned difference (probe_bool_value). Reading a nested
+# element back *as a value* (m[0][1], d["a"][1], xs[0] + 1) is still the tagged-value hole and stays
+# in probe_nested_list and probe_heterogeneous.
+m = [[1, 2], [3, 4]]
+print(m)
+print(len(m))
+print(1 if [[1, 2]] == [[1, 2]] else 0)
+print(1 if [[1, 2]] == [[1, 3]] else 0)
+print(1 if [1, 2] in [[1, 2], 3] else 0)
+print([[1, 2], [3, 4]][0])
+xs = [[1, "a"], [None, 2.5]]
+print(xs)
+d = {"a": [1, 2], "b": {"c": 3}}
+print(d)
+print({1: {2, 3}})
+ys = []
+ys.append([7, 8])
+print(ys)
+zs = [1]
+zs.append([2])
+print(zs)
+ws = {"k": 1}
+ws["m"] = [2, 3]
+print(ws)
+for row in [[1, 2], [3, 4]]:
+    print(row)
+print(1 if [1, 2] == [1.0, 2] else 0)
+print(1 if {1, 2} == {2, 1} else 0)

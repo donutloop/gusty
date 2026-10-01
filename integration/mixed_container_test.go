@@ -194,9 +194,13 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 // actually hit, never exit 2 (the compiler rejecting its own module) and never exit 0 with an
 // answer the tag could not justify (ADR 0166's rule, ADR 0232's application of it).
 func TestMixedContainersRefuseWhatNoTagDescribes(t *testing.T) {
+	// The nested shapes this table used to carry are answers now ({1, [1]} and {"a": 1, "b": [1]}
+	// both print correctly, pinned by TestNestedContainersAnswerOnBothBackends). What is left is a
+	// value with no entry in the tag table at all, and the one nested shape with no rule.
 	for _, tc := range []struct{ name, src, want string }{
-		{"container_set_member", "s = {1, [1]}\nprint(s)\n", "container"},
-		{"container_dict_value", "d = {\"a\": 1, \"b\": [1]}\nprint(d)\n", "container"},
+		{"lambda_member", "xs = [1, \"a\"]\nxs.append(lambda x: x)\nprint(xs)\n", "must carry a tag"},
+		{"tuple_member", "xs = [1, \"a\"]\nxs.append((1, 2))\nprint(xs)\n", "must carry a tag"},
+		{"container_dict_key", "print({[1, 2]: 3})\n", "cannot hold"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "mixed.gy", tc.src)

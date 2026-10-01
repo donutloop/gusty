@@ -115,25 +115,41 @@ func runtimeFnBody(ir, header string) string {
 
 // A container inside a container used to be the worst kind of failure: `print([["a"], ["b"]])`
 // compiled, verified, ran, and printed [1, 2] — the interned indices of the inner strings, as
-// numbers. The collector marks containers held by variables (ADR 0181), and an element handle has
-// no variable to be marked from, so the honest answer is a refusal that says why.
-func TestNestedContainersRefuseWithAReason(t *testing.T) {
-	for _, src := range []string{
-		"print([[1], [2]])\n",
-		"print([[\"a\"], [\"b\"]])\n",
-		"xs = [[1, 2], [3]]\nprint(xs)\n",
-		"xs = [{\"a\": 1}]\nprint(xs)\n",
-		"xs = []\nys = [1]\nxs.append(ys)\nprint(xs)\n",
+// numbers, because the printer was chosen from the outer container's one recorded kind. It answers
+// now: the slot carries a tag, the tag routes the print to rt_print_container_value, and that asks
+// the inner object what its own elements are (roadmap L11.1). The old failure modes stay forbidden —
+// a global in a value position, and an answer that is really a handle.
+func TestNestedContainersPrintTheirOwnContents(t *testing.T) {
+	for _, tc := range []struct {
+		src     string
+		printer string
+		want    string
+	}{
+		{"print([[1], [2]])\n", "rt_print_container_value", "[[1], [2]]\n"},
+		{"print([[\"a\"], [\"b\"]])\n", "rt_print_container_value", "[['a'], ['b']]\n"},
+		{"xs = [[1, 2], [3]]\nprint(xs)\n", "rt_print_container_value", "[[1, 2], [3]]\n"},
+		{"xs = [{\"a\": 1}]\nprint(xs)\n", "rt_print_container_value", "[{'a': 1}]\n"},
+		{"xs = []\nys = [1]\nxs.append(ys)\nprint(xs)\n", "rt_print_container_value", "[[1]]\n"},
+		{"print({1: {2, 3}})\n", "rt_print_container_value", "{1: {2, 3}}\n"},
+		{"xs = [1]\nys = [2]\nxs.append(ys)\nprint(xs)\n", "rt_print_container_value", "[1, [2]]\n"},
 	} {
-		_, err := Compile(src)
-		if err == nil {
-			t.Fatalf("%q compiled; a nested container must refuse", src)
+		res, err := Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q refused: %v", tc.src, err)
 		}
-		if !strings.Contains(err.Error(), "cannot hold another container") {
-			t.Errorf("%q refused with %q, want the nested-container reason", src, err.Error())
+		assertNoForbiddenIR(t, tc.src, res.IR)
+		if !strings.Contains(res.IR, "define internal void @"+tc.printer) {
+			t.Errorf("%q never reached the printer that renders a nested container (%s)", tc.src, tc.printer)
 		}
-		if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") {
-			t.Errorf("%q failed as an IR problem instead of a front-end refusal: %v", src, err)
+		if out := runIR(t, res.IR); out != tc.want {
+			t.Errorf("%q AOT printed %q, want %q", tc.src, out, tc.want)
+		}
+		jit, jerr := JIT(tc.src, 0)
+		if jerr != nil {
+			t.Fatalf("%q: JIT: %v", tc.src, jerr)
+		}
+		if jit.Output != tc.want {
+			t.Errorf("%q interpreter printed %q, want %q", tc.src, jit.Output, tc.want)
 		}
 	}
 }

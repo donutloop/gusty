@@ -1,6 +1,8 @@
 # Oracle probe (L11.9, ADR 0186) — a container element may be any value, including
-# a container. The interpreter and CPython agree; the compiled backend refuses the
-# literal because a slot still has to decide one element kind (L11.1).
+# a container. The literal builds, prints, and measures on both backends now (ADR 0238);
+# what the compiled leg still refuses is reading one out again — xs[2][1] asks a container
+# variable for a slot and then asks that slot for a slot, which is the tagged element read
+# roadmap L11.1 still owes. The interpreter and CPython agree on every line.
 xs = [1, "a", [2, 3]]
 print(xs)
 print(len(xs))

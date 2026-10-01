@@ -197,13 +197,15 @@ func TestGrowingAContainerPrintsInsteadOfRefusing(t *testing.T) {
 }
 
 // What the container family still refuses, and why the refusal is the answer rather than a lazy
-// copy of the interpreter: each shape would store a word whose meaning the compiler cannot say
-// afterwards. The wording is checked because these messages are an agent's only input (a float has
-// no word yet — L11.6; a handle in a slot built for a word is unmarked by the collector — L11.1
-// (5); a call returning text on one path and a number on another has no single tag to write).
+// copy of the interpreter: the shape would store a word whose meaning the compiler cannot say
+// afterwards. The wording is checked because these messages are an agent's only input.
+//
+// Two entries this table used to carry are answers now and are pinned as answers elsewhere: a
+// nested dict value ({"a": [1]}) and a set member that is a list — the first because the slot
+// carries the inner container's tag (TestNestedContainersAnswerOnBothBackends, ADR 0238), the
+// second because CPython *raises* for `s.add([2])` (unhashable), so it is not a three-engine row
+// and has no oracle to be pinned against.
 var mixedContainerCases = []string{
-	"print({\"a\": [1]})\n",
-	"s = {1}\ns.add([2])\nprint(s)\n",
 	"def f(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = [f(1), 2]\nprint(xs)\n",
 }
 

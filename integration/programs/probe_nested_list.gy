@@ -1,6 +1,8 @@
-# Oracle probe (L11.9, ADR 0186) — containers nest. The compiled backend has no
-# per-element tag yet, so a list whose element is a list cannot be built, indexed
-# or printed (L11.1 "remaining": nested reads).
+# Oracle probe (L11.9, ADR 0186) — containers nest. A list whose element is a list is now
+# built, printed, compared and grown (roadmap L11.1 step 2, ADR 0238): the slot holds the inner
+# object's handle and its tag routes the printer and rt_container_eq. What the compiled leg still
+# cannot do is read a nested element back as a *value* — m[0][1] and d["a"][1] index a container
+# that lives in a slot, which is the tagged element read L11.1 still owes (its last clause).
 m = [[1, 2], [3, 4]]
 print(m[0][1])
 d = {"a": [1, 2]}

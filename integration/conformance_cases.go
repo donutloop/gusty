@@ -178,6 +178,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// a float appended to an integer list, a float written into a mixed list, and the tags
 		// that let an unrolled loop print the element it was built from (ADR 0238).
 		"float_container_elements",
+		// The same shape one level down, three engines on one source: a list of lists prints,
+		// compares by content, answers `in`, grows with an inner container, and loops over inner
+		// containers — the tag routing the print and the comparison at run time (ADR 0238).
+		"nested_data",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -235,8 +239,8 @@ func conformanceMerged() []lang.ConformanceCase {
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
 		"probe_bool_value",    // L11.2 — bools are not values yet
-		"probe_nested_list",   // L11.1 — containers cannot nest in compiled memory
-		"probe_heterogeneous", // L11.1 — one element kind per compiled container
+		"probe_nested_list",   // L11.1 — a nested element reads back as a value only when indexed twice
+		"probe_heterogeneous", // L11.1 — an element read out of a container variable cannot be re-indexed
 		"probe_tuple",         // L11.3 — no tuple lowering at all
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
@@ -419,11 +423,11 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.2 (bools as values, closes Gap L.2)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n0\n1\n"}, {Backend: "aot", Stdout: "1\n1\n0\n0\n1\n"}}},
 	"programs/probe_nested_list": {oracle: lang.OracleDebt,
-		reason: "the compiled backend cannot nest: m[0][1] refuses with `index requires an inline list/dict/set literal` and xs.append([1,2]) cannot be lowered",
+		reason: "nesting builds, prints, compares and appends now; reading a nested element back as a value is the hole — m[0][1] refuses with `index requires an inline list/dict/set literal`",
 		ref:    "roadmap L11.1 (tagged value word) remaining item (1a)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n2\n1\n7\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_heterogeneous": {oracle: lang.OracleDebt,
-		reason: "a container element that is itself a container is refused: a compiled list still decides one element kind at compile time",
+		reason: "a container inside a container is built, printed and measured now; what the compiled leg cannot do is read one out — xs[2][1] refuses with `index requires an inline list/dict/set literal`",
 		ref:    "roadmap L11.1 (tagged value word) remaining item (1b)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 'a', [2, 3]]\n3\n3\n[1]\n2\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_tuple": {oracle: lang.OracleDebt,

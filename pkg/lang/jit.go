@@ -4183,11 +4183,29 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if !ok || (so.kind != "list" && so.kind != "set") {
 				return 0, &EvalError{Msg: "sum expects a list or set"}
 			}
-			total := int64(0)
+			// An element is asked what it is before it is added. Adding the raw handle was a
+			// silent wrong answer twice over: sum([1.5, 2.5]) added two float-box handles and
+			// printed 562949953421319 where Python prints 4.0, and sum([[1], [2]]) added two list
+			// handles where Python raises TypeError. Both answers now come from the element's own
+			// kind, which is the rule every other numeric builtin already follows (roadmap L11.1).
+			itotal := int64(0)
+			ftotal := 0.0
+			anyFloat := false
 			for _, el := range so.elems {
-				total += el
+				if o, isObj := e.heap[el]; isObj {
+					if o.kind == "float" {
+						ftotal += o.fval
+						anyFloat = true
+						continue
+					}
+					return 0, &EvalError{Msg: fmt.Sprintf("unsupported operand type(s) for +: 'int' and '%s'", o.kind)}
+				}
+				itotal += el
 			}
-			return total, nil
+			if anyFloat {
+				return e.allocFloat(ftotal + float64(itotal)), nil
+			}
+			return itotal, nil
 		case "abs":
 			if len(n.Args) != 1 {
 				return 0, &EvalError{Msg: "abs expects 1 argument"}

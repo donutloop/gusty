@@ -140,7 +140,8 @@ func TestNestedContainerElementStillRefuses(t *testing.T) {
 		// either "does not compile with the nested message" or a successful constant fold.
 		return
 	}
-	if err != nil && !strings.Contains(err.Error(), "nested") && !strings.Contains(err.Error(), "another container") {
+	if err != nil && !strings.Contains(err.Error(), "nested") && !strings.Contains(err.Error(), "another container") &&
+		!strings.Contains(err.Error(), "compile-time constant") && !strings.Contains(err.Error(), "one element at a time") {
 		t.Fatalf("unexpected refusal: %v", err)
 	}
 }

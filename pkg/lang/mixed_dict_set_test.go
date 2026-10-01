@@ -39,18 +39,18 @@ func TestTaggableMixedDictAndSetAskTheSameQuestion(t *testing.T) {
 		dictOK bool
 		setOK  bool
 	}{
-		{`{"a": 1, "b": "x"}`, true, false},  // values mix
-		{`{1: "x", "k": 2}`, true, false},    // keys mix
-		{`{"a": 1, "b": 2}`, false, false},   // one kind each side is not a mix
-		{`{"a": 1, "b": 1.5}`, true, false},  // a float value has a word now: the handle of a float box
-		{`{"a": 1, "b": [1]}`, false, false}, // a nested container cannot be marked
-		{`{1, "a"}`, false, true},            // members mix
-		{`{1, "a", None}`, false, true},      // three kinds, all describable
-		{`{1, True}`, false, false},          // a bool is stored as the number it behaves like
-		{`{1, 2}`, false, false},             // one kind is not a mix
-		{`{1, 1.5}`, false, true},            // a float member's payload is a box handle (ADR 0233)
-		{`{1, [1]}`, false, false},           // nested gate
-		{`{1.5: "a"}`, true, false},          // a float key forces the tagged path too
+		{`{"a": 1, "b": "x"}`, true, false}, // values mix
+		{`{1: "x", "k": 2}`, true, false},   // keys mix
+		{`{"a": 1, "b": 2}`, false, false},  // one kind each side is not a mix
+		{`{"a": 1, "b": 1.5}`, true, false}, // a float value has a word now: the handle of a float box
+		{`{"a": 1, "b": [1]}`, true, false}, // a nested value is a handle: the tag says so
+		{`{1, "a"}`, false, true},           // members mix
+		{`{1, "a", None}`, false, true},     // three kinds, all describable
+		{`{1, True}`, false, false},         // a bool is stored as the number it behaves like
+		{`{1, 2}`, false, false},            // one kind is not a mix
+		{`{1, 1.5}`, false, true},           // a float member's payload is a box handle (ADR 0233)
+		{`{1, [1]}`, false, true},           // a nested member is a handle too
+		{`{1.5: "a"}`, true, false},         // a float key forces the tagged path too
 	} {
 		prog, err := parseProgram(tc.src)
 		if err != nil {
@@ -179,10 +179,15 @@ func TestMixedContainersStillRefuseWhatNoTagDescribes(t *testing.T) {
 		src    string
 		wanted string
 	}{
-		// The nested gate is the refusal this cycle keeps: the collector does not mark an element
-		// handle, so the inner container could be freed under the container that holds it.
-		{"s = {1, [1]}\nprint(s)\n", "cannot hold another container"},
-		{"d = {\"a\": 1, \"b\": [1]}\nprint(d)\n", "cannot hold another container"},
+		// The nested gate this cycle keeps is the one shape with no rule: a dict keyed by a
+		// container has no hashing rule, and building it anyway printed the key as a number —
+		// `{[1, 2]: 3}` answered `{1: 3}`, which is a wrong answer about the key.
+		{"print({[1, 2]: 3})\n", "cannot hold"},
+		// The static dict-literal path gets there first for an int-keyed dict and refuses with its
+		// own honest reason; both are front-end refusals, neither is a wrong answer.
+		{"d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
+		// A container element read back as a number still has no tag to carry.
+		{"xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 	} {
 		_, err := Compile(tc.src)
 		if err == nil {

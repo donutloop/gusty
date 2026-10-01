@@ -4879,3 +4879,62 @@ here: this is driver tooling, so it carries its own unit tests, its README, and 
 compiler alone. The loop contract's "machine consumption path" clause applies to the tool as much as to
 the language, which is why `--describe`/`--help`/`--dry-run` and the exit codes are part of the change
 rather than a follow-up.
+
+## A container element is a handle, and the tag — not the builder — runs the print (L11.1 step 2, ADR 0239)
+
+**What the gate claimed versus what was behind it.** `elemKindTag` refused a container element
+because "the collector cannot mark an element that is a handle". `rt_gc` marks *every element word of
+every marked object* and re-walks to a fixed point, so the reason had gone stale — and the refusal was
+hiding a wrong answer, not preventing one: `[[1, "a"]]` compiled, verified, exited 0 and printed
+`[['b', 'a']]`, the inner string indices read as text-slot indexes by the wrong printer. The first
+move in any stale-gate cleanup is to run the refused program and read what it actually does.
+
+**Who chooses the printer is the whole bug.** A container has no element kind — `[[1,"a"],[2,"b"]]`
+has an int row and a text row — so any *static* choice is a guess, and a guess in this runtime selects
+a printer that reads a different table. `rt_print_list` was the one printer without the `@estr` bit-8
+self-dispatch `rt_dict_print` and `rt_set_print` already had; adding it, and routing a tagged
+container slot through one `rt_print_container_value(h, quote)` that reads the inner object's `@heap`
+kind, moved the decision to the only party that knows the answer.
+
+**Two builders, one truth.** `xs.append(ys)` printed `[1, 1]` for `[1, [2]]`: `elemTagFor` asked
+`literalNeedsTags` (a copy of the predicate) while `elemKindTag` (the authoritative table) answered
+`-1` and the append fell back to `TagInt`. A tag question must be answered by the table, never by a
+second implementation of it — `elemTagFor` now delegates to `elemKindTag`, exactly the rule ADR 0232
+wrote for payloads.
+
+**A phi names the blocks that branch to it.** Giving `rt_print_list` the bit-8 branch changed its
+`loop` predecessor from `%entry` to `%notMixed`, and llc said `PHI node entries do not match
+predecessors!` — the textual emitter has no verifier until `llc` runs, so a restructured runtime
+block is a two-place edit (branch *and* phi), and the failure arrives as exit 2, the compiler blamed
+for an ordinary program (ADR 0166).
+
+**Admitting a shape moves the exit-2 boundary to the folds.** With nested elements allowed, `sum`,
+`any`/`all`, `min`/`max` began folding `@.lst1` straight into `add`/`icmp` operands — modules llc
+refused, for programs CPython answers with a `TypeError`. A fold is only allowed to reach for
+operands it can name: check the elements, refuse with the element named, and never let a handle
+become a number because no one asked.
+
+**Python returns the *element*, so the winner's type is the answer.** `min`/`max` widened when *any*
+element was a float, which printed `max([1, 2.5])` as `2` (comparing in the i32 domain truncated the
+float first) and would have printed `min([2.5, 1])` as `1.0`, which CPython never says. Ask which
+element wins, then take its type — `minMaxReturnsFloat`.
+
+**The interpreter adds handles.** `sum([[1],[2]])` printed `562949953421319` — `KindList`'s tag word
+summed as an integer, the same class of bug as ADR 0238's `-1` for `len`. `sum` now asks each
+element's kind and raises the `unsupported operand type(s) for +:` sentence CPython raises.
+
+**`for v in {1, 2}` was a `for` over a range with a global as the bound.** The set/dict literal arms
+only fed `iterStr`/`iterInts`; anything else fell through to the counter path and emitted
+`icmp slt i32 %_ctr1, @.set1` — and bound the loop variable to the counter, so the body ran with
+`v = 0`. A container literal is an object: build it, take its handle, iterate it (`iterKind`), and
+let the unrolled print hook take the container tags too.
+
+**Process lessons.** (1) The oracle before the verdict, again: `print(True)` printing `1` is pinned
+debt (L11.1 step 1c), so membership rows are written `print(1 if x in s else 0)` — asserting raw
+`x in s` "fails" against a bug that is already on the ledger and hides the real regression. (2) A
+`--file` probe with `;`-separated statements can differ from the same program with newlines: the
+lexer reports `;` as a diagnostic that some entry points enforce and `--emit-llvm` ignores; the
+authoritative form is a real file, one statement per line. (3) The tree is shared with another agent
+mid-session (it refactored `taggableMixedElem` under me and rewrote a test file while I was editing
+it): re-compile and re-run the specific probe after any pause, and stage by path — never `git add -A`
+— or a half-written foreign file lands in the feature commit.

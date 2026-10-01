@@ -3834,3 +3834,64 @@ Until then `docs/language.md` says so out loud and points at the workaround (`ro
 so the refusal is at least discoverable from the language documentation rather than only from a failed
 compile.
 
+
+### Gap R.70 — `for` over a set or dict literal reached the range path, and its bound was the container's global (found 2026-10-02 while closing the nested half of L11.1)
+
+```
+for v in {1, 2}:
+    print(v)          # --aot: exit 2 — %t1 = icmp slt i32 %_ctr1.ld1, @.set1
+for k in {"a": 1, "b": 2}:
+    print(k)          # --aot: exit 2; had it run, the loop variable was the counter
+```
+
+Both legs refuse today, and the message is `llc: exit status 1` — the exit-code contract's *compiler's
+fault* class (ADR 0166), issued for two lines that CPython runs in one go.
+
+The `for` lowering asks whether the iterable is a container it knows, and that question was written for
+variables: `g.mixedLists`, `g.listVars`, `g.runtimeSets`, `g.mixedDicts`, a generator call. A literal
+answered none of them, fell past the runtime container loop, and landed in `rangeBounds`, whose
+catch-all is `0 .. g.value(iterable)`. For a set literal `g.value` answers the folded static global
+`@.set1`, whose layout is `{i32, [N x i32]}` — a *global in an i32 slot*, the shape this loop has
+already been forced to make impossible four times over (ADR 0188 for print, ADR 0192 for
+comprehensions, ADR 0226 for element writes, ADR 0238 for the float box). Even had the operand
+compiled, the loop variable was bound to the counter, so the loop would have printed `0, 1` where
+CPython prints `1, 2`.
+
+The fix is to ask the same question of a literal that the variable leg already asks: build the object,
+take its handle, walk `0 .. rt_set_len(h)` (or `2*i` for a dict's keys), and bind the loop variable to
+the element. Two details were worth as much as the fix itself:
+
+- **The loop variable of a dict literal must be recorded as interned text** when every key is text.
+  The variable leg already did that from `g.dictKeyStr`; without it `for k in {"a": 1}` printed the
+  interned index `0`, which is ADR 0229's rendering rule arriving by a different road.
+- **A generator call is not a container**, at least not to this rule: its own lowering already
+  produced the handle, and sending every iterable through the container builder turned
+  `for y in g(3)` into `*lang.Call is not a container` — the compiled leg losing a shape it used to
+  answer, caught by `TestEveryGeneratedModuleVerifies` rather than by review.
+
+`integration/for_container_literal_test.go` pins both engines against CPython for set, dict and mixed
+literals, and compares a mixed set's members as a multiset, because CPython's set order is hash order
+and a test must not pin an implementation detail. The generator regression is pinned beside it.
+
+### Gap R.71 — the numeric folds stopped asking their elements what they are (measured 2026-10-02 while closing the nested half of L11.1)
+
+```
+x = 3
+print(max([x, 2.5]))   # CPython 3 | --interp 2.5 | --aot 3.0
+```
+
+Three engines, three answers, and the one that looks closest (`3.0`) is the compiled leg — a float-typed
+answer to a question whose answer CPython keeps as an integer, because `max` returns *the element it
+chose*, not a number of whichever type appeared in the list.
+
+The static half of this is settled by ADR 0239: `max([1, 2.5])` is `2.5`, `min([2.5, 1])` is `1`,
+`sum([1, 2.5])` is `3.5`, on both backends and the oracle. Those all fold, and the fold now picks a
+winner and returns that winner's own type.
+
+What is left is an element the compiler cannot see. There is no static winner, so the compiled leg
+falls back to lifting an i32 through `sitofp` and prints `3.0`; the interpreter adds or compares raw
+handles, which is how `sum([1.5, 2.5])` once printed `562949953421319` — the bits of a float box read
+as an integer (that particular case is fixed, and pinned in `pkg/lang/numeric_fold_test.go`). A
+reduction over runtime values is not a fold: it needs a loop, a comparison that asks each element's
+kind, and a result that remembers the winner's type. That belongs with the float work (L11.6) that
+owns the rest of the numeric surface, not with the container work that surfaced it.

@@ -585,7 +585,20 @@ func (g *irGen) heapArg(b *strings.Builder, e Expr) (handle string, ok bool, err
 // with the actionable diagnostic rather than emitting bad IR (ADR 0166).
 func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 	if g.nestedContainerElem(e) {
-		return "", false, nestedContainerErr(e)
+		// An element that is itself a container is stored as the inner object's handle, tagged so
+		// that the printer and the comparison can find their way back to it at run time. The
+		// collector reaches it because it marks every element word of a marked object (ADR 0188);
+		// what stays refused is the shape no rule covers — nested deeper than every element can be
+		// tagged, or a dict keyed by a container (roadmap L11.1).
+		if dl, ok := e.(*DictLit); ok && dictWantsContainerKey(dl) {
+			return "", false, nestedContainerErr(e)
+		}
+		if !g.taggableNestedElem(e) {
+			return "", false, nestedContainerErr(e)
+		}
+		g.heapUsed = true
+		h, cerr := g.containerOperand(b, e)
+		return h, false, cerr
 	}
 	if txt, ok := g.stringVal(e); ok {
 		g.heapUsed = true
@@ -637,6 +650,12 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 // rt_tag_elem per slot, with the canonical ValueTag number for what the element is. The
 // container-wide @estr[h] flag is deliberately left alone -- that flag is the thing a tag
 // replaces, and setting it would make rt_print_list render every element as a string.
+// heapListFromTagged builds a heap list whose elements carry per-element tags: one
+// rt_tag_elem per slot, with the canonical ValueTag number for what the element is. The
+// container-wide @estr[h] bit 8 is set as well, because it now means "the slots are the truth"
+// rather than "this is the string list": a list printed through rt_print_list has to reach the
+// tag-aware printer on its own, and not only when the codegen happened to pick the mixed
+// printer for it (roadmap L11.1, ADR 0232).
 func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, error) {
 	g.heapUsed = true
 	h := g.newTmp()
@@ -653,6 +672,7 @@ func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, err
 		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i, tag)
 		fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, v)
 	}
+	fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 8)\n", h)
 	return h, nil
 }
 
@@ -678,6 +698,14 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 		// left behind, and equality (rt_slot_eq) reads the pair (ADR 0187's rule, ADR 0189).
 		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i, g.elemTagFor(el, interned))
 	}
+	// A literal whose elements can only be read back through their tags — a float box handle, the
+	// nothing of a None, another container's handle — says so on the object, and the printer asks
+	// the slots instead of the list. The dict and set builders already did this; the list one asked
+	// only on its tagged path, so a nested list reached through rt_print_list printed its inner
+	// object's handle (roadmap L11.1, ADR 0232).
+	if literalNeedsTags(ln) {
+		bits |= 8
+	}
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
 	}
@@ -688,6 +716,16 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 // recording on the object which positions hold interned strings (rt_mark_estr), so
 // {"a": 1} and {1: "v"} build and print like the interpreter renders them (Gap J.6).
 func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (string, error) {
+	if dictWantsContainerKey(dl) {
+		// Built anyway, the key would be the inner object's handle printed as a number: {([1, 2]): 3}
+		// answered {1: 3}, which is a wrong answer about the key rather than a missing one
+		// (roadmap L11.1).
+		for _, k := range dl.Keys {
+			if isContainerLiteral(k) {
+				return "", nestedContainerErr(k)
+			}
+		}
+	}
 	g.heapUsed = true
 	h := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapDict)
@@ -824,12 +862,12 @@ func emptyContainerLiteral(e Expr) (Expr, bool) {
 }
 
 // nestedContainerElem reports an element that is itself a container: a literal inside a literal,
-// or a container variable inside another one. The compiled backend cannot store those — the
-// collector marks a container by the variable slot that holds it (ADR 0181), and an element that
-// is a handle has no slot to be marked from — and the static layout would put `@.lstN` in a value
-// position, which is a module llc refuses. Refusing is what keeps `print([[1], [2]])` from
-// answering `[1, 2]`: the interned indices of the inner strings, rendered as numbers
-// (roadmap L11.1, ADR 0188).
+// or a container variable inside another one. Such an element is stored as the inner object's
+// handle and tagged as a container, which the collector reaches because it marks every element word
+// of a marked object (ADR 0181, ADR 0188). What this gate still guards is the shape no rule
+// describes: the compile-time global layout would put `@.lstN` in a value position, which is a
+// module llc refuses, and an untagged handle prints as its own index — which is how
+// `print([[1], [2]])` once answered `[1, 2]` (roadmap L11.1).
 func (g *irGen) nestedContainerElem(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit, *SetLit, *DictLit:
@@ -841,20 +879,23 @@ func (g *irGen) nestedContainerElem(e Expr) bool {
 }
 
 func nestedContainerErr(e Expr) error {
-	return fmt.Errorf("codegen: a compiled container cannot hold another container yet; an element that is a handle is not marked by the collector (only containers bound to a variable are), so nested contents need the element-tagging work (roadmap L11.1, ADR 0188). Build the inner container separately and index it, or run it interpreted")
+	return fmt.Errorf("codegen: a compiled container cannot hold %s yet; a dict keyed by a container has no hashing rule, and an element nested deeper than every inner element can be tagged would be printed by handle and compared by address (roadmap L11.1). Build that inner value separately, or run it interpreted", exprSnippet(e))
 }
 
 func literalNeedsHeap(e Expr) bool {
+	// The static global layout is an int array: an element that is interned text, a float box, or
+	// a handle into another container has no representation in it, so the heap builder must make
+	// the object instead (roadmap Gap J.6, L11.1).
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if isStringExpr(el) {
+			if isStringExpr(el) || isContainerLiteral(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if isStringExpr(el) {
+			if isStringExpr(el) || isContainerLiteral(el) {
 				return true
 			}
 		}
@@ -865,7 +906,7 @@ func literalNeedsHeap(e Expr) bool {
 			}
 		}
 		for _, v := range n.Vals {
-			if isStringExpr(v) {
+			if isStringExpr(v) || isContainerLiteral(v) {
 				return true
 			}
 		}
@@ -885,13 +926,13 @@ func literalNeedsTags(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if isFloatLitExpr(el) || isNoneLitExpr(el) {
+			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if isFloatLitExpr(el) || isNoneLitExpr(el) {
+			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) {
 				return true
 			}
 		}
@@ -902,7 +943,7 @@ func literalNeedsTags(e Expr) bool {
 			}
 		}
 		for _, v := range n.Vals {
-			if isFloatLitExpr(v) || isNoneLitExpr(v) {
+			if isFloatLitExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) {
 				return true
 			}
 		}
@@ -1075,7 +1116,9 @@ func (g *irGen) taggableMixedList(ln *ListLit) bool {
 		switch tag {
 		case int32(TagStr):
 			sawStr = true
-		case int32(TagFloat), int32(TagNone):
+		case int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
+			// A container slot is a handle: read back without its tag it is a number, which is how
+			// [[1, 2]] would print as [[5]] — the inner object's handle (roadmap L11.1).
 			sawMustTag = true
 		default:
 			sawOther = true
@@ -1086,19 +1129,51 @@ func (g *irGen) taggableMixedList(ln *ListLit) bool {
 
 // elemKindTag is the codegen's answer to "what tag does this element's slot carry", and the
 // gate on what a mixed list may hold at all. Excluded, each for a reason: bools (not values
-// in either backend yet, so [True] would print 1 against Python's True -- L11.1), floats
-// (rt_print_mixed_value has no float rendering), containers (the collector does not yet mark
-// elements, so a nested heap object could be freed under a list that references it), and any
+// in either backend yet, so [True] would print 1 against Python's True -- L11.1), and any
 // expression whose string-ness the codegen cannot prove -- because printing an interned
 // string's *index* as a number is exactly the wrong-output bug the refusal exists to avoid.
+// Containers are included once every element inside them is taggable too: the payload is the
+// inner object's handle, and the tag is what routes it to the container printer and to
+// rt_container_eq instead of a number and an integer compare (roadmap L11.1).
 func (g *irGen) elemKindTag(e Expr) (int32, bool) {
+	// A variable the compiler built as a container holds a handle, and the slot that copies it
+	// needs the container's tag: appending a list variable to another list stored the handle and
+	// tagged it TagInt, so [1, [2]] printed as [1, 1] (roadmap L11.1).
+	if nm, isName := e.(*Name); isName && g != nil && g.taggableNestedElem(e) {
+		switch {
+		case g.runtimeDicts[nm.Value]:
+			return int32(TagDict), true
+		case g.runtimeSets[nm.Value]:
+			return int32(TagSet), true
+		default:
+			return int32(TagList), true
+		}
+	}
 	switch e.(type) {
 	case *FloatLit:
 		// A float goes into the slot as the handle of a @float_box object, which the mixed printer
 		// renders and rt_payload_eq compares by value; before both of those existed this line said
-		// "not taggable" and the literal was refused rather than misprinted (roadmap L11.1, ADR 0233).
+		// "not taggable" and the literal was refused rather than misprinted (roadmap L11.1, ADR 0238).
 		return int32(TagFloat), true
-	case *ListLit, *DictLit, *SetLit, *Tuple, *Lambda:
+	case *ListLit, *DictLit, *SetLit:
+		// A slot can hold another container: the payload is the inner object's handle and the tag
+		// says which printer and which comparison answer for it. Storing it was never the hard
+		// part — the collector marks every element word of a marked object — what made it
+		// unanswerable was that nothing could render or compare an inner object without knowing
+		// statically what it held. The tag routes the print to the inner container's own printer
+		// and the comparison to rt_container_eq, both at run time (roadmap L11.1, ADR 0189).
+		if !g.taggableNestedElem(e) {
+			return 0, false
+		}
+		switch e.(type) {
+		case *ListLit:
+			return int32(TagList), true
+		case *DictLit:
+			return int32(TagDict), true
+		default:
+			return int32(TagSet), true
+		}
+	case *Tuple, *Lambda:
 		return 0, false
 	case *BoolLit:
 		// Both backends store a bool as the number it behaves like today — the interpreter
@@ -1164,19 +1239,93 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 		} else {
 			keyOther = true
 		}
-		vt, ok := g.elemKindTag(dl.Vals[i])
-		if !ok {
-			return false
-		}
-		if vt == int32(TagStr) {
-			valStr = true
-		} else if vt == int32(TagFloat) || vt == int32(TagNone) {
-			mustTag = true
+		if vt, ok := g.elemKindTag(dl.Vals[i]); ok {
+			if vt == int32(TagStr) {
+				valStr = true
+			} else if vt == int32(TagFloat) || vt == int32(TagNone) || vt == int32(TagList) || vt == int32(TagDict) || vt == int32(TagSet) {
+				mustTag = true
+			} else {
+				valOther = true
+			}
 		} else {
-			valOther = true
+			return false
 		}
 	}
 	return mustTag || (keyStr && keyOther) || (valStr && valOther)
+}
+
+// dictWantsContainerKey reports a dict literal keyed by a container — the one nested shape still
+// refused, because a container key has no hashing rule in this backend and a handle compared by
+// integer equality would make every key unique by accident. Values nest freely (roadmap L11.1).
+func dictWantsContainerKey(dl *DictLit) bool {
+	for _, k := range dl.Keys {
+		switch k.(type) {
+		case *ListLit, *DictLit, *SetLit:
+			return true
+		}
+	}
+	return false
+}
+
+// slotTagSelfDescribing reports whether a slot whose payload only means something through its tag
+// — a float box's handle, None's nothing, another container's handle — obliges the container to stop
+// claiming one element kind and let the printer and the lookup ask each slot instead. That is
+// ADR 0232's move, extended to the tags a compiled word cannot render at all (roadmap L11.1).
+func slotTagSelfDescribing(t int32) bool {
+	switch t {
+	case int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
+		return true
+	}
+	return false
+}
+
+// taggableNestedElem answers whether an element that is itself a container can be stored, printed
+// and compared: every element one level in has to be taggable too, recursively, because one
+// untaggable element deeper down would be printed by handle and compared by address while
+// everything around it behaved as a value. Tuples and lambdas stay outside the tag table entirely,
+// and a dict whose keys are containers is refused by dictWantsContainerKey (roadmap L11.1).
+func (g *irGen) taggableNestedElem(e Expr) bool {
+	// One element of an inner container: a container recurses, anything else is whatever the tag
+	// table already answers for. Asking a plain integer of this function is what used to make
+	// [[1, 2]] look untaggable — the recursion ended at an IntLit and answered "not a container",
+	// which is true and irrelevant (roadmap L11.1).
+	inner := func(el Expr) bool {
+		if isContainerLiteral(el) || g.isContainerExpr(el) {
+			return g.taggableNestedElem(el)
+		}
+		_, ok := g.elemKindTag(el)
+		return ok
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if !inner(el) {
+				return false
+			}
+		}
+		return true
+	case *SetLit:
+		for _, el := range n.Elems {
+			if !inner(el) {
+				return false
+			}
+		}
+		return true
+	case *DictLit:
+		if dictWantsContainerKey(n) {
+			return false
+		}
+		for _, v := range n.Vals {
+			if !inner(v) {
+				return false
+			}
+		}
+		return true
+	case *Name:
+		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
+	}
+	_, ok := emptyContainerLiteral(e)
+	return ok
 }
 
 // taggableMixedSet is taggableMixedDict for a set literal: every member taggable, and members of
@@ -1194,7 +1343,7 @@ func (g *irGen) taggableMixedSet(sl *SetLit) bool {
 		switch t {
 		case int32(TagStr):
 			sawStr = true
-		case int32(TagFloat), int32(TagNone):
+		case int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
 			sawMustTag = true
 		default:
 			sawOther = true
@@ -1230,6 +1379,19 @@ func (g *irGen) taggedOperand(b *strings.Builder, e Expr) (val, tag string, ok b
 		bh := g.newTmp()
 		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", bh, inner)
 		return bh, strconv.FormatInt(int64(TagFloat), 10), true
+	}
+	if t == int32(TagList) || t == int32(TagDict) || t == int32(TagSet) {
+		// The payload a container slot holds is the inner object's *handle*. g.value answers a
+		// literal with its folded global, whose layout is a length plus an array: handing that to
+		// rt_set_contains_tagged(i32, i32, i32) is the global-in-an-i32-parameter shape ADR 0166
+		// counts as a compiler bug, so the operand is materialised into the heap first — and then
+		// compared by content, because two literals holding the same elements are equal
+		// (roadmap L11.1, ADR 0189).
+		h, cerr := g.containerOperand(b, e)
+		if cerr != nil {
+			return "", "", false
+		}
+		return h, strconv.FormatInt(int64(t), 10), true
 	}
 	v, err := g.value(b, e)
 	if err != nil {
@@ -1269,14 +1431,23 @@ func (g *irGen) isMixedContainer(name string) bool {
 // not in the spelling: a Name the generator knows holds a float is a float element, and tagging
 // it TagInt would label a box handle as a number (roadmap L11.1, ADR 0233).
 func (g *irGen) elemTagFor(e Expr, interned bool) int32 {
+	if interned {
+		return int32(TagStr)
+	}
+	// One question, asked once: what tag does this element's slot carry. The builders used to
+	// answer it locally and drifted from elemKindTag — which is how appending a list variable to
+	// another list stored the handle and tagged it TagInt, printing [1, 1] for [1, [2]]
+	// (roadmap L11.1).
+	if g != nil {
+		if t, ok := g.elemKindTag(e); ok {
+			return t
+		}
+	}
 	switch e.(type) {
 	case *NoneLit:
 		return int32(TagNone)
 	case *FloatLit:
 		return int32(TagFloat)
-	}
-	if interned {
-		return int32(TagStr)
 	}
 	if g != nil && g.isFloat(e) {
 		return int32(TagFloat)
@@ -1301,7 +1472,7 @@ func mixedTaggedVarErr(name string) error {
 // honest answer: without a tag the slot reads back as whatever the tag array happened to hold,
 // which is how a stored string would print as its interned table index (ADR 0184/0187).
 func mixedTaggedElemErr(e Expr) error {
-	return fmt.Errorf("codegen: an element of a mixed compiled container must carry a tag, and %s has none the runtime can render (bools are not values yet, floats have no mixed-printer rendering, and a nested container is not marked by the collector) (roadmap L11.1, ADR 0187)", exprSnippet(e))
+	return fmt.Errorf("codegen: an element of a mixed compiled container must carry a tag, and %s has none the runtime can render — the tag table covers numbers, text, None, and containers now, but not a tuple, a lambda, or a value with no canonical tag (roadmap L11.1, ADR 0187, ADR 0238)", exprSnippet(e))
 }
 
 // exprSnippet is a short, stable rendering of an expression for a diagnostic.
@@ -1314,6 +1485,10 @@ func exprSnippet(e Expr) string {
 		return "False"
 	case *FloatLit:
 		return "a float literal"
+	case *StrLit:
+		return "a string literal"
+	case *NoneLit:
+		return "None"
 	case *ListLit:
 		return "a list literal"
 	case *DictLit:
@@ -1705,6 +1880,13 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 	}
 	switch n := e.(type) {
 	case *ListLit:
+		// A list that mixes kinds, or whose elements are floats, Nones or further containers, has
+		// no single element kind: it is built tagged, with bit 8 set, so the printer asks each slot.
+		// Built untagged instead, a nested [1, "a"] claimed to be the string list and printed its
+		// integer as an interned index — [[1, "a"]] came out as [['b', 'a']] (roadmap L11.1).
+		if g.taggableMixedList(n) || literalNeedsTags(n) {
+			return g.heapListFromTagged(b, n)
+		}
 		return g.heapListFrom(b, n, "")
 	case *SetLit:
 		return g.heapSetFrom(b, n, "")

@@ -128,10 +128,10 @@ func TestMismatchedKindEqualityIsAnsweredByKind(t *testing.T) {
 // an unterminated definition that everything downstream shipped. The emitter now validates first and
 // writes once; a refusal must leave no half-line behind.
 func TestPartialGlobalIsNeverShipped(t *testing.T) {
-	// A shape that still refuses — a nested container is the element the collector cannot mark —
-	// checked for the failure mode rather than the message: the refusal must be a clean stop,
-	// not a half-written global left in the module.
-	res, err := Compile("print([[1.5, 2]])\n")
+	// A shape that still refuses — a dict keyed by a container has no hashing rule — checked for
+	// the failure mode rather than the message: the refusal must be a clean stop, not a
+	// half-written global left in the module (roadmap Gap R.40, ADR 0166).
+	res, err := Compile("print({[1.5, 2]: 3})\n")
 	if err == nil {
 		t.Fatalf("expected a refusal, got a %d-byte module", len(res.IR))
 	}

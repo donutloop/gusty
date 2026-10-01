@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -112,6 +113,102 @@ func TestInterpreterAnswersWhatTheCompilerRefuses(t *testing.T) {
 			}
 			if _, aotCode := cliRunCode(t, "--aot", path); aotCode == 2 {
 				t.Fatalf("the compiled leg rejected its own module for %q (ADR 0166):\n%s", tc.src, cliRun(t, "--aot", path))
+			}
+		})
+	}
+}
+
+// TestNestedContainersAnswerOnBothBackends is roadmap L11.1 step 2, the half the float commit left
+// open: an element that is itself a container. The slot holds the inner object's handle and the
+// slot's tag is what routes the print to rt_print_container_value and the comparison to
+// rt_container_eq, both at run time — which is the only sound place to make that choice, because
+// the outer container has no single element kind to ask.
+//
+// The two forbidden outcomes stay forbidden here. Exit 2 is the compiler blamed for an ordinary
+// program (ADR 0166). Exit 0 with an answer nobody checked is the subtler one, and this family
+// produced it twice: [[1, "a"]] printed [['b', 'a']] (the inner integers through the interned
+// string table, because the inner list had been built claiming one element kind), and
+// `for row in [[1, 2], [3, 4]]` printed 0 and 1 (the handles, because the unrolled body printed
+// the element without its tag). Both are pinned as answers now.
+func TestNestedContainersAnswerOnBothBackends(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"list_of_lists", "print([[1, 2], [3, 4]])\n", "[[1, 2], [3, 4]]\n"},
+		{"list_of_lists_and_a_number", "print([[1, 2], 3])\n", "[[1, 2], 3]\n"},
+		{"list_of_lists_of_text", "print([[\"a\"], [\"b\"]])\n", "[['a'], ['b']]\n"},
+		{"inner_mixed_list", "print([[1, \"a\"], [2, \"b\"]])\n", "[[1, 'a'], [2, 'b']]\n"},
+		{"inner_float_and_none", "print([[1.5, \"a\"], [None, 2]])\n", "[[1.5, 'a'], [None, 2]]\n"},
+		{"three_deep", "print([[[1]], [2]])\n", "[[[1]], [2]]\n"},
+		{"dict_of_lists", "print({\"a\": [1, 2], \"b\": [3]})\n", "{'a': [1, 2], 'b': [3]}\n"},
+		{"dict_of_dict", "print({\"a\": {\"b\": 1}})\n", "{'a': {'b': 1}}\n"},
+		{"int_keyed_dict_of_set", "print({1: {2, 3}})\n", "{1: {2, 3}}\n"},
+		{"nested_equality_by_content", "print(1 if [[1, 2]] == [[1, 2]] else 0)\n", "1\n"},
+		{"nested_inequality_by_content", "print(1 if [[1, 2]] == [[1, 3]] else 0)\n", "0\n"},
+		{"nested_membership", "print(1 if [1, 2] in [[1, 2], 3] else 0)\n", "1\n"},
+		{"nested_membership_absent", "print(1 if [1, 4] in [[1, 2], 3] else 0)\n", "0\n"},
+		{"cross_numeric_inner_equality", "print(1 if [1, 2] == [1.0, 2] else 0)\n", "1\n"},
+		{"literal_index_of_a_literal", "print([[1, 2], [3, 4]][0])\n", "[1, 2]\n"},
+		{"append_a_container_variable", "xs = [1]\nys = [2]\nxs.append(ys)\nprint(xs)\n", "[1, [2]]\n"},
+		{"append_a_container_literal", "xs = []\nxs.append([7, 8])\nprint(xs)\n", "[[7, 8]]\n"},
+		{"assign_a_container_element", "xs = [[1, 2]]\nxs[0] = [9]\nprint(xs)\n", "[[9]]\n"},
+		{"store_a_container_in_a_dict", "d = {\"a\": 1}\nd[\"b\"] = [2, 3]\nprint(d)\n", "{'a': 1, 'b': [2, 3]}\n"},
+		{"length_of_a_nested_list", "print(len([[1, 2], [3, 4]]))\n", "2\n"},
+		{"loop_over_inner_containers", "for row in [[1, 2], [3, 4]]:\n    print(row)\n", "[1, 2]\n[3, 4]\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "nested.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 2 {
+					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s", engine, cliRun(t, engine, path))
+				}
+				if code != 0 {
+					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want CPython's %q", engine, out, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestNestedShapesThatStillRefuse is the other half of the record. A dict keyed by a container has
+// no hashing rule, and a nested element read back as a value is the tagged element read L11.1 still
+// owes; both are refused by name, and none of them is allowed to reach llc — the shapes below used
+// to be exit-2 modules (a container global in an i32 slot) before they were gates.
+func TestNestedShapesThatStillRefuse(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"container_key", "print({[1, 2]: 3})\n", "cannot hold"},
+		{"container_key_in_a_dict_variable", "d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
+		{"read_a_nested_element", "xs = [[1, 2], [3]]\nprint(len(xs[0]))\n", "len requires an inline list/dict/set literal"},
+		{"reindex_a_read_element", "m = [[1, 2], [3, 4]]\nprint(m[0][1])\n", "index requires an inline list/dict/set literal"},
+		{"nested_element_as_a_number", "xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
+		{"sum_of_containers", "print(sum([[1], [2]]))\n", "sum adds numbers"},
+		{"any_of_containers", "print(any([[1], [2]]))\n", "no word for"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "nested.gy", tc.src)
+			// The diagnostic goes to stderr, so the message is read with the combined capture
+			// and the exit code with the coded one.
+			_, code := cliRunCode(t, "--aot", path)
+			msg := cliRun(t, "--aot", path)
+			if code == 2 {
+				t.Fatalf("the compiled leg rejected its own module (ADR 0166):\n%s", msg)
+			}
+			if code == 0 {
+				t.Fatalf("%q answered %q; this shape is owed, and a wrong answer is worse than a refusal", tc.src, msg)
+			}
+			if !strings.Contains(msg, tc.want) {
+				t.Fatalf("%q refused with %q, want it to mention %q", tc.src, msg, tc.want)
+			}
+			// The compiled leg refuses; that is a codegen hole, not a semantic decision of the
+			// language, so the human path must still be standing: the interpreter either answers
+			// or fails cleanly, never with exit 2.
+			if iout, icode := cliRunCode(t, "--interp", path); icode == 2 {
+				t.Fatalf("the interpreter exited 2 on %q:\n%s", tc.src, iout)
 			}
 		})
 	}
