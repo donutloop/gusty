@@ -4523,3 +4523,37 @@ What the exercise taught, in the order it hurt:
   a 22-line diff of pure noise; this commit reverts it. Follow-up owed: strip the temp path
   from the oracle error text (or normalize it) so the artifact is byte-stable — a "measured"
   claim that changes when nobody measures anything stops being evidence.
+
+## The tracker grew a `Free text` column (follow-up to the tabulation, same day)
+
+The tabulation's first draft made each row `ID · item · status · path · ADR · evidence ·
+record`, with the old wording reachable only through a link. The objection was right and
+worth writing down: **a link is not a copy.** Reading a row meant leaving the row, and a
+record nobody scrolls through is a record nobody reads.
+
+So every item and gap row now carries an eighth column, `Free text`, holding the item's own
+sentence from before the tabulation — sub-bullets kept as `•`/`↳`, code listings kept as
+`<code>` blocks, hard-wrapped lines joined — with the rule stated in the column contract:
+*history, not state; where it disagrees with the `Status` cell, the cell is right.*
+
+How it was done, so it can be redone:
+
+* The pre-tabulation file was kept as `/tmp/roadmap.orig.md`, and the extractor walked it
+  splitting on item markers (`### Gap N.2`, `### R.16`, `- **L4.1 …**`, `- **Gap J.1 — …**`),
+  collecting each block until the next marker, then rendering a block as a cell: paragraphs
+  joined, sub-bullets prefixed, fenced programs HTML-escaped, `|` → `\|`, pipes inside code
+  → `&#124;`. 155 blocks came out, and 170 rows are filled (the extra 15 are the recovered
+  `R.19`/`R.22`/`R.24–R.29` and the four new `R.49–R.52` rows, whose text was written this
+  cycle and lifted back out of the record by anchor).
+* **The verification is the part that matters:** every extracted block is asserted to appear
+  verbatim in the tracker (155/155), and a token-multiset diff over the Phase 0–3 lists shows
+  nothing but heading words left out. A "nothing was lost" claim that isn't a diff is a
+  feeling.
+* Section intros that no item owns — the Phase 4–11 goals, the "New work" ordering note, the
+  Gap J/Q/R family intros — went in as collapsed `<details>` blocks; the original header,
+  status snapshot, component map and sequencing note went to the record under
+  *Original preamble*, because they are superseded but should not be gone.
+* Roadmap is now 233 KB in one file, and rows for `L11.1`/`Gap R.35` are long. That is the
+  cost of "readable without leaving the table", and it is the right order: the Status column
+  still answers "what's owed" in one screen, the free text answers "what did it say" in place,
+  and the record answers "why" at whatever length the finding needs.

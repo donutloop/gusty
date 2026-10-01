@@ -15,6 +15,10 @@ Rule for future cycles:
   reuse. Comments in `pkg/lang` cite them.
 
 Every item and gap carries an anchor; the tracker's `Record` column links straight to it.
+The tracker also keeps each item's **own wording** in its `Free text` column — the sentence
+that used to *be* the item, lifted verbatim from the pre-tabulation roadmap — so the tracker
+is readable on its own; this file is the long form: programs, measurement tables, root
+causes and the alternatives that were rejected.
 Text below is the record's original wording, in its original order.
 
 <a id="gap-a"></a>
@@ -2965,3 +2969,86 @@ traps. The fix is one more entry in the search list: beside the executable, and 
 `argv[0]`'s `../share/pyre/stdlib`, with the root actually searched reported in `--json`
 (a machine should be able to ask which stdlib answered). It belongs with L9.2, because a
 package manager is the moment the binary leaves the repo.
+
+
+---
+
+<a id="original-preamble"></a>
+
+## Original preamble, snapshot, component map and sequencing note (verbatim)
+
+Superseded in the tracker by the Snapshot, Component map and Sequencing sections — kept here
+so the pre-tabulation wording survives in one place with the rest of the record. The status
+numbers below are as-written at the time (see the tracker's Snapshot for the measured ones).
+
+# Pyre (gusty repo) — Roadmap
+
+This file is the living, concrete plan for building and evolving **Pyre** (the
+`gusty` repo), a Python-like language whose core is compiled ahead-of-time
+through LLVM. It lives next to `AGENTS.md` and is the single source of truth
+for *what exists*, *what is next*, and *what is gap-shaped*.
+
+> Status snapshot (verified against the code, 2026): version `0.10.0`
+> (`pkg/lang/compile.go`). ADRs run `0001`..`0194`. `go test -tags=llvm20 ./...`
+> is green. Conformance corpus: 74 programs under `integration/programs/` (18 of
+> them pinned probes), 66 matrix rows over **three legs** (interpreter, compiled binary, CPython): 48
+> parity cases plus 18 pinned probes; oracle 32 `match` / 24 `debt` / 10 `not_applicable`, 0 drift.
+> **The current plan is Phase 11 — the value model** (below);
+> its harness, L11.9, is ✅ DONE (ADR 0186), so no remaining Phase 11 item may be
+> marked done on parity alone — each one has a pinned program that has to change.
+
+## Component map (state verified against the code)
+
+| Component | File(s) | State |
+|---|---|---|
+| Lexer (INDENT/DEDENT) | `pkg/lang/lexer.go` | done |
+| Parser → AST | `pkg/lang/parser.go`, `ast.go`, `token.go`, `types.go` | done |
+| Semantic analysis / gradual typing | `pkg/lang/semantic.go` | static checks only |
+| Interpreter backend + heap GC | `pkg/lang/jit.go` | full dynamic surface |
+| AOT codegen (textual IR) | `pkg/lang/codegen.go`, `closure.go` | i32-first, see gaps |
+| Optimizer | `pkg/lang/opt.go` | pure-Go textual dead-global elim. (not an LLVM `opt` pass) |
+| Multi-file build | `pkg/lang/build.go` | done |
+| Source maps / debug info | `pkg/lang/sourcemap.go` | AOT line/col + DWARF via `cc -g` |
+| Standalone type-check (`gusty check`) | `pkg/lang/check.go` | mypy-style, ADR 0152 |
+| Canonical formatter (`gusty fmt`) | `pkg/lang/fmt.go` | round-trips docstrings |
+| Language server / LSP | `pkg/lang/lsp.go` | stdio; hover + completion + diagnostics |
+| JSON schema / machine output | `pkg/lang/schema.go` | `--json` AST/IR dumps |
+| Property/fuzz testing | `pkg/lang/proptest.go`, `proptest_test.go` | seeded cross-backend parity |
+| CLI | `cmd/gustyc/main.go` | parse → semantic → (eval \| codegen → `llc` → `cc`) |
+| Version constant | `pkg/lang/compile.go` | reconciled at `0.10.0` |
+
+
+## Definition of done per item
+
+An item is done when it ships:
+
+- A unit test in `pkg/lang/` exercising the behavior.
+- An `integration/` whole-program compile-and-run case where applicable,
+  asserting interpreter/AOT/JIT parity (byte-identical stdout).
+- A `docs/adr/` entry for any non-obvious decision (or a renumbering of an
+  existing ADR, e.g. `0152` renumbered from the duplicated `0143`).
+- An update to `docs/language.md` and `docs/operations.md` when it changes
+  user-visible syntax or CLI flags.
+
+## Definition of done for gap-shaped work
+A gap is closed when the previously interpreter-only path also lowers on AOT
+(or a new feature's both-backend parity program passes), and no
+`interpreter-only`/`not lowered` comment remains in `codegen.go` for it.
+
+## Sequencing note
+Gaps A–H are closed; the 2026 phases (4–10) are largely closed too. The
+**current** next work is **Phase 11 (the value model)** — L11.9 (the CPython oracle
+harness) is ✅ DONE (ADR 0186), and L11.1 has now taken its four steps for lists, dicts and
+sets (ADR 0182 tags, ADR 0184/0185/0187/0189 slots and reads, ADR 0232 mixed dicts/sets plus
+the tagged lookup that made them safe), so the queue is the 22 pinned `debt` rows: L11.1's
+remaining steps ((1c) floats in containers, (1d) retiring `@estr[h]`, and the tagged word
+itself), L11.2 (bools as values), L11.3 (tuples), L11.4 (indexing), L11.5
+(code-point strings), L11.6 (numerics), L11.7 (functions as values), then L11.8 (refusals and
+exit codes). L7.2/L7.3/L8.1/L8.4 all assume L11.1. The still-open gap-shaped items (Gap J.2,
+Gap K.8 part 2 — full AOT tracebacks, Gap M.2 — flipping `--file` to the compiled backend,
+Gap L.5 — print atomicity, Gaps N.2, P.1, P.2) are absorbed by Phase 11 where they are
+representation decisions, and stay their own work where they are not (K.8's prerequisite
+landed with L8.5's line tables (ADR 0231) — what is left there is the frame stack, not the
+metadata; M.2 flips only once the corpus is green through the compiled leg — which, since
+L11.9, is a measured claim rather than an assumption).
+

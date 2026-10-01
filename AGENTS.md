@@ -62,9 +62,11 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
 - Every feature commit updates `docs/language.md` (language surface), `docs/operations.md` (CLI/agentic interface), `README.md`, `_001_session_learnings.md` (session learnings), and the ADR if relevant.
 - Record each cycle's decisions, discoveries, and process lessons in `_001_session_learnings.md` at the repo root; update it in the same commit as the change it documents.
 - **`roadmap.md` is a tracker, not a diary.** Every item and gap is one row
-  (`ID · item · status · path · ADR · evidence · record`), using only the status vocabulary
-  defined at the top of that file; the prioritized open queue is the only list of owed work.
-  Change a status by editing that cell — never by adding status-bearing prose. The *why*
+  (`ID · item · status · path · ADR · evidence · free text · record`), using only the status
+  vocabulary defined at the top of that file; the prioritized open queue is the only list of
+  owed work. Change a status by editing that cell — never by adding a competing status
+  sentence; the row's `Free text` cell carries the item's own wording from before the
+  tabulation, and where the two disagree the `Status` cell is the truth. The long *why*
   (measurement, root cause, alternatives rejected) goes in `docs/roadmap-details.md`, whose
   sections the rows link to. Item IDs (`L11.1`, `Gap R.33`, …) are permanent: never renumber
   or reuse them, because `pkg/lang` comments, ADRs and the conformance ledger cite them. A

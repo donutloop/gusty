@@ -5,8 +5,10 @@ and both halves are authoritative for what they own:
 
 - [`../roadmap.md`](../roadmap.md) — **the tracker.** The single source of truth for state:
   the status vocabulary, the measured snapshot, the component map, the prioritized open
-  queue, and one row per item and per gap (`ID · item · status · path · ADR · evidence ·
-  record`). The agent loop reads the queue and writes one cell per finished item.
+  queue, and one row per item and per gap
+  (`ID · item · status · path · ADR · evidence · free text · record`). The `Free text` cell is
+  the item's own pre-tabulation wording, so the tracker reads on its own; the agent loop
+  reads the queue and writes one cell per finished item.
 - [`roadmap-details.md`](roadmap-details.md) — **the record.** The narrative: how each gap
   was found, what the wrong answer looked like, which measurement settled it, what was
   rejected. Statuses never live here.
