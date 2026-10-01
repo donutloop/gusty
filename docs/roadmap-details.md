@@ -1012,14 +1012,62 @@ Each is a concrete, reproducible defect with the shape to fix it.
   regenerated with the new `go test ./integration -run TestCLIBuild -args -update` path,
   and `programs/print_args.gy` joins the conformance corpus.
 <a id="gap-j-2-2"></a>
-- **Gap J.2 — set/dict comprehension assignment (AOT)** — 🟨 PARTIAL.
-  Fixed by ADR 0165: the interpreter now renders a set as `{1, 2}` (and `set()` when
+- **Gap J.2 — set/dict comprehension assignment (AOT)** — ✅ DONE (ADR 0234, closing what
+  ADR 0165 left open).
+  Fixed by ADR 0165 first: the interpreter now renders a set as `{1, 2}` (and `set()` when
   empty) instead of `<set>`, matching `rt_set_print`, so a set prints the same on both
-  backends. Still open: `sa = {x for x in [3, 1, 2]}` / `da = {k: k * 2 for k in [1, 2]}`
-  at module scope do not lower (`len of a non-string variable` for the dict case) — needs
-  the ADR 0163 binding rule extended to set and dict comprehensions. `{x for x in [...]
-  if ...}` is also a parser gap today (it parses the `if` as a conditional expression and
-  demands `else`).
+  backends. What remained was the binding, and it turned out to be four defects, not one.
+
+  The fold emitted `@.setN` / `@.dictN` — a `{i32, [n x i32]}` private global, a length plus an
+  array — and then every consumer asked that global for a *value*:
+
+  ```gy
+  sa = {x for x in [3, 1, 2]}        # store i32 @.set1, i32* %_sa          -> llc exit 2
+  print({x for x in [3, 1, 2]})      # rt_print_list_mixed(i32 @.set1, 0)   -> llc exit 2
+  print(2 in {x for x in [1, 2]})    # rt_contains(i32 @.set1, i32 2)       -> llc exit 2
+  sa = {x for x in xs if x > 1}      # parse error: expected keyword "else"  -> never reached
+  ```
+
+  Three invalid modules and one parse failure, all in the two container kinds that had never been
+  carried over from the list path: ADR 0188 (print builds the object, the printer renders it) and
+  ADR 0163 (a binding allocates, tags and registers) had both been written for `staticLists` alone,
+  and print's `*Comp` branch asked one printer for all three kinds — so even a valid module would
+  have rendered `{1, 2}` as `[1, 2]`.
+
+  **Root cause of the parse half** was a precedence choice, not a grammar hole: `parseDictOrSet`
+  parsed the iterable with `parseExpr()`, a full expression, and a full expression is a ternary —
+  which read the comprehension's `if` as *its* `if`. `parseListOrComp` had learned this lesson
+  earlier (`parseExprPrec(precOr)`); the braces never got the same line, so `[x for x in xs if c]`
+  parsed and `{x for x in xs if c}` did not. Both brace branches — the one inside the element list
+  and the one after `}` — are fixed, and an `or` iterable still parses (`{x for x in a or b if …}`).
+
+  **The fix is a deletion, not a mechanism**: `foldSetComp` / `foldDictComp` return the
+  `*SetLit` / `*DictLit` a folding comprehension denotes, `comp()` emits its global from that
+  literal and records it in `staticSets` / `staticDicts` beside `staticLists`, and the binding rule
+  binds the literal through the path `d = {1: 2}` already used. `runtimeCompLoop` — ADR 0192's real
+  loop, previously list-only — fills a set with `rt_set_add_tagged` and a dict with
+  `rt_dict_put_tagged`, and the binding records `runtimeSets` / `runtimeDicts` from the kind written
+  in the syntax, which is what makes `print(sa)` ask the set printer instead of printing the handle
+  (`1`) as a number. Measured before that record was added: interpreter `{2, 3}`, CPython `{2, 3}`,
+  compiled `1`.
+
+  **Re-measured after** (three engines, `gustyc --interp` / `--aot` / CPython 3.12.3): every shape
+  above agrees, and the conformance program `programs/comp_containers.gy` prints CPython's answer
+  line for line — set members written ascending, so CPython's hash-ordered rendering and the
+  documented insertion-order convention say the same line and the matrix row is a `match`, not a
+  `debt`. Guard: `TestFoldedContainerComprehensionNeverSitsInAValuePosition` scans whole modules for
+  a folded container global in an operand position over seven programs, and
+  `TestContainerComprehensionRefusalsStayHonest` requires the set twin to refuse in exactly the words
+  its list twin uses.
+
+  **Still refused, honestly** (both refusal texts are the list spelling's, asserted): an iterable the
+  compiler folded away (`xs = [1, 2, 3]` then `{x for x in xs}` — `xs.append(...)` materialises it),
+  owned by L11.1's tagged element; and a non-integer iterable, key or element, owned by L11.5/L11.6.
+
+  **Found on the way, owed elsewhere** (`Gap R.67`): the same operand question one statement further
+  out — a container *returned* from a function. `return [1, 2]` is `ret i32 @.lst1` (exit 2), and
+  `la = [1, 2]; return la` compiles and prints `0`. It affects literals, so the comprehension did not
+  create it; the binding simply stopped refusing at the assignment and now reaches it.
 <a id="gap-j-3"></a>
 - **Gap J.3 — the exit-code table was aspirational** — ✅ DONE.
   The docs promised `3 = runtime error` and `4 = usage error`; the CLI emitted neither.
@@ -3508,6 +3556,41 @@ The inverted one: the compiled backend walks every base and is right, the interp
 first and reports an inherited method as missing. Two MRO implementations, differing in
 correctness, is the argument for computing the linearisation once and having both legs consult it —
 the same table that resolves the class attributes of Gap R.56. Owner L12.4.
+
+<a id="gap-r-67"></a>
+
+### Gap R.67 — a container returned from a function is not a value in the compiled backend (found 2026-10-02 while closing Gap J.2)
+
+```
+def f():
+    return [1, 2]
+print(f())          # --interp: [1, 2] · CPython: [1, 2] · --aot: exit 2, ret i32 @.lst1
+
+def g():
+    la = [1, 2]
+    return la
+print(g())          # --interp: [1, 2] · CPython: [1, 2] · --aot: 0
+```
+
+Two answers, both wrong in a different way, and only one of them is even labelled a compiler bug.
+`return <container literal>` writes the fold's global straight into the return slot —
+`ret i32 @.lst1`, `ret i32 @.set1`, `ret i32 @.dict1` — which `llc` refuses, and the exit-code
+contract (ADR 0211) correctly calls that exit 2, a bug of ours, for a program CPython runs. Binding
+first is worse precisely because nothing complains: the handle is a small `i32`, the caller prints
+it as the number it is, and `0` comes out where `[1, 2]` belongs.
+
+It is Gap J.2's operand question one statement further out. A returned container needs the two
+things ADR 0163 gives a *binding*: a heap object built at the `return` (so the value is a handle),
+and a recorded return kind (so `print(f())` reaches `rt_print_list` / `rt_set_print` /
+`rt_dict_print` instead of `printf("%d")`). The classification layer that already answers "what does
+this call return?" for strings has no container case — the same shape of miss ADR 0230 recorded for
+`return s[i:j]`, where a correct slice printed `1` for want of a return-kind case.
+
+**Why it is owed and not fixed here:** it affects plain literals, so the comprehension binding did
+not create it — closing Gap J.2 removed the refusal that used to stand in front of it, which is how
+it got measured. One commit per feature (AGENTS.md), and the fix belongs with L11.1: a tagged value
+word makes the handle *and* its kind travel together, which is what removes both halves at once.
+Until then the shapes above stay untested and unfixed, and this row is where they are recorded.
 <a id="original-preamble"></a>
 
 ## Original preamble, snapshot, component map and sequencing note (verbatim)

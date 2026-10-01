@@ -1,0 +1,27 @@
+# A set or dict comprehension bound to a variable. The fold produced a compile-time global
+# (@.setN / @.dictN) whose layout is a length plus an array, and the binding stored that address
+# into the variable's i32 slot — `store i32 @.set1, i32* %_sa` — a module llc refused. The two
+# spellings of the same container, `{1, 2}` and `{x for x in [1, 2]}`, had one lowering each and
+# only the literal one worked (roadmap Gap J.2, ADR 0234).
+sa = {x for x in [1, 2, 3, 2, 1]}
+print(sa)
+print(len(sa))
+if 2 in sa:
+    print("member 2")
+
+da = {k: k * 2 for k in [1, 2]}
+print(da)
+print(da[2])
+for k in da:
+    print(k)
+
+# The filter belongs to the comprehension. The parser read `{x for x in xs if x > 3}` as
+# `{x for x in (xs if x > 3 …)}` — a ternary that swallowed the `if` — and demanded an `else`,
+# so a filtered set comprehension did not parse on either backend.
+xs = [1, 2, 3, 4]
+xs.append(5)
+print({x for x in xs if x > 3})
+print({k: k * 3 for k in xs if k > 3})
+if 3 in {x for x in [1, 2, 3]}:
+    print("member 3")
+print({x for x in []})

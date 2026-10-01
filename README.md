@@ -128,6 +128,12 @@ Where the tag does not decide yet, one rule does: `str(x)` folds to the same tex
 backends and on CPython — `str(None)` is `"None"`, `str(1.5)` is `"1.5"`, `str("x")` is `x`
 (ADR 0183).
 
+A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
+`sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
+the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict
+comprehension exactly like the literal (ADR 0234). `{x for x in xs if x > 1}` parses on both backends:
+the `if` is the comprehension's, not a ternary's.
+
 ## Gradual typing & the type system
 
 Optional annotations on variables, parameters, and returns are checked
@@ -356,6 +362,18 @@ falls back to dynamic dispatch.
   The suite lesson: `for c in txt()` had quietly become the canonical "the backend refuses" fixture in
   four tests — a pinned refusal is a claim about the future, and when the gap closes its fixtures have
   to move or those tests go green while saying nothing.
+- **A comprehension that folds is the literal it folds to** (ADR 0234) —
+  `sa = {x for x in [3, 1, 2]}`, `print({x for x in [3, 1, 2]})` and `2 in {x for x in [1, 2]}` each
+  reached `llc` as a folded container global in a value slot (`store i32 @.set1, i32* %_sa`,
+  `rt_print_list_mixed(i32 @.set1, 0)`, `rt_contains(i32 @.set1, i32 2)`) and came back as exit 2, the
+  compiler blamed for ordinary Python. The list spelling had been fixed twice (print builds the
+  object, the binding copies the fold into the heap); the set and dict spellings had been left behind,
+  and their print branch asked one printer for all three kinds — a valid module would still have
+  rendered `{1, 2}` as `[1, 2]`. The `{x for x in xs if x > 1}` form never reached codegen at all: the
+  iterable was parsed as a full expression, the ternary inside it ate the comprehension's `if`, and
+  the file died on `expected keyword "else"` while the list twin parsed. One fold now produces the
+  literal, and one binding rule binds it — plus the module-wide guard that a folded container global
+  never appears in an operand position.
 - **A container slot is a word — ask what fits before writing it** (ADR 0226) — `[1] == [1.0]`,
   `print([1.5, 2])` and `1.0 == [1]` reached `llc` as invented operands (`[1 x i32] [@env_store = ...`,
   `%t1 = sitofp i32  to double`, `%t2 = sitofp i32 @.lst1 to double`) and came back as exit 2, while

@@ -4624,3 +4624,77 @@ which is the same discipline that keeps L11.3 behind L11.1. The census harness i
 promote the probes into the corpus so the manifest is checked by CI instead of remembered. The
 citation guard did its job again: every new `programs/*.gy` citation had to be marked `(planned)`
 or it would not resolve, which is precisely the failure mode ADR 0219 was written for.
+
+## A folded comprehension is the literal it folds to (Gap J.2, ADR 0234)
+
+**Picked from the queue, row 15 — the Phase 2 surface row the tracker had been carrying as
+🟨 PARTIAL since ADR 0165.** `sa = {x for x in [3, 1, 2]}` did not compile; `da = {k: k * 2 for k in
+[1, 2]}` did not compile; `{x for x in xs if x > 1}` did not *parse*. The interpreter ran all three
+and CPython ran all three.
+
+**What was actually broken was four things, and the gap named one.** `comp()` folds a comprehension
+into `@.setN` / `@.dictN` — a `{i32, [n x i32]}`, a length plus an array — and four consumers then
+asked that global for a *value*: the binding (`store i32 @.set1, i32* %_sa`), the printer
+(`rt_print_list_mixed(i32 @.set1, 0)`), membership (`rt_contains(i32 @.set1, i32 2)`), and — found
+only when I wrote the corpus program rather than the minimal repro — `x in {comp}`. Every one is a
+module `llc` refuses, which ADR 0211 correctly files as exit 2, *a compiler bug*, for a program a
+person writes without thinking. Fixing only the store — the literal reading of the gap row — would
+have shipped something that compiles and dies on the next line.
+
+**The list spelling had already been fixed; twice.** ADR 0188 (a literal in print position is a
+rendering question → build the object, ask the printer) and ADR 0163 (a binding allocates, tags,
+registers, keyed on `staticLists`). Neither had been carried to sets and dicts. `staticLists` sat
+alone in `irGen` with no `staticSets` / `staticDicts` beside it — a two-field omission with an
+exit-2 tail, which is what "the fix is a table, not an if" keeps meaning in this codebase.
+
+**The print branch hid a wrong answer behind the invalid module.** `*Comp` in print position asked
+one printer for all three kinds. Had the module been valid, `print({x for x in [1, 2]})` would have
+printed `[1, 2]`. The conformance program is written so CPython's rendering pins that: `{4, 5}` and
+`{4: 12, 5: 15}` are not what the list printer emits. An invalid module can be *protecting* a wrong
+answer; deleting it means re-asking every question about the same shape.
+
+**The parse gap was one precedence choice.** `parseListOrComp` parses an iterable at `or`-precedence
+precisely so a ternary cannot eat the comprehension's `if`; `parseDictOrSet` used `parseExpr()`, a
+full expression — so `{x for x in xs if x > 1}` became `{x for x in (xs if x > 1 …)}` and died on
+`expected keyword "else"`. The list branch had learned this lesson; nobody had told the braces. When
+two constructs share a grammar rule, the fix has to be checked in both spellings, not just where the
+bug was found — which is why the new parser tests cover `{…}` and the `{k: v …}` form and re-assert
+that an `or` iterable still parses.
+
+**The fix is a deletion, not a mechanism.** `foldSetComp` / `foldDictComp` return the `*SetLit` /
+`*DictLit` a folding comprehension denotes; `comp()` emits its global *from* that literal; the
+binding substitutes the literal and falls into the path `d = {1: 2}` has always used. No comprehension
+survives to the binding, so nothing special-cases one. The runtime loop (ADR 0192's
+`runtimeCompLoop`, previously list-only) gained `rt_set_add_tagged` and `rt_dict_put_tagged` — both
+self-indexing, which is what lets an `if` filter skip items without leaving a hole.
+
+**The classification layer struck again, exactly as ADR 0230 recorded.** A runtime-loop set bound to
+a variable printed `1`. Not the set: the *handle*, through `printf("%d")`, because nothing had
+recorded `runtimeSets[sa]`, so `print` had no reason to ask `rt_set_print`. The kind is written in
+the syntax — `[..]`, `{..}`, `{k: v ..}` — and I had derived it only from the inferred type. Two
+vocabularies answering one question, one of them silent: fixed by letting the comprehension's own
+kind answer when the inferred type does not.
+
+**Measured, not remembered.** Every claim above was run through `--interp`, `--aot` and CPython 3.12.3
+before it was written down; the corpus program `programs/comp_containers.gy` prints CPython's answer
+line for line and enters the matrix as row 102 with a `match`. Set members are written ascending
+*because* of that run: `{3, 1, 2}` is `{1, 2, 3}` in CPython and `{3, 1, 2}` in both gusty backends
+(documented insertion order), and a corpus row that needs a `debt` entry to pass proves nothing about
+the thing it claims to test.
+
+**Refusals kept honest by comparison, not by prose.** `TestContainerComprehensionRefusalsStayHonest`
+compiles the set spelling and the list spelling of the same unsupported shape and fails if the two
+messages differ — a refusal that is only true of sets is a refusal nobody designed.
+
+**Newly measured, deliberately not fixed (Gap R.67).** `return [1, 2]` emits `ret i32 @.lst1`
+(exit 2) and `la = [1, 2]; return la` prints `0` — the same operand question one statement further
+out, affecting literals, so not created here: closing the binding just removed the refusal that used
+to stand in front of it. It is L11.1's (a handle and its kind travelling together), and it goes on the
+queue with a `(planned)` program rather than into this commit — one commit per feature.
+
+**Process notes.** Full suite green before and after (`go test -tags=llvm20 ./...`), matrix at 102
+rows / 79 parity / 0 drift. The queue lost row 15 (Gap J.2 ✅) and gained one (Gap R.67), so it still
+says 53 owed — a reminder that closing a row honestly often costs a row. The guard test I wrote first
+is the one I trust most: a regex over seven whole modules for a folded container global in an operand
+position, because three `strings.Contains` on the three lines I knew about would have certified only
+the three lines I knew about.

@@ -1616,16 +1616,22 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		return v, nil
 	case *Comp:
 		// A comprehension is a container the same way a literal is. The constant path hands
-		// back a folded global (@.lstN), whose layout is a length plus an array and not a
-		// handle — handing that to a runtime helper is the invalid-IR shape ADR 0188 removed
-		// for literals, so it is materialised into the heap here; the runtime path already
-		// produced a handle (roadmap L11.7, ADR 0192).
+		// back a folded global (@.lstN / @.setN / @.dictN), whose layout is a length plus an
+		// array and not a handle — handing that to a runtime helper is the invalid-IR shape
+		// ADR 0188 removed for literals, so it is materialised into the heap here; the runtime
+		// path already produced a handle (roadmap L11.7, ADR 0192; Gap J.2, ADR 0234).
 		h, err := g.value(b, e)
 		if err != nil {
 			return "", err
 		}
 		if lit, ok := g.staticLists[h]; ok {
 			return g.heapListFrom(b, lit, "")
+		}
+		if lit, ok := g.staticSets[h]; ok {
+			return g.heapSetFrom(b, lit, "")
+		}
+		if lit, ok := g.staticDicts[h]; ok {
+			return g.heapDictFrom(b, lit, "")
 		}
 		return h, nil
 	}

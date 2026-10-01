@@ -3393,6 +3393,12 @@ type irGen struct {
 	// so a call site can copy it into the runtime heap when the callee expects a
 	// container handle.
 	staticLists map[string]*ListLit
+	// staticSets and staticDicts are the same record for the two container kinds a
+	// comprehension can fold to: `sa = {x for x in [3, 1, 2]}` emits @.setN, whose layout is
+	// a length plus an array and therefore not a value, so the binding site materialises the
+	// literal these maps hold instead of storing the global (roadmap Gap J.2, ADR 0234).
+	staticSets  map[string]*SetLit
+	staticDicts map[string]*DictLit
 	// heapArgs records, per function name, which parameter positions receive a
 	// runtime heap container handle (see heapargs.go). Inferred once, before any
 	// IR is emitted.
@@ -7107,7 +7113,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 				return g.asBoolI32(b, bt), nil
 			}
-			// l is the value to test, r is the container handle.
+			// l is the value to test, r is the container handle. A comprehension on the right is
+			// the container the program means, but the constant path hands back a folded global
+			// whose layout is a length plus an array: `rt_contains(i32 @.set1, i32 2)` is a global
+			// in an i32 slot, the module llc refuses, so it is materialised into the heap first
+			// (ADR 0166's rule one construct on; roadmap Gap J.2, ADR 0234).
+			if _, isComp := n.R.(*Comp); isComp {
+				ch, chErr := g.containerOperand(b, n.R)
+				if chErr != nil {
+					return "", chErr
+				}
+				r = ch
+			}
 			t := g.newTmp()
 			b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains(i32 %s, i32 %s)\n", t, r, l))
 			bt := g.newTmp()
@@ -7823,11 +7840,25 @@ func (g *irGen) foldConstInt(e Expr) (int64, bool) {
 // counter, rt_get_elem per step, the loop variable bound to the element the way a `for` statement
 // binds it (roadmap L11.7, ADR 0192).
 func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
-	if len(c.Elems) != 1 {
-		return "", fmt.Errorf("codegen: a runtime comprehension builds one element at a time (roadmap L11.1)")
+	// The operands a loop has to lower: one element for a list or a set, a key and a value for a
+	// dict. A shape the loop cannot spell is a refusal, never a container built without them.
+	var elemExprs []Expr
+	switch c.Kind {
+	case CompDict:
+		if len(c.Keys) != 1 || len(c.Vals) != 1 {
+			return "", fmt.Errorf("codegen: a runtime comprehension builds one entry at a time (roadmap L11.1)")
+		}
+		elemExprs = []Expr{c.Keys[0], c.Vals[0]}
+	default:
+		if len(c.Elems) != 1 {
+			return "", fmt.Errorf("codegen: a runtime comprehension builds one element at a time (roadmap L11.1)")
+		}
+		elemExprs = []Expr{c.Elems[0]}
 	}
-	if g.nestedContainerElem(c.Elems[0]) {
-		return "", nestedContainerErr(c.Elems[0])
+	for _, el := range elemExprs {
+		if g.nestedContainerElem(el) {
+			return "", nestedContainerErr(el)
+		}
 	}
 	if nm, ok := c.Iter.(*Name); ok && g.mixedLists[nm.Value] {
 		// Iterating a mixed list has to bind the element's tag alongside its payload, which is
@@ -7893,7 +7924,17 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 1)\n", h))
+	// The object the loop fills is the container the comprehension means: a list appends, a set
+	// adds (deduping on the (payload, tag) pair) and a dict puts (replacing the entry whose key
+	// pair matches) — all three through the tagged helpers, which find their own slot, so a filter
+	// that skips an item cannot leave a hole behind (roadmap Gap J.2, ADR 0234).
+	allocKind := HeapList
+	if c.Kind == CompDict {
+		allocKind = HeapKindDict
+	} else if c.Kind == CompSet {
+		allocKind = HeapKindSet
+	}
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, allocKind))
 	nlen := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", nlen, src))
 	// A named preheader block: the induction phi needs a predecessor to take its 0 from, and
@@ -7930,14 +7971,41 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", iv, src, idx))
 	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", iv, lv))
 	appendElem := func() error {
+		if c.Kind == CompDict {
+			kv, kerr := g.value(b, c.Keys[0])
+			if kerr != nil {
+				return kerr
+			}
+			vv, verr := g.value(b, c.Vals[0])
+			if verr != nil {
+				return verr
+			}
+			kt, kok := g.elemKindTag(c.Keys[0])
+			vt, vok := g.elemKindTag(c.Vals[0])
+			if !kok || !vok {
+				return fmt.Errorf("codegen: a dict entry whose key or value is not a kind the compiler can name needs a tagged value word (roadmap L11.1)")
+			}
+			b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, kv, vv, kt, vt))
+			if _, intern, kerr := g.heapElemKind(b, c.Keys[0]); kerr == nil && intern {
+				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 2)\n", h))
+			}
+			if _, intern, verr := g.heapElemKind(b, c.Vals[0]); verr == nil && intern {
+				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 4)\n", h))
+			}
+			return nil
+		}
 		av, aerr := g.value(b, c.Elems[0])
 		if aerr != nil {
 			return aerr
 		}
+		add, addTagged := "rt_append", "rt_append_tagged"
+		if c.Kind == CompSet {
+			add, addTagged = "rt_set_add", "rt_set_add_tagged"
+		}
 		if kt, ok := g.elemKindTag(c.Elems[0]); ok {
-			b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %s, i32 %s, i32 %d)\n", h, av, kt))
+			b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 %s, i32 %d)\n", addTagged, h, av, kt))
 		} else {
-			b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %s, i32 %s)\n", h, av))
+			b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 %s)\n", add, h, av))
 		}
 		if _, intern, kerr := g.heapElemKind(b, c.Elems[0]); kerr == nil && intern {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 1)\n", h))
@@ -8076,6 +8144,179 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 	return h, nil
 }
 
+// compItems derives the items a comprehension walks at compile time: an inline list literal of
+// constant integers, or range(start, stop[, step]) with constant bounds. Anything else — a
+// container variable, a builtin that builds a list — has no compile-time length, and the caller
+// answers it with the runtime loop (roadmap L11.7, ADR 0192).
+func (g *irGen) compItems(c *Comp) ([]int64, []Expr, error) {
+	var items []int64
+	var itemExprs []Expr
+	if ll, ok := c.Iter.(*ListLit); ok {
+		for _, el := range ll.Elems {
+			v, ok := g.foldConstInt(el)
+			if !ok {
+				return nil, nil, fmt.Errorf("codegen: comprehension iterable must be constant integers")
+			}
+			items = append(items, v)
+			itemExprs = append(itemExprs, el)
+		}
+		return items, itemExprs, nil
+	}
+	if r, ok := c.Iter.(*Call); ok {
+		// range(stop), range(start, stop) or range(start, stop, step)
+		start := int64(0)
+		stop, ok := g.foldConstInt(r.Args[0])
+		if !ok {
+			return nil, nil, fmt.Errorf("codegen: range bound must be a constant")
+		}
+		step := int64(1)
+		if len(r.Args) > 1 {
+			start = stop
+			stop, ok = g.foldConstInt(r.Args[1])
+			if !ok {
+				return nil, nil, fmt.Errorf("codegen: range stop must be a constant")
+			}
+		}
+		if len(r.Args) > 2 {
+			step, ok = g.foldConstInt(r.Args[2])
+			if !ok {
+				return nil, nil, fmt.Errorf("codegen: range step must be a constant")
+			}
+		}
+		if step > 0 {
+			for v := start; v < stop; v += step {
+				items = append(items, v)
+				itemExprs = append(itemExprs, &IntLit{Value: v})
+			}
+		} else {
+			for v := start; v > stop; v += step {
+				items = append(items, v)
+				itemExprs = append(itemExprs, &IntLit{Value: v})
+			}
+		}
+		return items, itemExprs, nil
+	}
+	return nil, nil, fmt.Errorf("codegen: comprehension iterable must be an inline list literal, range(), or a container variable")
+}
+
+// foldConstUnder folds one operand of a comprehension with the loop variable bound to one item,
+// clearing the binding again on the way out. Every fold a comprehension does goes through here, so
+// a refused fold cannot leave the loop variable's value behind for the next statement to read, and
+// the refusal names the operand that gave up (`element`, `condition`, `key`, `value`) instead of
+// blaming the element for a filter that will not fold.
+func (g *irGen) foldConstUnder(noun, forVar string, item int64, e Expr) (int64, error) {
+	if g.constBindings == nil {
+		g.constBindings = map[string]int64{}
+	}
+	g.constBindings[forVar] = item
+	v, ok := g.foldConstInt(e)
+	delete(g.constBindings, forVar)
+	if !ok {
+		return 0, fmt.Errorf("codegen: comprehension %s must be constant", noun)
+	}
+	return v, nil
+}
+
+// foldSetComp unrolls a set comprehension into the literal it means: the element and, when there
+// is one, the filter are folded with the loop variable bound to each item, and a member already
+// seen is dropped. The literal is what the binding rule stores into the heap, so a folded set
+// comprehension and the equivalent `{1, 2}` literal build the very same object (roadmap Gap J.2,
+// ADR 0234).
+func (g *irGen) foldSetComp(c *Comp, items []int64) (*SetLit, []int64, error) {
+	seen := map[int64]bool{}
+	var vals []int64
+	var elems []Expr
+	for _, item := range items {
+		v, err := g.foldConstUnder("element", c.ForVar.Value, item, c.Elems[0])
+		if err != nil {
+			return nil, nil, err
+		}
+		if c.Cond != nil {
+			cv, cerr := g.foldConstUnder("condition", c.ForVar.Value, item, c.Cond)
+			if cerr != nil {
+				return nil, nil, cerr
+			}
+			if cv == 0 {
+				continue
+			}
+		}
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		vals = append(vals, v)
+		elems = append(elems, &IntLit{Value: v})
+	}
+	return &SetLit{Elems: elems, Src: c.Src}, vals, nil
+}
+
+// foldDictComp is the same unrolling for a dict comprehension, keeping the folded keys beside the
+// literal so `d[k]` on a folded comprehension can still be answered at codegen time.
+func (g *irGen) foldDictComp(c *Comp, items []int64) (*DictLit, []int64, []int64, error) {
+	var keys, vals []int64
+	var kexprs, vexprs []Expr
+	for _, item := range items {
+		k, kerr := g.foldConstUnder("key", c.ForVar.Value, item, c.Keys[0])
+		if kerr != nil {
+			return nil, nil, nil, kerr
+		}
+		v, verr := g.foldConstUnder("value", c.ForVar.Value, item, c.Vals[0])
+		if verr != nil {
+			return nil, nil, nil, verr
+		}
+		if c.Cond != nil {
+			cv, cerr := g.foldConstUnder("condition", c.ForVar.Value, item, c.Cond)
+			if cerr != nil {
+				return nil, nil, nil, cerr
+			}
+			if cv == 0 {
+				continue
+			}
+		}
+		keys = append(keys, k)
+		vals = append(vals, v)
+		kexprs = append(kexprs, &IntLit{Value: k})
+		vexprs = append(vexprs, &IntLit{Value: v})
+	}
+	return &DictLit{Keys: kexprs, Vals: vexprs, Src: c.Src}, keys, vals, nil
+}
+
+// foldedContainerCompLiteral is the question the binding rule asks: is this right-hand side a
+// set/dict comprehension that means a literal outright? When it is, the binding goes through the
+// literal's own lowering, so a comprehension and the literal it folds to cannot grow apart — and
+// when it is not (an element the folder cannot see, a container variable to walk), the answer is
+// simply `false` and the runtime loop answers the program instead (roadmap Gap J.2, ADR 0234).
+func (g *irGen) foldedContainerCompLiteral(e Expr) (Expr, bool) {
+	c, ok := e.(*Comp)
+	if !ok || (c.Kind != CompSet && c.Kind != CompDict) {
+		return nil, false
+	}
+	if c.ForVar == nil || len(c.Elems) > 1 || len(c.Keys) > 1 || len(c.Vals) > 1 {
+		return nil, false
+	}
+	items, _, err := g.compItems(c)
+	if err != nil {
+		return nil, false
+	}
+	switch c.Kind {
+	case CompSet:
+		if len(c.Elems) != 1 {
+			return nil, false
+		}
+		if lit, _, ferr := g.foldSetComp(c, items); ferr == nil {
+			return lit, true
+		}
+	case CompDict:
+		if len(c.Keys) != 1 || len(c.Vals) != 1 {
+			return nil, false
+		}
+		if lit, _, _, ferr := g.foldDictComp(c, items); ferr == nil {
+			return lit, true
+		}
+	}
+	return nil, false
+}
+
 // comp lowers a list comprehension over a constant iterable (inline list
 // literal or range(n)) into a dedicated global struct, unrolled at compile
 // time. Returns the global's name.
@@ -8099,56 +8340,15 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	case *ListLit, *Call:
 		iterStatic = true
 	}
-	if c.Kind == CompList && !iterStatic &&
-		(g.isContainerExpr(c.Iter) || containerKindFromTy(exprTyName(c.Iter)) == "list") {
+	iterKind := containerKindFromTy(exprTyName(c.Iter))
+	if !iterStatic && (g.isContainerExpr(c.Iter) || iterKind == "list" ||
+		(c.Kind != CompList && (iterKind == "set" || iterKind == "dict"))) {
 		return g.runtimeCompLoop(b, c)
 	}
 	// Determine the iteration items: an inline integer list literal or range(n).
-	var items []int64
-	var itemExprs []Expr
-	if ll, ok := c.Iter.(*ListLit); ok {
-		for _, el := range ll.Elems {
-			v, ok := g.foldConstInt(el)
-			if !ok {
-				return "", fmt.Errorf("codegen: comprehension iterable must be constant integers")
-			}
-			items = append(items, v)
-			itemExprs = append(itemExprs, el)
-		}
-	} else if r, ok := c.Iter.(*Call); ok {
-		// range(stop), range(start, stop) or range(start, stop, step)
-		start := int64(0)
-		stop, ok := g.foldConstInt(r.Args[0])
-		if !ok {
-			return "", fmt.Errorf("codegen: range bound must be a constant")
-		}
-		step := int64(1)
-		if len(r.Args) > 1 {
-			start = stop
-			stop, ok = g.foldConstInt(r.Args[1])
-			if !ok {
-				return "", fmt.Errorf("codegen: range stop must be a constant")
-			}
-		}
-		if len(r.Args) > 2 {
-			step, ok = g.foldConstInt(r.Args[2])
-			if !ok {
-				return "", fmt.Errorf("codegen: range step must be a constant")
-			}
-		}
-		if step > 0 {
-			for v := start; v < stop; v += step {
-				items = append(items, v)
-				itemExprs = append(itemExprs, &IntLit{Value: v})
-			}
-		} else {
-			for v := start; v > stop; v += step {
-				items = append(items, v)
-				itemExprs = append(itemExprs, &IntLit{Value: v})
-			}
-		}
-	} else {
-		return "", fmt.Errorf("codegen: comprehension iterable must be an inline list literal, range(), or a container variable")
+	items, itemExprs, ierr := g.compItems(c)
+	if ierr != nil {
+		return "", ierr
 	}
 	// The path below needs every element to fold to an integer. When an element is a call, a
 	// string, or anything else the folder cannot see — the ordinary `[f(x) for x in range(5)]`
@@ -8215,33 +8415,17 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 		n := len(results)
 		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, strings.Join(parts, ", ")))
 	case CompSet:
-		seen := map[int64]bool{}
-		for _, item := range items {
-			g.constBindings[c.ForVar.Value] = item
-			v, ok := g.foldConstInt(c.Elems[0])
-			if !ok {
-				delete(g.constBindings, c.ForVar.Value)
-				return "", fmt.Errorf("codegen: comprehension element must be constant")
-			}
-			if c.Cond != nil {
-				cv, ok := g.foldConstInt(c.Cond)
-				if !ok {
-					delete(g.constBindings, c.ForVar.Value)
-					return "", fmt.Errorf("codegen: comprehension condition must be constant")
-				}
-				if cv == 0 {
-					delete(g.constBindings, c.ForVar.Value)
-					continue
-				}
-			}
-			if !seen[v] {
-				seen[v] = true
-				results = append(results, v)
-			}
-			delete(g.constBindings, c.ForVar.Value)
+		sl, vals, serr := g.foldSetComp(c, items)
+		if serr != nil {
+			return "", serr
 		}
+		results = vals
 		g.setIdx++
 		name = fmt.Sprintf("@.set%d", g.setIdx)
+		if g.staticSets == nil {
+			g.staticSets = map[string]*SetLit{}
+		}
+		g.staticSets[name] = sl
 		var parts []string
 		for _, v := range results {
 			parts = append(parts, fmt.Sprintf("i32 %d", v))
@@ -8249,36 +8433,17 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 		n := len(results)
 		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, strings.Join(parts, ", ")))
 	case CompDict:
-		var keys []int64
-		for _, item := range items {
-			g.constBindings[c.ForVar.Value] = item
-			k, ok := g.foldConstInt(c.Keys[0])
-			if !ok {
-				delete(g.constBindings, c.ForVar.Value)
-				return "", fmt.Errorf("codegen: comprehension key must be constant")
-			}
-			v, ok := g.foldConstInt(c.Vals[0])
-			if !ok {
-				delete(g.constBindings, c.ForVar.Value)
-				return "", fmt.Errorf("codegen: comprehension value must be constant")
-			}
-			if c.Cond != nil {
-				cv, ok := g.foldConstInt(c.Cond)
-				if !ok {
-					delete(g.constBindings, c.ForVar.Value)
-					return "", fmt.Errorf("codegen: comprehension condition must be constant")
-				}
-				if cv == 0 {
-					delete(g.constBindings, c.ForVar.Value)
-					continue
-				}
-			}
-			keys = append(keys, k)
-			results = append(results, v)
-			delete(g.constBindings, c.ForVar.Value)
+		dl, keys, vals, derr := g.foldDictComp(c, items)
+		if derr != nil {
+			return "", derr
 		}
+		results = vals
 		g.dictIdx++
 		name = fmt.Sprintf("@.dict%d", g.dictIdx)
+		if g.staticDicts == nil {
+			g.staticDicts = map[string]*DictLit{}
+		}
+		g.staticDicts[name] = dl
 		var kparts, vparts []string
 		for _, k := range keys {
 			kparts = append(kparts, fmt.Sprintf("i32 %d", k))
@@ -9702,12 +9867,23 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// printer renders it. The constant path used to printf the folded global
 			// (@.lst1), which llc rejects outright: "global variable reference must have
 			// pointer type" (roadmap L11.7, ADR 0192 — ADR 0188's rule one construct later).
-			if _, ok := a.(*Comp); ok {
+			// The printer is the one for the container the comprehension means: a set comp is
+			// rendered `{1, 2}` and a dict comp `{1: 2}`, not `[1, 2]`, which is what made
+			// `print({x for x in [3, 1, 2]})` a question about the comprehension's kind and not
+			// only about its elements (roadmap Gap J.2, ADR 0234).
+			if comp, ok := a.(*Comp); ok {
 				h, cerr := g.containerOperand(b, a)
 				if cerr != nil {
 					return "", cerr
 				}
-				b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
+				printer := "rt_print_list_mixed"
+				switch comp.Kind {
+				case CompSet:
+					printer = "rt_set_print"
+				case CompDict:
+					printer = "rt_dict_print"
+				}
+				b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 0)\n", printer, h))
 				continue
 			}
 			// print(sorted(xs)) — that lowering hands back a runtime list handle, and only
@@ -12153,10 +12329,37 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// what make iteration, indexing, len and truthiness ask the runtime for
 			// a length; unregistered, `for k in d:` fell back to the range path and
 			// compared the loop index against the handle — zero iterations.
-			_, literal := n.Value.(*ListLit)
-			_, literalDict := n.Value.(*DictLit)
-			_, literalSet := n.Value.(*SetLit)
+			// A set/dict comprehension whose every operand folds means the literal it folds to, and a
+			// container literal already has exactly one lowering here: allocate the heap object, write
+			// every slot with its tag, register the variable's kind (ADR 0163's binding rule). Asking
+			// the fold before the value is lowered is what makes `sa = {1, 2}` and
+			// `sa = {x for x in [1, 2]}` build one and the same object, instead of the second spelling
+			// storing the compile-time global's address — `store i32 @.set1, i32* %_sa`, the module llc
+			// rejected and the exit-code contract called a compiler bug for an ordinary program
+			// (roadmap Gap J.2, ADR 0234).
+			rhs := n.Value
+			if lit, folded := g.foldedContainerCompLiteral(n.Value); folded {
+				rhs = lit
+			}
+			_, literal := rhs.(*ListLit)
+			_, literalDict := rhs.(*DictLit)
+			_, literalSet := rhs.(*SetLit)
 			boundKind := containerKindFromTy(exprTyName(n.Value))
+			// A comprehension says what it binds better than an inferred type can: the kind is written
+			// in the syntax — `[..]`, `{..}` and `{k: v ..}` build a list, a set and a dict — and the
+			// runtime loop has just put a handle of that kind in the slot. Without the record,
+			// `print(sa)` printf'd the handle and answered `1` where both other engines answer `{2, 3}`
+			// (roadmap Gap J.2, ADR 0234).
+			if c, isComp := rhs.(*Comp); isComp && boundKind == "" {
+				switch c.Kind {
+				case CompList:
+					boundKind = "list"
+				case CompSet:
+					boundKind = "set"
+				case CompDict:
+					boundKind = "dict"
+				}
+			}
 			// Container literals have their own lowering paths below, which register
 			// the kind themselves; only non-literal bindings (a call, an index, ...)
 			// need the inferred type to say so here.
@@ -12202,23 +12405,34 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.lambdas[nm.Value] = name
 				return nil
 			}
-			// `ys = [f(x) for x in ...]` binds a container the program builds at runtime.
-			// The variable needs its slot and its GC root *before* the handle is stored: an
-			// unrooted handle is one collection away from a segfault, and this branch is what
-			// keeps a comprehension result alive past the next statement (ADR 0192, ADR 0181).
-			if comp, isComp := n.Value.(*Comp); isComp && comp.Kind == CompList {
+			// `ys = [f(x) for x in ...]` / `sa = {x for x in xs}` / `da = {k: v for k in xs}` bind a container
+			// the program builds at runtime. The variable needs its slot and its GC root *before* the
+			// handle is stored: an unrooted handle is one collection away from a segfault, and this branch
+			// is what keeps a comprehension result alive past the next statement (ADR 0192, ADR 0181; the
+			// set and dict kinds join it with ADR 0234).
+			// A comprehension that folded is bound by the literal path above (`rhs` carries the
+			// literal), so this branch is the runtime one: the loop has just built a handle.
+			if comp, isComp := n.Value.(*Comp); isComp && rhs == n.Value {
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 					g.emitFreeOld(b, nm.Value)
 				}
-				g.listVars[nm.Value] = true
+				g.listVars[nm.Value] = false
 				g.runtimeDicts[nm.Value] = false
 				g.runtimeSets[nm.Value] = false
 				g.mixedLists[nm.Value] = false
-				if len(comp.Elems) == 1 {
-					if _, intern, kerr := g.heapElemKind(b, comp.Elems[0]); kerr == nil && intern {
-						g.listElemStr[nm.Value] = true
-					} else {
-						g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
+				switch comp.Kind {
+				case CompDict:
+					g.runtimeDicts[nm.Value] = true
+				case CompSet:
+					g.runtimeSets[nm.Value] = true
+				default:
+					g.listVars[nm.Value] = true
+					if len(comp.Elems) == 1 {
+						if _, intern, kerr := g.heapElemKind(b, comp.Elems[0]); kerr == nil && intern {
+							g.listElemStr[nm.Value] = true
+						} else {
+							g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
+						}
 					}
 				}
 				if !g.allocd[nm.Value] {
@@ -12230,11 +12444,23 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if herr != nil {
 					return herr
 				}
-				// The constant path hands back a folded global (@.lstN), whose layout is a
-				// length plus an array — storing that into an i32 slot is the module llc
-				// refuses, so materialise it into the heap like the folded branch below does.
+				// The constant path hands back a folded global (@.lstN / @.setN / @.dictN), whose
+				// layout is a length plus an array — storing that into an i32 slot is the module llc
+				// refuses, so materialise it into the heap (ADR 0163's rule; Gap J.2, ADR 0234).
 				if lit, folded := g.staticLists[h]; folded {
 					hh, merr := g.heapListFrom(b, lit, "")
+					if merr != nil {
+						return merr
+					}
+					h = hh
+				} else if lit, folded := g.staticSets[h]; folded {
+					hh, merr := g.heapSetFrom(b, lit, "")
+					if merr != nil {
+						return merr
+					}
+					h = hh
+				} else if lit, folded := g.staticDicts[h]; folded {
+					hh, merr := g.heapDictFrom(b, lit, "")
 					if merr != nil {
 						return merr
 					}
@@ -12398,7 +12624,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.runtimeSets[nm.Value] = false
 			}
 			// runtime set: allocate a heap set object and add each element.
-			if sl, ok := n.Value.(*SetLit); ok {
+			if sl, ok := rhs.(*SetLit); ok {
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
 					g.gcReg(b, nm.Value)
@@ -12471,7 +12697,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.strVals[nm.Value] = sv
 			}
 			// track dict literals assigned to variables for `d[key]`
-			if dl, ok := n.Value.(*DictLit); ok {
+			if dl, ok := rhs.(*DictLit); ok {
 				// runtime dict: allocate a heap dict object and fill pairs.
 				if !g.allocd[nm.Value] {
 					b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))

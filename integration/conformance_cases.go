@@ -108,6 +108,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// The same comparison in a comprehension filter over a runtime list, whose loop header
 		// used to name the wrong phi predecessor.
 		"comp_str_filter",
+		// Gap J.2 (ADR 0234): a set/dict comprehension bound to a variable, printed, measured,
+		// subscripted and iterated — and the `if` filter that used to parse as a ternary.
+		"comp_containers",
 		// ADR 0224 in one file: comparison, `in`, f-strings, instance attributes and a method's
 		// string result, all through the @str_tab index that replaced the literal's address.
 		"string_values",

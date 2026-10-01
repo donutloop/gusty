@@ -9,9 +9,10 @@ str`. The `any` annotation accepts any inferred type. Runtime enforcement
 
 ## Comprehensions
 
-List, dict, and set comprehensions are supported. Dict/set comprehensions use
+List, dict, and set comprehensions are supported on both backends. Dict/set comprehensions use
 `for` inside the braces, Python-style: `{x: x*2 for x in [1,2,3]}` builds a
-dict, `{x for x in [1,2]}` a set. See ADR 0095.
+dict, `{x for x in [1,2]}` a set. The `if` filter is the comprehension's on every kind —
+`{x for x in xs if x > 1}` parses (ADR 0234). See ADR 0095.
 
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
@@ -346,9 +347,13 @@ this order:
    block per item: store the item into the loop variable's slot, evaluate the element, append it to
    a heap list. The loop variable is a real binding, which is what makes a call in the element
    position possible at all.
-3. **Runtime loop** — the iterable is a container whose length is only known at runtime (a list or
-   set variable that exists as a heap object): an index counter over `rt_list_len`/`rt_get_elem`
-   with the loop variable bound per step, as a `for` statement binds it.
+3. **Runtime loop** — the iterable is a container whose length is only known at runtime (a list,
+   set or dict variable that exists as a heap object): an index counter over
+   `rt_list_len`/`rt_get_elem` with the loop variable bound per step, as a `for` statement binds it.
+   The object the loop fills is the container the comprehension means — `rt_append_tagged` for a
+   list, `rt_set_add_tagged` for a set (which dedups on the `(payload, tag)` pair, ADR 0232),
+   `rt_dict_put_tagged` for a dict — and all three find their own slot, so an `if` filter that skips
+   an item cannot leave a hole behind.
 
 The result of either runtime path is an ordinary container: it can be assigned (`sqrs = [sq(x) for
 x in range(4)]`), printed, indexed, measured with `len`, iterated with `for`, and passed to a
@@ -375,7 +380,28 @@ Three shapes refuse rather than answer wrongly, each naming its reason:
   mutating it, materialises it (`probe_comp_folded_iter`; L11.2's tagged value word removes the
   category).
 
-Dict and set comprehensions take the constant-fold path only; the runtime lowerings are list-kind.
+Dict and set comprehensions take the same three paths, and the same rule decides what a binding
+means: **a comprehension that folds *is* the literal it folds to** (roadmap Gap J.2, ADR 0234).
+`sa = {x for x in [1, 2, 3, 2, 1]}` and `sa = {1, 2, 3}` reach one lowering — a heap object of the
+right kind, every slot written with its payload and its tag together, and the variable's kind
+recorded so `print(sa)` asks `rt_set_print`, `2 in sa` asks `rt_contains`, `da[k]` asks the dict
+lookup and `for k in da:` iterates the keys. Print dispatches on the comprehension's kind
+(`rt_print_list_mixed` / `rt_set_print` / `rt_dict_print`), because a set comprehension rendered as a
+list was a wrong answer hiding behind an invalid module.
+
+The `if` belongs to the comprehension, on every kind:
+`{x for x in xs if x > 1}` and `{k: k * 2 for k in ks if k > 1}` parse. They used not to — the
+iterable was parsed as a full expression, and a full expression is a ternary, which read the
+comprehension's `if` as its own and demanded an `else` (`expected keyword "else"`, on both backends,
+while `[x for x in xs if x > 1]` worked: the brace branches had simply never been given the
+`or`-precedence fix the list branch already had).
+
+What still refuses in the compiled backend refuses *with the list spelling's words*, asserted in
+`TestContainerComprehensionRefusalsStayHonest`: an iterable the escape analysis folded away
+(`xs = [1, 2, 3]` with no mutation, then `{x for x in xs}` — `xs.append(...)` materialises it; L11.1's
+tagged element retires the category), and a non-integer iterable, element or key (L11.5, L11.6).
+A container **returned** from a function is a separate hole, literals included: `return [1, 2]` emits
+`ret i32 @.lst1` and `la = [1, 2]; return la` prints the handle (roadmap Gap R.67).
 The interpreter evaluates comprehensions at runtime and is the reference for all of this.
 
 
@@ -1598,14 +1624,16 @@ optional filter (`if`), and collect the element expressions.
     zs = [y for y in [1, 2, 3] if y > 1]
     d  = {k: k * 10 for k in range(2)}
 
-Comprehensions over a `range(...)` are supported in the interpreter.
+Comprehensions over a `range(...)` work on both backends.
 
-In the AOT LLVM codegen, **set comprehensions** (`{x * x} for x in [1, 2, 3]`)
-and **dict comprehensions** (`{x: x * 10} for x in [1, 2]`) are lowered to
-dedicated `@.setN` / `@.dictN` globals: set comprehensions unroll the iteration
-and deduplicate folded elements; dict comprehensions fold key/value pairs into
-the dict global. Both are usable with `len(...)` via the `compLen` map,
-mirroring the interpreter's semantics.
+In the AOT LLVM codegen, a comprehension over an inline list literal or a constant `range(...)`
+folds, and **a folded set/dict comprehension is the literal it denotes** (ADR 0234): the `@.setN` /
+`@.dictN` global is emitted *from* the `SetLit` / `DictLit` the fold produced and never escapes into
+a value position — a binding, a `print`, an `in` test or a call argument takes the literal's own
+lowering, which allocates a heap object and writes each slot with its tag. Set comprehensions
+unroll the iteration and deduplicate folded elements; dict comprehensions fold key/value pairs.
+Both are usable with `len(...)` via the `compLen` map, mirroring the interpreter's semantics. A
+comprehension whose iterable is a runtime container walks it with the same real loop `for` uses.
 
 Comprehension results are **indexable** exactly like their literal
 counterparts, resolved at codegen time:

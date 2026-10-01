@@ -1899,7 +1899,11 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 		p.next() // 'for'
 		v := p.next()
 		p.next() // 'in'
-		iter, err := p.parseExpr()
+		// The iterable stops at `or`, exactly as the list comprehension above does: a
+		// full expression here is a ternary, and the ternary eats the comprehension's own
+		// `if` filter — `{x for x in xs if x > 1}` parsed as `{x for x in (xs if x > 1 …)}`
+		// and demanded an `else` (roadmap Gap J.2, ADR 0234).
+		iter, err := p.parseExprPrec(precOr)
 		if err != nil {
 			return nil, err
 		}
@@ -1937,7 +1941,9 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 		if err := p.expectKeyword("in"); err != nil {
 			return nil, err
 		}
-		iter, err := p.parseExpr()
+		// As above: the iterable is an or-level expression so the `if` filter stays the
+		// comprehension's, not a ternary's (Gap J.2, ADR 0234).
+		iter, err := p.parseExprPrec(precOr)
 		if err != nil {
 			return nil, err
 		}
