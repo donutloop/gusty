@@ -425,20 +425,6 @@ row before this tabulation — they are recorded here so every cited ID resolves
 | Gap R.51 | `floor` / `ceil` / `sqrt`: the checker predeclares them, the interpreter traps `NameError` (exit 3), the compiler answers — with a float where Python returns an `int` | ⏳ `OPEN` — found by the 2026-10-01 sweep; owner: L11.6 | both | 0166 | `gustyc check` says `ok`, `--interp` traps, `--aot` prints `3.0` | [→](docs/roadmap-details.md#gap-r-51) |
 | Gap R.52 | stdlib discovery walks up from the **cwd**, so an installed `gustyc` cannot `import math` unless `--stdlib` / `$GUSTY_STDLIB_DIR` is set | ⏳ `OPEN` — found by the 2026-10-01 sweep; owner: L9.2 (the install story) | cli | — | `import math` fails outside a directory under a repo with `stdlib/`, succeeds inside one | [→](docs/roadmap-details.md#gap-r-52) |
 
-## Recently closed (most recent first)
-
-| ID / Gap | Closed by | Artifact |
-|---|---|---|
-| L11.1 (mixed dicts/sets + tagged lookup) | ADR 0232 | `pkg/lang/mixed_dict_set_test.go`, `integration/mixed_container_test.go` |
-| L8.5 (line tables in the module) | ADR 0231 | `pkg/lang/debug.go`, `--debug-info`, `--build --debug` |
-| Gap R.47 (run-time strings) | ADR 0230 + 0229 | `runtime_string_ops.gy`, `runtime_string_writes.gy` |
-| Gap R.36 + R.39 (unwritten slot) | ADR 0228 | `unwritten_slot_trap.gy` |
-| Gap R.35 scalars (module bindings) | ADR 0227 | `module_calltime_lookup.gy` |
-| Gap R.40 (container slot is a word) | ADR 0226 | `kind_mismatch_equality.gy` |
-| Gap R.45 (string subscript) | ADR 0225 | `string_subscript.gy` |
-| Gap R.42 (string is an index) | ADR 0224 | `string_values.gy`, `str_loop_eq.gy` |
-| Gap R.41 (a method is a call) | ADR 0223 | `method_try.gy` |
-| Gap R.23 (`finally` on every exit) | ADR 0222 | `deferred_bodies.gy` |
 
 ## Definition of done per item
 
