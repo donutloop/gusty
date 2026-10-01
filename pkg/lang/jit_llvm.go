@@ -111,7 +111,19 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 	diags := Analyze(prog)
 	if anyErr(diags) {
 		res.Diagnostics = diags
-		return res, fmt.Errorf("jit: %d error(s) in source", nErrs(diags))
+		// A count is not an error message. The checker knew `line 1:6: unexpected character ";"`
+		// while this path said only "jit: 1 error(s) in source", so a program the interpreter runs
+		// (`x = 5; print(x+1)`) disagreed with the compiled path and the reader could not see why
+		// (ADR 0240; the rule is ADR 0166's and ADR 0233's: name what is missing).
+		errMsg := fmt.Sprintf("jit: %d error(s) in source", nErrs(diags))
+		for _, d := range diags {
+			if d.Level != LevelError {
+				continue
+			}
+			// The same rendering the Diagnostic carries, so the two surfaces say one thing.
+			errMsg += "\n  - " + d.Error()
+		}
+		return res, fmt.Errorf("%s", errMsg)
 	}
 	var ir string
 	var derr error

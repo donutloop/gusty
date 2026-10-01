@@ -3895,3 +3895,36 @@ as an integer (that particular case is fixed, and pinned in `pkg/lang/numeric_fo
 reduction over runtime values is not a fold: it needs a loop, a comparison that asks each element's
 kind, and a result that remembers the winner's type. That belongs with the float work (L11.6) that
 owns the rest of the numeric surface, not with the container work that surfaced it.
+
+### Gap R.72 — one line of source, three verdicts: `;` is a diagnostic some entry points enforce and one ignores (measured 2026-10-02 while measuring the nested half of L11.1)
+
+```gy
+x = 5; print(x+1)
+```
+
+| entry point | verdict |
+|---|---|
+| `--interp --file` / `--eval` / `--repl` | `6` — CPython's answer |
+| `--jit` / `--aot` | exit 1, `jit: 1 error(s) in source` + `error at 1:6: unexpected character ";"` |
+| `--emit-llvm` | exit 0, no diagnostic, and `llc-20 -filetype=null` accepts the module |
+
+The lexer has no `;`: it records `unexpected character ";"` as a diagnostic and carries on, so both
+statements parse and `GenerateIR` emits a module that works. What differs is who asks.
+`JITWithOptions` refuses on any error-level diagnostic; `Compile` collects diagnostics into its result
+and returns the IR anyway; the interpreter never looks. Same program, three stories — which is exactly
+what an agent comparing backends will read as a backend bug, and burn a round on.
+
+ADR 0240 fixed half of the pain: the refusal now says `unexpected character ";"` at `1:6` instead of
+reporting a bare count, so the disagreement is legible. What it did not do is decide the question,
+because the decision has two legitimate answers and they are not the same work:
+
+- **`;` is a statement separator** (CPython agrees: it terminates a simple statement, and `gusty`
+  source files already accept `x = 5; print(x+1)` on the interpreter). Then the lexer should emit it
+  as such, the diagnostic disappears, and every path says `6`.
+- **`;` is not in the language.** Then the lexer error must be fatal on *every* path, including
+  `--interp` and `--emit-llvm`, and the interpreter's tolerance is the bug.
+
+Either way the rule is ADR 0166's, applied to the CLI instead of to codegen: a program gets one
+verdict, and the paths that report it report the same one. Definition of done: a table test that runs
+one `;`-separated program and one `;`-free control through all five entry points and asserts the same
+exit code and the same stdout, plus a line in `docs/language.md` saying which answer was chosen.
