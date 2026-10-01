@@ -12410,8 +12410,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// handle is stored: an unrooted handle is one collection away from a segfault, and this branch
 			// is what keeps a comprehension result alive past the next statement (ADR 0192, ADR 0181; the
 			// set and dict kinds join it with ADR 0234).
-			// A comprehension that folded is bound by the literal path above (`rhs` carries the
-			// literal), so this branch is the runtime one: the loop has just built a handle.
+			// A comprehension whose operands all folded is not bound here: `rhs` carries the literal the
+			// fold produced, and the container-literal paths below bind it, so `{x for x in [1, 2]}` and
+			// `{1, 2}` are one code path (ADR 0234). This branch is the runtime one — the loop has just
+			// built a handle, and it needs the slot, the root and the kind recorded for it.
 			if comp, isComp := n.Value.(*Comp); isComp && rhs == n.Value {
 				if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
 					g.emitFreeOld(b, nm.Value)

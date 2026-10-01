@@ -61,6 +61,41 @@ _Rows of the tracker's “Gaps A–I” table. Verbatim record._
 - DoD: every interpreter `match` case also lowers to AOT; a
   `match_exhaustive` integration program runs identically on both backends.
 
+**Re-measured 2026-10-02** (three engines, found while closing Gap J.2, which is the same shape — a
+compiled match arm reading a name it never bound). The row said "the interpreter answers `no`, the
+compiled backend answers `0`"; the answer is worse, and one shape is worse than that:
+
+```gy
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+p = Point(1, 2)
+match p:
+    case Point(a, b):        # also with `Alias = Point` in pattern position
+        print("pt", a, b)
+    case _:
+        print("no")
+```
+
+`--interp` prints `no` — the class pattern does not match at all. `--aot` prints `pt 0 0`: the arm
+*matched* and bound both names to a word that was never written. So the two backends disagree about
+whether the arm applied, and the compiled answer is not merely wrong but an unbound slot read. CPython
+cannot adjudicate this shape (it raises `TypeError: Point() accepts 0 positional sub-patterns` — gusty's
+positional class patterns are an extension, `docs/language.md` § Pattern matching), so the ledger row
+for the promoting program must be a `debt` with per-leg pins, not a `match`.
+
+The alias form additionally rejects the module. With `Alias = Point` written *above* the `class Point`
+line and the `match` inside a function body, codegen emits:
+
+```llvm
+  %t7 = and i1 %t4, %t6        ; llc: expected instruction opcode — exit 2
+```
+
+Verified identical at `d03c87d` (before ADR 0234), so it is not a regression from the comprehension
+work — it is Gap B's own invalid-IR site, and it is the one to fix first: an exit 2 on a program both
+other engines run is a compiler bug, per ADR 0211.
+
 <a id="gap-c"></a>
 ### Gap C — arbitrary (fnptr-valued) decorators
 - **Status**: ✅ DONE — the canonical wrapping decorator
