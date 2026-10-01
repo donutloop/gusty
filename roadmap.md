@@ -501,8 +501,22 @@ first, then semantics/type system, then runtime, then codegen, then tooling.
   numeric loops; add a `--report=vector` output showing which loops vectorize.
 - **L8.4 SROA/scalar-replacement** — promote non-escaping heap objects to
   registers (the Gap H follow-on), now driven by monomorphization (L8.1).
-- **L8.5 Debug line tables in IR** — emit `!dbg` records from `sourcemap.go`
-  spans so DWARF (already wired via `cc -g`) shows exact source lines.
+- **L8.5 Debug line tables in IR** — ✅ DONE (ADR 0231). Codegen records which statement
+  each stretch of emitted code was written for; a post-pass (`pkg/lang/debug.go`) lays LLVM
+  debug metadata over the finished module — `DICompileUnit` (`DW_AT_language` =
+  `DW_LANG_Python`), one `DISubprogram` per *program* function and none for the compiler's own
+  GC/exception/printer blocks, and a `DILocation` per instruction — so `llc` writes a real
+  `.debug_line` table and `cc -g` is not the lie it used to be (DWARF comes from the module,
+  not the link). The report is read back from the artifact: `gustyc --debug-info <src>`
+  (`definitions.debugInfo`, per-function coverage, IR-line-to-source-line rows, a `defect` field
+  when module and emitter disagree) and `--build --debug`'s `dwarf` member
+  (`definitions.dwarfReport`), produced by `llvm-dwarfdump --debug_line` over the linked object
+  — `skipped` for a missing toolchain, never `ok`. Honoured by `--build`, `--emit-llvm` and
+  `--jit/--aot`; source map v2 carries the same table. Found by reading the artifact: a
+  `DISubprogram` whose `type:` named a bare type list made `llc` print `invalid subroutine
+  type`, exit 0, and emit an empty table while every internal count looked perfect. Required
+  closing a Gap-K.6-class hole first: attribute and tuple assignment carried no position, so
+  their instructions inherited the previous statement's line. Unblocks Gap K.8.
 
 ### Phase 9 — tooling: incremental JIT, package manager, richer LSP (2026)
 
@@ -965,9 +979,10 @@ remaining reads, L11.2 (bools as values), L11.3 (tuples), L11.4 (indexing), L11.
 exit codes). L7.2/L7.3/L8.1/L8.4 all assume L11.1. The still-open gap-shaped items (Gap J.2,
 Gap K.8 part 2 — full AOT tracebacks, Gap M.2 — flipping `--file` to the compiled backend,
 Gap L.5 — print atomicity, Gaps N.2, P.1, P.2) are absorbed by Phase 11 where they are
-representation decisions, and stay their own work where they are not (K.8 needs L8.5's line
-tables; M.2 flips only once the corpus is green through the compiled leg — which, since L11.9,
-is a measured claim rather than an assumption).
+representation decisions, and stay their own work where they are not (K.8's prerequisite
+landed with L8.5's line tables (ADR 0231) — what is left there is the frame stack, not the
+metadata; M.2 flips only once the corpus is green through the compiled leg — which, since
+L11.9, is a measured claim rather than an assumption).
 
 ## Gap J — found while closing earlier gaps (2026-09-27)
 
@@ -1257,8 +1272,9 @@ Each is a concrete, reproducible defect with the shape to fix it.
   array length ("got type '[7 x i8]' but expected '[31 x i8]'") — a traceback frame, which
   contains quotes, was the first thing to trip it. Quotes are now `\22` (tabs/CR too).
   Still open: the AOT report shows only the raise site's own frame, where the interpreter
-  prints one frame per stack level. Doing it properly needs the call-stack line tables of
-  L8.5 (or an explicit frame stack pushed at each call site).
+  prints one frame per stack level. Its prerequisite has since landed — L8.5 put a real line
+  table in the module (ADR 0231), so the frames an unwinder could read are there; what is
+  missing is the runtime half, an explicit frame stack pushed at each call site to walk.
 - **Gap K.7 — `--build` could fail with no stated reason** — ✅ DONE. The error branch
   printed the diagnostics *or* the failure line, never both, so a build that died in
   codegen while the program also carried warnings exited 1 showing only warnings; and the

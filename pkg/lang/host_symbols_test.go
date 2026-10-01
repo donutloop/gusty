@@ -161,7 +161,7 @@ func TestMethodClosureAndDecoratorSymbolsArePrefixed(t *testing.T) {
 func TestSourceMapNamesTheSourceAndTheLinkSeparately(t *testing.T) {
 	src := "def sync(x):\n    return x + 1\n\nprint(sync(1))\n"
 	ir := mustIRForSymbols(t, src)
-	raw, err := GenerateSourceMap(parseOrFatal(t, src), ir)
+	raw, err := GenerateSourceMap(parseOrFatal(t, src), ir, nil)
 	if err != nil {
 		t.Fatalf("GenerateSourceMap: %v", err)
 	}

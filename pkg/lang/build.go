@@ -26,6 +26,15 @@ type BuildResult struct {
 	// requested (level 0). A non-nil report with Applied=false means the build
 	// silently fell back to the textual pass — which used to be invisible (Gap J.4).
 	Optimization *Optimization `json:"optimization,omitempty"`
+	// Debug accounts for the DWARF line table the build was asked to carry (L8.5):
+	// what the module emits and what the artifact actually contains. nil when the
+	// build did not ask for debug info.
+	Debug *DebugInfo `json:"debug,omitempty"`
+	// DWARF is the line table read back out of the linked artifact with
+	// llvm-dwarfdump. A build that asked for debug info and got none says so here
+	// (`ok: false`) — the claim is taken from the binary, never from the flag
+	// (ADR 0231, and ADR 0164's rule that an unread check is never reported as ok).
+	DWARF *DWARFReport `json:"dwarf,omitempty"`
 }
 
 // Toolchain binaries used by Build. They are package-level so tests can point
@@ -47,7 +56,7 @@ var (
 // BuildOptions controls optional debug-symbol / source-map emission and the
 // AOT build mode (executable vs position-independent shared library).
 type BuildOptions struct {
-	Debug        bool   // pass -g to llc/cc so the binary carries DWARF info
+	Debug        bool   // emit DWARF line records into the module so the binary carries a .debug_line table (L8.5)
 	SourceMapOut string // write a JSON source map (source fn -> IR symbol+line)
 	Shared       bool   // emit a position-independent shared object (.so/.dylib) with the stable extern-fn ABI
 	// NoVerify skips the LLVM module-verifier stage (L8.2). Verification is on by
@@ -73,9 +82,14 @@ func BuildShared(files []string, out string, optLevel int) (*BuildResult, error)
 
 // BuildWithOptions compiles files into the executable (or, when opts.Shared
 // is set, a position-independent shared library) at out. When opts is non-nil,
-// Debug adds DWARF debug info to the binary, SourceMapOut writes a JSON source
-// map (source function -> emitted LLVM symbol + IR line), and Shared emits a
-// `.so`/`.dylib` carrying the stable gusty extern-fn ABI (see docs/abi.md).
+// Debug emits DWARF line records into the module — the compile unit, a
+// `DISubprogram` per function, and a `!DILocation` on every instruction of program
+// code — because `llc`, not the link step, is what writes a `.debug_line` table, and it
+// can only write what the module said (L8.5, ADR 0231). The verdict is read back out
+// of the artifact into BuildResult.DWARF. SourceMapOut writes a JSON source map
+// (source function -> emitted LLVM symbol + IR line, and since version 2 the
+// IR-line-to-source-line table), and Shared emits a `.so`/`.dylib` carrying the
+// stable gusty extern-fn ABI (see docs/abi.md).
 func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptions) (*BuildResult, error) {
 	prog := &Program{}
 	for _, f := range files {
@@ -96,13 +110,19 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 			fmt.Errorf("build: %d error(s) in sources", nErrs(diags))
 	}
 
-	ir, err := GenerateIR(prog)
+	// A debug build asks codegen for the line table, so the module that gets linked is
+	// the module that carries it, and BuildResult.IR shows exactly that (L8.5, ADR 0231).
+	var irOpts *IRGenOptions
+	if opts != nil && opts.Debug {
+		irOpts = &IRGenOptions{Debug: (&DebugOptions{OptLevel: optLevel}).FromFile(files[0])}
+	}
+	ir, dbgInfo, err := GenerateIRReport(prog, irOpts)
 	if err != nil {
 		// Carry the source diagnostics even though codegen failed: a build that
 		// dies in codegen while the program also carries warnings must show both,
 		// in the human output and in --json (roadmap Gap K.7).
-		// GenerateIR's own message already begins with "codegen:", so the prefix here
-		// is just "build:" — the human line reads
+		// GenerateIRReport's own message already begins with "codegen:", so the prefix
+		// here is just "build:" — the human line reads
 		//   gustyc: build: codegen: unsupported call "enumerate"
 		// rather than repeating the stage twice.
 		return &BuildResult{Output: out, Diagnostics: diags}, fmt.Errorf("build: %w", err)
@@ -124,12 +144,12 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 	}
 
 	if opts != nil && opts.SourceMapOut != "" {
-		sm, err := GenerateSourceMap(prog, ir)
+		sm, err := GenerateSourceMap(prog, ir, dbgInfo)
 		if err != nil {
-			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep}, fmt.Errorf("build: source map: %w", err)
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep, Debug: dbgInfo}, fmt.Errorf("build: source map: %w", err)
 		}
 		if err := os.WriteFile(opts.SourceMapOut, sm, 0o644); err != nil {
-			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep}, fmt.Errorf("build: write source map: %w", err)
+			return &BuildResult{Output: out, IR: ir, Diagnostics: diags, Optimization: optRep, Debug: dbgInfo}, fmt.Errorf("build: write source map: %w", err)
 		}
 	}
 
@@ -162,11 +182,23 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		ccLabel = ccCmd + " -shared -fPIC " + objPath + " -o " + out
 	}
 	if opts != nil && opts.Debug {
+		// Harmless at the link, and honest about intent: the DWARF is already in the
+		// object, because llc wrote it out of the module's !dbg records.
 		ccCmdline = append(ccCmdline, "-g")
 	}
 	if outCC, err := exec.Command(ccCmd, ccCmdline...).CombinedOutput(); err != nil {
-		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}, Optimization: optRep},
+		return &BuildResult{Output: out, IR: ir, Objects: []string{objPath}, Debug: dbgInfo, Optimization: optRep},
 			fmt.Errorf("build: cc: %v\n%s", err, outCC)
+	}
+
+	// Read the line table out of the artifact rather than asserting it. llc is what
+	// writes DWARF, and it only writes what the module said: a `--debug` build whose
+	// object carries no `.debug_line` rows must report that, because for the whole
+	// life of this flag it linked with `-g` and docs claimed a line table existed
+	// that nothing had ever read (L8.5, ADR 0231).
+	var dwarfRep *DWARFReport
+	if opts != nil && opts.Debug {
+		dwarfRep, _ = DwarfLineTable(objPath)
 	}
 
 	return &BuildResult{
@@ -180,6 +212,8 @@ func BuildWithOptions(files []string, out string, optLevel int, opts *BuildOptio
 		Shared:       opts != nil && opts.Shared,
 		Verification: verification,
 		Optimization: optRep,
+		Debug:        dbgInfo,
+		DWARF:        dwarfRep,
 	}, nil
 }
 

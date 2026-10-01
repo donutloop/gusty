@@ -1046,7 +1046,10 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 			value = &Tuple{Elems: rhsList, Src: rhs.Span()}
 		}
 		p.skipNewlines()
-		return &AssignStmt{Target: target, Value: value}, nil
+		// The statement carries the position of its leftmost target: an unnamed
+		// assignment has no line for a diagnostic, a traceback or a debugger to point
+		// at (roadmap Gap K.6, and L8.5's line table reads the same spans).
+		return &AssignStmt{Target: target, Value: value, Src: ex.Span()}, nil
 	}
 	// augmented assignment: target op= expr  (x += 1, self.x *= 2, ...)
 	if op := p.peek(); op.Kind == TokOp && isAugOp(op.Text) {
@@ -1076,11 +1079,11 @@ func (p *parser) parseExprOrAssign() (Stmt, error) {
 		}
 		switch t := ex.(type) {
 		case *Attr:
-			return &AssignStmt{Target: t, Value: val}, nil
+			return &AssignStmt{Target: t, Value: val, Src: t.Span()}, nil
 		case *Index:
 			return &AssignStmt{Target: t, Value: val, Src: t.Span()}, nil
 		case *Tuple:
-			return &AssignStmt{Target: t, Value: val}, nil
+			return &AssignStmt{Target: t, Value: val, Src: t.Span()}, nil
 		default:
 			// A *ParseError (not a plain error) so the front end reports it: a
 			// non-ParseError used to be swallowed by the statement-recovery loop,

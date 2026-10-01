@@ -2420,10 +2420,29 @@ func fillRootTemplate(t string) string {
 	return t
 }
 
+// GenerateIR runs codegen and returns the module. No debug records are emitted:
+// every caller that wants them asks for them (GenerateIRWithOptions /
+// GenerateIRReport), so the IR an agent reads with --emit-llvm is byte-identical
+// to the IR it was before L8.5 (docs/operations.md § Debug info, ADR 0231).
 func GenerateIR(prog *Program) (string, error) {
+	ir, _, err := GenerateIRReport(prog, nil)
+	return ir, err
+}
+
+// GenerateIRWithOptions is GenerateIR with the emitter's choices spelled out.
+func GenerateIRWithOptions(prog *Program, opts *IRGenOptions) (string, error) {
+	ir, _, err := GenerateIRReport(prog, opts)
+	return ir, err
+}
+
+// GenerateIRReport compiles a program to textual IR and, when debug records were
+// requested, accounts for them (L8.5). The account is read back from the module
+// text that was produced, so what `--debug-info` prints is what the module says
+// and not what the emitter hoped for.
+func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, error) {
 	imports, err := resolveImports(prog)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	g := &irGen{
 		classIDs: map[string]int{}, nextSlot: 1,
@@ -2441,6 +2460,11 @@ func GenerateIR(prog *Program) (string, error) {
 	for nm, sym := range g.moduleSlots {
 		g.moduleSlotDecls += fmt.Sprintf("@%s = global i32 0 ; module binding %q, read by a function body (ADR 0227)\n", sym, nm)
 	}
+	// Debug records are opt-in; the marks that make them are one append per statement
+	// and per function definition, collected whether or not they will be used, because
+	// `--emit-source-map` wants the line table without asking for DWARF. Turning marks
+	// into metadata is the gated part (ADR 0231).
+	g.dbgOn = opts != nil && opts.Debug != nil
 	g.decoratorNames = map[string]bool{}
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -2503,12 +2527,12 @@ func GenerateIR(prog *Program) (string, error) {
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
 			if err := g.funcDef(&b, fd); err != nil {
-				return "", err
+				return "", nil, err
 			}
 		}
 	}
 	if err := g.emitModuleFuncs(&b); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	// FFI: collect extern declarations and emit their C prototypes.
 	for _, st := range prog.Stmts {
@@ -2530,6 +2554,24 @@ func GenerateIR(prog *Program) (string, error) {
 		}
 	}
 
+	// The module's statements are `main`'s body, and `main` is a function a debugger can be
+	// asked about, so it gets a subprogram too. Its position is the first statement's, which is
+	// what the prologue (root-stack reset, GC calls) really belongs to (ADR 0231).
+	// `main`'s position is the first statement that is really its own code: a `def` or a
+	// `class` at the top of a file is emitted as its own function, and the module's
+	// prologue belongs to the first line that runs, not to the first line that exists.
+	mainSpan := Span{Line: 1, Col: 1}
+	for _, st := range prog.Stmts {
+		switch st.(type) {
+		case *FuncDef, *ClassDef, *ImportStmt, *ExternDecl:
+			continue
+		}
+		if !st.Span().IsZero() {
+			mainSpan = st.Span()
+			break
+		}
+	}
+	g.dbgDefine(&b, "main", "main", mainSpan)
 	b.WriteString("define i32 @main() {\nentry:\n")
 	// Module-level code is its own variable-binding scope. funcDef resets these
 	// per body; without a reset here, an alloca emitted for a function parameter
@@ -2569,9 +2611,10 @@ func GenerateIR(prog *Program) (string, error) {
 		if _, ok := st.(*FuncDef); ok {
 			continue
 		}
+		g.dbgMark(&b, st.Span())
 		g.gcCall(&b)
 		if err := g.stmt(&b, st); err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 	g.inMain = false
@@ -2579,7 +2622,7 @@ func GenerateIR(prog *Program) (string, error) {
 	// reported as one; it must never reach `llc` as a half-built function (ADR 0166,
 	// roadmap Gap R.41).
 	if g.emitErr != nil {
-		return "", g.emitErr
+		return "", nil, g.emitErr
 	}
 	g.gcCall(&b)
 	if GCReportEnabled() {
@@ -2654,9 +2697,14 @@ func GenerateIR(prog *Program) (string, error) {
 	for _, note := range g.closureBodyNotes {
 		out.WriteString("; note: " + note + "\n")
 	}
+	// The debug pass needs to know where in the finished module each builder's writes landed:
+	// marks were recorded as offsets into `globals` and into the body builder, and those two
+	// address spaces become one here (L8.5, ADR 0231).
 	out.WriteString(g.strGlobals.String())
+	globalsPrefix := out.Len()
 	out.WriteString(g.globals.String())
 	EmitABI(&g.decls)
+	bodyPrefix := out.Len() + len(g.decls)
 	out.WriteString(g.decls)
 	out.WriteString(b.String())
 	// PIC Level = 2 module flag: forces llc to emit position-independent code
@@ -2665,9 +2713,21 @@ func GenerateIR(prog *Program) (string, error) {
 	// relocations (e.g. R_X86_64_32) that the default PIE link (cc) rejects.
 	out.WriteString("!llvm.module.flags = !{!0}\n")
 	out.WriteString("!0 = !{i32 2, !\"PIC Level\", i32 2}\n")
+	// The line table is added to the module as assembled text, before the slot hoisting that
+	// moves allocation instructions to the top of their function: a hoisted `alloca` keeps the
+	// `!dbg` it was tagged with, so the slot stays attributed to the assignment that created it
+	// rather than to the `def` (ADR 0231, and ADR 0181 for the hoisting itself).
+	if opts != nil && opts.Debug != nil {
+		text, art := attachDebugInfo(out.String(), g.dbgMarks, g.dbgFuncs, globalsPrefix, bodyPrefix, opts.Debug)
+		// Slot hoisting first, *then* the account of the table: hoisting moves allocation
+		// lines to the top of their function, and a line table whose rows were counted
+		// before that happened would publish IR positions the shipped module does not have.
+		shipped := hoistAllocas(text)
+		return shipped, readBackDebugInfo(shipped, art), nil
+	}
 	// Every variable slot has to be allocated once per call for its *address* to
 	// identify it — see hoistAllocas (ADR 0181).
-	return hoistAllocas(out.String()), nil
+	return hoistAllocas(out.String()), nil, nil
 }
 
 // iterableIsRuntimeString reports whether a `for … in` right-hand side is text that codegen
@@ -3096,6 +3156,13 @@ type irGen struct {
 	// curModParams holds the param set of the module function being emitted,
 	// so a param that shadows a module global is not substituted.
 	curModParams map[string]bool
+	// dbgOn asks for DWARF line records; dbgMarks and dbgFuncs are where each statement's
+	// and each function definition's IR was written, which the attach pass turns into !dbg
+	// metadata (L8.5, ADR 0231). Offsets are builder-relative: a mark says whether the write
+	// went to `globals` or to the body builder.
+	dbgOn    bool
+	dbgMarks []dbgMark
+	dbgFuncs []dbgFunc
 }
 
 // markUnion records that the %unionbox type must be declared in the IR
@@ -3333,6 +3400,10 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 	g.deferred = nil
 	prevFnSrc := g.curFnSrc
 	g.curFnSrc = className + "." + fd.Name
+	// A method is program source, so it gets a DISubprogram of its own; the pass only ever puts
+	// locations inside a function that registered one, which is what keeps the compiler's own
+	// runtime blocks out of the line table (ADR 0231).
+	g.dbgDefine(&g.globals, funcName, className+"."+fd.Name, fd.Src)
 	g.globals.WriteString(fmt.Sprintf("define i32 @%s(%s) {\n", funcName, strings.Join(paramRegs, ", ")))
 	// The written-flags for this body's possibly-unwritten locals, immediately inside the brace
 	// (ADR 0228).
@@ -11075,6 +11146,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		paramTy = "double"
 	}
 	// The program's own functions carry the irSymbolPrefix; see irSymbol.
+	g.dbgDefine(b, irSymbol(g.fnName(fd)), g.fnName(fd), fd.Src)
 	fmt.Fprintf(b, "define %s @%s(", retTy, irSymbol(g.fnName(fd)))
 	for i := range fd.Params {
 		if i > 0 {
@@ -11395,6 +11467,9 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) string {
 }
 
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
+	// Every statement is a position a debugger, a profiler or (Gap K.8) a traceback can be
+	// asked about, so record where its IR starts before anything writes a line (L8.5, ADR 0231).
+	g.dbgMark(b, st.Span())
 	switch n := st.(type) {
 	case *ImportStmt:
 	case *ExternDecl:

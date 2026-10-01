@@ -230,6 +230,9 @@ func collectLocals(node interface{}, out map[string]bool) {
 // emitClosureDef emits a nested closure as a top-level env function.
 func (g *irGen) emitClosureDef(b *strings.Builder, ci *closureInfo, fd *FuncDef) {
 	name := ci.name + "_env"
+	// A closure is program source under another name: register it so its body gets locations
+	// under the nested `def` it came from (ADR 0231).
+	g.dbgDefine(b, name, ci.name, fd.Src)
 	fmt.Fprintf(b, "define internal i32 @%s(i32 %%env", name)
 	for i := range ci.params {
 		fmt.Fprintf(b, ", i32 %%p%d", i)
@@ -373,6 +376,7 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 	// program-owned function symbol does (Gap R.4), so that this define, the pointer
 	// global below and every call through resolveDecorators agree on one symbol — the
 	// wrapping branch above gets the prefix for free by emitting through funcDef.
+	g.dbgDefine(b, irSymbol(fd.Name)+"_impl", fd.Name+"_impl", fd.Src)
 	fmt.Fprintf(b, "define internal i32 @%s_impl(", irSymbol(fd.Name))
 	for i := range fd.Params {
 		if i > 0 {
@@ -402,6 +406,7 @@ func (g *irGen) emitDecoratedFunc(b *strings.Builder, fd *FuncDef) error {
 	}
 	fmt.Fprintf(&g.globals, "@%s_ptr = internal global i32(%s)* %s\n", fd.Name, repeatParamTypes(n), finalLabel)
 	// @f_apply()
+	g.dbgDefine(&g.globals, fd.Name+"_apply", fd.Name+"_apply", fd.Src)
 	fmt.Fprintf(&g.globals, "define internal void @%s_apply() {\n", fd.Name)
 	fmt.Fprintf(&g.globals, "  store i32(%s)* %s, i32(%s)* @%s_ptr\n", repeatParamTypes(n), finalLabel, repeatParamTypes(n), fd.Name)
 	fmt.Fprintf(&g.globals, "  ret void\n}\n")

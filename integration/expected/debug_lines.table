@@ -1,0 +1,5 @@
+unit prog.gy DW_LANG_Python
+func Counter.bump sym gy_Counter_bump line 2 positions 3
+func main sym main line 12 positions 4
+func total sym gy_total line 6 positions 5
+lines 1,2,3,4,6,7,8,9,10,12,13,14

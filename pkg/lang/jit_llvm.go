@@ -72,8 +72,11 @@ type JITResult struct {
 	// `--aot` reported success for a program whose own binary exits 1 — the answer
 	// an agent asks first ("did it work?") was the one answer we withheld
 	// (roadmap Gap R.17, ADR 0211).
-	Code        int          `json:"code"`
-	IR          string       `json:"ir"`
+	Code int    `json:"code"`
+	IR   string `json:"ir"`
+	// Debug is what the module handed to `llc` really carries, read back from it; nil when
+	// the build asked for no debug info (L8.5).
+	Debug       *DebugInfo   `json:"debug,omitempty"`
 	Commands    []string     `json:"commands"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
@@ -82,7 +85,24 @@ type JITResult struct {
 // dlopen's it into this process, and calls its generated `main`. It returns
 // the machine-executed stdout alongside the IR and toolchain commands. This is
 // the AOT-underneath-in-process path powering `gustyc --jit` REPL/eval.
+// JIT is JITWithOptions with no debug request: the module is the one every other path
+// builds, with no metadata in it.
 func JIT(src string, optLevel int) (*JITResult, error) {
+	return JITWithOptions(src, optLevel, nil)
+}
+
+// JITOptions is what a caller asks of the in-process JIT beyond the source. Debug is nil
+// for the ordinary build; a --debug run asks for the same module `--build --debug` would
+// link, records included, so `GUSTY_KEEP_LLVM=1 gustyc --jit --debug` leaves a .ll and a
+// .so on disk that a debugger can read (L8.5, ADR 0231).
+type JITOptions struct {
+	Debug *DebugOptions
+}
+
+// JITWithOptions compiles the program, lowers it to an object and a shared library, loads
+// it in-process and runs it. The Debug member of the result is read back from the module
+// that was actually handed to `llc`, not from the request.
+func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, error) {
 	res := &JITResult{}
 	prog, err := parseProgram(src)
 	if err != nil {
@@ -93,9 +113,17 @@ func JIT(src string, optLevel int) (*JITResult, error) {
 		res.Diagnostics = diags
 		return res, fmt.Errorf("jit: %d error(s) in source", nErrs(diags))
 	}
-	ir, err := GenerateIR(prog)
-	if err != nil {
-		return nil, fmt.Errorf("jit: codegen: %w", err)
+	var ir string
+	var derr error
+	if opts != nil && opts.Debug != nil {
+		var dbg *DebugInfo
+		ir, dbg, derr = GenerateIRReport(prog, &IRGenOptions{Debug: opts.Debug.normalized()})
+		res.Debug = dbg
+	} else {
+		ir, derr = GenerateIR(prog)
+	}
+	if derr != nil {
+		return nil, fmt.Errorf("jit: codegen: %w", derr)
 	}
 	ir = OptimizeIR(ir, optLevel)
 	res.IR = ir

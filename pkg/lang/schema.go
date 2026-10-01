@@ -1258,6 +1258,72 @@ const ASTIRSchema = `{
         "error": { "type": "string", "description": "Optimizer failure text, when the tool exists but failed or rejected the module." }
       }
     },
+    "debugInfo": {
+      "type": "object",
+      "required": ["schema_version", "file", "directory", "producer", "language", "emission_kind", "is_optimized", "compile_unit", "functions", "instructions", "tagged", "locations", "subprograms", "lines_truncated"],
+      "description": "The line table the compiler put in the module, read back out of the emitted IR (gustyc --debug-info; the \"debug\" member of --build --json, --emit-llvm --debug --json). Every number comes from the module's own metadata nodes, not from what the emitter hoped to write, so a record LLVM would ignore is reported as missing rather than as coverage (L8.5, ADR 0231).",
+      "properties": {
+        "schema_version": { "type": "integer", "description": "Version of this document; 1 is the first." },
+        "file": { "type": "string", "description": "Source file the compile unit names, as a debugger will print it." },
+        "directory": { "type": "string", "description": "Compile directory the file is relative to (DW_AT_comp_dir)." },
+        "producer": { "type": "string", "description": "Who wrote the debug info (DW_AT_producer), e.g. \"gusty 0.10.0\"." },
+        "language": { "type": "string", "description": "DW_AT_language name; gusty names its own language: DW_LANG_Python." },
+        "emission_kind": { "type": "string", "description": "FullDebug when the module carries a line table, and only then." },
+        "is_optimized": { "type": "boolean", "description": "DW_AT_optimized, set from the optimization level the module was built at." },
+        "compile_unit": { "type": "string", "description": "Metadata id of the DICompileUnit node, e.g. \"!3\"." },
+        "functions": {
+          "type": "array",
+          "description": "One entry per program function the module describes, in symbol order. The compiler's own runtime blocks are absent: they are not program source, so a debugger must not stop in them.",
+          "items": {
+            "type": "object",
+            "required": ["name", "symbol", "line", "instructions", "locations"],
+            "properties": {
+              "name": { "type": "string", "description": "Name as the program wrote it (\"Counter.bump\", \"lambda_0\", \"main\")." },
+              "symbol": { "type": "string", "description": "Linker symbol (DISubprogram linkageName), e.g. \"gy_Counter_bump\"." },
+              "line": { "type": "integer", "description": "Source line of the definition (DISubprogram line/scopeLine)." },
+              "instructions": { "type": "integer", "description": "Instruction lines in this function that carry a !dbg record." },
+              "locations": { "type": "integer", "description": "Distinct source positions inside this function." }
+            }
+          }
+        },
+        "lines": {
+          "type": "array",
+          "description": "The IR-line-to-source-line table: one row per tagged instruction, in IR order.",
+          "items": {
+            "type": "object",
+            "required": ["irLine", "line", "col"],
+            "properties": {
+              "irLine": { "type": "integer", "description": "1-based line of the emitted module." },
+              "line": { "type": "integer", "description": "Source line that instruction was written for." },
+              "col": { "type": "integer", "description": "Source column of that statement (0 when the statement carries no column)." },
+              "function": { "type": "string", "description": "IR symbol of the function the instruction sits in." }
+            }
+          }
+        },
+        "instructions": { "type": "integer", "description": "Instruction lines inside program functions (the denominator of the coverage claim)." },
+        "tagged": { "type": "integer", "description": "Of those, how many carry a location whose scope names the function it sits in. tagged < instructions is reported, never hidden." },
+        "locations": { "type": "integer", "description": "DILocation nodes in the module: one per distinct (line, column, function) position." },
+        "subprograms": { "type": "integer", "description": "DISubprogram nodes in the module." },
+        "lines_truncated": { "type": "boolean", "description": "true when the line table was cut at the caller's budget; counts above stay exact." },
+        "defect": { "type": "string", "description": "Set when the module's own metadata disagrees with what the emitter meant to write \" \u2014 a record a debugger would misread. Empty means the two agree." }
+      }
+    },
+    "dwarfReport": {
+      "type": "object",
+      "required": ["tool", "ran", "skipped", "ok", "line_rows"],
+      "description": "The DWARF line table of a built artifact, read back from the object file with llvm-dwarfdump (the \"dwarf\" member of --build --debug --json). This is the proof that the !dbg records survived codegen, the optimizer and the assembler: nothing claims DWARF that the artifact does not carry (L8.5, ADR 0231).",
+      "properties": {
+        "tool": { "type": "string", "description": "llvm-dwarfdump binary that read the table." },
+        "toolchain": { "type": "string", "description": "Pinned LLVM version, e.g. \"LLVM 20\"; empty when no toolchain was found." },
+        "ran": { "type": "boolean", "description": "true when the tool ran (whatever its verdict)." },
+        "skipped": { "type": "boolean", "description": "true when no llvm-dwarfdump was found: an absent toolchain is never reported as a pass." },
+        "ok": { "type": "boolean", "description": "true only when the tool ran and the artifact really carries line-table rows." },
+        "line_rows": { "type": "integer", "description": "Rows in .debug_line, including rows that name no source line (the compiler's runtime blocks)." },
+        "source_lines": { "type": "array", "items": { "type": "integer" }, "description": "Distinct source lines the table covers, ascending \" \u2014 the answer to \"can a debugger stop at line N?\"." },
+        "files": { "type": "array", "items": { "type": "string" }, "description": "File names the line table names, as a debugger will print them." },
+        "note": { "type": "string", "description": "Machine-matchable reason when ok is false: no toolchain, no such file, the tool failed, or the artifact carries no rows." }
+      }
+    },
     "gcStats": {
       "type": "object",
       "required": ["collections", "roots", "skipped", "marked", "freed", "live", "backend"],

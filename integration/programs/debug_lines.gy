@@ -1,0 +1,14 @@
+class Counter:
+    def bump(self, k):
+        self.n = self.n + k
+        return self.n
+
+def total(limit):
+    s = 0
+    for i in range(1, limit):
+        s = s + i
+    return s
+
+c = Counter()
+print(c.bump(2))
+print(total(4))

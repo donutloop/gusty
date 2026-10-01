@@ -34,6 +34,9 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 | `--no-verify` | with `--build`, skip the module-verifier stage (it runs by default) |
 | `--target <triple>` | target triple for codegen |
 | `--opt-level <n>` | optimization level |
+| `--debug` | compile with DWARF: `!dbg` line records in the module and a `.debug_line` table in the object, read back and reported (`--build`, `--emit-llvm`, `--jit`; § Debug info, L8.5, ADR 0231) |
+| `--debug-info <src>` | print the DWARF line-table document for a source string — compile unit, one entry per program function, IR-line-to-source-line rows; `--json` for the `debugInfo` schema document (§ Debug info) |
+| `--debug-info-file <path>` | same, reading the program from a file |
 | `--build <out>` | compile the positional source files into a native binary at `<out>` |
 | `--build <out> --shared` | emit a position-independent shared library (`.so`/`.dylib`) carrying the stable extern-fn ABI (L10.3) instead of a native binary |
 | `--version` | print version |
@@ -280,22 +283,103 @@ both backends — see `docs/language.md` § Exceptions.
 
 ## Debug symbols / source maps (AOT)
 
-`gustyc` can emit machine-readable source maps and DWARF debug info for AOT
-builds:
+`gustyc` emits machine-readable source maps and real DWARF for AOT builds:
 
 - `--emit-source-map <src>` prints a JSON source map: each user function
   (top-level, nested, and class methods) mapped to its emitted LLVM symbol
   and 1-based IR line, plus the source line/col. Class methods are mangled to
-  `<class>_<method>`.
+  `<class>_<method>`. A value that names a file on disk is read as a file, and anything
+  else stays source text — the same rule every other value-taking flag in this CLI follows.
 - `--build out.bin --source-map-out a.smap.json src.gy` writes the same JSON
   source map alongside the binary.
-- `--build out.bin --debug src.gy` passes `-g` to the final `cc` link so the
-  binary carries DWARF debug info (line tables).
+- `--build out.bin --debug src.gy` compiles with debug info: the module carries `!dbg`
+  line records, `llc` turns them into `.debug_line` in the object, and the link keeps them.
+  It is *not* a `-g` on the link step — DWARF is decided by `llc`, from the module's metadata,
+  before the linker is involved (L8.5, ADR 0231).
 
-Example source map entry:
+Example source map entry (source map v2 — `version: 2`, and `lines` carries the module's
+IR-line-to-source-line table):
 ```json
 { "name": "sync", "symbol": "gy_sync", "irLine": 9, "line": 5, "col": 5 }
 ```
+
+## Debug info: what the module claims and what the artifact carries (L8.5, ADR 0231)
+
+Two statements are kept apart on purpose. **What the module claims** is read out of the emitted
+IR's own metadata nodes. **What the artifact carries** is read out of the linked object with
+`llvm-dwarfdump`. Neither is taken from what the compiler hoped to write.
+
+```
+$ gustyc --build prog.bin prog.gy --debug
+built prog.bin (1 source files, 1 object file(s))
+  verified by /usr/bin/opt-20 (verify)
+  DWARF: prog.gy (DW_LANG_Python), 3 subprogram(s), 57/57 instruction(s) tagged, 8 location(s)
+  DWARF line table: 21 row(s) over 8 source line(s) for prog.gy
+```
+
+`--debug` is honoured by `--build`, `--emit-llvm` (which then prints the very module a debug build
+links, records included) and `--jit`. A build that does not ask for debug info gets no metadata at
+all, and the `debug` / `dwarf` members are absent from its `--json` payload rather than empty.
+
+### Reading a line table without a toolchain
+
+`gustyc --debug-info "<src>"` (or `--debug-info-file <path>`) compiles the program with debug info
+and reports the table the compiler put in the module. It needs no LLVM toolchain, because the
+compiler is the author of that answer:
+
+```json
+{
+  "schema_version": 1, "file": "prog.gy", "directory": "/tmp", "producer": "gusty 0.10.0",
+  "language": "DW_LANG_Python", "emission_kind": "FullDebug", "is_optimized": false,
+  "compile_unit": "!3",
+  "functions": [{ "name": "total", "symbol": "gy_total", "line": 1,
+                  "instructions": 38, "locations": 5 }],
+  "lines": [{ "irLine": 142, "line": 1, "col": 1, "function": "gy_total" }],
+  "instructions": 57, "tagged": 57, "locations": 8, "subprograms": 3,
+  "lines_truncated": false
+}
+```
+
+Shaped by `definitions.debugInfo` in `gustyc --schema`. Read from the module's metadata: a record
+LLVM would ignore is reported as *missing*, not as coverage. `tagged`/`instructions` is the
+coverage claim, `subprograms` is how many program functions are described, `locations` counts the
+`DILocation` nodes (one per distinct line/column/function), and `lines` maps each tagged IR line to
+the source line it was written for. `defect` is set when the module's metadata disagrees with what
+the emitter meant to write; empty means the two agree.
+
+Only program functions appear. The compiler's own blocks — GC frame bookkeeping, exception landing
+pads, runtime helpers — have no subprogram and no rows: they are not code the program wrote, and a
+debugger that stops in `rt_frame_open` and blames it for a user statement is worse than a debugger
+with nothing to show.
+
+### Reading the artifact
+
+`--build --debug --json` adds a `dwarf` member, produced by running `llvm-dwarfdump --debug-line`
+over the object that was just linked — shaped by `definitions.dwarfReport`:
+
+| Field | Meaning |
+|-------|---------|
+| `tool`, `toolchain` | the `llvm-dwarfdump` that read the table, and the pinned LLVM version |
+| `ran` | the tool ran, whatever it concluded |
+| `skipped` | no toolchain was found; **never** reported as a pass |
+| `ok` | true only when the artifact really carries `.debug_line` rows |
+| `line_rows` | rows in the table, including rows that name no source line (the compiler's runtime blocks) |
+| `source_lines` | the distinct source lines the table covers, ascending — "can a debugger stop at line N?" |
+| `files` | the file names the table names, as a debugger will print them |
+| `note` | why `ok` is false: no toolchain, no such file, the tool failed, or the artifact has no rows |
+
+The integration suite goes one step further and asks `llvm-addr2line` where `gy_total` lives, plus
+`llvm-dwarfdump --debug-info` that `DW_AT_language` says `DW_LANG_Python` — the questions a debugger
+will actually ask, asked of a real binary (`integration/debug_info_test.go`).
+
+### What is not claimed
+
+Columns are where a statement *starts*: the parser records statement positions, not subexpression
+positions, so `col` is a statement column and column-precise stepping needs positions on
+expressions. A `!dbg` record is attached to instructions, definitions and terminators — never to
+landing pads, catch switches or the metadata block. `DebugOptions.LineTableCap` bounds the `lines`
+array of a huge module; when it cuts, `lines_truncated` says so and the counts above stay exact.
+
 
 **IR symbol naming** (Gap R.4, ADR 0198). An emitted module defines every function the program
 wrote under a `gy_` prefix: `def sync(x)` becomes `define i32 @gy_sync(i32 %p0)`, a method

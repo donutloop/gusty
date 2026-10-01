@@ -113,7 +113,7 @@ func run() int {
 	oracleSrc := fs.String("oracle", "", "run a source string through interpreter + compiled backend + CPython and report whether gusty behaves like Python (exit 6 divergence, 7 no verdict; --json: the leg-by-leg report)")
 	oracleFile := fs.String("oracle-file", "", "same as --oracle, for a source file")
 	emitLLVMF := fs.String("emit-llvm", "", "print LLVM IR for a source string")
-	emitSourceMapF := fs.String("emit-source-map", "", "print the source-map JSON for a source file")
+	emitSourceMapF := fs.String("emit-source-map", "", "print the source-map JSON for a source file (functions and, since version 2, the IR-line-to-source-line table)")
 	emitASTF := fs.String("emit-ast", "", "print the AST as JSON for a source string")
 	target := fs.String("target", "", "target triple for codegen")
 	optLevel := fs.String("opt-level", "0", "optimization level")
@@ -121,7 +121,9 @@ func run() int {
 	noVerify := fs.Bool("no-verify", false, "skip LLVM's module verifier during --build (on by default, L8.2)")
 	verifyLLVMF := fs.String("verify-llvm", "", "compile a source string and report LLVM's module-verifier verdict")
 	verifyLLVMFile := fs.String("verify-llvm-file", "", "compile a source file and report LLVM's module-verifier verdict")
-	debugFlag := fs.Bool("debug", false, "pass -g to llc/cc so the binary carries DWARF debug info")
+	debugFlag := fs.Bool("debug", false, "compile with DWARF: the module carries !dbg line records and the binary gets a .debug_line table (read back with llvm-dwarfdump and reported; L8.5)")
+	debugInfoF := fs.String("debug-info", "", "print the DWARF line-table document for a source string: compile unit, one entry per function, IR-line-to-source-line rows (--json for the machine document; L8.5)")
+	debugInfoFile := fs.String("debug-info-file", "", "same as --debug-info, for a source file")
 	sourceMapOut := fs.String("source-map-out", "", "write a JSON source map (source fn -> IR symbol+line) to this path")
 	jsonOut := fs.Bool("json", false, "emit results/diagnostics as JSON")
 	langCmd := fs.Bool("lang", false, "list supported language features")
@@ -268,6 +270,14 @@ func run() int {
 					fmt.Printf("  NOT verified: %s\n", v.Note)
 				}
 			}
+			// L8.5: a build that was asked for DWARF says what the module claims and what
+			// the artifact really carries — two different statements, both printed.
+			if res.Debug != nil {
+				fmt.Printf("  %s\n", res.Debug)
+			}
+			if res.DWARF != nil {
+				fmt.Printf("  %s\n", res.DWARF)
+			}
 			// Gap J.4: an unoptimized build used to be indistinguishable from an optimized
 			// one. Say which pipeline actually ran.
 			if o := res.Optimization; o != nil {
@@ -283,7 +293,7 @@ func run() int {
 		}
 		return exitOK
 	}
-	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *effects == "" && *oracleSrc == "" && *oracleFile == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
+	if *repl || (fs.NArg() == 0 && *evalSrc == "" && *file == "" && *verify == "" && *check == "" && *effects == "" && *oracleSrc == "" && *oracleFile == "" && *emitLLVMF == "" && *emitASTF == "" && *emitSourceMapF == "" && *debugInfoF == "" && *debugInfoFile == "" && *benchSrc == "" && *benchFile == "" && *benchSuite == false && *benchDir == "" && *benchBaselineUpdate == "" && *verifyLLVMF == "" && *verifyLLVMFile == "" && isTTY()) {
 		return replMode(*jit)
 	}
 
@@ -305,7 +315,7 @@ func run() int {
 		return runCheck("", fs.Args()[1:], *jsonOut)
 	}
 	if *emitLLVMF != "" {
-		return emitLLVM(*emitLLVMF, *target, *optLevel, *jsonOut)
+		return emitLLVM(*emitLLVMF, *target, *optLevel, *jsonOut, *debugFlag)
 	}
 	if *verifyLLVMF != "" || *verifyLLVMFile != "" {
 		// A value-taking flag followed by another flag swallows it: `--verify-llvm
@@ -318,6 +328,17 @@ func run() int {
 			}
 		}
 		return verifyLLVMMode(*verifyLLVMF, *verifyLLVMFile, atoi(*optLevel), *jsonOut)
+	}
+	if *debugInfoF != "" || *debugInfoFile != "" {
+		// The same guard --verify-llvm needs: `--debug-info --json "src"` would otherwise
+		// compile the string "--json" and report on that.
+		for _, v := range []string{*debugInfoF, *debugInfoFile} {
+			if strings.HasPrefix(v, "-") {
+				fmt.Fprintf(os.Stderr, "gustyc: %s expects a source, not %q \u2014 pass it last or use --flag=<source>\n", "--debug-info", v)
+				return exitUsage
+			}
+		}
+		return runDebugInfo(*debugInfoF, *debugInfoFile, atoi(*optLevel), *jsonOut)
 	}
 	if *emitSourceMapF != "" {
 		return emitSourceMap(*emitSourceMapF)
@@ -352,7 +373,7 @@ func run() int {
 			// Program output stays on stdout; this is a statement about the tool.
 			fmt.Fprintf(os.Stderr, "gustyc: backend %s\n", backend)
 		}
-		return evalSrcOrFile(src, *file, *jsonOut, backend, *gcStats)
+		return evalSrcOrFile(src, *file, *jsonOut, backend, *gcStats, *debugFlag)
 	}
 	usage(fs)
 	return exitUsage
@@ -378,7 +399,7 @@ const (
 	backendJIT         backend = "aot"
 )
 
-func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool) int {
+func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats, debug bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
 		// Nothing to run: the CLI was used wrongly (no source, unreadable file).
@@ -391,7 +412,14 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		// turns that self-report on; it lands on fd 2, which the JIT captures for us.
 		lang.SetGCReport(gcStats)
 		defer lang.SetGCReport(false)
-		res, err := lang.JIT(s, 0)
+		jitOpts := &lang.JITOptions{}
+		if debug {
+			// `--debug` is a request about the artifact, so it is honoured on every path
+			// that builds one — including the in-process JIT, whose module and object a
+			// debugger can read when GUSTY_KEEP_LLVM keeps the scratch dir (L8.5).
+			jitOpts.Debug = &lang.DebugOptions{File: "prog.gy"}
+		}
+		res, err := lang.JITWithOptions(s, 0, jitOpts)
 		if err != nil {
 			// Which failure class this is was invisible until now: the run path wrapped
 			// every toolchain failure in a plain error and reported "your program does not
@@ -414,6 +442,17 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 		if res.Stderr != "" {
 			fmt.Fprint(os.Stderr, res.Stderr)
 		}
+		// The compiled backend says what its module claims, on stderr like every other
+		// statement about the tool, and as a `debug` member for the machine path (L8.5).
+		if debug && res.Debug != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: %s\n", res.Debug)
+		}
+		debugMember := ""
+		if res.Debug != nil {
+			if b, jerr := json.Marshal(res.Debug); jerr == nil {
+				debugMember = fmt.Sprintf(", \"debug\": %s", b)
+			}
+		}
 		gcMember := ""
 		if gcStats {
 			if st, ok := lang.ParseGCStatsLine(reportLine(res.Stderr)); ok {
@@ -434,7 +473,7 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats bool
 			stderrMember = fmt.Sprintf(", \"stderr\": %q", res.Stderr)
 		}
 		if jsonOut {
-			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": %d%s%s}\n", res.Output, backend, exitCode, gcMember, stderrMember)
+			fmt.Printf("{\"output\": %q, \"backend\": %q, \"exit\": %d%s%s%s}\n", res.Output, backend, exitCode, gcMember, stderrMember, debugMember)
 		} else {
 			fmt.Print(res.Output)
 		}
@@ -569,7 +608,7 @@ func atoi(s string) int {
 	return n
 }
 
-func emitLLVM(src, target, opt string, jsonOut bool) int {
+func emitLLVM(src, target, opt string, jsonOut, debug bool) int {
 	res, err := lang.Compile(src)
 	if err != nil {
 		return reportCompileErr(err, jsonOut)
@@ -580,10 +619,93 @@ func emitLLVM(src, target, opt string, jsonOut bool) int {
 	if opt != "" && opt != "0" {
 		fmt.Printf("; opt-level = %s\n", opt)
 	}
+	if debug {
+		// The same module a --build --debug would link, line records and all, so an
+		// agent can read the IR it is about to hand to llc and know what the debugger
+		// will see (L8.5, ADR 0231).
+		dbgIR, derr := lang.CompileDebug(src, atoi(opt))
+		if derr != nil {
+			return reportCompileErr(derr, jsonOut)
+		}
+		fmt.Print(dbgIR)
+		return exitOK
+	}
 	fmt.Print(lang.OptimizeIR(res.IR, atoi(opt)))
 	return exitOK
 }
+
+// runDebugInfo prints the DWARF line-table document for a source: what the compile unit
+// claims, one entry per program function, and the IR-line-to-source-line rows. It needs
+// no LLVM toolchain, because the compiler is the author of the answer; --build --debug
+// adds the llvm-dwarfdump reading of the real artifact on top (ADR 0231).
+func runDebugInfo(src, file string, optLevel int, jsonOut bool) int {
+	s, err := srcOrFile(src, file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
+		return exitUsage
+	}
+	name := ""
+	if file != "" {
+		name = file
+	}
+	opts := &lang.DebugOptions{OptLevel: optLevel}
+	if name != "" {
+		opts.FromFile(name)
+	}
+	info, _, cerr := lang.DebugInfoForSource(s, opts)
+	if cerr != nil {
+		return reportCompileErr(cerr, jsonOut)
+	}
+	if jsonOut {
+		b, jerr := json.MarshalIndent(info, "", "  ")
+		if jerr != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: json: %v\n", jerr)
+			return exitCompileError
+		}
+		fmt.Println(string(b))
+		return exitOK
+	}
+	fmt.Printf("%s\n", info)
+	for _, f := range info.Functions {
+		fmt.Printf("  %-24s %s:%-4d %3d instruction(s), %d location(s)\n", f.Symbol, f.Name, f.Line, f.Tagged, f.Locations)
+	}
+	lines := info.SourceLineSet()
+	if len(lines) > 0 {
+		fmt.Printf("  source lines covered: %d (%s)\n", len(lines), summarizeInts(lines, 24))
+	}
+	if info.Instructions > 0 && info.Tagged != info.Instructions {
+		fmt.Printf("  NOT fully tagged: %d of %d instruction(s) carry a location\n", info.Tagged, info.Instructions)
+	}
+	return exitOK
+}
+
+// summarizeInts renders "1,2,3,\u2026" for a line list without letting a big program flood
+// the terminal.
+func summarizeInts(v []int, max int) string {
+	parts := make([]string, 0, len(v))
+	for i, n := range v {
+		if i >= max {
+			parts = append(parts, fmt.Sprintf("\u2026+%d", len(v)-max))
+			break
+		}
+		parts = append(parts, strconv.Itoa(n))
+	}
+	return strings.Join(parts, ",")
+}
+
 func emitSourceMap(src string) int {
+	// `--emit-source-map` is documented as taking a source file, and a path is what
+	// callers type; a value that is not on disk stays source text, like every other
+	// value-taking flag in this CLI.
+	if st, serr := os.Stat(src); serr == nil && !st.IsDir() {
+		sm, err := lang.EmitSourceMapFile(src)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gustyc: emit-source-map: %v\n", err)
+			return exitCompileError
+		}
+		fmt.Println(string(sm))
+		return exitOK
+	}
 	sm, err := lang.EmitSourceMap(src)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gustyc: emit-source-map: %v\n", err)
@@ -687,6 +809,8 @@ Effects: gustyc --effects <src> | gustyc effects <file>...  # per-function effec
 Variance: gustyc --variance  # JSON variance table (list/set/dict invariant, Sequence covariant, Callable params contravariant)
 Verify IR: gustyc --verify-llvm <src> [--json]         # LLVM module-verifier verdict for the emitted module (L8.2)
            gustyc --build out src.gy --no-verify        # skip verification (it runs by default in --build)
+Debug info: gustyc --debug-info <src> [--json]          # the compiled line table: functions, IR-line to source-line rows (L8.5)
+            gustyc --build out src.gy --debug           # !dbg records + .debug_line, read back with llvm-dwarfdump and reported
 Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus on both backends
             gustyc --bench-dir integration/programs        # benchmark the parity programs too
             gustyc --bench-suite --bench-baseline-update benchmarks/baseline.json   # record a baseline
@@ -714,6 +838,9 @@ variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable 
 effects: async def calls are deferred until awaited; the checker proves the discipline and --effects prints each function's signature (await, yield, raise / returns / falls-through) — see gustyc --effects
 values: %s
 heap kinds (compiled runtime object headers): %s (0 = not heap-allocated)
+debug: --debug puts a real line table in the module and the object (DW_LANG_Python), and the tool reads it
+      back from the artifact: --debug-info prints the compiled table, --build --debug adds what
+      llvm-dwarfdump found in the binary (see docs/operations.md § Debug info, ADR 0231)
 oracle: every conformance program is compared against CPython too (gustyc --oracle <src>; --json for the
       three-leg report; exit 0 match, 6 gusty printed something else, 7 the oracle could not judge — see
       docs/operations.md § The CPython oracle leg, ADR 0186)

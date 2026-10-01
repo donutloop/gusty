@@ -37,6 +37,11 @@ type irInstr struct {
 	raw     string
 	kind    irKind
 	deleted bool
+	// meta is the instruction's `!dbg !N` record, held apart from the text the passes
+	// rewrite so constant folding cannot quietly erase a line table (L8.5, ADR 0231).
+	meta string
+	// tail is anything after the metadata (a comment), kept last on the line.
+	tail string
 
 	def string // destination register ("%t") or ""
 
@@ -89,6 +94,14 @@ func regsIn(line string) []string {
 func parseInstr(line string) *irInstr {
 	line = strings.TrimSpace(line)
 	in := &irInstr{raw: line}
+	// A debug build tags every instruction with its source position. Take it off before
+	// parsing — the passes read operands out of fixed token positions, and `!dbg !12` in
+	// the operand list makes `store i32 %v, i32* %x, !dbg !7` look like a store through a
+	// pointer named `!7` — and put it back on the way out (ADR 0231).
+	if body, meta, comment := splitInstrMetadata(line); meta != "" {
+		line = body
+		in.raw, in.meta, in.tail = body, meta, comment
+	}
 	toks := tokenize(line)
 	if len(toks) == 0 {
 		return in
@@ -200,10 +213,15 @@ func parseCallCallee(in *irInstr, line string) {
 var calleeRe = regexp.MustCompile(`(@[A-Za-z0-9_.]+)`)
 
 // parseInstrInto re-parses a (possibly rewritten) line into in, preserving
-// deletion state.
+// deletion state — and the source position, which a rewritten instruction keeps:
+// the pass changed the instruction, not where it came from (ADR 0231).
 func parseInstrInto(in *irInstr, line string) {
 	deleted := in.deleted
+	meta, tail := in.meta, in.tail
 	n := parseInstr(line)
+	if n.meta == "" {
+		n.meta, n.tail = meta, tail
+	}
 	in.raw = n.raw
 	in.kind = n.kind
 	in.def = n.def
@@ -243,6 +261,12 @@ type irFunction struct {
 type irModule struct {
 	lines []string // module-level lines (globals + declares)
 	funcs []*irFunction
+	// tail holds the metadata block that follows the last function definition: the
+	// module flags and, in a debug build, the compile unit, subprograms and locations.
+	// The passes do not understand these lines, so the rule is that a line they cannot
+	// read is preserved verbatim — which also stops the fallback pass from quietly
+	// dropping the PIC Level flag it used to discard with the tail (ADR 0231).
+	tail []string
 }
 
 func isLabel(line string) bool {
@@ -251,6 +275,19 @@ func isLabel(line string) bool {
 
 var labelRe = regexp.MustCompile(`^[A-Za-z0-9._]+:$`)
 
+// splitInstrMetadata removes an instruction's trailing `!dbg !N` record (and any
+// comment after it) so the passes can read operands out of fixed token positions.
+var instrMetaRe = regexp.MustCompile(`,\s*(!dbg\s+![0-9]+)\s*(;.*)?$`)
+
+func splitInstrMetadata(line string) (body, meta, comment string) {
+	loc := instrMetaRe.FindStringSubmatchIndex(line)
+	if loc == nil {
+		return line, "", ""
+	}
+	m := instrMetaRe.FindStringSubmatch(line)
+	return strings.TrimRight(line[:loc[0]], " \t"), m[1], strings.TrimSpace(m[2])
+}
+
 // ---------------------------------------------------------------------------
 // Module parsing
 // ---------------------------------------------------------------------------
@@ -258,6 +295,7 @@ var labelRe = regexp.MustCompile(`^[A-Za-z0-9._]+:$`)
 func parseModule(ir string) *irModule {
 	lines := strings.Split(ir, "\n")
 	m := &irModule{}
+	lines, m.tail = splitModuleTail(lines)
 	i := 0
 	// module-level lines until first `define`
 	for i < len(lines) {
@@ -1263,6 +1301,9 @@ var globalRe = regexp.MustCompile(`@[A-Za-z0-9_.]+`)
 
 func isGlobalLine(line string) bool {
 	t := strings.TrimSpace(line)
+	if strings.HasPrefix(t, "!") {
+		return false // metadata (a DILocation, the module flags): not a global, never dead
+	}
 	return !strings.HasPrefix(t, "declare ") && strings.Contains(t, " = ")
 }
 
@@ -1406,13 +1447,42 @@ func (m *irModule) serialize() string {
 				}
 				b.WriteString("  ")
 				b.WriteString(in.raw)
+				if in.meta != "" {
+					b.WriteString(", ")
+					b.WriteString(in.meta)
+				}
+				if in.tail != "" {
+					b.WriteString(" ")
+					b.WriteString(in.tail)
+				}
 				b.WriteByte('\n')
 			}
 		}
 		b.WriteByte('}')
 		b.WriteByte('\n')
 	}
+	for _, l := range m.tail {
+		b.WriteString(l)
+		b.WriteByte('\n')
+	}
 	return b.String()
+}
+
+// splitModuleTail separates the metadata block that trails the module from the rest
+// of it. Walking back from the end stops at the first line that is not metadata, a
+// comment or blank, so a `declare` or `define` in the middle of the module stays
+// exactly where the emitter put it.
+func splitModuleTail(lines []string) (body, tail []string) {
+	i := len(lines)
+	for i > 0 {
+		t := strings.TrimSpace(lines[i-1])
+		if t == "" || strings.HasPrefix(t, ";") || strings.HasPrefix(t, "!") {
+			i--
+			continue
+		}
+		break
+	}
+	return lines[:i], lines[i:]
 }
 
 // ---------------------------------------------------------------------------

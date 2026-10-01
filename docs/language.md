@@ -162,10 +162,11 @@ evaluator's inferred dynamic type (`int`/`float`/`str`/`list`/`dict`/`set`/
 
 `gustyc --schema` prints a machine-readable JSON Schema (draft-07) describing
 the structured outputs: the `--emit-ast` AST dump (`{"stmts": [...]}`,
-per-node required fields) and the `--emit-llvm` IR text dump
-(`definitions.irDump`, `text/plain`). Agents can validate AST dumps against
-it without reading the compiler source; see `docs/agentic/ast-ir-schema.md`
-and ADR 0087.
+per-node required fields), the front end's diagnostics, the build report's
+verification and optimization members, and the debug-line documents
+(`definitions.debugInfo`, `definitions.dwarfReport`, ADR 0231). Agents can validate
+any of these dumps against it without reading the compiler source; see
+`docs/agentic/ast-ir-schema.md` and ADR 0087.
 
 ## Agentic interface
 
@@ -414,6 +415,37 @@ values, so it can be consumed by a `for x in gen:` loop or a `list(gen)`
 call. Example: `(x * 2 for x in [1, 2, 3] if x > 1)` → `[4, 6]`. Generator
 expressions and generator functions (`yield`) evaluate eagerly to runtime
 heap lists in both the interpreter and the AOT codegen; see ADR 0081.
+
+## Every statement has a position (L8.5, ADR 0231)
+
+A statement is not only what it does but where it is. Every statement in the grammar carries the
+line and column it starts at, and the compiler is required to know that position wherever it
+reports on, compiles, or can be asked about a program:
+
+```gusty
+class Counter:
+    def bump(self, k):
+        self.n = self.n + k      # an assignment to an attribute is still a statement,
+        return self.n            # and it still knows it is on line 3
+```
+
+This is a language guarantee rather than an implementation detail, because three user-visible
+behaviours are built on it and each of them fails silently without it:
+
+- **diagnostics** point at the statement they mean (`--verify`, `--check`);
+- **tracebacks** name the line of the `raise` and the function around it (Gap K.6, Gap K.8);
+- **the compiled line table** — `--debug` puts `!dbg` records in the module, so `llc` writes a
+  `.debug_line` table a real debugger can stop at, and `--debug-info` prints the table the
+  compiler wrote (ADR 0231).
+
+An assignment to an attribute (`self.n = …`) and a tuple assignment (`a, b = xs`) used to be built
+without a position at all, so every instruction they produced inherited the previous statement's
+line: the debugger, the traceback and the error message all blamed the `def` for the body. They now
+carry the position of their leftmost target. Columns name where a statement *starts*: positions are
+not kept for individual subexpressions, so a column is a statement column.
+
+The compiled program also says what language it is: the artifact's `DW_AT_language` is
+`DW_LANG_Python`, which is what lets a debugger print gusty frames as the language they are.
 
 ## Ternary conditional expressions
 

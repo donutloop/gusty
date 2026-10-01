@@ -4294,3 +4294,80 @@ of truncating a float it cannot hold (L11.6), `%` formatting doesn't exist (R.31
 list concatenation still refuse (R.33), and the 4096-entry string table raises a catchable
 `RuntimeError`. Each is written down where the next cycle will find it, rather than being quietly
 half-implemented behind a passing test.
+
+## L8.5 — the line table lives in the module (ADR 0231)
+
+### The claim that had no witness
+
+`--debug` added `-g` to the `cc` link. DWARF is not made there: `llc` writes `.debug_line` from
+`!dbg` metadata, and the module had none. So for the whole life of the flag, `--debug` produced an
+object with an empty line table and a satisfied message. Nothing in the suite could have noticed,
+because every assertion was about what the compiler *intended* — the string `-g` in a command line.
+The fix was not only the metadata; it was that **every number the tool now reports is read out of
+the artifact**: the module's own metadata nodes for `--debug-info`, `llvm-dwarfdump --debug_line`
+for the object, `llvm-addr2line` in the integration suite. A report that can only answer "yes" is
+not a report.
+
+### `llc` lied with a straight face
+
+The first version of the metadata was wrong in one field, and the failure was spectacularly quiet:
+
+```
+invalid subroutine type
+```
+
+…exit code 0, module accepted, object written, `.debug_line` **empty**. `DISubprogram`'s `type:`
+has to name a `DISubroutineType`; pointing it at the bare `!{…}` type list is not a malformed
+module — LLVM simply declines to describe the function. The internal counts (subprograms: 3,
+instructions tagged: 57) were all *correct about the metadata I had written* and completely wrong
+about the artifact. Only the dwarfdump read-back, which I had added an hour earlier on a hunch,
+turned this from a shipped no-op into a caught bug.
+
+Small enumeration of what LLVM 20 accepts, since it is not guessable: `DW_LANG_Python` yes;
+`DW_LANG_PYTHON`, `DW_LANG_python`, `DW_LANG_BASIC`, `DW_LANG_Carbon` no. `DISubprogram` and
+DICompileUnit are `distinct`; `DILocation` is not. Without `!llvm.module.flags` carrying
+Dwarf Version + Debug Info Version, the whole block is ignored.
+
+### Positions are the feature, twice over
+
+The line table can only name a line the parser wrote down. `self.n = self.n + k` and
+`a, b = xs` were built as `AssignStmt` with **no `Src` at all** — so every instruction they emitted
+inherited the *previous* statement's line, and the first version of the test failed with "no
+emitted IR line is attributed to source line 9" while the emitter was behaving perfectly. Gap K.6
+taught exactly this about `raise` ("every traceback said line 0"); the same class had been open in
+two other statement shapes for the entire history of the language, invisible because a diagnostic
+pointing at the wrong line looks like a diagnostic.
+
+The general rule to keep: **a statement node without a position is a bug**, and the cheapest way to
+hold it is an assertion that a program with every statement shape in it produces one line-table row
+per statement.
+
+### Where the pass belongs
+
+Emitting metadata inline (the clang way) would have meant threading a builder, an insert block and
+a scope through twelve emit sites in four files. Instead codegen records *(byte offset, statement,
+function)* and one post-pass lays the records over the finished text — one place where debug info is
+decided, one place to test, and the offsets make the two halves agree without either mirroring the
+other's line counting. It also gave the "which functions are program code" question a better
+answer than a book list: a define is program code iff some `DISubprogram` names it, which is the
+same rule LLVM's own debug-info verifies, and it excludes the GC/exception/printer blocks by
+construction rather than by an exempt-list that has to be maintained.
+
+Ordering mattered more than expected: allocas are hoisted *after* the records go on, which moves
+lines, so the read-back runs on the shipped text — reported IR line numbers are the ones in the file
+someone will open. The textual fallback optimizer (used when no `opt` is on PATH) had to learn to
+carry the metadata block as the module's tail and to keep `, !dbg !N` out of the instruction text it
+parses, or the line table vanished exactly when the real toolchain was missing.
+
+### `--debug` means every path that builds an artifact
+
+It is honoured by `--build`, `--emit-llvm` (which prints the very module a debug build links), and
+`--jit/--aot` — where `GUSTY_KEEP_LLVM=1` now leaves a `.ll` and a loaded `.so` that a debugger can
+actually read. A flag that silently does nothing on two of three backends is the same bug as `-g` on
+the link step, wearing a different hat.
+
+### Docs are user-visible behaviour
+
+`docs/operations.md` promised, in prose, that `--build --debug` "passes `-g` to the final `cc` link
+so the binary carries DWARF debug info (line tables)". That sentence was the bug, written down. When
+a flag's docs describe a mechanism nobody implemented, the docs are part of the test surface.

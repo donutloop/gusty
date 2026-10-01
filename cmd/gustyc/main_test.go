@@ -956,3 +956,136 @@ func TestCLIGCStats(t *testing.T) {
 		t.Fatalf("gc member appeared without --gc-stats: %s", plain)
 	}
 }
+
+// L8.5: DWARF is something the compiler produces and then reads back, and both the human
+// and the machine path have to say what it found.
+
+func TestCLIDebugInfoJSON(t *testing.T) {
+	out := cli(t, "--debug-info", "def total(n):\n    s = 0\n    return s\n\ntotal(2)\n", "--json")
+	var doc struct {
+		File      string `json:"file"`
+		Language  string `json:"language"`
+		Functions []struct {
+			Name   string `json:"name"`
+			Symbol string `json:"symbol"`
+			Line   int    `json:"line"`
+			Tagged int    `json:"instructions"`
+		} `json:"functions"`
+		Lines  []map[string]any `json:"lines"`
+		Tagged int              `json:"tagged"`
+		Defect string           `json:"defect"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("--debug-info --json is not the documented document: %v\n%s", err, out)
+	}
+	if doc.File == "" || doc.Language != "DW_LANG_Python" {
+		t.Fatalf("header: %+v", doc)
+	}
+	// The program's own functions, described; main is there too because the module defines it.
+	names := map[string]bool{}
+	for _, f := range doc.Functions {
+		names[f.Name] = true
+	}
+	for _, want := range []string{"total", "main"} {
+		if !names[want] {
+			t.Errorf("no entry for %q: %+v", want, doc.Functions)
+		}
+	}
+	if doc.Tagged == 0 || len(doc.Lines) == 0 {
+		t.Errorf("nothing tagged: %d instructions, %d rows", doc.Tagged, len(doc.Lines))
+	}
+	if doc.Defect != "" {
+		t.Errorf("the module disagrees with its emitter: %s", doc.Defect)
+	}
+}
+
+func TestCLIEmitLLVMHonoursDebug(t *testing.T) {
+	// The IR an agent inspects before linking has to be the IR a --debug build links:
+	// same module, line records and all. --emit-llvm prints the module itself (the
+	// artifact an agent pipes into llc), so the check is on the text.
+	src := "def total(n):\n    s = 0\n    return s\n\ntotal(2)\n"
+	withDebug := cli(t, "--emit-llvm", src, "--debug")
+	for _, want := range []string{"!llvm.dbg.cu", "!DISubprogram(name: \"total\"", "linkageName: \"gy_total\"", "!DILocation(", "!DISubroutineType(", "{i32 2, !\"Debug Info Version\", i32 3}"} {
+		if !strings.Contains(withDebug, want) {
+			t.Errorf("--emit-llvm --debug is missing %s:\n%s", want, withDebug)
+		}
+	}
+	plain := cli(t, "--emit-llvm", src)
+	if strings.Contains(plain, "!llvm.dbg.cu") {
+		t.Error("--emit-llvm without --debug grew debug info")
+	}
+}
+
+func TestCLIDebugBuildReportsTheArtifact(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "line.gy")
+	if err := os.WriteFile(src, []byte("def total(n):\n    s = 0\n    s = s + n\n    return s\n\nprint(total(2))\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := cli(t, "--build", filepath.Join(dir, "line.bin"), src, "--debug", "--json")
+	var doc struct {
+		Debug *struct {
+			Tagged       int `json:"tagged"`
+			Instructions int `json:"instructions"`
+			Subprograms  int `json:"subprograms"`
+			Lines        []struct {
+				Line int `json:"line"`
+			} `json:"lines"`
+		} `json:"debug"`
+		DWARF *struct {
+			Ran     bool   `json:"ran"`
+			Skipped bool   `json:"skipped"`
+			OK      bool   `json:"ok"`
+			Rows    int    `json:"line_rows"`
+			Source  []int  `json:"source_lines"`
+			Note    string `json:"note"`
+		} `json:"dwarf"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("--build --debug --json: %v\n%s", err, out)
+	}
+	if doc.Debug == nil || doc.Debug.Tagged == 0 {
+		t.Fatalf("the module carries no line records: %+v", doc.Debug)
+	}
+	if doc.DWARF == nil {
+		t.Fatal("a --debug build must report what the artifact says about DWARF")
+	}
+	if doc.DWARF.Skipped {
+		t.Skipf("no llvm-dwarfdump on this machine: %s", doc.DWARF.Note)
+	}
+	if !doc.DWARF.Ran || !doc.DWARF.OK || doc.DWARF.Rows == 0 {
+		t.Fatalf("the artifact does not carry the table the compiler claimed: %+v", doc.DWARF)
+	}
+	// Lines 2, 3 and 4 are the function's own statements; a debugger must be able to stop
+	// at each of them, which is the whole point of the feature.
+	want := map[int]bool{2: false, 3: false, 4: false}
+	for _, ln := range doc.DWARF.Source {
+		if _, ok := want[ln]; ok {
+			want[ln] = true
+		}
+	}
+	for ln, seen := range want {
+		if !seen {
+			t.Errorf("the object's .debug_line never names line %d: %v", ln, doc.DWARF.Source)
+		}
+	}
+}
+
+func TestCLIDebugIsOptIn(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "plain.gy")
+	if err := os.WriteFile(src, []byte("x = 1\nprint(x)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := cli(t, "--build", filepath.Join(dir, "plain.bin"), src, "--json")
+	var doc struct {
+		Debug *any `json:"debug"`
+		DWARF *any `json:"dwarf"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if doc.Debug != nil || doc.DWARF != nil {
+		t.Errorf("a build that asked for no debug info reports some: %v / %v", doc.Debug, doc.DWARF)
+	}
+}

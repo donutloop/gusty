@@ -178,6 +178,24 @@ falls back to dynamic dispatch.
   agent can tell "the compiler emitted bad IR" apart from "my program is wrong" —
   without scraping `llc` output. A missing toolchain is reported as `skipped`, never
   as a pass. Turning it on is how Gap I.3 was found.
+- **The line table lives in the module, and the report is read back from the artifact (L8.5, ADR 0231)** —
+  `--debug` used to add `-g` to a link step that had nothing to stringify: DWARF is written by `llc`
+  from `!dbg` metadata, and the module had none. Codegen now records which statement each stretch of
+  emitted code was written for, and a post-pass lays the LLVM debug metadata over the finished module:
+  a `DICompileUnit` that names the language (`DW_LANG_Python`, not a generic guess), one
+  `DISubprogram` per *program* function — never the compiler's own GC, exception or printer blocks,
+  which are not code the program wrote and must not be blamed for it — and a `DILocation` per
+  instruction. Then the toolchain reads it back: `--debug-info` reports the table out of the emitted
+  IR's own metadata (`definitions.debugInfo`, one entry per function, an IR-line-to-source-line row
+  table, and a `defect` field for when the module disagrees with the emitter), and `--build --debug`
+  runs `llvm-dwarfdump` over the object it just linked (`definitions.dwarfReport`) so a claim about
+  DWARF is a claim about the artifact. That is how a `DISubprogram` with a malformed `type:` was
+  caught: `llc` printed `invalid subroutine type`, exited 0, and wrote an empty `.debug_line` while
+  every internal count looked perfect. `--emit-source-map` v2 carries the same table, and
+  `integration/debug_info_test.go` ends by asking `llvm-addr2line` where a function lives.
+  Fixing it required closing a Gap-K.6-class hole first: assignment to an attribute and tuple
+  assignment were built with no source position at all, so their instructions inherited the previous
+  statement's line (§ Every statement has a position, `docs/language.md`).
 - **Declaration order that matches the language** — mutually recursive functions, and helpers
   declared below the code that calls them, check clean and compile; a call at module level and a
   decorator still require the name above them, because that code runs where it is written
@@ -539,7 +557,10 @@ gustyc --build out a.gy b.gy                 # compile a set of files into a bin
 gustyc --verify "def f(x): return x * 2"     # static analysis only
 gustyc --emit-llvm "x = 1 + 2"               # print emitted LLVM IR
 gustyc --emit-ast "x = 1"                    # print the AST as JSON
-gustyc --emit-source-map --file src.gy       # JSON source map (fn -> IR symbol+line)
+gustyc --emit-source-map "x = 1"             # JSON source map (fn -> IR symbol+line)
+gustyc --emit-source-map-file src.gy         # the same, reading the program from a file
+gustyc --build out prog.gy --debug            # DWARF: !dbg records, .debug_line, reported back
+gustyc --debug-info "x = 1"                  # the compiled line table as JSON (--json)
 gustyc --check <src> | check file1.gy ...    # mypy-style type-check without executing
 gustyc --oracle '<src>' | --oracle-file prog.gy  # interpreter + compiled backend + CPython, one verdict
 gustyc --json ...                            # machine-readable JSON output
