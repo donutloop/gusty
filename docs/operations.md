@@ -568,7 +568,9 @@ annotations as static-only, as it does for the rest of the annotation surface.
     what the program printed.
 - `--verify <src>`: parse + analyze, exit 1 on diagnostics
 - `--emit-llvm <src>` / `--emit-ast <src>`: machine-readable IR / AST JSON
-- `--lang`: self-describing feature list for agents
+- `--lang`: self-describing feature list for agents — one line per aspect of the surface, including
+  `patterns:` (every `match` case form: literal, `_`, capture, or-pattern, guard, sequence, mapping,
+  and the class pattern with its aliasing rule; ADR 0235)
 - REPL (interactive): accumulates input line by line so multi-line suites (functions, classes, `if`/`for`/`while` bodies) can be entered; shows `> ` primary and `... ` continuation prompts on a terminal; recovers from parser/eval panics so a bug never kills the session.
 
 Exit codes are the table above — `--repl` has no per-session status to report, and the rest of

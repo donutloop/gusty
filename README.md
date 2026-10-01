@@ -134,6 +134,13 @@ the variable's kind recorded — so print, `in`, subscript and `for` treat a bou
 comprehension exactly like the literal (ADR 0234). `{x for x in xs if x > 1}` parses on both backends:
 the `if` is the comprehension's, not a ternary's.
 
+A class pattern is a question about a class, in both backends: `case Point(x, y):` matches an instance
+of `Point` or of any subclass of it and binds `x` and `y` to the instance's attributes **of those
+names** — and an attribute the instance does not have **fails the case**, which the compiled backend
+could not ask until `@inst_set` started recording which slots have been written (ADR 0235). The class
+may be named directly or reached through a binding (`Alias = Point`, in a function body too); a case
+whose pattern is a call — `case f():` — compares the call's result to the subject.
+
 ## Gradual typing & the type system
 
 Optional annotations on variables, parameters, and returns are checked
@@ -374,6 +381,19 @@ falls back to dynamic dispatch.
   the file died on `expected keyword "else"` while the list twin parsed. One fold now produces the
   literal, and one binding rule binds it — plus the module-wide guard that a folded container global
   never appears in an operand position.
+- **A class pattern asked two backends the same question, and got two answers** (ADR 0235) —
+  `case Point(a, b):` on an instance with `x` and `y` **matched** compiled and printed `pt 0 0`, while
+  the interpreter and `docs/language.md` both say a missing attribute fails the case: the compiled arm
+  checked the class chain and never asked the instance, whose data words cannot tell an attribute that
+  was never written from a stored `0`. The alias form was worse in both directions — `case Alias(x, y):`
+  inside a function was exit 2 (`%t6 = icmp eq i32 %t5, `, an `icmp` with nothing after the comma, from
+  `alias, _ := g.value(...)` throwing away the error) and exit 3 interpreted (`TypeError: 'type' object
+  is not callable` — the pattern fell through to *calling* the class) — and `case f():` loaded `%_f`, a
+  variable that does not exist, because the same branch had decided any non-class name must be one. One
+  front-end table now says what a pattern-position name denotes and what attributes exist; the body's
+  scope reaches the module for a bare class name (ADR 0227); and `rt_inst_put` writes presence with the
+  value, cleared per instantiation because heap slots are recycled — 300 instantiations under GC stress
+  and a `ghost` attribute nobody wrote stays absent. `--lang` never mentioned patterns; it does now.
 - **A container slot is a word — ask what fits before writing it** (ADR 0226) — `[1] == [1.0]`,
   `print([1.5, 2])` and `1.0 == [1]` reached `llc` as invented operands (`[1 x i32] [@env_store = ...`,
   `%t1 = sitofp i32  to double`, `%t2 = sitofp i32 @.lst1 to double`) and came back as exit 2, while

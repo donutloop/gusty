@@ -4698,3 +4698,68 @@ says 53 owed — a reminder that closing a row honestly often costs a row. The g
 is the one I trust most: a regex over seven whole modules for a folded container global in an operand
 position, because three `strings.Contains` on the three lines I knew about would have certified only
 the three lines I knew about.
+
+## A class pattern is one question about a class — and the instance has to be asked (Gap B, ADR 0235)
+
+**The row understated itself.** Gap B's cell said the two backends "disagree by one digit" on
+`case Alias(a, b):`. Run it: the interpreter declines the arm and prints `no`; the compiled backend
+takes the arm and prints `pt 0 0`. That is not a digit, it is a different program — and the compiled
+answer is an unbound slot read dressed as a match. A tracker cell that says "disagrees" when the
+reality is "one side invented an answer" is how a defect survives being looked at.
+
+**Three failures, one shape.** `case Point(a, b):` matched an instance with no `a`. `case Alias(x, y):`
+inside a function was exit 2 in codegen and exit 3 in the interpreter. `case f():` — a plain call
+pattern, nothing to do with classes — loaded `%_f`, a variable that does not exist. All three came out
+of the same branch in `matchPattern`, the one labelled "not a declared class, so it must be a variable
+holding one", and that branch began `alias, _ := g.value(b, fn)`. The discarded error was the whole
+bug: with `alias == ""` the emitted line was `%t6 = icmp eq i32 %t5, `, and every callee that was not
+a class landed there. A hole in a fallback branch is not a missing feature, it is the compiler's
+answer for everything that branch covers.
+
+**The instance could not answer the question the rule asks.** "Does this instance have attribute `a`?"
+has an obvious answer in the interpreter (the attribute map has the key or it doesn't) and no answer at
+all in a compiled instance, which is a row of `i32`s where "never written" and "written `0`" are the
+same word. So the pattern ANDed a class-chain test and *bound anyway*. The fix is `@inst_set`, the
+presence array `rt_inst_put` writes with the value — ADR 0175's pairing rule ("the operation that
+writes the payload writes its tag") arriving at the third data structure after lists and dicts. And
+the part the tag history had already taught: `rt_alloc` recycles slots, so presence must be cleared at
+instantiation, or a fresh object inherits which attributes the previous tenant of that heap slot had.
+`GUSTY_ENV_GC_STRESS=1` over 300 instantiations, then a probe for a `ghost` attribute nobody ever
+wrote, is the test for that — not a comment saying "cleared on alloc".
+
+**One question, one table — the same rule, the third time it has had to be applied.** Which class does
+a pattern-position name denote? The evaluator answered from the scope it happened to be executing (so
+`Alias = Point` existed at module scope and vanished inside a function, and the pattern fell through to
+*calling* the class: `TypeError: 'type' object is not callable`). Codegen answered separately, and
+badly. Both now read `classpat.go`, built once from the AST — which also had to answer "what
+attributes can this program write?" *before* emitting anything, because the clear length is an
+allocation-time constant and slots intern lazily.
+
+**A pattern's answer is an `i1`, not an integer.** The old code handed back `"1"`/`"0"` for
+always/never-matching patterns; `andCond` special-cased `"1"` and the `or` combinator did not, so
+`case x:` inside an or-pattern would have emitted `or i1 %t, 1`. Patterns now answer `true`/`false` and
+both combinators fold constants. Same lesson as the `switch`-shape bugs earlier: an intermediate string
+representation of a truth value is where the invalid IR lives.
+
+**Refusal-shaped honesty.** `case n(x):` where `n` is an integer now fails the case in both backends;
+CPython raises `TypeError` there, and gusty's documented rule is that the case fails — so the ledger
+row pins "both backends agree, CPython not applicable" rather than pretending the oracle covers it.
+A positional class sub-pattern needs `__match_args__` this language does not have, so the whole program
+is `not_applicable` with per-leg pins: `match: true` would have been a lie the matrix believed.
+
+**Newly measured, deliberately not fixed (Gap R.68).** A capture that only a *skipped* arm would have
+bound is readable compiled — `five 0` where the interpreter raises `NameError: name 'x' is not
+defined`. That is ADR 0228's definite-assignment graph missing arm-scoped bindings, a different
+question from the one this commit answers, so it goes on the queue with its own ID rather than into
+this commit. The conformance program avoids the shape on purpose: pinning `five 0` as parity is how
+`pt 0 0` survived being looked at for two releases.
+
+**Process notes.** Full suite green before and after (`go test -tags=llvm20 ./...`); matrix 103 rows,
+80 shared and all at parity, oracle drift 0. The queue lost Gap B and gained Gap R.68, so it still
+says 53 owed. Two corrections worth naming: the `%t7 = and i1 %t4, %t6` repro I recorded yesterday
+came from a probe with `Alias = Point` written *above* the class — the documented spelling (after it)
+fails identically, and the record now says so; and `docs/language.md` carried "Class patterns are an
+interpreter-side feature; the AOT backend lowers `match` to expression-equality only" while codegen
+had a 60-line class-pattern lowering in it, which is the documentation equivalent of the fallback
+branch — a stale claim that made the wrong answer look intended. The `patterns:` line in `--lang` is
+the machine-path fix for the same failure: nobody could discover the construct, so nobody tested it.

@@ -252,7 +252,44 @@ func (e *Evaluator) resolveClassID(name string) (int64, bool) {
 			return v, true
 		}
 	}
+	// A class value reached through the module's globals. A function body runs with its own frame in
+	// e.Vars, so `Alias = Point` — a module binding — is invisible there, and a class pattern in that
+	// body used to fall through to *calling* the class (`TypeError: 'type' object is not callable`).
+	// A bare name in a body means the executing module's scope, which is what e.curModule is for
+	// (ADR 0227's view of the module; roadmap Gap B, ADR 0235).
+	if e.curModule != nil {
+		if v, ok := e.curModule[name]; ok {
+			if o, ok2 := e.heap[v]; ok2 && o.kind == "class" {
+				return v, true
+			}
+		}
+	}
 	return 0, false
+}
+
+// isCallableName reports whether `name` names something you call: a user function or a builtin.
+// A class pattern's callee is a name, and whether that name is a function is what decides if
+// `case name(x)` is a call compared against the subject or a reference to a class (roadmap Gap B,
+// ADR 0235).
+func (e *Evaluator) isCallableName(name string) bool {
+	if _, ok := e.funcs[name]; ok {
+		return true
+	}
+	return isPredeclaredName(name)
+}
+
+// holdsValue reports whether `name` has a binding in the scope chain a pattern may read: the
+// executing frame, or the module that frame belongs to.
+func (e *Evaluator) holdsValue(name string) bool {
+	if _, ok := e.Vars[name]; ok {
+		return true
+	}
+	if e.curModule != nil {
+		if _, ok := e.curModule[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Evaluator) allocObj(kind string) int64 {
@@ -2550,6 +2587,15 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 				}
 				return true, nil
 			}
+		}
+		// The other documented class-pattern form is a name holding a class value the front end could
+		// not see through — a parameter, a computed binding. resolveClassID just asked that question,
+		// so reaching here means the value is readable and is NOT a class. The pattern then matches
+		// nothing; it does not *call* the value. The compiled backend compares the instance's class id
+		// against the same value and gets the same "no", and a leg that raises where the other prints
+		// is the divergence ADR 0211 is about (roadmap Gap B, ADR 0235).
+		if fn, ok := t.Fn.(*Name); ok && !e.isCallableName(fn.Value) && e.holdsValue(fn.Value) {
+			return false, nil
 		}
 		// Not a class pattern: treat as expression-equality (the previous
 		// default behavior) so `case someCall():` still works.

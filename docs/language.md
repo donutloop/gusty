@@ -1158,13 +1158,25 @@ match p:
 ```
 
 - The class may be referenced by name or via a variable holding a class value
-  (e.g. `Alias = Point`).
+  (e.g. `Alias = Point`, including a chain of them, and including a function
+  parameter that receives the class). The class is resolved by the front end from
+  the program text, so the arm means the same thing in either backend; a name that
+  holds a value which is *not* a class matches nothing — the pattern does not call it.
 - Each argument is an attribute name; the pattern looks up that attribute on
-  the instance and binds a same-named capture variable to its value.
+  the instance and binds a same-named capture variable to its value. A name that is
+  not an attribute of the instance fails the case, as does an argument that is not a
+  name.
 - A missing attribute, or a subject that is not an instance of the class (or a
   subclass), fails the pattern and the next case is tried.
-- Class patterns are an interpreter-side feature; the AOT/codegen backend
-  lowers `match` to expression-equality only (see `docs/adr/0149-class-patterns.md`).
+- Both backends lower class patterns (ADR 0235). The compiled one asks the instance
+  whether it has each attribute — `@inst_set`, written by every attribute store and
+  cleared when a heap slot becomes a new instance — because its data words cannot
+  tell an attribute that was never written from a stored `0`. ADR 0149 said this was
+  interpreter-only; it was, and `case Point(a, b):` on an instance with `x` and `y`
+  answered `pt 0 0` compiled against the interpreter's `no`.
+- A case whose pattern is a call — `case f():` — is expression-equality: the call's
+  result is compared to the subject. It is not a class pattern, and the compiled
+  backend used to load `f` as if it were a variable (ADR 0235).
 
 ## Expressions
 

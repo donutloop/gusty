@@ -96,6 +96,74 @@ Verified identical at `d03c87d` (before ADR 0234), so it is not a regression fro
 work — it is Gap B's own invalid-IR site, and it is the one to fix first: an exit 2 on a program both
 other engines run is a compiler bug, per ADR 0211.
 
+**Closed 2026-10-02 (ADR 0235).** Three fixes, and the measurement corrected in one place: the
+`%t7 = and i1 %t4, %t6` rejection also happened with `Alias = Point` written *after* the class — the
+documented spelling — so the earlier note's "written above the class" was an accident of the probe,
+not the condition. What the three failures had in common was that a name in pattern position was
+interpreted locally by each backend, and the compiled one kept a branch for "some other kind of name"
+that swallowed its own error.
+
+- **One table.** `pkg/lang/classpat.go` answers, once per program, which declared class a
+  pattern-position name denotes (`Alias = Point`, chains, cycles bounded) and which attribute names the
+  program can write. Both matchers read it. `case Alias(x, y):` in a function body is now the same
+  lowering as `case Point(x, y):`, subclass walk and all.
+- **The module is the body's scope for a bare name.** `resolveClassID` consults `e.curModule` after the
+  frame — the same reach any other bare name in a body has (ADR 0227). That is the interpreter's half;
+  before it, a class pattern in a function could only fail *upwards* into calling the class.
+- **The instance is asked.** `@inst_set[h][slot]` is written by `rt_inst_put` with the value, read by
+  `rt_inst_has`, and cleared by `rt_inst_clear` when a heap slot becomes an instance — because
+  `rt_alloc` recycles slots, and a presence bit left over from the previous tenant would say an
+  instance has an attribute it never had. Verified with 300 instantiations under
+  `GUSTY_ENV_GC_STRESS=1`: the sum comes out right and a `ghost` attribute nobody wrote stays absent.
+- **A pattern answers `i1`.** `"1"`/`"0"` became `true`/`false` and the combinators fold constants;
+  `and i1 %t, 0` — which the old code could emit — is not IR, and `case x:` in an or-pattern would
+  have hit it.
+
+What this deliberately left alone is named in **Gap R.68** below: a capture that only a *skipped* arm
+would have bind is still readable in compiled code. The conformance program avoids the shape rather
+than pinning it, because pinning a wrong answer as parity is how `pt 0 0` survived this long.
+
+<a id="gap-r-68"></a>
+
+### Gap R.68 — a capture that only a skipped arm would have bind is readable in the compiled backend (found 2026-10-02 while closing Gap B)
+
+```
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+def probe(v):
+    match v:
+        case Point(x):
+            print("bound", x)
+        case 5:
+            print("five", x)      # this path never binds x
+    return 0
+
+probe(Point(1, 2))               # --interp: bound 1 | five … NameError (exit 3)
+probe(5)                         # --aot:    bound 1 | five 0
+```
+
+The interpreter raises `NameError: name 'x' is not defined` — a name the taken path never bound has no
+value, and gusty follows Python here (the same rule ADR 0228 states for a function body's locals: a
+name the body binds anywhere is local to that body, so reading it before any path assigned it is
+`UnboundLocalError`, not a lookup that quietly finds something else). The compiled backend prints `0`:
+`bindPat` allocated `%_x` at the top of the function and the arm that would have written it was not
+taken, so the read is of an alloca nothing on this path wrote.
+
+`UnwrittenReads(prog)` is already consulted at the top of codegen (ADR 0228) and already refuses a
+body that reads a local no path assigned. The gap is that a `match` arm's captures are not edges in
+that graph: the analysis sees the name bound *somewhere* in the body and stops asking. The fix is
+therefore not a new analysis but the existing one extended to arm-scoped bindings, and the message
+must name the arm — "x is bound only by `case Point(x)`" — because a refusal that does not say which
+arm is the kind of message Gap R.38 is about.
+
+Deliberately not fixed with this commit: it is a different question from "does this instance have the
+attribute" (which the class pattern now asks), and one commit per feature is the rule. The conformance
+program `programs/match_classpat.gy` avoids the shape; `programs/match_binding_edges.gy (planned)`
+reports the trap through a `try`/`except` so the row tests the trap and not the print.
+
 <a id="gap-c"></a>
 ### Gap C — arbitrary (fnptr-valued) decorators
 - **Status**: ✅ DONE — the canonical wrapping decorator

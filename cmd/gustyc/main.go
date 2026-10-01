@@ -834,6 +834,7 @@ func listLang() {
 statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, match, try/except/finally, raise, class, import
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda, comprehension (list [x for x in it if c] / set {x for x in it if c} / dict {k: v for k in it if c})
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
+patterns: match cases take a literal, _ (wildcard), a bare name (capture), an or-pattern (1 | 2), a guard (case n if n > 1), a sequence [a, b], a mapping {"k": v}, or a class pattern Point(x, y) — attributes bound by capture name, through an alias too (Alias = Point); a missing attribute fails the case (both backends; ADR 0235)
 variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
 effects: async def calls are deferred until awaited; the checker proves the discipline and --effects prints each function's signature (await, yield, raise / returns / falls-through) — see gustyc --effects
 values: %s

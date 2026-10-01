@@ -1,0 +1,113 @@
+# Class patterns in match, run on both engines (roadmap Gap B, ADR 0235).
+# The shape the compiled backend got wrong three ways: it matched an instance that
+# had no such attribute (`case Point(a, b)` printed `pt 0 0` where the interpreter
+# said no), a class reached through `Alias = Point` was lost inside a function body
+# (exit 2 there, an operand-less `icmp`), and a call pattern `case f():` loaded a
+# variable that does not exist. CPython cannot run this file: a positional class
+# sub-pattern needs `__match_args__`, which gusty does not have — class patterns
+# bind attributes by the capture name (docs/language.md). So this row is parity,
+# not a match.
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+class Tagged(Point):
+    pass
+
+Alias = Point
+
+def call_it():
+    return 3
+
+p = Point(2, 3)
+
+match p:
+    case Point(x, y):
+        print("attrs", x, y)
+    case _:
+        print("attrs none")
+
+match p:
+    case Alias(x, y):
+        print("alias", x, y)
+    case _:
+        print("alias none")
+
+match p:
+    case Point(a, b):
+        print("ghost", a, b)
+    case _:
+        print("missing none")
+
+match 5:
+    case Point(x, y):
+        print("kind", x, y)
+    case _:
+        print("kind none")
+
+match Tagged(4, 5):
+    case Point(x, y):
+        print("subclass", x, y)
+    case _:
+        print("subclass none")
+
+match 3:
+    case call_it():
+        print("call pattern")
+    case _:
+        print("call none")
+
+match 3:
+    case 1 | 3:
+        print("or pattern")
+    case _:
+        print("or none")
+
+def in_a_function(v):
+    match v:
+        case Alias(x, y):
+            print("fn alias", x, y)
+        case _:
+            print("fn alias none")
+
+in_a_function(Point(6, 7))
+
+def with_class_param(cls, v):
+    match v:
+        case cls(x):
+            print("dynamic", x)
+        case _:
+            print("dynamic none")
+
+with_class_param(Point, Point(8, 9))
+
+n = 5
+match p:
+    case n(x):
+        print("not a class", x)
+    case _:
+        print("not a class none")
+
+class Counter:
+    def __init__(self):
+        self.n = 1
+    def bump(self):
+        self.z = 99
+
+c = Counter()
+match c:
+    case Counter(z):
+        print("early z", z)
+    case Counter(n):
+        print("early n", n)
+    case _:
+        print("early none")
+
+c.bump()
+
+match c:
+    case Counter(z):
+        print("late z", z)
+    case _:
+        print("late none")

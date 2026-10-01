@@ -43,7 +43,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"ctrl_a", "ctrl_b", "ctrl_c",
 		"data_a", "data_b", "data_c",
 		"features_a", "features_b",
-		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "wrapping_decorator", "dunder",
+		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "match_classpat", "wrapping_decorator", "dunder",
 		"async_basic",
 		"async_for",
 		"async_multi",
@@ -363,6 +363,14 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "Literal[1, 2] is this language's checker surface; plain CPython has no Literal in scope and stops at the annotation",
 		ref:    "roadmap Phase 2 § gradual typing; docs/operations.md § gusty check",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "one\ntwo\n"}, {Backend: "aot", Stdout: "one\ntwo\n"}}},
+	// Class patterns (roadmap Gap B, ADR 0235) — the first time this shape was ever run as a whole
+	// program. The compiled backend had matched instances carrying no such attribute, lost
+	// `Alias = Point` inside a function body (exit 2), and loaded a variable that does not exist for
+	// a call pattern.
+	"programs/match_classpat": {oracle: lang.OracleNA,
+		reason: "a positional class sub-pattern needs __match_args__, which this language does not have — a class pattern binds attributes by the capture name, so CPython stops at the first case with `TypeError: Point() accepts 0 positional sub-patterns`",
+		ref:    "docs/language.md § Class patterns (ADR 0235)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "attrs 2 3\nalias 2 3\nmissing none\nkind none\nsubclass 4 5\ncall pattern\nor pattern\nfn alias 6 7\ndynamic 8\nnot a class none\nearly n 1\nlate z 99\n"}, {Backend: "aot", Stdout: "attrs 2 3\nalias 2 3\nmissing none\nkind none\nsubclass 4 5\ncall pattern\nor pattern\nfn alias 6 7\ndynamic 8\nnot a class none\nearly n 1\nlate z 99\n"}}},
 	"merged/data": {oracle: lang.OracleNA,
 		reason: "inherits data_b's positional set subscript, which CPython rejects",
 		ref:    "docs/language.md § Dicts & sets (positional set subscript is a gusty extension)",

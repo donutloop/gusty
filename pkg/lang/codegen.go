@@ -181,6 +181,14 @@ entry:
 ; together. Only scalars and interned strings are taggable: a nested container would have to
 ; be marked by the collector, and that case stays refused.
 @heap_tags = internal global [1024 x [256 x i32]] zeroinitializer
+; @inst_set is the instance half of the same idea (roadmap Gap B, ADR 0235): @inst_set[h][slot] is 1
+; once something has been WRITTEN to that attribute slot of instance h. A class pattern binds capture
+; names to attributes and a missing attribute is documented to FAIL the pattern, but @heap's data
+; words cannot answer that -- an unwritten slot and a written zero look identical, so
+; "case Point(a, b):" matched an instance that had no "a" and bound 0. rt_inst_clear zeroes the row
+; when a heap slot becomes a new instance, because heap slots are reused and a stale 1 would be the
+; previous tenant's answer.
+@inst_set = internal global [1024 x [256 x i32]] zeroinitializer
 declare i32 @strcmp(i8*, i8*)
 
 ; Strings are compile-time globals, so a container slot cannot hold one directly (it is an
@@ -2108,7 +2116,37 @@ entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %p = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %slot
   store i32 %v, i32* %p
+  ; writing the value writes its presence, the way a container write writes its tag (ADR 0175)
+  %sp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %slot
+  store i32 1, i32* %sp
   ret void
+}
+
+; rt_inst_clear zeroes an instance's attribute-presence row, and is emitted at each instantiation.
+; Without it a heap slot inherited from a collected object would still claim its old attributes.
+define internal void @rt_inst_clear(i32 %h, i32 %n) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %in, %body ]
+  %more = icmp slt i32 %i, %n
+  br i1 %more, label %body, label %done
+body:
+  %sp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %i
+  store i32 0, i32* %sp
+  %in = add i32 %i, 1
+  br label %loop
+done:
+  ret void
+}
+
+; rt_inst_has answers "has this attribute been written?" — the question a class pattern asks of each
+; capture name, and the question Gap R.19 will ask of a plain attribute read.
+define internal i32 @rt_inst_has(i32 %h, i32 %slot) {
+entry:
+  %sp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @inst_set, i32 0, i32 %h, i32 %slot
+  %v = load i32, i32* %sp
+  ret i32 %v
 }
 
 define internal i32 @rt_gc_mark(i32 %h) {
@@ -2784,6 +2822,13 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// Which names a body may read before assigning them is the checker's question, asked once here
 	// so codegen does not grow a second, subtly different dataflow rule (ADR 0228).
 	g.unwritten = UnwrittenReads(prog)
+	// What a class pattern denotes, and every attribute name the program can write, come from the AST
+	// and are settled *before* emission: the presence row cleared at each instantiation is only sound
+	// if its length already covers every attribute slot the program will ever name (ADR 0235).
+	g.classPat = classPatternsOf(prog)
+	for _, a := range g.classPat.attrs {
+		g.attrSlot(a)
+	}
 	g.fdAlias = map[*FuncDef]*FuncDef{}
 	for nm, sym := range g.moduleSlots {
 		g.moduleSlotDecls += fmt.Sprintf("@%s = global i32 0 ; module binding %q, read by a function body (ADR 0227)\n", sym, nm)
@@ -3384,6 +3429,10 @@ type irGen struct {
 	varClasses map[string]string     // local var -> class name
 	selfClass  string                // enclosing class of current self
 	attrSlots  map[string]int        // attr name -> instance data slot
+	// classPat is the front end's answer to what a class pattern needs to know — which class a
+	// pattern name denotes (through `Alias = Point`), and which attribute names the program can
+	// ever write. It is computed before emission so the presence-row clear length is final (ADR 0235).
+	classPat   *classPatternInfo
 	nextSlot   int
 
 	// genFuncs records generator function names; calling one yields a runtime
@@ -9331,6 +9380,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		g.heapUsed = true
 		h := g.newTmp()
 		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapKindInstance))
+		// A heap slot is reused, and an instance inherits nothing from whoever held it last — not
+		// even which attributes exist. The clear zeroes the presence row; the slot count is final
+		// because every name the program can write was interned before emission (ADR 0235).
+		b.WriteString(fmt.Sprintf("  call void @rt_inst_clear(i32 %s, i32 %d)\n", h, g.nextSlot))
 		b.WriteString(fmt.Sprintf("  call void @rt_inst_put(i32 %s, i32 0, i32 %d)\n", h, g.classIDs[fnName]))
 		if fn, ok := g.resolveMethod(fnName, "__init__"); ok {
 			// Compute each argument value first (each emits its own load
@@ -12045,11 +12098,16 @@ func loopVarName(v Expr) string {
 }
 
 func (g *irGen) andCond(b *strings.Builder, a, c string) string {
-	if a == "1" {
+	if a == "true" || a == "1" {
 		return c
 	}
-	if c == "1" {
+	if c == "true" || c == "1" {
 		return a
+	}
+	// A pattern that cannot match is a constant, and `and i1 0, x` is not IR — the fold belongs in
+	// the combinator, not in every caller (ADR 0235).
+	if a == "false" || a == "0" || c == "false" || c == "0" {
+		return "false"
 	}
 	t := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", t, a, c))
@@ -12057,6 +12115,15 @@ func (g *irGen) andCond(b *strings.Builder, a, c string) string {
 }
 
 func (g *irGen) orCond(b *strings.Builder, a, c string) string {
+	if a == "false" || a == "0" {
+		return c
+	}
+	if c == "false" || c == "0" {
+		return a
+	}
+	if a == "true" || a == "1" || c == "true" || c == "1" {
+		return "true"
+	}
 	t := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", t, a, c))
 	return t
@@ -12108,18 +12175,21 @@ func (g *irGen) classChainCond(b *strings.Builder, cid, class string) string {
 	return cond
 }
 
-func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) string {
+// matchPattern answers "does this pattern match the subject?" with an i1 value, and binds the
+// capture names it matched. The answer is a truth value in LLVM's own vocabulary: `true`/`false`
+// fold in andCond/orCond instead of reaching `br i1` as an integer (ADR 0235).
+func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) (string, error) {
 	switch p := pat.(type) {
 	case *Name:
 		if p.Value == "_" {
 			cmp := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, sub))
-			return cmp
+			return cmp, nil
 		}
-		// Bare-name capture pattern: bind the subject to a fresh variable
-		// slot and always match (Python `case x:` semantics).
+		// Bare-name capture pattern: bind the subject to a fresh variable slot and always match
+		// (Python `case x:` semantics).
 		g.bindPat(b, p.Value, sub)
-		return "1"
+		return "true", nil
 	case *ListLit:
 		n := len(p.Elems)
 		ln := g.newTmp()
@@ -12142,9 +12212,9 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) string {
 			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", ec, er, ev))
 			cond = g.andCond(b, cond, ec)
 		}
-		return cond
+		return cond, nil
 	case *DictLit:
-		cond := "1"
+		cond := "true"
 		for i, k := range p.Keys {
 			kv, err := g.value(b, k)
 			if err != nil {
@@ -12170,70 +12240,93 @@ func (g *irGen) matchPattern(b *strings.Builder, sub string, pat Expr) string {
 			b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", vc, vr, vv))
 			cond = g.andCond(b, cond, vc)
 		}
-		return cond
+		return cond, nil
 	case *Call:
-		if fn, ok := p.Fn.(*Name); ok {
-			class := fn.Value
-			if g.classIDs[class] != 0 || g.classInfos[class] != nil {
-				kind := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_heap_kind(i32 %s)\n", kind, sub))
-				kc := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 4\n", kc, kind))
-				cond := kc
-				cid := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, sub))
-				cc := g.classChainCond(b, cid, class)
-				cond = g.andCond(b, cond, cc)
-				for _, arg := range p.Args {
-					if nm, ok := arg.(*Name); ok && nm.Value != "_" {
-						slot := g.attrSlot(nm.Value)
-						ar := g.newTmp()
-						b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ar, sub, slot))
-						g.bindPat(b, nm.Value, ar)
-					}
-				}
-				return cond
-			} else if g.classIDs[class] == 0 && g.classInfos[class] == nil {
-				// Runtime class-pattern alias (`Alias = Point`): fn is a variable
-				// holding a class id (stored by value() as a classid constant).
-				// Match the subject instance class id against the runtime alias id.
-				kind := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_heap_kind(i32 %s)\n", kind, sub))
-				cond := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, 4\n", cond, kind))
-				cid := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, sub))
-				alias, _ := g.value(b, fn)
-				cc := g.newTmp()
-				b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cc, cid, alias))
-				cond = g.andCond(b, cond, cc)
-				for _, arg := range p.Args {
-					if nm, ok := arg.(*Name); ok && nm.Value != "_" {
-						slot := g.attrSlot(nm.Value)
-						ar := g.newTmp()
-						b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ar, sub, slot))
-						g.bindPat(b, nm.Value, ar)
-					}
-				}
-				return cond
+		// Class pattern — `case Point(x, y):` or `case Alias(x, y):` — or an ordinary call compared
+		// to the subject. Which class the callee names is the front end's question, asked once for
+		// both backends (ADR 0235). The old code asked it twice and got it wrong twice: a name that
+		// was not a declared class went down a "runtime alias" branch that read it with g.value and
+		// DISCARDED the error, so `case f():` emitted `load i32, i32* %_f` for a variable that does
+		// not exist and `case Alias(...)` inside a function emitted `icmp eq i32 %t5, ` with nothing
+		// after the comma. Both were exit 2 (ADR 0211).
+		fn, isName := p.Fn.(*Name)
+		if !isName {
+			return g.matchEquality(b, sub, pat)
+		}
+		class := g.classPat.classOfName(fn.Value)
+		if class == "" && (g.classIDs[fn.Value] != 0 || g.classInfos[fn.Value] != nil) {
+			class = fn.Value
+		}
+		if class != "" {
+			return g.matchInstance(b, sub, class, "", p.Args)
+		}
+		// Not a class name. It may still name a value that holds one (`Alias = Point` written where
+		// the generator cannot see it), which is the one form that has to be asked at run time — but
+		// only if the name is readable and is not a function, and a refusal to read it falls through
+		// to expression-equality rather than emitting a half-built compare.
+		if !g.funcs[fn.Value] && !isPredeclaredName(fn.Value) {
+			if cv, err := g.value(b, fn); err == nil {
+				return g.matchInstance(b, sub, "", cv, p.Args)
 			}
 		}
-		pv, err := g.value(b, pat)
-		if err != nil {
-			return "0"
-		}
-		cmp := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
-		return cmp
+		return g.matchEquality(b, sub, pat)
 	default:
-		pv, err := g.value(b, pat)
-		if err != nil {
-			return "0"
-		}
-		cmp := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
-		return cmp
+		return g.matchEquality(b, sub, pat)
 	}
+}
+
+// matchEquality is where every non-structural pattern ends: evaluate the pattern expression and
+// compare it to the subject. A pattern that cannot be evaluated matches nothing — the next case is
+// tried, which is what the interpreter's `return false, nil` says for the same shape.
+func (g *irGen) matchEquality(b *strings.Builder, sub string, pat Expr) (string, error) {
+	pv, err := g.value(b, pat)
+	if err != nil {
+		return "false", nil
+	}
+	cmp := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cmp, sub, pv))
+	return cmp, nil
+}
+
+// matchInstance lowers a class pattern. The subject must be an instance whose class is `class` (or a
+// subclass of it) — or, when `class` is empty, whose class id equals the run-time value `classVal` —
+// and every capture name must name an attribute the instance actually has. That last conjunct is the
+// half that was missing: @heap's data words cannot tell an attribute that was never written from a
+// stored 0, so `case Point(a, b):` matched an instance carrying neither and printed `pt 0 0` while
+// the interpreter and the documentation both say the pattern fails (roadmap Gap B, ADR 0235).
+func (g *irGen) matchInstance(b *strings.Builder, sub, class, classVal string, args []Expr) (string, error) {
+	kind := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_heap_kind(i32 %s)\n", kind, sub))
+	kc := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %d\n", kc, kind, HeapKindInstance))
+	cond := kc
+	cid := g.newTmp()
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 0)\n", cid, sub))
+	if class != "" {
+		cond = g.andCond(b, cond, g.classChainCond(b, cid, class))
+	} else {
+		cc := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp eq i32 %s, %s\n", cc, cid, classVal))
+		cond = g.andCond(b, cond, cc)
+	}
+	for _, arg := range args {
+		nm, ok := arg.(*Name)
+		if !ok {
+			// Only a name is a capture position; anything else is a sub-pattern this form cannot
+			// match, and the interpreter fails the case the same way.
+			return "false", nil
+		}
+		slot := g.attrSlot(nm.Value)
+		has := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_has(i32 %s, i32 %d)\n", has, sub, slot))
+		hc := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", hc, has))
+		cond = g.andCond(b, cond, hc)
+		ar := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_inst_get(i32 %s, i32 %d)\n", ar, sub, slot))
+		g.bindPat(b, nm.Value, ar)
+	}
+	return cond, nil
 }
 
 func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
@@ -13010,13 +13103,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			patterns := append([]Expr{c.Pattern}, c.Or...)
 			var orTmp string
 			for _, p := range patterns {
-				pc := g.matchPattern(b, sub, p)
+				pc, perr := g.matchPattern(b, sub, p)
+				if perr != nil {
+					return perr
+				}
 				if orTmp == "" {
 					orTmp = pc
 				} else {
-					nt := g.newTmp()
-					b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", nt, orTmp, pc))
-					orTmp = nt
+					orTmp = g.orCond(b, orTmp, pc)
 				}
 			}
 			b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", orTmp, bodyL, fallL))
