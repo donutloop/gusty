@@ -4557,3 +4557,70 @@ How it was done, so it can be redone:
   cost of "readable without leaving the table", and it is the right order: the Status column
   still answers "what's owed" in one screen, the free text answers "what did it say" in place,
   and the record answers "why" at whatever length the finding needs.
+
+## Phase 12: the surface survey, and the three states a construct is allowed to be in (2026-10-01)
+
+Asked to make the roadmap "compliant with modern language design in 2026", the temptation was to
+write a wish-list from what modern languages have. That would have been the fourth status-bearing
+prose section this tracker deliberately removed, and it would have been unfalsifiable. Instead:
+gather the repo's facts, then measure the language, then let the measurement write the phase.
+
+**Facts first.** 65 010 lines of Go, `codegen.go` alone at 13 421; 224 ADRs, highest `0232`;
+110 corpus programs, 21 of them probes; the conformance matrix at 101 rows / 78 parity / 0 drift;
+the bundled stdlib at **four modules and 24 lines** (`math` is seven constants and has no `sqrt`,
+`json` is three constants and has no `dumps`) — a fact that reframes "does `import math` work?"
+into "it works, which is why `math.sqrt` looking like a typo is worse than a missing module".
+
+**Then the survey.** 76 programs written the way a person writes Python — f-strings, `@dataclass`,
+`Enum`, `Protocol`, `with`, `*args`, `del`, `assert`, `match` patterns, dunder protocols, set
+operators, `from … import … as …`, `__name__` — each through `--interp`, `--aot` and
+CPython 3.12.3. Classified by what the legs did, never by what the file intended. The classes came
+out: 9 CPython-equal on both backends, 37 honest absences, 16 compiled-only refusals, **8 that run
+everywhere and answer wrong**, 2 that hang.
+
+**What measuring found that reasoning would not have.**
+
+• **The accidental pass.** `print(1 < 2 < 3)` prints `True` — and the operator is wrong. Chains
+  parse as `(1 < 2) < 3`, so the middle operand meets a boolean; `1 < x < 3` takes the branch with
+  `x = 5` on both backends. A test written from the one case that looks like a chain would have
+  certified it forever.
+
+• **Two legs, two different wrong answers, and one of them hangs.** A class with
+  `__iter__`/`__next__` printing 7.3 million integers in 15 s interpreted, and answering *"no
+  elements"* with exit 0 compiled. `for` does not read `StopIteration`; there is no iterator
+  protocol, only special-cased loops. Parity could never see this: there is no agreement to check.
+
+• **`int` overflows, and the backends overflow differently.** `2 ** 63` is `-9.2e18` interpreted,
+  `0` compiled, `9.2e18` in Python; `10 ** 19` differs by the compiled path folding through `i32`.
+  Documented bounded integers are a defensible 2026 decision; silent wrapping is neither design nor
+  accident.
+
+• **The wrong-table message is a structural finding, not a typo.** `xs.insert(0, 0)` on a **list**
+  compiles to `codegen: string method insert on non-constant string`. Gap R.38 said a refusal may
+  not assert something false about an operand kind; here the false assertion comes from a lookup
+  table rather than a template, so the fix is a receiver-keyed dispatch, not a reworded sentence.
+
+• **The rare inversion.** `class C(A, B)` resolves `A`'s methods in the interpreter and fails on
+  `B`'s — while the compiled backend resolves both. Two MRO implementations differing in
+  correctness is the argument for computing the linearisation once.
+
+• **The manifest rots in the safe direction.** `gustyc --lang` never claims a construct that does
+  not exist, which is why nobody notices it omitting `with` (both backends, documented), `yield`,
+  `async def`, `in`, `is`, `**`, the ternary, the walrus and f-strings. For an agent-facing
+  toolchain that is not cosmetic: the manifest is the language an agent compiles against.
+
+**The decision the phase records** is not a feature list but a state machine: every construct is
+**implemented** (both backends, CPython-equal), **refused** (stable `Diagnostic.Code`, documented
+exit class, a line in `docs/language.md`), or **absent** from the manifest. There is no fourth
+state, and "parses, runs, prints something" is the one that has to be deleted. It is ADR 0212's
+"a trap is a typed raise" and ADR 0211's "one event, one code" applied to the grammar.
+
+**Process notes.** This is a docs-only cycle: the queue gained 13 rows (`L12.1`–`L12.13`) and the
+Gap R family 14 (`R.53`–`R.66`), no code changed — a phase whose rows are measurements, so the
+loop can pick them one at a time. Three rows are Phase 11's by root cause (the `(null)` dict
+binding, the `str`/`repr` pair, integer width) and are marked as such rather than started early,
+which is the same discipline that keeps L11.3 behind L11.1. The census harness itself lived in
+`/tmp` and is *not* a test — the record says so plainly, and `L12.13`'s definition of done is to
+promote the probes into the corpus so the manifest is checked by CI instead of remembered. The
+citation guard did its job again: every new `programs/*.gy` citation had to be marked `(planned)`
+or it would not resolve, which is precisely the failure mode ADR 0219 was written for.

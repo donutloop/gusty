@@ -2973,6 +2973,541 @@ package manager is the moment the binary leaves the repo.
 
 ---
 
+<a id="phase-12"></a>
+
+## Phase 12 — the Python-visible surface contract (surveyed 2026-10-01)
+
+Phase 11 asks what a value *is*. Phase 12 asks what the language *says*: whether a program
+written from memory of Python compiles, runs, and means what its author meant. The trigger was
+a request to check the language against modern language-design expectations for 2026, and the
+honest way to answer that question is not to enumerate features in the abstract but to write the
+programs and read the three answers.
+
+**Method.** 76 programs, each covering one construct or one closely-related pair, written to be
+idiomatic Python rather than gusty-shaped Gusty. Each ran through `gustyc --interp --file`,
+`gustyc --aot --file` and `python3` on identical source, and was classified by what the three
+legs *did*, not by what the file intended:
+
+| Class | Programs | Examples |
+|---|---|---|
+| `MATCH` — CPython-equal on both backends | 9 | `f"hello {name} {1 + 2}"`, `for … else`, `yield from`, `print(…, sep=, end=)`, `sorted(…, reverse=True)`, `str.index` / `str.count`, annotated `def f(xs: list[int]) -> int`, `with` + `__enter__` / `__exit__`, `print(1 in [1, 2])` (modulo the bool rendering of Gap L.2) |
+| `ABSENT` — both engines refuse, CPython runs | 37 | `@dataclass`, `class Color(Enum)`, `Protocol`, `TypedDict`, `from … import … as …`, `del`, `assert`, `nonlocal`, `global`, `...` as a body, `raise … from`, `case [*rest]`, `case T() as x`, `case T(kw=…)`, `f(*xs)`, `f(**d)`, `*args` / `**kwargs` / keyword-only, `getattr` / `setattr` / `hasattr` / `repr` / `map` / `filter`, `bytes` / `frozenset` / `tuple()`, set operators, `__name__` |
+| `AOT-REFUSES` — the interpreter agrees with Python, codegen declines | 16 | `list(...)`/`keys()`/`items()` copies, `str.split`, a method on a container held in an instance field, `super()` through a string concatenation, `@staticmethod` / `@classmethod`, `__setitem__`-shaped attribute reads |
+| **`SILENTLY-WRONG` — every leg runs, gusty disagrees** | **8** | comparison chains, `2 ** 63`, f-string specs, `print(obj)` vs `__str__`, the dict-pattern binding, bool rendering (Gap L.2), integer overflow (Gap R.64's family), `list(<container>)` shapes that answer instead of refusing |
+| **`HANG`** | **2** | `for` over `__iter__` / `__next__`: 7.3 M lines in 15 s interpreted, zero iterations compiled |
+| rejected everywhere / interp-only / other | 4 | probes whose CPython reference itself needs a stdlib gusty does not have |
+
+Five of the `AOT-REFUSES` are not refusals at all: they emit a module `llc` **rejects**
+(`%t1 = add i32 @.lst1, @.lst2` for `[1] + [2]`, `%t1 = mul i32 @.lst1, 2` for `[1, 2] * 2`, and
+`x += [2]` for the same reason), which the exit-code contract (ADR 0211) reports as exit **2** —
+a compiler bug — rather than as a refusal. That is Gap R.33's signature and the phase's clearest
+illustration of the rule below: the same `str * int` shape *does* refuse cleanly, so the
+difference between a refusal and an invalid module is whether anyone wrote the check.
+
+**The three-state rule, which is the phase's actual deliverable — [ADR 0233](adr/0233-every-construct-is-implemented-refused-or-absent-never-answer-wrong.md).** Every construct is
+**implemented** (both backends, CPython-equal), **refused** (a stable `Diagnostic.Code`, a
+documented exit class, a line in `docs/language.md`), or **absent** (not in the surface
+manifest). "Parses, runs, prints something" is not a state and must not be one. The rule is the
+same instinct that made built-in traps typed raises (ADR 0212) and made one event mean one exit
+code (ADR 0211); what is new here is applying it to the *grammar* rather than to the runtime.
+
+**How to re-run the census.** Per program, `gustyc --oracle <src> --json` already reports the
+three legs and the verdict, with exit 0 on a match, 6 on a gusty disagreement and 7 when the
+oracle cannot judge (ADR 0186); `--interp` / `--aot` supply the legs directly. The 2026-10-01
+sweep was driven by an external harness over 76 files and its raw table is the four columns
+above; **the permanent form of this census is the corpus**, and that is L12.13's definition of
+done — each of these probes becomes a `programs/surface_*.gy` row, the manifest publishes the
+verdicts, and a construct that ships without appearing in the manifest fails CI. Until then the
+numbers above are a measurement with a date, not a standing check, and the record says so rather
+than implying a test that does not exist.
+
+**Two observations that are not defects but belong on the record.**
+
+• `with` runs on both backends and is documented, but the protocol's *arity* is unenforced: a
+one-argument `__exit__(self, e)` runs happily where CPython raises `TypeError`. `docs/language.md`
+documents the three-argument form. Making protocol conformance a front-end fact rather than an
+accident belongs with the protocol rows (L12.2, L12.3), not with `with` itself, which works.
+
+• The bundled standard library is four modules and 24 lines in total: `math` is seven constants
+(no `sqrt`), `string` is six character tables, `collections` is four constants, `json` is three
+(`NULL`, `TRUE`, `FALSE`) — there is no `json.dumps`. `import math` therefore "works" while
+`math.sqrt(16)` answers `no name sqrt in module`, which is a worse experience than a missing
+module because it looks like a typo in the program. Discovery is Gap R.52; *breadth* is the
+stdlib row L12.11 sits beside, and the ADR for this phase should decide what the stdlib
+guarantees before anyone writes another constant table.
+
+<a id="l12-1"></a>
+
+### L12.1 — comparison chains
+
+`(a < b) < c` is what the current grammar means, and `True < 3` is a comparison gusty will happily
+answer. The single-line form that makes Python's rule work is a parse- and AST-level change: a
+comparison node carrying `n` operands and `n-1` operators, with each middle operand evaluated once
+and fed to both neighbours. Doing it at the AST (rather than desugaring in the parser to
+`a < b and b < c`) is what keeps the semantics honest — `and` short-circuits, and Python does not
+evaluate the tail of a chain lazily in the way that matters here: with a call in the middle,
+`f() < g() < h()` must call `g` exactly once, and a desugaring written carelessly calls it twice.
+The checker gets `bool` for the whole chain, which also gives Gap L.2's bool rendering something
+correct to render once L11.2 lands. Alternatives rejected: keeping left-associativity and
+special-casing `bool` operands (fixes the observed cases, leaves the operator wrong); refusing
+chains (a refusal for the most ordinary comparison in the language is the kind of refusal this
+loop has repeatedly decided against).
+
+<a id="l12-2"></a>
+
+### L12.2 — the iterator protocol
+
+The interpreter already calls `__next__`; what it does not do is read `StopIteration` as the end
+signal, so a correct iterator loops until the harness kills it — 7.3 million printed integers in
+fifteen seconds. The compiled backend answers "no elements" for the same object, exiting 0. Both
+wrong halves come from the same omission: there is no *iterator protocol*, only a special-cased
+`range`/container loop. The design is one dispatch — ask the value for an iterator, ask the
+iterator for a value, stop on `StopIteration`, and raise a typed error on anything else — shared
+by `for`, `unpacking`, `list(...)`, `zip`, `enumerate` and the comprehension machinery, so the
+next protocol-shaped feature is a table entry rather than a new loop. A protocol codegen cannot
+lower is refused by name (with a `Diagnostic.Code`), never answered with zero iterations, because
+"empty" and "cannot tell" are the two answers a program cannot distinguish and only one of them
+is honest. `__aenter__` / `__aexit__` and mid-body `await` stay with L7.6a, where the coroutine
+object is the blocker.
+
+<a id="l12-3"></a>
+
+### L12.3 — `print` renders by protocol
+
+`print(C())` printing `0` in the compiled backend is not a rendering bug; it is an untagged handle
+being fed to `%d`, i.e. Gap R.22's disease showing up at the printer. The interpreter's
+`<instance>` is at least honest-looking, which is a lesson in itself: a wrong answer that looks
+like a placeholder survives longer than one that looks like a number. The design is the
+value-form table L11.2 is already building (`str` for `print`, `repr` inside containers, one pair
+per backend) with one extra lookup in front of it: does the class define `__str__` / `__repr__`?
+`repr` also has to become a real built-in — it is absent from `predeclared.go`, so the idiom that
+debuggers, tracebacks and every container's rendering depends on is currently unwritable. Order
+matters: L11.2 defines the pair, this item puts the class in front of it.
+
+<a id="l12-4"></a>
+
+### L12.4 — the class object: attributes and MRO
+
+Two measurements, one missing structure. A class body that binds only methods means `C.X` is an
+`AttributeError` and `class Color(Enum): RED = 1` is unwritable — so "there is no enum" is really
+"there is no class namespace", which is cheaper to fix and unblocks a family of idioms
+(constants, counters, registries, `@dataclass` field tables, and the enum type itself as stdlib
+written in gusty). Second, the interpreter resolves an inherited attribute through the first base
+only and fails on the second, while the compiled backend resolves both — the rare inversion where
+the AOT leg is right, and the direct evidence that the linearisation must be computed once and
+consulted by both legs, not reimplemented. C3 is the documented algorithm and the small one to
+implement; the row's definition of done includes the case CPython itself calls out (a diamond
+resolving the way C3 says, not the order of `bases`), because an MRO that works for one base and
+two is an MRO nobody has tested.
+
+<a id="l12-5"></a>
+
+### L12.5 — the descriptor built-ins
+
+Decorator *application* works in the interpreter — that half is a known AOT limit. What does not
+exist is `property`, `staticmethod` and `classmethod` as built-ins with a binding rule, which is
+why `@property` silently leaves a method object in the class dictionary: the decorator runs,
+returns something, and nothing asks what that something means when an attribute is read. The
+design is a descriptor table — name → (`__get__` semantics, `__set__`, whether `self` is passed,
+how it lowers) — read by the checker (so `T(3).d` types as the property's return), the interpreter
+(so the read applies it), and codegen (so `S.s()` lowers instead of refusing). Rejecting an
+unknown decorator at check time is part of the row: a decorator nobody can interpret is a compile
+fact, not a runtime surprise.
+
+<a id="l12-6"></a>
+
+### L12.6 — the call surface
+
+`*args`, `**kwargs`, keyword-only parameters and `f(*xs)` / `f(**d)` all die in the parser, which
+means every consumer behind it has never seen the shape — a good position to be in, because the
+rule this loop already applies to parameters (ADR 0196: a parameter is a variable, decided by the
+body) and to arity (ADR 0201's diagnostics) can be applied once, to a calling-convention table,
+before four consumers have opinions. Packing targets are tuples, so L11.3 is the natural
+dependency for the star half; the parameter-list half — `def f(a, *rest, k=1, **kw)` binding into
+frame slots — has no such dependency and is where the item starts. Two decisions the ADR has to
+make explicitly: what a packed parameter is when the callee mutates it (`args.append(x)` in
+CPython raises `TypeError` for a tuple, and gusty's tuples are immutable by L11.3's definition),
+and whether `f(**d)` requires `d` to be a `dict` or accepts any mapping.
+
+<a id="l12-7"></a>
+
+### L12.7 — statements are keywords
+
+The measured shape is the interesting part: `assert x > 0, "…"` is accepted by the parser because
+`assert` is an identifier, is refused by the checker as `undefined name "assert"`, and is a
+runtime `NameError` under `--file`. One source line, two different events with two different exit
+codes, and the weaker of the two is the one people hit. `del`, `nonlocal` and Gap R.48's `global`
+share the shape; `...` as a body is the one that blocks a whole idiom (`Protocol`, abstract
+methods, stubs), and `Ellipsis`/`…` needs the same ADR because it is both an expression and a
+statement form. The fix is structural rather than four one-off statements: one keyword table
+drives the lexer's reserved words, the parser's statement dispatch, the checker's name table and
+the interpreter's statement evaluation, so a word that means a statement cannot simultaneously be
+an identifier — and a statement no engine implements is reported where it is written, with a span,
+the way ADR 0166 made "the built-in exists but this backend cannot lower it" a front-end event.
+
+<a id="l12-8"></a>
+
+### L12.8 — f-strings format
+
+Interpolation works and prints CPython's answer, so the missing half is precise: the `!s`/`!r`/`!a`
+conversions and the `:spec` field are discarded at parse time. That is the good news — nothing is
+misimplemented, something is unimplemented — and it dictates the shape: parse them into the AST
+(everything after that is a formatter), implement `str.format` against the same formatter, and let
+`f"{x!r}"` reach the protocol renderer of L12.3 rather than a second copy of `str()`. Width and
+precision formatting for floats has to wait for L11.6's float representation, because `f"{3.5:.2f}"`
+is untestable while `3.5` and `3.50` are the same value; the alignment cases (`f"{x:>6}"`) are
+width on the *rendered* string and can land earlier. The ADR decides the supported spec subset —
+Python's mini-language is large and refusing the rest with a code is better than a silent
+partial, which is exactly what the row is about.
+
+<a id="l12-9"></a>
+
+### L12.9 — match completes
+
+Three of the four shapes are grammar: `case [first, *rest]:`, `case str() as s:`,
+`case Point(x=0, y=0):`. The matcher behind them already handles list, dict and class patterns,
+guards, or-patterns and (per Gap B) subclass attribute binding, so these are new nodes rather than
+new machinery. The fourth is a Phase 11 signature: `case {"k": v}:` prints `7` interpreted and
+`(null)` compiled, the value-read-as-interned-index defect arriving through a pattern binding, so
+this item splits along the same seam the rest of the tracker uses — the parse half is free, the
+print half waits for L11.1's tag. `as` in pattern position needs a checker decision the ADR should
+record: the bound name's type is the narrowed type, not the subject's, which is the same rule as
+L6.5's `isinstance` narrowing and should reuse it.
+
+<a id="l12-10"></a>
+
+### L12.10 — the module surface
+
+`from math import sqrt`, `from math import sqrt as r` and `__name__` are missing, so the two lines
+that begin most Python programs — the import and `if __name__ == "__main__":` — cannot be written.
+Discovery is Gap R.52's half (the search path is cwd-relative); this row is the grammar and the
+module's self-knowledge. `__name__` is small and load-bearing: a module needs an identity string
+before it can answer `__name__`, and the entry-point idiom needs that before a file can be both a
+library and a script. `from … import … as …` is a surface form of an existing resolution path, and
+its ADR should settle the two questions the current `import` leaves open: whether imported names
+are read-only bindings (a rebinding of `sqrt` should not leak into the module it came from) and
+what `import a.b.c` means when the on-disk layout has no packages yet — refusing packages by name
+is acceptable, inventing a silent fallback is not.
+
+<a id="l12-11"></a>
+
+### L12.11 — receiver tables
+
+The measurement that decides the design is a message: `xs.insert(0, 0)` on a **list** produces
+`codegen: string method insert on non-constant string`. The compiled backend resolves a method
+name against the string table whenever it cannot see the receiver's kind, so the diagnostic
+describes a value the program never had — Gap R.38's rule ("never assert something about another
+backend or an operand kind from a template") broken structurally rather than by a pasted sentence,
+and fixable only by making dispatch take the receiver kind as a key. Beside it sits the built-in
+list the survey produced: `map`, `filter`, `getattr`, `setattr`, `hasattr`, `repr`, `hash`, `id`,
+`vars`, `dir`, `list.sort/index/count/remove`, `dict.setdefault/pop`, `str.format`, `frozenset`,
+`tuple(...)`, bytes literals, and the set operators `&`, `-`, `|` (which do not parse at all). The
+mechanism is `predeclared.go`'s single-source rule, generalised: one table per receiver kind,
+consulted by checker, interpreter and codegen, so a name from the wrong table is an impossibility
+rather than a message, and the Gap R.51 class of defect — checker predeclares what the interpreter
+lacks — cannot recur for a method either.
+
+<a id="l12-12"></a>
+
+### L12.12 — integers are integers, or the language says so
+
+`2 ** 63` is `-9223372036854775808` interpreted, `0` compiled, `9223372036854775808` in CPython;
+`10 ** 19` disagrees between the two backends by 33 orders of magnitude of significance. Neither
+leg is a plausible user-visible `int`, and neither says anything. This row is an ADR before it is
+an implementation, and the ADR has to choose one of three positions:
+
+• **arbitrary precision** — Python's answer, and the honest one for a dynamic language, but a real
+  cost: a value kind that does not fit L11.1's word, an allocator in the hot path, and a
+  `--gc-stats` story;
+
+• **bounded `int` with an overflow trap** — cheaper, defensible for an AOT-first language, and
+  already half the truth about the compiled backend, *provided* the boundary is documented and the
+  overflow raises (a `OverflowError`-class trap, exit 3, the class CPython uses) instead of
+  wrapping. Width becomes part of the ABI story (L10.2) rather than an accident of a fold;
+
+• **the status quo** — rejected: it is not a design, it is two bugs with a documentation gap
+  between them, and the parity matrix cannot see it because the legs disagree.
+
+The interim requirement is only that the compiler stop answering: an expression whose constant
+result does not fit the width it is folding at should refuse with a code (Gap R.37's rule, that a
+constant fold may only resolve what the program cannot avoid executing).
+
+<a id="l12-13"></a>
+
+### L12.13 — the surface manifest is the spec
+
+`gustyc --lang` never over-claims — no phantom construct in its list — but it under-claims badly
+enough to be useless to its second audience: `with` ships on both backends and is documented and
+is not in the list; `async def`, `yield`, `break`, `continue`, `in`, `is`, `**`, the ternary, the
+walrus and f-strings are all absent from it while running today. AGENTS.md makes a machine path
+part of every feature, and the manifest is where that contract lives for a language surface: an
+agent planning a program should read one document, in JSON, that says per construct and per backend
+whether it is `supported`, `refused(code)`, or `absent`. Implementation is generation, not editing:
+the lexer's keyword table, the parser's statement dispatch, `predeclared.go`, the descriptor table
+of L12.5, the receiver tables of L12.11 and codegen's refusal catalogue are the sources, and the
+three-engine census is the check that the generated document matches behaviour. The test that makes
+it stick is the diff direction that currently has no witness: a construct that ships without being
+listed fails, as does a listed construct that the oracle says is wrong.
+
+<a id="gap-r-53"></a>
+
+### Gap R.53 — comparison chains answer the wrong value on both backends (found by the 2026-10-01 surface survey)
+
+```
+x = 5
+if 1 < x < 3:      # CPython: out   ·   --interp: in   ·   --aot: in
+    print("in")
+else:
+    print("out")
+print(1 < 2 < 3)   # True — right for the wrong reason
+print(10 < x < 20) # CPython: False ·   both backends: 1
+```
+
+The chain is left-associative, so `1 < x < 3` is `(1 < x) < 3`: an `int` compared against a
+boolean, which gusty answers rather than refusing. Note which test would not have caught it:
+`print(1 < 2 < 3)` prints `True` — the accidental pass. Owner L12.1; the AST-level fix and why a
+`and` desugaring was rejected are in [L12.1](#l12-1).
+
+<a id="gap-r-54"></a>
+
+### Gap R.54 — `for` over `__iter__`/`__next__` spins forever interpreted and iterates nothing compiled (found by the 2026-10-01 surface survey)
+
+```
+class R:
+    def __init__(self): self.i = 0
+    def __iter__(self): return self
+    def __next__(self):
+        self.i = self.i + 1
+        if self.i > 2: raise StopIteration
+        return self.i
+for x in R():
+    print(x)
+print("after")        # CPython: 1 2 after
+```
+
+The interpreter produced **7.3 million lines in 15 s** before the harness killed it: `__next__` is
+called, the `StopIteration` arrives, and nothing reads it as the end of iteration. The compiled
+binary printed `after` and exited **0** — an iterable with elements answered "empty". This is the
+phase's signature pair: two engines, two different wrong answers, and the only shape in the survey
+that can hang a CI job rather than fail it. Owner L12.2.
+
+<a id="gap-r-55"></a>
+
+### Gap R.55 — `print` ignores `__str__` / `__repr__` (found by the 2026-10-01 surface survey)
+
+```
+class C:
+    def __str__(self):  return "S"
+    def __repr__(self): return "R"
+print(C())             # CPython: S · --interp: <instance> · --aot: 0
+print(repr(C()))       # NameError: name 'repr' is not defined
+```
+
+The compiled `0` is an interned-string index going to `%d` — Gap R.22's mechanism, new location.
+The interpreter's `<instance>` is a placeholder, which makes it *safer* than the compiled answer
+and no more correct. `repr` being absent from the built-in table is the deeper half: containers,
+tracebacks and debuggers all render through a name the language does not have. Owner L12.3, on
+top of L11.2's `str`/`repr` pair.
+
+<a id="gap-r-56"></a>
+
+### Gap R.56 — a class body binds no attributes (found by the 2026-10-01 surface survey)
+
+```
+class C:
+    X = 1
+print(C.X)             # CPython: 1
+                       # --interp: AttributeError: type object 'C' has no attribute 'X'
+                       # --aot:    codegen: unsupported attr expression
+```
+
+Only methods reach the class object. The consequence is not one lost feature but a lost *idiom*:
+class constants, counters, registries, `@dataclass`'s field table and `class Color(Enum): RED = 1`
+are all "bindings in a class body", and none of them can be written. Cheapest structural fix in
+the tracker — one missing write — and the unlock is disproportionate. Owner L12.4.
+
+<a id="gap-r-57"></a>
+
+### Gap R.57 — `@property` yields the method object; `@staticmethod` / `@classmethod` do not compile (found by the 2026-10-01 surface survey)
+
+```
+class T:
+    def __init__(self, v): self._v = v
+    @property
+    def d(self): return self._v * 2
+print(T(3).d)                        # CPython: 6 · --interp: <method> · --aot: refusal
+
+class S:
+    @staticmethod
+    def s(): return 7
+    @classmethod
+    def c(cls): return 8
+print(S.s(), S.c())                  # CPython: 7 8 · --interp: 7 8 · --aot: 2 errors
+```
+
+The decorator call itself runs, so `@property` succeeds *and does nothing*: the attribute stays a
+method object and printing it is a silent wrong answer. `staticmethod` / `classmethod` are
+interpreter-only, giving the compiled backend two refusals for the ordinary way to write a utility
+and a factory. Owner L12.5.
+
+<a id="gap-r-58"></a>
+
+### Gap R.58 — `*args`, `**kwargs`, keyword-only parameters and call unpacking do not parse (found by the 2026-10-01 surface survey)
+
+```
+def f(a, *rest, k=1, **kw): ...      # parse error at 1:10: expected identifier
+def g(a, b=2, *, c=3): ...           # parse error at 1:15: expected identifier
+g(*[1, 2])                           # parse error at 4:9: unexpected token
+g(**{"a": 1, "b": 2})                # parse error: unexpected token
+```
+
+CPython runs all four. Keyword arguments at a *call* work (Gap J.1 pinned `sep`/`end` long ago), so
+what is missing is the star side of the parameter list and the call. Because the failure is in the
+parser, no consumer behind it has an opinion yet — the moment to write the calling-convention table
+once. Owner L12.6; L11.3 supplies the tuple the star forms pack into.
+
+<a id="gap-r-59"></a>
+
+### Gap R.59 — `assert`, `del`, `nonlocal` are identifiers; `...` is not a body (found by the 2026-10-01 surface survey)
+
+```
+assert x > 0, "must be positive"   # --check: error at 1:1: undefined name "assert"
+                                   # --file:  NameError: name 'assert' is not defined, exit 3
+del d["a"]                         # NameError: name 'del' is not defined
+nonlocal n                         # same shape, inside a nested def
+def f():
+    ...                            # parse error at 2:5: unexpected token
+```
+
+The checker catches the first three and the runner does not, so the same source has a compile-time
+meaning and a runtime meaning with different exit codes. `global` is Gap R.48 and the same defect.
+The `...` case is the one that costs users most, because it is how a `Protocol`, an abstract method
+and a stub are written. Owner L12.7, with the keyword-table rule.
+
+<a id="gap-r-60"></a>
+
+### Gap R.60 — f-string conversions and format specs are dropped; `str.format` is absent (found by the 2026-10-01 surface survey)
+
+```
+x = 3.5
+print(f"{x:.2f}")                   # CPython: 3.50 · both backends: 3.5
+print(f"{x!r}")                     # CPython: repr(x) · both backends: str(x)
+print(f"{x:>6}")                    # CPython: '    3.5' · both backends: 3.5
+print("{},{}".format("x", "y"))     # no such string method
+```
+
+`f"hello {name} {1 + 2}"` is correct on all three engines, which localises the defect precisely:
+the `!conversion` and `:spec` fields are parsed away on the way to an AST that has nowhere to put
+them. Printing a narrower rendering than the program asked for is a wrong answer that looks
+reasonable, which is the category only the oracle leg finds. Owner L12.8; the float half waits for
+L11.6, the alignment half need not.
+
+<a id="gap-r-61"></a>
+
+### Gap R.61 — three pattern forms do not parse, and the dict pattern that does prints `(null)` (found by the 2026-10-01 surface survey)
+
+```
+case [first, *rest]:          # parse error at 3:22: unexpected token
+case str() as s:              # parse error at 3:20: expected ':'
+case Point(x=0, y=0):         # parse error at 7:21: expected ')' in class pattern
+
+def f(d):
+    match d:
+        case {"k": v}: return v
+print(f({"k": 7}))            # CPython: 7 · --interp: 7 · --aot: (null)
+```
+
+Three grammar gaps in front of a matcher that already lowers list, dict and class patterns, plus
+one more instance of the untagged-value signature (Gap R.22) arriving through a pattern binding.
+Owner L12.9, which splits along that seam; the alias half of class patterns is Gap B.
+
+<a id="gap-r-62"></a>
+
+### Gap R.62 — no `from … import … [as …]`, and no `__name__` (found by the 2026-10-01 surface survey)
+
+```
+from math import sqrt          # parse error at 1:1: unexpected token
+from math import sqrt as r     # parse error at 1:1: unexpected token
+print(__name__)                # NameError: name '__name__' is not defined
+if __name__ == "__main__":     # therefore unwritable
+    main()
+```
+
+`import math` resolves and `math.PI` folds, but `math.sqrt(16)` answers `no name sqrt in module`
+because the bundled stdlib is data-only — that half is the stdlib story, and Gap R.52 is the search
+path. This row is the grammar plus the module's identity, and it is what makes a file a program
+rather than a snippet. Owner L12.10.
+
+<a id="gap-r-63"></a>
+
+### Gap R.63 — a list or dict method is answered from the string-method table; the built-in list is short (found by the 2026-10-01 surface survey)
+
+```
+xs = [1, 2]
+xs.insert(0, 0)     # --interp: no such list method   · --aot: codegen: string method insert on non-constant string
+xs.index(3)         # --aot: string method index on non-constant string
+d.setdefault("b", 2)  # --aot: string method setdefault on non-constant string
+map(f, xs) · filter(f, xs) · getattr(o, "v") · repr(x) · hash(x) · id(x) · vars(o) · dir(o)
+frozenset([1, 2]) · tuple([1, 2]) · b"abc"
+{1, 2} & {2, 3}     # parse error
+```
+
+The messages are the finding: the compiled backend asks the *string* table for a method name when it
+cannot see the receiver's kind, so a list is described as a string. Gap R.38 established that a
+refusal may not assert something false about another backend or an operand kind; this is the same
+rule broken one level down, where the assertion comes from a lookup table rather than a template.
+The missing-name list is the second half, and both halves want the same instrument: one table per
+receiver kind, consulted by checker, interpreter and codegen. Owner L12.11.
+
+<a id="gap-r-64"></a>
+
+### Gap R.64 — `int` overflows silently, and the two backends overflow differently (found by the 2026-10-01 surface survey)
+
+```
+print(2 ** 62)    # 4611686018427387904 — exact on both
+print(2 ** 63)    # CPython 9223372036854775808 · --interp -9223372036854775808 · --aot 0
+print(10 ** 19)   # CPython 10000000000000000000 · --interp -8446744073709551616 · --aot -1981284352
+print(10 ** 30)   # CPython 1000000000000000000000000000 · --interp 5076944270305263616 · --aot 1073741824
+```
+
+Three answers, none CPython's, none reported. The compiled path folds through `i32` where the
+interpreter keeps `i64`, so the disagreement is width *and* representation, and parity is blind to
+it by construction. The fix starts with an ADR that picks a position — bignums, or a documented
+bounded `int` that traps on overflow — and the interim rule is Gap R.37's: a constant fold may only
+resolve a value the program can actually hold, otherwise refuse by code. Owner L12.12.
+
+<a id="gap-r-65"></a>
+
+### Gap R.65 — the surface manifest under-reports what ships (found by the 2026-10-01 surface survey)
+
+`gustyc --lang` reports `statements: assign, print, if/elif/else, while, for-in-range, def/return,
+pass, match, try/except/finally, raise, class, import`. It omits `with` — shipped on both backends,
+documented in `docs/language.md`, and verified in this survey — plus `async def`, `yield`, `yield
+from`, `break`, `continue`; and its expression line omits `in`, `is`, `**`, the ternary, the walrus
+and f-strings, all of which run. The failure is in the harmless direction (it never advertises a
+construct that does not exist) which is exactly why it persists. AGENTS.md makes self-description
+part of a feature, and for a language surface the manifest *is* that part; the fix is generation
+from the implementation's own tables plus the census as the witness. Owner L12.13.
+
+<a id="gap-r-66"></a>
+
+### Gap R.66 — the interpreter resolves an inherited attribute through the first base only (found by the 2026-10-01 surface survey)
+
+```
+class A:
+    def a(self): return "a"
+class B:
+    def b(self): return "b"
+class C(A, B):
+    pass
+print(C().a())   # a — every engine
+print(C().b())   # CPython: b · --aot: b · --interp: AttributeError: 'C' has no attribute 'b'
+```
+
+The inverted one: the compiled backend walks every base and is right, the interpreter walks the
+first and reports an inherited method as missing. Two MRO implementations, differing in
+correctness, is the argument for computing the linearisation once and having both legs consult it —
+the same table that resolves the class attributes of Gap R.56. Owner L12.4.
 <a id="original-preamble"></a>
 
 ## Original preamble, snapshot, component map and sequencing note (verbatim)

@@ -644,6 +644,16 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   constant types, floored `//`/`%`, `sorted`/`enumerate`, calling a function through a
   parameter, `print(set())`, and print atomicity. `tools/oracleprobe` prints the three legs for
   any program, which is how a ledger row is written from data.
+- **The Python-visible surface survey (Phase 12, 2026-10-01)** — 76 programs written the way
+  someone writes Python, each run through `--interp`, `--aot` and CPython 3.12.3, classify the
+  language into the states a construct is allowed to be in: **9** CPython-equal on both backends,
+  **37** absent (both engines refuse, honestly), **16** refused by the compiled backend alone
+  (5 of those emit a module `llc` rejects, which is exit 2 rather than a refusal), **8** that run
+  everywhere and answer wrong, **2** that hang or iterate nothing. The last two groups are what
+  Phase 12 exists to delete: its rule is that every construct is implemented, refused by a stable
+  code, or absent from `--lang` — never "parses, runs, prints something". Rows `L12.1`–`L12.13`
+  in `roadmap.md`, method and per-class examples in `docs/roadmap-details.md` § Phase 12; making
+  the census a standing artifact instead of a dated measurement is `L12.13`.
 - **Property testing** — seeded deterministic whole-program generation.
 
 ## Requirements & build
