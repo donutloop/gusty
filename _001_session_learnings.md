@@ -4815,3 +4815,67 @@ language description.
 Gap R.50 closed, Gap R.69 opened while closing it. This was also the first piece of L11.6 (and of the
 one remaining Phase 2 item, P2.15), landed as a piece rather than as "the L11.6 cycle": the umbrella row
 now strikes the tie rule from its next-action list and keeps the rest.
+
+## A model is configuration, not a constant (tools/pi-loop, ADR 0237)
+
+The cycle was "make pi-loop use the new `setup/` model config" — `setup/pi_qwen3.8-flash-next.json`,
+`local-vllm/qwen3.8-flash-next` at `http://localhost:8888/v1`. The two-line version (change the port,
+change the id) was refused, because the pair being changed was itself the bug. What the sweep found:
+
+**The published `models.json` had been dead on arrival the whole time.** pi validates it with a *closed*
+TypeBox object — legal roots are `providers` and `modelOverrides` — and `ModelConfig.load` throws away
+the **entire file** on one unknown key. pi-loop had been writing a top-level `models` map beside
+`providers` for its whole life, so the SDK parsed it, rejected it, and every run proceeded on the
+hand-built inline model while the tool congratulated itself on `wrote provider config to models.json`.
+`ModelRuntime.getError()` existed for exactly this and had never been called. A write that the consumer
+silently refuses is not an integration; it is a rumour. Now the merge emits only legal roots, drops the
+legacy key with a line of its own, and prints `getError()` when pi complains.
+
+**Duplicating pi's data model is how you ship a 400.** The inline model hard-coded `reasoning: true`
+plus `compat.supportsReasoningEffort: true` and a 1:1 `thinkingLevelMap`, which makes the
+openai-completions path send `reasoning_effort` — probed against the live endpoint:
+`{"error":{"message":"Unexpected reasoning effort max. Supported types are xhigh (default), medium, and low."}}`
+with HTTP 400. The new config's `supportsReasoningEffort: false` is the honest statement, and thinking
+still happens because the server's *default* effort is xhigh. So: pi resolves the model
+(`ModelRuntime.getPhysicalModel`) and pi-loop passes that object plus its own runtime into
+`createAgentSession`; the config file — editable by a human, readable by `pi /model` — is the only place
+an endpoint is described. The inline object stays only as a fallback for an unresolvable model.
+
+**Limits: stated or nothing.** pi's composed defaults for a `models.json` model are
+`contextWindow: 128000, maxTokens: 16384`. The old constant claimed 524288/131072 — numbers no server in
+this repo has ever had. `modelLimits` now returns the value *and its origin*
+(`setting|config|endpoint|default`) and `applyLimits` overwrites pi only for a stated origin, never for
+the derived guess. Reason is a specific vLLM failure mode: a request whose `prompt_tokens + max_tokens`
+exceeds `max_model_len` is refused, so an inflated output budget converts a long round into a mid-run
+HTTP 400 — the worst possible time to discover a limit. The endpoint's own `max_model_len` (from the
+pre-flight) is trusted when the config omits `contextWindow`.
+
+**A parent pi session can hijack a child loop.** pi exports `PI_MODEL`/`PI_PROVIDER` into every shell
+command it runs, so `pi-loop` started from inside a session read its *parent's* model out of the
+environment — caught by accident, when a deliberate `--models-config=` test failed with
+`model "qwen3.8-flash-next" is not in /tmp/piloop-dead.json` and the id in the message was the one this
+session is running on. Fix is a namespace rule, not a rename: `PI_LOOP_<NAME>` always wins, plain `PI_*`
+still works outside a pi session (existing operators' shells keep working), and inside one the two
+pi-owned variables are **ignored and reported** — `pi-loop: ignoring PI_MODEL=… inherited from the parent
+pi session`. Inherited state is not requested state.
+
+**Fail before the round.** A `GET <baseUrl>/models` pre-flight now gates round 1, with the exit message
+carrying `ECONNREFUSED` out of `fetch`'s `cause` — bare `fetch failed` is not actionable. `--describe`
+prints the whole resolution as JSON, and `--dry-run` (`noTools: "all"`, no state write) proves config →
+`models.json` → SDK session → endpoint in one command: the model answered `PI_LOOP_OK`, `↗ 1.6k in · 19 out ·
+13 think · 1.7k cached`.
+
+**Two self-inflicted wounds worth remembering.** (1) The first `--describe` implementation redirected
+`console.log` to stderr *including the JSON print itself*, so `--describe | jq` parsed an empty string —
+capture `printOut` before shadowing `console.log`. Machine paths need their stdout as a pure document,
+not as a shared channel. (2) `node --test tools/pi-loop/` does **not** discover
+`tools/pi-loop/*.test.mjs` on Node 22 — it tries to execute the directory as a module and fails with
+`MODULE_NOT_FOUND`; the glob (`node --test tools/pi-loop/*.test.mjs`, or `npm test --prefix tools/pi-loop`)
+is what works. A test command that silently doesn't run tests is worse than none, because it reads green
+to whoever trusts it.
+
+**Scope discipline.** No language surface, roadmap row, ledger row, or `docs/language.md` claim moved
+here: this is driver tooling, so it carries its own unit tests, its README, and an ADR — and leaves the
+compiler alone. The loop contract's "machine consumption path" clause applies to the tool as much as to
+the language, which is why `--describe`/`--help`/`--dry-run` and the exit codes are part of the change
+rather than a follow-up.

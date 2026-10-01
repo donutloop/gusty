@@ -21,21 +21,63 @@
  *     - if there is NO progress (no state file, or lastCommit != HEAD, or a
  *       dirty working tree), pi-loop RE-EXECUTES AGENTS.md from round 1.
  *
+ * Model config (no hard-coded endpoint):
+ *   pi-loop does not embed a provider/model any more. It discovers a pi
+ *   models.json-shaped config in the repo's setup/ dir (the SAME format the pi
+ *   CLI reads from <agentDir>/models.json — see setup/pi_qwen3.8-flash-next.json),
+ *   writes it verbatim to <agentDir>/models.json, and resolves the model through
+ *   the SDK's own ModelRuntime so pi owns every default (baseUrl, api, compat,
+ *   contextWindow, maxTokens, cost). Drop a new config under setup/ and the next
+ *   round uses it — no code change.
+ *   Discovery: --models-config=PATH > $PI_MODELS_CONFIG > newest setup/<named>.json
+ *   (setup/pi.json is the fallback profile) > newest setup/pi*.json in the repo
+ *   dir, then in tools/../setup relative to this script.
+ *
  * Usage:
  *   node pi-loop.mjs [cwd] [--rounds N] [--once] [--force-reset]
+ *                    [--models-config=PATH] [--provider=ID] [--model=ID]
+ *                    [--dry-run] [--describe] [--help]
  * Env:
- *   PI_SDK_PATH  absolute path to the pi SDK dist/index.js
- *   PI_AGENT_DIR agent directory (default: cwd)
+ *   PI_SDK_PATH      absolute path to the pi SDK dist/index.js
+ *   PI_AGENT_DIR     agent directory (default: cwd)
+ *   PI_MODELS_CONFIG path to the models config (or --models-config=)
+ *   PI_SETUP_DIR     directory to discover the config in (default: <cwd>/setup)
+ *   PI_PROVIDER      provider id selector when the config has several
+ *   PI_MODEL         model id selector (default: first model of first provider)
+ *   PI_THINKING_LEVEL   pi thinking level (default: max; clamped to the model)
+ *   PI_CONTEXT_WINDOW / PI_MAX_TOKENS  numeric overrides of the config values
+ *   PI_SKIP_MODEL_CHECK=1  do not probe <baseUrl>/models before round 1
+ *   PI_MODEL_CHECK_TIMEOUT_MS  probe timeout (default 5000)
+ *   PI_LOOP_DELAY_SECONDS      delay between rounds (default 60)
+ *
+ * Machine path: `--describe` prints a JSON document describing the resolved
+ * config (file, provider, model, endpoint, limits, probe result) and exits —
+ * for agents/scripts to check what a loop run would use without running one.
  */
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  ConfigError,
+  HELP,
+  availableModelIds,
+  applyLimits,
+  discoverModelsConfig,
+  inlineModel,
+  loadModelsConfigFile,
+  makeSettingReader,
+  modelLimits,
+  probeEndpoint,
+  selectModel,
+  writeAgentModelsJson,
+} from "./models-config.mjs";
 
 const require = createRequire(import.meta.url);
 const DEFAULT_SDK = "/home/donutloop/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
-const sdkPath = process.env.PI_SDK_PATH || DEFAULT_SDK;
-const { createAgentSession } = require(sdkPath);
+const sdkPath = process.env.PI_LOOP_SDK_PATH || process.env.PI_SDK_PATH || DEFAULT_SDK;
+const { createAgentSession, ModelRuntime } = require(sdkPath);
 
 // The pi SDK persists every session entry to a JSONL log file under
 // <agentDir>/sessions/. We keep that file persistence AND mirror the exact
@@ -78,11 +120,14 @@ function fmtTokens(n) {
 function fmtUsage(usage) {
   if (!usage) return null;
   const parts = [];
-  const inTok = usage.input_tokens ?? usage.prompt_tokens;
-  const outTok = usage.output_tokens ?? usage.completion_tokens;
+  const inTok = usage.input ?? usage.input_tokens ?? usage.prompt_tokens;
+  const outTok = usage.output ?? usage.output_tokens ?? usage.completion_tokens;
   if (inTok != null) parts.push(`${fmtTokens(inTok)} in`);
   if (outTok != null) parts.push(`${fmtTokens(outTok)} out`);
-  if (usage.total_tokens != null) parts.push(`${fmtTokens(usage.total_tokens)} total`);
+  if (usage.reasoning != null) parts.push(`${fmtTokens(usage.reasoning)} think`);
+  if (usage.cacheRead != null) parts.push(`${fmtTokens(usage.cacheRead)} cached`);
+  const total = usage.totalTokens ?? usage.total_tokens;
+  if (total != null) parts.push(`${fmtTokens(total)} total`);
   return parts.length ? `↗ ${parts.join(" · ")}` : null;
 }
 
@@ -96,6 +141,18 @@ function roleBadge(role) {
   }
 }
 
+function oneLine(text, limit = 200) {
+  const s = String(text ?? "").replace(/\s+/g, " ").trim();
+  return s.length > limit ? s.slice(0, limit) + "…" : s;
+}
+
+function shortJson(value, limit = 160) {
+  if (value == null) return "";
+  let s;
+  try { s = JSON.stringify(value); } catch { s = String(value); }
+  return s.length > limit ? s.slice(0, limit) + "…}" : s;
+}
+
 function renderText(content) {
   if (content == null) return "";
   if (typeof content === "string") return content;
@@ -105,6 +162,10 @@ function renderText(content) {
         if (typeof c === "string") return c;
         if (c && typeof c === "object") {
           if (c.type === "text" || c.text) return String(c.text ?? "");
+          // Tool calls and thinking blocks are rendered as compact event lines
+          // instead of raw JSON blobs.
+          if (c.type === "thinking" || c.thinking) return paint(`think  ${oneLine(c.thinking)}`, ansi.dim);
+          if (c.type === "toolCall" || c.toolCall) return paint(`call ${c.name ?? "?"} ${shortJson(c.arguments)}`, ansi.blue);
           if (c.type === "image" || c.image) return "[image]";
           try { return JSON.stringify(c); } catch { return "[object]"; }
         }
@@ -191,43 +252,173 @@ const roundsArg = args.find(a => a.startsWith("--rounds=")) ?? "Infinity";
 const rounds = roundsArg === "Infinity" ? Infinity : parseInt(roundsArg.slice(9), 10);
 const once = args.includes("--once") ? 1 : rounds;
 const forceReset = args.includes("--force-reset");
-const agentDir = process.env.PI_AGENT_DIR || cwd;
+// --dry-run: one throwaway round with a connectivity prompt — no state, no git
+// verification, no inter-round delay. Used by the smoke test to prove the whole
+// chain (config → models.json → SDK session → local endpoint) is wired up.
+const dryRun = args.includes("--dry-run");
+// All pi-loop settings go through this reader so PI_LOOP_<NAME> always wins and
+// a parent pi session's inherited PI_MODEL / PI_PROVIDER cannot hijack the loop.
+const setting = makeSettingReader(process.env);
+const agentDir = setting("AGENT_DIR") || cwd;
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const TOOL_VERSION = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(scriptDir, "package.json"), "utf8")).version ?? "0.0.0"; } catch { return "0.0.0"; }
+})();
+
+const flagValue = (prefix) => {
+  const hit = args.find((a) => a.startsWith(prefix));
+  return hit ? hit.slice(prefix.length) : undefined;
+};
 
 const STATE_FILE = path.join(cwd, ".pi-loop-state.json");
 
-// pi-loop connects using ONLY this provider config (a local OpenAI-compatible
-// vLLM endpoint). The SDK's ModelRuntime reads <agentDir>/models.json; we
-// write/merge this provider + model there so createAgentSession resolves it.
-const PROVIDER_CFG = {
-  providers: {
-    "local-vllm": {
-      baseUrl: "http://localhost:8000/v1",
-      api: "openai-completions",
-      apiKey: "dummy"
-    }
-  },
-  models: {
-    "deepseek-v4-flash": {
-      provider: "local-vllm",
-      name: "deepseek-v4-flash",
-      baseUrl: "http://localhost:8000/v1",
-      api: "openai-completions"
-    }
-  }
-};
-const MODEL = "deepseek-v4-flash";
-const MODELS_JSON = path.join(agentDir, "models.json");
-
-function bootstrapModelsJson() {
-  let existing = {};
-  try { existing = JSON.parse(fs.readFileSync(MODELS_JSON, "utf8")); } catch {}
-  existing.providers = Object.assign({}, existing.providers, PROVIDER_CFG.providers);
-  existing.models = Object.assign({}, existing.models, PROVIDER_CFG.models);
-  fs.writeFileSync(MODELS_JSON, JSON.stringify(existing, null, 2));
-  console.log("pi-loop: wrote provider config to " + MODELS_JSON + " (local-vllm -> deepseek-v4-flash)");
+function die(msg, code = 1) {
+  console.error(`${paint("pi-loop: fatal", ansi.red)} ${msg}`);
+  process.exit(code);
 }
 
-bootstrapModelsJson();
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(HELP);
+  process.exit(0);
+}
+const wantDescribe = args.includes("--describe") || args.includes("--json");
+// Machine path: with --describe, stdout carries ONLY the JSON document; every
+// human banner goes to stderr so scripts can pipe stdout straight into jq.
+const printOut = console.log.bind(console);
+if (wantDescribe) console.log = (...printArgs) => console.error(...printArgs);
+
+// ---- models config: read from the repo's setup/ dir, never hard-coded -------
+// The config file uses the exact schema pi reads from <agentDir>/models.json,
+// so one file configures both the human-facing `pi` CLI and this agent driver.
+// See setup/pi_qwen3.8-flash-next.json for the current endpoint.
+let CONFIG;
+try {
+  const found = discoverModelsConfig({
+    explicitPath: flagValue("--models-config="),
+    setting,
+    setupDirs: [setting("SETUP_DIR"), path.join(cwd, "setup"), path.resolve(scriptDir, "..", "..", "setup")].filter(Boolean),
+  });
+  const config = loadModelsConfigFile(found.path);
+  const picked = selectModel(config, {
+    file: found.path,
+    provider: flagValue("--provider=") ?? setting("PROVIDER"),
+    model: flagValue("--model=") ?? setting("MODEL"),
+  });
+  CONFIG = { ...found, config, ...picked };
+} catch (e) {
+  die(e instanceof ConfigError ? e.message : `models config error: ${e?.stack || e}`);
+}
+
+const MODELS_JSON = path.join(agentDir, "models.json");
+const { providerId, modelId, providerCfg, modelCfg } = CONFIG;
+const thinkingLevel = setting("THINKING_LEVEL") || "max";
+
+// Publish the config to <agentDir>/models.json before creating any session.
+const written = writeAgentModelsJson(MODELS_JSON, CONFIG.config);
+if (written.droppedLegacy) {
+  console.log(`pi-loop: dropped the legacy top-level "models" key from ${MODELS_JSON} (pi rejects the file outright with it present)`);
+}
+
+// Ask the endpoint what it actually serves: fail fast rather than after a round,
+// and pick up max_model_len when the config leaves contextWindow out.
+const endpoint = setting("SKIP_MODEL_CHECK") === "1"
+  ? { skipped: true }
+  : await probeEndpoint({
+      baseUrl: providerCfg.baseUrl,
+      apiKey: providerCfg.apiKey,
+      modelId,
+      timeoutMs: Number(setting("MODEL_CHECK_TIMEOUT_MS")) || 5000,
+    });
+
+const limits = modelLimits({ modelCfg, setting, serverMaxModelLen: endpoint.serverMaxModelLen ?? null });
+
+const rel = (p) => {
+  const r = path.relative(cwd, p);
+  return r && !r.startsWith("..") ? r : p;
+};
+const where = CONFIG.source === "auto-discovered" ? `auto-discovered in ${rel(CONFIG.dir)}` : CONFIG.source;
+
+const ignoredSettings = setting.ignored();
+if (ignoredSettings.length) {
+  console.log(
+    `pi-loop: ignoring ${ignoredSettings.join(", ")} inherited from the parent pi session — they name that session's ` +
+    `model, not the loop's (use --model= / PI_LOOP_MODEL to choose one)`
+  );
+}
+
+// Resolve the model through the SDK's own ModelRuntime: pi fills in every
+// default (baseUrl, api, compat, cost) from <agentDir>/models.json, so pi-loop
+// never carries a second copy of the endpoint definition.
+const MODEL_RUNTIME = await ModelRuntime.create({ modelsPath: MODELS_JSON, allowModelNetwork: false });
+const runtimeError = MODEL_RUNTIME.getError();
+if (runtimeError) console.warn(`pi-loop: ${runtimeError}`);
+
+const resolvedModel = MODEL_RUNTIME.getPhysicalModel?.(providerId, modelId) ?? MODEL_RUNTIME.getModel?.(providerId, modelId);
+// Keep whatever pi resolved (its defaults are conservative: 128k context / 16k
+// output); only stated numbers — PI_LOOP_*, the config, or the endpoint's own
+// max_model_len — replace them.
+const SESSION_MODEL = resolvedModel
+  ? applyLimits(resolvedModel, limits)
+  : inlineModel({ providerId, modelId, providerCfg, modelCfg, contextWindow: limits.contextWindow, maxTokens: limits.maxTokens });
+if (!resolvedModel) {
+  console.warn(`pi-loop: SDK could not resolve ${providerId}/${modelId} from ${MODELS_JSON}; using an inline model definition.`);
+}
+
+console.log(
+  `pi-loop: models config ${rel(CONFIG.path)} (${where}) → ` +
+  `${paint(`${providerId}/${modelId}`, ansi.green)} @ ${SESSION_MODEL.baseUrl} ` +
+  `(context ${SESSION_MODEL.contextWindow}${limits.contextWindowFrom === "endpoint" ? " = endpoint max_model_len" : ""}, ` +
+  `maxTokens ${SESSION_MODEL.maxTokens}, thinking ${thinkingLevel}${SESSION_MODEL.reasoning ? "" : " (server default effort: pi sends no reasoning_effort)"})`
+);
+
+if (endpoint.skipped) {
+  console.log("pi-loop: endpoint check skipped (PI_SKIP_MODEL_CHECK=1)");
+} else if (!endpoint.reachable) {
+  die(
+    `endpoint ${providerCfg.baseUrl} is not reachable (${endpoint.error}). ` +
+    `Start the local model server (see setup/boot_agent.sh) or set PI_SKIP_MODEL_CHECK=1 to try anyway.`
+  );
+} else if (!endpoint.modelListed) {
+  die(
+    `${providerCfg.baseUrl} does not serve "${modelId}" (it serves: ${endpoint.served.join(", ") || "nothing"}). ` +
+    `Pick one with --model=ID / PI_LOOP_MODEL, or update the config in setup/.`
+  );
+}
+
+// Machine path: let an agent/script see exactly what a run would use.
+if (wantDescribe) {
+  printOut(JSON.stringify({
+    ok: true,
+    tool: "pi-loop",
+    version: TOOL_VERSION,
+    cwd: path.resolve(cwd),
+    agentDir: path.resolve(agentDir),
+    modelsConfig: path.resolve(CONFIG.path),
+    modelsConfigSource: CONFIG.source,
+    modelsJson: path.resolve(MODELS_JSON),
+    provider: providerId,
+    model: modelId,
+    baseUrl: SESSION_MODEL.baseUrl,
+    api: SESSION_MODEL.api,
+    contextWindow: SESSION_MODEL.contextWindow,
+    maxTokens: SESSION_MODEL.maxTokens,
+    limits: {
+      contextWindow: { value: limits.contextWindow, from: limits.contextWindowFrom },
+      maxTokens: { value: limits.maxTokens, from: limits.maxTokensFrom },
+    },
+    reasoning: SESSION_MODEL.reasoning ?? false,
+    // "off" here means pi sends no reasoning_effort and the server applies its
+    // own default effort — it does NOT mean the model answers without thinking.
+    thinkingLevel,
+    thinkingControlledByPi: !!SESSION_MODEL.reasoning,
+    input: SESSION_MODEL.input ?? ["text"],
+    compat: SESSION_MODEL.compat ?? null,
+    availableModels: availableModelIds(CONFIG.config),
+    ignoredInheritedSettings: ignoredSettings,
+    endpoint,
+  }, null, 2));
+  process.exit(0);
+}
 
 const agentsMd = path.join(cwd, "AGENTS.md");
 const loopContract = fs.existsSync(agentsMd) ? fs.readFileSync(agentsMd, "utf8") : "";
@@ -271,10 +462,12 @@ async function verifyRound(round) {
 }
 
 async function runRound(session, round, maxRounds) {
-  const prompt = [
-    `Round ${round} of ${maxRounds === Infinity ? "∞" : maxRounds}. `,
-    "Read AGENTS.md in this repo and follow its instructions - follow the loop STRICTLY."
-  ].join("\n");
+  const prompt = dryRun
+    ? "Connectivity check only — reply with exactly PI_LOOP_OK. Do not read, edit or run anything."
+    : [
+        `Round ${round} of ${maxRounds === Infinity ? "∞" : maxRounds}. `,
+        "Read AGENTS.md in this repo and follow its instructions - follow the loop STRICTLY."
+      ].join("\n");
 
   console.log(`\n=== pi-loop: round ${round} — prompting local pi agent ===`);
   try {
@@ -285,7 +478,7 @@ async function runRound(session, round, maxRounds) {
   }
   console.log(`\n=== pi-loop: round ${round} agent turn complete ===`);
   const { clean, head } = await verifyRound(round);
-  if (!clean) {
+  if (!clean && !dryRun) {
     console.warn(`pi-loop: round ${round} left an uncommitted working tree.`);
   }
   return head;
@@ -294,7 +487,9 @@ async function runRound(session, round, maxRounds) {
 // Decide resume vs re-execute AGENTS.md.
 let state = loadState();
 let round = 1;
-if (!forceReset && state) {
+if (dryRun) {
+  console.log("pi-loop: DRY RUN — one connectivity round, progress state is not touched");
+} else if (!forceReset && state) {
   const head = await git(["rev-parse", "HEAD"]);
   const dirty = await git(["status", "--porcelain"]);
   if (state.lastCommit && state.lastCommit === head && !dirty) {
@@ -323,72 +518,46 @@ let currentSession = null;
  * resumed/continued.
  */
 async function createRoundSession() {
-  // createAgentSession expects a Model OBJECT (provider + id), not a bare id
-  // string. The SDK resolves the full model (auth/endpoint) from
-  // <agentDir>/models.json using model.provider / model.id, so a minimal
-  // object with provider+id+name is enough (apiKey "dummy" lives on the
-  // provider config written to models.json).
-  // The SDK does NOT auto-fill baseUrl/api from models.json for an inline
-  // model object — the openai-completions provider calls model.baseUrl.*
-  // (detectCompat) and uses model.baseUrl as the endpoint, so they MUST be
-  // present or every agent turn crashes with
-  // "Cannot read properties of undefined (reading 'includes')".
-  const providerCfg = PROVIDER_CFG.providers["local-vllm"];
-  const model = {
-    provider: "local-vllm",
-    id: MODEL,
-    name: MODEL,
-    baseUrl: providerCfg.baseUrl,
-    api: providerCfg.api,
-    reasoning: true,
-    thinkingLevelMap: {
-      off: "off",
-      minimal: "minimal",
-      low: "low",
-      medium: "medium",
-      high: "high",
-      xhigh: "xhigh",
-      max: "max"
-    },
-    compat: {
-      // ds4-server (not vLLM) enables thinking via the OpenAI-style
-      // `reasoning_effort` field on chat/completions (it compat-maps the level
-      // to the model's prefix-free effort). It does NOT accept vLLM-style
-      // chat_template_kwargs, so leave thinkingFormat unset so the SDK falls
-      // back to its "openai" format (params.reasoning_effort).
-      supportsReasoningEffort: true
-    },
-    input: ["text", "image"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 524288,
-    maxTokens: 131072,
-    headers: {}
-  };
-  // Mirror the session log to the console AND keep writing to the session file.
+  // The model object is resolved once at startup from <agentDir>/models.json
+  // (written from the setup/ models config) by the SDK's own ModelRuntime, and
+  // that same runtime is handed to createAgentSession so auth, compat and the
+  // thinking clamp stay exactly as pi configures them for the CLI too.
   const sessionManager = createConsoleMirrorSessionManager(cwd, agentDir);
-  const created = await createAgentSession({ cwd, agentDir, model, sessionManager, thinkingLevel: "max" });
+  const created = await createAgentSession({
+    cwd,
+    agentDir,
+    model: SESSION_MODEL,
+    modelRuntime: MODEL_RUNTIME,
+    sessionManager,
+    thinkingLevel,
+    // A dry run must never be able to touch the repo: no tools at all.
+    ...(dryRun ? { noTools: "all" } : {}),
+  });
   const session = created.session ?? created;
   session.subscribe((event) => {
-    if (event.type === "message_update") {
-      const delta = event.assistantMessage?.textDelta ?? event.delta ?? "";
-      if (delta) process.stdout.write(delta);
-    }
+    if (event.type !== "message_update") return;
+    // pi streams via assistantMessageEvent ({ type: "text_delta", delta }).
+    const ev = event.assistantMessageEvent;
+    const delta = ev?.type === "text_delta" ? ev.delta : (event.assistantMessage?.textDelta ?? event.delta ?? "");
+    if (delta) process.stdout.write(paint(delta, ansi.dim));
   });
   return session;
 }
 
 try {
-  const target = once || rounds;
+  const target = dryRun ? 1 : once || rounds;
   const maxRounds = target === Infinity ? Infinity : target;
   while (round <= maxRounds) {
     // Discard the previous round's session (if any) and start a fresh one.
     if (currentSession) currentSession.dispose();
     currentSession = await createRoundSession();
-    console.log("pi-loop: connected to local pi agent session (" + agentDir + ")");
+    console.log(`pi-loop: connected to local pi agent session (${agentDir}) on ${providerId}/${modelId}`);
 
     const head = await runRound(currentSession, round, maxRounds);
-    state = { round: round + 1, lastCommit: head, finishedAt: new Date().toISOString() };
-    saveState(state);
+    if (!dryRun) {
+      state = { round: round + 1, lastCommit: head, finishedAt: new Date().toISOString() };
+      saveState(state);
+    }
 
     // The round is done — dispose this round's session so its context is
     // discarded and cannot leak into the next round.
@@ -396,9 +565,10 @@ try {
     currentSession = null;
     console.log(`pi-loop: round ${round} completed; discarding session, executing AGENTS.md loop for next round...`);
     round += 1;
+    if (dryRun) continue;
     // Wait a minute after each completed loop before starting the next round.
     // Configurable via PI_LOOP_DELAY_SECONDS (default 60).
-    const delaySeconds = parseInt(process.env.PI_LOOP_DELAY_SECONDS ?? "60", 10) || 0;
+    const delaySeconds = parseInt(setting("DELAY_SECONDS") ?? "60", 10) || 0;
     if (delaySeconds > 0) {
       console.log(`pi-loop: waiting ${delaySeconds}s before round ${round}...`);
       await sleep(delaySeconds * 1000);
