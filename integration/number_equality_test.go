@@ -120,36 +120,34 @@ func TestNumericEqualityMatchesCPythonOnBothEngines(t *testing.T) {
 	}
 }
 
-// TestMixedNumericListEqualityRefusesRatherThanTruncates is Gap R.40 closed (ADR 0226). This test used
-// to pin two defects: a *literal* list holding a float emitted an invalid module
-// (`@.lst2 = private global {i32, [1 x i32]} { i32 1, [1 x i32] [@env_store = ...`, llc: "expected
-// type") so the user got a toolchain rejection for an ordinary program; and the *bound* form "worked",
-// which this cycle established was truncation -- the same code said [1.5] == [1.6] was True where
-// CPython says False. Both halves now refuse with something to act on; the answers belong to L11.6, and
-// integration/programs/probe_float_container_equality.gy is the debt row that keeps them visible.
-func TestMixedNumericListEqualityRefusesRatherThanTruncates(t *testing.T) {
-	for _, src := range []string{
-		"print(1 if [1] == [1.0] else 0)\n",
-		"xs = [1]\nys = [1.0]\nprint(1 if xs == ys else 0)\n",
-		"print(1 if [1.5] == [1.6] else 0)\n",
+// TestMixedNumericListEqualityIsNotAnsweredByTruncation is Gap R.40 closed and ADR 0233 paid: a
+// float in a container slot used to emit an invalid module for the literal form and to answer from
+// a truncated word for the bound form — the same code said [1.5] == [1.6] was True where CPython
+// says False. A float now lives in a box whose handle sits in the slot, so the comparison is a
+// comparison of doubles and the malformed static initializer the gap was about cannot come back:
+// the emitted module must not contain a list global holding a float's bits, only rt_float_new calls.
+func TestMixedNumericListEqualityIsNotAnsweredByTruncation(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"print(1 if [1] == [1.0] else 0)\n", "1\n"}, // Python: [1] == [1.0]
+		{"xs = [1]\nys = [1.0]\nprint(1 if xs == ys else 0)\n", "1\n"},
+		{"print(1 if [1.5] == [1.6] else 0)\n", "0\n"}, // the truncation answer was 1
+		{"print([1.5, \"a\"])\n", "[1.5, 'a']\n"},      // printed the interned index's repr
 	} {
-		path := writeSrc(t, t.TempDir(), "mixed.gy", src)
-		out, code := cliRunCode(t, "--aot", path)
-		if code == 2 {
-			t.Fatalf("%q rejected the compiler's own module (ADR 0166):\n%s", src, cliRun(t, "--aot", path))
+		path := writeSrc(t, t.TempDir(), "mixed.gy", tc.src)
+		if py, ok := cpythonOut(t, path); ok && py != tc.want {
+			t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 		}
-		if code == 0 {
-			t.Fatalf("%q compiled and printed %q; a float in a container slot must refuse until L11.6, not answer from a truncated word", src, out)
+		for _, engine := range []string{"--interp", "--aot"} {
+			out, code := cliRunCode(t, engine, path)
+			if code == 2 {
+				t.Fatalf("%s rejected the compiler's own module (ADR 0166):\n%s", engine, cliRun(t, engine, path))
+			}
+			if code != 0 {
+				t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
+			}
+			if out != tc.want {
+				t.Errorf("%s printed %q for %q, want CPython's %q", engine, out, tc.src, tc.want)
+			}
 		}
-		msg := cliRun(t, "--aot", path)
-		if !strings.Contains(msg, "float") || !strings.Contains(msg, "container") {
-			t.Fatalf("%q refused without naming the kind and the slot:\n%s", src, msg)
-		}
-	}
-	// The artifact assertion, flipped: the malformed initializer this gap was about must no longer be
-	// emittable at all -- the refusal happens before anything reaches the module.
-	ir, irc := cliRunCode(t, "--emit-llvm", "print(1 if [1] == [1.0] else 0)\n")
-	if irc == 0 && strings.Contains(ir, "[1 x i32] [@") {
-		t.Fatalf("the malformed list initializer is still being emitted:\n%s", ir)
 	}
 }

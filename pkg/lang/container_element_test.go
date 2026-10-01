@@ -34,35 +34,36 @@ func assertNoForbiddenIR(t *testing.T, src, ir string) {
 	}
 }
 
-// TestFloatElementsRefuseRatherThanBreakTheModule: each of these is refused with something to act
-// on — the message names the element kind and the missing representation — and none of them ships a
-// module. The refusals are the point; the answers they replaced were exit 2 or a wrong value.
+// TestFloatElementsRefuseRatherThanBreakTheModule: the shapes in this list used to be refusals —
+// a float had no representation in an i32 slot, so the honest answer was the diagnostic and the
+// dishonest one was a truncated read. ADR 0233 gave the float a representation (a box, tagged
+// TagFloat, compared by rt_payload_eq and rendered by the mixed printer), so the same programs are
+// now expected to compile and print CPython's answer. What still has to refuse stays in
+// TestMixedListElementUsesStillRefuse: a nested container, which the collector cannot mark yet.
 func TestFloatElementsRefuseRatherThanBreakTheModule(t *testing.T) {
-	for _, src := range []string{
-		"print(1 if [1] == [1.0] else 0)\n",
-		"print(1 if [1.0] == [1] else 0)\n",
-		"print(1 if [1.5, 2] == [1.5, 2] else 0)\n",
-		"print([1.5, 2])\n",
-		"xs = [1.5]\nprint(xs[0])\n",
-		"print(1 if {1.0} == {1.0} else 0)\n",
-		"d = {\"a\": 1.5}\ne = {\"a\": 1.6}\nprint(1 if d == e else 0)\n",
+	for _, tc := range []struct{ src, want string }{
+		{"print(1 if [1] == [1.0] else 0)\n", "1\n"},
+		{"print(1 if [1.0] == [1] else 0)\n", "1\n"},
+		{"print(1 if [1.5, 2] == [1.5, 2] else 0)\n", "1\n"},
+		{"print([1.5, 2])\n", "[1.5, 2]\n"},
+		{"xs = [1.5]\nprint(xs[0])\n", "1.5\n"},
+		{"print(1 if {1.0} == {1.0} else 0)\n", "1\n"},
+		{"d = {\"a\": 1.5}\ne = {\"a\": 1.6}\nprint(1 if d == e else 0)\n", "0\n"},
+		{"d = {\"a\": 1.5}\ne = {\"a\": 1.5}\nprint(1 if d == e else 0)\n", "1\n"},
+		{"print([0.0] == [-0.0])\n", "1\n"}, // fcmp oeq, the way Python compares floats
 	} {
-		res, err := Compile(src)
-		if err == nil {
-			msg := ""
-			if res != nil {
-				for _, d := range res.Diagnostics {
-					msg += d.Msg + "\n"
-				}
+		res, err := Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q refused after ADR 0233 gave the element a representation: %v", tc.src, err)
+		}
+		if !strings.Contains(res.IR, "@rt_float_new(") && strings.Contains(tc.src, ".") {
+			// Every one of these stores a float somewhere; the box allocation is the proof.
+			if !strings.Contains(res.IR, "@rt_float") {
+				t.Errorf("%q compiled without a float box:\n%s", tc.src, res.IR)
 			}
-			t.Fatalf("%q compiled; it must refuse with a message. diagnostics:\n%s", src, msg)
 		}
-		m := err.Error()
-		if !strings.Contains(m, "float") || !strings.Contains(m, "container") {
-			t.Fatalf("%q refused without naming what is missing (a container, a float): %v", src, err)
-		}
-		if strings.Contains(m, "L11.6") == false {
-			t.Fatalf("%q refused without pointing at the roadmap item that owns the fix: %v", src, err)
+		if out := runIR(t, res.IR); out != tc.want {
+			t.Errorf("%q ran to %q, want CPython's %q", tc.src, out, tc.want)
 		}
 	}
 }
@@ -127,7 +128,10 @@ func TestMismatchedKindEqualityIsAnsweredByKind(t *testing.T) {
 // an unterminated definition that everything downstream shipped. The emitter now validates first and
 // writes once; a refusal must leave no half-line behind.
 func TestPartialGlobalIsNeverShipped(t *testing.T) {
-	res, err := Compile("print([1.5, 2])\n")
+	// A shape that still refuses — a nested container is the element the collector cannot mark —
+	// checked for the failure mode rather than the message: the refusal must be a clean stop,
+	// not a half-written global left in the module.
+	res, err := Compile("print([[1.5, 2]])\n")
 	if err == nil {
 		t.Fatalf("expected a refusal, got a %d-byte module", len(res.IR))
 	}

@@ -610,13 +610,21 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 		return "", false, err
 	}
 	// The one question every container emitter must ask, asked here so it is asked once: can the
-	// compiled word hold this? A slot is an i32 and a float has no representation in one, so the
-	// alternatives were a truncated read (`xs = [1.5]; print(xs[0])` answered 1), or -- as the
-	// literal path did -- an operand the compiler invented, which llc rejected and the exit-code
-	// contract called a compiler bug for an ordinary program (roadmap Gap R.40, ADR 0166; the
-	// compiled float story belongs to L11.6).
+	// compiled word hold this? A slot is an i32 and a double does not fit in one, so a float is
+	// stored as the handle of a @float_box object and the tag says so. Before that existed this
+	// line refused instead, and the alternatives it existed to prevent were a truncated read
+	// (`xs = [1.5]; print(xs[0])` answered 1) or an operand the compiler invented, which llc
+	// rejected and the exit-code contract called a compiler bug for an ordinary program
+	// (roadmap Gap R.40, ADR 0166; the float element itself is roadmap L11.1, ADR 0233).
 	if _, isFloatLit := e.(*FloatLit); isFloatLit || g.isFloat(e) {
-		return "", false, fmt.Errorf("a compiled container cannot hold a float yet: an element slot is an i32 word and %s has no representation in one (the interpreter and CPython answer this program; compiled floats in containers are roadmap L11.6)", exprTyName(e))
+		g.floatFmtUsed = true // the mixed printer reaches rt_fmt_double
+		inner, ferr := g.floatValue(b, e), error(nil)
+		if ferr != nil {
+			return "", false, ferr
+		}
+		bh := g.newTmp()
+		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", bh, inner)
+		return bh, false, nil
 	}
 	v, err := g.value(b, e)
 	return v, false, err
@@ -638,7 +646,7 @@ func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, err
 		if err != nil {
 			return "", err
 		}
-		tag := elemTagFor(el, interned)
+		tag := g.elemTagFor(el, interned)
 		if tag == int32(TagNone) {
 			v = "0"
 		}
@@ -668,7 +676,7 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 		// Every builder writes the tag with the payload, not only the mixed-list one: a slot
 		// whose tag was never written carries whatever the previous tenant of that heap slot
 		// left behind, and equality (rt_slot_eq) reads the pair (ADR 0187's rule, ADR 0189).
-		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i, elemTagFor(el, interned))
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i, g.elemTagFor(el, interned))
 	}
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
@@ -728,8 +736,8 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 		fmt.Fprintf(b, "  call void @rt_dict_put(i32 %s, i32 %s, i32 %s)\n", h, kk, vv)
 		// A dict interleaves key and value in the element array, so it owns two tag slots per
 		// entry: rt_dict_get reads the key payload, rt_container_eq reads the pairs.
-		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i*2, elemTagFor(dl.Keys[i], kIsStr))
-		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i*2+1, elemTagFor(dl.Vals[i], vIsStr))
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i*2, g.elemTagFor(dl.Keys[i], kIsStr))
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, i*2+1, g.elemTagFor(dl.Vals[i], vIsStr))
 	}
 	if bits != 0 {
 		fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 %d)\n", h, bits)
@@ -771,7 +779,7 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 			}
 		}
 		fmt.Fprintf(b, "  call void @rt_set_add(i32 %s, i32 %s)\n", h, v)
-		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, idx, elemTagFor(el, interned))
+		fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %d)\n", h, idx, g.elemTagFor(el, interned))
 		idx++
 	}
 	if bits != 0 {
@@ -863,6 +871,56 @@ func literalNeedsHeap(e Expr) bool {
 		}
 	}
 	return false
+}
+
+// literalNeedsTags asks the other question of a container literal: not "does it need the heap"
+// (a static float-literal array serves sum/min/max today) but "can its elements be read back
+// without a per-slot tag?". A float slot holds a @float_box handle and a None slot holds nothing,
+// so neither can: a literal containing one must be built and printed through the tagged path,
+// which is what makes print([1.5]) answer [1.5] and print([None]) answer [None] instead of the
+// handle and the zero (roadmap L11.1, ADR 0233). It is deliberately a separate question from
+// literalNeedsHeap: the two were one predicate, and folding them diverted sum([1.5, 2.5]) from
+// the static array it handles to a heap list it does not.
+func literalNeedsTags(e Expr) bool {
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if isFloatLitExpr(el) || isNoneLitExpr(el) {
+				return true
+			}
+		}
+	case *SetLit:
+		for _, el := range n.Elems {
+			if isFloatLitExpr(el) || isNoneLitExpr(el) {
+				return true
+			}
+		}
+	case *DictLit:
+		for _, k := range n.Keys {
+			if isFloatLitExpr(k) || isNoneLitExpr(k) {
+				return true
+			}
+		}
+		for _, v := range n.Vals {
+			if isFloatLitExpr(v) || isNoneLitExpr(v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isFloatLitExpr and isNoneLitExpr are the two elements that make a container literal need the
+// tagged path even when every element is alike: their payloads are a @float_box handle and nothing
+// at all, neither of which a container-wide kind can describe (roadmap L11.1, ADR 0233).
+func isFloatLitExpr(e Expr) bool {
+	_, ok := e.(*FloatLit)
+	return ok
+}
+
+func isNoneLitExpr(e Expr) bool {
+	_, ok := e.(*NoneLit)
+	return ok
 }
 
 // emitModuleContainerList gives a module-level container variable the one thing
@@ -996,30 +1054,34 @@ func stringConstOf(e Expr) (string, bool) {
 	return "", false
 }
 
-// taggableMixedList reports whether a list literal mixes element kinds but every element is
-// one the per-element tag can describe today: an integer, an interned string, or None. That
-// set is deliberate. Bools are excluded because bools are not values in either backend yet
-// (L11.1), so a [True] would print 1 and disagree with Python; floats are excluded because
-// rt_print_mixed_value has no float rendering; and a nested container would have to be
-// marked by the collector, which per-element rooting has not reached. Anything else keeps the
-// honest refusal below rather than printing something wrong (ADR 0184).
+// taggableMixedList reports whether a list literal's every element is one the per-element tag can
+// describe today, and whether the tags are needed at all. Two rules, matching the two ways a slot
+// can be unreadable: a literal that mixes interned text with anything else has no element kind, so
+// it is the tagged path or a refusal; and a literal holding a float or None has no untagged
+// representation even when every element is alike, because the payload is a box handle or nothing
+// at all. Bools stay excluded because bools are not values in either backend yet (L11.1) — a
+// [True] prints 1 and disagrees with Python, which is the pinned probe_bool_value debt — and a
+// nested container stays excluded until the collector is reached (ADR 0184, ADR 0233).
 func (g *irGen) taggableMixedList(ln *ListLit) bool {
 	if len(ln.Elems) == 0 {
 		return false
 	}
-	sawStr, sawOther := false, false
+	sawStr, sawOther, sawMustTag := false, false, false
 	for _, el := range ln.Elems {
 		tag, ok := g.elemKindTag(el)
 		if !ok {
 			return false
 		}
-		if tag == int32(TagStr) {
+		switch tag {
+		case int32(TagStr):
 			sawStr = true
-		} else {
+		case int32(TagFloat), int32(TagNone):
+			sawMustTag = true
+		default:
 			sawOther = true
 		}
 	}
-	return sawStr && sawOther
+	return sawMustTag || (sawStr && sawOther)
 }
 
 // elemKindTag is the codegen's answer to "what tag does this element's slot carry", and the
@@ -1031,7 +1093,12 @@ func (g *irGen) taggableMixedList(ln *ListLit) bool {
 // string's *index* as a number is exactly the wrong-output bug the refusal exists to avoid.
 func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	switch e.(type) {
-	case *FloatLit, *ListLit, *DictLit, *SetLit, *Tuple, *Lambda:
+	case *FloatLit:
+		// A float goes into the slot as the handle of a @float_box object, which the mixed printer
+		// renders and rt_payload_eq compares by value; before both of those existed this line said
+		// "not taggable" and the literal was refused rather than misprinted (roadmap L11.1, ADR 0233).
+		return int32(TagFloat), true
+	case *ListLit, *DictLit, *SetLit, *Tuple, *Lambda:
 		return 0, false
 	case *BoolLit:
 		// Both backends store a bool as the number it behaves like today — the interpreter
@@ -1064,6 +1131,11 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 		if g.strVals[nm.Value] != "" {
 			return int32(TagStr), true
 		}
+		// The same question the storage side asks: a name the generator knows holds a float is a
+		// float element, and the default TagInt below would label its box handle as a number.
+		if g.isFloat(e) {
+			return int32(TagFloat), true
+		}
 	}
 	return int32(TagInt), true
 }
@@ -1079,6 +1151,7 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 		return false
 	}
 	keyStr, keyOther, valStr, valOther := false, false, false, false
+	mustTag := false
 	for i := range dl.Keys {
 		kt, ok := g.elemKindTag(dl.Keys[i])
 		if !ok {
@@ -1086,6 +1159,8 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 		}
 		if kt == int32(TagStr) {
 			keyStr = true
+		} else if kt == int32(TagFloat) || kt == int32(TagNone) {
+			mustTag = true
 		} else {
 			keyOther = true
 		}
@@ -1095,11 +1170,13 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 		}
 		if vt == int32(TagStr) {
 			valStr = true
+		} else if vt == int32(TagFloat) || vt == int32(TagNone) {
+			mustTag = true
 		} else {
 			valOther = true
 		}
 	}
-	return (keyStr && keyOther) || (valStr && valOther)
+	return mustTag || (keyStr && keyOther) || (valStr && valOther)
 }
 
 // taggableMixedSet is taggableMixedDict for a set literal: every member taggable, and members of
@@ -1108,19 +1185,22 @@ func (g *irGen) taggableMixedSet(sl *SetLit) bool {
 	if len(sl.Elems) == 0 {
 		return false
 	}
-	sawStr, sawOther := false, false
+	sawStr, sawOther, sawMustTag := false, false, false
 	for _, el := range sl.Elems {
 		t, ok := g.elemKindTag(el)
 		if !ok {
 			return false
 		}
-		if t == int32(TagStr) {
+		switch t {
+		case int32(TagStr):
 			sawStr = true
-		} else {
+		case int32(TagFloat), int32(TagNone):
+			sawMustTag = true
+		default:
 			sawOther = true
 		}
 	}
-	return sawStr && sawOther
+	return sawMustTag || (sawStr && sawOther)
 }
 
 // taggedOperand lowers an expression to the (payload, tag) pair it stands for, which is what a
@@ -1140,6 +1220,16 @@ func (g *irGen) taggedOperand(b *strings.Builder, e Expr) (val, tag string, ok b
 	t, tok := g.elemKindTag(e)
 	if !tok {
 		return "", "", false
+	}
+	if t == int32(TagFloat) {
+		// The payload a float's slot holds is the handle of a @float_box object, not the number
+		// g.value would answer by truncating the double; asking for the pair and getting the
+		// truncated word is how `1.0 in [1]` came back false (roadmap L11.1, ADR 0233).
+		g.floatFmtUsed = true
+		inner := g.floatValue(b, e)
+		bh := g.newTmp()
+		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", bh, inner)
+		return bh, strconv.FormatInt(int64(TagFloat), 10), true
 	}
 	v, err := g.value(b, e)
 	if err != nil {
@@ -1175,13 +1265,21 @@ func (g *irGen) isMixedContainer(name string) bool {
 
 // elemTagFor is the canonical ValueTag number an element's slot carries. Numbers are 0
 // (TagInt, which is also the array's zero value), None is TagNone, interned strings TagStr.
-func elemTagFor(e Expr, interned bool) int32 {
+// elemTagFor is the tag a slot carries for this element. It is a method because the answer is
+// not in the spelling: a Name the generator knows holds a float is a float element, and tagging
+// it TagInt would label a box handle as a number (roadmap L11.1, ADR 0233).
+func (g *irGen) elemTagFor(e Expr, interned bool) int32 {
 	switch e.(type) {
 	case *NoneLit:
 		return int32(TagNone)
+	case *FloatLit:
+		return int32(TagFloat)
 	}
 	if interned {
 		return int32(TagStr)
+	}
+	if g != nil && g.isFloat(e) {
+		return int32(TagFloat)
 	}
 	return int32(TagInt)
 }
@@ -1516,7 +1614,10 @@ func (g *irGen) mixedDictIndexRead(ix *Index) (string, bool) {
 		return "", false
 	}
 	switch ix.Idx.(type) {
-	case *Name, *IntLit, *StrLit:
+	case *Name, *IntLit, *StrLit, *FloatLit:
+		// A float key belongs here: its payload is a box handle, and the untagged read compares
+		// payloads, so it would answer with whichever entry happened to hold the same little
+		// integer. The tagged read is the only one that can find a float key (roadmap L11.1, ADR 0233).
 		return nm.Value, true
 	}
 	return "", false

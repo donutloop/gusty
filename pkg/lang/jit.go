@@ -3449,10 +3449,27 @@ func (e *Evaluator) callSetMethod(recv int64, name string, args []Expr) (int64, 
 // return boxed lists of the keys/values in insertion order.
 // dictKeyEq reports whether two dict keys compare equal by content.
 func (e *Evaluator) dictKeyEq(k, idx int64) bool {
-	ko, ok := e.heap[k]
-	if ok && ko.kind == "str" {
-		io, ok2 := e.heap[idx]
-		return ok2 && io.kind == "str" && ko.sval == io.sval
+	ko, kObj := e.heap[k]
+	io, iObj := e.heap[idx]
+	if kObj && ko.kind == "str" {
+		return iObj && io.kind == "str" && ko.sval == io.sval
+	}
+	// A float key is a boxed value, so comparing the two handles says nothing about the numbers
+	// they hold: {1.5: "x"} could be built and printed but never read back, and d[1.5] raised
+	// KeyError while `1.5 in d` was true. Ask the numbers, the way the compiled runtime's
+	// rt_payload_eq does — which also makes {1: "x"} answer d[1.0], as Python's does
+	// (roadmap L11.1, ADR 0233).
+	if kObj && ko.kind == "float" {
+		if iObj {
+			return io.kind == "float" && ko.fval == io.fval
+		}
+		return float64(idx) == ko.fval
+	}
+	if iObj && io.kind == "float" {
+		if kObj {
+			return false
+		}
+		return float64(k) == io.fval
 	}
 	return k == idx
 }

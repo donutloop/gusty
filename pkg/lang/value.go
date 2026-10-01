@@ -132,6 +132,13 @@ const (
 	HeapKindDict     = 2
 	HeapKindSet      = 3
 	HeapKindInstance = 4
+	// HeapKindFloat is a float box, and it is deliberately outside heapKindOrder: a float is
+	// not an allocatable value kind in the source sense, it is storage the compiled backend
+	// invents because a container slot is one i32 word and a double does not fit in one
+	// (roadmap L11.1). So HeapKindFor(TagFloat) stays HeapKindNone — nothing asks to allocate
+	// "an object of tag float" — while rt_float_new allocates this kind and the collector, which
+	// marks and sweeps by index rather than by kind, recycles boxes with their containers.
+	HeapKindFloat = 5
 )
 
 // heapKindOrder is the projection: heapKindOrder[i] is the canonical tag of the heap
@@ -149,6 +156,17 @@ func HeapKindFor(t ValueTag) int32 {
 		}
 	}
 	return HeapKindNone
+}
+
+// HeapKindKnown reports whether a number handed to rt_alloc is one the compiled heap understands.
+// Most of them are the projected kinds; HeapKindFloat is the one kind outside the projection, and
+// naming it here is what keeps the tag/kind agreement tests from reading a float box as a stray
+// allocation (roadmap L11.1, ADR 0233).
+func HeapKindKnown(kind int32) bool {
+	if kind == HeapKindNone || kind == HeapKindFloat {
+		return true
+	}
+	return kind > 0 && int(kind) <= len(heapKindOrder)
 }
 
 // HeapTagFor is the inverse: the canonical tag a heap kind stands for. An unknown kind

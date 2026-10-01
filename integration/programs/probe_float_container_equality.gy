@@ -1,7 +1,8 @@
-# Oracle probe (ADR 0192) -- the float-in-container shapes that Gap R.40 turned from a silent truncation
-# into a refusal. The interpreter agrees with CPython on all six lines; the compiled backend refuses until
-# a float can live in a container slot (roadmap L11.6). Before ADR 0226 the compiled leg printed 1 for
-# every line here, including the ones CPython answers 0 -- `1.5 == 1.6 in a slot` was true by truncation.
+# Oracle probe (ADR 0192), promoted to a conformance case by ADR 0238: the float-in-container shapes
+# that Gap R.40 turned from a silent truncation into a refusal. A float now lives in a box whose handle
+# sits in the slot beside its TagFloat tag, and rt_payload_eq compares the doubles behind the handles —
+# so [1.5] == [1.6] is False, which is the answer this file could not get while both elements were
+# being truncated into the same word.
 p = [1, 2]
 q = [1, 2.0]
 print(1 if p == q else 0)

@@ -202,10 +202,40 @@ func TestGrowingAContainerPrintsInsteadOfRefusing(t *testing.T) {
 // no word yet — L11.6; a handle in a slot built for a word is unmarked by the collector — L11.1
 // (5); a call returning text on one path and a number on another has no single tag to write).
 var mixedContainerCases = []string{
-	"xs = [1]\nxs.append(1.5)\nprint(xs)\n",
 	"print({\"a\": [1]})\n",
 	"s = {1}\ns.add([2])\nprint(s)\n",
 	"def f(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = [f(1), 2]\nprint(xs)\n",
+}
+
+// mixedFloatCases were the fourth entry above: a float appended to a list of numbers. ADR 0233 gave
+// the float a representation in a slot — the handle of a float box, tagged TagFloat — so the shape
+// compiles, and the answer is asserted rather than the diagnostic.
+var mixedFloatCases = []struct {
+	src  string
+	want string
+}{
+	{"xs = [1]\nxs.append(1.5)\nprint(xs)\n", "[1, 1.5]\n"},
+	{"xs = [1, \"a\"]\nxs.append(1.5)\nprint(xs)\n", "[1, 'a', 1.5]\n"},
+	{"print([None, 1.5])\n", "[None, 1.5]\n"},
+}
+
+func TestFloatElementsAppendInsteadOfRefusing(t *testing.T) {
+	for _, tc := range mixedFloatCases {
+		res, err := lang.Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q should compile since a float got a box to live in: %v", tc.src, err)
+		}
+		if !strings.Contains(res.IR, "call i32 @rt_float_new(") {
+			t.Errorf("%q stored a float without boxing it:\n%s", tc.src, res.IR)
+		}
+		jit, jerr := lang.JIT(tc.src, 0)
+		if jerr != nil {
+			t.Fatalf("%q: JIT: %v", tc.src, jerr)
+		}
+		if jit.Output != tc.want {
+			t.Errorf("%q printed %q, want CPython's %q", tc.src, jit.Output, tc.want)
+		}
+	}
 }
 
 // The case ADR 0175 refused and ADR 0184 fixed: a list literal that mixes numbers with
@@ -245,8 +275,7 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 			t.Errorf("%q must be refused (it used to print (null)); got IR", src)
 			continue
 		}
-		if !strings.Contains(err.Error(), "cannot hold a float") &&
-			!strings.Contains(err.Error(), "cannot hold another container") &&
+		if !strings.Contains(err.Error(), "cannot hold another container") &&
 			!strings.Contains(err.Error(), "cannot prove one kind") {
 			t.Errorf("%q: unexpected diagnostic: %v", src, err)
 		}

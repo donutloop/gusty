@@ -42,14 +42,15 @@ func TestTaggableMixedDictAndSetAskTheSameQuestion(t *testing.T) {
 		{`{"a": 1, "b": "x"}`, true, false},  // values mix
 		{`{1: "x", "k": 2}`, true, false},    // keys mix
 		{`{"a": 1, "b": 2}`, false, false},   // one kind each side is not a mix
-		{`{"a": 1, "b": 1.5}`, false, false}, // a float has no word to hold it
+		{`{"a": 1, "b": 1.5}`, true, false},  // a float value has a word now: the handle of a float box
 		{`{"a": 1, "b": [1]}`, false, false}, // a nested container cannot be marked
 		{`{1, "a"}`, false, true},            // members mix
 		{`{1, "a", None}`, false, true},      // three kinds, all describable
 		{`{1, True}`, false, false},          // a bool is stored as the number it behaves like
 		{`{1, 2}`, false, false},             // one kind is not a mix
-		{`{1, 1.5}`, false, false},           // float gate
+		{`{1, 1.5}`, false, true},            // a float member's payload is a box handle (ADR 0233)
 		{`{1, [1]}`, false, false},           // nested gate
+		{`{1.5: "a"}`, true, false},          // a float key forces the tagged path too
 	} {
 		prog, err := parseProgram(tc.src)
 		if err != nil {
@@ -178,11 +179,8 @@ func TestMixedContainersStillRefuseWhatNoTagDescribes(t *testing.T) {
 		src    string
 		wanted string
 	}{
-		// The float gate fires before the mixed-kind gate, and it is the more specific truth
-		// about that program: the float cannot be in the slot at all, mixed kinds or not
-		// (ADR 0226's rule, restated for dicts and sets).
-		{"d = {\"a\": 1, \"b\": 1.5}\nprint(d)\n", "cannot hold a float"},
-		{"s = {1, 1.5}\nprint(s)\n", "cannot hold a float"},
+		// The nested gate is the refusal this cycle keeps: the collector does not mark an element
+		// handle, so the inner container could be freed under the container that holds it.
 		{"s = {1, [1]}\nprint(s)\n", "cannot hold another container"},
 		{"d = {\"a\": 1, \"b\": [1]}\nprint(d)\n", "cannot hold another container"},
 	} {
@@ -195,6 +193,29 @@ func TestMixedContainersStillRefuseWhatNoTagDescribes(t *testing.T) {
 		}
 		if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") {
 			t.Errorf("%q failed as an IR problem instead of a front-end refusal: %v", tc.src, err)
+		}
+	}
+}
+
+// The two float shapes this list carried as refusals (`d = {"a": 1, "b": 1.5}`, `s = {1, 1.5}`) are
+// the dicts and sets ADR 0233 unlocked: the value's payload is the handle of a float box, the tag
+// says so, and rt_payload_eq compares the boxes by value rather than by handle — which is why
+// `1.5 in s` finds the member even though the test's needle is a different box.
+func TestFloatValuesInDictsAndSetsAnswer(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"d = {\"a\": 1, \"b\": 1.5}\nprint(d)\n", "{'a': 1, 'b': 1.5}\n"},
+		{"s = {1, 1.5}\nprint(s)\n", "{1, 1.5}\n"},
+		{"s = {1.5}\nprint(1.5 in s)\n", "1\n"},
+		{"s = {1}\nprint(1.0 in s)\n", "1\n"}, // Python: 1.0 is a member of {1}
+		{"d = {1.5: \"x\"}\nprint(d[1.5])\n", "x\n"},
+		{"d = {1.5: \"x\", \"k\": 2.5, None: 3}\nprint(d)\n", "{1.5: 'x', 'k': 2.5, None: 3}\n"},
+	} {
+		res, err := Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q: Compile: %v", tc.src, err)
+		}
+		if out := runIR(t, res.IR); out != tc.want {
+			t.Errorf("%q ran to %q, want CPython's %q", tc.src, out, tc.want)
 		}
 	}
 }

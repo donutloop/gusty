@@ -28,7 +28,7 @@ func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
 		// the difference probe_bool_value pins. When L11.2 gives bool its own kind this case
 		// flips to TagBool and every container follows (ADR 0232).
 		{`True`, int32(TagInt), true, "a bool, stored as the number it behaves like"},
-		{`1.5`, 0, false, "the mixed printer has no float rendering"},
+		{`1.5`, int32(TagFloat), true, "a float's slot is the handle of a float box, which the mixed printer renders and rt_payload_eq compares by value (ADR 0233)"},
 		{`[1]`, 0, false, "a nested container would need the collector to mark it"},
 		{`{"a": 1}`, 0, false, "a nested dict likewise"},
 		{`{1, 2}`, 0, false, "a nested set likewise"},
@@ -63,11 +63,12 @@ func TestTaggableMixedListRequiresActualMixing(t *testing.T) {
 		{`[1, "a"]`, true},
 		{`[1, "a", None]`, true},
 		{`[]`, false},
-		{`[1, True]`, false},    // a bool stored as a number is not a second kind
-		{`[True, "a"]`, true},   // number and string still mix
-		{`[1.5, "a"]`, false},   // float gate
-		{`[[1], "a"]`, false},   // container gate
-		{`[None, None]`, false}, // all one kind is not a mix
+		{`[1, True]`, false},   // a bool stored as a number is not a second kind
+		{`[True, "a"]`, true},  // number and string still mix
+		{`[1.5, "a"]`, true},   // a float slot can only be read through its tag (ADR 0233)
+		{`[1.5]`, true},        // a literal of nothing but floats still has no untagged representation
+		{`[[1], "a"]`, false},  // container gate
+		{`[None, None]`, true}, // a None slot holds nothing; the tag is the whole answer (ADR 0233)
 	} {
 		prog, err := parseProgram(tc.src)
 		if err != nil {
@@ -128,17 +129,10 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		{"def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n", "needs a single static kind"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},
-		// An element the tag cannot describe: a float has no rendering in the mixed printer,
-		// a bool is not a value yet, and a nested container is not marked by the collector.
-		{"xs = [1, \"a\"]\nxs.append(1.5)\nprint(xs)\n", "must carry a tag"},
-		{"xs = [1, \"a\"]\nxs[0] = 2.5\nprint(xs)\n", "must carry a tag"},
-
+		// An element the tag cannot describe: a bool is not a value yet, and a nested container is
+		// not marked by the collector.
 		{"xs = [1, \"a\"]\nxs.append([1])\nprint(xs)\n", "must carry a tag"},
 
-		// A float in the literal is refused by the element-kind gate (ADR 0226), which fires first
-		// and is the more specific truth about that program: the float cannot be in the slot at all,
-		// mixed kinds or not.
-		{"xs = [1.5, \"a\"]\nprint(xs)\n", "cannot hold a float"},
 		// A container inside a container is the nested case: it refuses with the reason the
 		// collector gives (an element handle is never marked), not the mixed-kind message.
 		{"xs = [[1], \"a\"]\nprint(xs)\n", "cannot hold another container"},
@@ -152,6 +146,32 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		}
 		if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") {
 			t.Errorf("%q failed as an IR problem instead of a front-end refusal: %v", tc.src, err)
+		}
+	}
+}
+
+// The shapes this list used to refuse because a float had no representation in a slot —
+// `xs.append(1.5)`, `xs[0] = 2.5`, `xs = [1.5, "a"]` — are the ones ADR 0233 paid for: the float
+// goes into a box, the slot keeps the handle and the TagFloat tag, and the answer is CPython's.
+func TestFloatElementsInMixedListsNowAnswer(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"xs = [1, \"a\"]\nxs.append(1.5)\nprint(xs)\n", "[1, 'a', 1.5]\n"},
+		{"xs = [1, \"a\"]\nxs[0] = 2.5\nprint(xs)\n", "[2.5, 'a']\n"},
+		{"xs = [1.5, \"a\"]\nprint(xs)\n", "[1.5, 'a']\n"},
+		{"xs = [1.5, \"a\"]\nprint(1.5 in xs)\nprint(len(xs))\n", "1\n2\n"},
+		{"xs = [1, \"a\"]\nprint(1.0 in xs)\n", "1\n"}, // Python: [1] contains 1.0
+		{"xs = [1.5, 2]\nprint(1 if xs == [1.5, 2] else 0)\n", "1\n"},
+		{"xs = [1.5, \"a\", None]\nprint(xs)\n", "[1.5, 'a', None]\n"},
+		{"xs = [1.5]\nfor v in xs:\n    print(v)\n", "1.5\n"},
+		{"xs = [None, 1.5, \"a\"]\nprint(xs)\n", "[None, 1.5, 'a']\n"},
+	} {
+		res, err := Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q: Compile: %v", tc.src, err)
+		}
+		out := runIR(t, res.IR)
+		if out != tc.want {
+			t.Errorf("%q ran to %q, want CPython's %q", tc.src, out, tc.want)
 		}
 	}
 }

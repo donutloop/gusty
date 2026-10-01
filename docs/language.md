@@ -1414,11 +1414,35 @@ A dict or set of a single kind is unaffected: it builds through the plain runtim
 through the static printers, and sets no "my slots describe themselves" bit on the object.
 
 What a mixed container may hold is decided by what a tag can honestly describe — integers,
-interned strings, `None`, and bools (stored as the number both backends store them as). A float in
-any slot reports (no `i32` holds it: L11.6), a container inside a container reports (the collector
-cannot mark an element), and a needle whose kind the compiler cannot prove reports *when the
+interned strings, `None`, floats, and bools (stored as the number both backends store them as). A
+container inside a container reports (the collector
+cannot yet mark an element), and a needle whose kind the compiler cannot prove reports *when the
 container mixes* — `1 in s` where `s` is `{1, 'a'}` and the needle is a call whose return kind
 nobody knows.
+
+A **float** in a slot is the handle of a *float box* (ADR 0238): a slot is one `i32` word and a
+double does not fit in one, so the bits live beside the heap and the tag says the payload is a box.
+That is what lets the compiled path answer the whole family, byte for byte as the interpreter and
+CPython do:
+
+```gy
+xs = [1.5, 2.5]
+print(xs)                    # [1.5, 2.5]
+print(1 if 1.5 in xs else 0) # 1
+d = {1.5: "x", 2.5: "y"}
+print(d[2.5])                # y — a float key is found by value, not by handle
+print(1 if [1] == [1.0] else 0)   # 1: across the two numeric tags, equality is numeric
+print([None, 1.5, "a"])           # [None, 1.5, 'a'] — used to be [0, 1, 1073]
+ys = [1]
+ys.append(1.5)
+print(ys)                    # [1, 1.5] — the list stops claiming a kind when it grows out of one
+```
+
+Equality of two slots is one question with one answer (`rt_payload_eq`): same tag compares payloads,
+int against float compares numbers — `-0.0` equals `0.0`, and NaN is unequal to itself. Container
+equality, dict lookup and set dedup all ask it, so they cannot disagree about which entries are the
+same. A `for` loop unrolled over a literal carries the element's tag with it, so `print(v)` of a float
+or `None` element prints the value rather than the box (ADR 0238).
 
 And the tag is not only for mixed containers, which is the part that was wrong before: **a lookup
 compares the payload and the tag whenever the needle's kind is provable**, uniform container or

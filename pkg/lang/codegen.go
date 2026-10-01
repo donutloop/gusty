@@ -173,6 +173,12 @@ entry:
 ; is a property of the *object*, not of the variable — a helper can fill a list its caller
 ; created — so the printers read this instead of trusting a static guess (Gap I.2/J.5).
 @estr = internal global [1024 x i32] zeroinitializer
+; A float box is a heap object of kind HeapKindFloat whose bits live here, indexed by handle.
+; It is parallel to @heap rather than inside it for one reason: an element slot is one i32 word
+; and a double does not fit in one, so a float that goes into a slot goes in as the handle of a
+; box (roadmap L11.1, ADR 0233). The collector marks and sweeps by index rather than by kind, so a
+; box is live exactly as long as the container that holds it and is recycled with it.
+@float_box = internal global [1024 x double] zeroinitializer
 ; @heap_tags is the per-element half of the value model (roadmap L11.1). @estr[h] says one
 ; thing about a whole container -- "its elements are interned strings" -- which is why a
 ; heterogeneous xs = [1, "a"] had to be refused rather than printed (ADR 0175). This array
@@ -1077,9 +1083,90 @@ entry:
   ret i32 %v
 }
 
+; rt_float_new allocates the float box that a container slot can hold: rt_alloc's own kind for
+; this purpose (HeapKindFloat), the double stored in the parallel @float_box table, and the handle
+; returned for the slot's payload. A failed allocation is -1, the same answer rt_alloc gives when
+; the heap is full, and the callers that check it behave as they do for any exhausted heap.
+define internal i32 @rt_float_new(double %d) {
+entry:
+  %h = call i32 @rt_alloc(i32 5)
+  %bad = icmp slt i32 %h, 0
+  br i1 %bad, label %fail, label %put
+put:
+  %p = getelementptr [1024 x double], [1024 x double]* @float_box, i32 0, i32 %h
+  store double %d, double* %p
+  ret i32 %h
+fail:
+  ret i32 -1
+}
+
+; rt_float_of reads a box back. It is the only way to a stored float, and it is what makes the
+; comparison below able to say anything about numbers.
+define internal double @rt_float_of(i32 %h) {
+entry:
+  %p = getelementptr [1024 x double], [1024 x double]* @float_box, i32 0, i32 %h
+  %d = load double, double* %p
+  ret double %d
+}
+
+; rt_payload_eq is the one answer to "do these two slot payloads denote the same value?", asked
+; with the tags that make the payloads mean something. Within a tag it is payload equality, which
+; is what makes a stored string and the number 1 different values even when both are the i32 1.
+; Across the two numeric tags it is numeric equality, because Python's containers answer 1 == 1.0
+; and [1] == [1.0] and 1.0 in [1] with True, and a tag comparison alone would
+; answer False (roadmap L11.1, ADR 0233). fcmp oeq is the right predicate for the float cases:
+; it gives -0.0 == 0.0 like Python, and NaN unequal to itself, which is what Python's own float
+; comparison does. Any other pair of tags is unequal, bool included: Python does treat True as
+; 1, but rendering True as a number is a separate known gap (ADR 0233's record), and answering
+; this one wrongly in either direction is worse than answering it the way the tags say.
+define internal i32 @rt_payload_eq(i32 %a, i32 %ta, i32 %b, i32 %tb) {
+entry:
+  %sameTag = icmp eq i32 %ta, %tb
+  br i1 %sameTag, label %same, label %mixed
+same:
+  %isFloat = icmp eq i32 %ta, 1
+  br i1 %isFloat, label %floats, label %payloads
+floats:
+  %fa = call double @rt_float_of(i32 %a)
+  %fb = call double @rt_float_of(i32 %b)
+  %feq = fcmp oeq double %fa, %fb
+  %fr = zext i1 %feq to i32
+  ret i32 %fr
+payloads:
+  %peq = icmp eq i32 %a, %b
+  %pr = zext i1 %peq to i32
+  ret i32 %pr
+mixed:
+  %aIsInt = icmp eq i32 %ta, 0
+  %bIsFloat = icmp eq i32 %tb, 1
+  %forward = and i1 %aIsInt, %bIsFloat
+  br i1 %forward, label %intFloat, label %backward
+backward:
+  %aIsFloat = icmp eq i32 %ta, 1
+  %bIsInt = icmp eq i32 %tb, 0
+  %reverse = and i1 %aIsFloat, %bIsInt
+  br i1 %reverse, label %floatInt, label %unequal
+intFloat:
+  %da = sitofp i32 %a to double
+  %db = call double @rt_float_of(i32 %b)
+  %eq1 = fcmp oeq double %da, %db
+  %r1 = zext i1 %eq1 to i32
+  ret i32 %r1
+floatInt:
+  %dc = call double @rt_float_of(i32 %a)
+  %dd = sitofp i32 %b to double
+  %eq2 = fcmp oeq double %dc, %dd
+  %r2 = zext i1 %eq2 to i32
+  ret i32 %r2
+unequal:
+  ret i32 0
+}
+
 ; rt_slot_eq compares two container slots by (payload, tag), which is the only sound element
 ; comparison: a stored string is an index into @str_tab, and the number 1 is a payload that can
-; equal it. Two slots are equal when both halves are (roadmap L11.1, ADR 0189).
+; equal it. The pair is asked of rt_payload_eq rather than compared directly so that a float slot
+; and an int slot holding the same number answer equal, which is what [1] == [1.0] needs
+; (roadmap L11.1, ADR 0189 and ADR 0233).
 define internal i32 @rt_slot_eq(i32 %h1, i32 %i1, i32 %h2, i32 %i2) {
 entry:
   %o1 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h1
@@ -1088,15 +1175,12 @@ entry:
   %o2 = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h2
   %e2 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %o2, i32 0, i32 2, i32 %i2
   %v2 = load i32, i32* %e2
-  %peq = icmp eq i32 %v1, %v2
   %t1p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h1, i32 %i1
   %t1 = load i32, i32* %t1p
   %t2p = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h2, i32 %i2
   %t2 = load i32, i32* %t2p
-  %teq = icmp eq i32 %t1, %t2
-  %both = and i1 %peq, %teq
-  %r = zext i1 %both to i32
-  ret i32 %r
+  %r32 = call i32 @rt_payload_eq(i32 %v1, i32 %t1, i32 %v2, i32 %t2)
+  ret i32 %r32
 }
 
 ; rt_container_eq compares two containers the way Python's == does: same kind, same size, and
@@ -1234,9 +1318,21 @@ strraw:
   ret void
 checkNone:
   %isNone = icmp eq i32 %t, 3
-  br i1 %isNone, label %none, label %num
+  br i1 %isNone, label %none, label %checkFloat
 none:
   call void @rt_print_none(i32 0)
+  ret void
+checkFloat:
+  ; A float slot holds the handle of a @float_box entry, so the bits come from the box and the
+  ; rendering comes from rt_fmt_double, the same helper that prints a bare float with Python's
+  ; Python's 1.0 rather than printf's 1. Inside a container Python shows repr(), which for a
+  ; float is its str() — the same call, not a second formatter (roadmap L11.1, ADR 0233).
+  %isFloat = icmp eq i32 %t, 1
+  br i1 %isFloat, label %flt, label %num
+flt:
+  %d = call double @rt_float_of(i32 %v)
+  %fp = call i8* @rt_fmt_double(double %d)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %fp)
   ret void
 num:
   call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
@@ -1609,13 +1705,10 @@ entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %i
   %e = load i32, i32* %ep
-  %sameP = icmp eq i32 %e, %v
   %tp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
   %et = load i32, i32* %tp
-  %sameT = icmp eq i32 %et, %t
-  %both = and i1 %sameP, %sameT
-  %r = zext i1 %both to i32
-  ret i32 %r
+  %m = call i32 @rt_payload_eq(i32 %e, i32 %et, i32 %v, i32 %t)
+  ret i32 %m
 }
 
 ; rt_dict_find returns the entry whose key is the (payload, tag) pair, or -1 when the dict has no
@@ -2260,12 +2353,23 @@ k.body:
   %kmk = icmp eq i8 %kmv, 1
   br i1 %kmk, label %e.init, label %k.inc
 e.init:
+  ; How many element words to walk. A dict's len counts *entries* and each entry occupies two
+  ; slots, key then value, so walking len words covers only the first entry: every later entry's
+  ; key and value went unmarked, and a float box or nested container stored there was swept while
+  ; the dict still referenced it — the recycled slot then handed back somebody else's bits, which
+  ; is how a two-entry dict came to print its second key as the first one's after an in-test
+  ; allocated a temporary. List and set keep one word per element (roadmap L11.1, ADR 0233).
+  %lp0 = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
+  %len0 = load i32, i32* %lp0
+  %kd = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 0
+  %kind = load i32, i32* %kd
+  %isDict = icmp eq i32 %kind, 2
+  %stride = select i1 %isDict, i32 2, i32 1
+  %span = mul i32 %len0, %stride
   br label %e.loop
 e.loop:
   %e = phi i32 [ 0, %e.init ], [ %e.nxt, %e.inc ]
-  %lenp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
-  %len = load i32, i32* %lenp
-  %e.end = icmp sge i32 %e, %len
+  %e.end = icmp sge i32 %e, %span
   br i1 %e.end, label %k.inc, label %e.body
 e.body:
   %ep = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2, i32 %e
@@ -3039,13 +3143,17 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	if g.raiseUsed || g.heapUsed || runtimeBlockReferenced(raiseRuntimeIR, bodyText) {
 		g.globals.WriteString(raiseRuntimeIR)
 	}
-	if g.floatFmtUsed || runtimeBlockReferenced(floatRuntimeIR, bodyText) {
-		// rt_fmt_double is only referenced by Python-style float rendering, so it
-		// travels in its own block: a program that never prints a float does not
-		// pay for the snprintf/strtod declarations.
+	// rt_fmt_double is only referenced by Python-style float rendering, so it travels in its own
+	// block: a program that never prints a float does not pay for the snprintf/strtod
+	// declarations. But the mixed container printer references it from the heap block, so the
+	// heap block's own text counts as a reference too — a gate that reads only the body would
+	// omit the formatter for `[1.5, "a"]` and produce a module with an undefined internal call,
+	// which is the exact failure mode the preamble above warns about.
+	needHeap := g.heapUsed || runtimeBlockReferenced(heapRuntimeIR, bodyText)
+	if g.floatFmtUsed || runtimeBlockReferenced(floatRuntimeIR, bodyText) || needHeap {
 		g.globals.WriteString(floatRuntimeIR)
 	}
-	if g.heapUsed || runtimeBlockReferenced(heapRuntimeIR, bodyText) {
+	if needHeap {
 		g.globals.WriteString(heapRuntimeIR)
 	}
 	// The precise-root stack runtime (ADR 0181) is emitted whether or not the program
@@ -3300,6 +3408,12 @@ type irGen struct {
 	// i32 whose meaning depends on the companion tag slot, so printing dispatches on the tag
 	// and every other use refuses (roadmap L11.1, ADR 0185).
 	taggedVars map[string]bool
+
+	// loopElemTag is the unrolled-loop companion of taggedVars: `for v in [1.5, "a", None]` emits
+	// one body copy per element, and the body needs to know what *this* element's slot holds to
+	// print it. The value is the canonical ValueTag; the entry exists only while a body copy is
+	// being emitted (roadmap L11.1, ADR 0233).
+	loopElemTag map[string]int32
 	// strParamOf maps a function name to the parameter indices that receive strings; the
 	// callee marks them in internedVars and the caller interns the argument (Gap J.5).
 	strParamOf map[string]map[int]bool
@@ -5313,12 +5427,13 @@ func (g *irGen) isFloat(e Expr) bool {
 			return g.floatVars[n.Value]
 		}
 		return false
-	case *ListLit:
-		for _, e := range n.Elems {
-			if g.isFloat(e) {
-				return true
-			}
-		}
+	case *ListLit, *DictLit, *SetLit:
+		// A container is not a float, whatever its elements are — `[1.5, "a"] == [1.5, "a"]` is a
+		// structural comparison of two containers, not an fcmp of two doubles. This arm used to
+		// answer "yes, it is a float" when any element was, which was unreachable while a float
+		// element was refused outright; once the element could be stored the answer came out as
+		// `sitofp i32 <handle> to double`, comparing boxes rather than contents (roadmap L11.1,
+		// ADR 0233). A program that wants a number out of a container asks for the element.
 		return false
 	case *Call:
 		if n.Fn != nil {
@@ -5338,7 +5453,7 @@ func (g *irGen) isFloat(e Expr) bool {
 				}
 				if id.Value == "abs" || id.Value == "min" || id.Value == "max" {
 					for _, a := range n.Args {
-						if g.isFloat(a) {
+						if g.isFloatNumericOperand(a) {
 							return true
 						}
 					}
@@ -5348,7 +5463,7 @@ func (g *irGen) isFloat(e Expr) bool {
 				}
 				if id.Value == "sum" {
 					for _, a := range n.Args {
-						if g.isFloat(a) {
+						if g.isFloatNumericOperand(a) {
 							return true
 						}
 					}
@@ -5356,6 +5471,34 @@ func (g *irGen) isFloat(e Expr) bool {
 			}
 		}
 		return false
+	}
+	return false
+}
+
+// isFloatNumericOperand is the question the numeric folds ask, which isFloat no longer answers
+// for a container: what type should the accumulator have. sum([1.5, 2.5]) and max([1.5, 2.5])
+// fold a literal container into one number, and that number is a double when any element is.
+// isFloat itself says a container is not a float — `[1.5] == [1.5]` is a structural comparison of
+// two containers, and reading it as an fcmp of two truncated handles was how print([1.5]) came to
+// answer [1] — so the folds ask the element question here, out loud, rather than having a list
+// claim to be a number (roadmap L11.1, ADR 0233).
+func (g *irGen) isFloatNumericOperand(e Expr) bool {
+	if g.isFloat(e) {
+		return true
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if g.isFloat(el) {
+				return true
+			}
+		}
+	case *SetLit:
+		for _, el := range n.Elems {
+			if g.isFloat(el) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -6244,6 +6387,14 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 			}
 		}
 		b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, key, v, kt, vt))
+		// An entry whose key or value is a float or None has a payload the dict's compiled kinds
+		// cannot render — a box handle and nothing — so the dict stops claiming them, the same move
+		// ADR 0232 made for an entry that mixes numbers with text (roadmap L11.1, ADR 0233).
+		if !g.mixedDicts[nm.Value] && (kt == int32(TagFloat) || kt == int32(TagNone) || vt == int32(TagFloat) || vt == int32(TagNone)) {
+			if g.promoteMixed(b, h, nm.Value, "dict value", val, ix.Idx) {
+				g.floatFmtUsed = g.floatFmtUsed || kt == int32(TagFloat) || vt == int32(TagFloat)
+			}
+		}
 		if kIsStr || vIsStr {
 			bits := 0
 			if kIsStr {
@@ -7370,7 +7521,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *ListLit:
 		// inline list literal: emit a dedicated global struct and return its name.
 		if literalNeedsHeap(n) {
-			if literalMixedKinds(n) {
+			// A literal that mixes kinds is not a refusal when every slot can be tagged: the tags
+			// carry the meaning the container-wide kind used to. The list branch asked this later
+			// than the dict and set branches did, so `f([1, "a"])` was refused where `f({1: "a"})`
+			// was built (roadmap L11.1, ADR 0184's rule applied in one place rather than two).
+			if literalMixedKinds(n) && !g.taggableMixedList(n) {
 				return "", mixedKindErr("list")
 			}
 			return g.heapListFrom(b, n, "")
@@ -8843,6 +8998,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if attr.Name.Value == "discard" {
 					fn = "rt_set_discard"
 				}
+				// A member that is a float or None has no payload the set's compiled kind can render,
+				// so the set stops claiming one — the same promotion an appended element gets
+				// (roadmap L11.1, ADR 0233).
+				if !g.mixedSets[nm.Value] {
+					if mt, mok := g.elemKindTag(c.Args[0]); mok && (mt == int32(TagFloat) || mt == int32(TagNone)) {
+						if g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "set", c.Args[0]) {
+							g.floatFmtUsed = g.floatFmtUsed || mt == int32(TagFloat)
+						}
+					}
+				}
 				if kt, ok := g.elemKindTag(c.Args[0]); ok && attr.Name.Value == "add" {
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %d)\n", hs, av, kt))
 				} else {
@@ -8989,6 +9154,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// (ADR 0232); the refusal stays for a value no tag can describe.
 				if !g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "list", c.Args[0]) {
 					return "", err
+				}
+			}
+			// A float or None element is the case the container's one compiled kind cannot render:
+			// its payload is a box handle or nothing at all, so printing the list through the number
+			// printer shows 1 where Python shows 1.5. The slots already carry tags, so the honest
+			// move is the one ADR 0232 made for strings — stop claiming a kind (roadmap L11.1, ADR 0233).
+			if !g.mixedLists[nm.Value] {
+				if t, ok := g.elemKindTag(c.Args[0]); ok && (t == int32(TagFloat) || t == int32(TagNone)) {
+					if g.promoteMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "list", c.Args[0]) {
+						g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
+					}
 				}
 			}
 			// Payload and tag are one operation, so an append cannot leave the new slot carrying
@@ -9968,6 +10144,24 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 0)\n", printer, hs))
 				continue
 			}
+			// A loop variable unrolled from an inline list literal carries the tag its element was
+			// built with. Printing the i32 alone showed a float box's handle and None's zero where
+			// Python shows 1.5 and None; the tag travels with the element, and rt_print_mixed_value
+			// is the one place that knows how to read it. Only the two tags nothing else can render
+			// take this branch — an integer and an interned string already have their answers from the
+			// paths above, and routing them here too dragged the string runtime into a module for a
+			// loop over plain numbers (roadmap L11.1, ADR 0233).
+			if nm, ok := a.(*Name); ok && g.loopElemTag != nil && !g.listVars[nm.Value] && !g.taggedVars[nm.Value] {
+				if tg, has := g.loopElemTag[nm.Value]; has && (tg == int32(TagFloat) || tg == int32(TagNone)) {
+					vv := g.newTmp()
+					b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", vv, nm.Value))
+					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %d, i32 0)\n", vv, tg))
+					if tg == int32(TagFloat) {
+						g.floatFmtUsed = true
+					}
+					continue
+				}
+			}
 			var t string
 			if g.isFloat(a) {
 				// Python renders a float as its shortest round-tripping text with a
@@ -9995,7 +10189,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					a = lit
 				}
 				if isContainerLiteral(a) {
-					if _, isLL := a.(*ListLit); isLL && literalMixedKinds(a) && g.taggableMixedList(a.(*ListLit)) {
+					if _, isLL := a.(*ListLit); isLL && (literalMixedKinds(a) || literalNeedsTags(a)) && g.taggableMixedList(a.(*ListLit)) {
 						// Heterogeneous list of taggable elements: build it with per-element
 						// tags and print through the tag-aware printer, which is what the
 						// interpreter's Repr does element by element (ADR 0184).
@@ -10010,7 +10204,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					// A literal that mixes kinds is printed through the same dispatching
 					// printers its variable-bound twin uses, whenever every slot can say what
 					// it holds (ADR 0232); only a slot that cannot is the refusal.
-					if literalMixedKinds(a) && !g.literalMixedIsTaggable(a) {
+					if (literalMixedKinds(a) || literalNeedsTags(a)) && !g.literalMixedIsTaggable(a) {
 						noun := "list"
 						switch a.(type) {
 						case *SetLit:
@@ -12687,7 +12881,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// Every slot is tagged, not just the ones in a mixed list: rt_container_eq
 					// compares (payload, tag) pairs, and a slot whose tag was never written holds
 					// whatever the previous tenant of that heap slot left (ADR 0187, ADR 0189).
-					tag := elemTagFor(el, interned)
+					tag := g.elemTagFor(el, interned)
 					if tag == int32(TagNone) {
 						// None has no i32 payload of its own; the tag is what renders it.
 						ev = "0"
@@ -12766,7 +12960,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						return err
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_set_add(i32 %%h%d, i32 %s)\n", hs, ev))
-					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, si, elemTagFor(el, interned)))
+					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, si, g.elemTagFor(el, interned)))
 					si++
 				}
 				if mixedSet {
@@ -12859,8 +13053,8 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						bits |= 4
 					}
 					b.WriteString(fmt.Sprintf("  call void @rt_dict_put(i32 %%h%d, i32 %s, i32 %s)\n", hs, kk, vv))
-					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i*2, elemTagFor(dl.Keys[i], kIsStr)))
-					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i*2+1, elemTagFor(dl.Vals[i], vIsStr)))
+					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i*2, g.elemTagFor(dl.Keys[i], kIsStr)))
+					b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %d)\n", hs, i*2+1, g.elemTagFor(dl.Vals[i], vIsStr)))
 					if bits != 0 {
 						b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, bits))
 					}
@@ -13221,6 +13415,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				} else {
 					delete(g.internedVars, loopSlot)
 				}
+				// And the tag says what the element is, which is the question neither of those two
+				// answers covers for a float (whose payload is a box handle) or None (whose payload
+				// is nothing): printing the loop variable showed 0 where Python shows 1.5 and None
+				// (roadmap L11.1, ADR 0233).
+				if g.loopElemTag == nil {
+					g.loopElemTag = map[string]int32{}
+				}
+				g.loopElemTag[loopSlot] = g.elemTagFor(el, isStr)
 				bodyL := g.newLabel("for.list.body")
 				contL = g.newLabel("for.list.cont")
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, loopVarName(n.Var)))
@@ -13257,6 +13459,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			} else {
 				delete(g.internedVars, loopSlot)
 			}
+			delete(g.loopElemTag, loopSlot) // the loop variable is a plain name again (ADR 0233)
 			return nil
 		}
 		// runtime heap list iterable: a generator-call result or a tracked

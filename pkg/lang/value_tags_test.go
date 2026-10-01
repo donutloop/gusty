@@ -170,7 +170,7 @@ func TestEmittedHeapKindsComeFromTheTable(t *testing.T) {
 		t.Errorf("the generator accumulator is not allocated as a list")
 	}
 	for k := range seen {
-		if HeapTagFor(k) == TagInt && k != HeapKindNone {
+		if !HeapKindKnown(k) {
 			t.Errorf("codegen allocated an unknown heap kind %d", k)
 		}
 	}
@@ -191,7 +191,7 @@ func TestInstanceKindsInRuntimeAndCodegenAgree(t *testing.T) {
 	}
 	for _, m := range rtAllocRe.FindAllStringSubmatch(res.IR, -1) {
 		n, _ := strconv.Atoi(m[1])
-		if HeapTagFor(int32(n)) == TagInt {
+		if !HeapKindKnown(int32(n)) {
 			t.Errorf("module allocates unknown heap kind %d", n)
 		}
 	}

@@ -163,10 +163,20 @@ func TestContainerEqHelperReadsTags(t *testing.T) {
 	if !strings.Contains(res.IR, "call i32 @rt_container_eq(") {
 		t.Fatalf("no rt_container_eq call:\n%s", strings.Join(irLinesContaining(res.IR, "rt_container_eq"), "\n"))
 	}
-	body := runtimeFnBody(res.IR, "define internal i32 @rt_slot_eq")
-	for _, want := range []string{"@heap_tags", "icmp eq i32", "and i1"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("rt_slot_eq is missing %q:\n%s", want, body)
+	slot := runtimeFnBody(res.IR, "define internal i32 @rt_slot_eq")
+	for _, want := range []string{"@heap_tags", "call i32 @rt_payload_eq("} {
+		if !strings.Contains(slot, want) {
+			t.Errorf("rt_slot_eq is missing %q:\n%s", want, slot)
+		}
+	}
+	// The comparison itself moved to rt_payload_eq when a float slot joined the picture: an int
+	// slot and a float slot holding the same number are equal, and no pair of i32 compares says
+	// that. The pair is still what decides it, so the arithmetic-free half of the answer stays an
+	// icmp of payload and tag (roadmap L11.1, ADR 0189 and ADR 0233).
+	pay := runtimeFnBody(res.IR, "define internal i32 @rt_payload_eq")
+	for _, want := range []string{"icmp eq i32", "and i1", "fcmp oeq double", "@rt_float_of"} {
+		if !strings.Contains(pay, want) {
+			t.Errorf("rt_payload_eq is missing %q:\n%s", want, pay)
 		}
 	}
 	if !strings.Contains(runtimeFnBody(res.IR, "define internal i32 @rt_container_eq"), "call i32 @rt_slot_eq(") {

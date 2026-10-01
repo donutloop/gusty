@@ -168,6 +168,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"string_containers",
 		"string_escapes",
 		"string_params",
+		// A float in a container slot (roadmap L11.1, ADR 0233): the element is the handle of a
+		// float box and the comparison reads the doubles behind it, so [1] == [1.0] is True and
+		// [1.5] == [1.6] is False on both backends. Both programs were oracle debt while the
+		// literal emitter wrote a float's bits into a static i32 initializer (Gap R.40, ADR 0221).
+		"probe_float_list_equal",
+		"probe_float_container_equality",
+		// The shape itself, three engines on one source: a float element, a float key read back,
+		// a float appended to an integer list, a float written into a mixed list, and the tags
+		// that let an unrolled loop print the element it was built from (ADR 0238).
+		"float_container_elements",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -232,19 +242,16 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
 		"sequence_ops",
-		"probe_operand_types",            // Gap R.26 — an operator applied to the wrong operands
-		"probe_percent_format",           // Gap R.31 — no `%` string formatting; both legs refuse
-		"probe_global_statement",         // Gap R.48 — no `global` statement; all three engines differ
-		"unwritten_slot_trap",            // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
-		"probe_float_container_equality", // Gap R.35 — a function cannot read the module's names (compiled)
-		// Gap R.40 (ADR 0221): a literal list holding a float emits a module llc rejects.
-		"probe_float_list_equal",
-		"probe_math_const",    // L11.6 — a stdlib float constant folds to int
-		"probe_float_numeric", // L11.6 — //, /=, float % and float params
-		"probe_enumerate",     // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
-		"probe_fn_value",      // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",       // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",  // Gap L.5 — print writes while it evaluates
+		"probe_operand_types",    // Gap R.26 — an operator applied to the wrong operands
+		"probe_percent_format",   // Gap R.31 — no `%` string formatting; both legs refuse
+		"probe_global_statement", // Gap R.48 — no `global` statement; all three engines differ
+		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
+		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
+		"probe_float_numeric",    // L11.6 — //, /=, float % and float params
+		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
+		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
+		"probe_fn_name",          // L11.7 — a def'd name is not a value at all
+		"probe_print_atomic",     // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 
@@ -428,24 +435,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
 		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n"}, {Backend: "aot", Missing: true}}},
-
-	// Gap R.40 (ADR 0221): the literal path of the list emitter cannot hold a float -- it writes
-	// `[1 x i32] [@` into the initializer, so llc rejects the module and the compiled leg gives a
-	// toolchain rejection where CPython and the interpreter print 1. Through variables the same
-	// comparison compiles and prints 1, which is what pins this to the literal emitter.
-	"programs/probe_float_list_equal": {oracle: lang.OracleDebt,
-		reason: "a literal list holding a float emits an invalid module (llc: expected type), so the compiled leg rejects a program whose answer is 1",
-		ref:    "roadmap Gap R.40",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n"}, {Backend: "aot", Missing: true}}},
-
-	// Gap R.40 (ADR 0226): these are the shapes whose compiled answers came from truncating a float
-	// into an i32 slot -- True for [1.5] == [1.6] where CPython says False. The emitter now refuses;
-	// the answers belong to L11.6, and until then this row is the record that the human path answers
-	// them and the compiled path does not.
-	"programs/probe_float_container_equality": {oracle: lang.OracleDebt,
-		reason: "the interpreter and CPython agree on all six lines; the compiled backend refuses, because a container slot is an i32 word and a float has no representation in one (it previously truncated, which is how [1.5] == [1.6] printed 1)",
-		ref:    "roadmap Gap R.40 (closed, ADR 0226) and L11.6 (the answers); ADR 0166 for refusal-not-invalid-module",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n1\n0\n0\n"}, {Backend: "aot", Missing: true}}},
 	// Gap R.36 + R.39 closed (ADR 0228): the parity assertion for this program is that both backends
 	// print `1` and then raise the class CPython raises. The oracle leg itself exits 1 (an uncaught
 	// raise), which is why this is not_applicable rather than match -- the CPython leg cannot

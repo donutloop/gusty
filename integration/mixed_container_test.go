@@ -195,8 +195,6 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 // answer the tag could not justify (ADR 0166's rule, ADR 0232's application of it).
 func TestMixedContainersRefuseWhatNoTagDescribes(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"float_dict_value", "d = {\"a\": 1, \"b\": 1.5}\nprint(d)\n", "float"},
-		{"float_set_member", "s = {1, 1.5}\nprint(s)\n", "float"},
 		{"container_set_member", "s = {1, [1]}\nprint(s)\n", "container"},
 		{"container_dict_value", "d = {\"a\": 1, \"b\": [1]}\nprint(d)\n", "container"},
 	} {
