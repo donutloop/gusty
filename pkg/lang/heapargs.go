@@ -3045,6 +3045,7 @@ func (g *irGen) textOrderSide(e Expr) bool {
 type orderSide struct {
 	e         Expr   // the operand itself
 	ix        *Index // non-nil when the object has to be asked, i.e. the side is a slot read
+	fromTag   bool   // the side's kinds come from the object: no literal describes the slots (Gap R.93)
 	canText   bool   // the side can report text
 	canNum    bool   // the side can report a number
 	numName   string // CPython's name for the side's numbers, "" when they would be a guess
@@ -3140,11 +3141,41 @@ func (g *irGen) orderSlotTags(n string) ([]int32, bool) {
 	return tags, true
 }
 
+// orderSlotIsObject reports that a side of an ordering is a slot the *object* has to be asked about,
+// because no literal describes the slots it can hold: the container was built by `append`/assignment
+// rather than spelled out, or the side is itself a read one level below such an object. It is a gate
+// only — it emits nothing — and it stands aside wherever ADR 0250's door already reads the kinds off
+// the literal, so one shape never gets two doors (roadmap L11.1, Gap R.93).
+func (g *irGen) orderSlotIsObject(ix *Index) bool {
+	switch side := ix.Obj.(type) {
+	case *Name:
+		if !g.runtimeContainerSide(ix.Obj) {
+			return false
+		}
+		_, described := g.orderSlotTags(side.Value)
+		return !described
+	case *Index:
+		return g.runtimeSlotReadOf(ix)
+	}
+	return false
+}
+
 // orderShapeOf reads one operand of an ordering: a slot the object has to be asked about, or a literal
 // the compiler already knows the tag of.
 func (g *irGen) orderShapeOf(e Expr) orderSide {
 	s := orderSide{e: e}
 	if ix, isIdx := e.(*Index); isIdx {
+		if g.orderSlotIsObject(ix) {
+			// No literal describes this slot, so the compiler has no list of kinds to read: the side may
+			// report any kind the writers can leave in a slot, all three arms stand, and the raise arm
+			// becomes a chain that asks the tag which name to put in the sentence. This is the shape the
+			// literal door declines and the lowering underneath used to answer with a verdict for a
+			// TypeError — `xs = []` / `xs.append(i)` / `print(1 if xs[0] > "a" else 0)` printing `1` for a
+			// program CPython crashes (roadmap Gap R.93), and the same question one level down,
+			// `xs.append([3, "a"])` / `xs[0][0] > 1`, which ADR 0251's read answers and the ordering did
+			// not (roadmap L11.1).
+			return orderSide{e: e, ix: ix, fromTag: true, canNum: true, canText: true, ok: true}
+		}
 		nm, isName := ix.Obj.(*Name)
 		if !isName || !g.allocd[nm.Value] {
 			return s
@@ -3190,7 +3221,7 @@ func (g *irGen) orderShapeOf(e Expr) orderSide {
 		s.ok = (s.canNum || s.canText) && (!s.canNum || s.numName != "")
 		return s
 	}
-	switch e.(type) {
+	switch n := e.(type) {
 	case *StrLit:
 		s.canText, s.tagC, s.ok = true, int32(TagStr), true
 	case *IntLit:
@@ -3199,6 +3230,23 @@ func (g *irGen) orderShapeOf(e Expr) orderSide {
 		s.canNum, s.tagC, s.numName, s.ok = true, int32(TagBool), "bool", true
 	case *FloatLit:
 		s.canNum, s.tagC, s.numName, s.ok = true, int32(TagFloat), "float", true
+	case *Name:
+		// A variable the compiler can name a kind for is as settled as a literal: `xs[0] >= i` after
+		// `i = 3` asks the object about one side only, which is the shape the gate allows. The question
+		// is the one the arithmetic door already asks (`numericUseKind`) and the one the printer asks —
+		// a name whose word is an index into @str_tab is text here exactly as it is text there
+		// (ADR 0224, ADR 0229), because two doors disagreeing about what an operand is is how a passing
+		// suite starts lying (roadmap L11.1, ADR 0252).
+		switch k := g.numericUseKind(n); k {
+		case "int":
+			s.canNum, s.tagC, s.numName, s.ok = true, int32(TagInt), "int", true
+		case "float":
+			s.canNum, s.tagC, s.numName, s.ok = true, int32(TagFloat), "float", true
+		default:
+			if g.exprIsString(n) || g.printsAsInternedStr(n) {
+				s.canText, s.tagC, s.ok = true, int32(TagStr), true
+			}
+		}
 	}
 	return s
 }
@@ -3223,6 +3271,14 @@ func (g *irGen) taggedOrderApplies(n *BinOp) bool {
 	if ls.ix == nil && rs.ix == nil {
 		return false
 	}
+	// A side whose kind the object reports names itself in the raise sentence, which names *two* types
+	// at once; one such side is a chain the arm can emit, two is a cross-product of sentences the
+	// compiler would be inventing. So a fromTag side is admitted only against an operand the compiler
+	// read itself — which also leaves container-against-container ordering to the door that compares
+	// contents, instead of turning Gap R.86's wrong answer into a wrong trap (roadmap L11.1).
+	if ls.fromTag && rs.ix != nil || rs.fromTag && ls.ix != nil {
+		return false
+	}
 	needTxt := ls.canText && rs.canText
 	needBad := ls.canNum && rs.canText || ls.canText && rs.canNum
 	return needTxt || needBad
@@ -3234,7 +3290,15 @@ func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
 	if s.ix == nil {
 		return true
 	}
-	payload, tag, ok := g.runtimeSlotPair(b, s.ix)
+	var payload, tag string
+	var ok bool
+	if s.fromTag {
+		// The unified door: the static read if the literal still describes the container, the object's
+		// own tags if the program built it instead (ADR 0251).
+		payload, tag, ok = g.taggedSlotPair(b, s.ix)
+	} else {
+		payload, tag, ok = g.runtimeSlotPair(b, s.ix)
+	}
 	if !ok || payload == "" || tag == "" {
 		return false
 	}
@@ -3476,6 +3540,12 @@ func (g *irGen) emitTaggedOrder(b *strings.Builder, n *BinOp) (string, string, b
 			vals[i] = v
 			_ = cur2
 		case "raise":
+			if ls.fromTag || rs.fromTag {
+				if rerr := g.orderRaiseUnderTag(b, &ls, &rs, n); rerr != nil {
+					return "", "", false, rerr
+				}
+				break
+			}
 			say := func(lNm, rNm string) error {
 				class, msg := unsupportedNumberOp(n.Op, lNm, rNm)
 				if class == "" {
@@ -3539,6 +3609,77 @@ func (g *irGen) emitTaggedOrder(b *strings.Builder, n *BinOp) (string, string, b
 	fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", cnd, phi)
 	g.markI1(cnd)
 	return phi, cnd, true, nil
+}
+
+// orderRaiseUnderTag is the raise arm when one side's kind is a question only the object can answer:
+// a container the program built rather than spelled out, or a slot one level below such an object.
+// CPython's sentence names both operand types, so this arm cannot be one raise — it is one test per
+// kind the writers can leave beside a payload, each raising the sentence CPython writes for that kind,
+// with the text tag as the unconditional last arm because the set of tags ADR 0187's writers store is
+// closed. The other side's name is settled: the gate admits this shape only against an operand the
+// compiler read itself, so the two names the sentence carries are always both sides' real kinds
+// (roadmap L11.1, Gap R.93, Gap R.82's sentence rule).
+func (g *irGen) orderRaiseUnderTag(b *strings.Builder, ls, rs *orderSide, n *BinOp) error {
+	side, other, left := ls, "str", true
+	if !ls.fromTag {
+		side, other, left = rs, "str", false
+		if ls.canNum && ls.numName != "" {
+			other = ls.numName
+		}
+	} else if rs.canNum && rs.numName != "" {
+		other = rs.numName
+	}
+	kinds := []struct {
+		tg   int32
+		name string
+	}{
+		{int32(TagInt), "int"},
+		{int32(TagBool), "bool"},
+		{int32(TagFloat), "float"},
+		{int32(TagNone), "NoneType"},
+		{int32(TagList), "list"},
+		{int32(TagDict), "dict"},
+		{int32(TagSet), "set"},
+	}
+	arms := make([]string, len(kinds))
+	for i := range arms {
+		arms[i] = g.newLabel("ordk")
+	}
+	for i, k := range kinds {
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, side.tag, k.tg)
+		g.markI1(c)
+		chk := g.newLabel("ordkc")
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arms[i], chk)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	strArm := g.newLabel("ordkstr")
+	fmt.Fprintf(b, "  br label %%%s\n", strArm)
+	raise := func(lNm, rNm string) error {
+		class, msg := unsupportedNumberOp(n.Op, lNm, rNm)
+		if class == "" {
+			return fmt.Errorf("codegen: %q has no CPython sentence for %q against %q (roadmap L11.1, Gap R.82)", n.Op, lNm, rNm)
+		}
+		g.raiseTo(b, exnCode(class), class, msg, n.Span())
+		return nil
+	}
+	for i, k := range kinds {
+		fmt.Fprintf(b, "%s:\n", arms[i])
+		if left {
+			if err := raise(k.name, other); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := raise(other, k.name); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(b, "%s:\n", strArm)
+	if left {
+		return raise("str", other)
+	}
+	return raise(other, "str")
 }
 
 // orderBr and orderCondBr are the two ways out of an arm or a test block. The empty `from` means the

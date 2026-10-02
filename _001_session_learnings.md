@@ -5550,3 +5550,70 @@ haystack is a run-time-built slot read refuses where CPython answers (**Gap R.95
 *kind* where the read asks only its *tag*, which is a distinction the roadmap had not had to draw before. Each
 is a row with its own ID and its own planned program, because a defect absorbed into a neighbouring commit stops
 being owed.
+
+
+## Cycle: ADR 0252 — an ordering of a slot no literal describes asks the object which kind it is (Gap R.93 closed)
+
+**The refusal was ADR 0250's honest limit, and the sweep found the shape under it.** ADR 0250 built the three
+ordering arms (two numbers, two texts, CPython's `TypeError`) out of the list of kinds the *literal* could
+enumerate, and said so: no literal, no list, no door. What the sweep measured while landing ADR 0251 was that
+the door declining does not stop the program answering — `xs = []` + `xs.append(i)` + `print(1 if xs[0] > "a"
+else 0)` fell through to the lowering underneath, which compares `i32` words, and printed `1` for a program
+CPython crashes. That is the fourth week in a row this family has shown up (Gap R.82, R.85, R.91, R.92, R.93):
+a *verdict printed for a trap*. The lesson is not "add another gate"; it is that a declined comparison has no
+honest default, and the representation fix is the only fix that stops re-measuring it.
+
+**A table of "what this variable can hold" was rejected before it was written, by the program that broke it.**
+The obvious extension of ADR 0250 was to feed `append`-tracked kinds into the same arm list. `xs.append(3)`
+then `xs.append("a")` then `xs.append(1.5)` disposes of it: three slots, three kinds, and any static list for
+that `xs` is either the tag array restated or a guess about data the pass has not seen. ADR 0187 already makes
+every writer put a tag beside every payload; ADR 0246 taught `len` to ask, ADR 0251 taught the subscript, and
+this cycle the ordering door stopped reading the notebook. Three cycles, one object, three callers converted —
+which is what "fix the representation once" looks like from the inside.
+
+**The raise arm was the hard part, not the arms.** CPython's sentence names **both** operand types
+(`'>' not supported between instances of 'list' and 'int'`), so a side whose kind the object reports turns one
+`raiseTo` into a chain: one test per tag, each raising its own wording, the settled side contributing its name.
+It can end in an unconditional `else` only because the tag set ADR 0187's writers store is *closed* — `int`,
+`bool`, `float`, `NoneType`, `list`, `dict`, `set`, text. An open set would have made the last link a guess
+about a kind nobody had seen, which is precisely the error the chain exists to prevent. Knowing that a fallback
+is safe requires knowing who writes the field, not just who reads it.
+
+**The gate's job was to know where the door must not open.** One side may come from the object; two may not.
+The sentence names two types, so a chain per side is a cross-product of 64 blocks per comparison — and the pair
+it would meet most often (container against container) is one CPython *does* order, so the chain would have been
+wrong for the common case as well as expensive. So `taggedOrderApplies` admits a `fromTag` side only against an
+operand the compiler read itself, and the two-sided shape became Gap R.97 with a table pinning what each engine
+answers today. The same rule keeps the container-vs-container answer with the door that compares contents
+(Gap R.86) instead of manufacturing a `TypeError` the oracle never raises. Declining a shape is a design
+decision and it wants the same evidence as answering one.
+
+**`/` was the surprise, and it went in the roadmap rather than this commit.** `xs.append(3)` / `print(xs[0] / 4)`
+prints `0.0` with exit 0 — while `+ 1`, `* 2`, `// 1`, `% 1`, `** 2` of the same slot either answer correctly
+(int slots) or refuse honestly (float slots). `/` is the one arithmetic operator whose result kind is settled
+(always a float), so it is the only one whose float arm is reachable for a slot the tag never described, and
+ADR 0249's empty-operand `fdiv` has come back as a silent zero instead of a rejection. It is filed as Gap R.96
+rather than fixed here: an ordering and an arithmetic use share the *question* but not the lowering, and closing
+a wrong-answer defect inside an ordering feature is how a row gets closed by the wrong commit. Naming it in the
+same ADR's "consequences" keeps the two histories readable.
+
+**Two shapes joined rows that already existed instead of getting new IDs.** `print(1 if 3 > [0] else 0)`
+reaching `llc` as `%t1 = icmp sgt i32 3, @.lst1` (**exit 2**) is Gap R.87's global-in-a-value-position, and
+`xs[0] > pick(1)` printing `1` is Gap R.83's missing return tag seen from the relational side. The rule in
+`agents.md` — a *newly measured defect* gets a fresh row, and IDs are permanent — was read as being about
+defects, not shapes: same emission, same root, so the shapes went into the existing rows and the details file,
+and only genuinely new roots (R.96, R.97) got numbers. Every one of the four is now pinned by a table that fails
+when the compiler catches up, so "filed" cannot decay into "forgotten".
+
+**Process lesson — the pre-change binary is a tool, not a guess.** Every DIFF in the regression sweep was taken
+with `git stash` + a build of HEAD into `/tmp/gustyc_head`, then both binaries run over the same 24 programs.
+That is what let me say (a) that the `0.0` division defect predated the change, (b) that the exit-2 container
+literal did too, and (c) that all twelve behaviour changes were refusals→answers or verdicts→traps and none the
+reverse. A feature that changes behaviour in a compiler needs the before/after diff as evidence, not a claim.
+
+**Tests that are allowed to break are tests that measure.** ADR 0251's refusal table lost its
+`ordering of a slot the compiler never saw` row, in both the unit and the CLI file, because this door answers
+it; the deletion is in the same commit as the feature, and the parity rows that replaced it name
+`slot_order_object_test.go` so the reader can follow the shape. The bool-slot row went the other way: it pins
+`'int'` where CPython says `'bool'` — both engines agreeing with each other and neither with the oracle — and it
+sits in a table that says so, because L11.2 will flip it and that flip should be a deliberate edit.

@@ -193,6 +193,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// branches on. It is here rather than in conformanceProbes because both backends now print
 		// CPython's answer on every line (roadmap L11.1, ADR 0251).
 		"probe_nested_list",
+		// The ordering of those same slots, three engines on one source: `<`, `<=`, `>`, `>=` of a slot
+		// whose kind only the object can report, answered as two numbers, two texts, or the `TypeError`
+		// CPython raises naming the kind the slot really holds — with the arms nobody can reach not
+		// emitted, and the cross-kind pairs caught rather than printed as a verdict (Gap R.93, ADR 0252).
+		"slot_order_object",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).

@@ -4561,7 +4561,7 @@ kind appears in the value slots the read falls back on the index itself, which i
 measured for lists: `b` arriving before `a` makes `b > a` false. The tracked `dictValStr`/`dictValInt` maps
 already know both kinds are possible, so the fix is the routing, not new information.
 
-### Gap R.93 — an ordering of a slot in a container a loop built prints a verdict (measured 2026-10-02, left open)
+### Gap R.93 — an ordering of a slot in a container a loop built prints a verdict (measured 2026-10-02, closed by ADR 0252)
 
     xs = []
     xs.append(1)
@@ -4656,3 +4656,68 @@ which one `icmp` per kind resolves, while `in` picks among `rt_contains_tagged` 
 compile-time `string` in the code that picks the helper today. The dispatch is written; it has to be reached by
 these two callers as well, and a haystack whose tag names a scalar must then raise what CPython raises rather
 than iterate nothing (Gap R.29's rule for an iterator that cannot be lowered).
+
+### L11.1 (1b) — an ordering of a slot no literal describes (measured 2026-10-02, closed by ADR 0252)
+
+    xs = []
+    for i in [1, 2]:
+        xs.append(i)
+    print(1 if xs[0] > "a" else 0)   # CPython TypeError · --interp TypeError · --aot printed 1
+
+    d = {}
+    d["k"] = 1
+    print(1 if d["k"] > "a" else 0)  # the dict has no literal either: same printed verdict
+
+    xs = []
+    xs.append([3, "a"])
+    print(1 if xs[0][0] > 1 else 0)  # 1 everywhere; ADR 0251 answered the read, not the comparison
+
+Three shapes, one cause: ADR 0250 built its three arms — numbers, texts, CPython's `TypeError` — out of the
+list of kinds the **literal** could show, and a container built by `append` in a loop has no such list. Its gate
+declined, and the lowering underneath, which compares `i32` words, answered for a program the oracle crashes.
+That is the same defect family as Gap R.82, Gap R.85, Gap R.91 and Gap R.92 — a verdict printed where CPython
+raises — measured a fourth time in a week, which is the argument for fixing the representation rather than the
+symptom each time.
+
+The obvious fix was a second table: track, per variable, the kinds its slots have ever held. It was rejected
+without being written, because the measurement that produced the bug also disposes of it — `xs.append(3)` then
+`xs.append("a")` then `xs.append(1.5)` is three slots and three kinds, and any compile-time list for that `xs` is
+either the tag array restated or a guess about data the pass has not seen. ADR 0187 already makes every writer
+put a tag beside every payload; ADR 0246 and ADR 0251 had already taught `len` and the subscript to ask. The
+ordering door was the last caller still reading a notebook.
+
+What the tag answers, per arm: `orderAskTags` asks "are you one of the three number tags?" and "are you the text
+tag?", the numeric arm lifts with `rt_float_of` or `sitofp` and compares doubles, the text arm goes to
+`rt_str_order` — ADR 0248's helper, reached through the tag for the first time — and everything else is the raise
+arm. The raise arm is where the design earned its keep: CPython's sentence names **both** operand types
+(`'>' not supported between instances of 'list' and 'int'`), so with one side reported by the object the arm
+cannot be one `raiseTo`. It is a chain over the closed tag set — `int`, `bool`, `float`, `NoneType`, `list`,
+`dict`, `set`, and the text tag as the unconditional last arm — each link raising the sentence for its own kind.
+It may end in an `else` only because the set of tags ADR 0187's writers leave beside a payload is closed; had it
+been open, the last link would have been a guess about a kind the compiler had never seen, which is exactly the
+mistake the chain exists to stop.
+
+An ordering can be lowered this way at all because its **verdict is a bool whatever the operands turn out to be**.
+That sentence is also the boundary of this cycle: `xs[0][0] + 1` must know whether it answers `4` or `4.5` before
+the module exists, so it still refuses, honestly, by naming itself.
+
+Two shapes were measured beside the change and filed instead of absorbed. **Gap R.96**: `xs = []` /
+`xs.append(3)` / `print(xs[0] / 4)` prints `0.0` with exit 0 where CPython and the interpreter print `0.75` —
+`/` is the one arithmetic operator whose result kind *is* settled (true division is always a float), so the float
+arm is reachable for a slot it cannot describe, and ADR 0249's empty-operand `fdiv` has come back as a silent
+zero rather than a rejection; the neighbours (`+ 1`, `* 2`, `// 1`, `% 1`, `** 2`) either answer correctly for an
+int slot or refuse for a float one, so this is one operator's arm, not the door's. **Gap R.97**: `xs[0] > ys[0]`
+over two built containers answers by the two payloads, because the gate admits one side whose kind the object
+reports and not two — a sentence naming two types needs one branch per *pair* of kinds, and the pair it would meet
+most often (container against container) is a pair CPython *does* order, which is Gap R.86's helper, not a trap.
+Both are pinned by `TestSlotOrderOfTwoUnliteralisedSlotsStaysFiledNotFixed` on each side of the boundary, with
+what every engine answers today written into the row: the rows fail when the compiler catches up, so a filed
+divergence cannot quietly become a passing test.
+
+Two shapes on rows that were already open came out of the same sweep, and are recorded there rather than as new
+IDs because the emission is the same one: an ordering whose settled side is a **container literal**
+(`print(1 if 3 > [0] else 0)` → `%t1 = icmp sgt i32 3, @.lst1`, `print(1 if [0] > 3 else 0)` → `%t1 = icmp sgt i32
+@.lst1, 3`, both **exit 2**) is Gap R.87's global-in-a-value-position in a new costume; and an ordering against a
+**call of two kinds** (`xs[0] > pick(1)` printing `1` where the oracle traps) is Gap R.83's missing return tag
+seen from the relational side. Neither is made worse by this cycle — both reach the same lowering they reached
+before — and both are now named by a table that fails when someone fixes them.

@@ -192,16 +192,25 @@ prints `2`, `xs.append("abc")` / `print(xs[2][1])` prints `b`, and a slot that h
 `TypeError: 'int' object is not subscriptable` instead of being refused at compile time. Nothing behind it
 needs a literal, and the answer is a `(payload, tag)` pair again, so a binding, an equality, a `len` and a
 further subscript all take it (`probe_nested_list.gy` is parity surface now, and a comprehension-built
-`d[1]["k"]` came with it) — roadmap L11.1, ADR 0251.
+`d[1]["k"]` came with it) — roadmap L11.1, ADR 0251. An **ordering** of those slots asks the object the same
+question (ADR 0252, closing Gap R.93): `xs = []` + `xs.append(i)` in a loop + `print(1 if xs[0] > "a" else 0)`
+used to print `1` compiled for a program CPython crashes, and now raises *'>' not supported between instances
+of 'int' and 'str'* on both engines — as do the dict the program filled (`d["k"] = 5` / `d["k"] >= 5`) and the
+slot one level below (`xs.append([3, "a"])` / `xs[0][0] > 1`). Two numbers become doubles, two texts go to
+`strcmp`, and every other pair raises CPython's sentence with the kind the slot really holds in it: the raise
+is one test per tag, because the sentence names *both* operand types, and it may end in an `else` only because
+the tags ADR 0187's writers can store are a closed set.
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a
-function), the numeric, ordered, membership and loop uses of a slot only the run time can describe
-(`xs[0][0] + 1`, `xs[0][0] > 1`, `7 in xs[0]`, `for v in xs[0]` after `xs.append([7, 8])`) — the first two
-because a use whose kind only the object knows has no untagged lowering, the last two because they need the
-object's **kind** where the read asks only its tag — an **ordering** comparison of such a slot (Gap R.82),
-and a comparison against an expression whose kind cannot be proven — which until ADR 0247 answered `1`
-where CPython answers `0` (Gap R.83).
+function), the numeric, membership and loop uses of a slot only the run time can describe
+(`xs[0][0] + 1`, `-xs[0][0]`, `7 in xs[0]`, `for v in xs[0]` after `xs.append([7, 8])`) — the first two because
+a use whose kind only the object knows has no untagged lowering (and `xs[0] / 4` of such a slot answers `0.0`
+today, measured and owed as Gap R.96), the last two because they need the object's **kind** where the read
+asks only its tag — an **ordering of two such slots against each other** (`xs[0] > ys[0]`, filed as
+Gap R.97: one side whose kind comes from the object is a chain, two is a table the compiler would be
+inventing), and a comparison against an expression whose kind cannot be proven — which until ADR 0247 answered
+`1` where CPython answers `0` (Gap R.83, whose ordering side is measured by the same table).
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,

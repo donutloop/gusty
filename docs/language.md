@@ -1691,6 +1691,36 @@ xs.append(5)
 print(xs[3][0])                             # TypeError: 'int' object is not subscriptable — as CPython
 ```
 
+**…and an ordering of such a slot asks the object the same question** (ADR 0252). `<`, `<=`, `>`, `>=`
+have three answers — two numbers compared as numbers, two texts compared by their characters, and the
+`TypeError` CPython raises for a pair that does not order at all — and for a container the program built
+rather than spelled out, *which* of the three it is is a run-time question the tag answers. Two numbers are
+lifted (`rt_float_of` out of a float slot, `sitofp` for an int or a bool) and compared; two texts go to the
+`strcmp` helper the literal ordering already uses; anything else raises, and because the sentence names both
+operand types (`'>' not supported between instances of 'list' and 'int'`) the raise is one test per kind the
+writers can leave beside a payload, each with its own wording — `int`, `bool`, `float`, `NoneType`, `list`,
+`dict`, `set`, text. It can end in an `else` only because that set of tags is closed: nothing outside it is
+ever stored. The verdict is a bool whichever way the operands fall, which is exactly why an *ordering* can be
+answered this way and a `+` cannot (below).
+
+```gy
+xs = []
+xs.append(3)
+xs.append("a")
+xs.append([1, 2])
+print(1 if xs[0] > 1 else 0)                # 1      — two numbers
+print(1 if xs[1] > "A" else 0)              # 1      — two texts, by their characters
+print(1 if xs[2] > 1 else 0)                # TypeError: '>' not supported between instances
+                                            #          of 'list' and 'int' — the slot's own kind named
+d = {}
+d["k"] = 5
+print(1 if d["k"] >= 5 else 0)              # 1      — the dict the program filled
+xs2 = []
+xs2.append([3, "a"])
+print(1 if xs2[0][0] > 1 else 0)            # 1      — one level below, through the same door
+print(1 if "a" < xs2[0][0] else 0)          # TypeError — CPython names the left operand's type first
+```
+
 **…and an equality asks it the same question** (ADR 0247). The tag was already carried to the printer,
 so `print(out[1])` rendered `a` while `out[1] == "a"` was refused — one read, two doors. Both sides of
 `==`/`!=` are now `(payload, tag)` pairs, and the one equality the container comparisons already use
@@ -1712,13 +1742,16 @@ print(1 if xs2[0] == [1, 2] else 0)         # 1   — a container slot equals an
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), and a tagged element whose kind only the run time can tell — a loop variable over a
-mixed list used as a number, an element read through a runtime index used **as a number**
-(`xs[0][0] + 1` on a run-time-built container), an **ordering** comparison of such a slot (Gaps R.85,
-R.93), a comparison against an expression whose kind cannot be proven (Gap R.83), a **membership** test
-or a **loop** whose haystack is such a slot (`7 in xs[0]`, `for v in xs[0]` after `xs.append([7, 8])`,
-which need the object's *kind* where the read asks only its tag), or a **set variable** subscripted
-directly (`sa[0]`, which the interpreter answers by the documented extension and the compiler declines,
-Gap R.94) — all of which need the value word that carries its own tag (roadmap L11.1). A fold (`sum`,
+mixed list used as a number, an element of a container the program built used **as a number**
+(`xs[0][0] + 1`, `-xs[0][0]` — the result could be `4` or `4.5`, and the module has to be written before the
+slot is asked; `xs[0] / 4` of such a slot answers `0.0` today instead of refusing, which is measured and owed
+as Gap R.96), **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
+CPython raises — one side whose kind comes from the object is a chain, two is a table the compiler would be
+inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a
+**membership** test or a **loop** whose haystack is such a slot (`7 in xs[0]`, `for v in xs[0]` after
+`xs.append([7, 8])`, which need the object's *kind* where the read asks only its tag), or a **set variable**
+subscripted directly (`sa[0]`, which the interpreter answers by the documented extension and the compiler
+declines, Gap R.94) — all of which need the value word that carries its own tag (roadmap L11.1). A fold (`sum`,
 `min`, `max`) over container elements
 reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
 
@@ -2204,7 +2237,8 @@ stored as, which records the order the strings first appeared in the program
 (ADR 0248: `print(1 if "b" > "a" else 0)` is `1` on both paths, and the same is true of
 `a > b` on two text variables, of a slot read, and of a comparison through a parameter;
 the sorter has compared by content since ADR 0173, and the operators were brought into
-line with it). Ordering a text against a number is a `TypeError` in Python, which the
+line with it — including through the tag, so a text in a slot of a container the program
+*built* orders by its characters too, ADR 0252). Ordering a text against a number is a `TypeError` in Python, which the
 interpreter raises and the compiled backend still answers with a verdict — that is
 Gap R.85, not this rule. Equality of texts stays an index comparison, because interning
 is content-addressed (ADR 0173).

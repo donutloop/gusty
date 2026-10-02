@@ -150,10 +150,12 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 }
 
 // TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve pins what the door still declines, and that
-// it declines by naming the missing half. A *read* is answered by the object; a *number* is not — the
-// numeric and relational uses of a slot only the run time can describe are still owed (roadmap L11.1's
-// remaining clauses, Gaps R.85 and R.93), and a membership test or a loop needs the haystack's kind
-// rather than its tag. Each of these is a refusal with a name, never an exit 2 and never a verdict.
+// it declines by naming the missing half. A *read* is answered by the object, and so is an *ordering*
+// of it (ADR 0252, slot_order_object_test.go); what is still owed is the **number** — the arithmetic
+// use of a slot only the run time can describe, whose result kind (`int` or `float`) the compiler would
+// have to settle before writing the module — and the membership test and the loop, which need the
+// haystack's *kind* rather than its tag. Each of these is a refusal with a name, never an exit 2 and
+// never a verdict (roadmap L11.1's remaining clauses, Gaps R.95 and R.83).
 func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
@@ -162,13 +164,12 @@ func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 			"cannot reach into xs's slots",
 		},
 		{
+			// The negation is still owed the number: `-xs[0][0]` needs to know whether the answer is an
+			// int or a float before the module is written, and only the slot knows. The *ordering* of the
+			// same slot is answered — its verdict is a bool whatever arrives — in slot_order_object_test.go
+			// (roadmap L11.1, ADR 0252).
 			"negation of a slot the compiler never saw",
 			"xs = []\nxs.append([7, 8])\nprint(-xs[0][0])\n",
-			"cannot reach into xs's slots",
-		},
-		{
-			"ordering of a slot the compiler never saw",
-			"xs = []\nxs.append([7, 8])\nprint(1 if xs[0][0] > 1 else 0)\n",
 			"cannot reach into xs's slots",
 		},
 		{
