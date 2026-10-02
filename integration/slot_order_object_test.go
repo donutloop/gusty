@@ -227,9 +227,10 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable(t *testing.T) {
 
 // TestSlotOrderOfABoolSlotNamesIntUntilL11_2 is a debt row, and it is deliberately not checked against
 // the oracle's wording: a bool goes into a slot tagged as the number both engines treat it as
-// (ADR 0232), so the sentence says 'int' where CPython says 'bool'. The two gusty legs agree with each
-// other, which is what this table can hold; L11.2 gives bool its own tag and this row's `want` changes
-// with it (roadmap L11.2, probe_bool_value).
+// (ADR 0232), so the sentence says 'int' where CPython says 'bool'. ADR 0257 made a bool print its
+// verdict where the front end can see the expression that made it, which is not this row: a container
+// slot still carries no bool tag, so the sentence under test is still the number's, and it changes
+// when the slot's tag vocabulary gets a bool (roadmap Gap R.112).
 func TestSlotOrderOfABoolSlotNamesIntUntilL11_2(t *testing.T) {
 	src := "xs = []\nxs.append(True)\nprint(1 if xs[0] > \"a\" else 0)\n"
 	path := writeSrc(t, t.TempDir(), "slot_order_bool.gy", src)

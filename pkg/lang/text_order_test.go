@@ -76,11 +76,12 @@ func TestTextOrderingMatchesCPythonInBothEngines(t *testing.T) {
 		},
 		{
 			// The row the two doors disagreed over: print(1 if a > b else 0) answered the interned
-			// index, and the same comparison stored in a variable was refused outright. The answer is
-			// the i32 0/1 a comparison lowers to in this backend; printing it as True is L11.1's
-			// "bools are values" row, and both engines print 1 today.
+			// index, and the same comparison stored in a variable was refused outright. What it
+			// prints now is the verdict, which is what CPython prints: this is the line that used
+			// to read "both engines print 1 today", pinned against an oracle that never said it.
+			// L11.1's "bools are values" row landed, and the pin moved with it (ADR 0257).
 			"stored in a variable and printed as a value",
-			"a = \"b\"\nb = \"a\"\nlater = a > b\nprint(later)\n", "1\n",
+			"a = \"b\"\nb = \"a\"\nlater = a > b\nprint(later)\n", "True\n",
 		},
 		{
 			"a text comparison returned from a function",

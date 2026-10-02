@@ -1,6 +1,14 @@
-# Oracle probe (L11.9, ADR 0186) — bools are values, not the integer 1.
-# CPython prints True/False; both gusty backends print 1/0, and `--json` reports
-# "type": "int" for True, so there is no tag to render from (L11.2).
+# Conformance program (L11.1 step 2, ADR 0257) — a bool is a value, not the integer 1.
+#
+# This used to be an oracle probe: every line printed the 0/1 the verdict is stored as, and
+# `--json` reported "type": "int" for True. It is parity surface now. A bool is still an
+# immediate — the tag vocabulary has no bool in it — but the printing rule no longer asks the
+# storage what it is; it asks the AST whether the expression answers a question, and both
+# backends ask the same question, so neither can answer with a verdict the other lacks.
+#
+# The shapes where the name reaches the printer with nothing attached to it — a bool handed
+# through a call, a bool stored in a container — are probes of their own
+# (probe_bool_through_a_call, probe_bool_in_a_container) and are owed (Gaps R.111, R.112).
 print(True)
 print(1 == 1)
 print(False)

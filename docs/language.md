@@ -208,7 +208,10 @@ See ADR 0088.
 `--eval --json` emits a structured, typed result:
 `{"result": "<repr>", "type": "<dynamic-type>", "exit": 0}` where `type` is the
 evaluator's inferred dynamic type (`int`/`float`/`str`/`list`/`dict`/`set`/
-`closure`). See ADR 0094.
+`closure`, and `bool` for an expression that answers a question — `True`, a
+comparison, `not x`, `all(...)` — see ADR 0257). A verdict echoes as `True`/
+`False` under plain `--eval` too, so `gustyc --eval '1 == 1'` says what
+`python -c 'print(1 == 1)'` says. See ADR 0094.
 
 
 
@@ -627,8 +630,12 @@ if not (a > b) or flag:
 label = "yes" if text else "no"
 ```
 
-Booleans are values, not just tests: `a and b`, `x in xs` and `not x` produce `1`
-or `0`, so they can be printed, stored (`flag = a < b`) and re-tested.
+Booleans are values, not just tests: `a and b`, `x in xs` and `not x` produce a verdict that can be
+printed, stored (`flag = a < b`) and re-tested. A verdict writes its own name — `print(1 == 1)` is
+`True`, `print(not True)` is `False` — and is still the `0`/`1` every numeric path reads, so
+`True + 1` is `2`, `-True` is `-1` and `sum([True, True])` is `2` (ADR 0257). The name comes from the
+expression, not from the storage: a `for` variable, a parameter or a container element is a slot that
+has not been told, and prints the number (roadmap Gap R.111, Gap R.112).
 
 How each backend gets there is an implementation detail, but a load-bearing one
 (ADR 0167): in IR a value is either an `i32` or the `i1` result of a comparison, and
@@ -760,10 +767,14 @@ Rules that both backends implement:
   `print(["it's"])` gives `["it's"]`, exactly as CPython does. Dicts track their key and
   value kinds separately, so `{1: 'one'}` and `{'k': 1}` both render correctly.
 
-  One rendering difference remains by convention: a bare `True`/`False` prints as `1`/`0`
-  in both backends (bools are untagged i32 values today, so `print(True)` and `print(1)`
-  are indistinguishable). Inside containers strings are quoted as Python does; giving bools
-  their own spelling needs a tagged bool representation, not just a printer (roadmap L.2).
+ A verdict writes its own name wherever the front end can see the expression that made it —
+  `print(True)` is `True`, `print(1 == 1)` is `True`, `str(True)` is `'True'` (a real string, so
+  `.lower()` works on it), and an f-string interpolates `True`/`False` — while the value behind it
+  stays the untagged `0`/`1` both backends have always used (ADR 0257). Two renderings are still owed
+  for the reason ADR 0257 records: **a bool passed to a function prints `1`** (a parameter is a fresh
+  binding the caller's expression never travels with — Gap R.111), and **a bool inside a container
+  prints `1`** (`[True, 1]` comes out `[1, 1]`, because the element tag vocabulary has no bool in it —
+  Gap R.112). Inside containers strings are quoted as Python does.
   Sets iterate in **insertion order** in both backends — deterministic, and identical between
   them, where CPython's order comes from hashing. `{"q", "r"}` prints as `{'q', 'r'}` here.
 
@@ -1806,8 +1817,10 @@ declines, Gap R.94) — all of which need the value word that carries its own ta
 reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
-value that *is* a tag: a compiled float still has no word to hold it (L11.6), a bool still prints
-as the number it is stored as — `print(True)` says `1` (L11.2) — and a container inside a
+value that *is* a tag: a compiled float still has no word to hold it (L11.6), a bool reaching a
+printer through a call or a container still prints as the number it is stored as — `show(True)`
+says `1`, `print([True])` says `[1]` (Gaps R.111, R.112; the print *rule* landed in ADR 0257, the tag
+that would carry the verdict across a boundary has not) — and a container inside a
 container is still a handle in a slot built for a word (L11.1 (5), the tagged value word, which
 also collapses the parallel tag array into the value itself).
 

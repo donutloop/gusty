@@ -12,7 +12,10 @@ import (
 // the answers Python gives — not merely that the two backends agree, because they happily
 // agreed on the wrong answer before.
 
-const noneExpected = "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n"
+// noneExpected is CPython's own answer for the program, line for line. The three verdict
+// lines used to read 1/0/1, which is what both backends printed before ADR 0257 gave a
+// bool its rendering; the last 1 stays a 1 because that line prints `1 if ... else 0`.
+const noneExpected = "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n"
 
 func TestNoneValuesInterpreter(t *testing.T) {
 	out := runInterp(t, readProgramSrc("none_values"))
@@ -33,11 +36,11 @@ func TestNoneIsNotZero(t *testing.T) {
 	cases := []struct{ src, want string }{
 		{"print(None)\n", "None\n"},
 		{"x = None\nprint(x)\n", "None\n"},
-		{"print(0 == None)\n", "0\n"},
-		{"print(None == 0)\n", "0\n"},
-		{"print(None == None)\n", "1\n"},
-		{"def f():\n    x = 1\n\nprint(f() == None)\n", "1\n"},
-		{"def f():\n    return 0\n\nprint(f() == None)\n", "0\n"},
+		{"print(0 == None)\n", "False\n"},
+		{"print(None == 0)\n", "False\n"},
+		{"print(None == None)\n", "True\n"},
+		{"def f():\n    x = 1\n\nprint(f() == None)\n", "True\n"},
+		{"def f():\n    return 0\n\nprint(f() == None)\n", "False\n"},
 		{"def f():\n    pass\n\nif f():\n    print(\"truthy\")\nelse:\n    print(\"falsy\")\n", "falsy\n"},
 	}
 	for _, tc := range cases {
@@ -55,7 +58,7 @@ func TestNoneIsNotZero(t *testing.T) {
 // and printing a void call must still run it (output order is observable).
 func TestVoidCallSideEffectsStay(t *testing.T) {
 	src := "def emit():\n    print(\"side\")\n\nprint(emit())\nprint(emit() == None)\n"
-	want := "side\nNone\nside\n1\n"
+	want := "side\nNone\nside\nTrue\n"
 	got := runInterp(t, src)
 	if got != want {
 		t.Errorf("interpreter = %q, want %q", got, want)

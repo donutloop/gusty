@@ -126,7 +126,7 @@ func TestNoneVarIsClearedByReassignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eval: %v", err)
 	}
-	if got != "0\n0\n" {
+	if got != "0\nFalse\n" {
 		t.Errorf("reassignment must clear None-ness, got %q", got)
 	}
 	res, err := Compile("x = None\nx = 0\nprint(x)\n")

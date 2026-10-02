@@ -61,13 +61,13 @@ func TestOperatorRefusesOperandsItCannotApply(t *testing.T) {
 // refuse them. A rule that traps everything mistyped is wrong in the other direction.
 func TestTotalOperatorsStillAcceptAnything(t *testing.T) {
 	cases := []struct{ src, want string }{
-		{`print(1 == "a")`, "0\n"},
-		{`print("a" == 1)`, "0\n"},
-		{`print(1 != None)`, "1\n"},
-		{`print("a" in ["a", "b"])`, "1\n"},
-		{`print(3 in [1, 2])`, "0\n"},
-		{`print(None is None)`, "1\n"},
-		{`print({"a": 1} == {"a": 1})`, "1\n"},
+		{`print(1 == "a")`, "False\n"},
+		{`print("a" == 1)`, "False\n"},
+		{`print(1 != None)`, "True\n"},
+		{`print("a" in ["a", "b"])`, "True\n"},
+		{`print(3 in [1, 2])`, "False\n"},
+		{`print(None is None)`, "True\n"},
+		{`print({"a": 1} == {"a": 1})`, "True\n"},
 	}
 	for _, tc := range cases {
 		if got := captureStdout(t, tc.src); got != tc.want {

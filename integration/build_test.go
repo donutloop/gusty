@@ -446,7 +446,11 @@ func TestCLIExitCodeContract(t *testing.T) {
 		// own class, and "the oracle could not judge" is a third one. Neither may share a
 		// code with a compile error or a runtime trap.
 		{"oracle: conformant program", []string{"--oracle", "print(1 + 1)"}, 0},
-		{"oracle: divergence from CPython", []string{"--oracle", "print(True)"}, 6},
+		// A bool inside a container is the divergence this case needs: both backends render
+		// the element as the number a bool is stored as while CPython renders True (Gap R.112,
+		// opened by the bools-are-values cycle, ADR 0257 — which paid the older version of this
+		// case, `print(True)`, and would have left this row green on a match).
+		{"oracle: divergence from CPython", []string{"--oracle", "print([True, 1])"}, 6},
 		{"oracle: no verdict (gusty-only surface)", []string{"--oracle", "async def f():\n    return 1\n\nprint(await f())"}, 7},
 		{"oracle: usage error on a missing file", []string{"--oracle-file", filepath.Join(dir, "nope.gy")}, 4},
 	}

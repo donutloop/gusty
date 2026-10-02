@@ -39,7 +39,7 @@ var stringContainerCases = []struct {
 	{"iterate string list", "xs = [\"a\", \"b\"]\nfor x in xs:\n    print(x)\n", "a\nb\n"},
 	{"iterate string set", "s = {\"q\"}\nfor x in s:\n    print(x)\n", "q\n"},
 	{"iterate dict keys", "d = {}\nd[\"kk\"] = 1\nfor k in d:\n    print(k)\n", "kk\n"},
-	{"membership string", "xs = [\"a\", \"b\"]\nprint(\"a\" in xs)\nprint(\"z\" in xs)\n", "1\n0\n"},
+	{"membership string", "xs = [\"a\", \"b\"]\nprint(\"a\" in xs)\nprint(\"z\" in xs)\n", "True\nFalse\n"},
 	{"quote choice follows Python", "xs = [\"it's\", \"q\"]\nprint(xs)\n", "[\"it's\", 'q']\n"},
 	{"string list argument", "def f(xs):\n    return len(xs)\n\nprint(f([\"a\", \"b\"]))\n", "2\n"},
 	{"mixed dict int and str", "d = {}\nd[1] = \"a\"\nd[2] = \"b\"\nprint(d)\n", "{1: 'a', 2: 'b'}\n"},

@@ -76,18 +76,22 @@ func TestOracleLedgerRowsAreExplainedOwnedAndPinned(t *testing.T) {
 // Python disagree, and requires the CPython leg to disagree: if the oracle ever
 // quietly reported gusty's own answer, every debt row would turn into a match and the
 // build would go green for the wrong reason.
+// Its subject is Gap R.112: a bool inside a container. Python renders the element as True
+// and gusty renders the 1 the element is stored as, because the element tag vocabulary has
+// no bool in it yet. (It used to be probe_bool_value, whose disagreement ADR 0257 paid —
+// a stub check has to be pointed at a debt that is still open, or it proves nothing.)
 func TestOracleThirdLegIsNotAStub(t *testing.T) {
-	c := lang.ConformanceCase{ID: "programs/probe_bool_value", Name: "probe_bool_value.gy", Source: readProgramSrc("probe_bool_value")}
+	c := lang.ConformanceCase{ID: "programs/probe_bool_in_a_container", Name: "probe_bool_in_a_container.gy", Source: readProgramSrc("probe_bool_in_a_container")}
 	row := runLegs(t, c)
 
 	if !row.PythonOK {
 		t.Fatalf("the CPython leg failed: %s", row.PythonErr)
 	}
-	if !strings.Contains(row.PythonOut, "True") || !strings.Contains(row.PythonOut, "False") {
-		t.Errorf("CPython should print True/False for this program, got %q", row.PythonOut)
+	if !strings.Contains(row.PythonOut, "True") {
+		t.Errorf("CPython should render a bool element as True, got %q", row.PythonOut)
 	}
 	if !strings.Contains(row.InterpOut, "1") || strings.Contains(row.InterpOut, "True") {
-		t.Errorf("the interpreter is expected to print 1/0 here (that is the debt); got %q", row.InterpOut)
+		t.Errorf("the interpreter is expected to print the stored number here (that is the debt); got %q", row.InterpOut)
 	}
 	if row.PythonOut == row.InterpOut || row.PythonOut == row.AOTOut {
 		t.Errorf("the oracle leg returned a backend's answer — it is not an independent opinion")

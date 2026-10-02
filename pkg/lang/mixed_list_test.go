@@ -173,8 +173,8 @@ func TestFloatElementsInMixedListsNowAnswer(t *testing.T) {
 		{"xs = [1, \"a\"]\nxs.append(1.5)\nprint(xs)\n", "[1, 'a', 1.5]\n"},
 		{"xs = [1, \"a\"]\nxs[0] = 2.5\nprint(xs)\n", "[2.5, 'a']\n"},
 		{"xs = [1.5, \"a\"]\nprint(xs)\n", "[1.5, 'a']\n"},
-		{"xs = [1.5, \"a\"]\nprint(1.5 in xs)\nprint(len(xs))\n", "1\n2\n"},
-		{"xs = [1, \"a\"]\nprint(1.0 in xs)\n", "1\n"}, // Python: [1] contains 1.0
+		{"xs = [1.5, \"a\"]\nprint(1.5 in xs)\nprint(len(xs))\n", "True\n2\n"},
+		{"xs = [1, \"a\"]\nprint(1.0 in xs)\n", "True\n"}, // Python: [1] contains 1.0
 		{"xs = [1.5, 2]\nprint(1 if xs == [1.5, 2] else 0)\n", "1\n"},
 		{"xs = [1.5, \"a\", None]\nprint(xs)\n", "[1.5, 'a', None]\n"},
 		{"xs = [1.5]\nfor v in xs:\n    print(v)\n", "1.5\n"},

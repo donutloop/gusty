@@ -622,7 +622,8 @@ no `range` (full text) to force a clean re-parse.
 
 Parity — the interpreter and the compiled backend printing the same bytes — is a necessary
 contract, and it is not a sufficient one: two backends that share a bug agree. `print(True)`
-printed `1` on both sides of a green build for a hundred ADRs, and so did `len("café") == 5`,
+printed `1` on both sides of a green build for a hundred ADRs (ADR 0257 pays that one; the bool **inside** a
+container is still the row above), and so did `len("café") == 5`,
 `"abc"[1] == 98`, and a trap where Python answers `3` for `xs[-1]` (L11.4 closed the last of those,
 ADR 0210). The third leg closes that
 hole: **a program is conformant when both backends agree *and* what they print is what
@@ -641,14 +642,14 @@ oracle: match (parity yes)
       | 2
   rules: set-order
 
-$ gustyc --oracle 'print(True)'; echo $?
+$ gustyc --oracle 'print([True, 1])'; echo $?
 oracle: debt (parity yes)
   interpreter ok       differs from CPython
-      | 1
+      | [1, 1]
   aot         ok       differs from CPython
-      | 1
+      | [1, 1]
   python      ok       the oracle
-      | True
+      | [True, 1]
   note: interpreter stdout differs from CPython
   note: compiled stdout differs from CPython
   rules: set-order
@@ -773,6 +774,11 @@ against its own ability to fail).
 `gustyc --json` emits machine-readable JSON on stdout:
 
 - `--json --eval "x = 1 + 2\nx"` → `{"result": "3", "type": "int", "backend": "interpreter", "exit": 0}`
+- `--json --eval "1 == 1"` → `{"result": "True", "type": "bool", "backend": "interpreter", "exit": 0}`,
+  and plain `--eval '1 == 1'` echoes `True` (ADR 0257): the type is `bool` for an expression that
+  answers a question — a bool literal, a comparison, membership or identity test, `not`, `all`/`any`,
+  an `and`/`or` of two verdicts, a ternary with verdict arms, a call whose every `return` is one, or a
+  name last bound to any of those. `and`/`or` of numbers stay `int`, because Python yields the operand.
 - every execution result carries `"backend"`: `"interpreter"` or `"aot"`. It is a fact
   about the run, not something to infer from the flag list — `--file` without
   `--aot` reports `"backend": "interpreter"` (roadmap Gap M.2). Captured-output
@@ -1112,9 +1118,12 @@ heap kinds (compiled runtime object headers): list dict set instance (0 = not he
   and `lang.HeapKindNameOf` are the Go API for tools; the numbers are a wire format and
   `TestValueTagTableIsPinned` fails if anyone renumbers them.
 
-`print(True)` still printing `1` is the honest limit of this step: bools are not values
-yet in either backend (`--json` reports `"type": "int"` for `True`), so there is no tag to
-print from. That is the next move in L11.1.
+`print(True)` prints `True`, and `--json` reports `"type": "bool"` for it — the verdict is named by
+the expression that produced it, which both backends ask of one shared AST predicate rather than of
+the storage that holds it (ADR 0257). What that rule cannot reach is where a value crosses a binding
+the caller's expression does not travel with: a bool passed to a function prints `1` (Gap R.111) and
+a bool stored in a container prints `1` (Gap R.112), because a slot — a parameter's or a container
+element's — is asked what it holds and its vocabulary still has no bool in it.
 
 What L11.1 has opened since, in the LLVM backend, is element-level tagging: a mixed list
 literal tags each slot, `xs.append(v)` appends payload-and-tag together

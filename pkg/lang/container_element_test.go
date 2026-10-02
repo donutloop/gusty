@@ -58,7 +58,7 @@ func TestFloatElementsRefuseRatherThanBreakTheModule(t *testing.T) {
 		{"print(1 if {1.0} == {1.0} else 0)\n", "1\n"},
 		{"d = {\"a\": 1.5}\ne = {\"a\": 1.6}\nprint(1 if d == e else 0)\n", "0\n"},
 		{"d = {\"a\": 1.5}\ne = {\"a\": 1.5}\nprint(1 if d == e else 0)\n", "1\n"},
-		{"print([0.0] == [-0.0])\n", "1\n"}, // fcmp oeq, the way Python compares floats
+		{"print([0.0] == [-0.0])\n", "True\n"}, // fcmp oeq, the way Python compares floats
 	} {
 		res, err := Compile(tc.src)
 		if err != nil {

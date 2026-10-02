@@ -219,8 +219,8 @@ func TestFloatValuesInDictsAndSetsAnswer(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"d = {\"a\": 1, \"b\": 1.5}\nprint(d)\n", "{'a': 1, 'b': 1.5}\n"},
 		{"s = {1, 1.5}\nprint(s)\n", "{1, 1.5}\n"},
-		{"s = {1.5}\nprint(1.5 in s)\n", "1\n"},
-		{"s = {1}\nprint(1.0 in s)\n", "1\n"}, // Python: 1.0 is a member of {1}
+		{"s = {1.5}\nprint(1.5 in s)\n", "True\n"},
+		{"s = {1}\nprint(1.0 in s)\n", "True\n"}, // Python: 1.0 is a member of {1}
 		{"d = {1.5: \"x\"}\nprint(d[1.5])\n", "x\n"},
 		{"d = {1.5: \"x\", \"k\": 2.5, None: 3}\nprint(d)\n", "{1.5: 'x', 'k': 2.5, None: 3}\n"},
 	} {

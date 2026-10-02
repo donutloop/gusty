@@ -28,6 +28,11 @@ type Evaluator struct {
 	nurseryBase int64
 	allocCount  int64
 	classIDs    map[string]int64
+	// boolVars records the names whose latest assignment produced a bool, so print and str
+	// render True/False instead of the 1/0 a bool is stored as. It swaps with the scope: a
+	// function's own `flag` is its business and must not make the module's `flag` print True
+	// (roadmap L11.1 step 2, ADR 0257).
+	boolVars map[string]bool
 	curRet      *Type  // return annotation of the function currently executing
 	fnName      string // name of the function whose body is being evaluated
 	// curFD is the *FuncDef whose body is executing, and curBodies caches which names each body
@@ -129,6 +134,75 @@ func (o *obj) tag() ValueTag {
 // Conditions must go through this and never test `v != 0` directly: heap values are
 // handles, so a raw handle test makes `if 0.0:`, `if "":` and `if []:` all true,
 // which is both wrong and different from what the AOT backend compiles.
+// boolEnv is the interpreter's side of the one bool predicate (pkg/lang/boolvalue.go).
+// A name the program defines shadows a builtin here exactly as it shadows it at call time,
+// so `def isinstance(x): return 1` is asked about its own body and not about the builtin's.
+func (e *Evaluator) boolEnv() BoolEnv {
+	return BoolEnv{
+		Vars:     e.boolVars,
+		Lookup:   func(nm string) *FuncDef { return e.funcs[nm] },
+		Shadowed: func(nm string) bool { _, ok := e.funcs[nm]; return ok },
+		Instance: e.instanceOperand,
+	}
+}
+
+// instanceOperand answers whether an operand is an instance of a class the program declared,
+// which is the question that turns `a < 4` into a call to `a.__lt__(4)`: the answer is then
+// whatever that method returns, and dunder.gy's `__lt__` returns the int 1 — which is what
+// CPython prints, so a verdict rendering here would be a new divergence dressed up as the
+// fix of an old one (roadmap L6.6, checked against ADR 0257's rule).
+func (e *Evaluator) instanceOperand(x Expr) bool {
+	switch t := x.(type) {
+	case *Name:
+		v, ok := e.Vars[t.Value]
+		if !ok {
+			return false
+		}
+		o, isObj := e.heap[v]
+		return isObj && o.kind == "instance"
+	case *Call:
+		nm, ok := t.Fn.(*Name)
+		if !ok {
+			return false
+		}
+		_, isClass := e.resolveClassID(nm.Value)
+		return isClass
+	}
+	return false
+}
+
+// forgetBool retires a name's boolness. Every binding that is not a readable
+// expression — a loop variable, a comprehension counter, a parameter, an unpack
+// target, a `with ... as` — goes through here, because the alternative is a name that
+// once held a verdict printing True forever after, which is a worse bug than the one this
+// cycle fixes (roadmap L11.1 step 2, ADR 0257).
+func (e *Evaluator) forgetBool(name string) {
+	delete(e.boolVars, name)
+}
+
+// recordBool notes what an assignment teaches about a name: its latest value decides how
+// print and str render it, and an assignment of anything else clears the status — so
+// `flag = 1 == 1` prints True and a later `flag = 5` prints 5, the rule ADR 0172 set for
+// None and this cycle extends to bools (roadmap L11.1 step 2, ADR 0257).
+func (e *Evaluator) recordBool(name string, value Expr) {
+	if IsBoolExpr(value, e.boolEnv()) {
+		if e.boolVars == nil {
+			e.boolVars = map[string]bool{}
+		}
+		e.boolVars[name] = true
+		return
+	}
+	delete(e.boolVars, name)
+}
+
+// IsBoolExpr reports whether an expression's value is a bool in the scope currently
+// running. The CLI's --json report and the --eval echo ask it, so a bool's type reads as
+// "bool" and its result as True/False rather than as the 1 the slot holds (ADR 0257).
+func (e *Evaluator) IsBoolExpr(x Expr) bool { return IsBoolExpr(x, e.boolEnv()) }
+
+// BoolText renders a value that the caller already knows is a bool.
+func (e *Evaluator) BoolText(v int64) string { return BoolText(e.truthy(v)) }
+
 func (e *Evaluator) truthy(v int64) bool {
 	if o, ok := e.heap[v]; ok {
 		switch o.kind {
@@ -163,6 +237,10 @@ func (e *Evaluator) setLoopVar(v Expr, val int64) error {
 	switch t := v.(type) {
 	case *Name:
 		e.Vars[t.Value] = val
+		// A loop variable is bound by the iterable, not by an expression the compiler can
+		// read, so whatever the name's previous binding said about boolness no longer holds
+		// (roadmap L11.1 step 2, ADR 0257).
+		e.forgetBool(t.Value)
 		return nil
 	case *Tuple:
 		obj := e.heap[val]
@@ -175,6 +253,7 @@ func (e *Evaluator) setLoopVar(v Expr, val int64) error {
 		for i, n := range t.Elems {
 			if nm, ok := n.(*Name); ok {
 				e.Vars[nm.Value] = obj.elems[i]
+				e.forgetBool(nm.Value)
 			}
 		}
 		return nil
@@ -849,7 +928,7 @@ func NewEvaluator() *Evaluator {
 	// integer literal values (which are stored raw in lists, dict keys, vars).
 	// Otherwise Repr(id) would format heap[id] as an object and recurse (e.g.
 	// a list at handle 1 whose elems contain the raw int 1).
-	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, classList: NewClassIndex(), nextID: heapIDBase, fnName: "<module>", gcThreshold: gcAllocThresholdDefault, gcStress: gcEnvStress()}
+	ev := &Evaluator{Vars: map[string]int64{}, funcs: map[string]*FuncDef{}, externs: map[string]*ExternDecl{}, heap: map[int64]*obj{}, classIDs: map[string]int64{}, boolVars: map[string]bool{}, classList: NewClassIndex(), nextID: heapIDBase, fnName: "<module>", gcThreshold: gcAllocThresholdDefault, gcStress: gcEnvStress()}
 	// The scope this evaluator starts in *is* the module scope; anchoring it keeps the
 	// collector from sweeping what a function's global lookup will read (Gap R.35).
 	ev.moduleVars = ev.Vars
@@ -1161,6 +1240,7 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 			}
 			if s.As != nil {
 				e.Vars[s.As.Value] = ent
+				e.forgetBool(s.As.Value)
 			}
 			_, bodyErr := e.evalBody(s.Body)
 			if bodyErr != nil {
@@ -1355,6 +1435,7 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 			}
 			if n, ok := s.Target.(*Name); ok {
 				e.Vars[n.Value] = v
+				e.recordBool(n.Value, s.Value)
 				last = v
 			}
 			if t, ok := s.Target.(*Tuple); ok {
@@ -1368,6 +1449,7 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 				for i, nm := range t.Elems {
 					if n2, ok2 := nm.(*Name); ok2 {
 						e.Vars[n2.Value] = obj.elems[i]
+						e.forgetBool(n2.Value)
 					}
 				}
 				last = v
@@ -1405,6 +1487,11 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 			switch t := s.Target.(type) {
 			case *Name:
 				e.Vars[t.Value] = res
+				// An augmented assignment rebinds the name to the arithmetic, so the
+				// verdict status goes with the value it replaces: `flag = 1 == 1` then
+				// `flag += 1` holds the number 2 and prints 2 (ADR 0172's latest-binding
+				// rule, extended to bools by ADR 0257).
+				e.recordBool(t.Value, b)
 				last = res
 			case *Attr:
 				objV, err := e.eval(t.Obj)
@@ -1521,6 +1608,13 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
+			// An interpolated bool contributes its word, not its digit: `f"{1 == 1}"` is
+			// "True", and the f-string, str() and print ask one predicate the same question
+			// so no two renderings of the same bool can differ (ADR 0257).
+			if IsBoolExpr(part.Expr, e.boolEnv()) {
+				b.WriteString(BoolText(e.truthy(v)))
+				continue
+			}
 			b.WriteString(e.Repr(v))
 		}
 		return e.allocStr(b.String()), nil
@@ -1539,6 +1633,7 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			return 0, err
 		}
 		e.Vars[n.Name.Value] = v
+		e.recordBool(n.Name.Value, n.Value)
 		return v, nil
 	case *Name:
 		if v, ok := e.Vars[n.Value]; ok {
@@ -2502,6 +2597,7 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 		for i, pe := range t.Elems {
 			if n, ok2 := pe.(*Name); ok2 && n.Value != "_" {
 				e.Vars[n.Value] = o.elems[i]
+				e.forgetBool(n.Value)
 				continue
 			}
 			ev, err := e.eval(pe)
@@ -2528,6 +2624,7 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 				if e.dictKeyEq(kv, k2) {
 					if n, ok2 := t.Vals[i].(*Name); ok2 && n.Value != "_" {
 						e.Vars[n.Value] = o.dvals[j]
+						e.forgetBool(n.Value)
 					} else {
 						vv, err := e.eval(t.Vals[i])
 						if err != nil {
@@ -2551,6 +2648,7 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 		// always match (Python `case x:` semantics).
 		if t.Value != "_" {
 			e.Vars[t.Value] = sub
+			e.forgetBool(t.Value)
 		}
 		return true, nil
 	case *Call:
@@ -2591,6 +2689,7 @@ func (e *Evaluator) matchPattern(sub int64, p Expr) (bool, error) {
 						return false, nil
 					}
 					e.Vars[nm.Value] = v
+					e.forgetBool(nm.Value)
 				}
 				return true, nil
 			}
@@ -2641,11 +2740,14 @@ func (e *Evaluator) evalBodySafe(stmts []Stmt, safe bool) (int64, error) {
 // variables that are perfectly live.
 func (e *Evaluator) swapScope(scope map[string]int64) func() {
 	saved := e.Vars
+	savedBools := e.boolVars
 	e.Vars = scope
+	e.boolVars = map[string]bool{}
 	e.pushFrame(saved)
 	e.pushFrame(scope)
 	return func() {
 		e.Vars = saved
+		e.boolVars = savedBools
 		e.popFrame()
 		e.popFrame()
 	}
@@ -3720,6 +3822,7 @@ func (e *Evaluator) runCoro(cid int64) (int64, error) {
 	restoreScope := e.swapScope(map[string]int64{})
 	for i, p := range fd.Params {
 		e.Vars[p.Name] = argVals[i]
+		e.forgetBool(p.Name)
 	}
 	rv, err := e.runFuncBody(fd, false)
 	restoreScope()
@@ -3946,6 +4049,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 					}
 				}
 				e.Vars[p.Name] = argVals[i]
+		e.forgetBool(p.Name)
 			}
 			if containsYield(fd.Body) {
 				genH := e.allocObj("list")
@@ -4026,6 +4130,15 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				v, err := e.eval(a)
 				if err != nil {
 					return 0, err
+				}
+				// A bool writes True/False. It is held as the 1/0 the comparison produced — the
+				// value word carries no kind, and the tagged word that would carry one is the L11.1
+				// destination rather than this rung — so the question 「is this a bool?」 is asked of
+				// the AST, which is the same question the compiled backend asks through one predicate
+				// so the two engines cannot answer it differently (roadmap L11.1 step 2, ADR 0257).
+				if IsBoolExpr(a, e.boolEnv()) {
+					fmt.Fprint(os.Stdout, BoolText(e.truthy(v)))
+					continue
 				}
 				fmt.Fprint(os.Stdout, e.Repr(v))
 			}
@@ -4389,6 +4502,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			av, err := e.eval(n.Args[0])
 			if err != nil {
 				return 0, err
+			}
+			// str(True) is the word "True", not the digit "1": the same question print asks,
+			// asked of the same predicate, answered with the same text (ADR 0257).
+			if IsBoolExpr(n.Args[0], e.boolEnv()) {
+				return e.allocStr(BoolText(e.truthy(av))), nil
 			}
 			return e.allocStr(e.Repr(av)), nil
 		case "set", "list":

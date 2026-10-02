@@ -165,6 +165,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"subscript_assign",
 		"container_methods",
 		"none_values",
+		// A bool is a value: `print(True)` writes True, `print(1 == 1)` writes True, and
+		// --json reports its type as bool. Both backends print CPython's answer on every
+		// line, which is what moved this program out of the probe list (roadmap L11.1
+		// step 2, ADR 0257); the shapes that still print the number a bool is stored as
+		// are probes of their own below.
+		"probe_bool_value",
 		"string_containers",
 		"string_escapes",
 		"string_params",
@@ -272,7 +278,15 @@ func conformanceMerged() []lang.ConformanceCase {
 // conformanceProbes to conformanceStandalone, so it becomes parity surface.
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
-		"probe_bool_value", // L11.2 — bools are not values yet
+		// A bool handed to a function and printed there. The parameter's slot holds the 1 the
+		// comparison produced and nothing says it was ever a verdict, so both backends print 1
+		// where CPython prints True (roadmap Gap R.111, filed by ADR 0257).
+		"probe_bool_through_a_call",
+		// A bool stored in a container. The element tag vocabulary has no bool in it — bools are
+		// immediate values the way ints are — so both backends render the number: `[1, 1]` and
+		// `{'k': 1}` where CPython prints `[True, 1]` and `{'k': True}` (roadmap Gap R.112, filed by
+		// ADR 0257, which paid the print rule and left this tag question behind).
+		"probe_bool_in_a_container",
 		"probe_tuple",      // L11.3 — no tuple lowering at all
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
@@ -425,32 +439,16 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n"}, {Backend: "aot", Stdout: "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n"}}},
-	"programs/container_methods": {oracle: lang.OracleDebt,
-		reason: "print(2 in s) is 1, not True — bools are still the integer 1 with no tag to render from",
-		ref:    "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n"}, {Backend: "aot", Stdout: "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n"}}},
-	"programs/none_values": {oracle: lang.OracleDebt,
-		reason: "comparisons (emit() == None, 0 == None, None == None) print 1/0 where CPython prints True/False/True",
-		ref:    "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n"}, {Backend: "aot", Stdout: "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n"}}},
-	"programs/string_containers": {oracle: lang.OracleDebt,
-		reason: "membership tests (\"ada\" in names, \"zed\" in names) print 1/0 where CPython prints True/False",
-		ref:    "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"}, {Backend: "aot", Stdout: "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"}}},
-	"programs/string_escapes": {oracle: lang.OracleDebt,
-		reason: "comparisons print 1/0 where CPython prints True/False (roadmap L11.2). len(\"café\") is no longer part of this row: ADR 0225 made the string unit the code point on both backends, and the program now prints 4 as CPython does",
-		ref:    "roadmap L11.2 (bools as values); the L11.5 half of this row closed with ADR 0225",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "tab\there\nquoted \"inside\"\nback\\slash\nbell\x07end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"}, {Backend: "aot", Stdout: "tab\there\nquoted \"inside\"\nback\\slash\nbell\x07end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"}}},
-	"programs/string_params": {oracle: lang.OracleDebt,
-		reason: "string equality predicates print 1/0 where CPython prints True/False",
-		ref:    "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n"}, {Backend: "aot", Stdout: "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n"}}},
 
 	// ---- Phase 11 probes: measured, owned, and not yet paid ----------------------
-	"programs/probe_bool_value": {oracle: lang.OracleDebt,
-		reason: "True/False print as 1/0 and comparisons print 1/0: there is no bool tag to render from, so --json also reports \"int\" for True",
-		ref:    "roadmap L11.2 (bools as values, closes Gap L.2)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n0\n1\n"}, {Backend: "aot", Stdout: "1\n1\n0\n0\n1\n"}}},
+	"programs/probe_bool_through_a_call": {oracle: lang.OracleDebt,
+		reason: "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
+		ref:    "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n"}, {Backend: "aot", Stdout: "1\n1\n"}}},
+	"programs/probe_bool_in_a_container": {oracle: lang.OracleDebt,
+		reason: "a bool in a list or dict prints as the number it is stored as on both backends: the element tag vocabulary a container carries has no bool in it, so the printer reads 1 where Python reads True",
+		ref:    "roadmap Gap R.112 (filed by ADR 0257, the bools-are-values cycle)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 1]\n{'k': 1}\n"}, {Backend: "aot", Stdout: "[1, 1]\n{'k': 1}\n"}}},
 	"programs/probe_tuple": {oracle: lang.OracleDebt,
 		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
 		ref:    "roadmap L11.3 (tuples are values)",

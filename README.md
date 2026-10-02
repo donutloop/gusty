@@ -278,6 +278,23 @@ built (Gap R.107), a text container the program built (Gap R.108), two runtime c
 (Gap R.109) — and a callee whose winner was settled by one call site (`def choose(a, b): return max(a, b)` /
 `print(choose(2.0, 1))` printing `2` for `2.0`, Gap R.110).
 
+A verdict **is a value, and it prints its own name** (ADR 0257, L11.1's bool step). `print(True)` is `True`,
+`print(1 == 1)` is `True`, `print(0 == None)` is `False`, `str(True)` is `'True'` — an ordinary string with a
+working `.upper()` — and an f-string writes `flag: True` rather than `flag: 1`. None of that changed what a
+bool *is*: it is still the untagged `0`/`1` in the word it always occupied, still adds (`True + 1` → `2`),
+multiplies, negates (`-True` → `-1`) and sums (`sum([True, True, False])` → `2`), and a condition still tests
+it the way it always did. What changed is who answers "what is this?": the printer asks the **expression**,
+through one predicate both backends share, so `and`/`or` of two verdicts are verdicts while `1 and 2` is still
+`2` (Python yields the operand), a ternary is a verdict only when both arms are, `all`/`any` and a call whose
+every `return` is a verdict (ADR 0254's rule, read from the body) are verdicts, and a name is a verdict only
+until something that is not an expression rebinds it — `for flag in [1, 2]` prints `1` and `2`, because a loop
+binds elements. A comparison that reached a class's own `__lt__` is not a verdict at all: the program's method
+returned an int, and `print(a < 4)` prints `1` on all three engines. Two shapes stay where a tag has to travel
+rather than be read off an expression, and are filed rather than absorbed: a bool handed to a function prints
+the number it is stored as (Gap R.111), and a bool inside a list or dict prints `[1, 1]` where CPython prints
+`[True, 1]`, the container element's tag vocabulary having no bool to read back (Gap R.112). `--json` names the
+type `bool`, and `--eval '1 == 1'` echoes `True`.
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict

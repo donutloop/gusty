@@ -66,9 +66,11 @@ func TestFloorIdentityHoldsForEverySign(t *testing.T) {
 			src := "q = " + itoa64(a) + " // " + itoa64(b) + "\nr = " + itoa64(a) + " % " + itoa64(b) +
 				"\nprint(q * " + itoa64(b) + " + r)\nprint(q * " + itoa64(b) + " + r == " + itoa64(a) + ")\n"
 			got := captureStdout(t, src)
-			if got != itoa64(a)+"\n1\n" {
+			// The identity's second line is a verdict, and a verdict reads True: the pin used
+			// to say 1, which was this backend's answer being checked against itself (ADR 0257).
+			if got != itoa64(a)+"\nTrue\n" {
 				t.Errorf("%d // %% %d breaks a == (a // b) * b + (a %% b): got %q, want %q",
-					a, b, got, itoa64(a)+"\n1\n")
+					a, b, got, itoa64(a)+"\nTrue\n")
 			}
 		}
 	}

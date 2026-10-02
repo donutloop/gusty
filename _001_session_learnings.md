@@ -5878,3 +5878,60 @@ test written from it did not compile. The helpers are three lines of `grep` away
 before writing against it costs one command, and trusting a remembered one costs a compile cycle. Related:
 `cliRunCode` returns **stdout only** — a refusal goes to stderr, so the message assertion has to use `cliRun`,
 while the *exit class* has to come from `cliRunCode`. That is the exit-code contract, in the harness.
+
+## Cycle: a verdict is printed from the expression that made it (ADR 0257, L11.1 step 2 — bools are values; Gaps R.111–R.113 filed)
+
+**The roadmap's plan column is a hypothesis about where the fix lives.** L11.1's bool row said *give bool its
+own `ValueTag`; one line of `elemKindTag` and every container follows*. Measuring first showed the wrong answers
+were in two places, and the plan named only one of them. `ValueTag` numbers **heap objects** and `elemKindTag`
+classifies **container elements** — but `print(1 == 1)`, `print(not True)`, `print(0 == None)` have neither an
+object nor a container in them, so a tag put there would have been read by nothing that needed the answer, and
+the row's own definition of done (`print(True)` → `True`, `--json` reports `bool`) would still have failed. The
+half the plan was right about — a bool in a list — is real, is exactly a tag question, and is filed as Gap R.112
+rather than being paid by a mechanism that cannot reach it.
+
+**Ask the AST when the AST knows.** Every wrong program had one property in common: nothing about it was unknown
+at compile time. A comparison, a membership test, `not x`, an `all(...)` — these *are* answers, so the printer was
+asking the storage what it held when it could have asked the program what it wrote. One function in the shared
+package, `IsBoolExpr(Expr, BoolEnv)`, is now the only thing allowed to decide how a value is written; both
+backends build the same environment (name → last-bound-to-a-verdict, a callee lookup, an instance hook) from the
+same AST, and each engine's map is saved and restored on scope entry so recursion cannot leak. Storage did not
+move: a bool is still the `0`/`1` that arithmetic, `sum`, indexing and every existing numeric path already
+understood. The change is strictly one-way — how a bool is *written*.
+
+**The rule has edges that only show up when you write the table.** `and`/`or` are verdicts only when both sides
+are, because Python yields the *operand* (`1 and 2` is `2`, and "fixing" that would be a regression dressed as a
+bool feature). A ternary is a verdict only when both arms are. A name is a verdict until something rebinds it —
+and the rebinds that are not expressions (`for` variables, `except ... as`, parameters, `import` aliases) have to
+*forget* the name, not record it false: `flag = True` / `for flag in [1, 2]: print(flag)` printed `True`, `False`
+until that was fixed, which is a worse bug than the one being cured, because it invented a verdict that was never
+there.
+
+**An operand the compiler cannot see through is not an answer it may name.** `dunder.gy` defines `__lt__` to
+return an `int`, and CPython prints `print(a < 4)` as `1` — the user's method ran, and what it returned is its
+business. A rule of the form "a `<` is a bool" breaks that program. The predicate takes an `Instance` hook from
+each backend (interpreter: the heap kind and a call to a declared class; codegen: the very same
+`receiverClass` test `emitDunderBinop` uses to decide whether to call `__lt__` at all), so the question "did a
+comparison produce a verdict or a user's number?" is answered by the code that makes that decision, not by a guess
+beside it.
+
+**An oracle with a normalization hook is an oracle that cannot lose.** `integration/escapes_test.go` had a
+`normalizePy` that rewrote CPython's `True` → `1` and `False` → `0` before comparing. Six ledger rows were filed as
+"bool debt" against that helper's guarantee; two of them (`string_escapes`, `string_containers`) had *no bool
+content left* once the real bug was fixed elsewhere. The helper is deleted, the pinned expectations were re-checked
+against a real `python3` rather than against their own previous values, and the corpus moved 6 rows debt → match.
+A test that pre-decides what the reference is allowed to say is not a check; it is a comment with an exit code.
+
+**Filed, not absorbed.** Two bool shapes stay wrong because they need a tag that must *travel*: through a call
+(Gap R.111 — same wall as Gap R.80's container argument and ADR 0256's Gap R.110) and into a container element
+(Gap R.112 — the element vocabulary has no bool). Both are tested **as they answer today**, with the gap in the
+failure text, and both are pinned again in the oracle ledger so a closure has to change a verdict, not just a
+number. A third came out of probing for free: `except ZeroDivisionError as err:` does not parse at all (Gap
+R.113) — found because a bool cycle reached for it inside a `try`, and a measured defect that stays in a
+conversation is a defect that still exists.
+
+**Process, again.** Two helper signatures were guessed at and one `edit` call was written from a remembered file
+layout rather than a read one; both were caught by `go vet` in seconds, and both were the cheapest possible way to
+find out. The matrix is regenerated by the test that checks it, and the `/tmp/gusty-oracle<rand>/` paths in its
+`python_error` strings are pure churn — normalizing them back to HEAD's digits keeps the artifact's diff to the
+rows that actually changed.

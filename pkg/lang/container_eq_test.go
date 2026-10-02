@@ -15,28 +15,28 @@ import (
 
 func TestContainersCompareByValueCompiled(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{"def f(a, b):\n    return a == b\n\nxs = [1, 2]\nys = [1, 2]\nprint(f(xs, ys))\n", "1\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f([1, 2], [2, 1]))\n", "0\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f([\"a\"], [\"a\"]))\n", "1\n"},
+		{"def f(a, b):\n    return a == b\n\nxs = [1, 2]\nys = [1, 2]\nprint(f(xs, ys))\n", "True\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f([1, 2], [2, 1]))\n", "False\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f([\"a\"], [\"a\"]))\n", "True\n"},
 		// The payload is not enough: a stored string is an index into @str_tab, and the
 		// number 1 is a payload that can equal it. The tag is what tells them apart.
-		{"def f(a, b):\n    return a == b\n\nprint(f([1], [\"1\"]))\n", "0\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f([1, \"a\", None], [1, \"a\", None]))\n", "1\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f([1], [\"1\"]))\n", "False\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f([1, \"a\", None], [1, \"a\", None]))\n", "True\n"},
 		// Sets and dicts are unordered: equality is containment, not slot order.
-		{"def f(a, b):\n    return a == b\n\nprint(f({1, 2}, {2, 1}))\n", "1\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f({1, 2}, {1, 2, 3}))\n", "0\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f({\"a\": 1, \"b\": 2}, {\"b\": 2, \"a\": 1}))\n", "1\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f({\"a\": 1}, {\"a\": 2}))\n", "0\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f({1, 2}, {2, 1}))\n", "True\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f({1, 2}, {1, 2, 3}))\n", "False\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f({\"a\": 1, \"b\": 2}, {\"b\": 2, \"a\": 1}))\n", "True\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f({\"a\": 1}, {\"a\": 2}))\n", "False\n"},
 		// A container against a scalar is simply unequal, as Python says — not a trap.
-		{"xs = [1]\nprint(xs == 1)\n", "0\n"},
-		{"print([1] == 1)\n", "0\n"},
+		{"xs = [1]\nprint(xs == 1)\n", "False\n"},
+		{"print([1] == 1)\n", "False\n"},
 		// Growth changes the answer, so the tags written by append must be real.
 		{"xs = [1, 2]\nys = [1, 2]\nxs.append(3)\nif xs == ys:\n    print(\"same\")\nelse:\n    print(\"grown\")\n", "grown\n"},
 		// A slot written by mutation keeps its tag, and a comparison reads the pair.
 		{"d = {\"a\": 1}\ne = {\"a\": 1}\nd[\"b\"] = 2\nif d == e:\n    print(\"same\")\nelse:\n    print(\"grew\")\n", "grew\n"},
 		{"s = {1, 2}\nt = {1, 2}\ns.add(3)\nif s == t:\n    print(\"same\")\nelse:\n    print(\"more\")\n", "more\n"},
 		// `is` is still identity, and it is a different question from `==`.
-		{"xs = [1, 2]\nys = [1, 2]\nprint(xs is xs)\nprint(xs is ys)\n", "1\n0\n"},
+		{"xs = [1, 2]\nys = [1, 2]\nprint(xs is xs)\nprint(xs is ys)\n", "True\nFalse\n"},
 	} {
 		res, err := JIT(tc.src, 0)
 		if err != nil {
@@ -52,14 +52,14 @@ func TestContainersCompareByValueCompiled(t *testing.T) {
 // CPython's (integration/container_equality_test.go checks the third leg).
 func TestContainersCompareByValueInterpreted(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{"xs = [1, 2]\nys = [1, 2]\nprint(xs == ys)\n", "1\n"},
-		{"xs = [1, 2]\nys = [2, 1]\nprint(xs == ys)\n", "0\n"},
-		{"xs = [1, 2]\nprint(xs != xs)\n", "0\n"},
-		{"print([1] != [2])\n", "1\n"},
-		{"print({1, 2} == {2, 1})\n", "1\n"},
-		{"print({\"a\": 1, \"b\": 2} == {\"b\": 2, \"a\": 1})\n", "1\n"},
-		{"print([1] == 1)\n", "0\n"},
-		{"print([] == [])\n", "1\n"},
+		{"xs = [1, 2]\nys = [1, 2]\nprint(xs == ys)\n", "True\n"},
+		{"xs = [1, 2]\nys = [2, 1]\nprint(xs == ys)\n", "False\n"},
+		{"xs = [1, 2]\nprint(xs != xs)\n", "False\n"},
+		{"print([1] != [2])\n", "True\n"},
+		{"print({1, 2} == {2, 1})\n", "True\n"},
+		{"print({\"a\": 1, \"b\": 2} == {\"b\": 2, \"a\": 1})\n", "True\n"},
+		{"print([1] == 1)\n", "False\n"},
+		{"print([] == [])\n", "True\n"},
 	} {
 		res, err := JIT(tc.src, 0)
 		if err != nil {
@@ -191,10 +191,10 @@ func TestContainerEqHelperReadsTags(t *testing.T) {
 // a number from a word (ADR 0189).
 func TestTaggedElementsDistinguishPayloadCollisions(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{"def f(a, b):\n    return a == b\n\nprint(f([0], [\"zero\"]))\n", "0\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f([\"zero\"], [0]))\n", "0\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f({0: 1}, {\"zero\": 1}))\n", "0\n"},
-		{"def f(a, b):\n    return a == b\n\nprint(f([0, \"zero\"], [0, \"zero\"]))\n", "1\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f([0], [\"zero\"]))\n", "False\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f([\"zero\"], [0]))\n", "False\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f({0: 1}, {\"zero\": 1}))\n", "False\n"},
+		{"def f(a, b):\n    return a == b\n\nprint(f([0, \"zero\"], [0, \"zero\"]))\n", "True\n"},
 	} {
 		res, err := JIT(tc.src, 0)
 		if err != nil {

@@ -1,0 +1,9 @@
+# A bool that travels through a call. Verdicts print True/False where they are written
+# (probe_bool_value.gy), but a function's parameter holds the 1 the comparison produced
+# and nothing says what it used to be, so this prints 1 where CPython prints True
+# (roadmap Gap R.111, filed by ADR 0257).
+def show(f):
+    print(f)
+
+show(1 == 1)
+show(True)

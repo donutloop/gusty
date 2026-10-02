@@ -31,9 +31,12 @@ func TestIntFloatEqualityIsSymmetric(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			want := strings.TrimSpace(tc.want) == "1"
 			got := captureStdout(t, fmt.Sprintf("print((%s %s %s))\n", tc.left, tc.op, tc.right))
-			printed := "1\n"
+			// A verdict prints as a verdict. The two strings here used to be 1 and 0, which is
+			// what this backend printed and not what the oracle did (roadmap L11.1 step 2,
+			// ADR 0257).
+			printed := "True\n"
 			if !want {
-				printed = "0\n"
+				printed = "False\n"
 			}
 			if got != printed {
 				t.Fatalf("(%s %s %s) printed %q, want %q", tc.left, tc.op, tc.right, got, printed)
@@ -64,7 +67,7 @@ func TestCrossTypeComparisonGrid(t *testing.T) {
 					if err != nil {
 						t.Fatalf("expectation for %s: %v", src, err)
 					}
-					cases = append(cases, want{src, map[bool]string{true: "1\n", false: "0\n"}[cmp]})
+					cases = append(cases, want{src, map[bool]string{true: "True\n", false: "False\n"}[cmp]})
 					b.WriteString(src)
 				}
 			}
@@ -86,7 +89,7 @@ func TestCrossTypeComparisonGrid(t *testing.T) {
 func TestNumericEqualityThroughVariables(t *testing.T) {
 	src := "a = 1\nb = 1.0\nprint((a == b))\nprint((b == a))\nprint((a != b))\nc = 2.5\nd = 2\nprint((c == d))\nprint((c < d))\nprint((d < c))\n"
 	got := captureStdout(t, src)
-	want := "1\n1\n0\n0\n0\n1\n"
+	want := "True\nTrue\nFalse\nFalse\nFalse\nTrue\n"
 	if got != want {
 		t.Fatalf("variable comparisons printed %q, want %q", got, want)
 	}
@@ -103,8 +106,8 @@ func TestEqualityWithNonNumbersIsStillFalse(t *testing.T) {
 		"print((\"a\" == 1.0))\n",
 		"print((1.0 == \"a\"))\n",
 	} {
-		if got := captureStdout(t, src); got != "0\n" {
-			t.Fatalf("%q printed %q, want 0 — a number is not equal to a container or a string", strings.TrimSpace(src), got)
+		if got := captureStdout(t, src); got != "False\n" {
+			t.Fatalf("%q printed %q, want False — a number is not equal to a container or a string", strings.TrimSpace(src), got)
 		}
 	}
 }
@@ -114,12 +117,12 @@ func TestEqualityWithNonNumbersIsStillFalse(t *testing.T) {
 // as floats.
 func TestContainerEqualityComparesElementsAcrossTypes(t *testing.T) {
 	cases := []struct{ src, want string }{
-		{"print(([1] == [1.0]))\n", "1\n"},
-		{"print(([1, 2] == [1, 2.0]))\n", "1\n"},
-		{"print(([1, 2] == [1, 3]))\n", "0\n"},
-		{"print(([] == []))\n", "1\n"},
-		{"print(({\"a\": 1} == {\"a\": 1.0}))\n", "1\n"},
-		{"print(({\"a\": 1} == {\"a\": 2}))\n", "0\n"},
+		{"print(([1] == [1.0]))\n", "True\n"},
+		{"print(([1, 2] == [1, 2.0]))\n", "True\n"},
+		{"print(([1, 2] == [1, 3]))\n", "False\n"},
+		{"print(([] == []))\n", "True\n"},
+		{"print(({\"a\": 1} == {\"a\": 1.0}))\n", "True\n"},
+		{"print(({\"a\": 1} == {\"a\": 2}))\n", "False\n"},
 	}
 	for _, tc := range cases {
 		if got := captureStdout(t, tc.src); got != tc.want {
@@ -131,11 +134,11 @@ func TestContainerEqualityComparesElementsAcrossTypes(t *testing.T) {
 // TestIdentityIsNotEquality guards the neighbouring rule: `is` asks about identity and must not
 // pick up the numeric coercion, or `x is y` would start answering a value question.
 func TestIdentityIsNotEquality(t *testing.T) {
-	if got := captureStdout(t, "x = 1\ny = 1.0\nprint((x is y))\n"); got != "0\n" {
+	if got := captureStdout(t, "x = 1\ny = 1.0\nprint((x is y))\n"); got != "False\n" {
 		t.Fatalf("`1 is 1.0` printed %q; identity must stay identity", got)
 	}
-	if got := captureStdout(t, "x = 1\ny = x\nprint((x is y))\n"); got != "1\n" {
-		t.Fatalf("`x is x` printed %q, want 1", got)
+	if got := captureStdout(t, "x = 1\ny = x\nprint((x is y))\n"); got != "True\n" {
+		t.Fatalf("`x is x` printed %q, want True", got)
 	}
 }
 

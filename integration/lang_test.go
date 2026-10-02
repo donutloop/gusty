@@ -659,7 +659,7 @@ func TestExecStrJoin(t *testing.T) {
 }
 
 func TestExecStrEq(t *testing.T) {
-	assertOutput(t, `print("abc" == "abd")`, "0\n")
+	assertOutput(t, `print("abc" == "abd")`, "False\n")
 }
 
 func TestExecStrBuiltin(t *testing.T) {
@@ -768,16 +768,16 @@ func TestListCallConsumersRun(t *testing.T) {
 		t.Fatalf("max(sorted([3,1,2])) = %q, want 3", got)
 	}
 	got = compileAndRun(t, `print(any(sorted([0, 2, 3])))`)
-	if got != "1\n" {
-		t.Fatalf("any(sorted([0,2,3])) = %q, want 1", got)
+	if got != "True\n" {
+		t.Fatalf("any(sorted([0,2,3])) = %q, want True", got)
 	}
 	got = compileAndRun(t, `print(all(sorted([1, 2, 3])))`)
-	if got != "1\n" {
+	if got != "True\n" {
 		t.Fatalf("all(sorted([1,2,3])) = %q, want 1", got)
 	}
 	got = compileAndRun(t, `print(all(sorted([0, 1, 2])))`)
-	if got != "0\n" {
-		t.Fatalf("all(sorted([0,1,2])) = %q, want 0", got)
+	if got != "False\n" {
+		t.Fatalf("all(sorted([0,1,2])) = %q, want False", got)
 	}
 }
 
@@ -813,8 +813,8 @@ func TestOverEmptyNestedListsRun(t *testing.T) {
 		t.Fatalf("sum(sorted([])) = %q, want 0", got)
 	}
 	got = compileAndRun(t, `print(all(sorted([])))`)
-	if got != "1\n" {
-		t.Fatalf("all(sorted([])) = %q, want 1", got)
+	if got != "True\n" {
+		t.Fatalf("all(sorted([])) = %q, want True", got)
 	}
 }
 

@@ -159,6 +159,8 @@ entry:
 @.fmti = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtnl = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.fmtnone = private unnamed_addr constant [5 x i8] c"None\00"
+@.fmttrue = private unnamed_addr constant [5 x i8] c"True\00"
+@.fmtfalse = private unnamed_addr constant [6 x i8] c"False\00"
 @.fmtq = private unnamed_addr constant [5 x i8] c"'%s'\00"
 @.fmts = private unnamed_addr constant [3 x i8] c"%s\00"
 @.fmtcolon = private unnamed_addr constant [3 x i8] c": \00"
@@ -1555,6 +1557,35 @@ eol:
   br label %fin
 fin:
   ret void
+}
+
+; rt_print_bool writes a bool as True/False. What a bool holds is the 0/1 the comparison
+; produced — the value word carries no kind — so the compiler's front end decides which
+; expressions are bools (pkg/lang/boolvalue.go) and this printer only renders them, which is
+; the standing arrangement of rt_print_none (ADR 0172) and rt_print_str (ADR 0224): the front
+; end reads the program, the runtime renders (roadmap L11.1 step 2, ADR 0257). The honour-the-
+; caller's-newline rule of ADR 0165 applies: the printer does not own the terminator.
+define internal void @rt_print_bool(i32 %v, i32 %nl) {
+entry:
+  %t = icmp ne i32 %v, 0
+  %tp = select i1 %t, i8* getelementptr ([5 x i8], [5 x i8]* @.fmttrue, i32 0, i32 0), i8* getelementptr ([6 x i8], [6 x i8]* @.fmtfalse, i32 0, i32 0)
+  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %tp)
+  %wantnl = icmp ne i32 %nl, 0
+  br i1 %wantnl, label %eol, label %fin
+eol:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  br label %fin
+fin:
+  ret void
+}
+
+; rt_bool_text is the same answer as a string, for str(True) and for an interpolated
+; {flag}: an f-string wants bytes, and a bool's bytes are its own literal.
+define internal i8* @rt_bool_text(i32 %v) {
+entry:
+  %t = icmp ne i32 %v, 0
+  %tp = select i1 %t, i8* getelementptr ([5 x i8], [5 x i8]* @.fmttrue, i32 0, i32 0), i8* getelementptr ([6 x i8], [6 x i8]* @.fmtfalse, i32 0, i32 0)
+  ret i8* %tp
 }
 
 define internal void @rt_print_list(i32 %h, i32 %nl) {
@@ -3015,6 +3046,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		classIDs: map[string]int{}, nextSlot: 1,
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
+		boolVars:    map[string]bool{},
 		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// What a compiled function body may know about its module: literal bindings the module never
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
@@ -3476,6 +3508,11 @@ type irGen struct {
 	// noneVars records variables whose latest assignment is the None singleton, so
 	// print/truthiness/equality can be decided statically (ADR 0172).
 	noneVars map[string]bool
+	// boolVars records variables whose latest assignment produced a bool, so print and str
+	// can render True/False instead of the 0/1 the comparison left in the slot. Same standing
+	// as noneVars (ADR 0172) and internedVars (ADR 0224): the front end reads the program and
+	// the runtime renders (roadmap L11.1 step 2, ADR 0257).
+	boolVars map[string]bool
 	// listElemStr / setElemStr / dictKeyStr / dictValStr record that a container's elements
 	// are interned strings (indices into @str_tab), which decides how they print and how
 	// element reads behave (roadmap Gap I.2).
@@ -7235,6 +7272,7 @@ func (g *irGen) beginScope() func() {
 	savedAlloc, savedRoots := g.allocd, g.gcRootSeen
 	savedList, savedDict, savedSet, savedFresh := g.listVars, g.runtimeDicts, g.runtimeSets, g.freshSlots
 	savedNone := g.noneVars
+	savedBool := g.boolVars
 	savedLStr, savedSStr, savedKStr, savedVStr, savedInt := g.listElemStr, g.setElemStr, g.dictKeyStr, g.dictValStr, g.internedVars
 	savedLNum, savedSNum, savedKNum, savedVNum := g.listElemInt, g.setElemInt, g.dictKeyInt, g.dictValInt
 	savedMixDict, savedMixSet := g.mixedDicts, g.mixedSets
@@ -7245,6 +7283,7 @@ func (g *irGen) beginScope() func() {
 	g.runtimeSets = map[string]bool{}
 	g.freshSlots = map[string]bool{}
 	g.noneVars = map[string]bool{}
+	g.boolVars = map[string]bool{}
 	g.listElemStr = map[string]bool{}
 	g.setElemStr = map[string]bool{}
 	g.dictKeyStr = map[string]bool{}
@@ -7261,6 +7300,7 @@ func (g *irGen) beginScope() func() {
 		g.listVars, g.runtimeDicts, g.runtimeSets = savedList, savedDict, savedSet
 		g.freshSlots = savedFresh
 		g.noneVars = savedNone
+		g.boolVars = savedBool
 		g.listElemStr, g.setElemStr = savedLStr, savedSStr
 		g.dictKeyStr, g.dictValStr, g.internedVars = savedKStr, savedVStr, savedInt
 		g.listElemInt, g.setElemInt = savedLNum, savedSNum
@@ -10923,6 +10963,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							sp := g.newTmp()
 							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, vv))
 							operands = append(operands, "i8* "+sp)
+						} else if g.printsAsBool(part.Expr) {
+							g.heapUsed = true // rt_bool_text lives in the heap runtime module
+							// An interpolated bool contributes its word: `f"{flag}"` is "True", the
+							// text print writes and str() returns, because all three ask one predicate
+							// (roadmap L11.1 step 2, ADR 0257).
+							fmtLit += "%s"
+							pv, perr := g.value(b, part.Expr)
+							if perr != nil {
+								return "", perr
+							}
+							bp := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_bool_text(i32 %s)\n", bp, pv))
+							operands = append(operands, "i8* "+bp)
 						} else {
 							fmtLit += "%d"
 							vv, err := g.value(b, part.Expr)
@@ -11134,6 +11187,26 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					}
 					continue
 				}
+			}
+			// A bool prints as True/False. The value is the 0/1 the comparison produced — an
+			// untagged word, because giving bools their own tagged word is the L11.1 destination and
+			// not this rung — so the question 「is this expression a bool?」 is answered from the AST,
+			// where it was always answerable. It takes this branch only after every container, tag
+			// and text arm above has declined, so what it intercepts is exactly what used to reach
+			// printf("%d") and answer 1 (roadmap L11.1 step 2, ADR 0257).
+			if g.printsAsBool(a) {
+				// The bool printer lives in the heap runtime module, as the None printer does, and
+				// that module drags in the root table it reads kinds from — so a program that prints
+				// a verdict and allocates nothing else has to say the heap runtime is in use, or llc
+				// reports `use of undefined value '@gc.kinds'` on a two-line program (ADR 0209's
+				// rule about gates, roadmap L11.1 step 2, ADR 0257).
+				g.heapUsed = true
+				v, err := g.value(b, a)
+				if err != nil {
+					return "", err
+				}
+				b.WriteString(fmt.Sprintf("  call void @rt_print_bool(i32 %s, i32 0)\n", v))
+				continue
 			}
 			var t string
 			if g.isFloat(a) {
@@ -11829,6 +11902,23 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("str expects one argument")
 		}
+		// str(True) is the word "True" and not the digit "1". Both spellings are known right
+		// here, so the answer is the @str_tab index the 0/1 selects — an ordinary string value
+		// from here on, which is what makes `s = str(flag)` then `print(s.upper())` behave like
+		// the text it is (Gap R.42's rule, roadmap L11.1 step 2, ADR 0257).
+		if g.printsAsBool(c.Args[0]) {
+			sv, serr := g.value(b, c.Args[0])
+			if serr != nil {
+				return "", serr
+			}
+			tt := g.internStr(b, "True")
+			ff := g.internStr(b, "False")
+			bt := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", bt, sv))
+			sel := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", sel, bt, tt, ff))
+			return sel, nil
+		}
 		if g.isFloat(c.Args[0]) {
 			if fv, ok := g.floatEval(c.Args[0]); ok {
 				// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
@@ -12391,6 +12481,45 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 // decided at run time: None is recognised where the source says so — the literal, a variable
 // whose latest assignment was None, and a call to a function whose body never returns a value
 // (ADR 0172).
+// forgetVarBool retires a name's boolness where the binding is not an expression the
+// front end can read — a loop variable, a comprehension counter, a parameter. The name
+// may once have been assigned a comparison, and a program must not print True for the
+// number the iterable bound into it afterwards (ADR 0172's latest-binding rule, carried
+// to bools by ADR 0257).
+func (g *irGen) forgetVarBool(name string) {
+	delete(g.boolVars, name)
+}
+
+// printsAsBool answers whether print and str render this expression as True/False. The
+// value itself is the 0/1 the comparison produced — a bool has no word of its own to carry
+// a kind, and the tagged value word that would give it one is the L11.1 destination, not
+// this rung — so the answer comes from the AST, where it has always been. The interpreter's
+// print, the CLI's --json type field and this backend all ask the one predicate in
+// pkg/lang/boolvalue.go, so the two engines cannot disagree about what is a bool
+// (roadmap L11.1 step 2, ADR 0257).
+func (g *irGen) printsAsBool(e Expr) bool {
+	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand})
+}
+
+// instanceOperand is the compiled side of the dunder question the bool predicate asks:
+// `g.receiverClass` is the same predicate `emitDunderBinOp` uses to decide whether `a < 4`
+// is an icmp or a call to `__lt__`, and the two must agree — an overloaded comparison prints
+// what its method returned (dunder.gy prints 1, 0 for exactly that reason), while a builtin
+// one prints a verdict (ADR 0257, against the L6.6 rule).
+func (g *irGen) instanceOperand(x Expr) bool {
+	return g.receiverClass(x) != ""
+}
+
+// lookupFuncDef resolves a called name to its definition so the bool predicate can read the
+// callee's own returns: what a function returns is determined by what its body does
+// (ADR 0254), which is also how the string- and float-returning tables are built.
+func (g *irGen) lookupFuncDef(name string) *FuncDef {
+	if fd, ok := g.fds[name]; ok {
+		return fd
+	}
+	return nil
+}
+
 func (g *irGen) isNoneExpr(e Expr) bool {
 	switch v := e.(type) {
 	case *NoneLit:
@@ -13429,6 +13558,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 				g.floatVars = map[string]bool{}
 			}
 			g.floatVars[p.Name] = true
+			g.forgetVarBool(p.Name)
 			fmt.Fprintf(b, "  %%_%s = alloca double\n", p.Name)
 			fmt.Fprintf(b, "  store double %%p%d, double* %%_%s\n", i, p.Name)
 			// The slot exists now, so the body's assignment to this name must reuse
@@ -13818,6 +13948,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// first, then snapshot all RHS values, then store each target.
 			for _, tgt := range tup.Elems {
 				if nm, ok2 := tgt.(*Name); ok2 {
+					// Unpacking binds each name to an element the front end cannot read as
+					// a verdict, so whatever the name held before is gone (ADR 0172's
+					// latest-binding rule, carried to bools by ADR 0257 — the interpreter
+					// already forgets here, and the two engines must forget together).
+					g.forgetVarBool(nm.Value)
 					if !g.allocd[nm.Value] {
 						g.allocd[nm.Value] = true
 						b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
@@ -13911,6 +14046,18 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.noneVars[nm.Value] = true
 			} else if !rebindsContainer {
 				delete(g.noneVars, nm.Value)
+			}
+			// A bool is tracked the same way, by the same rule: the variable's latest
+			// assignment decides how print and str render it, and any other assignment clears
+			// the status — `flag = 1 == 1` then `flag = 5` must print 5 (ADR 0172's rule, applied
+			// to bools by ADR 0257).
+			if g.printsAsBool(n.Value) && !rebindsContainer {
+				if g.boolVars == nil {
+					g.boolVars = map[string]bool{}
+				}
+				g.boolVars[nm.Value] = true
+			} else if !rebindsContainer {
+				delete(g.boolVars, nm.Value)
 			}
 			// A module-level container variable needs its slot + GC root before
 			// anything mutates it; the empty-literal init (`xs = []`) is where that
@@ -14473,6 +14620,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// augmented assignment: read target, apply op with rhs, store back.
 		binop := &BinOp{Op: n.Op, L: n.Target, R: n.Value}
 		if nm, ok := n.Target.(*Name); ok {
+			// `flag += 1` rebinds the name to arithmetic, and arithmetic is not a verdict:
+			// the status has to go with the value it replaces, here as in the interpreter
+			// (ADR 0172's rule, ADR 0257).
+			g.forgetVarBool(nm.Value)
 			var v string
 			var err error
 			if g.isFloat(n.Target) || g.isFloat(n.Value) {
@@ -14726,6 +14877,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				} else {
 					delete(g.internedVars, loopSlot)
 				}
+				// The element decides what the loop variable is, exactly as it decides whether
+				// it is text: a name that once held a verdict is bound by the iterable to a
+				// number and prints as that number — ADR 0172's latest-binding rule, carried to
+				// bools by ADR 0257.
+				g.forgetVarBool(loopSlot)
 				// And the tag says what the element is, which is the question neither of those two
 				// answers covers for a float (whose payload is a box handle) or None (whose payload
 				// is nothing): printing the loop variable showed 0 where Python shows 1.5 and None
@@ -15059,6 +15215,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		cbd := fmt.Sprintf("%%%s.ld%d", ctr, g.ldN)
 		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", cbd, ctr))
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", cbd, loopVarName(n.Var)))
+		// The counter the iterator produced is what the name holds for this pass, verdict
+		// status included: it is a number however the name began (ADR 0172, ADR 0257).
+		g.forgetVarBool(loopVarName(n.Var))
 		g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 		for _, s := range n.Body {
 			if err := g.stmt(b, s); err != nil {

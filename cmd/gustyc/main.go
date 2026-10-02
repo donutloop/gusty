@@ -526,8 +526,18 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats, deb
 	// final expression, only a non-`None` value) still left `--file` appending `10` to a program that
 	// ends in `f(5)`, so the same source had two different stdouts depending on which backend ran it.
 	finalExpr := false
+	var lastExpr lang.Expr
 	if n := len(prog.Stmts); n > 0 {
-		_, finalExpr = prog.Stmts[n-1].(*lang.ExprStmt)
+		if es, ok := prog.Stmts[n-1].(*lang.ExprStmt); ok {
+			finalExpr, lastExpr = true, es.Expr
+		}
+	}
+	// A snippet ending in a verdict echoes the verdict, not the number it is stored as:
+	// `gustyc --eval '"y" == "y"'` answers True and --json names its type bool, which is
+	// the machine-readable half of L11.1's "bools are values" row (ADR 0257).
+	boolEcho := ""
+	if finalExpr && !ev.IsNone(v) && ev.IsBoolExpr(lastExpr) {
+		boolEcho = ev.BoolText(v)
 	}
 	snippet := src != ""
 	isNone := ev.IsNone(v)
@@ -536,11 +546,17 @@ func evalSrcOrFile(src, file string, jsonOut bool, backend backend, gcStats, deb
 		// an agent that asked for AOT must be able to *see* it got AOT (Gap M.2).
 		if !finalExpr || isNone {
 			fmt.Printf("{\"result\": null, \"type\": %q, \"backend\": %q, \"exit\": 0%s}\n", ev.TypeOf(v), backend, gcJSON(gc, gcStats))
+		} else if boolEcho != "" {
+			fmt.Printf("{\"result\": %q, \"type\": \"bool\", \"backend\": %q, \"exit\": 0%s}\n", boolEcho, backend, gcJSON(gc, gcStats))
 		} else {
 			fmt.Printf("{\"result\": %q, \"type\": %q, \"backend\": %q, \"exit\": 0%s}\n", ev.Repr(v), ev.TypeOf(v), backend, gcJSON(gc, gcStats))
 		}
 	} else if snippet && finalExpr && !isNone {
-		fmt.Println(ev.Repr(v))
+		if boolEcho != "" {
+			fmt.Println(boolEcho)
+		} else {
+			fmt.Println(ev.Repr(v))
+		}
 	}
 	if gcStats && !jsonOut {
 		// The report describes the tool, so it never pollutes the program's stdout.

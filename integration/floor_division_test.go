@@ -77,8 +77,10 @@ func TestCompiledFloorIdentity(t *testing.T) {
 		t.Fatalf("the identity program printed nothing")
 	}
 	for i, line := range strings.Split(strings.TrimSpace(compiled), "\n") {
-		if line != "1" {
-			t.Errorf("line %d of the identity check printed %q, want 1", i+1, line)
+		// The identity is a proposition, and CPython renders a proved proposition True;
+		// the pin here used to be 1, which was this backend's own answer (ADR 0257).
+		if line != "True" {
+			t.Errorf("line %d of the identity check printed %q, want True", i+1, line)
 		}
 	}
 }

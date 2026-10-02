@@ -24,14 +24,14 @@ func TestContainerEqualityMatchesCPython(t *testing.T) {
 		// Lists: positional, element by element.
 		{"xs = [1, 2]\nys = [1, 2]\nif xs == ys:\n    print(\"eq\")\nelse:\n    print(\"ne\")\n", "eq\n"},
 		{"xs = [1, 2]\nys = [2, 1]\nif xs == ys:\n    print(\"eq\")\nelse:\n    print(\"ne\")\n", "ne\n"},
-		{"def v(a, b):\n    return a == b\n\nprint(v([1, \"a\", None], [1, \"a\", None]))\n", "1\n"},
+		{"def v(a, b):\n    return a == b\n\nprint(v([1, \"a\", None], [1, \"a\", None]))\n", "True\n"},
 		// The interned-index collision: only the tag separates a number from a word.
-		{"def v(a, b):\n    return a == b\n\nprint(v([0], [\"zero\"]))\n", "0\n"},
-		{"def v(a, b):\n    return a == b\n\nprint(v([0, \"zero\"], [0, \"zero\"]))\n", "1\n"},
+		{"def v(a, b):\n    return a == b\n\nprint(v([0], [\"zero\"]))\n", "False\n"},
+		{"def v(a, b):\n    return a == b\n\nprint(v([0, \"zero\"], [0, \"zero\"]))\n", "True\n"},
 		// Sets and dicts are unordered; a positional walk would get these wrong.
-		{"def v(a, b):\n    return a == b\n\nprint(v({1, 2}, {2, 1}))\n", "1\n"},
-		{"def v(a, b):\n    return a == b\n\nprint(v({\"a\": 1, \"b\": 2}, {\"b\": 2, \"a\": 1}))\n", "1\n"},
-		{"def v(a, b):\n    return a == b\n\nprint(v({\"a\": 1}, {\"a\": 2}))\n", "0\n"},
+		{"def v(a, b):\n    return a == b\n\nprint(v({1, 2}, {2, 1}))\n", "True\n"},
+		{"def v(a, b):\n    return a == b\n\nprint(v({\"a\": 1, \"b\": 2}, {\"b\": 2, \"a\": 1}))\n", "True\n"},
+		{"def v(a, b):\n    return a == b\n\nprint(v({\"a\": 1}, {\"a\": 2}))\n", "False\n"},
 		// Mutation rewrites the answer, so mutation has to rewrite the tags too.
 		{
 			"xs = [1, 2]\nys = [1, 2]\nxs.append(3)\nif xs == ys:\n    print(\"eq\")\nelse:\n    print(\"ne\")\n",

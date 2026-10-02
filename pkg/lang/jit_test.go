@@ -1327,7 +1327,7 @@ print(f"hello {s}!")`)
 	}
 	// bool interpolation
 	out = captureStdout(t, `print(f"{True}")`)
-	if out != "1\n" {
+	if out != "True\n" {
 		t.Fatalf("bool f-string stdout %q, want True\\n", out)
 	}
 	// a bare f-string returns a non-zero string handle

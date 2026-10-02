@@ -85,7 +85,7 @@ var containerIterCases = []struct {
 	{
 		"membership for a later key",
 		"d = {1: 2, 3: 4, 5: 6}\nprint(5 in d)\nprint(9 in d)\n",
-		"1\n0\n",
+		"True\nFalse\n",
 	},
 	{
 		"lookup of a later key",
@@ -95,7 +95,7 @@ var containerIterCases = []struct {
 	{
 		"every value reachable by key after mutation",
 		"d = {}\nfor i in range(5):\n    d[i] = i * i\n\nprint(d[4])\nprint(3 in d)\nprint(9 in d)\n",
-		"16\n1\n0\n",
+		"16\nTrue\nFalse\n",
 	},
 	// Two container loops that reuse the same variable name: the loop variable's
 	// slot must be allocated in the block that branches into the loop, because an

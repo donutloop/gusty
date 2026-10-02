@@ -5096,6 +5096,62 @@ kind is chosen by data rather than written in the `return`. Pinned at the wrong 
 answer beside it, so the day the pair arrives the row flips to parity instead of being rewritten.
 
 
+### Gap R.111 — a verdict handed to a function loses its name on the way in (OPEN, measured landing ADR 0257)
+
+```gusty
+def show(f):
+    print(f)
+
+show(1 == 1)   # CPython True · --interp 1 · --aot 1
+show(True)     # CPython True · --interp 1 · --aot 1
+```
+
+ADR 0257's predicate answers a *print site*: it looks at the expression in the argument position and says
+whether that expression answers a question. Inside `show` there is no such expression any more — there is a
+parameter, bound to whatever arrived, and the value that arrived is an immediate `0`/`1` with nothing
+attached. Every engine in the repo that has ever tried to carry a kind across a call has hit the same wall:
+Gap R.80 (a container argument prints `[1]`), ADR 0256's Gap R.110 (a fold's winner settled by a call site),
+Gap R.67 (a container returned from a function). The closure is not a better question at the print site — it
+is the `(payload, tag)` pair arriving with the argument, which is L11.1's tagged value word and nothing less.
+
+Pinned twice so it cannot drift quietly: the probe program's row in the oracle ledger carries each leg's exact
+`1\n1\n`, and the unit table pins the same answer with the gap named in the failure text.
+
+### Gap R.112 — a verdict stored in a container prints the number it was stored as (OPEN, measured landing ADR 0257)
+
+```gusty
+print([True, 1])        # CPython [True, 1] · both engines [1, 1]
+print({"k": True})      # CPython {'k': True} · both engines {'k': 1}
+```
+
+This is L11.1's written plan for bools — *give bool its own tag; one line of `elemKindTag` and every container
+follows* — and it is the half of the plan that a print-side rule cannot reach. A container's slots are typed by
+the element tag vocabulary ADR 0184 built (`int`, `str`, `list`, `dict`, `set`); there is no `bool` in it, so
+the container printer reads the immediate the same way it reads an untagged int, and `TestSlotOrderOfABoolSlot
+NamesIntUntilL11_2`'s `TypeError` says `'int'` for the identical reason. One entry in that vocabulary closes
+both rows. What would *not* close them is a heap-object `ValueTag`: a bool is not an object, it allocates
+nothing, and the readers of a heap tag — `gc.kinds`, the collector, `rt_print_mixed_value`'s object arms — are
+not the readers that need the answer. The distinction is why the row's plan said `elemKindTag` and why the
+print rule went a different way in ADR 0257 rather than waiting for a tag nothing would ask about.
+
+### Gap R.113 — `except <Type> as e:` is not in the grammar (OPEN, measured probing bools through a `try`)
+
+```gusty
+try:
+    x = 1 / 0
+except ZeroDivisionError as err:
+    print(err)          # CPython: division by zero
+```
+
+`gustyc: parse error at 3:26: expected ":"`, then `parse error at 4:5: unexpected token`, exit 1, on both paths.
+The arms themselves are fine — `except ZeroDivisionError:` catches, `except Exception:` and a bare `except:`
+catch anything, and the arms are tried in source order (ADR 0213) — but nothing can *name* the exception that
+was caught, so its message is only reachable by printing a traceback. `docs/language.md` never claimed the
+binding, so this is unimplemented surface rather than a regression; it is filed here because a bool cycle
+reached for it while asking what `print(0 == None)` should look like inside a `try`, found nothing, and a
+defect that is measured and not written down is the same as one that does not exist. No test yet: the closure
+owes the program above running on three engines, and the test that pins today's parse failure comes with it.
+
 ### Gap R.100 — closed by ADR 0255: the loop's increment needs a latch block, not a guess
 
 ```gusty

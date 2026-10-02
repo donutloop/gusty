@@ -1,0 +1,6 @@
+# A bool inside a container. The element tag vocabulary that tells a list's element from text or
+# a float has no bool in it, so both backends print the number a bool is stored as: `[1, 1]` and
+# `{'k': 1}` where CPython prints `[True, 1]` and `{'k': True}` (roadmap Gap R.112, filed by ADR
+# 0257 — the print rule landed there; the element tag of the ADR 0184 vocabulary still has to grow).
+print([True, 1])
+print({"k": True})

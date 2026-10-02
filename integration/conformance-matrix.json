@@ -1839,39 +1839,21 @@
         "name": "container_methods.gy",
         "source": "xs = [1, 2, 3]\nprint(xs.pop())\nprint(xs)\nprint(xs.pop(0))\nprint(xs)\n\nys = [4, 5, 6]\nt = 0\n\nwhile ys:\n    t = t + ys.pop()\n\nprint(t)\nprint(len(ys))\n\ns = set()\nprint(s)\ns.add(1)\ns.add(2)\ns.add(1)\nprint(len(s))\nprint(2 in s)\n\nfor v in s:\n    print(v * 10)\n\ns.discard(1)\nprint(len(s))\n\nd = dict()\nd[1] = 9\nd[2] = 8\nprint(d[1])\nprint(len(d))\n\nlst = list()\nlst.append(7)\nlst.append(8)\nprint(lst)\nprint(lst.pop())\n\ntry:\n    xs.pop(99)\nexcept IndexError:\n    print(\"caught pop\")\n\ntry:\n    empty = []\n    empty.pop()\nexcept IndexError:\n    print(\"caught empty pop\")\n",
         "shared": true,
-        "oracle": "debt",
-        "reason": "print(2 in s) is 1, not True — bools are still the integer 1 with no tag to render from",
-        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n"
-          }
-        ]
+        "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
+      "interp_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\nTrue\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
       "aot_ok": true,
-      "aot_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\n1\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
+      "aot_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\nTrue\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
       "parity": true,
       "python_ok": true,
       "python_stdout": "3\n[1, 2]\n1\n[2]\n15\n0\nset()\n2\nTrue\n10\n20\n1\n9\n2\n[7, 8]\n8\ncaught pop\ncaught empty pop\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "print(2 in s) is 1, not True — bools are still the integer 1 with no tag to render from",
-      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
       "oracle_rules": [
         "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
       ]
     },
     {
@@ -1880,39 +1862,44 @@
         "name": "none_values.gy",
         "source": "def emit():\n    print(\"side\")\n\nprint(None)\nx = None\nprint(x)\nprint(emit())\nprint(emit() == None)\nprint(0 == None)\nprint(None == None)\nif None:\n    print(\"truthy\")\nelse:\n    print(\"falsy\")\nxs = [1, None]\nprint(len(xs))\nwhile x == None:\n    print(\"once\")\n    x = 1\nprint(x)\n",
         "shared": true,
-        "oracle": "debt",
-        "reason": "comparisons (emit() == None, 0 == None, None == None) print 1/0 where CPython prints True/False/True",
-        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n"
-          }
-        ]
+        "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n",
+      "interp_stdout": "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n",
       "aot_ok": true,
-      "aot_stdout": "None\nNone\nside\nNone\nside\n1\n0\n1\nfalsy\n2\nonce\n1\n",
+      "aot_stdout": "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n",
       "parity": true,
       "python_ok": true,
       "python_stdout": "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "comparisons (emit() == None, 0 == None, None == None) print 1/0 where CPython prints True/False/True",
-      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
       "oracle_rules": [
         "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_bool_value",
+        "name": "probe_bool_value.gy",
+        "source": "# Conformance program (L11.1 step 2, ADR 0257) — a bool is a value, not the integer 1.\n#\n# This used to be an oracle probe: every line printed the 0/1 the verdict is stored as, and\n# `--json` reported \"type\": \"int\" for True. It is parity surface now. A bool is still an\n# immediate — the tag vocabulary has no bool in it — but the printing rule no longer asks the\n# storage what it is; it asks the AST whether the expression answers a question, and both\n# backends ask the same question, so neither can answer with a verdict the other lacks.\n#\n# The shapes where the name reaches the printer with nothing attached to it — a bool handed\n# through a call, a bool stored in a container — are probes of their own\n# (probe_bool_through_a_call, probe_bool_in_a_container) and are owed (Gaps R.111, R.112).\nprint(True)\nprint(1 == 1)\nprint(False)\nprint(0 == None)\nprint(\"yes\" == \"yes\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "True\nTrue\nFalse\nFalse\nTrue\n",
+      "aot_ok": true,
+      "aot_stdout": "True\nTrue\nFalse\nFalse\nTrue\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "True\nTrue\nFalse\nFalse\nTrue\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
       ]
     },
     {
@@ -1921,39 +1908,21 @@
         "name": "string_containers.gy",
         "source": "# Strings inside runtime containers, compiled through LLVM (roadmap Gap I.2).\n# The AOT backend keeps strings as compile-time globals while a container slot is an i32, so\n# the interned string table (rt_str_intern2 / rt_str_ptr / rt_str_repr_ptr) turns each stored\n# string into an index. The rendering below is what CPython prints for the same program.\n\nnames = [\"ada\", \"brin\", \"cad\"]\nprint(names)\nprint(len(names))\nprint(names[0])\nprint(names[2])\nprint(\"ada\" in names)\nprint(\"zed\" in names)\n\nrow = []\nrow.append(\"x\")\nrow.append(\"y\")\nprint(row)\n\npicked = \"kept\"\nrow[1] = picked\nprint(row)\n\nfor n in names:\n    print(n)\n\nscores = {}\nscores[\"ada\"] = 3\nscores[\"brin\"] = 5\nprint(scores)\nprint(len(scores))\nprint(scores[\"brin\"])\n\nflags = {}\nflags[1] = \"one\"\nprint(flags)\n\nboth = {}\nboth[\"k\"] = \"v\"\nprint(both)\n\nletters = set()\nletters.add(\"q\")\nletters.add(\"r\")\nprint(letters)\nprint(len(letters))\nfor ch in letters:\n    print(ch)\n\nempty = set()\nprint(empty)\n\ndigits = [str(1), str(2)]\nprint(digits)\n\nquoted = [\"it's\", \"plain\"]\nprint(quoted)\n",
         "shared": true,
-        "oracle": "debt",
-        "reason": "membership tests (\"ada\" in names, \"zed\" in names) print 1/0 where CPython prints True/False",
-        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n"
-          }
-        ]
+        "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
+      "interp_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\nTrue\nFalse\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
       "aot_ok": true,
-      "aot_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\n1\n0\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
+      "aot_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\nTrue\nFalse\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
       "parity": true,
       "python_ok": true,
       "python_stdout": "['ada', 'brin', 'cad']\n3\nada\ncad\nTrue\nFalse\n['x', 'y']\n['x', 'kept']\nada\nbrin\ncad\n{'ada': 3, 'brin': 5}\n2\n5\n{1: 'one'}\n{'k': 'v'}\n{'q', 'r'}\n2\nq\nr\nset()\n['1', '2']\n[\"it's\", 'plain']\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "membership tests (\"ada\" in names, \"zed\" in names) print 1/0 where CPython prints True/False",
-      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
       "oracle_rules": [
         "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
       ]
     },
     {
@@ -1962,39 +1931,21 @@
         "name": "string_escapes.gy",
         "source": "# String literals are text with Python escapes (roadmap Gap N, ADR 0178).\n# The lexer used to decode an escape by dropping the backslash (\"a\\nb\" became the\n# three letters anb) and rebuilt ordinary string values with string(byte), which\n# re-encodes every non-ASCII byte — \"héllo\" arrived as \"hÃ©llo\". Both backends now\n# agree with each other and, for everything below, with CPython.\n\nprint(\"tab\\there\")\nprint(\"quoted \\\"inside\\\"\")\nprint(\"back\\\\slash\")\nprint(\"bell\\aend\")\nprint(\"hex \\x41\\x42\")\nprint(\"unicode \\u00e9 \\U0001F600\")\nprint(\"unknown \\q stays\")\nprint(r\"raw \\t stays literal\")\nprint(\"\"\"triple\nnewline\"\"\")\nprint(\"\"\"triple escape:\\nhere\"\"\")\n\ngreeting = \"café\"\nprint(greeting)\nprint(greeting + \"!\" + greeting)\nprint(\"é\" in greeting)\nprint(greeting == \"café\")\nprint(greeting.upper())\nprint(len(greeting))\n\nwords = [\"naïve\", \"日本語\", \"🐍\"]\nprint(words)\nfor w in words:\n    print(w)\n\ntable = {}\ntable[\"key\"] = \"value é\"\nprint(table)\nprint(table[\"key\"])\n\njoined = \", \".join([\"a\\tb\", \"c\"])\nprint(joined)\n\nx = 7\nprint(f\"f-string {x} ✓\")\n",
         "shared": true,
-        "oracle": "debt",
-        "reason": "comparisons print 1/0 where CPython prints True/False (roadmap L11.2). len(\"café\") is no longer part of this row: ADR 0225 made the string unit the code point on both backends, and the program now prints 4 as CPython does",
-        "ref": "roadmap L11.2 (bools as values); the L11.5 half of this row closed with ADR 0225",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n"
-          }
-        ]
+        "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
+      "interp_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\nTrue\nTrue\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
       "aot_ok": true,
-      "aot_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\n1\n1\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
+      "aot_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\nTrue\nTrue\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
       "parity": true,
       "python_ok": true,
       "python_stdout": "tab\there\nquoted \"inside\"\nback\\slash\nbell\u0007end\nhex AB\nunicode é 😀\nunknown \\q stays\nraw \\t stays literal\ntriple\nnewline\ntriple escape:\nhere\ncafé\ncafé!café\nTrue\nTrue\nCAFÉ\n4\n['naïve', '日本語', '🐍']\nnaïve\n日本語\n🐍\n{'key': 'value é'}\nvalue é\na\tb, c\nf-string 7 ✓\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "comparisons print 1/0 where CPython prints True/False (roadmap L11.2). len(\"café\") is no longer part of this row: ADR 0225 made the string unit the code point on both backends, and the program now prints 4 as CPython does",
-      "oracle_ref": "roadmap L11.2 (bools as values); the L11.5 half of this row closed with ADR 0225",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
       "oracle_rules": [
         "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
       ]
     },
     {
@@ -2003,39 +1954,21 @@
         "name": "string_params.gy",
         "source": "# Strings across a function boundary, compiled through LLVM (roadmap Gap J.5).\n# A string argument is interned into the runtime string table and the callee receives the\n# index, so a parameter can be printed, measured, compared, forwarded, and stored in a\n# container. The rendering below is what CPython prints for the same program.\ndef greet(name):\n    print(\"hello\", name)\n\n\ndef echo(s):\n    return s\n\n\ndef size(s):\n    return len(s)\n\n\ndef is_yes(s):\n    return s == \"yes\"\n\n\ndef eq2(a, b):\n    return a == b\n\n\ndef shout(msg):\n    print(msg)\n\n\ndef fill(out, v):\n    out.append(v)\n\n\ndef put(d, k, v):\n    d[k] = v\n\n\ndef ins(s, v):\n    s.add(v)\n\n\ndef wrap(s):\n    echo(s)\n    print(s)\n\n\ngreet(\"ada\")\nshout(\"hi\")\ngreet(name=\"keyword\")\nprint(echo(\"yo\"))\nprint(size(\"abcd\"))\nprint(size(\"\"))\nprint(is_yes(\"yes\"))\nprint(is_yes(\"no\"))\nprint(eq2(\"x\", \"x\"))\nprint(eq2(\"x\", \"y\"))\n\nnames = []\nfill(names, \"one\")\nfill(names, \"two\")\nprint(names)\nprint(names[1])\n\ncounts = {}\nput(counts, \"k\", 1)\nput(counts, \"j\", 2)\nprint(counts)\nprint(counts[\"j\"])\n\nmembers = set()\nins(members, \"q\")\nins(members, \"r\")\nprint(members)\nprint(len(members))\n\nfor n in names:\n    print(n)\n\nfwd = \"forwarded\"\nshout(fwd)\nwrap(fwd)\n",
         "shared": true,
-        "oracle": "debt",
-        "reason": "string equality predicates print 1/0 where CPython prints True/False",
-        "ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n"
-          }
-        ]
+        "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
+      "interp_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\nTrue\nFalse\nTrue\nFalse\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
       "aot_ok": true,
-      "aot_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\n1\n0\n1\n0\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
+      "aot_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\nTrue\nFalse\nTrue\nFalse\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
       "parity": true,
       "python_ok": true,
       "python_stdout": "hello ada\nhi\nhello keyword\nyo\n4\n0\nTrue\nFalse\nTrue\nFalse\n['one', 'two']\ntwo\n{'k': 1, 'j': 2}\n2\n{'q', 'r'}\n2\none\ntwo\nforwarded\nforwarded\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "string equality predicates print 1/0 where CPython prints True/False",
-      "oracle_ref": "roadmap L11.2 (str/repr are one function per backend, closes Gap L.2)",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
       "oracle_rules": [
         "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
       ]
     },
     {
@@ -2444,37 +2377,78 @@
     },
     {
       "case": {
-        "id": "programs/probe_bool_value",
-        "name": "probe_bool_value.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — bools are values, not the integer 1.\n# CPython prints True/False; both gusty backends print 1/0, and `--json` reports\n# \"type\": \"int\" for True, so there is no tag to render from (L11.2).\nprint(True)\nprint(1 == 1)\nprint(False)\nprint(0 == None)\nprint(\"yes\" == \"yes\")\n",
+        "id": "programs/probe_bool_through_a_call",
+        "name": "probe_bool_through_a_call.gy",
+        "source": "# A bool that travels through a call. Verdicts print True/False where they are written\n# (probe_bool_value.gy), but a function's parameter holds the 1 the comparison produced\n# and nothing says what it used to be, so this prints 1 where CPython prints True\n# (roadmap Gap R.111, filed by ADR 0257).\ndef show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "True/False print as 1/0 and comparisons print 1/0: there is no bool tag to render from, so --json also reports \"int\" for True",
-        "ref": "roadmap L11.2 (bools as values, closes Gap L.2)",
+        "reason": "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
+        "ref": "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "1\n1\n0\n0\n1\n"
+            "stdout": "1\n1\n"
           },
           {
             "backend": "aot",
-            "stdout": "1\n1\n0\n0\n1\n"
+            "stdout": "1\n1\n"
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "1\n1\n0\n0\n1\n",
+      "interp_stdout": "1\n1\n",
       "aot_ok": true,
-      "aot_stdout": "1\n1\n0\n0\n1\n",
+      "aot_stdout": "1\n1\n",
       "parity": true,
       "python_ok": true,
-      "python_stdout": "True\nTrue\nFalse\nFalse\nTrue\n",
+      "python_stdout": "True\nTrue\n",
       "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "True/False print as 1/0 and comparisons print 1/0: there is no bool tag to render from, so --json also reports \"int\" for True",
-      "oracle_ref": "roadmap L11.2 (bools as values, closes Gap L.2)",
+      "oracle_reason": "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
+      "oracle_ref": "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_bool_in_a_container",
+        "name": "probe_bool_in_a_container.gy",
+        "source": "# A bool inside a container. The element tag vocabulary that tells a list's element from text or\n# a float has no bool in it, so both backends print the number a bool is stored as: `[1, 1]` and\n# `{'k': 1}` where CPython prints `[True, 1]` and `{'k': True}` (roadmap Gap R.112, filed by ADR\n# 0257 — the print rule landed there; the element tag of the ADR 0184 vocabulary still has to grow).\nprint([True, 1])\nprint({\"k\": True})\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a bool in a list or dict prints as the number it is stored as on both backends: the element tag vocabulary a container carries has no bool in it, so the printer reads 1 where Python reads True",
+        "ref": "roadmap Gap R.112 (filed by ADR 0257, the bools-are-values cycle)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[1, 1]\n{'k': 1}\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "[1, 1]\n{'k': 1}\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[1, 1]\n{'k': 1}\n",
+      "aot_ok": true,
+      "aot_stdout": "[1, 1]\n{'k': 1}\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "[True, 1]\n{'k': True}\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a bool in a list or dict prints as the number it is stored as on both backends: the element tag vocabulary a container carries has no bool in it, so the printer reads 1 where Python reads True",
+      "oracle_ref": "roadmap Gap R.112 (filed by ADR 0257, the bools-are-values cycle)",
       "oracle_rules": [
         "set-order"
       ],
@@ -3195,12 +3169,12 @@
       ]
     }
   ],
-  "rows": 109,
-  "skipped": 18,
-  "pass": 91,
+  "rows": 111,
+  "skipped": 19,
+  "pass": 92,
   "fail": 0,
-  "oracle_match": 72,
-  "oracle_debt": 20,
+  "oracle_match": 78,
+  "oracle_debt": 16,
   "oracle_not_applicable": 17,
   "oracle_drift": 0
 }

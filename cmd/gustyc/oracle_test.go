@@ -66,12 +66,14 @@ func TestCLIOracleReportsThreeLegs(t *testing.T) {
 }
 
 func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
-	// print(True) prints 1 on both backends and True in CPython: the program is
-	// valid, it ran, and the answer is wrong. That class is exit 6 — not a compile
-	// error (1) and not a crash (3).
-	out, code := benchCLI(t, "--json", "--oracle", "print(True)\n")
+	// A bool inside a container prints [1, 1] on both backends and [True, 1] in CPython (roadmap Gap
+	// R.112): the program is valid, it ran, and the answer is wrong. That class is exit 6 — not a
+	// compile error (1) and not a crash (3). This fixture used to be `print(True)`, which stopped
+	// being a divergence when ADR 0257 gave a verdict its name; the debt had to move to a program
+	// that really still owes one, or the test would have been asserting a contract nothing violates.
+	out, code := benchCLI(t, "--json", "--oracle", "print([True, 1])\n")
 	if code != exitOracleDivergence {
-		t.Fatalf("--oracle on print(True): exit = %d, want %d\n%s", code, exitOracleDivergence, out)
+		t.Fatalf("--oracle on print([True, 1]): exit = %d, want %d\n%s", code, exitOracleDivergence, out)
 	}
 	var p oraclePayload
 	if err := json.Unmarshal([]byte(out), &p); err != nil {
@@ -86,7 +88,7 @@ func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
 	if p.Legs[0].Matches || p.Legs[1].Matches {
 		t.Errorf("neither leg may claim a match: %+v", p.Legs)
 	}
-	human, hcode := benchCLICombined(t, "--oracle", "print(True)\n")
+	human, hcode := benchCLICombined(t, "--oracle", "print([True, 1])\n")
 	if hcode != exitOracleDivergence {
 		t.Errorf("human form exit = %d, want %d", hcode, exitOracleDivergence)
 	}

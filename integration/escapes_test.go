@@ -24,21 +24,12 @@ func pythonOutput(t *testing.T, src string) string {
 	// Python 3.12 warns about unknown escapes and still runs the program; the
 	// oracle leg returns stdout regardless, and these cases assert on it.
 	out, _, _ := lang.PythonRun(src)
-	return normalizePy(out)
-}
-
-func normalizePy(s string) string {
-	lines := strings.SplitAfter(s, "\n")
-	for i, l := range lines {
-		t := strings.TrimRight(l, "\n\r")
-		switch t {
-		case "True":
-			lines[i] = "1\n"
-		case "False":
-			lines[i] = "0\n"
-		}
-	}
-	return strings.Join(lines, "")
+	// No normalisation here any more. This helper used to rewrite CPython's True and
+	// False into 1 and 0 before any comparison, which quietly made every case below
+	// an agreement with a Python that never said those digits: the bool gap ADR 0257
+	// closed is exactly what this function was hiding, and an oracle is worth keeping
+	// only while it is allowed to disagree (roadmap L11.9's rule about the third leg).
+	return out
 }
 
 // Gap N — string literals are text, with Python escapes.
@@ -77,7 +68,7 @@ var escapeCases = []struct {
 	{"utf8 round trips a variable", "s = \"café\"\nprint(s)\n", "café\n"},
 	{"utf8 in a container", "xs = [\"é\", \"a\"]\nprint(xs)\n", "['é', 'a']\n"},
 	{"utf8 dict value", "d = {}\nd[\"k\"] = \"é\"\nprint(d)\n", "{'k': 'é'}\n"},
-	{"utf8 compares equal", "s = \"é\"\nprint(s == \"é\")\n", "1\n"},
+	{"utf8 compares equal", "s = \"é\"\nprint(s == \"é\")\n", "True\n"},
 	{"escaped quote survives interning", "xs = [\"a\\\"b\"]\nprint(xs)\n", "['a\"b']\n"},
 	{"escape then concat", "print(\"a\\n\" + \"b\")\n", "a\nb\n"},
 	{"tab in a joined string", "print(\"\\t\".join([\"a\", \"b\"]))\n", "a\tb\n"},
@@ -193,15 +184,15 @@ func TestStringMembershipMatchesPython(t *testing.T) {
 		src  string
 		want string
 	}{
-		{"ascii substring", "g = \"caf\"\nprint(\"ca\" in g)\n", "1\n"},
-		{"ascii miss", "g = \"café\"\nprint(\"zz\" in g)\n", "0\n"},
-		{"utf8 substring", "g = \"café\"\nprint(\"é\" in g)\n", "1\n"},
-		{"utf8 multi-byte substring", "g = \"café crème\"\nprint(\"crème\" in g)\n", "1\n"},
-		{"not in", "g = \"café\"\nprint(\"zz\" not in g)\n", "1\n"},
+		{"ascii substring", "g = \"caf\"\nprint(\"ca\" in g)\n", "True\n"},
+		{"ascii miss", "g = \"café\"\nprint(\"zz\" in g)\n", "False\n"},
+		{"utf8 substring", "g = \"café\"\nprint(\"é\" in g)\n", "True\n"},
+		{"utf8 multi-byte substring", "g = \"café crème\"\nprint(\"crème\" in g)\n", "True\n"},
+		{"not in", "g = \"café\"\nprint(\"zz\" not in g)\n", "True\n"},
 		{"empty needle", "g = \"café\"\nprint(\"{}\" in g.format())\n", ""},
-		{"runtime needle via parameter", "def f(s):\n    return \"x\" in s\n\nprint(f(\"axb\"))\nprint(f(\"bbb\"))\n", "1\n0\n"},
-		{"haystack from a call", "def g():\n    return \"hello\"\n\nprint(\"ell\" in g())\n", "1\n"},
-		{"membership in a plain list still works", "xs = [1, 2]\nprint(2 in xs)\nprint(3 in xs)\n", "1\n0\n"},
+		{"runtime needle via parameter", "def f(s):\n    return \"x\" in s\n\nprint(f(\"axb\"))\nprint(f(\"bbb\"))\n", "True\nFalse\n"},
+		{"haystack from a call", "def g():\n    return \"hello\"\n\nprint(\"ell\" in g())\n", "True\n"},
+		{"membership in a plain list still works", "xs = [1, 2]\nprint(2 in xs)\nprint(3 in xs)\n", "True\nFalse\n"},
 	} {
 		if tc.want == "" {
 			continue // documented gap: str.format is not implemented
@@ -246,7 +237,7 @@ func TestAOTStringPrintsMatchPython(t *testing.T) {
 		{"utf8 dict value", "d = {}\nd[\"k\"] = \"é\"\nprint(d[\"k\"])\n", "é\n"},
 		{"list element print", "xs = [\"a\", \"b\"]\nprint(xs[1])\n", "b\n"},
 		{"string returned by a function", "def g():\n    return \"hello\"\n\nprint(g())\n", "hello\n"},
-		{"string returned and compared", "def g():\n    return \"yes\"\n\nprint(g() == \"yes\")\n", "1\n"},
+		{"string returned and compared", "def g():\n    return \"yes\"\n\nprint(g() == \"yes\")\n", "True\n"},
 		{"escaped string returned by a function", "def g():\n    return \"a\\tb\"\n\nprint(g())\n", "a\tb\n"},
 	} {
 		if py := pythonOutput(t, tc.src); py != tc.want {
