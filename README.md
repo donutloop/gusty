@@ -128,6 +128,14 @@ Where the tag does not decide yet, one rule does: `str(x)` folds to the same tex
 backends and on CPython — `str(None)` is `"None"`, `str(1.5)` is `"1.5"`, `str("x")` is `x`
 (ADR 0183).
 
+A slot is read back by the tag its builder wrote, remembered at compile time (ADR 0241): while a name is
+bound exactly once to a container literal and nothing mutates it or takes it past an unseen callee,
+`len(xs[0])`, `xs[0][1]`, `d["a"][1]`, `t[0][0][0]`, `xs[0] == [1, 2]`, `2 in xs[0]`, `for v in xs[0]` and
+`y = xs[0][1]` all answer on both backends — and a slot the compiler can see holding a number *is* that
+number for arithmetic, so `xs = [1, "a"]; print(xs[0] + 1)` prints `2` and `ys = [1.5, "a"]; print(ys[0] * 2)`
+prints `3.0` (ADR 0243). Where the promise runs out — including rebinding the very name the read goes
+through — the answer is a refusal naming the promise, not a payload read back as a handle.
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict

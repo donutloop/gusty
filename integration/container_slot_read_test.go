@@ -49,6 +49,27 @@ func TestContainerSlotReadsMatchCPython(t *testing.T) {
 		{"iterate_dict_value", "d = {\"a\": [1, 2, 3]}\nfor v in d[\"a\"]:\n    print(v)\n", "1\n2\n3\n"},
 		{"two_reads_one_line", "xs = [[1, 2], [3, 4]]\nprint(xs[0][0], xs[1][1])\n", "1 4\n"},
 		{"bound_then_printed", "xs = [[1, 2], [3, 4]]\ny = xs[1][0]\nprint(y)\n", "3\n"},
+		// The numeric half (ADR 0243): a slot whose literal is a number is that number for arithmetic,
+		// so `xs[0] + 1` is an addition rather than a refusal.
+		{"element_added", "xs = [[1, 2], [3, 4]]\nprint(xs[0][0] + 1)\n", "2\n"},
+		{"element_multiplied", "xs = [[1.5, 2]]\nprint(xs[0][0] * 2)\n", "3.0\n"},
+		{"mixed_element_added", "xs = [1, \"a\"]\nprint(xs[0] + 1)\n", "2\n"},
+		{"mixed_element_compared", "xs = [1, \"a\"]\nprint(1 if xs[0] > 2 else 0)\n", "0\n"},
+		{"mixed_float_element", "xs = [1.5, \"a\"]\nprint(xs[0] + 1)\n", "2.5\n"},
+		{"two_elements_added", "xs = [1.5, 2]\nprint(xs[0] + xs[1])\n", "3.5\n"},
+		{"element_divided", "xs = [10, \"a\"]\nprint(xs[0] / 4)\n", "2.5\n"},
+		{"element_floordiv_mod", "xs = [10, \"a\"]\nprint(xs[0] // 3, xs[0] % 3)\n", "3 1\n"},
+		{"element_negated", "xs = [1.5, \"a\"]\nprint(-xs[0])\n", "-1.5\n"},
+		{"element_via_function", "def f(v):\n    return v * 2\n\nxs = [3, \"a\"]\nprint(f(xs[0]))\n", "6\n"},
+		{"element_in_condition", "xs = [7, \"a\"]\nif xs[0] > 3:\n    print(\"big\")\nelse:\n    print(\"small\")\n", "big\n"},
+		{"element_in_loop_body", "xs = [2, \"a\"]\nfor i in [1, 2]:\n    print(xs[0] * i)\n", "2\n4\n"},
+		{"element_negated_literal", "xs = [-3, \"a\"]\nprint(xs[0] + 1)\n", "-2\n"},
+		{"element_subtracted", "xs = [1, \"a\"]\nprint(xs[0] - 1)\n", "0\n"},
+		{"element_equals_literal", "xs = [1, \"a\"]\nprint(1 if xs[0] == 1 else 0)\n", "1\n"},
+		{"bool_element_in_test", "xs = [True, \"a\"]\nprint(1 if xs[0] else 0)\n", "1\n"},
+		{"dict_value_element_arithmetic", "d = {\"a\": [1.5, 2]}\nprint(d[\"a\"][0] * 2)\n", "3.0\n"},
+		{"element_accumulates", "xs = [4, \"a\"]\ntotal = 0\nfor i in [0]:\n    total = total + xs[0]\nprint(total)\n", "4\n"},
+		{"float_element_two_slots", "t = [[1.5, \"x\"], 2]\nprint(t[0][0] + 1)\n", "2.5\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "read.gy", tc.src)
@@ -92,6 +113,18 @@ func TestContainerSlotReadTrapsMatchCPython(t *testing.T) {
 			"length_of_a_number_element",
 			"xs = [[1, 2]]\nprint(len(xs[0][0]))\n",
 			"object of type 'int' has no len()",
+		},
+		{
+			// A slot holding text has no number to read. CPython raises; the compiled backend refuses to
+			// build a module that would have to guess the kind (ADR 0243).
+			"text_element_used_as_a_number",
+			"xs = [1, \"a\"]\nprint(xs[1] + 1)\n",
+			"can only concatenate str",
+		},
+		{
+			"container_element_used_as_a_number",
+			"xs = [[1], 2]\nprint(xs[0] + 1)\n",
+			"can only concatenate list (not \"int\") to list",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

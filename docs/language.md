@@ -1440,6 +1440,32 @@ y = xs[1][0]
 print(y)                 # 3 — the tag travels with the binding, so print(y) needs no guess
 ```
 
+**A slot the compiler can see holding a number is that number** (ADR 0243), so the same reads reach
+arithmetic and comparison too:
+
+```gy
+xs = [1, "a"]
+print(xs[0] + 1)                      # 2
+print(xs[0] * 3, xs[0] - 1, -xs[0])   # 3 0 -1
+print(1 if xs[0] > 2 else 0)          # 0
+ys = [1.5, "a"]
+print(ys[0] + 1, ys[0] * 2)           # 2.5 3.0 — the slot is read as a float, not an int
+zs = [10, "a"]
+print(zs[0] / 4, zs[0] // 3, zs[0] % 3)   # 2.5 3 1
+def twice(v):
+    return v * 2
+print(twice(xs[0]))                   # 2 — an element is an argument
+t = [[1.5, "x"], 2]
+print(t[0][0] + 1)                    # 2.5 — one level down, same answer
+```
+
+A numeric use is the one use that does not need the tag, and where the container is one the program
+spelled out and never changed, the compiler already knows what the slot holds — so the element itself is
+compiled, and the int and float paths the language already has run on it. That is sound only for a
+**literal** element: an element that is a *name* would be read at the point of use, and the name may have
+been rebound since the list was built (`a = 1; xs = [a, "b"]; a = 5; print(xs[0] + 1)` is `2`, not `10`),
+so a name-filled element is not folded — it keeps the refusal, which says which promise the fold needs.
+
 The permission is the tag, remembered at compile time: a name qualifies while it is bound exactly once
 to a container literal and nothing has changed that object. Rebinding it, writing `xs[0] = …`, calling
 `append`/`sort`/`add`/`update`/`pop`, or handing the container to a function the compiler cannot see all
@@ -1449,11 +1475,12 @@ cannot see …`) instead of reading a payload as a handle. Reading a payload as 
 number is `[[5]]` where the program wrote `[[1, 2]]`, and that is the class of answer this language does
 not ship (ADR 0233, ADR 0241).
 
-Two uses stay refused, both by name: the **numeric use** of an element (`xs[0] + 1`, `max(xs[0])`), where
-the context wants one `i32` with no tag attached, and a container **built rather than spelled out**
-(`xs = []; xs.append([7, 8]); print(xs[0][0])`), which no literal ever described. The interpreter — boxed
-values, no static tag needed — answers both, which is what keeps them roadmap rows rather than mysteries
-(roadmap L11.1, `docs/roadmap-details.md`).
+Two uses stay refused, both by name: a slot whose kind only the **run time** knows — a loop variable over
+a mixed list, or an element read through a runtime index `xs[i]` — and a container **built rather than
+spelled out** (`xs = []; xs.append([7, 8]); print(xs[0][0])`), which no literal ever described. A slot
+holding text, `None` or another container used arithmetically is refused too, where CPython raises a
+`TypeError`. The interpreter — boxed values, no static tag needed — answers the first two, which is what
+keeps them roadmap rows rather than mysteries (roadmap L11.1, `docs/roadmap-details.md`).
 
 **Dicts and sets take the same rule** (ADR 0232). A compiled dict may mix kinds on either side of
 an entry and a compiled set may mix kinds among its members, because a slot is always the pair
@@ -1541,11 +1568,11 @@ print(xs)                                  # [[7], [2], [9]]
 ```
 
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
-raises `unhashable type: 'list'`, and this backend has no hashing rule for a handle), and *reading*
-a tagged element into a numeric or indexing position — `xs[0] + 1`, `len(m[0])`, `m[0][1]` — which
-needs a read that returns a usable `(payload, tag)` pair (roadmap L11.1). A fold (`sum`, `min`,
-`max`) over container elements reports too, rather than reaching for the elements' addresses the
-way CPython raises a `TypeError`.
+raises `unhashable type: 'list'`, and this backend has no hashing rule for a handle), and a tagged
+element whose kind only the run time can tell — a loop variable over a mixed list used as a number, or
+an element read through a runtime index — which needs the value word that carries its own tag
+(roadmap L11.1). A fold (`sum`, `min`, `max`) over container elements reports too, rather than reaching
+for the elements' addresses the way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
 value that *is* a tag: a compiled float still has no word to hold it (L11.6), a bool still prints

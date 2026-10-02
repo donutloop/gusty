@@ -4010,3 +4010,86 @@ What the change came down to, beyond a lexer case:
 `x = 5; print(x+1)` now prints `6` under `--interp`, `--eval`, `--repl`, `--jit`, `--aot` and
 `--emit-llvm` alike. ADR 0240's message stays: a program with a real syntax error is still refused, with
 its message, on every path.
+
+### L11.1 step 4 — the numeric use of an element: a slot the compiler can see holding a number is compiled as that number (measured 2026-10-02, closed the same cycle, ADR 0243)
+
+ADR 0241 gave a slot read its tag, and with it every context that *carries* one: print, `==`, `in`,
+`len`, a further subscript, `for`, a binding. What remained was the context that wants a **single word** —
+arithmetic and comparison — and there both backends still refused programs CPython answers without
+hesitation:
+
+| program | CPython | `--interp` | `--aot` (before) |
+|---|---|---|---|
+| `xs = [1, "a"]; print(xs[0] + 1)` | `2` | `2` | refused |
+| `xs = [1.5, "a"]; print(xs[0] + 1)` | `2.5` | `2.5` | refused |
+| `xs = [1, "a"]; print(1 if xs[0] > 2 else 0)` | `0` | `0` | refused |
+| `xs = [1.5, 2]; print(xs[0] + xs[1])` | `3.5` | `3.5` | refused |
+| `t = [[1, 2]]; print(t[0][0] + 1)` | `2` | `2` | refused |
+| `xs = [1, "a"]; y = xs[0] + 1; print(y)` | `2` | `2` | refused |
+
+The refusal said *"this context needs a single static kind"*. That is a true sentence about the slot and
+the wrong diagnosis for the program: the context needs the **value**, and when the container is one the
+program spelled out and never changed, the value is already known at compile time.
+
+**The decision: compile the element, not the slot.** Where ADR 0241's promise holds (the name was bound
+once to a container literal and nothing mutated it or took it past an unseen callee) *and* the element is
+a numeric literal, the numeric use compiles the element expression. `xs[0] + 1` becomes an addition on
+`1`; `xs = [1.5, "a"]` takes the double path because `isFloat`, `floatValue` and `floatEval` ask the same
+question of the slot and answer from the element. Three refusal sites and three float hooks consult one
+helper (`staticNumericElem` via `numericElemUse`); no new value representation, no dispatch opcode, no
+runtime helper, and so nothing new that can verify badly.
+
+Why not ship `rt_num_add(payload, tag, payload, tag, i32* tagOut)` now: it is the general answer, but it
+buys exactly the programs above while adding a second arithmetic engine beside the int and double paths
+(rounding, `%`/`//` sign rules, division traps become wrong answers instead of refusals), the module's
+first two-result arithmetic helper, and a tag to carry for an *unnamed temporary* — a case the tag
+machinery handles for bindings and loop variables but not for results. The general engine stays on the
+roadmap as what a *dynamic* tag needs.
+
+**Literals only, and that restriction is the soundness.** `staticElemExpr` can resolve a name element, and
+the container may be untouched, but the promise is about the *object*, not about what its elements' names
+were bound to:
+
+```gy
+a = 1
+xs = [a, "b"]
+a = 5
+print(xs[0] + 1)     # CPython: 2 — the slot holds what a was when the list was built
+```
+
+Reading the variable at the point of use answers `10`. A literal cannot drift, so the fold is limited to
+int/float/bool literals and their negations; a name-filled or runtime-built element keeps the refusal.
+
+**What still refuses, with the reason in the message**: a slot holding text, `None` or a container used
+arithmetically (CPython raises `TypeError` there, so declining is closer than computing on an interned
+index); an element of a mutated or handed-off container (`cannot reach into xs's slots`); a loop variable
+over a mixed list, and a slot read through a runtime index `xs[i]` (both need the run-time tag); a fold
+`max(xs[0], 5)` — which turned out not to be a tagged-value gap at all, and is filed as Gap R.73.
+
+Measured after the change: 19 of the 20 numeric probe programs print CPython's answer on **both**
+backends — `+ - * / // %`, unary `-`, comparisons, two elements in one expression, an element through a
+function call, an element in an `if` condition and in a loop body, `d["a"][0] * 2`, `t[0][0] + 1`. The
+refusal family gained the three shapes above, the integration trap table gained a text and a container
+element used as a number, and every row still asserts the exit-2 guard.
+
+### Gap R.73 — `min`/`max` take one argument on both engines, where CPython takes two (measured 2026-10-02 while writing the ADR 0243 probe table)
+
+`max(xs[0], 5)` was the natural "use an element numerically inside a fold" probe for the table above, and
+both engines refused it for a reason that has nothing to do with tags:
+
+| engine | `print(min(1, 5), max(1, 5))` |
+|---|---|
+| CPython | `1 5` |
+| `--interp` | `min/max expects 1 argument` |
+| `--aot` | `min expects one argument` |
+
+The two backends **agree**, so this is missing surface rather than a divergence — which is exactly why it
+does not belong on L11.1's row, and why a parity-only test suite never noticed it: nothing compares the
+pair against CPython's varargs form. The iterable form works on both paths today; the varargs form is
+simply absent.
+
+The fix is the same code path Gap R.71 needs (a reduction over values rather than a compile-time fold),
+which is why the two rows name the same owner (L11.6): one shared reduction means ties, mixed int/float
+and `True`/`0` comparisons cannot drift between the engines. Until then the row is asserted by the
+three-engine table in `integration/container_slot_read_test.go`, where `max(xs[0], 5)` is expected to be
+refused by both engines rather than to answer `5`.

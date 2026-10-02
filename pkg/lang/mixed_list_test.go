@@ -126,9 +126,12 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		wanted string
 	}{
 		// A tagged element reaching a context that needs a plain i32 refuses rather than
-		// computing on what is, for a string element, an index into the interned table.
-		{"xs = [1, \"a\"]\nprint(xs[0] + 1)\n", "needs a single static kind"},
-		{"xs = [1, \"a\"]\nprint(xs[0] > 2)\n", "needs a single static kind"},
+		// computing on what is, for a string element, an index into the interned table. A number
+		// the compiler can see in a slot is answered instead (ADR 0243); what is left here is the
+		// element the read cannot resolve to a literal — text in the slot, a loop variable, or a
+		// value handed to a function.
+		{"xs = [1, \"a\"]\nprint(xs[1] + 1)\n", "needs a single static kind"},
+		{"xs = [1, \"a\"]\nprint(xs[1] > 2)\n", "needs a single static kind"},
 		{"def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n", "needs a single static kind"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},
@@ -251,17 +254,26 @@ func TestElementWriteAndAppendTagTheSlot(t *testing.T) {
 	}
 }
 
-// A tagged element that reaches a number context refuses, and the refusal names what does work
-// — the message is the interface while the capability grows (ADR 0166).
+// A tagged element that reaches a context with no tag to carry refuses, and the refusal names what
+// does work — the message is the interface while the capability grows (ADR 0166). A number the
+// compiler can see in a slot is answered (ADR 0243); text in a slot is not, and neither is a loop
+// variable, whose tag is chosen per iteration.
 func TestTaggedElementRefusalNamesWhatWorks(t *testing.T) {
-	_, err := Compile("xs = [1, \"a\"]\nprint(xs[0] + 1)\n")
+	_, err := Compile("xs = [1, \"a\"]\nprint(xs[1] + 1)\n")
 	if err == nil {
-		t.Fatal("arithmetic on a tagged element must refuse")
+		t.Fatal("arithmetic on a text element must refuse")
 	}
 	for _, want := range []string{"print(xs[i])", "v = xs[i]", "(value, tag) pair"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q should mention %q", err.Error(), want)
 		}
+	}
+	_, err = Compile("xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n")
+	if err == nil {
+		t.Fatal("arithmetic on a loop variable over a mixed list must refuse")
+	}
+	if !strings.Contains(err.Error(), "tagged value") {
+		t.Errorf("loop-variable refusal should name the tagged value word: %q", err.Error())
 	}
 }
 

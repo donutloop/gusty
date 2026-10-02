@@ -5511,6 +5511,24 @@ func (g *irGen) isFloat(e Expr) bool {
 			return g.isFloat(n.L) || g.isFloat(n.R)
 		}
 		return false
+	case *Index:
+		// A slot whose literal is a float is a float *use*, even though the container holding it is
+		// not a float (the container arm below): `xs = [1.5, "a"]; print(xs[0] * 2)` must multiply a
+		// double and print `3.0`, and the only reason the compiler knows the slot holds 1.5 is the
+		// same promise that lets the numeric read fold (roadmap L11.1, ADR 0243). Restricted to the
+		// tagged shapes — a mixed list, or a slot reached through another slot — so every container
+		// that already answered this question keeps the answer it has.
+		if el, ok := g.staticNumericElem(n); ok {
+			switch base := n.Obj.(type) {
+			case *Name:
+				if g.mixedLists[base.Value] {
+					return g.isFloat(el)
+				}
+			case *Index:
+				return g.isFloat(el)
+			}
+		}
+		return false
 	case *Name:
 		if g.floatVars != nil {
 			return g.floatVars[n.Value]
@@ -5991,6 +6009,15 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		t := g.newTmp()
 		fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(n.Value))
 		return t
+	case *Index:
+		// The numeric half of the slot read (roadmap L11.1, ADR 0243): a slot whose literal is a float
+		// *is* that float for arithmetic. The word the slot holds is a float box handle, and lifting one
+		// of those straight into an fadd is the wrong answer ADR 0233 exists to keep out — so the double
+		// comes from the element the compiler can see instead.
+		if el, ok := g.staticNumericElem(n); ok {
+			return g.floatValue(b, el)
+		}
+		return ""
 	case *Name:
 		if g.floatTemps != nil && g.floatTemps[n.Value] {
 			return n.Value
@@ -6295,6 +6322,13 @@ func (g *irGen) floatEval(e Expr) (float64, bool) {
 	switch n := e.(type) {
 	case *FloatLit:
 		return n.Value, true
+	case *Index:
+		// Same fold as floatValue: the element the literal wrote, not the word in the slot
+		// (roadmap L11.1, ADR 0243).
+		if el, ok := g.staticNumericElem(n); ok {
+			return g.floatEval(el)
+		}
+		return 0, false
 	case *BinOp:
 		l, lok := g.floatEval(n.L)
 		r, rok := g.floatEval(n.R)
@@ -7963,6 +7997,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				g.heapSeq++
 				hs := g.heapSeq
 				if g.mixedLists[obj.Value] {
+					// A numeric use of an element is not a use that needs the tag. When the container is one the
+					// program spelled out and never changed, and the element is a number literal, the slot holds
+					// that number: `xs = [1, "a"]; print(xs[0] + 1)` is an addition on 1, and the float form takes
+					// the float path with it (roadmap L11.1, ADR 0243). What the promise does not cover — a name
+					// element, a runtime index, text or a container in the slot — keeps the refusal below, because
+					// for those the tag is exactly what the answer depends on.
+					if v, ok := g.numericElemUse(b, n); ok {
+						return v, nil
+					}
 					return "", mixedReadErr("list")
 				}
 				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, obj.Value))
@@ -8121,8 +8164,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 				return g.value(b, elems[key])
 			}
+			// The base is an expression rather than a name the compiler holds (`t[0][0]`, `d["a"][1]`,
+			// `xs[0][0]`). Same rule as the mixed-list arm above: a literal number in a slot of a container
+			// the program spelled out and never changed *is* that number, and the arithmetic the language
+			// already has runs on it (roadmap L11.1, ADR 0243).
+			if v, ok := g.numericElemUse(b, n); ok {
+				return v, nil
+			}
 			return "", g.slotReadRefusal(n, "index")
 		default:
+			if v, ok := g.numericElemUse(b, n); ok {
+				return v, nil
+			}
 			return "", g.slotReadRefusal(n, "index")
 		}
 	case *Comp:

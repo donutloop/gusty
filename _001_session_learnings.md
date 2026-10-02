@@ -5027,3 +5027,51 @@ whose verdict differs between `;` and a newline is telling you something — my 
 statements and drew conclusions about the wrong engine. (3) When a change removes a diagnostic, the test
 that matters is "no error-level diagnostic is recorded" (`TestSemicolonIsNotADiagnostic`), not "the
 message reads better" — that was ADR 0240's job, and it stays useful for programs with real syntax errors.
+
+## L11.1 step 4 — a slot the compiler can see holding a number is compiled as that number (ADR 0243)
+
+**The measurement.** ADR 0241 left one clause of the row open, and the two backends disagreed about it
+out loud: `xs = [1, "a"]; print(xs[0] + 1)` was `2` interpreted and refused compiled, while CPython said
+`2`; the same for `xs[0] > 2`, `-xs[0]`, `xs[0] / 4`, `xs[0] // 3`, `xs[0] % 3`, `f(xs[0])`, `d["a"][0] * 2`
+and `t[0][0] + 1`. The refusal — *"this context needs a single static kind"* — was a true sentence about
+the slot and the wrong diagnosis of the program: an addition does not need a *kind*, it needs a **value**,
+and for a container the program spelled out and never mutated, the compiler already has that value.
+
+**The decision.** Compile the element, not the slot. Where ADR 0241's compile-time promise holds and the
+element is a numeric literal, the numeric use compiles the element expression itself and the existing int
+and double paths run on it — `isFloat`, `floatValue` and `floatEval` ask the same question of the slot so
+`xs = [1.5, "a"]; print(xs[0] * 2)` takes the float path and prints `3.0`. No new representation, no
+runtime helper, no `tagOut` parameter: the runtime tagged-arithmetic engine is the general answer, and
+today it would add a second arithmetic engine (rounding, `%`/`//` sign rules, division traps becoming wrong
+answers instead of refusals) to buy exactly the programs the fold already buys.
+
+**The soundness came from an unexpected place.** The first version resolved *any* element `staticElemExpr`
+could name, and it was quietly wrong:
+
+```gy
+a = 1
+xs = [a, "b"]
+a = 5
+print(xs[0] + 1)     # CPython: 2 — the slot holds the value a had when the list was built
+```
+
+The ADR 0241 promise is about the **object** ("nothing mutated this container"), not about what its
+elements' names were bound to. Reading the variable at the point of use answers `10`. Restricting the fold
+to literals and their negations makes the element and the slot unable to disagree — a restriction that
+reads like a limitation and is actually the correctness argument.
+
+**Refusals are still answers, and they must be checked as answers.** `xs[1] + 1` (a text element) and
+`xs[0] + 1` where `xs[0]` is a container are CPython `TypeError`s; the trap table pins that CPython really
+raises, that neither engine exits 0, and that neither prints a `Traceback` on stdout. A refusal that
+*silently* matched a wrong number would have passed a stdout-only test.
+
+**Process lessons.** (1) *Finish the wiring before believing a probe.* One of the two refusal sites had no
+fallback wired, and I spent time "explaining" why `t[0][0] + 1` still refused; the answer was that the code
+path I was reading was not the one that produced the message. Read every refusal's producer in the source
+before theorising. (2) *Rebuild both binaries.* `./gusty` and `./gustyc` again differed mid-cycle. (3) A
+probe that turns up an unrelated hole is a gift, not a detour: `max(xs[0], 5)` refusing on **both** engines
+is missing surface (`min`/`max` take one argument here, two in CPython), so it became Gap R.73 instead of
+being quietly folded into L11.1's row — and that discovery only happened because the probe compared against
+CPython rather than between the backends. (4) The roadmap's ledger table is edited by *cell*, and a whole-row
+paste can silently splice two rows into one; the row count is worth checking after a table edit
+(`Gap R.71` briefly lost its identity to `Gap R.73` this way).

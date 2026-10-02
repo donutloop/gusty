@@ -2008,6 +2008,59 @@ func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, o
 	return "", "", false
 }
 
+// staticNumericElem answers the element a subscript denotes *when the answer is a number the compiler
+// can see*: the container is one its literal still describes, and the element is a literal int, float
+// or bool. That is the numeric half of the promise ADR 0241 grants a container read — the slot holds
+// this value because nothing changed the object — so a numeric context can compile the element itself
+// instead of asking for a tag it does not need. `xs = [1, "a"]; print(xs[0] + 1)` is an addition on 1,
+// and `xs = [1.5, "a"]; print(xs[0] * 2)` is the float path the language already has (roadmap L11.1,
+// ADR 0243).
+//
+// Literals only. An element that is a *name* would be read at the point of use, and the name may have
+// been rebound since the container was built — `[a, "b"]` built while a=1 and printed after a=5 must
+// still answer 1, which means reading the slot, not the variable. A text, None or container element
+// answers false too: the tag is precisely what makes those print correctly, and arithmetic on them is
+// CPython's TypeError, which this backend declines rather than guesses.
+func (g *irGen) staticNumericElem(ix *Index) (Expr, bool) {
+	el, ok := g.staticElemExpr(ix.Obj, ix.Idx)
+	if !ok || el == nil {
+		return nil, false
+	}
+	if !g.isLiteralNumExpr(el) {
+		return nil, false
+	}
+	return el, true
+}
+
+// numericElemUse compiles the numeric slot of a literal-backed container for a value
+// position. Reading the slot and compiling the expression that built it are the same
+// number, so a number in a mixed or nested container does the arithmetic of the number
+// it is instead of being refused as an untagged payload (roadmap L11.1, ADR 0243).
+func (g *irGen) numericElemUse(b *strings.Builder, n *Index) (string, bool) {
+	el, ok := g.staticNumericElem(n)
+	if !ok {
+		return "", false
+	}
+	v, err := g.value(b, el)
+	if err != nil {
+		return "", false
+	}
+	return v, true
+}
+
+// isLiteralNumExpr is the question the numeric read may not answer about a name: int, float and bool
+// literals (and their parenthesised or negated forms) are values, so the element the literal wrote and
+// the value the slot holds cannot disagree.
+func (g *irGen) isLiteralNumExpr(e Expr) bool {
+	switch n := e.(type) {
+	case *IntLit, *FloatLit, *BoolLit:
+		return true
+	case *UnOp:
+		return n.Op == "-" && g.isLiteralNumExpr(n.X)
+	}
+	return false
+}
+
 // slotReadRefusal is what `len(xs[0])`, `xs[0][1]` and friends say when the slot cannot be reached.
 // The generic "needs an inline literal" sent an agent looking at a shape that is fine: the program
 // reads a container through a name, and what ran out is the *promise* about that name — it was
