@@ -123,15 +123,24 @@ func TestMixedDictReadCarriesTheValueTag(t *testing.T) {
 
 // Iterating a mixed container binds the loop variable's tag beside it; comparing against it has
 // to consult that tag or `x == 1` is true for the string whose index is 1.
+//
+// The comparison used to go to `rt_mixed_eq`, which compared the two words once the tags matched —
+// and two float slots holding the same number then answered unequal, because the words were two
+// different box handles. One equality now answers every slot question, the one the container
+// printers and lookups already ask: `rt_payload_eq` (roadmap L11.1, Gap R.79).
 func TestMixedContainerIterationComparesTheTag(t *testing.T) {
 	ir := compileOrFatal(t, "s = {1, \"a\"}\nfor x in s:\n    print(x)\n    if x == \"a\":\n        print(\"hit\")\n")
 	for _, want := range []string{
 		"call i32 @rt_tag_of(",
-		"call i32 @rt_mixed_eq(",
+		"call i32 @rt_payload_eq(",
 	} {
 		if !strings.Contains(ir, want) {
 			t.Errorf("module is missing %q\ntag loads: %v", want, irLinesContaining(ir, "rt_tag_of"))
 		}
+	}
+	if strings.Contains(ir, "@rt_mixed_eq(") {
+		t.Errorf("the retired word-for-word comparison is back in the module: %v",
+			irLinesContaining(ir, "rt_mixed_eq"))
 	}
 }
 

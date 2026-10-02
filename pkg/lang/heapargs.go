@@ -2180,6 +2180,85 @@ func (g *irGen) runtimeSlotPair(b *strings.Builder, ix *Index) (val, tag string,
 	return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
 }
 
+// isTaggedSlotRead reports whether `e` is a read of a slot whose kind the **object** carries rather
+// than the compiler's notebook: an element of a container whose slots describe themselves, or a
+// slot of a run-time container reached through an index/key the program computes. Those are the
+// reads whose untagged lowering refuses with "this context needs a single static kind", so the
+// only answer available is the (payload, tag) pair the builder wrote beside the payload
+// (ADR 0187), and a use that wants the value has to ask for the pair (roadmap L11.1, Gap R.79).
+//
+// It deliberately excludes the read ADR 0241 already licenses — a constant position of a container
+// the literal still describes, which has its own checked read and ADR 0243's numeric fold — so
+// this door opens exactly where the ordinary path runs out.
+func (g *irGen) isTaggedSlotRead(e Expr) bool {
+	ix, ok := e.(*Index)
+	if !ok {
+		return false
+	}
+	nm, isName := ix.Obj.(*Name)
+	if !isName || !g.allocd[nm.Value] {
+		return false
+	}
+	if g.isMixedContainer(nm.Value) {
+		return true
+	}
+	if !g.listVars[nm.Value] && !g.runtimeDicts[nm.Value] {
+		return false
+	}
+	if _, isConst := g.foldConstInt(ix.Idx); isConst {
+		return false
+	}
+	if _, isConstText := stringConstOf(ix.Idx); isConstText {
+		return false
+	}
+	return true
+}
+
+// comparePair lowers one side of an equality to the (payload, tag) pair it denotes: the slot's own
+// pair when the side is a read the object describes, and otherwise the pair an expression whose
+// kind the compiler can prove carries (taggedOperand, ADR 0232). Declining is the caller's signal
+// to leave the ordinary path in charge.
+func (g *irGen) comparePair(b *strings.Builder, e Expr) (val, tag string, ok bool) {
+	if g.isTaggedSlotRead(e) {
+		v, t, okPair := g.runtimeSlotPair(b, e.(*Index))
+		if !okPair {
+			return "", "", false
+		}
+		return v, t, true
+	}
+	return g.taggedOperand(b, e)
+}
+
+// isTaggedCompareSide is the door's question: is this side something whose kind the compiled
+// backend cannot state on its own — a variable bound from a tagged read, or a slot read the object
+// has to describe? Neither side answering is the ordinary, statically-typed comparison.
+func (g *irGen) isTaggedCompareSide(e Expr) bool {
+	if nm, ok := e.(*Name); ok && g.taggedVars[nm.Value] {
+		return true
+	}
+	return g.isTaggedSlotRead(e)
+}
+
+// taggedCompareOperandErr is what the equality door says about the one shape it will not answer: a
+// slot whose kind only the object knows, compared with an expression whose kind the compiler cannot
+// prove — typically a call that hands back text on one path and a number on another. The choices are
+// a refusal and a comparison of two words that mean different things, and the second one is how
+// `xs[0] == f()` answered true because f returned the text whose interned index is the number in
+// the slot. ADR 0232 settled this question for membership tests; this is the same rule at the
+// comparison (roadmap L11.1).
+func (g *irGen) taggedCompareOperandErr(unknown, tagged Expr) error {
+	where := "a value whose tag the object carries"
+	switch n := tagged.(type) {
+	case *Index:
+		if nm, isName := n.Obj.(*Name); isName {
+			where = "the slots of " + nm.Value
+		}
+	case *Name:
+		where = "the tag " + n.Value + " carries"
+	}
+	return fmt.Errorf("codegen: comparing %s with %s needs a value whose kind the compiler can prove: the tag is what decides that question, and an untagged compare of the two words answers it with whichever number happens to sit in the slot (roadmap L11.1, ADR 0232)", g.exprSummary(unknown), where)
+}
+
 // lenOfTaggedSlot answers len() of a slot whose tag the compiler carries but cannot read: the tag goes
 // with the payload to the check, exactly as ADR 0187 requires, and decides which question the object is
 // asked. A text slot is measured in characters, a container slot in its own entries through

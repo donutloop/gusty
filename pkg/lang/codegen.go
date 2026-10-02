@@ -1119,6 +1119,12 @@ entry:
 ; comparison does. Any other pair of tags is unequal, bool included: Python does treat True as
 ; 1, but rendering True as a number is a separate known gap (ADR 0233's record), and answering
 ; this one wrongly in either direction is worse than answering it the way the tags say.
+;
+; It is also the answer a source-level equality between two tagged reads gets (roadmap L11.1, Gap
+; R.79): an element of a container whose slots describe themselves is a (payload, tag) pair, and
+; the only sound equality for a pair is this one. The naive helper that used to sit here — same
+; tag, then compare the words — compared two float slots by box handle, so y = xs[0] over
+; xs = [1.5, "a"] answered y == 1.5 false while printing 1.5 one line later.
 define internal i32 @rt_payload_eq(i32 %a, i32 %ta, i32 %b, i32 %tb) {
 entry:
   %sameTag = icmp eq i32 %ta, %tb
@@ -1869,21 +1875,6 @@ miss:
 ; rt_dict_value_tag answers the other half of a read from a dict whose values mix kinds: the
 ; entry's value is one call away, and its tag is this one. Two scans of a short array is the
 ; honest price of one word per slot; the layout change that would halve it is L11.1 (5).
-; rt_mixed_eq compares a (payload, tag) pair against a value whose kind the compiler knows. The
-; tag decides first: two words that mean different things are not equal however their bits
-; compare, which is the same rule rt_slot_matches applies to a container lookup (ADR 0232).
-define internal i32 @rt_mixed_eq(i32 %v, i32 %t, i32 %o, i32 %ot) {
-entry:
-  %tk = icmp eq i32 %t, %ot
-  br i1 %tk, label %same, label %diff
-same:
-  %eq = icmp eq i32 %v, %o
-  %yes = zext i1 %eq to i32
-  ret i32 %yes
-diff:
-  ret i32 0
-}
-
 define internal i32 @rt_dict_value_tag(i32 %h, i32 %k, i32 %kt) {
 entry:
   %i = call i32 @rt_dict_find(i32 %h, i32 %k, i32 %kt)
@@ -12073,39 +12064,66 @@ func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string, sp Span) {
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
-// mixedTaggedCompare answers `taggedVar == literal` (either order) for a variable that carries a
-// runtime tag — a loop variable over a mixed container, or one bound from a mixed read. The other
-// side must be an expression whose kind the compiler can prove; when it cannot, this declines and
-// the ordinary path reports whatever it reports (ADR 0232).
+// mixedTaggedCompare answers `a == b` (and `!=`) when either side is a value whose kind lives in
+// the object rather than in the compiler's notebook. Two shapes reach it:
+//
+//   - a variable that carries a runtime tag — a loop variable over a mixed container, or one
+//     bound from a mixed read (ADR 0185, ADR 0187); and
+//   - a *slot read*: an element of a container whose slots describe themselves, or a slot reached
+//     through an index the program computes (roadmap L11.1, Gap R.79). Until now `print(out[1])`
+//     asked the slot and rendered `a`, while `out[1] == "a"` refused — the tag was carried to the
+//     printer and dropped at the comparison.
+//
+// Both sides become (payload, tag) pairs and `rt_payload_eq` answers, which is the one equality
+// that knows what a payload means: within a tag by payload, across the numeric tags numerically,
+// container slots by content. The other side must still be an expression whose kind the compiler
+// can prove; when it cannot, this declines and the ordinary path reports whatever it reports
+// (ADR 0232).
 func (g *irGen) mixedTaggedCompare(b *strings.Builder, n *BinOp) (string, bool, error) {
-	var taggedSide, otherSide Expr
-	if nm, ok := n.L.(*Name); ok && g.taggedVars[nm.Value] {
-		taggedSide, otherSide = n.L, n.R
-	} else if nm, ok := n.R.(*Name); ok && g.taggedVars[nm.Value] {
-		taggedSide, otherSide = n.R, n.L
-	} else {
+	if n.Op != "==" && n.Op != "!=" {
 		return "", false, nil
 	}
-	nm := taggedSide.(*Name)
-	v := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", v, "_"+nm.Value))
-	t := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", t, "_"+nm.Value+"_tag"))
-	ov, ot, ok := g.taggedOperand(b, otherSide)
-	if !ok {
-		return "", false, nil // the other side's kind is not provable; the ordinary path decides
+	if !g.isTaggedCompareSide(n.L) && !g.isTaggedCompareSide(n.R) {
+		return "", false, nil
+	}
+	// The read emits its own bounds check, whose IndexError branch terminates a block. A door that
+	// changes its mind halfway through would leave the caller's block with instructions after a
+	// terminator, and llc would report the compiler's mistake as the program's (ADR 0166). So the
+	// whole door is built in a scratch buffer and committed only once both sides answer.
+	var scratch strings.Builder
+	lv, lt, lok := g.comparePair(&scratch, n.L)
+	rv, rt, rok := g.comparePair(&scratch, n.R)
+	if !lok || !rok {
+		// One side's kind lives in the object, and the other side's cannot be proven at all. The
+		// untagged compare that used to answer this compared two bare words, so `xs[0] == f()` came
+		// out true whenever f handed back the text whose interned index happened to be the number in
+		// the slot — an answer by coincidence (ADR 0232's collision, at a new site). Refuse by naming
+		// the missing half instead. When *both* sides are reads, decline and let the ordinary path
+		// report whatever it reports.
+		if g.isTaggedCompareSide(n.L) && !rok && !g.isTaggedCompareSide(n.R) {
+			return "", true, g.taggedCompareOperandErr(n.R, n.L)
+		}
+		if g.isTaggedCompareSide(n.R) && !lok && !g.isTaggedCompareSide(n.L) {
+			return "", true, g.taggedCompareOperandErr(n.L, n.R)
+		}
+		return "", false, nil
 	}
 	cmp := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_mixed_eq(i32 %s, i32 %s, i32 %s, i32 %s)\n", cmp, v, t, ov, ot))
+	fmt.Fprintf(&scratch, "  %s = call i32 @rt_payload_eq(i32 %s, i32 %s, i32 %s, i32 %s)\n", cmp, lv, lt, rv, rt)
 	res := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", res, cmp))
+	fmt.Fprintf(&scratch, "  %s = icmp ne i32 %s, 0\n", res, cmp)
 	g.markI1(res)
 	if n.Op == "!=" {
 		inv := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = xor i1 %s, true\n", inv, res))
+		fmt.Fprintf(&scratch, "  %s = xor i1 %s, true\n", inv, res)
 		g.markI1(inv)
 		res = inv
 	}
+	g.heapUsed = true
+	// rt_payload_eq unboxes a float slot, so the float block has to be in the module even for a
+	// program whose own literals are all integers.
+	g.floatFmtUsed = true
+	b.WriteString(scratch.String())
 	return g.asBoolI32(b, res), true, nil
 }
 

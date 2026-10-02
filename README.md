@@ -160,8 +160,16 @@ has a literal behind it, so ADR 0241's compile-time promise has run out, and the
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a
 list built by `xs.append([7, 8])` is `2`, a text slot is measured in characters, and a slot holding `5`
 raises CPython's `TypeError: object of type 'int' has no len()` rather than being measured as if it were a
-container (ADR 0246). What still refuses by naming itself: a slot used **as a number** on a container this
-pass cannot see, and comparing a mixed slot with text (Gap R.79).
+container (ADR 0246). An equality asks the slot the same question the printer asks it: both sides of
+`==`/`!=` are `(payload, tag)` pairs and the one equality the container comparisons already use answers,
+so `xs[1] == "a"`, `xs[0] == xs[1]`, `xs[i] == "a"` over a position the program computes, and
+`d["k"] == [1, 2]` of a dict filled by assignment all answer CPython's answer instead of being refused,
+interned text stops equaling the number it is indexed by, and two float slots holding `1.5` finally
+compare equal rather than by box handle (ADR 0247, closing Gap R.79). What still refuses by naming
+itself: a slot used **as a number** on a container this pass cannot see, the nested read of a container
+built at run time (`xs[0][0]` after `xs.append([7, 8])`), an **ordering** comparison of such a slot
+(Gap R.82), and a comparison against an expression whose kind cannot be proven — which until this cycle
+answered `1` where CPython answers `0` (Gap R.83).
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,

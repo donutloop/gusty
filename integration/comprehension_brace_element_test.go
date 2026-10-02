@@ -39,6 +39,14 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 		// two were refusal rows until the read stopped needing a literal.
 		{"len_of_a_slot_of_a_built_comp", "d = [{1, 2} for x in [1]]\nprint(len(d[0]))\n", "2\n"},
 		{"len_of_a_dict_slot_of_a_built_comp", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d[0]))\n", "1\n"},
+		{
+			// Two slots of a comprehension the program built, compared: each side is a (payload, tag)
+			// pair and the pair is the operand the equality needed, so this refusal row moved here
+			// (ADR 0247, Gap R.79's family).
+			"comparing_two_slots_of_a_built_comp",
+			"d = [{x} for x in [1, 2]]\nprint(1 if d[0] == d[1] else 0)\n",
+			"0\n",
+		},
 		// The untagged-element writes: each of these printed the machine word, not the value.
 		{"print_list_element_comp", "xs = [[1, 2] for x in [1, 2]]\nprint(xs)\n", "[[1, 2], [1, 2]]\n"},
 		{"read_list_element_comp", "xs = [[1, 2] for x in [1]]\nprint(xs[0])\n", "[1, 2]\n"},
@@ -94,11 +102,6 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 			// ADR 0246.)
 			"membership_in_a_slot_of_a_built_comp",
 			"d = [{1, 2} for x in [1]]\nprint(1 if 2 in d[0] else 0)\n",
-			"more than one kind",
-		},
-		{
-			"comparing two slots of a built comp",
-			"d = [{x} for x in [1, 2]]\nprint(1 if d[0] == d[1] else 0)\n",
 			"more than one kind",
 		},
 		{
@@ -278,13 +281,12 @@ func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
 			"names = [\"a\", \"b\"]\nout = [n for n in names]\nprint(out[0])\n",
 			"kept as a compile-time constant",
 		},
-		{
-			// The slot's tag is carried but a `==` against text needs it as an operand the comparison
-			// lowering cannot build yet.
-			"comparing_a_slot_with_text",
-			"xs = []\nxs.append(1)\nxs.append(\"a\")\nout = [x for x in xs]\nprint(1 if out[1] == \"a\" else 0)\n",
-			"more than one kind",
-		},
+		// (A third row sat here demanding that `out[1] == "a"` refuse: "the slot's tag is carried but a
+		// `==` against text needs it as an operand the comparison lowering cannot build yet." It was
+		// right when written and wrong afterwards — the pair the printer already had is exactly the
+		// operand an equality needs — so the row moved to TestSlotEqualityMatchesCPython
+		// (`comprehension_slot_against_text`) and is asserted against CPython on both engines there
+		// (roadmap Gap R.79, ADR 0247).)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "comp_tagged_refuse.gy", tc.src)

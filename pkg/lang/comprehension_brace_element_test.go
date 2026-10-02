@@ -130,27 +130,29 @@ func shape(e Expr) string {
 // TestBraceElementComprehensionRunsLikeCPython is the measured half of the parser fix: the program
 // the AST says, run. The expectations are CPython's, taken before the table was written.
 //
-// The compiled leg runs only the rows whose element is not itself a container. A container element
-// reaches `rt_append_tagged(i32 %h1, i32 @.set1, i32 7)` — the *global* in a value position, which
-// `llc` rejects — and that is a separate defect with its own row (Gap R.75) and its own fix; the
-// rows that still carry it are in integration/comprehension_brace_element_test.go, where the
-// exit-code contract is asserted rather than hidden.
+// The compiled leg runs only the rows whose lowering the compiled backend can finish. A container
+// element used to reach `rt_append_tagged(i32 %h1, i32 @.set1, i32 7)` — the *global* in a value
+// position, which `llc` rejects — and that was Gap R.75, paid by ADR 0244's materialise-into-the-heap
+// door; the rows still carrying it are marked below and measured in
+// integration/comprehension_brace_element_test.go, where the exit-code contract is asserted rather
+// than hidden. The marks were re-measured for ADR 0247: `print(1 if d[0] == d[1] else 0)` over a
+// comprehension of set literals answers on both engines now, so it is no longer skipped.
 func TestBraceElementComprehensionRunsLikeCPython(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string
 		want string
-		// aotContainerElement marks the rows whose element is a container literal: the compiled
-		// leg is owed to Gap R.75, so only the interpreter is measured against CPython here.
+		// aotContainerElement marks the rows whose compiled leg still refuses; each names the
+		// missing half in its refusal (`in` of a built slot, and indexing a built dict slot).
 		aotContainerElement bool
 	}{
-		{"list comprehension over set literals", "d = [{1, 2} for x in [1, 2]]\nprint(len(d))\n", "2\n", true},
-		{"its element is a two-member set", "d = [{1, 2} for x in [1]]\nprint(len(d[0]))\n", "2\n", true},
+		{"list comprehension over set literals", "d = [{1, 2} for x in [1, 2]]\nprint(len(d))\n", "2\n", false},
+		{"its element is a two-member set", "d = [{1, 2} for x in [1]]\nprint(len(d[0]))\n", "2\n", false},
 		{"membership in the element", "d = [{1, 2} for x in [1]]\nprint(1 if 2 in d[0] else 0)\n", "1\n", true},
-		{"one set per iteration", "d = [{x} for x in [1, 2]]\nprint(1 if d[0] == d[1] else 0)\n", "0\n", true},
-		{"list comprehension over dict literals", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d))\n", "2\n", true},
+		{"one set per iteration", "d = [{x} for x in [1, 2]]\nprint(1 if d[0] == d[1] else 0)\n", "0\n", false},
+		{"list comprehension over dict literals", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d))\n", "2\n", false},
 		{"each dict holds its own entry", "d = [{\"k\": x} for x in [1, 2]]\nprint(d[1][\"k\"])\n", "2\n", true},
-		{"first dict is not the second", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d[0]))\n", "1\n", true},
+		{"first dict is not the second", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d[0]))\n", "1\n", false},
 		{"a set element keeps its own members", "s = [{1, 2}, {3}]\nprint(len(s[0]), len(s[1]))\n", "2 1\n", false},
 		{"nested display elements", "d = [{1, 2}, [3]]\nprint(len(d), len(d[0]), len(d[1]))\n", "2 2 1\n", false},
 	} {

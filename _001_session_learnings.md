@@ -5235,3 +5235,47 @@ is how a bug gets promoted to a requirement.
 **Process.** Expectations from `python3` first (it says `'bool' has no len()` where we say `'int'`, because
 bools are still ints here — that row belongs to the bool-as-value step, so it is not in the trap table
 yet); suites green: `./pkg/lang`, `./integration`, `./cmd/gustyc`.
+
+## Gap R.79 — a slot's tag travels to the comparison, not only to the printer (ADR 0247)
+
+**The tell was an asymmetry, not a failure.** `print(out[1])` printed `a`; `out[1] == "a"` was refused.
+Nothing had broken — the interpreter and CPython agreed, the compiled backend declined — and that is
+exactly the shape that hides a whole capability gap from a parity matrix. When one reader of a
+representation works and its neighbour refuses, the refusal is not a limit, it is a to-do list: the
+(payload, tag) pair that reached the printer *is* the operand the comparison needed. I have started
+asking, of every refusal table, "what does the neighbouring row do with the same expression?"
+
+**Two helpers answering one question, and the cheaper one was wrong.** `rt_mixed_eq` compared tags and
+then words; `rt_payload_eq` compared tags, then containers by content, then floats by unboxed value. The
+float case is where the first one was unsound — a float slot holds a *box handle*, so two slots holding
+`1.5` were unequal — and `xs = [1.5, "a"]; y = xs[0]; print(1 if y == 1.5 else 0)` had been printing `0`
+in the shipped build while `print(y)` one line earlier printed `1.5`. No parity test caught it (the two
+backends were never asked the same question in the same program), the oracle did. Retiring the second
+helper, rather than using it "where it's cheap", is the fix: a dead word in the runtime block is an
+invitation, so it is deleted and a test fails if `@rt_mixed_eq(` reappears in a module.
+
+**A door that declines must not fall through to an unsound default.** `xs[0] == pick(1)`, where `pick`
+returns text on one path and a number on another, answered **`1`** where CPython answers `0`. The new
+door declined (a call with two return kinds has no tag), the ordinary path ran, compared the slot's `1`
+with the *interned index* of `"z"`, and the numbers happened to match. That is ADR 0232's
+interned-index collision re-appearing at a site nobody tagged — the soundness class does not retire, it
+migrates. Now the door refuses when one side's kind only the object knows and the other's cannot be
+proven; the refusal is asserted in both suites so a future "fix" cannot quietly restore the coincidence.
+
+**"Try the good path, else fall back" needs a scratch buffer.** The slot read emits its bounds check, and
+that check ends its block with a branch to the `IndexError` raise. Emitting it into the caller's buffer
+and then declining would leave instructions after a terminator — exit 2, the compiler's bug billed to the
+program (ADR 0166). So the equality door builds its IR in a `strings.Builder` of its own and commits only
+once both sides have answered. Generalisable to every speculative lowering in this codegen: if declining
+is possible, emitting into the live buffer is not.
+
+**Before is a binary — again, and it caught me out twice.** The wrong answers above were measured against
+a `git worktree` build of `41d6772` before being attributed to anything: the float-box one predated this
+cycle (found by the probe, fixed by it, and filed in the ADR as found-not-introduced), and the `pick()`
+one too. Had I assumed either was my fallout I would have written the wrong history into the roadmap.
+
+**Two small process notes worth keeping.** (1) A backtick inside the runtime-IR raw string is a Go syntax
+error three thousand lines from where you typed it — IR comments get no backticks, only prose. (2) The
+expectations for all 17 parity rows were taken from `python3` before any Go table existed, and one of
+them (`xs = [0, "zero"]`, does the number 0 equal the interned index of `"zero"`) is exactly the row that
+only an oracle makes you write. Suites green: `./pkg/lang`, `./integration`, `./cmd/gustyc`.

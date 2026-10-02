@@ -897,7 +897,12 @@ points carry the whole surface for agents reading emitted IR: the tagged
 writers (`rt_dict_put_tagged`, `rt_set_add_tagged`, `rt_tag_elem`) and the
 tagged readers (`rt_dict_find`, `rt_dict_get_tagged`, `rt_dict_value_tag`,
 `rt_dict_has_tagged`, `rt_set_contains_tagged`, `rt_contains_tagged`,
-`rt_mixed_eq`). A container whose slots describe themselves is marked with
+`rt_payload_eq`). A source-level `==`/`!=` between two tagged values — a slot
+read, or a variable bound from one — is answered by `rt_payload_eq` too, the
+same equality `rt_slot_eq` uses to walk two containers, so a slot cannot answer
+`print` one way and `==` another (ADR 0247; the word-for-word `rt_mixed_eq` it
+used to use is gone from the module, and a test fails if it returns). A
+container whose slots describe themselves is marked with
 `@rt_mark_estr(h, 8)`, which is what routes `rt_dict_print`/`rt_set_print` to
 the per-slot printers; a single-kind container does not set the bit and keeps
 the static printers, so programs that worked before emit what they always

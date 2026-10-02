@@ -4251,7 +4251,7 @@ The trap here is the one half the pair: `print(out)` and `out["a"]` are two diff
 and fixing only the printer would have produced `{0: 1}` that happened to look up correctly. Both readers
 now see the same `TagStr`, and the test asserts both, having learned it from ADR 0244.
 
-### Gap R.79 — comparing a slot of a run-time-built mixed list with text refuses (measured 2026-10-02 while paying Gap R.76, left open)
+### Gap R.79 — comparing a slot of a run-time-built mixed list with text refuses (measured 2026-10-02 while paying Gap R.76; paid the same day by ADR 0247)
 
     xs = []; xs.append(1); xs.append("a")
     out = [x for x in xs]
@@ -4299,3 +4299,56 @@ distinct lists get distinct handles and therefore distinct members, and `in` plu
 something other than what the language says. The fix is small and it is the same rule twice: `rt_set_add`
 raises for a list, dict or set member, with CPython's message — the trap ADR 0211's exception classes
 already know how to deliver.
+
+The row is worth keeping because it shows exactly where the tag reached and where it stopped: the
+*printer* could already ask a slot what it holds and render text for an i32 that is an interned index,
+while the *comparison* lowering still demanded a provable needle before it would run the tagged scan
+(ADR 0232). Same slot, same tag, one reader short — and the one reader short was the ordinary question
+a program asks about a slot.
+
+ADR 0247 closed it by lowering both sides of `==`/`!=` to the `(payload, tag)` pair and letting
+`rt_payload_eq` — the equality `rt_slot_eq` already uses to walk two containers — answer, which is the
+third time this project has found that a tag is only worth having if you follow it to *every* reader
+(ADR 0187 for writes, ADR 0244 for bindings, this for comparisons). The probe that found the pair also
+found a wrong answer that had been shipping: two float slots holding `1.5` compared false, because the
+helper that compared "tags then words" was comparing two box handles. That helper is gone; one equality
+answers the slot question now, and a test fails if the old one comes back.
+
+### Gap R.82 — the ordering comparison of a tagged slot read refuses (measured 2026-10-02, left open)
+
+    xs = [1, "a"]
+    print(1 if xs[1] > "a" else 0)     # CPython 0 · --interp 0 · --aot: "needs a single static kind"
+
+Equality landed with ADR 0247 because the equality it needed already existed; ordering has no such
+helper to reuse, and the reason is worth stating so nobody re-does the measurement. `rt_payload_eq`
+answers "same kind, then same value". An ordering has to answer, per pair of tags: within `int` an
+`icmp`, within `float` an `fcmp` after unboxing each side out of its `@float_box` slot, within text a
+walk of the interned bytes (the intern table is indexed by first-appearance order, so an interned index
+is *not* a code-point ordering — reading the index is how `["b"] < ["a"]` would answer true), and across
+kinds CPython's own `TypeError: '>=' not supported between instances of 'str' and 'int'`. Six arms and a
+raise, where equality needed one call. Refusing is the honest interim: an untagged compare here does not
+merely miss, it orders by whichever word the slot happens to hold.
+
+### Gap R.83 — comparing a tagged slot with an unprovable expression had no answer at all (measured 2026-10-02, refusal in place, verdict owed)
+
+    def pick(c):
+        return "z"
+        return 7
+
+    xs = [1, "a"]
+    print(1 if xs[0] == pick(1) else 0)   # CPython 0 · --interp 0 · --aot: 1 before ADR 0247
+
+This one is not a refusal that went stale; it is a wrong answer that was in the shipped build, found by
+the same probe sweep that found the float-box comparison. The left side is a slot read, the right side is
+a call with two paths of different kinds, and `taggedOperand` declines the call because a call is only
+taggable when *every* path returns the same kind — so the comparison fell through to the ordinary path,
+compared the slot's `1` against the interned index of `"z"`, and the two happened to be the same integer.
+An answer by coincidence is the exact class of defect the diagnostic-quality contract names, and no
+parity test would have caught it, because the two backends were asked nothing (the interpreter answered
+`0`, the compiler answered `1`, and the row was in no table).
+
+ADR 0247 stops the wrong answer: the door refuses, in exit class 1, naming the operand whose kind cannot
+be proven. What is owed is the answer, which needs a call to carry the pair a slot carries — a recorded
+return kind per path, which is L11.7's "functions are values that compile" territory rather than a
+comparison-lowering patch. Until then the refusal is asserted in both suites so the wrong answer cannot
+sneak back as a regression.

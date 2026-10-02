@@ -48,9 +48,10 @@ closes. That is what makes `print(out)` and `print(out[0])` agree on `['a']` and
 printing text and the other the interned index, and what lets `[x for x in {1, "a", None}]` print
 `[1, 'a', None]` on the compiled backend instead of `[1, 0, 0]`. Iterating a dict walks its keys at the
 stride its two-word entries need (ADR 0188), and a dict comprehension writes each entry as two
-`(payload, tag)` pairs, so `{k: 1 for k in d}` produces an entry `out["a"]` can find. What still refuses
-by naming itself: a comprehension over a name the compiler kept as a compile-time list, and comparing a
-slot of a run-time-built mixed list with text (Gap R.79).
+`(payload, tag)` pairs, so `{k: 1 for k in d}` produces an entry `out["a"]` can find. A slot of that
+list answers an equality the way the printer already answers `print`: `out[1] == "a"` asks the slot's
+own tag (ADR 0247, closing Gap R.79). What still refuses
+by naming itself: a comprehension over a name the compiler kept as a compile-time list.
 
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
@@ -1625,12 +1626,33 @@ xs.append(5)
 print(len(xs[2]))                          # TypeError: object of type 'int' has no len() — as CPython
 ```
 
+**…and an equality asks it the same question** (ADR 0247). The tag was already carried to the printer,
+so `print(out[1])` rendered `a` while `out[1] == "a"` was refused — one read, two doors. Both sides of
+`==`/`!=` are now `(payload, tag)` pairs, and the one equality the container comparisons already use
+(`rt_payload_eq`) answers: within a tag by payload, across the two numeric tags numerically, container
+slots by content. Retired with this is the helper that compared the tags and then the words, which
+called two float slots holding `1.5` unequal because they were two box handles:
+
+```gy
+xs = [1, "a"]
+print(1 if xs[1] == "a" else 0)             # 1   — was refused: "needs a single static kind"
+print(1 if xs[0] == xs[1] else 0)           # 0   — interned text and its index stay different values
+i = 1
+print(1 if xs[i] == "a" else 0)             # 1   — the position the program computes is a position
+xs2 = []
+xs2.append([1, 2])
+print(1 if xs2[0] == [1, 2] else 0)         # 1   — a container slot equals an equal container
+```
+
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), and a tagged element whose kind only the run time can tell — a loop variable over a
 mixed list used as a number, an element read through a runtime index used **as a number**
-(`xs[0][0] + 1` on a run-time-built container), or compared with text (Gap R.79) — which needs the value
-word that carries its own tag (roadmap L11.1). A fold (`sum`, `min`, `max`) over container elements
+(`xs[0][0] + 1` on a run-time-built container), an **ordering** comparison of such a slot (`xs[1] >
+"a"`, Gap R.82), a comparison against an expression whose kind cannot be proven (Gap R.83), or the
+nested read of a container built at run time (`xs[0][0]` after `xs.append([7, 8])`) — all of which need
+the value word that carries its own tag (roadmap L11.1). A fold (`sum`, `min`, `max`) over container
+elements
 reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
@@ -1890,9 +1912,9 @@ at the wrong output is now a parity case). What refuses, honestly and naming
 itself: a comprehension over a name the
 compiler kept as a compile-time list (there is no heap object to walk, and emitting the load is the
 module `llc` rejects — ADR 0192), a comprehension whose *filter* reads a
-container slot — the `cannot reach into …'s slots` refusal rather than a guess, and comparing a slot of a
-run-time-built mixed list with text (`out[1] == "a"`, Gap R.79, where the tag is carried to the printer
-but not yet to the comparison).
+container slot — the `cannot reach into …'s slots` refusal rather than a guess. Comparing a slot of a
+run-time-built mixed list with text (`out[1] == "a"`) is answered: the pair the printer carries is the
+operand the comparison needed (ADR 0247, Gap R.79).
 
 **A comprehension's loop variable carries its element's tag** (ADR 0245, Gap R.76). Iterating a container
 whose slots hold more than one kind binds the same `(payload, tag)` pair `for` binds (ADR 0185), so the
