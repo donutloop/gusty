@@ -5361,3 +5361,69 @@ already drafted a roadmap row for the "context-dependent classification" that th
 (Gap R.88, never filed). Two minutes of `go build -o gustyc ./cmd/gustyc` before each measurement round
 is cheaper than writing a defect into the tracker and having to delete it; a probe is only as current as
 the binary it runs, and this repo's probes all shell out to that binary rather than building from source.
+
+---
+
+## Cycle: ADR 0249 — a slot read through an index the program computes is asked of the tag (Gap R.88)
+
+**An empty operand is a class, not an incident.** The bug that opened this cycle was `%t2 = fdiv double , %t1`
+— an arithmetic instruction with a hole where the slot read should have been — and the obvious fix was one
+guard in `floatBinOp`. But `floatValue` returns `""` for "I cannot lift this", and the *print* path had never
+checked: `fsub double 0.0, ` and `rt_fmt_double(double )` were both reachable in code written long before
+this cycle, waiting for an expression that got there. So the shipped rule is "an operand the lift cannot
+reach is recorded and refused at the front end", applied at every site that consumes a lift, not just the one
+that reported the bug. When a defect is a *shape* — here, "a caller ignoring a sentinel" — fixing the instance
+leaves the next one loaded and unprimed. Grep for the callers of the sentinel, not only for the crash.
+
+**Write the oracle table first, and let it embarrass you.** The integration file compares both engines with
+`python3` on the same file, and it caught two things no hand-written table would have:
+
+- `print(1 > xs[k])` with a text slot raised `'>' not supported between instances of 'str' and 'int'` — the
+  two type names in the wrong order, because the message was assembled from (the slot's kind, the other
+  side) when CPython writes (the left operand, the right operand). Both orders look correct to a reader who
+  wrote the code, and both are pinned happily by a test that only checks `strings.Contains(..., "not supported")`.
+- `print(-xs[i])` over a float container was refused compiled, and the *interpreter* — which I had no reason
+  to test, since this was an AOT feature — answered `-281474976710660` where CPython raises
+  `TypeError: bad operand type for unary -: 'str'`. That is the interned-string index, negated. Filed as
+  Gap R.89 rather than fixed under this commit.
+
+**A wrong answer in the other backend is not a reason to weaken the test.** The trap table runs both engines.
+For the unary row the interpreter is wrong, and the tempting move — "the interpreter has its own test file" —
+silences the check entirely. The row carries an `aotOnly` flag instead: the compiled half is pinned, the
+interpreter half is *named* as Gap R.89 in the comment, and neither is presented as passing. Same discipline
+as the conformance ledger: the tracker is where an ugly truth goes so the tests can stay strict.
+
+**Gate on the result's kind, not the operand's.** "Can I answer `xs[i] + 1`?" has an obvious wrong answer:
+yes, if the slot's family is numeric. But a container `xs = [1, 2.5]` has int slots and float slots, so the
+*result* is `int` or `float` depending on the index — and the only path that can ask the tag answers
+`double`, printing `2.0` where CPython prints `2`. That is a different value with a superficially familiar
+spelling, and the next line divides it. The gate therefore asks what type the *expression* has: float-only
+containers for arithmetic, true division always (Python answers a float whatever arrives), orderings always
+(they answer `0`/`1`), and everything else declined with the debt named. Declining is cheap; `2.0` is not.
+
+**Negation is not a binary minus wearing a hat.** `-xs[i]` over a text slot is
+*bad operand type for unary -: 'str'* — a sentence the binary path never produces. Spelling the negation as
+`0 - xs[i]` would have saved twenty lines and shipped a TypeError about an operator the source never
+contained. Two small things fell out of taking it seriously: `unsupportedNumberOp` gained a `"neg"` arm, and
+the tag dispatch was factored into `taggedDoubleFromSlot(... sentence func(string) (string, string))` so both
+doors share the dispatch and each brings its own wording.
+
+**House style beats clever instruction, especially in emitted IR.** I wrote `fneg double %t` for the negation
+— correct LLVM, correct semantics, and `llc-20` rejected the module: `expected instruction opcode`, pointing
+at the *following* line, because a parse error blames its neighbour. The codebase already negates floats as
+`fsub double 0.0, %v`, which is known-good on the pinned LLVM, so that is what ships. Every emitted
+instruction has to survive the toolchain we actually run, not the one the reference manual describes; when a
+helper already exists at that altitude, use it.
+
+**Rebuild before you probe — I was caught by this twice in one cycle.** After the `fneg` fix I ran the CLI
+probes against the pre-fix binary and read back the *same* `llc` error, which briefly looked like a fix that
+had not worked. The previous cycle's entry in this file says the same thing about a stale binary inventing a
+defect worth a roadmap row. The rule is: `go build -o gustyc ./cmd/gustyc` immediately before any measurement,
+every time, with no exceptions for "I only changed a comment".
+
+**A refusal's sentence has to age with the feature.** `mixedReadErr` said the tag carries printing and binding
+— true when written, and a small lie after this cycle, because a numeric use now travels with the tag too.
+Under the Gap R.38 rule (a refusal that claims something false about the language is its own defect) the
+message was widened rather than left flattering itself. Tests pin the *tail* of that sentence ("needs a single
+static kind"), not its middle, which is what let the wording move at all; if a test had pinned the whole
+string, the honest fix would have been blocked by a test that was only ever testing a comment.

@@ -170,11 +170,19 @@ too: `<`, `<=`, `>`, `>=` between two texts compares the bytes behind their inte
 `print(1 if "b" > "a" else 0)` is `1` compiled, interpreted and run under CPython — the index records
 which spelling the program mentioned first, and reading it as an ordering was the answer
 (ADR 0248, closing Gap R.84; equality stays an index comparison, because interning is
-content-addressed). What still refuses by naming
-itself: a slot used **as a number** on a container this pass cannot see, the nested read of a container
-built at run time (`xs[0][0]` after `xs.append([7, 8])`), an **ordering** comparison of such a slot
-(Gap R.82), and a comparison against an expression whose kind cannot be proven — which until this cycle
-answered `1` where CPython answers `0` (Gap R.83).
+content-addressed). A slot used **as a number** asks the object the same question, index included: a read
+through a position the program computes arrives at the arithmetic as a `(payload, tag)` pair, and the tag
+decides whether to unbox a float, convert an int or bool, or raise the `TypeError` CPython raises for that
+operator and that kind — so `xs = [1.5, "a"]` / `i = 0` / `print(xs[i] + 1)` is `2.5` compiled where it used
+to be refused, `print(xs[i] / 4)` over `[10, 4]` is `2.5` where it used to reach `llc` as `fdiv double , %t1`
+and exit 2, `print(-xs[i])` carries negation's own sentence, and a text slot says
+`can only concatenate str (not "int") to str` at run time like the oracle does (ADR 0249, closing
+Gap R.88). What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
+the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
+slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a
+function), the nested read of a container built at run time (`xs[0][0]` after `xs.append([7, 8])`), an
+**ordering** comparison of such a slot (Gap R.82), and a comparison against an expression whose kind cannot
+be proven — which until this cycle answered `1` where CPython answers `0` (Gap R.83).
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,

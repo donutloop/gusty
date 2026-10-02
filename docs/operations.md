@@ -907,8 +907,13 @@ see are text, in either the value or the condition position — goes to
 `rt_str_order`, which compares the bytes behind the interned indices and returns
 -1/0/1; equality of texts stays an index comparison, because interning is
 content-addressed (ADR 0248, closing Gap R.84 — an index records the order a text
-was mentioned, and reading it as an ordering made `"b" > "a"` false). A
-container whose slots describe themselves is marked with
+was mentioned, and reading it as an ordering made `"b" > "a"` false). A numeric use of a slot read through
+an index the program computes — `xs[i] + 1`, `xs[i] / 2`, `-xs[i]`, `1 > xs[i]` — comes out as its
+(payload, tag) pair (`rt_get_elem` + `rt_tag_of`) and a tag dispatch: `rt_float_of` for a float slot,
+`sitofp` for an int or bool, and one raise per non-numeric kind carrying CPython's own sentence for that
+operator (ADR 0249, closing Gap R.88; the arm for the last kind is the unconditional `else`, so the merge
+`phi` never has a predecessor that stores nothing, and an instruction with an empty operand is refused at
+the front end instead of reaching `llc`). A container whose slots describe themselves is marked with
 `@rt_mark_estr(h, 8)`, which is what routes `rt_dict_print`/`rt_set_print` to
 the per-slot printers; a single-kind container does not set the bit and keeps
 the static printers, so programs that worked before emit what they always

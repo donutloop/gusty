@@ -131,7 +131,10 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// element the read cannot resolve to a literal — text in the slot, a loop variable, or a
 		// value handed to a function.
 		{"xs = [1, \"a\"]\nprint(xs[1] + 1)\n", "needs a single static kind"},
-		{"xs = [1, \"a\"]\nprint(xs[1] > 2)\n", "needs a single static kind"},
+		// `xs[1] > 2` used to be on this table. It is not a compile-time refusal any more: a slot read
+		// whose kind the object carries goes to the float arms with its tag, and text against a number
+		// raises CPython's TypeError at run time — which is what CPython does, so the row now lives in
+		// the trap table of tagged_numeric_test.go (roadmap L11.1, Gap R.88).
 		{"def head(v):\n    print(v)\n    return 1\n\nxs = [1, \"a\", None]\nhead(xs[1])\n", "needs a single static kind"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x + 1)\n", "using it as a number needs a tagged value"},
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},

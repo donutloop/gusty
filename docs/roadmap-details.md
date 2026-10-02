@@ -4446,3 +4446,91 @@ comparison path that never learned either rule: equality was taught, ordering wa
 This is filed separately from Gap R.86 on purpose. R.86 is a wrong answer, which is bad and quiet; this
 one is loud, and the fix is different — materialise both literals before the comparison, or refuse the
 shape honestly — but in neither case may the emitted module hand `@.lstN` to an `icmp`.
+
+### Gap R.88 — a numeric use of a slot read through a computed index (measured 2026-10-02, closed by ADR 0249)
+
+    xs = [10, 4]
+    i = 0
+    print(xs[i] / 4)          # CPython 2.5 · --interp 2.5 · --aot: exit 2
+
+    %t2 = fdiv double , %t1   # what the module said, which llc-20 rejects
+
+Three measurements, three different failures, one missing question. The literal promise of ADR 0243 stops
+at the index the program computes; past that line the read had no way to say what it held, so the float
+arm asked for an operand and got an empty string, and the arithmetic it emitted had a hole in it. The
+same read reached the *print* path the same way — `fsub double 0.0, ` and `rt_fmt_double(double )` were
+both reachable, in code written long before this, which is the second exit-2 hole here and the reason the
+fix is a rule about empty operands rather than a patch to one operator.
+
+What the sweep measured before anything was written (all four columns run through `python3`, the
+interpreter and `--aot` on the same file):
+
+| program | CPython | `--interp` | `--aot`, before |
+|---|---|---|---|
+| `xs=[10,4]; i=0; print(xs[i]/4)` | `2.5` | `2.5` | **exit 2** |
+| `xs=[1.5,"a"]; i=0; print(xs[i]+1)` | `2.5` | `2.5` | refused *needs a single static kind* |
+| `xs=[1.5,"a"]; i=0; print(-xs[i])` | `-1.5` | `-1.5` | refused |
+| `xs=[1.5,"a"]; i=1; print(-xs[i])` | TypeError *bad operand type for unary -: 'str'* | TypeError | refused |
+| `xs=[1,"a"]; k=1; print(1 > xs[k])` | TypeError *'&gt;' … 'int' and 'str'* | TypeError | TypeError *'str' and 'int'* (reversed) |
+| `xs=[1,"a"]; i=0; print(xs[i]+1)` | `2` | `2` | refused |
+| `xs=[1,2.5]; i=0; j=1; print(xs[i]+xs[j])` | `3.5` | `3.5` | refused |
+
+The last row is the one that stayed refused, and it is the interesting one. The float arms are the only
+place that can ask a tag, and the float arms always answer a `double` — so answering `3.5` there is fine,
+but answering `xs[i] + 1` on a container whose slots are ints *here* and floats *there* prints `2.0` where
+CPython prints `2`. That is not a near miss, it is a different value, and the next line divides it. So the
+gate is the **result's** kind rather than the operand's: a float-only container is admitted for the
+arithmetic operators, true division is admitted whatever arrives because Python always answers a float, an
+ordering is admitted because it answers `0`/`1`, and everything whose result kind is only knowable while
+the program runs is declined with the debt named — which is Gap R.82's tagged value word, arriving from
+the arithmetic side instead of the comparison side.
+
+Two details worth keeping, because both are the kind of thing that reads as pedantry until it is a bug:
+
+- **The two type names in a TypeError come in source order.** The first draft built the message from
+  (the slot's kind, the other operand's kind), which is right for `xs[i] > 1` and wrong for `1 > xs[i]`.
+  CPython writes the left type first either way, so the door carries which side the read was on.
+- **Negation is not a binary minus wearing a hat.** `-xs[i]` over a text slot is
+  *bad operand type for unary -: 'str'*, a sentence the binary path never produces; lowering it as
+  `0 - xs[i]` would have raised *unsupported operand type(s) for -: 'int' and 'str'* for a program that
+  never contained a binary minus. Hence its own door, sharing the tag dispatch.
+
+`*` and `%` over a container that can hold text are also declined, and the reason is that CPython does not
+raise there at all: `"ab" * 2` repeats and `"a" % 2` formats (*not all arguments converted during string
+formatting*). A door whose only vocabulary is `raise` would answer both wrongly, so they wait for Gap R.33
+and Gap R.31.
+
+A refusal pin broke, as one is allowed to do when the work lands: `mixed_list_test.go` insisted
+`print(1 if xs[1] > 2 else 0)` over `[1, "a"]` must be refused at compile time. CPython raises for that
+program; both backends now raise the same sentence; the row moved to the trap table and the table checks
+both the interpreter and the compiled binary.
+
+### Gap R.89 — unary minus never asks a tag (measured 2026-10-02, left open)
+
+    print(-"a")     # CPython TypeError: bad operand type for unary -: 'str'
+                    # --interp -281474976710658   --aot 0
+    print(-[1])     # CPython TypeError: bad operand type for unary -: 'list'
+                    # --interp -281474976710658   --aot: exit 2 (%t1 = sub i32 0, @.lst1)
+
+The interpreter negates the interned index; the compiled backend negates 0. Neither is a wrong answer by a
+little — `-281474976710658` is a heap-table position being presented as arithmetic — and the list-literal
+form reaches `llc` with a global in an `i32` slot, which under ADR 0166 is exit 2, the compiler's own bug.
+
+ADR 0249 fixes exactly one shape here: a float-family container read through a computed index raises
+CPython's unary sentence on the compiled path, pinned in `tagged_numeric_test.go` with the interpreter half
+marked `aotOnly` rather than quietly dropped. The rest is unary minus's own work: it has to ask what kind
+its operand is, in both backends, and the literal cases must trap at run time rather than be folded into a
+compilation error (Gap R.37's rule, which this is another instance of).
+
+### Gap R.90 — an out-of-range subscript names the wrong container (measured 2026-10-02, left open)
+
+    xs = [1.5, 2.5]
+    print(xs[7])    # CPython IndexError: list index out of range
+                    # both engines: IndexError: index out of range
+
+Found while checking that opening the numeric door had not lost the bounds check. It had not — the read
+still goes through `rt_get_elem`, and `TestTaggedNumericKeepsTheBoundsCheck` pins the trap on both engines
+for a literal index and a computed one. What is wrong is the sentence, and a sentence is contract: a
+program that catches `IndexError` and looks at the text behaves differently here than in Python. One word,
+taken from whichever table both backends already read their messages from, with `KeyError`'s wording left
+alone because a key is a key.

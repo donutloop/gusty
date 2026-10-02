@@ -3608,8 +3608,14 @@ type irGen struct {
 	// floatFmtUsed records that a float is rendered at run time, which pulls in
 	// floatRuntimeIR (rt_fmt_double).
 	floatFmtUsed bool
-	heapSeq      int
-	handlerStack []string
+	// numCtx is the BinOp currently being lowered into the float arms, so the slot read inside it can
+	// name the operator and span in the TypeError it raises. Set and restored by floatBinOp.
+	numCtx *BinOp
+	// floatUnlowerable records that a float arm reached an operand it could not lift, which the caller
+	// turns into a front-end refusal instead of an instruction with an empty operand (Gap R.88).
+	floatUnlowerable string
+	heapSeq          int
+	handlerStack     []string
 	// handledArms counts the `except` arms whose body is currently being lowered. Inside one,
 	// the exception in flight has been *accepted by the program*, so a control transfer out of
 	// the arm (`return`, `break`, `continue`) has to leave the pending-exception flag cleared
@@ -5513,7 +5519,9 @@ func (g *irGen) isFloat(e Expr) bool {
 		return true
 	case *UnOp:
 		if n.Op == "-" {
-			return g.isFloat(n.X)
+			// A negated slot read whose kind the object carries is answered by the float arms, so its
+			// result *is* a float and print has to choose the float formatter for it (Gap R.88).
+			return g.isFloat(n.X) || g.taggedNegationApplies(n)
 		}
 		return false
 	case *BinOp:
@@ -5523,6 +5531,16 @@ func (g *irGen) isFloat(e Expr) bool {
 		// harness could not see it because both backends agreed on the wrong answer.
 		if n.Op == "/" {
 			return true
+		}
+		// The numeric door answers an arithmetic use of a slot whose kind the object carries through
+		// the float arms — unboxing a float slot rather than reading its handle as a count — so the
+		// result of such an expression *is* a float, and print has to pick the float formatter for it
+		// (roadmap L11.1, Gap R.88). Comparisons are not in this: they answer 0/1 whatever lifts.
+		switch n.Op {
+		case "+", "-", "*", "%", "//", "**":
+			if g.taggedNumberUseApplies(n) {
+				return true
+			}
 		}
 		switch n.Op {
 		case "+", "-", "*", "%", "//":
@@ -6035,6 +6053,16 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		if el, ok := g.staticNumericElem(n); ok {
 			return g.floatValue(b, el)
 		}
+		// The other half: the literal no longer describes the element, but the object remembers what it
+		// wrote beside it. The pair comes out of the slot and the tag decides — unbox, convert, or raise
+		// what CPython raises for this operator and that kind (roadmap L11.1, Gap R.88).
+		if g.numCtx != nil {
+			if fam, ok := g.taggedNumberOperands(g.numCtx); ok {
+				if v, okUse, err := g.taggedFloatOperand(b, n, g.numCtx, fam); okUse && err == nil && v != "" {
+					return v
+				}
+			}
+		}
 		return ""
 	case *Name:
 		if g.floatTemps != nil && g.floatTemps[n.Value] {
@@ -6050,7 +6078,25 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		return t
 	case *UnOp:
 		if n.Op == "-" {
+			// A negated slot read whose kind only the object carries goes to the tag dispatch, which is
+			// the only place that can unbox a float slot rather than read its handle as a number.
+			if g.taggedNegationApplies(n) {
+				if v, ok, err := g.taggedFloatNegate(b, n); err != nil {
+					g.floatUnlowerable = err.Error()
+					return ""
+				} else if ok && v != "" {
+					t := g.newTmp()
+					fmt.Fprintf(b, "  %s = fsub double 0.0, %s\n", t, v)
+					return t
+				}
+			}
 			fx := g.floatValue(b, n.X)
+			if fx == "" {
+				// `fsub double 0.0, ` with an empty operand is the module llc rejects, which ADR 0166
+				// counts as the compiler's bug — so the shape is recorded and the caller refuses it.
+				g.floatUnlowerable = fmt.Sprintf("the operand %s of the negation", g.exprSummary(n.X))
+				return ""
+			}
 			t := g.newTmp()
 			fmt.Fprintf(b, "  %s = fsub double 0.0, %s\n", t, fx)
 			return t
@@ -6249,8 +6295,31 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 
 // floatBinOp emits float arithmetic/comparison for a float-typed BinOp.
 func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
+	// The numeric door (taggedFloatOperand) needs to know which operator and which source span the
+	// raise it emits belongs to; floatValue is reached from here, so the context is set around the
+	// call and restored after it, the way a nested expression's own operator belongs to itself.
+	prev := g.numCtx
+	g.numCtx = n
+	defer func() { g.numCtx = prev }()
 	l := g.floatValue(b, n.L)
 	r := g.floatValue(b, n.R)
+	if l == "" || r == "" {
+		// An operand the lift cannot reach must never reach the instruction. `fdiv double , %t1` is
+		// llc rejecting the compiler's own module, which ADR 0166 counts as our bug rather than the
+		// program's, so the shape is recorded and the caller refuses it as a front-end diagnostic
+		// (roadmap Gap R.88).
+		missing, which := n.L, "left"
+		if l != "" {
+			missing, which = n.R, "right"
+		}
+		g.floatUnlowerable = fmt.Sprintf("the %s operand %s of %q", which, g.exprSummary(missing), n.Op)
+		if l == "" {
+			l = "0.0"
+		}
+		if r == "" {
+			r = "0.0"
+		}
+	}
 	t := g.newTmp()
 	switch n.Op {
 	case "+":
@@ -6535,6 +6604,18 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 				return "", terr
 			}
 			return i1, nil
+		}
+		// The same door as the value path, on the side a condition takes: an ordering of a slot whose
+		// kind the object carries has to reach the arms that can ask the tag, because the integer path
+		// here reads the payload of a float slot as a count (roadmap L11.1, Gap R.88).
+		if g.taggedNumberUseApplies(n) && cmpI1Op(n.Op) != "" {
+			res := g.floatBinOp(b, n)
+			if g.floatUnlowerable != "" {
+				return "", g.floatLoweringRefusal(n)
+			}
+			p := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", p, res)
+			return g.markI1(p), nil
 		}
 		l, err := g.value(b, n.L)
 		if err != nil {
@@ -7189,7 +7270,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if res, ok := g.emitDunderBinOp(b, n); ok {
 			return res, nil
 		}
-		if g.isFloat(n.L) || g.isFloat(n.R) {
+		if g.isFloat(n.L) || g.isFloat(n.R) || g.taggedNumberUseApplies(n) {
 			// Which question is this? Two operands of different runtime kinds are not equal
 			// (ADR 0215's rule; ADR 0221 makes the numeric cross-kind pair the exception), and
 			// CPython answers `1.0 == [1]` with False without ever converting the list. Handing
@@ -7215,7 +7296,27 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 			switch n.Op {
 			case "==", "!=", "<", "<=", ">", ">=":
-				return g.floatBinOp(b, n), nil
+				res := g.floatBinOp(b, n)
+				if g.floatUnlowerable != "" {
+					return "", g.floatLoweringRefusal(n)
+				}
+				return res, nil
+			}
+		}
+		// A numeric use of a slot whose kind the object carries, in either direction. The float arms are
+		// the only ones that can ask the tag what the payload means, and the read brings its
+		// (payload, tag) pair to them: a float slot unboxes, an int or bool slot converts, and a slot
+		// holding text, None or a container raises the TypeError CPython raises for this operator and
+		// that kind. The gate sits above the ordinary arithmetic lowering on purpose — that path reads
+		// the payload as a number, which is what this door exists to stop (roadmap L11.1, Gap R.88).
+		if g.taggedNumberUseApplies(n) {
+			switch n.Op {
+			case "+", "-", "*", "/", "//", "%", "**":
+				res := g.floatBinOp(b, n)
+				if g.floatUnlowerable != "" {
+					return "", g.floatLoweringRefusal(n)
+				}
+				return res, nil
 			}
 		}
 		// None equality. Values are untagged i32s here, so `x == None` is decided the way
@@ -7760,6 +7861,24 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = %s i32 %s, %s\n", t, op, l, r))
 		return t, nil
 	case *UnOp:
+		// `-xs[i]` before the operand is read as a plain number: the read below would refuse, and the
+		// float arms are the only place that can ask the slot's tag what it holds. Negation carries its
+		// own sentence, so a text slot says `bad operand type for unary -: 'str'` the way CPython does
+		// rather than the binary minus's line (roadmap L11.1, Gap R.88).
+		if n.Op == "-" && g.taggedNegationApplies(n) {
+			res, ok, err := g.taggedFloatNegate(b, n)
+			if err != nil {
+				return "", err
+			}
+			if ok {
+				neg := g.newTmp()
+				// The same spelling the static float negation uses: `fsub double 0.0, %v`. A hand-written
+				// `fneg` is the right idea and the wrong token for this LLVM, which read it as a malformed
+				// instruction and had llc reject the compiler's own module.
+				fmt.Fprintf(b, "  %s = fsub double 0.0, %s\n", neg, res)
+				return neg, nil
+			}
+		}
 		x, err := g.value(b, n.X)
 		if err != nil {
 			return "", err
@@ -10372,6 +10491,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							// "0.1" and str(2.0) is "2.0".
 							fmtLit += "%s"
 							fv := g.floatValue(b, part.Expr)
+							if fv == "" {
+								return "", g.floatOperandRefusal(part.Expr)
+							}
 							g.floatFmtUsed = true
 							fs := g.newTmp()
 							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_fmt_double(double %s)\n", fs, fv))
@@ -10607,6 +10729,11 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// and %g truncated them, and neither marked 2.0 as a float.
 				fmtName, size := g.fmtStr("%s")
 				fv := g.floatValue(b, a)
+				if fv == "" {
+					// An empty operand here would reach printf as `rt_fmt_double(double )` and
+					// llc would reject the module: refuse it at the front end instead (ADR 0166).
+					return "", g.floatOperandRefusal(a)
+				}
 				g.floatFmtUsed = true
 				fs := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = call i8* @rt_fmt_double(double %s)\n", fs, fv))

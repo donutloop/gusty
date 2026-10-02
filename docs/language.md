@@ -1518,12 +1518,41 @@ cannot see …`) instead of reading a payload as a handle. Reading a payload as 
 number is `[[5]]` where the program wrote `[[1, 2]]`, and that is the class of answer this language does
 not ship (ADR 0233, ADR 0241).
 
-Two uses stay refused, both by name: a slot whose kind only the **run time** knows — a loop variable over
-a mixed list, or an element read through a runtime index `xs[i]` — and a container **built rather than
-spelled out** (`xs = []; xs.append([7, 8]); print(xs[0][0])`), which no literal ever described. A slot
-holding text, `None` or another container used arithmetically is refused too, where CPython raises a
-`TypeError`. The interpreter — boxed values, no static tag needed — answers the first two, which is what
-keeps them roadmap rows rather than mysteries (roadmap L11.1, `docs/roadmap-details.md`).
+A slot read through an **index the program computes** is answered too (ADR 0249): the read brings its
+(payload, tag) pair to the arithmetic, and the tag decides whether to unbox a float, convert an int or
+bool, or raise the `TypeError` CPython raises for that operator and that kind.
+
+```gy
+xs = [1.5, "a"]
+i = 0
+print(xs[i] + 1)        # 2.5  — the float slot unboxes; it is not its heap handle
+print(xs[i] / 2)        # 0.75
+print(-xs[i])           # -1.5 — negation is its own operator, with its own message
+total = 0.0
+for j in [0, 0]:
+    total = total + xs[j]
+print(total)            # 3.0
+xs[1] + 1               # at run time: TypeError: can only concatenate str (not "int") to str
+```
+
+`*` and `%` are the two operators the door steps back from over a container that can hold **text**, and
+the reason is that CPython does not raise there at all: `xs = [1.5, "a"]` / `i = 0` / `print(xs[i] * 2)`
+repeats the text for one index and multiplies for another, and a door whose only vocabulary is `raise`
+would answer the first wrongly. Over a container that cannot hold text both are answered — `xs = [1.5,
+2.5]` / `print(xs[i] * 2)` is `3.0` — and what they are waiting for is repetition and `%`-formatting
+themselves (Gap R.33, Gap R.31).
+
+What the tag cannot settle is the **kind of the result**, which the compiler has to know before the program
+runs. A container whose slots are ints here and floats there (`xs = [1, 2.5]`) is therefore refused rather
+than widened: `xs[i] + 1` would print `2.0` where CPython prints `2`, and that is a different value, not a
+near miss. The same honesty covers a container that was **built rather than spelled out** (`xs = [];
+xs.append([7, 8]); print(xs[0][0])`), which no literal ever described.
+
+The interpreter — boxed values, no static tag needed — answers all of these, which is what keeps the
+refusals roadmap rows rather than mysteries (roadmap L11.1, `docs/roadmap-details.md`). One exception is
+recorded rather than papered over: **unary minus does not consult a tag in either backend**, so `print(-"a")`
+answers `-281474976710658` in the interpreter and `0` compiled, where CPython raises
+`TypeError: bad operand type for unary -: 'str'` (roadmap Gap R.89).
 
 **Dicts and sets take the same rule** (ADR 0232). A compiled dict may mix kinds on either side of
 an entry and a compiled set may mix kinds among its members, because a slot is always the pair

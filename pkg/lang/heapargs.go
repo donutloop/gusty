@@ -1482,7 +1482,7 @@ func (g *irGen) elemTagFor(e Expr, interned bool) int32 {
 // mixedReadErr is what reading a single element out of a tagged list reports: the tag says
 // what the element is, but the use site was compiled against one static kind.
 func mixedReadErr(what string) error {
-	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind, so one element is a (value, tag) pair; print(xs[i]) and v = xs[i] work because the tag travels with them, but this context needs a single static kind (roadmap L11.1, ADR 0187)", what)
+	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind, so one element is a (value, tag) pair; print(xs[i]), v = xs[i] and — since ADR 0249 — a numeric use whose result kind the compiler can settle all work because the tag travels with them, but this context needs a single static kind (roadmap L11.1, Gap R.82)", what)
 }
 
 // mixedTaggedVarErr is what a loop variable from a mixed list reports when the program
@@ -2788,6 +2788,495 @@ func (g *irGen) emitTextOrderOperands(b *strings.Builder, op, l, r string) (stri
 	res := g.newTmp()
 	fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", res, i1)
 	return res, i1, nil
+}
+
+// floatOperandRefusal is what a print or format site says when the float lift handed back nothing:
+// the operand is named, and the program leaves through the refusal exit class instead of reaching
+// `llc` with an instruction that has an empty operand (roadmap Gap R.88, ADR 0166).
+func (g *irGen) floatOperandRefusal(e Expr) error {
+	why := g.floatUnlowerable
+	g.floatUnlowerable = ""
+	if why == "" {
+		why = g.exprSummary(e)
+	}
+	return fmt.Errorf("codegen: %s has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)", why)
+}
+
+// taggedNumberUseApplies is the gate the arithmetic and comparison paths ask: does this BinOp have a
+// slot read on one side whose kind the object carries, with the other side a number the compiler can
+// name? When it does, the BinOp goes down the float path, because that path can ask the tag — and the
+// arm that would have read the payload as a plain number is the one that used to emit an empty operand
+// (roadmap Gap R.88, ADR 0166's exit-class rule).
+func (g *irGen) taggedNumberUseApplies(n *BinOp) bool {
+	_, ok := g.taggedNumberOperands(n)
+	if !ok {
+		return false
+	}
+	for _, side := range []Expr{n.L, n.R} {
+		if ix, isIdx := side.(*Index); isIdx {
+			if _, fOk := g.slotNumberFamily(ix.Obj); fOk {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// floatLoweringRefusal is what the compiled backend says when a float arm reaches an operand it cannot
+// lift: the operand is named, the reason is named, and the program leaves through the refusal exit
+// class rather than through llc rejecting the module (roadmap Gap R.88, ADR 0166).
+func (g *irGen) floatLoweringRefusal(n *BinOp) error {
+	why := g.floatUnlowerable
+	g.floatUnlowerable = ""
+	return fmt.Errorf("codegen: %s of %q has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and using it as a number needs the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)", why, n.Op)
+}
+
+// slotNumberFamily is the promise the compiler can make about the numbers a slot may hold, for the
+// one case that can be made without reading the object at run time: a container the literal still
+// describes. "float" means every numeric element of it is a float, "int" that every one is an int or
+// bool, "none" that it holds no number at all (so a numeric use raises whatever the kind dictates),
+// and "mixed" that an int and a float can both appear — in which case the *result's* kind is a
+// run-time question, which is the tagged value word this phase is still owed (roadmap L11.1).
+//
+// A container no literal describes — built up by `append`, handed in by a caller — answers "",false:
+// the compiler would be guessing, and a guess here is an answer that depends on the program's data.
+func (g *irGen) slotNumberFamily(obj Expr) (string, bool) {
+	nm, isName := obj.(*Name)
+	if !isName {
+		return "", false
+	}
+	lit, ok := g.containerLits[nm.Value]
+	if !ok {
+		return "", false
+	}
+	elems := []Expr{}
+	switch c := lit.(type) {
+	case *ListLit:
+		elems = c.Elems
+	case *DictLit:
+		elems = append(elems, c.Vals...)
+	default:
+		return "", false
+	}
+	if len(elems) == 0 {
+		return "", false
+	}
+	seenFloat, seenInt, seenOther := false, false, false
+	for _, el := range elems {
+		tg, tok := g.elemKindTag(el)
+		if !tok {
+			return "", false
+		}
+		switch tg {
+		case int32(TagFloat):
+			seenFloat = true
+		case int32(TagInt), int32(TagBool):
+			seenInt = true
+		default:
+			seenOther = true
+		}
+	}
+	_ = seenOther
+	switch {
+	case seenFloat && seenInt:
+		return "mixed", true
+	case seenFloat:
+		return "float", true
+	case seenInt:
+		return "int", true
+	default:
+		return "none", true
+	}
+}
+
+// numericUseKind names the family an operand belongs to for the purposes of the raise message CPython
+// writes: "int", "float", or "" when the compiler cannot say — and an operand whose kind this cannot
+// name disqualifies the shape, because the sentence has to be CPython's exactly.
+func (g *irGen) numericUseKind(e Expr) string {
+	switch n := e.(type) {
+	case *IntLit, *BoolLit:
+		return "int"
+	case *FloatLit:
+		return "float"
+	case *StrLit, *FString, *NoneLit, *ListLit, *DictLit, *SetLit:
+		// Not a number, whatever the tail of this function says about an expression it cannot name.
+		// A text literal answering "int" here is how `xs[1] > "a"` reached the numeric door and raised
+		// a TypeError CPython never raises — comparing "a" with "a" is an ordering, not a trap.
+		return ""
+	case *Name:
+		if g.floatVars[n.Value] || g.floatTemps[n.Value] {
+			return "float"
+		}
+		if g.internedVars[n.Value] || g.taggedVars[n.Value] {
+			return ""
+		}
+		if g.isContainerExpr(n) {
+			return ""
+		}
+		return "int"
+	case *Index:
+		fam, ok := g.slotNumberFamily(n.Obj)
+		if !ok {
+			return ""
+		}
+		switch fam {
+		case "float":
+			return "float"
+		case "int":
+			return "int"
+		}
+		return ""
+	}
+	if g.isFloat(e) {
+		return "float"
+	}
+	switch e.(type) {
+	case *BinOp, *UnOp, *Call:
+		return ""
+	}
+	return "int"
+}
+
+// unsupportedNumberOp is CPython's sentence for an arithmetic use of a value that has no number in
+// it, spelled the way the interpreter spells it — which is not one sentence: text against `+` gets
+// the concatenation wording, everything else the operand-type one. Getting this wrong is worse than
+// refusing, because the test table compares the string, and a program's `except TypeError` reads it.
+func unsupportedNumberOp(op, kind, other string) (string, string) {
+	switch op {
+	case "<", "<=", ">", ">=":
+		return "TypeError", fmt.Sprintf("'%s' not supported between instances of '%s' and '%s'", op, kind, other)
+	case "neg":
+		// `-xs[i]` is its own operator to CPython, with its own sentence. Spelling the negation as
+		// `0 - xs[i]` would have raised the binary one, which is a different program's error.
+		return "TypeError", fmt.Sprintf("bad operand type for unary -: '%s'", kind)
+	default:
+		if op == "+" && kind == "str" {
+			return "TypeError", fmt.Sprintf("can only concatenate str (not %q) to str", other)
+		}
+		return "TypeError", fmt.Sprintf("unsupported operand type(s) for %s: '%s' and '%s'", op, kind, other)
+	}
+}
+
+// taggedNumberOperands is the door's question: is this a numeric use of a slot whose kind the object
+// carries, with the other side a number the compiler can name? The result's kind has to be settled
+// here, in the compiler, or the answer would be printed in the wrong form — so the shapes allowed are
+// the ones where it is: a slot that can only hold floats, an ordering (whose answer is a bool whatever
+// arrives), and true division (which Python always answers with a float).
+func (g *irGen) taggedNumberOperands(n *BinOp) (string, bool) {
+	switch n.Op {
+	case "+", "-", "*", "/", "//", "%", "**", "<", "<=", ">", ">=":
+	default:
+		return "", false
+	}
+	reads, others := 0, []Expr{}
+	for _, side := range []Expr{n.L, n.R} {
+		if ix, isIdx := side.(*Index); isIdx {
+			if _, fOk := g.slotNumberFamily(ix.Obj); fOk {
+				reads++
+				others = append(others, side)
+				continue
+			}
+		}
+		others = append(others, side)
+	}
+	if reads == 0 {
+		return "", false
+	}
+	// Every side that is not the slot read must be a number this compiler can name, or the raise
+	// sentence and the conversion are both guesswork.
+	for _, o := range others {
+		if _, isIdx := o.(*Index); isIdx {
+			continue // the other side is a slot read too; its family is checked below
+		}
+		if g.numericUseKind(o) == "" {
+			return "", false
+		}
+	}
+	// Which family does each read bring?
+	fam := ""
+	for _, o := range others {
+		ix, isIdx := o.(*Index)
+		if !isIdx {
+			continue
+		}
+		f, fOk := g.slotNumberFamily(ix.Obj)
+		if !fOk || f == "mixed" {
+			return "", false
+		}
+		if fam == "" || fam == "none" {
+			fam = f
+		} else if f != "none" && f != fam {
+			return "", false // int on one side, float on the other: the result's kind is a run-time question
+		}
+	}
+	relational := n.Op == "<" || n.Op == "<=" || n.Op == ">" || n.Op == ">="
+	if n.Op == "/" {
+		relational = true // true division is answered with a float whatever the operands are
+	}
+	if fam != "float" && !relational {
+		return "", false
+	}
+	// Two slot reads: the door may only raise when a number is certain on the other side. With a
+	// payload-and-tag pair on *both* sides, text against text and container against container are
+	// orderings CPython answers (`["b","a",1][0] > ["b","a",1][1]` is True), so a container that can
+	// hold anything but a number is declined rather than made to raise a trap the program never asked
+	// for.
+	if reads == 2 {
+		for _, o := range others {
+			if ix, isIdx := o.(*Index); isIdx {
+				kinds, kOk := g.slotNonNumericKinds(ix.Obj)
+				if !kOk || len(kinds) > 0 {
+					return "", false
+				}
+			}
+		}
+	}
+	// Repetition and formatting are real Python behaviours the compiled backend does not have
+	// (Gap R.33, Gap R.31): a container that might hold text or a list cannot be ordered to raise,
+	// because CPython would not raise — it would repeat or format. Decline those.
+	if n.Op == "*" || n.Op == "%" {
+		for _, o := range others {
+			if ix, isIdx := o.(*Index); isIdx {
+				if g.textSlotPossible(ix.Obj) {
+					return "", false
+				}
+			}
+		}
+	}
+	return fam, true
+}
+
+// textSlotPossible asks whether a container's slots can hold text or a container, either of which
+// turns `*` into repetition and `%` into a formatting call rather than a TypeError.
+func (g *irGen) textSlotPossible(obj Expr) bool {
+	nm, isName := obj.(*Name)
+	if !isName {
+		return true // cannot say → assume the worst and decline the shape
+	}
+	if g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictValStr[nm.Value] {
+		return true
+	}
+	lit, ok := g.containerLits[nm.Value]
+	if !ok {
+		return true
+	}
+	elems := []Expr{}
+	switch c := lit.(type) {
+	case *ListLit:
+		elems = c.Elems
+	case *DictLit:
+		elems = append(elems, c.Vals...)
+	}
+	for _, el := range elems {
+		tg, tok := g.elemKindTag(el)
+		if !tok || tg != int32(TagInt) && tg != int32(TagFloat) && tg != int32(TagBool) {
+			return true
+		}
+	}
+	return false
+}
+
+// slotNonNumericKinds lists the kinds a container's slots can hold that have no number in them, as the
+// literal describes them. The list is what makes the raise arms complete: the door emits one branch per
+// kind the object could actually report, and the last of them is the unconditional else, so every path
+// out of the read either produces a double or raises the sentence CPython writes for that kind — never
+// a phi with a predecessor that never stores anything (roadmap L11.1, Gap R.88).
+func (g *irGen) slotNonNumericKinds(obj Expr) ([]struct {
+	tg   int32
+	name string
+}, bool) {
+	nm, isName := obj.(*Name)
+	if !isName {
+		return nil, false
+	}
+	lit, ok := g.containerLits[nm.Value]
+	if !ok {
+		return nil, false
+	}
+	var elems []Expr
+	switch c := lit.(type) {
+	case *ListLit:
+		elems = c.Elems
+	case *DictLit:
+		elems = append(elems, c.Vals...)
+	}
+	seen := map[int32]bool{}
+	var out []struct {
+		tg   int32
+		name string
+	}
+	for _, el := range elems {
+		tg, tok := g.elemKindTag(el)
+		if !tok {
+			return nil, false
+		}
+		var name string
+		switch tg {
+		case int32(TagInt), int32(TagBool), int32(TagFloat):
+			continue
+		case int32(TagStr):
+			name = "str"
+		case int32(TagNone):
+			name = "NoneType"
+		case int32(TagList):
+			name = "list"
+		case int32(TagDict):
+			name = "dict"
+		case int32(TagSet):
+			name = "set"
+		case int32(TagTuple):
+			name = "tuple"
+		default:
+			return nil, false // a kind whose sentence this door would have to invent: decline
+		}
+		if !seen[tg] {
+			seen[tg] = true
+			out = append(out, struct {
+				tg   int32
+				name string
+			}{tg, name})
+		}
+	}
+	return out, true
+}
+
+// taggedFloatOperand lowers one operand of a numeric use to the double the arithmetic wants. The
+// slot's payload and tag come out of the object (the same read print and == already make), and the tag
+// decides: a float slot unboxes out of its @float_box object, an int or bool slot converts, and a slot
+// holding anything else raises the TypeError CPython raises for this operator and that kind — the door
+// lenOfTaggedSlot already walks to say `object of type 'int' has no len()`.
+func (g *irGen) taggedFloatOperand(b *strings.Builder, e Expr, n *BinOp, fam string) (string, bool, error) {
+	ix, isIdx := e.(*Index)
+	if !isIdx {
+		v := g.floatValue(b, e)
+		return v, v != "", nil
+	}
+	other := "int"
+	for _, side := range []Expr{n.L, n.R} {
+		if side != e {
+			if k := g.numericUseKind(side); k != "" {
+				other = k
+			} else if _, isIx := side.(*Index); !isIx {
+				return "", false, nil // an operand whose kind would make the message a guess
+			}
+		}
+	}
+	// CPython names the two operand types in source order, so the sentence has to know which side the
+	// slot read was on: `1 > xs[i]` with a text slot is "'int' and 'str'", not the other way round.
+	slotOnLeft := n.L == e
+	sentence := func(kindName string) (string, string) {
+		if slotOnLeft {
+			return unsupportedNumberOp(n.Op, kindName, other)
+		}
+		return unsupportedNumberOp(n.Op, other, kindName)
+	}
+	return g.taggedDoubleFromSlot(b, ix, n.Span(), sentence)
+}
+
+// taggedFloatNegate lowers `-xs[i]` where the slot's kind is only in the object. Negation has its own
+// sentence in CPython — `bad operand type for unary -: 'str'`, not the binary one — which is why it is
+// a separate entry point rather than a BinOp pretendee: a door that spelled `-xs[i]` as `0 - xs[i]`
+// would raise `unsupported operand type(s) for -: 'int' and 'str'` for a program that never wrote a
+// binary minus (roadmap L11.1, Gap R.88).
+func (g *irGen) taggedFloatNegate(b *strings.Builder, u *UnOp) (string, bool, error) {
+	if u.Op != "-" {
+		return "", false, nil
+	}
+	if !g.taggedNegationApplies(u) {
+		return "", false, nil
+	}
+	ix, isIdx := u.X.(*Index)
+	if !isIdx {
+		return "", false, nil
+	}
+	sentence := func(kindName string) (string, string) {
+		return unsupportedNumberOp("neg", kindName, "")
+	}
+	return g.taggedDoubleFromSlot(b, ix, u.Span(), sentence)
+}
+
+// taggedNegationApplies is the gate the unary path asks: a negation of a slot read whose container the
+// literal still describes, and whose numbers are all floats. An int-only container is not in this: a
+// negated int is an int, and answering it from the float arms would print -1.0 where CPython prints -1
+// — the same "the result's kind has to be settled in the compiler" rule that declines a mixed family
+// (roadmap L11.1, Gap R.82).
+func (g *irGen) taggedNegationApplies(u *UnOp) bool {
+	ix, isIdx := u.X.(*Index)
+	if !isIdx {
+		return false
+	}
+	fam, ok := g.slotNumberFamily(ix.Obj)
+	return ok && fam == "float"
+}
+
+// taggedDoubleFromSlot is the shared half of the two doors above: read the (payload, tag) pair the
+// writer left beside the slot, and dispatch on the tag — unbox a float, convert an int or bool, or
+// raise the sentence `sentence` writes for the kind the slot reports. One branch per kind the object
+// could actually report, the last as the unconditional else, so every path out of the read either
+// produces a double or raises: never a phi with a predecessor that stores nothing (roadmap L11.1).
+func (g *irGen) taggedDoubleFromSlot(b *strings.Builder, ix *Index, span Span, sentence func(string) (string, string)) (string, bool, error) {
+	others, kindsOk := g.slotNonNumericKinds(ix.Obj)
+	if !kindsOk {
+		return "", false, nil
+	}
+	payload, tag, ok := g.runtimeSlotPair(b, ix)
+	if !ok || payload == "" || tag == "" {
+		return "", false, nil
+	}
+	g.heapUsed = true
+	g.floatFmtUsed = true
+	done := g.newLabel("numdone")
+	intBlk, floatBlk, chkBlk := g.newLabel("numint"), g.newLabel("numflt"), g.newLabel("numchk")
+	isFloat := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isFloat, tag, int32(TagFloat))
+	g.markI1(isFloat)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isFloat, floatBlk, chkBlk)
+	fmt.Fprintf(b, "%s:\n", floatBlk)
+	dv := g.newTmp()
+	fmt.Fprintf(b, "  %s = call double @rt_float_of(i32 %s)\n", dv, payload)
+	fmt.Fprintf(b, "  br label %%%s\n", done)
+	fmt.Fprintf(b, "%s:\n", chkBlk)
+	isInt := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isInt, tag, int32(TagInt))
+	g.markI1(isInt)
+	isBool := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isBool, tag, int32(TagBool))
+	g.markI1(isBool)
+	isNum := g.newTmp()
+	fmt.Fprintf(b, "  %s = or i1 %s, %s\n", isNum, isInt, isBool)
+	g.markI1(isNum)
+	if len(others) == 0 {
+		// Nothing but numbers can come out of this slot, so the numeric test is the whole story and a
+		// tag that says otherwise is the object disagreeing with the literal. Fall through to the int
+		// arm rather than inventing a sentence for a case the literal rules out.
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isNum, intBlk, intBlk)
+	} else {
+		badBlk := g.newLabel("numbad")
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isNum, intBlk, badBlk)
+		// The non-numeric kinds, each with CPython's own sentence, the last as the else so every
+		// predecessor of the merge stores something.
+		fmt.Fprintf(b, "%s:\n", badBlk)
+		for i, k := range others {
+			if i == len(others)-1 {
+				class, msg := sentence(k.name)
+				g.raiseTo(b, exnCode(class), class, msg, span)
+				break
+			}
+			chk := g.newTmp()
+			fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", chk, tag, k.tg)
+			g.markI1(chk)
+			class, msg := sentence(k.name)
+			g.branchRaise(b, chk, class, msg, span, "num")
+		}
+	}
+	fmt.Fprintf(b, "%s:\n", intBlk)
+	di := g.newTmp()
+	fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", di, payload)
+	fmt.Fprintf(b, "  br label %%%s\n", done)
+	res := g.newTmp()
+	fmt.Fprintf(b, "%s:\n", done)
+	fmt.Fprintf(b, "  %s = phi double [ %s, %%%s ], [ %s, %%%s ]\n", res, dv, floatBlk, di, intBlk)
+	return res, true, nil
 }
 
 // isProvenScalarExpr reports what the compiler can show is *not* a container: a number, a string,
