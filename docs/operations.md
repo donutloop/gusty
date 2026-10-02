@@ -913,7 +913,14 @@ an index the program computes — `xs[i] + 1`, `xs[i] / 2`, `-xs[i]`, `1 > xs[i]
 `sitofp` for an int or bool, and one raise per non-numeric kind carrying CPython's own sentence for that
 operator (ADR 0249, closing Gap R.88; the arm for the last kind is the unconditional `else`, so the merge
 `phi` never has a predecessor that stores nothing, and an instruction with an empty operand is refused at
-the front end instead of reaching `llc`). A container whose slots describe themselves is marked with
+the front end instead of reaching `llc`). An ordering of slots asks the tag which pair it was (`rt_str_order` for two
+texts, an `fcmp` on the unboxed numbers, `raiseTo` for the pair CPython refuses, its two type names
+printed in source order because CPython always names the left operand first): `xs = [1, "a"]` /
+`print(1 if xs[1] > "a" else 0)` prints `0` and `xs[i] > "z"` raises, on the compiled path as on the
+interpreter (ADR 0250, closing Gap R.82). Only the arms that can run are emitted and the merge `phi`
+names exactly those blocks — an arm no branch enters is the module `llc` rejects, which is exit 2,
+ADR 0166's own bug class — and where the tags would have to be guessed the compiler refuses in words
+(exit 1) rather than printing a verdict for a program the oracle kills. A container whose slots describe themselves is marked with
 `@rt_mark_estr(h, 8)`, which is what routes `rt_dict_print`/`rt_set_print` to
 the per-slot printers; a single-kind container does not set the bit and keeps
 the static printers, so programs that worked before emit what they always

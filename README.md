@@ -177,7 +177,14 @@ operator and that kind — so `xs = [1.5, "a"]` / `i = 0` / `print(xs[i] + 1)` i
 to be refused, `print(xs[i] / 4)` over `[10, 4]` is `2.5` where it used to reach `llc` as `fdiv double , %t1`
 and exit 2, `print(-xs[i])` carries negation's own sentence, and a text slot says
 `can only concatenate str (not "int") to str` at run time like the oracle does (ADR 0249, closing
-Gap R.88). What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
+Gap R.88). An ordering between slots asks the same object which pair it was: two numbers are compared as
+numbers, two texts by their characters, and a number against a text raises
+`'>' not supported between instances of 'int' and 'str'` with the left operand's type named first, so
+`xs = [1, "a"]` / `print(1 if xs[1] > "a" else 0)` prints `0` and `print(1 if xs[i] > "z" else 0)`
+raises, compiled as interpreted (ADR 0250, closing Gap R.82). The arms nobody can reach are not emitted,
+because a merge that names an unreachable predecessor is a module `llc` rejects — exit 2, the compiler's
+own bug — and a pair whose types the tags cannot name is refused in words instead of answered.
+What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a
 function), the nested read of a container built at run time (`xs[0][0]` after `xs.append([7, 8])`), an

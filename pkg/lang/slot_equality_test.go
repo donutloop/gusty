@@ -132,11 +132,8 @@ func TestSlotEqualityRefusesWhatItCannotProve(t *testing.T) {
 			"def pick(c):\n    return \"z\"\n    return 7\n\nxs = [1, \"a\"]\nprint(1 if xs[0] == pick(1) else 0)\n",
 			"needs a value whose kind the compiler can prove",
 		},
-		{
-			"an ordering comparison of a mixed slot",
-			"xs = [1, \"a\"]\nprint(1 if xs[1] > \"a\" else 0)\n",
-			"more than one kind",
-		},
+		// An ordering of a mixed slot used to sit here. It is answered now — the tags pick which pair
+		// the comparison was — and is pinned with its traps in slot_ordering_test.go (Gap R.82, ADR 0250).
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Compile(tc.src)

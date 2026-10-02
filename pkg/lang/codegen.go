@@ -6580,6 +6580,20 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, g.floatValue(b, e))
 		return g.markI1(t), nil
 	}
+	// An ordering with a slot on one side is asked of the tag **before** anything reads the operands as
+	// numbers: which arm this pair is — two numbers, two texts, or CPython's TypeError — is a run-time
+	// question, and every path below this one has already committed to one of the answers. It sits above
+	// the float test for the same reason: `isFloat` on a slot whose literal holds a float is true, and
+	// falling into the fcmp below would test a box handle against zero (roadmap L11.1, Gap R.82).
+	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" && g.taggedOrderApplies(n) {
+		_, i1, ook, oerr := g.emitTaggedOrder(b, n)
+		if oerr != nil {
+			return "", oerr
+		}
+		if ook {
+			return i1, nil
+		}
+	}
 	// `if a < b and b < 9:` would otherwise pay for a zext and a re-test per
 	// comparison; emit the predicate itself and use it directly.
 	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" && !g.isFloat(n.L) && !g.isFloat(n.R) {
@@ -7382,6 +7396,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 			}
 		}
+		// An ordering with a slot on one side is answered **before the operands are lowered**, because the
+		// ordinary lowering of that read is the thing that refuses: `xs[1] > "a"` over a list that can hold
+		// both a number and a text has to ask the tag which pair this is — two numbers, two texts, or the
+		// TypeError CPython raises — and an icmp on the two payloads would answer all three with whichever
+		// number happens to sit in the slot (roadmap L11.1, Gap R.82; the same hoisting ADR 0248 had to
+		// learn for text, for the same reason).
+		if g.taggedOrderApplies(n) {
+			res, _, ook, oerr := g.emitTaggedOrder(b, n)
+			if oerr != nil {
+				return "", oerr
+			}
+			if ook {
+				return res, nil
+			}
+		}
 		l, err := g.value(b, n.L)
 		if err != nil {
 			return "", err
@@ -7834,6 +7863,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return "", terr
 				}
 				return res, nil
+			}
+			// The same door, with the tag asked which pair this is: a slot on one side means the answer
+			// is a run-time question, and only the tags can settle whether it is numbers, texts, or a
+			// TypeError (roadmap L11.1, Gap R.82).
+			if g.taggedOrderApplies(n) {
+				res, _, ook, oerr := g.emitTaggedOrder(b, n)
+				if oerr != nil {
+					return "", oerr
+				}
+				if ook {
+					return res, nil
+				}
 			}
 			// A comparison is a *value* (printable, storable, passable), so it
 			// returns the interpreter's i32 0/1; the i1 predicate stays internal

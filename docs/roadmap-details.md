@@ -4314,7 +4314,7 @@ found a wrong answer that had been shipping: two float slots holding `1.5` compa
 helper that compared "tags then words" was comparing two box handles. That helper is gone; one equality
 answers the slot question now, and a test fails if the old one comes back.
 
-### Gap R.82 — the ordering comparison of a tagged slot read refuses (measured 2026-10-02, left open)
+### Gap R.82 — the ordering comparison of a tagged slot read refuses (measured 2026-10-02, paid by ADR 0250)
 
     xs = [1, "a"]
     print(1 if xs[1] > "a" else 0)     # CPython 0 · --interp 0 · --aot: "needs a single static kind"
@@ -4534,3 +4534,40 @@ for a literal index and a computed one. What is wrong is the sentence, and a sen
 program that catches `IndexError` and looks at the text behaves differently here than in Python. One word,
 taken from whichever table both backends already read their messages from, with `KeyError`'s wording left
 alone because a key is a key.
+
+
+### Gap R.91 — a loop variable over a container that mixes kinds is given a verdict (measured 2026-10-02, left open)
+
+    xs = ["b", "a"]
+    for k in xs:
+        print(1 if k > 0 else 0)       # CPython TypeError · --interp TypeError · --aot: 1
+
+The slot read `xs[i]` now asks the tag which pair the comparison was (ADR 0250); the loop binding `k` is the
+same `(payload, tag)` pair one step earlier, and the tag is dropped on the way into the comparison, so the
+compiled leg compares a word and prints a verdict for the `TypeError` both the oracle and the interpreter
+raise. `print(k + 1)` beside it refuses with the concatenation sentence, which is at least honest — a refusal
+and a verdict are not the same distance from right. ADR 0226 already promotes a mixed container for the loop
+itself, so the pair is there to be bound.
+
+### Gap R.92 — an ordering of two dict value slots answers by the interned index (measured 2026-10-02, left open)
+
+    d = {}
+    d["k"] = "b"
+    d["j"] = 1
+    print(1 if d["k"] > "a" else 0)    # CPython 1 · --interp 1 · --aot: 0
+
+ADR 0248 taught a dict whose values are all text to order by the text behind the index. As soon as a second
+kind appears in the value slots the read falls back on the index itself, which is exactly the answer Gap R.84
+measured for lists: `b` arriving before `a` makes `b > a` false. The tracked `dictValStr`/`dictValInt` maps
+already know both kinds are possible, so the fix is the routing, not new information.
+
+### Gap R.93 — an ordering of a slot in a container a loop built prints a verdict (measured 2026-10-02, left open)
+
+    xs = []
+    xs.append(1)
+    print(1 if xs[0] > "a" else 0)     # CPython TypeError · --interp TypeError · --aot: 0
+
+ADR 0250's door declines a slot whose kinds it cannot list, which is the honest half. The dishonest half is
+what happens next: the lowering underneath, which never had to answer this shape before, compares the payload
+it has and prints `0`. The `append` path records kinds in the same maps the print and length doors read, so
+the arm list can be built for a run-time container too; until it is, the shape must refuse by naming itself.

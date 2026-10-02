@@ -5427,3 +5427,51 @@ Under the Gap R.38 rule (a refusal that claims something false about the languag
 message was widened rather than left flattering itself. Tests pin the *tail* of that sentence ("needs a single
 static kind"), not its middle, which is what let the wording move at all; if a test had pinned the whole
 string, the honest fix would have been blocked by a test that was only ever testing a comment.
+
+## Cycle: ADR 0250 — an ordering of slots asks the tag which pair it was given (Gap R.82)
+
+**The three-arm shape was easy; the arm list was the feature.** An ordering of two slots that could each be a
+number or a text is three programs — two numbers, two texts, or CPython's `TypeError` — and emitting all three
+arms is a afternoon of `Fprintf`. Emitting *only the arms that can run* is the part that took the cycle: a `phi`
+names its predecessors whether or not a branch reaches them, so a "just in case" arm died with *PHI node entries
+do not match predecessors*, which is exit 2 — ADR 0166's compiler-bug class — wearing a semantic costume. The
+rule that came out of it: a side the compiler already read answers "are you text?" with a settled yes or no, and
+the chain folds on those, so an arm whose test is `false` is never emitted and an arm whose test is `true` ends
+the chain.
+
+**A block cannot be written underneath the one the caller is still filling in.** The first version of the numeric
+lift emitted its "tag said something the literal ruled out" trap block right where it stood, which landed
+`unreachable` inside the comparison's own merge block and left the tail with two terminators and the `select`
+hanging after the second. Two lessons in one: emit deferred blocks at the end (the way `main.raiseexit` is
+emitted), and prefer a *total* arm to a trap — the numeric arm is entered only when the tag already said
+"number", so the int/bool conversion needs no fourth answer at all, and the fourth block disappears with it.
+
+**`phi` predecessors are values, not labels.** The tail named the arm's entry block, but the arm ended in the
+lift's merge block, and llc said so. `orderDoubleTo` now returns the block it finished in as well as the
+register, which is the general shape of "a helper that emits control flow owns its exit block".
+
+**Reuse the runtime helper only when its question is the same question.** Routing the numeric arm through
+`taggedDoubleFromSlot` (ADR 0249's lift) made a whole family of programs refuse, because that helper also
+computes the *other* operand's type name to put in a sentence — and for `xs[i] > "z"` the other operand is a
+text, so "the sentence would be a guess" was read as "the shape is unanswerable". A numeric arm needs an unboxed
+value; it does not need a sentence. Sharing a helper across two questions that merely look alike is how a fix
+silently becomes a refusal table.
+
+**The gate reads two sources, and one of them is the mutation tracker.** The literal that built a container
+gives the element kinds *and the type names* the raise arm prints, but a program can `append` a kind the literal
+never mentioned. Reading the literal alone would order such a container as though it still held what it was
+written with, so `canText`/`canNum` also consult the tracked `kindMapsFor` maps (ADR 0210's), and a side whose
+numbers could be ints or floats at once is declined — its `TypeError` would name the wrong type, and a wrong
+type name is still a wrong answer.
+
+**Refusal pins are the test suite's honesty check, and two of them broke.** `TestSlotEqualityRefusesWhatItCannotProve/an
+ordering comparison of a mixed slot` pinned as owed the exact program this door now answers; it moved to the
+parity table rather than being deleted. A pin that never breaks is not measuring anything — but the break has to
+be *earned*: the new behaviour is pinned answering CPython's answer, on both engines, against the oracle.
+
+**Measured three, filed three, fixed none of them.** A loop variable over a mixed container prints a verdict for
+a `TypeError` (**Gap R.91**), a dict whose value slots mix kinds orders by interned index (**Gap R.92**), and a
+container a loop built prints a verdict where the door declines to answer (**Gap R.93**). Each was checked
+against the last commit's binary first, so "pre-existing, freshly measured" is a claim with evidence behind it
+rather than an excuse — and each is a row with its own ID, because a defect absorbed into a neighbouring
+feature's commit is a defect that stops being owed.

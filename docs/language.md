@@ -789,7 +789,9 @@ the interpreter rather than failing in the verifier:
 - **arithmetic on a string** (`s + 1`) — the interpreter raises `TypeError`; compiled code
   refuses rather than computing with a table index. **Ordering is not in this list**: an
   ordering of two texts is answered by `strcmp` on the bytes behind the index (ADR 0248), and
-  ordering a text against a number is a separate open trap (Gap R.85);
+  ordering a text against a number is a separate open trap (Gap R.85), and an ordering whose
+  operand is a slot whose kind the object carries asks the tag which pair it was — two numbers,
+  two texts, or the `TypeError` CPython raises (ADR 0250);
 - **a parameter used as both a string and a number** (`f("a")` and `f(7)`) — guessing would
   print `7` through the string table, so it stays a diagnostic.
 

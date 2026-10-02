@@ -2752,6 +2752,560 @@ func (g *irGen) textOrderSide(e Expr) bool {
 	return g.exprIsString(e) || g.printsAsInternedStr(e)
 }
 
+// orderSide is what one side of an ordering could turn out to be, once the object is asked.
+//
+// Two questions decide everything here: can this side report a number, and can it report a text.
+// CPython orders two numbers numerically, two texts by their characters, and refuses a number against
+// a text with a TypeError that names both types — so an ordering whose sides could each turn out
+// either way is a run-time question with three possible answers, and the only thing that settles it is
+// the tag the object carries (roadmap L11.1, Gap R.82).
+type orderSide struct {
+	e         Expr   // the operand itself
+	ix        *Index // non-nil when the object has to be asked, i.e. the side is a slot read
+	canText   bool   // the side can report text
+	canNum    bool   // the side can report a number
+	numName   string // CPython's name for the side's numbers, "" when they would be a guess
+	tagC      int32  // the tag the compiler already knows, when ix is nil
+	payload   string // the i32 the value lives in, once read
+	tag       string // the i32 tag register, once read
+	tagIsText string // the i1 saying that tag is the text tag, once read
+	tagIsNum  string // the i1 saying that tag is one of the three number tags
+	ok        bool   // the shape is one this door can answer at all
+}
+
+// textTest and numberTest are the three answers a side can give to "are you text?" and "are you a
+// number?": a register for a slot the object has to be asked about, and a settled yes or no for
+// anything the compiler already read. The chain that decides the arms folds on these, so a side read
+// off the literal never costs a test at run time (roadmap L11.1, Gap R.82).
+func (s *orderSide) textTest() string {
+	if s.ix == nil {
+		if s.tagC == int32(TagStr) {
+			return "true"
+		}
+		return "false"
+	}
+	return s.tagIsText
+}
+
+func (s *orderSide) numberTest() string {
+	if s.ix == nil {
+		if s.tagC == int32(TagInt) || s.tagC == int32(TagBool) || s.tagC == int32(TagFloat) {
+			return "true"
+		}
+		return "false"
+	}
+	return s.tagIsNum
+}
+
+func (s *orderSide) definitelyNotText() bool {
+	if s.ix == nil {
+		return s.tagC != int32(TagStr)
+	}
+	return !s.canText
+}
+
+func (s *orderSide) definitelyNotNumber() bool {
+	if s.ix == nil {
+		return s.tagC != int32(TagInt) && s.tagC != int32(TagBool) && s.tagC != int32(TagFloat)
+	}
+	return !s.canNum
+}
+
+// orderPickName is the one place that decides whether a side's numbers all answer to the same CPython
+// name: a slot that could hold an int or a float would need a different sentence for each, which is a
+// guess the compiler is not allowed to make.
+func orderPickName(have, want string) string {
+	if have == "" {
+		return want
+	}
+	if have == want {
+		return have
+	}
+	return ""
+}
+
+// orderSlotTags lists the tags a slot of a container can report, as the literal that built the
+// container describes them. It is the same source of truth ADR 0249 reads for the raise arms — the
+// elements the program wrote — and when the container was built by a loop instead of written as a
+// literal there is no list to read, so the shape is declined rather than guessed
+// (ADR 0166's exit-class rule: a refusal the program can read, never an instruction with no operand).
+func (g *irGen) orderSlotTags(n string) ([]int32, bool) {
+	lit, ok := g.containerLits[n]
+	if !ok {
+		return nil, false
+	}
+	var elems []Expr
+	switch c := lit.(type) {
+	case *ListLit:
+		elems = c.Elems
+	case *DictLit:
+		elems = c.Vals
+	default:
+		return nil, false
+	}
+	if len(elems) == 0 {
+		return nil, false
+	}
+	tags := make([]int32, 0, len(elems))
+	for _, el := range elems {
+		tg, tok := g.elemKindTag(el)
+		if !tok {
+			return nil, false
+		}
+		tags = append(tags, tg)
+	}
+	return tags, true
+}
+
+// orderShapeOf reads one operand of an ordering: a slot the object has to be asked about, or a literal
+// the compiler already knows the tag of.
+func (g *irGen) orderShapeOf(e Expr) orderSide {
+	s := orderSide{e: e}
+	if ix, isIdx := e.(*Index); isIdx {
+		nm, isName := ix.Obj.(*Name)
+		if !isName || !g.allocd[nm.Value] {
+			return s
+		}
+		if !(g.listVars[nm.Value] || g.mixedLists[nm.Value] || g.runtimeDicts[nm.Value] || g.mixedDicts[nm.Value]) {
+			return s
+		}
+		tags, known := g.orderSlotTags(nm.Value)
+		if !known {
+			return s
+		}
+		s.ix = ix
+		// The literal says what was written; the kind maps say what the program has since put in.
+		// Both are read, because a container the program grew with append() can report a kind the
+		// literal never mentioned, and an ordering that pretends otherwise would print a verdict for
+		// the TypeError CPython raises.
+		if strMap, numMap, slot := g.kindMapsFor(orderKindSlot(nm.Value, g.runtimeDicts[nm.Value] || g.mixedDicts[nm.Value])); true {
+			if strMap[nm.Value] {
+				s.canText = true
+			}
+			if numMap[nm.Value] {
+				s.canNum = true
+				if s.numName == "" {
+					return orderSide{e: e} // numbers are possible but no name is known for them
+				}
+			}
+			_ = slot
+		}
+		for _, tg := range tags {
+			switch tg {
+			case int32(TagInt):
+				s.canNum, s.numName = true, orderPickName(s.numName, "int")
+			case int32(TagBool):
+				s.canNum, s.numName = true, orderPickName(s.numName, "bool")
+			case int32(TagFloat):
+				s.canNum, s.numName = true, orderPickName(s.numName, "float")
+			case int32(TagStr):
+				s.canText = true
+			default:
+				return orderSide{e: e} // None, a container: no ordering to emit for it here
+			}
+		}
+		s.ok = (s.canNum || s.canText) && (!s.canNum || s.numName != "")
+		return s
+	}
+	switch e.(type) {
+	case *StrLit:
+		s.canText, s.tagC, s.ok = true, int32(TagStr), true
+	case *IntLit:
+		s.canNum, s.tagC, s.numName, s.ok = true, int32(TagInt), "int", true
+	case *BoolLit:
+		s.canNum, s.tagC, s.numName, s.ok = true, int32(TagBool), "bool", true
+	case *FloatLit:
+		s.canNum, s.tagC, s.numName, s.ok = true, int32(TagFloat), "float", true
+	}
+	return s
+}
+
+// taggedOrderApplies is the gate the comparison sites ask: is this an ordering where the object has to
+// be asked which pair it is? A slot read on one side, text among the kinds it could report, and at
+// least one arm left for the tags to choose between. An ordering that can only ever be two numbers is
+// the plain numeric comparison it always was, one with no slot in it at all is ADR 0248's static text
+// door or the fold beside it, and one whose verdict the compiler could already settle from the
+// literal is left where it was — this door exists for the questions nobody else can answer
+// (roadmap L11.1, Gap R.82).
+func (g *irGen) taggedOrderApplies(n *BinOp) bool {
+	switch n.Op {
+	case "<", "<=", ">", ">=":
+	default:
+		return false
+	}
+	ls, rs := g.orderShapeOf(n.L), g.orderShapeOf(n.R)
+	if !ls.ok || !rs.ok {
+		return false
+	}
+	if ls.ix == nil && rs.ix == nil {
+		return false
+	}
+	needTxt := ls.canText && rs.canText
+	needBad := ls.canNum && rs.canText || ls.canText && rs.canNum
+	return needTxt || needBad
+}
+
+// orderTagOf reads the tag one side reports, together with its payload. A side the compiler already
+// read has no tag to ask and leaves the register empty, which the arm tests below read as "settled".
+func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
+	if s.ix == nil {
+		return true
+	}
+	payload, tag, ok := g.runtimeSlotPair(b, s.ix)
+	if !ok || payload == "" || tag == "" {
+		return false
+	}
+	s.payload, s.tag = payload, tag
+	return true
+}
+
+// orderAskTags reads each slot side's tag once, in the block the comparison starts in, and records the
+// two tests the arms and the raise sentence branch on.
+func (g *irGen) orderAskTags(b *strings.Builder, s *orderSide) {
+	if s.ix == nil || s.tag == "" {
+		return
+	}
+	s.tagIsText = g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", s.tagIsText, s.tag, int32(TagStr))
+	g.markI1(s.tagIsText)
+	s.tagIsNum = g.orderIsNum(b, s.tag)
+}
+
+// orderPayload is the i32 the side's value lives in: the slot's payload for a read, the value the
+// ordinary lowering produced for everything else.
+func (g *irGen) orderPayload(b *strings.Builder, s *orderSide) (string, error) {
+	if s.tag != "" {
+		return s.payload, nil
+	}
+	v, err := g.value(b, s.e)
+	if err != nil {
+		return "", err
+	}
+	if v == "" {
+		return "", g.floatOperandRefusal(s.e)
+	}
+	return v, nil
+}
+
+// orderIsNum tests a tag register against the three number tags.
+func (g *irGen) orderIsNum(b *strings.Builder, tag string) string {
+	isI := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isI, tag, int32(TagInt))
+	g.markI1(isI)
+	isB := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isB, tag, int32(TagBool))
+	g.markI1(isB)
+	isEither := g.newTmp()
+	fmt.Fprintf(b, "  %s = or i1 %s, %s\n", isEither, isI, isB)
+	g.markI1(isEither)
+	isF := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isF, tag, int32(TagFloat))
+	g.markI1(isF)
+	all := g.newTmp()
+	fmt.Fprintf(b, "  %s = or i1 %s, %s\n", all, isEither, isF)
+	g.markI1(all)
+	return all
+}
+
+// orderDoubleTo lifts one side to a double inside the numeric arm. A float slot unboxes out of its
+// @float_box object, an int or bool slot converts, and a tag that reports anything else walks to the
+// raise arm — which the gate above makes unreachable, but the arm still has to end somewhere legal
+// rather than run off the end of the block (ADR 0166's rule against inventing an operand).
+func (g *irGen) orderDoubleTo(b *strings.Builder, s *orderSide, cur string) (string, string, error) {
+	if s.ix == nil {
+		d := g.floatValue(b, s.e)
+		if d == "" {
+			return "", "", g.floatOperandRefusal(s.e)
+		}
+		return d, cur, nil
+	}
+	done, fblk, iblk := g.newLabel("orddbl"), g.newLabel("ordf"), g.newLabel("ordi")
+	isF := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isF, s.tag, int32(TagFloat))
+	g.markI1(isF)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isF, fblk, iblk)
+	fmt.Fprintf(b, "%s:\n", fblk)
+	dv := g.newTmp()
+	fmt.Fprintf(b, "  %s = call double @rt_float_of(i32 %s)\n", dv, s.payload)
+	fmt.Fprintf(b, "  br label %%%s\n", done)
+	fmt.Fprintf(b, "%s:\n", iblk)
+	// The arm is entered only when the tag already said "number", so anything that is not a float here
+	// is an int or a bool, and the conversion is total. A fourth answer would need a fourth block, and
+	// a block cannot be written under the one the caller is still filling in.
+	di := g.newTmp()
+	fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", di, s.payload)
+	fmt.Fprintf(b, "  br label %%%s\n", done)
+	fmt.Fprintf(b, "%s:\n", done)
+	d := g.newTmp()
+	fmt.Fprintf(b, "  %s = phi double [ %s, %%%s ], [ %s, %%%s ]\n", d, dv, fblk, di, iblk)
+	return d, done, nil
+}
+
+// emitTaggedOrder lowers `<`, `<=`, `>`, `>=` when the object has to say which pair it was given.
+//
+// Three answers are possible and the module has to carry all of them. Two numbers: compare them as
+// doubles, because `1 < 1.5` and `1.5 < 2` are both questions about numbers and an i32 compare of two
+// payloads cannot hear the difference. Two texts: ask strcmp, the helper ADR 0248 put behind the
+// static ordering, because an interned index records the order the text arrived in, not the order of
+// the text. A number and a text: raise the TypeError CPython raises, naming the two types in source
+// order. That last case is the one the compiled backend used to answer with whichever number happened
+// to sit in the slot — `print(1 if xs[1] > "z" else 0)` over a list that can hold either printed a
+// verdict for a program that crashes, which is Gap R.85's measurement — while the shapes that reached
+// no door at all were Gap R.82's own half of the same question.
+//
+// Every value-producing arm ends at the same merge and the raise arm ends at the handler instead, so
+// the merge only ever has predecessors that produce a value (ADR 0205's rule for a merge of raises).
+func (g *irGen) emitTaggedOrder(b *strings.Builder, n *BinOp) (string, string, bool, error) {
+	ls, rs := g.orderShapeOf(n.L), g.orderShapeOf(n.R)
+	if !g.taggedOrderApplies(n) {
+		return "", "", false, nil
+	}
+	pred, ok := map[string]string{"<": "icmp slt", "<=": "icmp sle", ">": "icmp sgt", ">=": "icmp sge"}[n.Op]
+	if !ok {
+		return "", "", false, nil
+	}
+	fcmp, ok := map[string]string{"<": "fcmp olt", "<=": "fcmp ole", ">": "fcmp ogt", ">=": "fcmp oge"}[n.Op]
+	if !ok {
+		return "", "", false, nil
+	}
+	g.heapUsed = true
+	// Tags and payloads are read in the block the comparison starts in, so an out-of-range subscript
+	// still traps there, exactly as it did before this door existed.
+	if !g.orderTagOf(b, &ls) || !g.orderTagOf(b, &rs) {
+		return "", "", false, nil
+	}
+	g.orderAskTags(b, &ls)
+	g.orderAskTags(b, &rs)
+	lPay, err := g.orderPayload(b, &ls)
+	if err != nil {
+		return "", "", false, err
+	}
+	rPay, err := g.orderPayload(b, &rs)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	// The three verdicts an ordering can end in are emitted only when they can actually happen. An arm
+	// no branch can reach would still be named in the merge's phi, and a phi listing a predecessor that
+	// never branches to it is the module `llc` rejects — the exit class this line of work has to stay
+	// out of (ADR 0166). A side the compiler already read answers each test with a yes or a no, never
+	// with the placeholder `true` that would claim it could be either.
+	type orderArm struct {
+		kind  string // "text", "number" or "raise"
+		label string
+		test  string // "true", "false" or an i1 register; the last kept arm is entered unconditionally
+	}
+	var arms []orderArm
+	if ls.canText && rs.canText {
+		arms = append(arms, orderArm{kind: "text", label: g.newLabel("ordtxt"), test: g.orderBothText(b, &ls, &rs)})
+	}
+	if ls.canNum && rs.canNum {
+		arms = append(arms, orderArm{kind: "number", label: g.newLabel("ordnum"), test: g.orderBothNumber(b, &ls, &rs)})
+	}
+	if ls.canNum && rs.canText || ls.canText && rs.canNum {
+		arms = append(arms, orderArm{kind: "raise", label: g.newLabel("ordbad")})
+	}
+	// A test the compiler settled is not a test: a `false` retires its arm, a `true` ends the chain
+	// there because nothing below it can run.
+	kept := make([]orderArm, 0, len(arms))
+	for _, a := range arms {
+		if a.test == "false" {
+			continue
+		}
+		kept = append(kept, a)
+		if a.test == "true" || a.test == "" {
+			break
+		}
+	}
+	valueArms := 0
+	for _, a := range kept {
+		if a.kind != "raise" {
+			valueArms++
+		}
+	}
+	if valueArms == 0 {
+		// Nothing left to decide: the pair is settled by the literal and no arm would produce a value.
+		// That is the shape the static doors answer, so this one steps aside.
+		return "", "", false, nil
+	}
+
+	// The chain. Each arm but the last is guarded by its test; the last kept arm is the else, and is
+	// entered unconditionally — which is sound, because the gate left only the pairs that arm decides.
+	tail := g.newLabel("ordtail")
+	cur := "" // "" means still in the block the comparison started in
+	for i, a := range kept {
+		last := i == len(kept)-1
+		if last || a.test == "true" || a.test == "" {
+			g.orderBr(b, cur, a.label)
+			if a.test == "true" || a.test == "" {
+				kept = kept[:i+1]
+			}
+			cur = ""
+			if last {
+				break
+			}
+			continue
+		}
+		next := g.newLabel("ordchk")
+		g.orderCondBr(b, cur, a.test, a.label, next)
+		cur = next
+	}
+
+	lName, rName := "str", "str"
+	if ls.canNum {
+		lName = ls.numName
+	}
+	if rs.canNum {
+		rName = rs.numName
+	}
+	vals := make([]string, len(kept))
+	preds := make([]string, len(kept))
+	for i, a := range kept {
+		fmt.Fprintf(b, "%s:\n", a.label)
+		switch a.kind {
+		case "text":
+			preds[i] = a.label
+			ord := g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_str_order(i32 %s, i32 %s)\n", ord, lPay, rPay)
+			cmp := g.newTmp()
+			fmt.Fprintf(b, "  %s = %s i32 %s, 0\n", cmp, pred, ord)
+			g.markI1(cmp)
+			v := g.newTmp()
+			fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", v, cmp)
+			fmt.Fprintf(b, "  br label %%%s\n", tail)
+			vals[i] = v
+		case "number":
+			ld, cur2, nerr := g.orderDoubleTo(b, &ls, a.label)
+			if nerr != nil {
+				return "", "", false, nerr
+			}
+			rd, cur2, nerr := g.orderDoubleTo(b, &rs, cur2)
+			if nerr != nil {
+				return "", "", false, nerr
+			}
+			preds[i] = cur2
+			cmp := g.newTmp()
+			fmt.Fprintf(b, "  %s = %s double %s, %s\n", cmp, fcmp, ld, rd)
+			g.markI1(cmp)
+			v := g.newTmp()
+			fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", v, cmp)
+			fmt.Fprintf(b, "  br label %%%s\n", tail)
+			vals[i] = v
+			_ = cur2
+		case "raise":
+			say := func(lNm, rNm string) error {
+				class, msg := unsupportedNumberOp(n.Op, lNm, rNm)
+				if class == "" {
+					return fmt.Errorf("codegen: %q has no CPython sentence for %q against %q (roadmap L11.1, Gap R.82)", n.Op, lNm, rNm)
+				}
+				g.raiseTo(b, exnCode(class), class, msg, n.Span())
+				return nil
+			}
+			// CPython names the left operand's type first, so a side whose role is a tag question picks
+			// which of the two sentences runs; a side whose kinds are all one family has a settled role.
+			var which string
+			roleIsLeft := false
+			switch {
+			case ls.canNum && ls.canText && ls.tag != "":
+				which, roleIsLeft = ls.tagIsText, true
+			case rs.canNum && rs.canText && rs.tag != "":
+				which = rs.tagIsText
+			}
+			if which == "" {
+				if nerr := say(lName, rName); nerr != nil {
+					return "", "", false, nerr
+				}
+				break
+			}
+			lblK, rblk := g.newLabel("ordbl"), g.newLabel("ordbr")
+			g.orderCondBr(b, "", which, lblK, rblk)
+			fmt.Fprintf(b, "%s:\n", lblK)
+			if roleIsLeft {
+				if nerr := say("str", rName); nerr != nil {
+					return "", "", false, nerr
+				}
+			} else {
+				if nerr := say(lName, "str"); nerr != nil {
+					return "", "", false, nerr
+				}
+			}
+			fmt.Fprintf(b, "%s:\n", rblk)
+			if roleIsLeft {
+				if nerr := say(lName, "str"); nerr != nil {
+					return "", "", false, nerr
+				}
+			} else {
+				if nerr := say("str", rName); nerr != nil {
+					return "", "", false, nerr
+				}
+			}
+		}
+	}
+
+	fmt.Fprintf(b, "%s:\n", tail)
+	phi := g.newTmp()
+	parts := make([]string, 0, len(kept))
+	for i, a := range kept {
+		if a.kind == "raise" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("[ %s, %%%s ]", vals[i], preds[i]))
+	}
+	fmt.Fprintf(b, "  %s = phi i32 %s\n", phi, strings.Join(parts, ", "))
+	cnd := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", cnd, phi)
+	g.markI1(cnd)
+	return phi, cnd, true, nil
+}
+
+// orderBr and orderCondBr are the two ways out of an arm or a test block. The empty `from` means the
+// caller is still emitting in the block it was handed, where a branch has already to be added; a named
+// `from` is a block the chain created for itself, whose terminator has not been written yet.
+func (g *irGen) orderBr(b *strings.Builder, from, to string) {
+	if from != "" {
+		fmt.Fprintf(b, "%s:\n", from)
+	}
+	fmt.Fprintf(b, "  br label %%%s\n", to)
+}
+
+func (g *irGen) orderCondBr(b *strings.Builder, from, cond, yes, no string) {
+	if from != "" {
+		fmt.Fprintf(b, "%s:\n", from)
+	}
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", cond, yes, no)
+}
+
+// orderBothText asks whether both sides report text. A side the compiler already read answers yes or
+// no; a slot answers with its tag.
+func (g *irGen) orderBothText(b *strings.Builder, ls, rs *orderSide) string {
+	l, r := ls.textTest(), rs.textTest()
+	return g.orderAndTests(b, l, r)
+}
+
+// orderBothNumber asks the same question of the three number tags.
+func (g *irGen) orderBothNumber(b *strings.Builder, ls, rs *orderSide) string {
+	l, r := ls.numberTest(), rs.numberTest()
+	return g.orderAndTests(b, l, r)
+}
+
+// orderAndTests is the two-input and over the three answers a side can give: a register, or a settled
+// yes or no. Anything settled folds away, so the chain never pays for a test the compiler made.
+func (g *irGen) orderAndTests(b *strings.Builder, l, r string) string {
+	if l == "false" || r == "false" {
+		return "false"
+	}
+	if l == "true" {
+		return r
+	}
+	if r == "true" {
+		return l
+	}
+	both := g.newTmp()
+	fmt.Fprintf(b, "  %s = and i1 %s, %s\n", both, l, r)
+	g.markI1(both)
+	return both
+}
+
 // emitTextOrder lowers `<`, `<=`, `>`, `>=` between two texts by asking strcmp which text comes
 // first, and returns the i32 0/1 the comparison is plus the i1 a condition can use directly.
 //
@@ -3339,4 +3893,13 @@ func (g *irGen) containerEquality(b *strings.Builder, n *BinOp) (string, error) 
 	out := g.newTmp()
 	fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", out, cmp)
 	return out, nil
+}
+
+// orderKindSlot names the kind map a container's element slots report through: a dict read reports
+// its value, everything else the plain list map.
+func orderKindSlot(name string, isDict bool) string {
+	if isDict {
+		return "dict value"
+	}
+	return "list"
 }
