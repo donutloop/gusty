@@ -640,12 +640,15 @@ for sets). Constant-key lookup resolves at compile time; like lists, these
 literals must be used inline (no assignment-to-variable indirection) in the
 codegen path. The interpreter indexes dicts/sets at runtime and is unchanged.
 
-> **Subscripting a set by position is a gusty extension, not Python.** `{1, 2, 3}[2]`
-> picks the element at index 2 here; CPython rejects it with
-> `TypeError: 'set' object is not subscriptable` (with a syntax warning calling out the
-> missing comma). Programs that use it are recorded `oracle: not_applicable` in the
-> conformance ledger — the CPython leg cannot reach the rest of the file — so the
-> extension is a deliberate difference rather than an unnoticed one (ADR 0186).
+> **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
+> `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it
+> does not have is `KeyError: not in set`. CPython rejects the shape outright with
+> `TypeError: 'set' object is not subscriptable` (with a syntax warning calling out the missing comma),
+> so programs that use it are recorded `oracle: not_applicable` in the conformance ledger — the CPython
+> leg cannot reach the rest of the file — which makes the extension a deliberate difference rather than
+> an unnoticed one (ADR 0186, ledger rows `programs/data_b` and `programs/features_b`). Both backends
+> read a set the same way at every depth, including a set held in a container slot (ADR 0251); neither
+> one reads it by position, whatever an older draft of this paragraph said.
 
 ### Iterating and mutating containers
 
@@ -1659,6 +1662,35 @@ xs.append(5)
 print(len(xs[2]))                          # TypeError: object of type 'int' has no len() — as CPython
 ```
 
+**…and one level below it the same door reads the slot** (ADR 0251). `len(xs[0])` asks the object what
+the slot holds; `xs[0][0]` has to ask the same question and then *read* the answer back. The tag written
+beside the outer slot names what kind of object its payload is, and the arm it selects is the read that
+kind supports — a position, normalised and bounds-checked like any other; a key, with its `KeyError`; a
+character of a text, with `IndexError: string index out of range`; or, for a set, the membership question
+this language documents for a set subscript. What the tag reports as having no slots at all raises the
+sentence CPython raises for that kind. The value that comes back is itself a `(payload, tag)` pair, so a
+binding, an equality, a `len` and a further subscript all take it: no literal ever described these
+objects, and nothing here is a guess about what the number happens to be.
+
+```gy
+xs = []
+xs.append([7, 8])
+xs.append({"k": 5})
+xs.append("abc")
+print(xs[0][0])                             # 7      — a list slot is read by position
+print(xs[1]["k"])                           # 5      — a dict slot by its key
+print(xs[2][1])                             # b      — a text slot gives a one-character string
+d = {}
+d["a"] = [1, 2]
+print(d["a"][1])                            # 2      — the dict was built by assignment
+y = xs[0][1]
+print(1 if y == 8 else 0)                   # 1      — the pair travels with the value
+i = 1
+print(xs[0][i])                             # 8      — the position may be computed too
+xs.append(5)
+print(xs[3][0])                             # TypeError: 'int' object is not subscriptable — as CPython
+```
+
 **…and an equality asks it the same question** (ADR 0247). The tag was already carried to the printer,
 so `print(out[1])` rendered `a` while `out[1] == "a"` was refused — one read, two doors. Both sides of
 `==`/`!=` are now `(payload, tag)` pairs, and the one equality the container comparisons already use
@@ -1681,11 +1713,13 @@ What still reports, with the mechanism it is missing named: a **dict keyed by a 
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), and a tagged element whose kind only the run time can tell — a loop variable over a
 mixed list used as a number, an element read through a runtime index used **as a number**
-(`xs[0][0] + 1` on a run-time-built container), an **ordering** comparison of such a slot (`xs[1] >
-"a"`, Gap R.82), a comparison against an expression whose kind cannot be proven (Gap R.83), or the
-nested read of a container built at run time (`xs[0][0]` after `xs.append([7, 8])`) — all of which need
-the value word that carries its own tag (roadmap L11.1). A fold (`sum`, `min`, `max`) over container
-elements
+(`xs[0][0] + 1` on a run-time-built container), an **ordering** comparison of such a slot (Gaps R.85,
+R.93), a comparison against an expression whose kind cannot be proven (Gap R.83), a **membership** test
+or a **loop** whose haystack is such a slot (`7 in xs[0]`, `for v in xs[0]` after `xs.append([7, 8])`,
+which need the object's *kind* where the read asks only its tag), or a **set variable** subscripted
+directly (`sa[0]`, which the interpreter answers by the documented extension and the compiler declines,
+Gap R.94) — all of which need the value word that carries its own tag (roadmap L11.1). A fold (`sum`,
+`min`, `max`) over container elements
 reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a

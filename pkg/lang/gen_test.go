@@ -70,13 +70,19 @@ func TestGenDictComprehensionIndex(t *testing.T) {
 }
 
 func TestGenSetComprehensionIndex(t *testing.T) {
-	// s[2] over {x * x} for x in [1, 2] returns the element when present.
+	// s[1] over {x * x} for x in [1, 2] asks the set a membership question and gets the member back.
+	// This is a documented gusty extension — CPython answers any set subscript with TypeError:
+	// 'set' object is not subscriptable, and the corpus rows that use it (programs/data_b,
+	// programs/features_b) are `oracle: not_applicable` for that reason. It is pinned here because the
+	// compiled tag arm one level below a slot has to answer the same question the same way; where the
+	// docs call it a positional read and both engines read it as a membership one, the roadmap row
+	// measures it (roadmap L11.1, ADR 0251).
 	if v, _, err := EvalExpr("({x * x} for x in [1, 2])[1]"); err != nil {
 		t.Fatalf("set comprehension index: %v", err)
 	} else if v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
-	// absent element errors.
+	// absent member errors.
 	if _, _, err := EvalExpr("({x * x} for x in [1, 2])[5]"); err == nil {
 		t.Fatalf("expected not-in-set error")
 	}

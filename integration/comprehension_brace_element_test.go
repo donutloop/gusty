@@ -47,6 +47,20 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 			"d = [{x} for x in [1, 2]]\nprint(1 if d[0] == d[1] else 0)\n",
 			"0\n",
 		},
+		{
+			// Reaching one level below a slot of a comprehension the program built. The element was
+			// written payload-and-tag by the comprehension's own builder, so the read asks the object
+			// which kind it was given instead of asking for a literal that never existed; this refusal
+			// row moved here with ADR 0251 (roadmap L11.1).
+			"indexing a dict slot of a built comp",
+			"d = [{\"k\": x} for x in [1, 2]]\nprint(d[1][\"k\"])\n",
+			"2\n",
+		},
+		{
+			"indexing a list slot of a built comp",
+			"xs = [[x, x * 2] for x in [1, 2]]\nprint(xs[1][1])\n",
+			"4\n",
+		},
 		// The untagged-element writes: each of these printed the machine word, not the value.
 		{"print_list_element_comp", "xs = [[1, 2] for x in [1, 2]]\nprint(xs)\n", "[[1, 2], [1, 2]]\n"},
 		{"read_list_element_comp", "xs = [[1, 2] for x in [1]]\nprint(xs[0])\n", "[1, 2]\n"},
@@ -105,11 +119,10 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 			"more than one kind",
 		},
 		{
-			"indexing a dict slot of a built comp",
-			"d = [{\"k\": x} for x in [1, 2]]\nprint(d[1][\"k\"])\n",
-			"index must be a constant",
-		},
-		{
+			// (A `indexing a dict slot of a built comp` row used to sit here demanding the refusal
+			// "index must be a constant". The read below a comprehension's slot is answered by the tag the
+			// comprehension's builder wrote, so it prints CPython's answer now and is pinned in
+			// TestComprehensionElementsMatchCPython; ADR 0251.)
 			"reaching into a built comprehension's slot",
 			"xs = [[1, 2] for x in [1]]\nprint(xs[0][0] + 1)\n",
 			"cannot reach into xs's slots",

@@ -5475,3 +5475,78 @@ container a loop built prints a verdict where the door declines to answer (**Gap
 against the last commit's binary first, so "pre-existing, freshly measured" is a claim with evidence behind it
 rather than an excuse — and each is a row with its own ID, because a defect absorbed into a neighbouring
 feature's commit is a defect that stops being owed.
+
+## Cycle: ADR 0251 — a slot of a container the program built is read by asking the object what it is (L11.1's nested-read clause)
+
+**The refusal was right and the program was still owed.** `xs = []; xs.append([7, 8]); print(xs[0][0])` exited 1
+with "the literal it was bound to no longer says what the slots hold" — a sentence that was perfectly true and
+described a limit that had stopped being real the moment ADR 0187 made every writer put a tag beside every
+payload. The compile-time promise (ADR 0241) and the object's tag array (ADR 0246, asked for `len`) are two
+sources of one fact, and the nested read had been left outside both. When a refusal's *premise* is out of date
+the fix is not a nicer message: it is noticing which other door already knows the answer.
+
+**One subscript is four questions, and only the object knows which.** A slot's tag selects the arm: a list is
+read by position, a dict by its `(payload, tag)` key, a text gives one character, a set is asked as a member.
+Emitting one arm per kind is cheap; the interesting constraint was the merge. Four value arms and a chain of
+raise arms feed one `phi`, and a `phi` may name only blocks that actually reach it — so each value arm ends in
+its own tail block and each raise ends at the handler instead (ADR 0205, the same rule ADR 0250's ordering arms
+follow). The first version put the `br merge` inside an arm that had just emitted a bounds-check raise, and
+`llc` was unimpressed; an arm's *ending* block is data, not an assumption.
+
+**The case that proved the design was not in the plan.** `xs.append([1, 2]); xs.append({"k": 5})` then
+`print(xs[0][1], xs[1]["k"])` — one container, two slot kinds, two different helpers. Any compile-time table
+of "what `xs` holds" is either a lie the first time a second `append` lands, or a refusal; the tag is a fact
+the object keeps up to date. When a feature's best test case is one the original design could not have served,
+the design was the finding.
+
+**A trap is not a refusal, and the exit class is where you can see it.** Subscripting a slot that holds `5`
+must die with `'int' object is not subscriptable` at exit 3, catchable by the program's own `except`. The
+easy route — refuse at compile time — is exit 1, the contract's "your program is wrong" class, issued for a
+program whose only crime is a wrong index; the *other* easy route, lowering the read without a tag, is exit 2,
+the compiler's own bug. The new trap table asserts all three distances: exit 3, a traceback, and `codegen:`
+absent — so a regression toward the exit-1 answer fails the suite instead of looking like a policy change.
+
+**Losing a documented surface under a codegen fix is the most expensive mistake available, and it took a
+conformance matrix ten minutes to stop me.** My first version had the set arm raise CPython's
+`'set' object is not subscriptable` and I brought the interpreter along with it — two engines agreeing with the
+oracle, everyone happy, except that `s[i]` on a set is *documented gusty surface*: `docs/language.md § Dicts &
+sets` grants it, `programs/data_b.gy` and `programs/features_b.gy` use it, and their ledger rows are
+`oracle: not_applicable` precisely because CPython rejects it. Four tests went red — two corpus pins and the
+two matrix drift tests — and what they were really saying was "you deleted a language decision while pretending
+to change a lowering". Reverted, and the compiled arm now implements the extension instead of denying it; the
+rejected alternative, with the reason, is in ADR 0251. Oracle-alignment is a default, not a licence.
+
+**…and the same paragraph had a second lie in it.** The docs said `{1, 2, 3}[2]` "picks the element at index 2"
+while both engines had always read the subscript as a membership question — the answer is `2`, never `3`. I only
+found out because writing the set arm forced me to say what the arm *means*, and the two engines disagreed with
+the prose rather than with each other. A source of truth that describes a behaviour nobody implements is worse
+than no paragraph: it makes the next reader fix the code. Now the paragraph says membership, and the arm
+matches it.
+
+**A refusal's list of what *does* work has to be re-measured every time it grows.** `cannot reach into xs's
+slots … print(...), == and ` + "`in`" + ` still work` had become false in two directions at once: `in` does not
+work (measured: `7 in xs[0]` refuses — Gap R.95), and the read, `len` and a further subscript do. Gap R.38 makes
+that a defect rather than a blemish, so the sentence lost its `in`, gained `len` and a further subscript, and the
+two newly measured shapes got rows. Tests pin the *tail* of the sentence, never the middle, which is what let it
+move at all.
+
+**The gate and the door must be the same question, so I made them the same function.** ADR 0249's lesson,
+re-applied: `runtimeSlotReadOf` is the predicate, `runtimeSlotPairDeep` checks it before emitting, and the only
+legal disagreement is "gate admits, door declines" — which leaves a refusal, never a wrong value. The
+temptation was to widen `isTaggedSlotRead` to every nested read; that would have quietly moved
+literal-backed reads (`m[0][1]`, `t[0][0][0]`) onto a new path whose answers are already pinned, i.e. two doors
+racing for one shape. The gate now steps aside wherever the static door answers.
+
+**Refusal pins broke exactly where the feature worked, and that is the measurement.** Two rows died: the
+comprehension suite's `indexing a dict slot of a built comp` (which now prints `2`) and the oracle ledger's
+`probe_nested_list` pin that said the aot leg was missing. Both moved to parity tables rather than being
+deleted — a pin that never breaks is not measuring anything, and a paid probe that stays in the ledger turns "we
+know this is wrong" back into prose. The ledger told me what to do in its own error message ("promote the
+program to `conformanceStandalone` and delete its ledger row"); the harness is the process.
+
+**Two new rows, from shapes the sweep found rather than the plan asked for.** A set *variable* read directly is
+answered by the interpreter and refused by the compiler (**Gap R.94**), and a membership test or a loop whose
+haystack is a run-time-built slot read refuses where CPython answers (**Gap R.95**) — both need the object's
+*kind* where the read asks only its *tag*, which is a distinction the roadmap had not had to draw before. Each
+is a row with its own ID and its own planned program, because a defect absorbed into a neighbouring commit stops
+being owed.

@@ -2195,6 +2195,12 @@ func (g *irGen) isTaggedSlotRead(e Expr) bool {
 	if !ok {
 		return false
 	}
+	if _, isRead := ix.Obj.(*Index); isRead {
+		// A read of a read — `xs[0][0]`, `d["a"][1]`, `xs[0][1][2]`. The object below describes its own
+		// slots, so the pair the run-time door answers with is the only value this side has; where the
+		// literal still licenses the static read, that door keeps it (ADR 0251, roadmap L11.1).
+		return g.runtimeSlotReadOf(ix) && !g.staticSideIsReadable(ix.Obj)
+	}
 	nm, isName := ix.Obj.(*Name)
 	if !isName || !g.allocd[nm.Value] {
 		return false
@@ -2215,11 +2221,19 @@ func (g *irGen) isTaggedSlotRead(e Expr) bool {
 }
 
 // comparePair lowers one side of an equality to the (payload, tag) pair it denotes: the slot's own
-// pair when the side is a read the object describes, and otherwise the pair an expression whose
-// kind the compiler can prove carries (taggedOperand, ADR 0232). Declining is the caller's signal
-// to leave the ordinary path in charge.
+// pair when the side is a read the object describes — one level deep or ten, which is the shape a
+// container the program built rather than spelled out presents (ADR 0251) — and otherwise the pair an
+// expression whose kind the compiler can prove carries (taggedOperand, ADR 0232). Declining is the
+// caller's signal to leave the ordinary path in charge.
 func (g *irGen) comparePair(b *strings.Builder, e Expr) (val, tag string, ok bool) {
 	if g.isTaggedSlotRead(e) {
+		if _, isRead := e.(*Index).Obj.(*Index); isRead {
+			v, t, okPair := g.taggedSlotPair(b, e.(*Index))
+			if !okPair {
+				return "", "", false
+			}
+			return v, t, true
+		}
 		v, t, okPair := g.runtimeSlotPair(b, e.(*Index))
 		if !okPair {
 			return "", "", false
@@ -2320,6 +2334,24 @@ func (g *irGen) lenOfTaggedSlot(b *strings.Builder, payload, tag string, sp Span
 	return res
 }
 
+// lenOfSlotArgument answers `len(e)` when the argument is a subscript: the pair comes out of whichever
+// door owns the read, and the tag decides which question the object is asked — characters of a text,
+// entries of a container, and CPython's `object of type 'int' has no len()` for everything else
+// (roadmap L11.1, ADR 0246 and ADR 0251).
+func (g *irGen) lenOfSlotArgument(b *strings.Builder, e Expr) (string, bool) {
+	ix, isIx := e.(*Index)
+	if !isIx {
+		return "", false
+	}
+	if v, t, okPair := g.runtimeSlotPair(b, ix); okPair {
+		return g.lenOfTaggedSlot(b, v, t, ix.Span()), true
+	}
+	if v, t, okPair := g.taggedSlotPair(b, ix); okPair {
+		return g.lenOfTaggedSlot(b, v, t, ix.Span()), true
+	}
+	return "", false
+}
+
 // slotReadRefusal is what `len(xs[0])`, `xs[0][1]` and friends say when the slot cannot be reached.
 // The generic "needs an inline literal" sent an agent looking at a shape that is fine: the program
 // reads a container through a name, and what ran out is the *promise* about that name — it was
@@ -2350,7 +2382,11 @@ func (g *irGen) slotReadRefusal(e Expr, ask string) error {
 		return fmt.Errorf("%s cannot use an element of %s as a plain number: the payload only means something with its tag, and this context wants one i32 with no tag attached. print(...), ==, `in`, len and a further subscript are answered; arithmetic on an element needs the tagged value word still owed (roadmap L11.1, ADR 0241)", ask, nm)
 	}
 	if g.containerNamed(nm) {
-		return fmt.Errorf("%s cannot reach into %s's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), == and `in` still work because the object prints and compares itself (roadmap L11.1, ADR 0241)", ask, nm)
+		// The sentence has to be true about the other contexts too (Gap R.38). Asking the object is what
+		// answers them — its tag array says what each slot holds, whether or not a literal ever did — and
+		// `in` is deliberately not in the list, because a membership test needs the haystack's *kind*
+		// rather than its tag, which is the shape measured as owed beside this row.
+		return fmt.Errorf("%s cannot reach into %s's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)", ask, nm)
 	}
 	return fmt.Errorf("%s requires an inline list/dict/set literal", ask)
 }
@@ -2467,10 +2503,257 @@ func (g *irGen) taggedContainerRead(b *strings.Builder, ix *Index) (val, tag str
 	}
 	base, baseKind, okHandle := g.containerHandleOf(b, ix.Obj)
 	if !okHandle {
-		return "", "", false, nil
+		// The container side is not one the compile-time promise covers. It may still be an object:
+		// `xs = []` then `xs.append([7, 8])` builds the inner container at run time, so no literal
+		// describes the slots and the answer has to come from the object rather than from the
+		// compiler's notebook (roadmap L11.1, ADR 0251).
+		v, t, okDyn := g.taggedSlotPair(b, ix)
+		return v, t, okDyn, nil
 	}
 	v, t, okRead := g.containerSlotRead(b, base, baseKind, ix.Idx, ix.Span())
-	return v, t, okRead, nil
+	if okRead {
+		return v, t, true, nil
+	}
+	v, t, okDyn := g.runtimeSlotPairDeep(b, ix)
+	return v, t, okDyn, nil
+}
+
+// taggedSlotPair is the one door that answers "which (payload, tag) pair does this subscript
+// denote?". Two doors stand behind it, tried in this order:
+//
+//   - the **static** door: the container is one the compiler still holds the literal for, so the tag
+//     beside the slot is the one that literal's builder wrote. containerSlotRead answers, bounds check
+//     and KeyError check included (ADR 0241).
+//   - the **run-time** door: the container was *built* rather than spelled out — `xs = []` then
+//     `xs.append([7, 8])`, `d = {}` then `d["a"] = [1, 2]` — so the literal no longer says what the
+//     slots hold and the object does instead: the tag written beside the outer slot names the kind of
+//     object the payload is, and the tag written beside the inner slot says what the answer means
+//     (roadmap L11.1, ADR 0251).
+//
+// Declining means neither door can answer, and the caller's own path — or the refusal that names what
+// is missing — stays in charge.
+func (g *irGen) taggedSlotPair(b *strings.Builder, ix *Index) (val, tag string, ok bool) {
+	if h, kind, okH := g.containerHandleOf(b, ix.Obj); okH {
+		if v, t, okRead := g.containerSlotRead(b, h, kind, ix.Idx, ix.Span()); okRead {
+			return v, t, true
+		}
+	}
+	return g.runtimeSlotPairDeep(b, ix)
+}
+
+// runtimeSlotPairDeep reads a slot out of a container the program built. The bottom of the chain is a
+// variable the compiled backend owns the storage for; every level above it is a read whose tag says
+// which kind of object its payload names, so `xs[0][1][2]` asks the object three times and each answer
+// is a (payload, tag) pair on its way to a printer, a comparison, a length or another subscript
+// (roadmap L11.1, ADR 0187's one-write-per-pair rule, read back one level at a time).
+//
+// The gate (runtimeSlotReadOf) is asked first and the door refuses whatever it would not admit, so the
+// two can only disagree in the safe direction: a shape the gate lets through may still be declined
+// here, and the caller then keeps its own refusal.
+func (g *irGen) runtimeSlotPairDeep(b *strings.Builder, e Expr) (val, tag string, ok bool) {
+	ix, isIx := e.(*Index)
+	if !isIx || !g.runtimeSlotReadOf(ix) {
+		return "", "", false
+	}
+	if nm, isName := ix.Obj.(*Name); isName {
+		// The bottom of the chain: the variable's own slot holds the object, and the tracked kind says
+		// which container the handle names — the same read ADR 0246 put behind len(...) of a slot.
+		kind := ""
+		switch {
+		case g.listVars[nm.Value] || g.mixedLists[nm.Value]:
+			kind = "list"
+		case g.runtimeDicts[nm.Value] || g.mixedDicts[nm.Value]:
+			kind = "dict"
+		default:
+			return "", "", false
+		}
+		g.heapUsed = true
+		h := g.newTmp()
+		fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", h, "_"+nm.Value)
+		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+	}
+	base, baseTag, okBase := g.runtimeSlotPairDeep(b, ix.Obj)
+	if !okBase {
+		return "", "", false
+	}
+	return g.slotReadUnderTag(b, base, baseTag, ix)
+}
+
+// runtimeSlotReadOf is the shape the run-time door handles: a subscript whose container side is a
+// variable the compiled backend holds a heap container for, or another subscript like that. It is the
+// gate every caller asks before opening the door, and the door asks it too — ADR 0249's lesson is that
+// a gate and a door testing different things ship a refusal nobody measured.
+func (g *irGen) runtimeSlotReadOf(e Expr) bool {
+	ix, isIx := e.(*Index)
+	if !isIx {
+		return false
+	}
+	return g.runtimeContainerSide(ix.Obj)
+}
+
+// runtimeContainerSide asks whether the side a slot is read out of is an object the run time owns: a
+// list the program appended to, a dict the program assigned into, or a read of one of those. A set
+// variable is not a side here because it has its own (untagged) read path; a set in a *slot* is a side
+// like any other, and the arm the tag reaches asks it the membership question the documented gusty
+// extension promises for a set subscript.
+func (g *irGen) runtimeContainerSide(e Expr) bool {
+	switch n := e.(type) {
+	case *Name:
+		// A name the escape analysis kept as a compile-time value has no slot to load; emitting the
+		// load anyway is the module llc rejects (ADR 0192).
+		if !g.allocd[n.Value] {
+			return false
+		}
+		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.mixedDicts[n.Value]
+	case *Index:
+		return g.runtimeSlotReadOf(n)
+	}
+	return false
+}
+
+// staticSideIsReadable mirrors the question the static door asks, without emitting, so the gate over
+// the run-time door can stand aside where ADR 0241's promise already answers: two doors, one answer.
+func (g *irGen) staticSideIsReadable(side Expr) bool {
+	switch n := side.(type) {
+	case *ListLit, *DictLit, *SetLit, *Comp:
+		return true
+	case *Name:
+		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] ||
+			g.mixedDicts[n.Value] || g.runtimeSets[n.Value]
+	case *Index:
+		tg, seen := g.staticSlotTag(n.Obj, n.Idx)
+		return seen && g.containerTag(tg)
+	}
+	return false
+}
+
+// slotReadUnderTag reads `base[key]` where `base` is the payload of a slot the compiler could not
+// read. The tag the builder wrote beside that payload says which kind of object the payload names,
+// and so which question the object is asked: a list slot is read by position, normalised and
+// bounds-checked like any other positional subscript (ADR 0210's rule, reached through the tag rather
+// than around it); a dict slot by the (payload, tag) key, with the KeyError a missing one raises;
+// a text slot answers a one-character string, because `s[i]` is a string and not a byte (ADR 0225);
+// and a set slot is asked as a member, which is the documented gusty extension for a set subscript
+// (docs/language.md § Dicts & sets) applied one level down rather than reinvented there. Anything the
+// tag reports that has nothing to read — a number, None, a class the language has not grown
+// `__getitem__` for — raises the sentence CPython raises, naming the kind the tag reports, instead of
+// reading the payload as a handle and answering with whatever object happens to share its number
+// (roadmap L11.1, ADR 0251).
+//
+// Every arm that produces a value ends at the same merge through its own tail block, and the raise
+// arms end at the handler instead, so the merge's phi has only value-producing predecessors —
+// ADR 0205's rule, the same one ADR 0250's ordering arms follow.
+func (g *irGen) slotReadUnderTag(b *strings.Builder, base, baseTag string, ix *Index) (val, tag string, ok bool) {
+	key, keyTag, okKey := g.taggedOperand(b, ix.Idx)
+	if !okKey {
+		return "", "", false
+	}
+	g.heapUsed = true
+	g.floatFmtUsed = true
+	sp := ix.Span()
+	listArm, dictArm, strArm, setArm := g.newLabel("slot.lst"), g.newLabel("slot.dct"), g.newLabel("slot.str"), g.newLabel("slot.set")
+	tailL, tailD, tailS, tailSet := g.newLabel("slot.lend"), g.newLabel("slot.dend"), g.newLabel("slot.send"), g.newLabel("slot.setend")
+	merge := g.newLabel("slot.merge")
+
+	// The tag chain: one icmp and one branch per kind. A side the compiler cannot read has no arm it
+	// can fold away — every one of these can run, which is what makes the phi legal and the answers
+	// three.
+	kinds := []struct {
+		tag int32
+		arm string
+	}{{int32(TagList), listArm}, {int32(TagDict), dictArm}, {int32(TagStr), strArm}, {int32(TagSet), setArm}}
+	for _, k := range kinds {
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, baseTag, k.tag)
+		g.markI1(c)
+		chk := g.newLabel("slot.chk")
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, k.arm, chk)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	traps := []struct {
+		tag  int32
+		name string
+	}{
+		{int32(TagInt), "int"},
+		{int32(TagFloat), "float"},
+		{int32(TagBool), "bool"},
+		{int32(TagNone), "NoneType"},
+	}
+	trapBlock := make([]string, len(traps))
+	for i := range traps {
+		trapBlock[i] = g.newLabel("slot.bad")
+	}
+	for i, t := range traps {
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, baseTag, t.tag)
+		g.markI1(c)
+		chk := g.newLabel("slot.chk")
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, trapBlock[i], chk)
+		fmt.Fprintf(b, "%s:\n", chk)
+	}
+	genericBad := g.newLabel("slot.badg")
+	fmt.Fprintf(b, "  br label %%%s\n", genericBad)
+	for i, t := range traps {
+		fmt.Fprintf(b, "%s:\n", trapBlock[i])
+		g.raiseTo(b, exnCode("TypeError"), "TypeError", "'"+t.name+"' object is not subscriptable", sp)
+	}
+	fmt.Fprintf(b, "%s:\n", genericBad)
+	g.raiseTo(b, exnCode("TypeError"), "TypeError", "object is not subscriptable", sp)
+
+	// ---- the list arm: a position, normalised and bounds-checked by the same helper an explicit read
+	// uses, and read back with the tag the builder stored beside it.
+	fmt.Fprintf(b, "%s:\n", listArm)
+	pos := g.normalizeIndex(b, base, key, sp)
+	lv := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", lv, base, pos)
+	lt := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", lt, base, pos)
+	fmt.Fprintf(b, "  br label %%%s\n", tailL)
+
+	// ---- the dict arm: the entry whose key is the (payload, tag) pair, and the value one word past it.
+	fmt.Fprintf(b, "%s:\n", dictArm)
+	g.checkKeyReadTagged(b, base, key, keyTag, sp)
+	dv := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", dv, base, key, keyTag)
+	dt := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_dict_value_tag(i32 %s, i32 %s, i32 %s)\n", dt, base, key, keyTag)
+	fmt.Fprintf(b, "  br label %%%s\n", tailD)
+
+	// ---- the text arm: a code point, interned like every other one-character string, or the
+	// IndexError that says there is no such position.
+	fmt.Fprintf(b, "%s:\n", strArm)
+	sv := g.rtStrCall(b, "rt_str_char", "i32 "+base, "i32 "+key)
+	g.checkStrSentinels(b, sv, "IndexError", "string index out of range", sp, "slotchr")
+	fmt.Fprintf(b, "  br label %%%s\n", tailS)
+
+	// ---- the set arm: the subscript is a member the set is asked about, and the member comes back —
+	// the gusty extension for a set subscript, read through the (payload, tag) rule the container's own
+	// membership tests already use, so a set slot and a set variable answer alike.
+	fmt.Fprintf(b, "%s:\n", setArm)
+	at := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_set_find(i32 %s, i32 %s, i32 %s)\n", at, base, key, keyTag)
+	absent := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp slt i32 %s, 0\n", absent, at)
+	g.markI1(absent)
+	g.branchRaise(b, absent, "KeyError", "not in set", sp, "slotset")
+	pv := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", pv, base, at)
+	pt := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", pt, base, at)
+	fmt.Fprintf(b, "  br label %%%s\n", tailSet)
+
+	for _, t := range []string{tailL, tailD, tailS, tailSet} {
+		fmt.Fprintf(b, "%s:\n", t)
+		fmt.Fprintf(b, "  br label %%%s\n", merge)
+	}
+	fmt.Fprintf(b, "%s:\n", merge)
+	val = g.newTmp()
+	fmt.Fprintf(b, "  %s = phi i32 [ %s, %%%s ], [ %s, %%%s ], [ %s, %%%s ], [ %s, %%%s ]\n",
+		val, lv, tailL, dv, tailD, sv, tailS, pv, tailSet)
+	tag = g.newTmp()
+	fmt.Fprintf(b, "  %s = phi i32 [ %s, %%%s ], [ %s, %%%s ], [ %d, %%%s ], [ %s, %%%s ]\n",
+		tag, lt, tailL, dt, tailD, int32(TagStr), tailS, pt, tailSet)
+	return val, tag, true
 }
 
 // membershipOfReadHaystack answers `needle in xs[0]`, `k in d["a"]`, `x in s[0]` — the membership

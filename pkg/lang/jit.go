@@ -1728,6 +1728,13 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			}
 			return 0, exnError("KeyError", "key not found")
 		case "set":
+			// Subscripting a set is a documented gusty extension, not Python (docs/language.md § Dicts &
+			// sets, ledger rows `programs/data_b` and `programs/features_b` are `oracle:
+			// not_applicable` because CPython rejects the shape): the subscript is a member the set is
+			// asked about, and the answer is that member or a KeyError. The tag-dispatched arm the
+			// compiled backend uses one level down reads a set slot the same way, so the extension is
+			// one rule rather than two (roadmap L11.1, ADR 0251). What the arm may not do is answer by
+			// position — see the roadmap row that measures where the docs and this line disagree.
 			for _, el := range o.elems {
 				if el == idx {
 					return el, nil

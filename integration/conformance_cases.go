@@ -187,6 +187,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// licenses the second read (roadmap L11.1, ADR 0241). It is here rather than in
 		// conformanceProbes because both backends now print CPython's answer on every line.
 		"probe_heterogeneous",
+		// A container the program *built* rather than spelled out, read one level down: `xs.append([7,
+		// 8])` leaves no literal behind, so the tag the object carries is the only thing that can say
+		// whether the payload names a list, a dict or a text — and it is what the compiled subscript
+		// branches on. It is here rather than in conformanceProbes because both backends now print
+		// CPython's answer on every line (roadmap L11.1, ADR 0251).
+		"probe_nested_list",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -243,9 +249,8 @@ func conformanceMerged() []lang.ConformanceCase {
 // conformanceProbes to conformanceStandalone, so it becomes parity surface.
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
-		"probe_bool_value",    // L11.2 — bools are not values yet
-		"probe_nested_list",   // L11.1 — a container built by append has no literal to quote
-		"probe_tuple",         // L11.3 — no tuple lowering at all
+		"probe_bool_value", // L11.2 — bools are not values yet
+		"probe_tuple",      // L11.3 — no tuple lowering at all
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
@@ -426,10 +431,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "True/False print as 1/0 and comparisons print 1/0: there is no bool tag to render from, so --json also reports \"int\" for True",
 		ref:    "roadmap L11.2 (bools as values, closes Gap L.2)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n0\n1\n"}, {Backend: "aot", Stdout: "1\n1\n0\n0\n1\n"}}},
-	"programs/probe_nested_list": {oracle: lang.OracleDebt,
-		reason: "a slot of a container the program spelled out reads back fine (`m[0][1]`, `d[\"a\"][1]`, ADR 0241); what still refuses is a container built by `append` — no literal to quote, so the tag the second read needs is not statically known",
-		ref:    "roadmap L11.1 (tagged value word) remaining item (1a)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n2\n1\n7\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_tuple": {oracle: lang.OracleDebt,
 		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
 		ref:    "roadmap L11.3 (tuples are values)",

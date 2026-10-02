@@ -1,12 +1,12 @@
-# Oracle probe (L11.9, ADR 0186) — a container the program built rather than spelled out.
+# Conformance program (L11.1, ADR 0251) — a container the program built rather than spelled out.
 #
-# The nesting itself is paid for: a list of lists is built, printed, compared, grown, and read back
-# through a slot — `m[0][1]` and `d["a"][1]` print CPython's answer on both backends, because the
-# literal the name was bound to tells the compiler what the tag beside that slot says (roadmap L11.1,
-# ADR 0239 and ADR 0241). What still refuses is the read out of a container no literal ever described:
-# `xs = []` then `xs.append([7, 8])` builds the inner object at run time, so the compile-time promise
-# the read is granted by has run out, and the compiled leg declines rather than read a payload as a
-# handle. The interpreter — boxed values, no static tag needed — answers every line, as CPython does.
+# This used to be an oracle probe: the compiled leg refused `xs[0][0]` outright ("index cannot reach
+# into xs's slots") while the interpreter and CPython agreed. It is parity surface now. A name bound to
+# a literal can be read through the compile-time promise ADR 0241 grants it; a name the program grew
+# with `append`, or filled with `d[k] = …`, has no literal left to quote, so the read goes to the
+# object: the tag written beside the outer slot says which kind of object the payload names, and the
+# tag written beside the inner slot says what the answer means. Neither read is a guess about what the
+# number happens to be (roadmap L11.1, ADR 0246 and ADR 0251).
 m = [[1, 2], [3, 4]]
 print(m[0][1])
 d = {"a": [1, 2]}

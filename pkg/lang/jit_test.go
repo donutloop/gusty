@@ -310,7 +310,9 @@ func TestEvalDictSetIndexLen(t *testing.T) {
 	if v != 3 {
 		t.Fatalf("got %d, want 3", v)
 	}
-	// set membership lookup returns the element.
+	// A set subscript is the documented gusty extension: the subscript is a member the set is asked
+	// about, and the answer is that member. Pinned on both engines because the compiled tag arm below a
+	// slot reads a set slot the same way (roadmap L11.1, ADR 0251; docs/language.md § Dicts & sets).
 	v, _, err = EvalExpr("{1, 2, 3}[2]")
 	if err != nil {
 		t.Fatalf("set index err: %v", err)

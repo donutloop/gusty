@@ -4571,3 +4571,88 @@ ADR 0250's door declines a slot whose kinds it cannot list, which is the honest 
 what happens next: the lowering underneath, which never had to answer this shape before, compares the payload
 it has and prints `0`. The `append` path records kinds in the same maps the print and length doors read, so
 the arm list can be built for a run-time container too; until it is, the shape must refuse by naming itself.
+
+### L11.1 (1a) — the nested read of a container the program built (measured 2026-10-02, closed by ADR 0251)
+
+    xs = []
+    xs.append([7, 8])
+    print(xs[0][0])          # CPython 7 · --interp 7 · --aot: exit 1 "index cannot reach into xs's slots"
+    d = {}
+    d["a"] = [1, 2]
+    print(d["a"][1])         # CPython 2 · --interp 2 · --aot: exit 1, same sentence about d
+    xs.append({"k": 5})
+    print(xs[2]["k"])        # CPython 5 · --interp 5 · --aot: exit 1 — and no static kind exists to ask for
+
+Three legs, two answers, on the exact program the roadmap row names as its own remainder. The read ADR 0241
+grants is a *compile-time promise* — the literal behind the name is still the object in front of it — and an
+`append` takes that promise away, which is why the first refusal was honest. What made it a gap rather than a
+limit is that the promise was never the only source of the same fact: ADR 0187 makes every writer put a tag
+beside every payload, so the object can say what its slot holds, and ADR 0246 had already started asking it for
+`len`.
+
+What the row did not say, and the measurement did, is that the answer is not one door but four. The tag beside
+the outer slot says what kind of object the payload names, and the arm it selects is the read that kind
+supports: a position (with `normalizeIndex`, so `xs[0][-1]` counts from the end and `xs[0][9]` raises
+`IndexError` like any other subscript), a key (`checkKeyReadTagged`, so a missing one raises `KeyError`), a
+character of a text (`rt_str_char`, one-character strings interned, `IndexError: string index out of range`
+past the end), or — for a set — the membership question the language documents for a set subscript. The tags
+that name nothing raise, per kind: `'int' object is not subscriptable`, `'float' …`, `'bool' …`, `'NoneType' …`,
+and a generic sentence for a kind this language has not grown `__getitem__` for. Every one of them is a *trap*,
+exit 3, catchable — not a compile-time refusal, which would have been exit 1 for a program whose only crime is
+a wrong index (ADR 0166's classes again).
+
+The interesting case is the one no table could have held:
+
+    xs = []
+    xs.append([1, 2])
+    xs.append({"k": 5})
+    print(xs[0][1], xs[1]["k"])      # 2 5   — one container, two slot kinds, two different questions
+
+A single static element kind would answer one of those wrongly, and a compiler-side table of "what `xs` holds"
+would have had to be wrong the moment a second `append` landed. This is the same lesson ADR 0250 learned about
+arms, from the other side: the arms that *can* run must all be emitted, and a `phi` may name only the blocks
+that actually reach the merge — so the four value arms end in their own tail blocks, the raise arms end at the
+handler, and the merge stays legal by construction (ADR 0205).
+
+The refusal sentence aged with the feature, and one claim came out of it: it had been advertising that "`in`
+still works", which the same sweep measured as false (`7 in xs[0]` refuses). Gap R.38 counts a refusal that
+overstates its backend as a defect of its own, so the sentence now lists what is actually answered — `print`,
+`==`, `len`, a further subscript — and the two shapes that need the object's *kind* rather than its tag got
+rows: Gap R.95 (`in`, `for`) and Gap R.94 (a set variable read directly, answered by one backend and refused
+by the other).
+
+### Gap R.94 — a set variable's subscript is answered by one backend and refused by the other (measured 2026-10-02, left open)
+
+    sa = {5, 6, 7}
+    print(sa[6])             # --interp 6 · --aot: exit 1 "index of a non-literal variable"
+
+A set subscript is a *documented* gusty extension, not a Python behaviour: `docs/language.md § Dicts & sets`
+grants it, `programs/data_b.gy` and `programs/features_b.gy` use it, and their ledger rows are
+`oracle: not_applicable` because CPython rejects every set subscript with `TypeError: 'set' object is not
+subscriptable`. Deliberate divergence is fine; divergence **between the two backends** is not, and that is
+what this is. The set arm ADR 0251 wrote for a set in a *slot* is the missing lowering for a set in a
+*variable* — same helper (`rt_set_find`), same `KeyError: not in set` when the member is not there.
+
+Two more things came out of measuring it. The first is that `docs/language.md` described this extension as
+picking "the element at index 2" while both engines had always read the subscript as a *membership* question —
+`{1, 2, 3}[2]` answers `2`, never `3`. The paragraph now says what the code does, because a source of truth
+that describes a behaviour nobody implements is worse than no paragraph. The second is that the compiled tag
+arm was briefly the only engine raising CPython's sentence for a set subscript, and the tempting fix — dragging
+the interpreter to CPython's answer — quietly deleted a documented surface with an `oracle: not_applicable`
+ledger row behind it. That change lasted ten minutes and one red conformance matrix; the decision, and the
+reason it was the wrong one, are in ADR 0251's rejected alternatives.
+
+### Gap R.95 — a membership test or a loop whose haystack is a run-time-built slot read refuses (measured 2026-10-02, left open)
+
+    xs = []
+    xs.append([7, 8])
+    print(7 in xs[0])        # CPython True · --interp 1 · --aot: exit 1 "this context needs a single static kind"
+    for v in xs[0]:          # CPython 7, 8 · --interp 7, 8 · --aot: same refusal
+        print(v)
+
+The read ADR 0251 opened is the sibling of these two, not the same door: a subscript needs the slot's *tag*,
+which one `icmp` per kind resolves, while `in` picks among `rt_contains_tagged` / `rt_dict_has_tagged` /
+`rt_set_contains_tagged` and `for` picks a length-and-elements walk, both by the object's *kind* — a
+compile-time `string` in the code that picks the helper today. The dispatch is written; it has to be reached by
+these two callers as well, and a haystack whose tag names a scalar must then raise what CPython raises rather
+than iterate nothing (Gap R.29's rule for an iterator that cannot be lowered).
