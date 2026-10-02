@@ -1865,9 +1865,483 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 		return true
 	case *Name:
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
+	case *Index:
+		// An element that holds another container is a container: the slot stores its handle, and
+		// the tag the builder wrote says so (ADR 0239). Reading it is the question this answers —
+		// `for row in xs[0]`, `xs[0] == [1, 2]`, `2 in xs[0]` — and the answer is only yes when the
+		// tag is visible, which is the same promise containerHandleOf asks for before it emits a
+		// load (roadmap L11.1, ADR 0241).
+		_, ok := g.staticContainerKind(n)
+		return ok
 	}
 	_, ok := emptyContainerLiteral(e)
 	return ok
+}
+
+// staticContainerKind is the kind question asked without emitting anything: what would the handle
+// this expression denotes be, if the compiler is willing to say. It is a separate answer from
+// containerHandleOf because the comparison, the membership test and the loop need to *decide* before
+// they are allowed to build, and deciding must not put instructions in a module that then refuses.
+func (g *irGen) staticContainerKind(e Expr) (string, bool) {
+	switch n := e.(type) {
+	case *ListLit:
+		return "list", true
+	case *DictLit:
+		return "dict", true
+	case *SetLit:
+		return "set", true
+	case *Name:
+		switch {
+		case g.runtimeDicts[n.Value]:
+			return "dict", true
+		case g.runtimeSets[n.Value]:
+			return "set", true
+		case g.listVars[n.Value] || g.mixedLists[n.Value]:
+			return "list", true
+		}
+		if lit, ok := g.containerLits[n.Value]; ok {
+			return g.staticContainerKind(lit)
+		}
+		return "", false
+	case *Index:
+		if _, ok := g.staticContainerKind(n.Obj); !ok {
+			return "", false
+		}
+		tg, seen := g.staticSlotTag(n.Obj, n.Idx)
+		if !seen {
+			return "", false
+		}
+		switch tg {
+		case int32(TagList):
+			return "list", true
+		case int32(TagDict):
+			return "dict", true
+		case int32(TagSet):
+			return "set", true
+		}
+	}
+	return "", false
+}
+
+// containerHandleOf answers the handle an expression denotes when that expression is a container:
+// a literal, a container variable, a comprehension, or an element read whose slot holds another
+// container — `xs[0]`, `d["a"]`, `m[0][1]`, `t[0][0][0]`. The nested case is what the tagged value
+// word was for: ADR 0239 put the inner object's handle in the slot, so reading a container out of a
+// container is a load and not a new representation. The `kind` answer is "list"/"dict"/"set" when
+// the compiler can see it and "" when only the object knows, in which case the helper it is handed
+// to asks the object's own `@heap` kind — never a guess, because a payload read as a handle while it
+// holds a number is a wrong answer wearing another object's bits (ADR 0233, roadmap L11.1, ADR 0241).
+func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, ok bool) {
+	switch n := e.(type) {
+	case *ListLit:
+		hh, err := g.containerOperand(b, e)
+		if err != nil {
+			return "", "", false
+		}
+		return hh, "list", true
+	case *SetLit:
+		hh, err := g.containerOperand(b, e)
+		if err != nil {
+			return "", "", false
+		}
+		return hh, "set", true
+	case *DictLit:
+		hh, err := g.containerOperand(b, e)
+		if err != nil {
+			return "", "", false
+		}
+		return hh, "dict", true
+	case *Comp:
+		hh, err := g.containerOperand(b, e)
+		if err != nil {
+			return "", "", false
+		}
+		return hh, "", true
+	case *Name:
+		switch {
+		case g.runtimeDicts[n.Value]:
+			kind = "dict"
+		case g.runtimeSets[n.Value]:
+			kind = "set"
+		case g.listVars[n.Value] || g.mixedLists[n.Value]:
+			kind = "list"
+		default:
+			return "", "", false
+		}
+		hh, err := g.containerOperand(b, e)
+		if err != nil {
+			return "", "", false
+		}
+		return hh, kind, true
+	case *Index:
+		// A read is a container only when the tag says so, and the tag is available statically
+		// when the compiler can walk the literal: `xs = [[1, 2]]` says slot 0 is a list, so
+		// reading it out names the object the print, the length and the comparison will ask. When
+		// it cannot see — `xs = f()`, a comprehension, a loop — this declines, and the caller's
+		// refusal stands, because a payload read as a handle while it holds a number prints
+		// whatever object happens to share its index (ADR 0233).
+		tg, seen := g.staticSlotTag(n.Obj, n.Idx)
+		if !seen {
+			return "", "", false
+		}
+		base, baseKind, okBase := g.containerHandleOf(b, n.Obj)
+		if !okBase {
+			return "", "", false
+		}
+		val, _, okRead := g.containerSlotRead(b, base, baseKind, n.Idx, n.Span())
+		if !okRead {
+			return "", "", false
+		}
+		inner := ""
+		switch tg {
+		case int32(TagList):
+			inner = "list"
+		case int32(TagDict):
+			inner = "dict"
+		case int32(TagSet):
+			inner = "set"
+		default:
+			return "", "", false
+		}
+		return val, inner, true
+	}
+	return "", "", false
+}
+
+// slotReadRefusal is what `len(xs[0])`, `xs[0][1]` and friends say when the slot cannot be reached.
+// The generic "needs an inline literal" sent an agent looking at a shape that is fine: the program
+// reads a container through a name, and what ran out is the *promise* about that name — it was
+// rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer
+// describes the object's slots. Naming that is the difference between a dead end and a rewrite an
+// agent can act on (roadmap L11.1, ADR 0241).
+func (g *irGen) slotReadRefusal(e Expr, ask string) error {
+	ix, ok := e.(*Index)
+	if !ok {
+		return fmt.Errorf("%s requires an inline list/dict/set literal", ask)
+	}
+	nm, okName := baseName(ix)
+	if !okName {
+		return fmt.Errorf("%s requires an inline list/dict/set literal", ask)
+	}
+	// Is the thing being subscripted (or measured) a slot that holds a scalar? Then the program is not
+	// asking for a tag it happens to lack — it is subscripting a number, which CPython answers with a
+	// TypeError. Say that rather than the tagged-value story, which is about a different shape and would
+	// send the reader off after the wrong thing.
+	if tg, seen := g.staticSlotTagOf(ix.Obj); seen && !g.containerTag(tg) {
+		return fmt.Errorf("%s reaches past a %s in %s: the slot holds a %s, not a container, and there is no slot below it. CPython answers with TypeError: '%s' object is not subscriptable; this backend declines rather than read that payload as a handle (roadmap L11.1, ADR 0241)",
+			ask, g.tagName(tg), nm, g.tagName(tg), strings.ToLower(g.tagName(tg)))
+	}
+	if _, provable := g.containerLits[nm]; provable {
+		// The read itself is licensed — the slot says what it holds — but this context asked for a bare
+		// i32, and a payload without its tag is a number wearing another object's bits. Say which half
+		// of the work this is, rather than blaming the shape of the source.
+		return fmt.Errorf("%s cannot use an element of %s as a plain number: the payload only means something with its tag, and this context wants one i32 with no tag attached. print(...), ==, `in`, len and a further subscript are answered; arithmetic on an element needs the tagged value word still owed (roadmap L11.1, ADR 0241)", ask, nm)
+	}
+	if g.containerNamed(nm) {
+		return fmt.Errorf("%s cannot reach into %s's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), == and `in` still work because the object prints and compares itself (roadmap L11.1, ADR 0241)", ask, nm)
+	}
+	return fmt.Errorf("%s requires an inline list/dict/set literal", ask)
+}
+
+// containerNamed asks whether a name holds a container of any shape — the question that separates
+// "this program never had a container" from "this program's container escaped the analysis".
+func (g *irGen) containerNamed(name string) bool {
+	return g.listVars[name] || g.mixedLists[name] || g.mixedDicts[name] || g.runtimeDicts[name] ||
+		g.mixedSets[name] || g.runtimeSets[name]
+}
+
+// staticSlotTagOf answers the tag of a *read*: the tag of the slot `xs[0]` denotes is the tag of slot 0
+// of the object `xs` denotes. It is how a refusal knows whether the expression being subscripted is a
+// container at all — subscripting an element that holds a number is a TypeError in CPython, not a
+// missing tag (roadmap L11.1, ADR 0241).
+func (g *irGen) staticSlotTagOf(e Expr) (int32, bool) {
+	if ix, ok := e.(*Index); ok {
+		return g.staticSlotTag(ix.Obj, ix.Idx)
+	}
+	if nm, ok := e.(*Name); ok {
+		if lit, known := g.containerLits[nm.Value]; known {
+			_, isList := lit.(*ListLit)
+			_ = isList
+			return int32(TagList), true
+		}
+	}
+	return 0, false
+}
+
+// containerTag is the tag family a slot must hold for a subscript, a length or an iteration to mean
+// anything: below it there is no slot at all.
+func (g *irGen) containerTag(tg int32) bool {
+	return tg == int32(TagList) || tg == int32(TagDict) || tg == int32(TagSet)
+}
+
+// tagName names a tag in a diagnostic. A refusal that says "tag 0" tells a reader nothing; the word is
+// what makes the message actionable, and it is the same word CPython uses in its own TypeError.
+func (g *irGen) tagName(tg int32) string {
+	switch tg {
+	case int32(TagInt):
+		return "int"
+	case int32(TagFloat):
+		return "float"
+	case int32(TagBool):
+		return "bool"
+	case int32(TagNone):
+		return "NoneType"
+	case int32(TagStr):
+		return "str"
+	case int32(TagList):
+		return "list"
+	case int32(TagDict):
+		return "dict"
+	case int32(TagSet):
+		return "set"
+	}
+	return "value"
+}
+
+// bindTaggedVar binds a (payload, tag) pair to a variable: the value slot, the tag slot, the bookkeeping
+// that makes dropping the old binding safe, and the record that tells print to dispatch on the tag rather
+// than guess a kind. Every binding of a tagged element goes through one door for this reason — three
+// shapes (a dict value, a list element, a slot of a container reached through a slot) bind the same pair,
+// and the third must not drift from the first two (roadmap L11.1, ADR 0187, ADR 0241).
+func (g *irGen) bindTaggedVar(b *strings.Builder, name, val, tag string) {
+	if g.listVars[name] || g.runtimeDicts[name] || g.runtimeSets[name] {
+		g.emitFreeOld(b, name)
+		if g.allocd[name] {
+			g.gcClearRoot(b, name)
+		}
+	}
+	g.listVars[name] = false
+	g.runtimeDicts[name] = false
+	g.runtimeSets[name] = false
+	g.mixedLists[name] = false
+	delete(g.strVals, name)
+	delete(g.internedVars, name)
+	delete(g.noneVars, name)
+	if g.floatVars != nil {
+		delete(g.floatVars, name)
+	}
+	if !g.allocd[name] {
+		b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+name))
+		g.allocd[name] = true
+	}
+	if !g.allocd[name+"_tag"] {
+		b.WriteString(fmt.Sprintf("  %%%s_tag = alloca i32\n", "_"+name))
+		g.allocd[name+"_tag"] = true
+	}
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, name))
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tag, name))
+	g.markBound(b, name) // the tagged slot is written too (ADR 0228)
+	g.taggedVars[name] = true
+}
+
+// taggedContainerRead reads the slot named by `ix` out of the container `ix.Obj` denotes.
+// It applies where the ordinary read path cannot: the object being subscripted is itself a read (`xs[0][1]`,
+// `d["a"][0]`, `m[0][1]`, `t[0][0][0]`), so the compiler has no literal to look at and no static
+// element kind to compile against. The answer is the (payload, tag) pair every printer and
+// comparison in this runtime already consumes, which is what makes an element of a container a value
+// instead of a refusal (roadmap L11.1, ADR 0187's rule one level down, ADR 0241).
+//
+// It declines — ok false, no IR emitted, the caller's existing path or refusal stands — when the
+// object is not a container the compiled backend can name a handle for, when the key is not a value
+// the tag rules can describe, or when the slot holds one of the scalars: `xs[0][0]` where the element
+// is text or a number is a question about subscripting a non-container, and Python answers that with
+// a TypeError rather than with an index into the interned string table.
+func (g *irGen) taggedContainerRead(b *strings.Builder, ix *Index) (val, tag string, ok bool, err error) {
+	if _, isRead := ix.Obj.(*Index); !isRead {
+		// A container *variable* or a literal already has its own checked read path, with its own
+		// IndexError and KeyError; this helper is for the level below, and taking the cases they
+		// handle would leave two answers to one question.
+		return "", "", false, nil
+	}
+	base, baseKind, okHandle := g.containerHandleOf(b, ix.Obj)
+	if !okHandle {
+		return "", "", false, nil
+	}
+	v, t, okRead := g.containerSlotRead(b, base, baseKind, ix.Idx, ix.Span())
+	return v, t, okRead, nil
+}
+
+// membershipOfReadHaystack answers `needle in xs[0]`, `k in d["a"]`, `x in s[0]` — the membership
+// test whose haystack is itself an element read. The haystack's handle comes out of the slot, the
+// needle comes in as a (payload, tag) pair, and the question is asked of the object by its kind, so
+// a list, a dict (whose keys are what `in` tests, as Python says) and a set all answer without the
+// compiler having to know which it is (roadmap L11.1, ADR 0241).
+func (g *irGen) membershipOfReadHaystack(b *strings.Builder, n *BinOp) (string, bool, error) {
+	h, kind, ok := g.containerHandleOf(b, n.R)
+	if !ok {
+		return "", false, nil
+	}
+	fn := ""
+	switch kind {
+	case "list":
+		fn = "rt_contains_tagged"
+	case "dict":
+		fn = "rt_dict_has_tagged"
+	case "set":
+		fn = "rt_set_contains_tagged"
+	default:
+		return "", false, nil
+	}
+	nv, nt, okNeedle := g.taggedOperand(b, n.L)
+	if !okNeedle {
+		// The needle's kind is not provable, so the untagged compare would match an interned
+		// string against the integer it is indexed by (ADR 0232). Declining leaves the caller's
+		// refusal, which names the tagged value word as the missing piece.
+		return "", false, nil
+	}
+	g.heapUsed = true
+	hit := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @%s(i32 %s, i32 %s, i32 %s)\n", hit, fn, h, nv, nt)
+	asBool := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", asBool, hit)
+	g.markI1(asBool)
+	if n.Op == "not in" {
+		inv := g.newTmp()
+		fmt.Fprintf(b, "  %s = xor i1 %s, true\n", inv, asBool)
+		g.markI1(inv)
+		return g.asBoolI32(b, inv), true, nil
+	}
+	return g.asBoolI32(b, asBool), true, nil
+}
+
+// staticSlotTag is the tag the slot at `key` of a container carries, when the compiler can walk the
+// container's own literal to it. It is the permission for treating a read as a container: the
+// builders wrote that tag with the payload (ADR 0189), so the answer is what the object itself will
+// say, and asking it here means the compiled path never has to read a payload as a handle on
+// trust (roadmap L11.1, ADR 0241).
+func (g *irGen) staticSlotTag(container Expr, key Expr) (int32, bool) {
+	el, ok := g.staticElemExpr(container, key)
+	if !ok {
+		return 0, false
+	}
+	return g.elemKindTag(el)
+}
+
+// staticElemExpr answers what an element read denotes when the compiler can walk the container's
+// own literal all the way down: with `xs = [[1, 2], [3, 4]]`, `xs[0]` is the list literal `[1, 2]`,
+// and with `m = {0: [1, 2], 1: 3}`, `m[0][1]` is the integer 2. A container reached through a value
+// the compiler cannot see — a call, a comprehension, a loop — answers nothing, and the tag inside the
+// object is what the runtime helpers read instead (roadmap L11.1, ADR 0241).
+func (g *irGen) staticElemExpr(container Expr, key Expr) (Expr, bool) {
+	c := container
+	for {
+		switch n := c.(type) {
+		case *Name:
+			if lit, ok := g.containerLits[n.Value]; ok {
+				c = lit
+				continue
+			}
+			if lit, ok := g.staticLists[n.Value]; ok {
+				c = lit
+				continue
+			}
+			if lit, ok := g.staticDicts[n.Value]; ok {
+				c = lit
+				continue
+			}
+			if lit, ok := g.staticSets[n.Value]; ok {
+				c = lit
+				continue
+			}
+			return nil, false
+		case *Index:
+			inner, ok := g.staticElemExpr(n.Obj, n.Idx)
+			if !ok {
+				return nil, false
+			}
+			c = inner
+		case *ListLit:
+			k, ok := g.foldConstInt(key)
+			if !ok {
+				return nil, false
+			}
+			if k < 0 {
+				k += int64(len(n.Elems))
+			}
+			if k < 0 || k >= int64(len(n.Elems)) {
+				return nil, false
+			}
+			return n.Elems[k], true
+		case *DictLit:
+			for i, kk := range n.Keys {
+				if g.constKeysMatch(kk, key) {
+					return n.Vals[i], true
+				}
+			}
+			return nil, false
+		default:
+			return nil, false
+		}
+	}
+}
+
+// constKeysMatch is the key question of a literal dict read: the same kind and the same value. An
+// interned string and the integer it happens to be indexed by are the same bits and different keys
+// (ADR 0232), so the kind is checked before the number.
+func (g *irGen) constKeysMatch(a, b Expr) bool {
+	if ai, ok := a.(*IntLit); ok {
+		if isStringExpr(b) {
+			return false
+		}
+		bi, ok2 := g.foldConstInt(b)
+		return ok2 && ai.Value == bi
+	}
+	as, ok := g.stringVal(a)
+	if !ok {
+		return false
+	}
+	bs, ok2 := g.stringVal(b)
+	return ok2 && as == bs
+}
+
+// containerSlotRead reads one slot out of a container the compiler holds a handle for, and returns
+// the payload with the tag the slot carries — the pair every printer and comparison in this runtime
+// already knows how to read (ADR 0187). A list position is normalised and bounds-checked through the
+// same helper an explicit `raise` uses, a dict key is checked through the one that raises KeyError,
+// and a set is refused because Python refuses it too ('set' object is not subscriptable). When the
+// A list position is normalised and bounds-checked by the same helper an explicit read uses, so
+// `xs[0][-1]` counts from the end and `xs[0][5]` raises IndexError (L11.4, ADR 0210); a dict key is
+// looked up by the payload-and-tag rule equality uses, and its value is read from the word the key
+// was found in — never by treating the key as an index, which is how `d["a"][0]` used to read the
+// key back and call it a value (ADR 0189, roadmap L11.1, ADR 0241).
+func (g *irGen) containerSlotRead(b *strings.Builder, base, kind string, key Expr, sp Span) (val, tag string, ok bool) {
+	if base == "" {
+		return "", "", false
+	}
+	if kind == "set" {
+		// CPython: TypeError: 'set' object is not subscriptable. Refusing here is the honest answer,
+		// and the row that owns the runtime TypeError says so out loud.
+		return "", "", false
+	}
+	g.heapUsed = true
+	if kind == "list" || kind == "dict" {
+		kv, kt, okTag := g.taggedOperand(b, key)
+		if !okTag {
+			return "", "", false
+		}
+		if kind == "list" {
+			// A position, normalised and bounds-checked by the same helper an explicit read uses,
+			// so `xs[0][-1]` counts from the end and `xs[0][5]` raises IndexError (L11.4, ADR 0210).
+			pos := g.normalizeIndex(b, base, kv, sp)
+			val = g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", val, base, pos)
+			tag = g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", tag, base, pos)
+		} else {
+			// A key: found by the payload-and-tag rule equality uses, and the value sits one word
+			// past it — rt_get_elem with the key as an index would read the key back and call it a
+			// value, which is what rt_dict_get_tagged and rt_dict_value_tag exist to avoid.
+			g.checkKeyReadTagged(b, base, kv, kt, sp)
+			val = g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, base, kv, kt)
+			tag = g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_dict_value_tag(i32 %s, i32 %s, i32 %s)\n", tag, base, kv, kt)
+		}
+		return val, tag, true
+	}
+	// A set has no positions and a value that is not a container has no slots: the caller refuses
+	// rather than reading a word that means nothing (CPython raises TypeError for both).
+	return "", "", false
 }
 
 // containerOperand lowers one operand of a container comparison to its handle. A literal builds
@@ -1897,6 +2371,16 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		v := g.newTmp()
 		fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", v, n.Value)
 		return v, nil
+	case *Index:
+		// An element that holds a container *is* the container: the slot stores the inner object's
+		// handle, so the comparison, the membership test and the loop iterator read the slot and
+		// pass what is in it straight to the runtime helper that asks the object what it is
+		// (roadmap L11.1, ADR 0241).
+		h, _, okH := g.containerHandleOf(b, e)
+		if !okH {
+			return "", fmt.Errorf("codegen: %s does not name a container the compiled backend can prove; reading an element as a container needs the tag the builder wrote (roadmap L11.1, ADR 0241)", exprSnippet(e))
+		}
+		return h, nil
 	case *Comp:
 		// A comprehension is a container the same way a literal is. The constant path hands
 		// back a folded global (@.lstN / @.setN / @.dictN), whose layout is a length plus an

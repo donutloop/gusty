@@ -182,6 +182,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// compares by content, answers `in`, grows with an inner container, and loops over inner
 		// containers — the tag routing the print and the comparison at run time (ADR 0238).
 		"nested_data",
+		// A container inside a container, read back out again: `xs[2][1]` and `m["k"]` reach through
+		// a slot whose payload is the inner object's handle, and the tag the builder wrote is what
+		// licenses the second read (roadmap L11.1, ADR 0241). It is here rather than in
+		// conformanceProbes because both backends now print CPython's answer on every line.
+		"probe_heterogeneous",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -239,8 +244,7 @@ func conformanceMerged() []lang.ConformanceCase {
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
 		"probe_bool_value",    // L11.2 — bools are not values yet
-		"probe_nested_list",   // L11.1 — a nested element reads back as a value only when indexed twice
-		"probe_heterogeneous", // L11.1 — an element read out of a container variable cannot be re-indexed
+		"probe_nested_list",   // L11.1 — a container built by append has no literal to quote
 		"probe_tuple",         // L11.3 — no tuple lowering at all
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
@@ -423,13 +427,9 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.2 (bools as values, closes Gap L.2)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n0\n0\n1\n"}, {Backend: "aot", Stdout: "1\n1\n0\n0\n1\n"}}},
 	"programs/probe_nested_list": {oracle: lang.OracleDebt,
-		reason: "nesting builds, prints, compares and appends now; reading a nested element back as a value is the hole — m[0][1] refuses with `index requires an inline list/dict/set literal`",
+		reason: "a slot of a container the program spelled out reads back fine (`m[0][1]`, `d[\"a\"][1]`, ADR 0241); what still refuses is a container built by `append` — no literal to quote, so the tag the second read needs is not statically known",
 		ref:    "roadmap L11.1 (tagged value word) remaining item (1a)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n2\n1\n7\n"}, {Backend: "aot", Missing: true}}},
-	"programs/probe_heterogeneous": {oracle: lang.OracleDebt,
-		reason: "a container inside a container is built, printed and measured now; what the compiled leg cannot do is read one out — xs[2][1] refuses with `index requires an inline list/dict/set literal`",
-		ref:    "roadmap L11.1 (tagged value word) remaining item (1b)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 'a', [2, 3]]\n3\n3\n[1]\n2\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_tuple": {oracle: lang.OracleDebt,
 		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
 		ref:    "roadmap L11.3 (tuples are values)",

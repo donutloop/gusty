@@ -137,11 +137,14 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		// pinned probe_bool_value debt, L11.2), so appending one is answered, not refused.
 		{"xs = [1, \"a\"]\nxs.append(lambda x: x)\nprint(xs)\n", "must carry a tag"},
 
-		// The nested container answers when it is *read back* through its own printer; asking it
-		// to be a number is still the tagged-value gap, and the answer is a refusal, not 0.
-		{"xs = [[1, 2], [3]]\nprint(len(xs[0]))\n", "len requires an inline list/dict/set literal"},
-		{"xs = [[1, 2], [3]]\nprint(1 in xs[0])\n", "needs a single static kind"},
+		// The nested container answers when it is *read back* through its own printer, its length, its
+		// membership test or a further subscript (see TestContainerSlotReadsAreAnswered); asking it to
+		// be a number is still the tagged-value gap, and the answer is a refusal, not 0.
 		{"xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
+		{"xs = [[1, 2], [3]]\nprint(xs[0] * 2)\n", "needs a single static kind"},
+		// A fold over slots asks for the elements as numbers before the tag can be consulted; that is
+		// the same hole the runtime-computed folds fell into (Gap R.71), and it stays a refusal.
+		{"xs = [[1, 2], [3]]\nprint(max(xs[0]))\n", "max requires an inline list/set/dict literal"},
 	} {
 		_, err := Compile(tc.src)
 		if err == nil {

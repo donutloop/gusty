@@ -2747,6 +2747,7 @@ hit:
 miss:
   ret i32 0
 }
+
 `
 
 // gcRootCap is the capacity of the compiled backend's root stack (ADR 0181). One
@@ -3001,6 +3002,9 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
 	g.moduleSlots = moduleSlotNames(prog, g.moduleConsts, g.moduleNames)
+	// Which container variables are still the literal they were bound to, which is what decides
+	// whether reading one of their slots can be checked against the tag the builder wrote (ADR 0241).
+	g.containerLits = containerLiteralsOf(prog)
 	// Which names a body may read before assigning them is the checker's question, asked once here
 	// so codegen does not grow a second, subtly different dataflow rule (ADR 0228).
 	g.unwritten = UnwrittenReads(prog)
@@ -3624,8 +3628,8 @@ type irGen struct {
 	// classPat is the front end's answer to what a class pattern needs to know — which class a
 	// pattern name denotes (through `Alias = Point`), and which attribute names the program can
 	// ever write. It is computed before emission so the presence-row clear length is final (ADR 0235).
-	classPat   *classPatternInfo
-	nextSlot   int
+	classPat *classPatternInfo
+	nextSlot int
 
 	// genFuncs records generator function names; calling one yields a runtime
 	// heap list handle (mirroring the interpreter's eager yield semantics).
@@ -3640,6 +3644,13 @@ type irGen struct {
 	// literal these maps hold instead of storing the global (roadmap Gap J.2, ADR 0234).
 	staticSets  map[string]*SetLit
 	staticDicts map[string]*DictLit
+	// containerLits records the container literal a name is bound to exactly once at module
+	// level and never mutated afterwards. It is what licenses reading a slot as a container: the
+	// builder wrote a tag for that slot from that literal, and as long as nothing has changed the
+	// object, the tag the compiler remembers is the tag the object holds. A second binding, an item
+	// assignment or a mutating method takes the name out of this map, and the read is refused
+	// rather than trusted (roadmap L11.1, ADR 0241).
+	containerLits map[string]Expr
 	// heapArgs records, per function name, which parameter positions receive a
 	// runtime heap container handle (see heapargs.go). Inferred once, before any
 	// IR is emitted.
@@ -7194,6 +7205,20 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if (n.Op == "==" || n.Op == "!=") && (g.isContainerExpr(n.L) || g.isContainerExpr(n.R)) {
 			return g.containerEquality(b, n)
 		}
+		// `2 in xs[0]`: the haystack is a read that names a container, so its handle comes out of
+		// the slot rather than out of the value path, which has no single kind to name it with. The
+		// needle arrives as a (payload, tag) pair for the same reason the container's own elements
+		// are stored that way — membership is the payload-and-tag question, one level out
+		// (roadmap L11.1, ADR 0241).
+		if n.Op == "in" || n.Op == "not in" {
+			if _, isRead := n.R.(*Index); isRead {
+				if res, okM, mErr := g.membershipOfReadHaystack(b, n); mErr != nil {
+					return "", mErr
+				} else if okM {
+					return res, nil
+				}
+			}
+		}
 		l, err := g.value(b, n.L)
 		if err != nil {
 			return "", err
@@ -8096,9 +8121,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				}
 				return g.value(b, elems[key])
 			}
-			return "", fmt.Errorf("index requires an inline list/dict/set literal")
+			return "", g.slotReadRefusal(n, "index")
 		default:
-			return "", fmt.Errorf("index requires an inline list/dict/set literal")
+			return "", g.slotReadRefusal(n, "index")
 		}
 	case *Comp:
 		return g.comp(b, n)
@@ -10281,6 +10306,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
 					continue
 				}
+				// print(xs[0][1]), print(d["a"][0]), print(m[0][1]): the container being indexed is
+				// itself a read, so its kind is in the object and not in the spelling. The slot's
+				// payload and tag are read together and handed to the one printer that can read a
+				// tag, which renders a number, unboxes a float, looks up interned text and — for the
+				// case that started this — prints a nested container as its own contents
+				// (roadmap L11.1, ADR 0241).
+				if val, tag, okRead, rerr := g.taggedContainerRead(b, ix); rerr != nil {
+					return "", rerr
+				} else if okRead {
+					g.heapUsed = true
+					g.floatFmtUsed = true
+					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tag))
+					continue
+				}
 			}
 			// print([f(x) for x in xs]) — a comprehension is a container, so the runtime
 			// printer renders it. The constant path used to printf the folded global
@@ -10637,9 +10676,20 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if n, ok := g.listLen(c.Args[0]); ok {
 				return fmt.Sprintf("%d", n), nil
 			}
-			return "", fmt.Errorf("len requires an inline list/dict/set literal")
+			if h, _, okH := g.containerHandleOf(b, c.Args[0]); okH {
+				return g.heapLenOf(b, h), nil
+			}
+			return "", g.slotReadRefusal(c.Args[0], "len")
 		default:
-			return "", fmt.Errorf("len requires an inline list/dict/set literal")
+			// len(xs[0]), len(d["a"]), len(s[0]): the argument is a read rather than a spelling, so
+			// its length is a word inside the object the slot names, and the question goes to the
+			// runtime the same way a container variable's does. The tag is what licenses asking it:
+			// a slot the compiler cannot see is a container is refused, because the length of whatever
+			// object happens to share a number's index is not an answer (roadmap L11.1, ADR 0241).
+			if h, _, okH := g.containerHandleOf(b, c.Args[0]); okH {
+				return g.heapLenOf(b, h), nil
+			}
+			return "", g.slotReadRefusal(c.Args[0], "len")
 		}
 	case "any", "all":
 		// any(iter) is 1 if any element is nonzero; all(iter) is 1 if all are.
@@ -11826,6 +11876,15 @@ func (g *irGen) branchRaise(b *strings.Builder, cond, class, kind string, sp Spa
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
 	g.raiseTo(b, exnCode(class), class, kind, sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
+}
+
+// heapLenOf reads a container's length through the runtime, which is the only party that knows the
+// object: the count is the same word for a list, a dict and a set, so one call answers all three.
+func (g *irGen) heapLenOf(b *strings.Builder, h string) string {
+	g.heapUsed = true
+	v := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_heap_len(i32 %s)\n", v, h)
+	return v
 }
 
 func (g *irGen) checkIndexRead(b *strings.Builder, h, idx string, sp Span) {
@@ -13035,6 +13094,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// the slot means nothing without its companion, and print(v) dispatches on the
 			// tag exactly as a loop variable over a mixed list does (ADR 0185, ADR 0187).
 			if ix, isIndex := n.Value.(*Index); isIndex {
+				if v, t, okRead, rerr := g.taggedContainerRead(b, ix); okRead && rerr == nil {
+					// `y = xs[0][1]`, `y = d["a"][1]`, `y = t[0][0][0]` — binding a slot of a container that
+					// is itself reached through a slot. Same rule as the two bindings below: the payload
+					// means nothing without its tag, so both travel and print(y) dispatches on the tag
+					// instead of guessing a kind (roadmap L11.1, ADR 0241).
+					g.bindTaggedVar(b, nm.Value, v, t)
+					return nil
+				}
 				if dictName, mixed := g.mixedDictIndexRead(ix); mixed {
 					// `v = d[k]` out of a dict whose values mix kinds binds the pair too; the
 					// block below this one is the list version of the same binding.
@@ -13783,6 +13850,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// A dict literal yields its keys, in insertion order, like the dict it is (ADR 0188).
 			iterKind = "dict"
 			mixedIter = g.taggableMixedDict(dl)
+		} else if h, kind, ok := g.containerHandleOf(b, n.Iter); ok {
+			// `for v in xs[0]` — the iterable is a container the program can name, reached through a
+			// slot rather than standing where a literal would. The slot's payload is the handle of the
+			// inner object, and only its tag says so: containerHandleOf asks that question and refuses
+			// when the slot holds a number pretending to be one. The loop then walks that object the way
+			// it walks any list, and the tag travels with each element so print(v) dispatches per
+			// iteration — text, float, None, a nested container (roadmap L11.1, ADR 0241).
+			iterKind = kind
+			mixedIter = true
+			hVal = h
 		}
 		if iterKind != "" {
 			// A loop over a container of interned strings binds the loop variable to an

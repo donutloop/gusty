@@ -176,15 +176,18 @@ func TestNestedContainersAnswerOnBothBackends(t *testing.T) {
 }
 
 // TestNestedShapesThatStillRefuse is the other half of the record. A dict keyed by a container has
-// no hashing rule, and a nested element read back as a value is the tagged element read L11.1 still
+// no hashing rule, and an element reached for as a plain number is the tagged value word L11.1 still
 // owes; both are refused by name, and none of them is allowed to reach llc — the shapes below used
 // to be exit-2 modules (a container global in an i32 slot) before they were gates.
+//
+// `len(xs[0])` and `m[0][1]` are not in this list any more: they were the last two rows of it, and
+// ADR 0241 moved them to the answering table in container_slot_read_test.go.
 func TestNestedShapesThatStillRefuse(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"container_key", "print({[1, 2]: 3})\n", "cannot hold"},
 		{"container_key_in_a_dict_variable", "d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
-		{"read_a_nested_element", "xs = [[1, 2], [3]]\nprint(len(xs[0]))\n", "len requires an inline list/dict/set literal"},
-		{"reindex_a_read_element", "m = [[1, 2], [3, 4]]\nprint(m[0][1])\n", "index requires an inline list/dict/set literal"},
+		{"element_as_a_plain_number", "xs = [[1, 2], [3]]\nprint(xs[0][0] + 1)\n", "needs the tagged value word still owed"},
+		{"mutated_container_slots", "xs = [[1, 2]]\nxs.append([9])\nprint(len(xs[0]))\n", "cannot reach into xs's slots"},
 		{"nested_element_as_a_number", "xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 		{"sum_of_containers", "print(sum([[1], [2]]))\n", "sum adds numbers"},
 		{"any_of_containers", "print(any([[1], [2]]))\n", "no word for"},

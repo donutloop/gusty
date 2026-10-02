@@ -3928,3 +3928,58 @@ Either way the rule is ADR 0166's, applied to the CLI instead of to codegen: a p
 verdict, and the paths that report it report the same one. Definition of done: a table test that runs
 one `;`-separated program and one `;`-free control through all five entry points and asserts the same
 exit code and the same stdout, plus a line in `docs/language.md` saying which answer was chosen.
+
+### L11.1 step 3 — the tagged element read: a slot is read back by the tag the builder wrote (measured 2026-10-02, closed the same cycle, ADR 0241)
+
+ADR 0239 left L11.1's first row with one clause open, and it was the half that a program actually
+asks for. Build a nested container and print it: both backends agree. Reach into it and use what comes
+back: the interpreter answered, the compiled backend refused.
+
+```gy
+xs = [[1, 2], [3, 4]]
+print(len(xs[0]))      # 2          — AOT refused: "len requires an inline list/dict/set literal"
+print(xs[0][1])        # 2          — AOT refused: "index requires an inline …"
+d = {"a": [1, 2]}
+print(d["a"][1])       # 2          — AOT refused
+m = {0: [1, 2], 1: 3}
+print(m[0][1])         # 2          — AOT refused
+t = [[[1]]]
+print(t[0][0][0])      # 1          — AOT refused
+print(1 if xs[0] == [1, 2] else 0)   # 1 — AOT refused
+print(1 if 2 in xs[0] else 0)        # 1 — AOT refused
+for v in xs[0]: print(v)             # 1, 2 — AOT refused
+```
+
+Nine rows, all measured against CPython first, all answered by the interpreter, and every refusal the
+same sentence pointing at a shape in the source that was fine. The shape was fine; what was missing was
+a rule for *who may believe* that a slot holds a container.
+
+The rule ADR 0233 already gave for writes — a slot is only writeable when the compiler can name the kind
+— has a mirror for reads, and it is a compile-time promise rather than a runtime guess.
+`containerLiteralsOf` (`pkg/lang/container_env.go`) records the names bound exactly once to a container
+literal, and removes them again the moment the object could have changed: a rebind, an `xs[0] = …`, an
+`append`/`sort`/`add`/`update`/`pop`, or the container passed to a callee this pass cannot see. A name
+still in the map licenses reading its slots, because the tag the builder wrote is the tag the object
+holds. Everything else declines.
+
+`rt_container_slot` — a runtime helper that would have taken any payload and asked `@heap` whether the
+object at that index is a container — was written, tested, and deleted. That question is answerable and
+worthless: the payload of an `int` slot is a number, `@heap` has 1024 entries, so *some* object lives at
+that index and would be printed. `[[5]]` where the program wrote `[[1, 2]]`, or the interned text at
+`@str_tab[5]`, is the class of wrong answer ADR 0233, ADR 0238 and Gap R.65/R.66 all exist to keep out.
+The static promise buys refusals; the runtime guess would have cost trust.
+
+Three messages, chosen by which question actually failed, so the reader is not sent after the wrong
+thing:
+
+| situation | refusal |
+|---|---|
+| the container was mutated or handed off | `len cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see …` |
+| the read is licensed, the context wants a bare `i32` | `index cannot use an element of xs as a plain number: the payload only means something with its tag …` |
+| the program is subscripting a number | `len reaches past a int in xs: the slot holds a int, not a container …` (CPython: `TypeError: 'int' object is not subscriptable`) |
+
+Two things stay open on the row, both named by the message that produces them: the **numeric use** of an
+element (`xs[0] + 1`, `max(xs[0])`) — the tagged value word in its arithmetic form — and a container
+**built at run time** (`xs = []; xs.append([7, 8]); xs[0][0]`), which no literal ever described. The
+second is why `probe_nested_list` stays in the oracle ledger after `probe_heterogeneous` was promoted out
+of it.

@@ -4938,3 +4938,52 @@ authoritative form is a real file, one statement per line. (3) The tree is share
 mid-session (it refactored `taggableMixedElem` under me and rewrote a test file while I was editing
 it): re-compile and re-run the specific probe after any pause, and stage by path — never `git add -A`
 — or a half-written foreign file lands in the feature commit.
+
+## Cycle: L11.1 step 3 — reading a container back out of a slot (ADR 0241)
+
+**What the row asked for.** ADR 0239 made a container element a handle plus a tag, but stopped at
+storing and printing. The uses a program actually asks for — `len(xs[0])`, `xs[0][1]`, `d["a"][1]`,
+`m[0][1]`, `t[0][0][0]`, `xs[0] == [1,2]`, `2 in xs[0]`, `for v in xs[0]`, `y = xs[0][1]` — were answered
+by the interpreter and refused by the compiled backend, nine rows deep, with one message
+("requires an inline list/dict/set literal") that blamed a shape in the source that was fine.
+
+**The decision, and why it is not a runtime helper.** A read is allowed when the compiler can still
+prove what the slot holds: `containerLiteralsOf` records names bound exactly once to a container
+literal and forgets them on a rebind, an item assignment, a mutating method, or a hand-off to an
+unknown callee. With that, the tag the builder wrote is the tag the object holds, and
+`containerHandleOf` can hand the same handle to `len`, to a second subscript, to `==`/`in`, to `for`,
+and to print — one question, one answer, so no use can be half-supported.
+
+The alternative was written first and then deleted: `rt_container_slot`, which took a payload and asked
+`@heap` whether the object at that index is a container. It is answerable and worthless — an `int`
+payload is also an index, `@heap` has 1024 entries, so *something* is always there and would be printed.
+`[[5]]` for `[[1, 2]]` is the same class as `[1, 'b', 'a']` for `[1, 'a', None]` (ADR 0226) and for the
+`{'b': 'a'}` phantom (ADR 0239). Refusals are affordable; a plausible wrong value is not.
+
+**Three refusals, not one.** The message is chosen by which question failed: mutated/rebound
+(`cannot reach into xs's slots: …`), licensed-but-wants-a-bare-i32 (`cannot use an element of xs as a
+plain number …`, which is the arithmetic half still open), and subscripting a number (`reaches past a
+int in xs …`, where CPython raises `TypeError: 'int' object is not subscriptable`). One sentence for all
+three would send a reader after the wrong thing, which is the same argument ADR 0240 made about `jit:`.
+
+**Loop fall-throughs are the dangerous kind of "not supported yet".** `for v in <container expr>`
+without a recognised iterable went to the counter/range path, which bound the loop variable to the
+counter — printing `0, 1` where CPython prints `1, 2` — and, for a literal, emitted
+`icmp slt i32 %_ctr1, @.set1`: a global in an `i32` slot, i.e. exit 2 charged to the compiler
+(ADR 0166). Anything that "falls through to range" is a wrong answer with extra steps; the fix was to
+recognise the iterable, not to catch the bad module later.
+
+**Ledger mechanics.** Paying a probe is a promotion, not an edit: `probe_heterogeneous` moved from
+`conformanceProbes()` to `conformanceStandalone()` and its oracle-registry row was deleted, because both
+backends now print CPython's answer on every line. `probe_nested_list` stayed, narrowed to the shape that
+genuinely still refuses (a container built by `append`, which no literal described). `TestNestedShapes
+ThatStillRefuse` lost its two element-read rows and gained the mutated-container and plain-number ones —
+the record of what is owed has to move with the work or it becomes fiction.
+
+**Process lessons.** (1) The stale-binary trap: building `-o gusty` while probing with `./gustyc` makes
+every measurement a lie about the previous edit. Build both names (or one canonical name) before
+measuring; half a cycle went into "the fix does not work". (2) Expectations are assertions too: a table
+that asserts "still refuses" is a standing claim about today's compiler, so paying a feature must rewrite
+the row in the same commit — otherwise the suite reports a regression exactly when the work succeeds.
+(3) Both-legs tables have to be *run* on both legs: the interpreter rows are what told me the compiled
+refusal was the anomaly rather than the program being illegal.

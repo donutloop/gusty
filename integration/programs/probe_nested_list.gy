@@ -1,8 +1,12 @@
-# Oracle probe (L11.9, ADR 0186) — containers nest. A list whose element is a list is now
-# built, printed, compared and grown (roadmap L11.1 step 2, ADR 0238): the slot holds the inner
-# object's handle and its tag routes the printer and rt_container_eq. What the compiled leg still
-# cannot do is read a nested element back as a *value* — m[0][1] and d["a"][1] index a container
-# that lives in a slot, which is the tagged element read L11.1 still owes (its last clause).
+# Oracle probe (L11.9, ADR 0186) — a container the program built rather than spelled out.
+#
+# The nesting itself is paid for: a list of lists is built, printed, compared, grown, and read back
+# through a slot — `m[0][1]` and `d["a"][1]` print CPython's answer on both backends, because the
+# literal the name was bound to tells the compiler what the tag beside that slot says (roadmap L11.1,
+# ADR 0239 and ADR 0241). What still refuses is the read out of a container no literal ever described:
+# `xs = []` then `xs.append([7, 8])` builds the inner object at run time, so the compile-time promise
+# the read is granted by has run out, and the compiled leg declines rather than read a payload as a
+# handle. The interpreter — boxed values, no static tag needed — answers every line, as CPython does.
 m = [[1, 2], [3, 4]]
 print(m[0][1])
 d = {"a": [1, 2]}

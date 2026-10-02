@@ -1386,13 +1386,47 @@ building a literal, `xs.append(v)`, and `xs[i] = v` — the last of which used t
 and leave the tag alone, so `xs = [1, "a", None]; xs[0] = "z"; print(xs)` answered
 `[1, 'a', None]`: the interned index of `"z"`, printed through the slot's stale `int` tag.
 
-Reading one element out produces the pair as well, and two uses of it are open:
-`print(xs[i])` dispatches on the tag, and `v = xs[i]` binds a *tagged variable* — the same
+Reading one element out produces the pair as well, and three uses of it are open:
+`print(xs[i])` dispatches on the tag, `xs[i] == [1, 2]` and `2 in xs[i]` compare through
+`rt_container_eq`, and `v = xs[i]` binds a *tagged variable* — the same
 `(value, tag)` binding a loop variable gets, so `print(v)` renders `str()` (`a`) while
 `print(xs)` renders `repr()` (`'a'`), and rebinding `v = 5` retires the tag (ADR 0185, ADR 0187).
 What still reports — rather than computing on a string-table index — is any context that needs
 one static kind: `xs[i] + 1`, `xs[i] > 2`, passing `xs[i]` to a function, `xs[i]` in a format
 spec.
+
+**A container inside a container is read back the same way** (ADR 0239, ADR 0241). The slot holds
+the inner object's *handle*, so the second subscript is a load from the object the first one named,
+and every use of it works — on both backends, at CPython's answer:
+
+```gy
+xs = [[1, 2], [3, 4]]
+print(len(xs[0]))        # 2
+print(xs[0][1])          # 2
+print(1 if xs[0] == [1, 2] else 0)   # 1
+print(1 if 3 in xs[0] else 0)         # 1
+for row in xs[0]:                     # 1, 2
+    print(row)
+d = {"a": [1, 2]}
+print(d["a"][1])         # 2
+y = xs[1][0]
+print(y)                 # 3 — the tag travels with the binding, so print(y) needs no guess
+```
+
+The permission is the tag, remembered at compile time: a name qualifies while it is bound exactly once
+to a container literal and nothing has changed that object. Rebinding it, writing `xs[0] = …`, calling
+`append`/`sort`/`add`/`update`/`pop`, or handing the container to a function the compiler cannot see all
+take the name out of that set — and the read then **refuses with a message that names the promise that
+ran out** (`cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass
+cannot see …`) instead of reading a payload as a handle. Reading a payload as a handle while it holds a
+number is `[[5]]` where the program wrote `[[1, 2]]`, and that is the class of answer this language does
+not ship (ADR 0233, ADR 0241).
+
+Two uses stay refused, both by name: the **numeric use** of an element (`xs[0] + 1`, `max(xs[0])`), where
+the context wants one `i32` with no tag attached, and a container **built rather than spelled out**
+(`xs = []; xs.append([7, 8]); print(xs[0][0])`), which no literal ever described. The interpreter — boxed
+values, no static tag needed — answers both, which is what keeps them roadmap rows rather than mysteries
+(roadmap L11.1, `docs/roadmap-details.md`).
 
 **Dicts and sets take the same rule** (ADR 0232). A compiled dict may mix kinds on either side of
 an entry and a compiled set may mix kinds among its members, because a slot is always the pair

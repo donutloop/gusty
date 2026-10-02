@@ -1,8 +1,10 @@
-# Oracle probe (L11.9, ADR 0186) — a container element may be any value, including
-# a container. The literal builds, prints, and measures on both backends now (ADR 0238);
-# what the compiled leg still refuses is reading one out again — xs[2][1] asks a container
-# variable for a slot and then asks that slot for a slot, which is the tagged element read
-# roadmap L11.1 still owes. The interpreter and CPython agree on every line.
+# Conformance program (L11.1, ADR 0238/0241) — a container inside a container, read back out again.
+#
+# This used to be an oracle probe: the compiled leg refused `xs[2][1]` outright while the interpreter
+# and CPython agreed. It is parity surface now. A slot is one i32, and for a container element that
+# word is the *handle* of the inner object with a TagList beside it, so the second subscript is a load
+# from the object the first one named — granted by the tag the builder wrote, not by a guess about
+# what the number happens to be (roadmap L11.1, ADR 0239 and ADR 0241).
 xs = [1, "a", [2, 3]]
 print(xs)
 print(len(xs))
