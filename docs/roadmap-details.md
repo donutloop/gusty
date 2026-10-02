@@ -4075,27 +4075,30 @@ function call, an element in an `if` condition and in a loop body, `d["a"][0] * 
 refusal family gained the three shapes above, the integration trap table gained a text and a container
 element used as a number, and every row still asserts the exit-2 guard.
 
-### Gap R.73 — `min`/`max` take one argument on both engines, where CPython takes two (measured 2026-10-02 while writing the ADR 0243 probe table)
+### Gap R.73 — `min`/`max` took one argument on both engines, where CPython takes two (measured 2026-10-02 while writing the ADR 0243 probe table; 🟨 PARTIAL, ADR 0256)
 
 `max(xs[0], 5)` was the natural "use an element numerically inside a fold" probe for the table above, and
 both engines refused it for a reason that has nothing to do with tags:
 
-| engine | `print(min(1, 5), max(1, 5))` |
+| engine | `print(min(1, 5), max(1, 5))`, before |
 |---|---|
 | CPython | `1 5` |
 | `--interp` | `min/max expects 1 argument` |
 | `--aot` | `min expects one argument` |
 
-The two backends **agree**, so this is missing surface rather than a divergence — which is exactly why it
-does not belong on L11.1's row, and why a parity-only test suite never noticed it: nothing compares the
-pair against CPython's varargs form. The iterable form works on both paths today; the varargs form is
-simply absent.
+The two backends **agree**, so this was missing surface rather than a divergence — which is exactly why it
+did not belong on L11.1's row, and why a parity-only test suite never noticed it: nothing compared the
+pair against CPython's varargs form.
 
-The fix is the same code path Gap R.71 needs (a reduction over values rather than a compile-time fold),
-which is why the two rows name the same owner (L11.6): one shared reduction means ties, mixed int/float
-and `True`/`0` comparisons cannot drift between the engines. Until then the row is asserted by the
-three-engine table in `integration/container_slot_read_test.go`, where `max(xs[0], 5)` is expected to be
-refused by both engines rather than to answer `5`.
+ADR 0256 paid the source-visible half, and measuring it found that the compiled leg had never been right
+either: its varargs path promoted every candidate to `double` and selected a `double`, so `min(2.5, 1)`
+answered `1.0`, all-int candidates were refused, and a text or `None` candidate was compared by whatever
+untagged `i32` the payload happened to hold (`min([1, "a"])` exited 0 with a number). The rule that closes
+it is in the ADR — **a fold returns the candidate it chose** — and the same three programs now print CPython's
+answer on three legs. What stays open is the half where a candidate's kind is not a fact the module has:
+Gaps [R.107](#gap-r-107), [R.108](#gap-r-108), [R.109](#gap-r-109) and [R.110](#gap-r-110) below, each of
+which needs the reduction to hand back a `(payload, tag)` pair. That is the runtime reduction Gap R.71
+already owes, so the four rows and R.71 name one helper.
 
 ### Gap R.74 — `[{1, 2} for x in xs]` parsed as a list holding one set comprehension (found 2026-10-02 by comparing comprehensions against CPython, closed the same cycle with ADR 0244)
 
@@ -4998,18 +5001,99 @@ and run the smaller program before naming the cause — the row here claimed a m
 is written correctly.
 
 <a id="gap-r-104"></a>
-### Gap R.104 — `min` / `max` with two arguments refuse in the interpreter (OPEN, measured beside ADR 0254)
+### Gap R.104 — `min` / `max` with two arguments (CLOSED, ADR 0256)
 
 ```gusty
-print(min(1.0, 2), max(1, 2.5))   # CPython 1.0 2.5 · --aot 1.0 2.5 · --interp: min/max expects 1 argument
+print(min(1.0, 2), max(1, 2.5))   # CPython 1.0 2.5 · --interp was: min/max expects 1 argument · --aot 1.0 2.5
+print(min(2.5, 1))                # CPython 1       · --interp was the same refusal            · --aot 1.0
+print(min(1, 5))                  # CPython 1 5     · both engines refused
+print(min([1, "a"]))              # CPython TypeError · --aot answered 0 with exit 0
 ```
 
-The one defect of this family that lives on the interactive path, which is the path a person and an agent feel
-first. The codegen has a variadic fold for these two builtins and the interpreter accepts only the one-argument
-list form, so a program that compiles and prints the oracle's answer refuses on `--eval` — the inverse of the
-usual gap, and the more confusing of the two for anyone using the REPL. The interpreter's fold should be the
-codegen's: walk the arguments, compare with the shared truthiness/ordering helper, and render the winner in its
-own kind (which is what keeps `min(2.5, 1)` an `int`, the rule `numericFoldElems` exists for).
+The row was filed from one asymmetry — the interactive path refusing a spelling the compiled path answered —
+and the sweep done on the way to the fix found that the asymmetry was the smallest of four answers to the same
+question. The compiled leg had **one path for a single container and one float-domain path for several
+values**: it promoted every candidate to `double` and selected a `double`, which is right for `max(1.0, 2.5)`
+and wrong for `min(2.5, 1)`, because Python returns the winning *element*, so the answer's type is the
+winner's. All-int varargs were refused outright, and a text, `None` or container candidate fell through to an
+`icmp` over whatever the payload happened to be — an intern index or a heap slot — which is how an
+uncomparable pair exited 0 with a number.
+
+The rule that closes it is in ADR 0256: **a fold returns the candidate it chose, not the comparison that found
+it**. Both engines now share it: the interpreter's `compareOrder(a, b, op)` is the comparator `sortElems`
+already used with the operator threaded through it (the reference implementation puts the *failing operator*
+in the message, so `min` reaches `'<'` and `max` reaches `'>'`, and the two kinds come out in the order the
+fold met them — `min(None, 1)` names `'int' and 'NoneType'`, not the sorted pair), and the codegen classifies
+the candidates before lowering them: compile-time fold, `icmp`/`select` over `i32`, `fcmp`/`select` over
+`double`, or `rt_str_order` for text, with the winner's own kind deciding the printing. A comparison the
+reference implementation cannot make is emitted as its `TypeError` — catchable, exit 3 — rather than refused
+or answered, and the module carries one sentence per kind pair, with no operand the compiler invented.
+
+What the cycle deliberately did **not** do is answer the shapes whose winner's kind is only known at run time.
+That is the tagged value word (L11.1), and forcing the double domain there is precisely the wrong answer the
+row started with; those four shapes are Gaps R.107–R.110 below, each with its refusal (or, in R.110's case,
+its wrong answer) written into the row.
+
+<a id="gap-r-107"></a>
+### Gap R.107 — a runtime numeric container cannot be folded compiled (OPEN, measured landing ADR 0256)
+
+```gusty
+xs = [3, 1, 2]
+print(min(xs), max(xs))   # CPython 1 3 · --interp 1 3 · --aot refuses: min requires an inline list/set/dict literal
+```
+
+The interpreter walks the elements; the compiled path only ever had a fold over an *inline* literal, whose
+elements are globals it can read. A variable holding a list is a heap address: the elements are `(payload,
+tag)` pairs the object can report (ADR 0246 gave the read side that walk), but no reduction over them exists.
+The refusal names the missing thing rather than guessing, which is why this is a missing half and not a wrong
+answer.
+
+<a id="gap-r-108"></a>
+### Gap R.108 — a runtime text container cannot be folded compiled (OPEN, measured landing ADR 0256)
+
+```gusty
+xs = ["b", "a"]
+print(min(xs))   # CPython a · --interp a · --aot refuses the same message
+```
+
+Same walk, different arm: text is ordered by `rt_str_order` (ADR 0248 took the intern-index comparison out of
+the module and put `strcmp` in its place), and the source-visible text fold already uses it. The runtime case
+needs only the walk this gap shares with R.107, so the two are one helper with two comparison arms.
+
+<a id="gap-r-109"></a>
+### Gap R.109 — runtime int/double candidates: comparable, but the winner's kind cannot travel (OPEN, measured landing ADR 0256)
+
+```gusty
+a = 2.5
+b = 1
+print(min(a, b), max(a, b))   # CPython 1 2.5 · --interp 1 2.5 · --aot refuses: … the winner's own kind needs the tagged value word
+```
+
+The most interesting of the four, because the hard part is not the question. Two candidates, one `i32` and one
+`double`, whose static kinds the module cannot settle: `fcmp` after converting the int decides *which* wins,
+and a `select` can carry the value — but a `select` carries one **type**, and the answer has to be an `int`
+sometimes and a `double` other times, depending on a comparison the compiler cannot evaluate. Choosing the
+double domain unconditionally is what produced `min(2.5, 1)` → `1.0`, so the fold refuses and names the word
+it is missing: the `(payload, tag)` pair that a subscripted slot already returns (ADR 0241) and that every
+sink — print, arithmetic, a binding — knows how to ask.
+
+<a id="gap-r-110"></a>
+### Gap R.110 — a call site can settle the winner the body never saw (OPEN, measured landing ADR 0256)
+
+```gusty
+def choose(a, b):
+    return max(a, b)
+
+print(choose(2.0, 1))   # CPython 2.0 · --interp 2.0 · --aot 2
+```
+
+The one silently-wrong answer of the family, and the reason it is a wrong answer rather than a refusal is
+informative: the body asks its parameters what they are, and ADR 0174's convention answers from the call sites
+that settled them — so `max(a, b)` is emitted with the int word, prints `2`, and the program looks like it
+worked. ADR 0254 fixed exactly this shape for a *number a function returns* by asking the emitted body;
+the fold's version needs the same treatment plus the tagged pair from R.109, because for a fold the answer's
+kind is chosen by data rather than written in the `return`. Pinned at the wrong answer, with the oracle's
+answer beside it, so the day the pair arrives the row flips to parity instead of being rewritten.
 
 
 ### Gap R.100 — closed by ADR 0255: the loop's increment needs a latch block, not a guess

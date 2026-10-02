@@ -3345,14 +3345,30 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 	return 0, &EvalError{Msg: "no such list method " + name}
 }
 
-// compareElems orders two list elements the way Python's < does for the kinds the compiled
-// backend can hold: numbers (int or float) compare numerically, interned strings compare by
-// their text. Comparing across those kinds is a TypeError in Python, and saying so is better
-// than inventing an order — a sort that guesses is worse than one that refuses.
+// compareElems orders two list elements the way the reference implementation's `<` does.
 func (e *Evaluator) compareElems(a, b int64) (int, error) {
+	return e.compareOrder(a, b, "<")
+}
+
+// compareOrder orders two values the way the reference implementation's `<` or `>` does for
+// the kinds this interpreter can compare: numbers (int or float) compare numerically, texts
+// compare by their content. Comparing across those kinds is a TypeError, and saying so is
+// better than inventing an order — a fold that guesses is worse than one that refuses.
+//
+// The operator is part of the question because the reference implementation names the operator
+// that failed in its TypeError. min's fold asks `<` of the candidate against the incumbent;
+// max's asks `>`; sharing one comparator while always printing `<` told the reader that min had
+// failed when the program had called max (roadmap Gap R.104).
+func (e *Evaluator) compareOrder(a, b int64, op string) (int, error) {
 	af, aIsFloat := e.floatOf(a)
 	bf, bIsFloat := e.floatOf(b)
 	if aIsFloat || bIsFloat {
+		if !aIsFloat && e.isHandle(a) {
+			return 0, unsupportedCompare(op, e.operandKind(a), e.operandKind(b))
+		}
+		if !bIsFloat && e.isHandle(b) {
+			return 0, unsupportedCompare(op, e.operandKind(a), e.operandKind(b))
+		}
 		if !aIsFloat {
 			af = float64(a)
 		}
@@ -3369,11 +3385,13 @@ func (e *Evaluator) compareElems(a, b int64) (int, error) {
 	}
 	ao, aIsObj := e.heap[a]
 	bo, bIsObj := e.heap[b]
+	aIsObj = aIsObj && e.isHandle(a)
+	bIsObj = bIsObj && e.isHandle(b)
 	if aIsObj && ao.kind == "str" && bIsObj && bo.kind == "str" {
 		return strings.Compare(ao.sval, bo.sval), nil
 	}
-	if aIsObj && ao.kind == "str" || bIsObj && bo.kind == "str" {
-		return 0, exnError("TypeError", "'<' not supported between instances of 'str' and 'int'")
+	if aIsObj || bIsObj {
+		return 0, unsupportedCompare(op, e.operandKind(a), e.operandKind(b))
 	}
 	switch {
 	case a < b:
@@ -4034,33 +4052,60 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			return 0, exnError("TypeError", "object of type "+e.valueTypeName(v)+" has no len()")
 
 		case "min", "max":
-			if len(n.Args) != 1 {
-				return 0, &EvalError{Msg: "min/max expects 1 argument"}
-			}
-			lo, err := e.eval(n.Args[0])
-			if err != nil {
-				return 0, err
+			// `min(a, b, ...)` is the same builtin as `min([a, b, ...])`, and the reference
+			// implementation is the path a person and an agent feel first: refusing it while the
+			// compiled leg answered made a program that builds print differently from the one that
+			// runs (roadmap Gap R.104, ADR 0256). The winner is returned **as it arrived** — an int
+			// winner is the int CPython prints, not the double it was compared against — which is why
+			// the candidates are the values and not their numbers.
+			if len(n.Args) == 0 {
+				return 0, exnError("TypeError", fmt.Sprintf("%s expected at least 1 argument, got 0", name.Value))
 			}
 			var vals []int64
-			if o, ok := e.heap[lo]; ok && o.kind == "dict" {
-				// The interpreter rejects dict literals for min/max (matching
-				// codegen); scalars are treated as single-element collections.
-				return 0, &EvalError{Msg: "min/max expects a list or set"}
-			}
-			if o, ok := e.heap[lo]; ok && (o.kind == "list" || o.kind == "set") {
-				vals = o.elems
+			if len(n.Args) == 1 {
+				lo, err := e.eval(n.Args[0])
+				if err != nil {
+					return 0, err
+				}
+				if o, ok := e.heap[lo]; ok && o.kind == "dict" {
+					// The interpreter rejects dict literals for min/max (matching
+					// codegen); scalars are treated as single-element collections.
+					return 0, &EvalError{Msg: "min/max expects a list or set"}
+				}
+				if o, ok := e.heap[lo]; ok && (o.kind == "list" || o.kind == "set") {
+					vals = append([]int64(nil), o.elems...)
+				} else {
+					vals = []int64{lo}
+				}
 			} else {
-				vals = []int64{lo}
+				for _, a := range n.Args {
+					v, err := e.eval(a)
+					if err != nil {
+						return 0, err
+					}
+					vals = append(vals, v)
+				}
 			}
 			if len(vals) == 0 {
-				return 0, &EvalError{Msg: "min/max of empty collection"}
+				return 0, exnError("ValueError", fmt.Sprintf("%s() iterable argument is empty", name.Value))
 			}
 			best := vals[0]
 			for _, v := range vals[1:] {
-				if name.Value == "min" && v < best {
-					best = v
+				if name.Value == "min" {
+					c, err := e.compareOrder(v, best, "<")
+					if err != nil {
+						return 0, err
+					}
+					if c < 0 {
+						best = v
+					}
+					continue
 				}
-				if name.Value == "max" && v > best {
+				c, err := e.compareOrder(v, best, ">")
+				if err != nil {
+					return 0, err
+				}
+				if c > 0 {
 					best = v
 				}
 			}

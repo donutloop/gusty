@@ -2247,6 +2247,29 @@
     },
     {
       "case": {
+        "id": "programs/min_max_values",
+        "name": "min_max_values.gy",
+        "source": "print(min(1.0, 2), max(1, 2.5))\nprint(min(2.5, 1), max(1, 2.5))\nprint(min(1, 5), max(1, 5))\nprint(min(\"b\", \"a\"), max(\"b\", \"a\"))\n\nt = min(\"pear\", \"apple\")\nprint(t, t.upper())\n\nprint(min([3, 1, 2]), max([3, 1, 2]))\nprint(max([1, 2.5]), min([1, 2.5]))\nprint(min([None]))\n\ntry:\n    print(min(1, \"a\"))\nexcept TypeError:\n    print(\"caught\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "1.0 2.5\n1 2.5\n1 5\na b\napple APPLE\n1 3\n2.5 1\nNone\ncaught\n",
+      "aot_ok": true,
+      "aot_stdout": "1.0 2.5\n1 2.5\n1 5\na b\napple APPLE\n1 3\n2.5 1\nNone\ncaught\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "1.0 2.5\n1 2.5\n1 5\na b\napple APPLE\n1 3\n2.5 1\nNone\ncaught\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/gc_precise",
         "name": "gc_precise.gy",
         "source": "# Precise stack roots (L7.2, ADR 0181).\n#\n# Every value below is held somewhere the collector has to know about: a call\n# frame's locals that survive a nested allocation storm, a loop variable the loop\n# itself keeps, and thousands of short-lived containers that must be reclaimed\n# while the program is still running. A missing root shows up as a wrong number;\n# an imprecise collector shows up as a heap full of garbage that is still live.\n\ndef churn(n):\n    total = 0\n    i = 0\n    while i \u003c n:\n        junk = [i, i, i]\n        total = total + junk[2]\n        i = i + 1\n    return total\n\n# walk binds a list, recurses, then allocates a storm before reading it back:\n# only frame roots keep `keep` alive across the nested collection.\ndef walk(depth):\n    keep = [depth, depth * 2, depth * 3]\n    filler = 0\n    if depth \u003e 0:\n        filler = walk(depth - 1)\n    churn(200)\n    return keep[0] + keep[1] + keep[2] + filler\n\n# A statement-position call whose own loop reclaims as it goes: `xs` is bound\n# before the loop and read hundreds of allocations later.\ndef total_up_to(n):\n    xs = [10, 20, 30]\n    acc = 0\n    i = 0\n    while i \u003c n:\n        scratch = [i, i]\n        acc = acc + xs[0] + xs[2] + scratch[0]\n        i = i + 1\n    return acc\n\ngrand = 0\nfor k in range(5):\n    scratch = [k, k + 1]\n    grand = grand + walk(k) + scratch[0]\nprint(grand)\nprint(total_up_to(300))\nprint(churn(1200))\n",
@@ -3172,11 +3195,11 @@
       ]
     }
   ],
-  "rows": 108,
+  "rows": 109,
   "skipped": 18,
-  "pass": 90,
+  "pass": 91,
   "fail": 0,
-  "oracle_match": 71,
+  "oracle_match": 72,
   "oracle_debt": 20,
   "oracle_not_applicable": 17,
   "oracle_drift": 0

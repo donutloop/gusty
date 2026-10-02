@@ -244,8 +244,8 @@ refused in words, naming the variable whose double has nowhere to go. Three shap
 are filed rather than absorbed: the ternary arm (`return x if x > 2 else 0.0`, refused since ADR 0254 and a
 truncated `1` before it, Gap R.102), a container **returned** from a function (`print(f(1.0))` printing `0` for
 `{'k': 2.5}` — filed as Gap R.103 and re-measured as Gap R.67's, since the same dict written with no function around it prints
-`{'k': 2.5}` on all three engines), and `min`/`max` with two arguments refusing in the interpreter while the
-compiled leg and CPython answer (Gap R.104).
+`{'k': 2.5}` on all three engines), and `min`/`max` with two arguments refusing in the interpreter (Gap R.104,
+closed two cycles later by ADR 0256 — which found the compiled leg had its own half of the same question).
 
 The element of a comprehension over a container the program built is free to **branch**, and the loop had to
 be told (ADR 0255, closing Gap R.100). `xs = []` / `xs.append(6)` / `print([v / 2 for v in xs])` was **exit
@@ -258,6 +258,25 @@ one), `{v / 2 for v in xs}` prints `{3.0}`, and a `for` whose body divides came 
 same sweep are filed rather than absorbed, both silently-wrong answers with exit 0: the dict comprehension's
 value loses the double's tag (`{6: 3}` for `{6: 3.0}`, Gap R.105), and a loop variable whose slot holds text
 is divided by the static arm (`[0.0]` where every honest engine raises `TypeError`, Gap R.106).
+
+A fold **returns the candidate it chose**, not the comparison that found it (ADR 0256, closing Gap R.104 and
+the source-visible half of Gap R.73). `print(min(1.0, 2), max(1, 2.5))` printed `1.0 2.5` compiled and refused
+outright interpreted; `print(min(2.5, 1))` printed `1.0`, because the compiled path promoted every candidate to
+`double` and selected a `double` — while Python hands back the winning *element*, so the answer's kind is the
+winner's own. `min`/`max` now take values side by side or one container on both engines, and the family
+answers: ints (`1 5`), an int among doubles (`min(2.5, 1)` → `1`, `max(1, 2.5)` → `2.5`), three candidates, a
+container written inline, and **text ordered by its content** through `rt_str_order` rather than by its
+position in the intern table (ADR 0248's rule, met again where an interned text is also an `i32`) — so
+`t = min("pear", "apple")` still has a working `.upper()`. Candidates with no ordering for the operator the
+builtin asks (`min` asks `<`, `max` asks `>`) are **raised**, not refused and not answered: the old compiled
+path compared heap and intern indices and exited 0 with a number, where all three engines now print CPython's
+`TypeError: '<' not supported between instances of 'str' and 'int'`, catchable by `except TypeError`, at exit 3
+— with the two kinds in the order the fold met them, because that is the order CPython's operands had. Four
+shapes stay honest about the half they are missing and are filed rather than absorbed: a container the program
+built (Gap R.107), a text container the program built (Gap R.108), two runtime candidates whose kinds straddle
+`int` and `double` — comparable, but the winner's kind cannot leave the call until the tagged value word exists
+(Gap R.109) — and a callee whose winner was settled by one call site (`def choose(a, b): return max(a, b)` /
+`print(choose(2.0, 1))` printing `2` for `2.0`, Gap R.110).
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,

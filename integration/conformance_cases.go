@@ -210,6 +210,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// ledger had been pinning that as debt since ADR 0196 measured it (roadmap L11.6, Gap R.3c,
 		// ADR 0254). Three engines, one source.
 		"probe_float_param_rebind",
+		// `min(a, b, ...)` / `max(a, b, ...)`: the chosen candidate, not the comparison, decides
+		// what kind the answer has, so an int winner among doubles stays `1` and a float winner
+		// stays `1.0`; text candidates go through the content-order helper, and a candidate of an
+		// incomparable kind raises the operator's own TypeError. Three engines, one source
+		// (roadmap L11.6, Gaps R.73 and R.104, ADR 0256).
+		"min_max_values",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).

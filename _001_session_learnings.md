@@ -5817,3 +5817,64 @@ the ledger, and renumbering would break those citations (the rule exists for exa
 row's wording and the record section, which now print both the original claim and the control that refutes it.
 The queue row goes away, because the work belongs to R.67's row and a defect counted twice gets fixed once and
 celebrated twice.
+
+---
+
+## ADR 0256 — a fold returns the candidate it chose (Gap R.104, Gap R.73 partial; Gaps R.107–R.110 filed)
+
+`print(min(1.0, 2), max(1, 2.5))` was the row: the interpreter refused the two-argument spelling that the
+compiled leg and CPython answered. Six lines of measurement around it turned one asymmetry into four answers
+to one question, and the biggest of them was on the leg the row said was correct:
+
+| program | CPython | `--interp` before | `--aot` before |
+|---|---|---|---|
+| `min(1, 5)` | `1 5` | refusal | refusal (`min expects one argument`) |
+| `min(2.5, 1)` | `1` | refusal | **`1.0`** |
+| `min(["b","a"])` | `a` | `a` | `0` |
+| `min([1, "a"])` | `TypeError` | `TypeError` | `0`, **exit 0** |
+
+**The rule the cycle buys: a fold returns the candidate it chose, not the comparison that found it.** Python's
+`min` returns an *element*; the answer's type is the winner's type. The compiled path had promoted every
+candidate to `double` and `select`ed a `double`, which is a reasonable-looking implementation of a different
+language: right for `max(1.0, 2.5)`, wrong for `min(2.5, 1)`, and wrong in the direction that looks like a
+precision improvement, so nobody files a bug. `numericFoldElems` had been returning the parallel
+`isFloatElem` list for exactly this and nothing on the varargs path was reading it.
+
+**The same `i32` is two different facts.** An interned text and a heap container are both `i32` payloads, so
+the fall-through that compared numbers compared intern indices and heap slots. `min(["b","a"]) → 0` is ADR
+0248's bug wearing a builtin's clothes, and the fix is the same helper (`rt_str_order`) — but the lesson is
+one step further out than ADR 0248's: it is not only *operators* on text that must go through content, it is
+every place a text arrives as a *result*. A fold's answer is a value that goes to `print`, to a binding, to
+`.upper()`, so the printing predicate (`printsAsInternedStr`, `isNoneExpr`) has to know what the call returns,
+not just what its arguments were. `t = min("pear", "apple")` / `print(t, t.upper())` is the row that proves it.
+
+**Share the comparator, and the traps come free.** `min`/`max` and `sortElems` are both asking "does this one
+come before that one", so they now call one `compareOrder(a, b, op)`; the operator is a parameter because the
+reference implementation puts the *failing operator* into the message — `min` reaches `'<'`, `max` reaches
+`'>'` — and the two kinds come out in the order the fold met them, not sorted: `min(None, 1)` names
+`'int' and 'NoneType'` because `1 < None` is the comparison that died. Writing the trap that way was free once
+the comparator was shared, and it killed the class of bug where an uncomparable pair exits 0 with a number.
+
+**Refuse or raise, never answer.** The line this cycle drew between the two honest failures is whether the
+compiler can *name* the kinds from source. Source-visible text/`None`/container beside a number → emit
+CPython's `TypeError` (`br label %bad`, `raiseTo`, catchable, exit 3): the compiler knows the operands' kinds,
+so it has earned the right to print the sentence. A candidate whose kind only the object can report → refuse,
+naming the missing word ("the winner's own kind needs the tagged value word"). Emitting the raise for the second
+case would be inventing operands; answering with the double domain would be re-committing the bug the row
+started with. Four rows came out of that sweep — R.107 (runtime numeric container), R.108 (runtime text
+container), R.109 (runtime int/double), R.110 (a callee whose winner was settled by one call site) — and R.110
+is pinned at its wrong answer `2` with the oracle's `2.0` beside it, because it is the one shape that still
+exits 0.
+
+**A gap row's premise is a claim, not a fact.** Gap R.73 had said since it was filed that *both* engines
+refused the two-argument form; Gap R.104 had said that the compiled leg *answered*. Each was true of one
+program and false of the family, and reading them as specifications would have shipped half the feature and
+left the exit-0 wrong answers where they were. Both rows are rewritten with what each engine actually does in
+the row, and the queue is smaller by one row and bigger by four.
+
+**Process, the unglamorous half.** The session's own summary described the integration helpers wrongly
+(`writeSrc(t, dir, name, src)`, `cliRunCode(t, args...) (stdout, code)`, `cpythonOut(t, path) (out, ok)`) and a
+test written from it did not compile. The helpers are three lines of `grep` away; re-grounding a signature
+before writing against it costs one command, and trusting a remembered one costs a compile cycle. Related:
+`cliRunCode` returns **stdout only** — a refusal goes to stderr, so the message assertion has to use `cliRun`,
+while the *exit class* has to come from `cliRunCode`. That is the exit-code contract, in the harness.

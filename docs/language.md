@@ -2101,11 +2101,29 @@ Standard-library numeric builtins:
 
     min([3, 1, 2])   # 1
     max([3, 1, 2])   # 3
+    min(1.0, 2)      # 1.0
+    max(1, 2.5)      # 2.5
+    min("b", "a")    # a
+    max([1, 2.5])    # 2.5
     abs(-5)          # 5
 
-`min`/`max` accept a list or set (or a single value); `abs` takes one number.
-- The AOT codegen treats a single scalar argument to `min`/`max` as a
-  one-element collection: `min(5)` -> 5, `max(7)` -> 7 (see ADR 0110).
+`min`/`max` accept one list or set, one scalar, or values written side by side; `abs` takes one number.
+- The varargs form chooses the **candidate**, not the comparison that found it, so the answer's kind is
+  the winner's own kind. `min(1.0, 2)` is the float `1.0`; `min(2.5, 1)` is the integer `1`, not `1.0`.
+  A tie keeps the first candidate (`min(1, 1.0)` is `1`). The rule holds whether the candidates are literals
+  or settled variables **of one kind**, and the same rule decides the one-container spelling (`max([1, 2.5])`
+  is `2.5`, `min([1, 2.5])` is `1`). Text candidates are ordered by their content through `rt_str_order`,
+  never by their position in the intern table (ADR 0248).
+- A text candidate beside a number, and a `None` or container candidate beside a number, raises CPython's
+  `TypeError` with the operator that actually failed: `min` names `'<'` and `max` names `'>'`. The raise is
+  catchable on both engines. Two containers side by side are CPython's element-wise ordering, which this
+  language does not implement yet (roadmap Gaps R.86, R.97): the interpreter raises, the compiler refuses.
+  Two runtime candidates whose kinds only the object can reconcile still wait
+  for the tagged value word (roadmap Gaps R.107–R.110), and so does a settled `float` beside a settled `int`;
+  those refuse in words rather than promote the winner to a double or compare untagged payloads.
+- The AOT codegen treats a single **numeric** scalar argument to `min`/`max` as a
+  one-element collection: `min(5)` -> 5, `max(7)` -> 7 (see ADR 0110). A lone text or `None` is the
+  interpreter's one-element collection too, and the compiled half refuses it (Gap R.107/R.108's family).
 Implemented in both the interpreter (REPL/`--eval`) and the LLVM AOT codegen.
 In the AOT path `min`/`max`/`sum` fold over an **inline list literal** (unrolled
 `icmp`+`select` / `add` chains over the list's global struct). Each element is

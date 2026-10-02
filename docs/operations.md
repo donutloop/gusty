@@ -848,6 +848,8 @@ Match these messages rather than scraping diagnostics prose:
 | `is answered with a double by the tagged numeric door, and this context stores an i32 word` | the answer is a `double` and the sink is an `i32` store: a call argument, `str()`'s argument, a container slot written by key (roadmap Gap R.98, ADR 0253) | bind it to a variable that starts life a float (`half = xs[0] / 2`), then pass/print the variable, or run the interpreter |
 | `returns "x", which its own body binds to a float` | a function whose `return` is the bare name of a parameter its body rebound to a float, in a signature the `double` convention cannot carry — a parameter that is a container handle or interned text, which the body also reads (roadmap L11.6, Gap R.3c, ADR 0254). Emitted anyway it is `sitofp i32 @.lst1 to double`, which `llc` rejects | `return x + 0.0`, or bind the answer to a new name (`y = x + 0.0; return y`); the interpreter answers all of these |
 | `returns a ternary arm of "x", which its own body binds to a float` | `return x if cond else 0.0` of such a parameter: the answer's word is the arm's and there is no number-typed `select` to choose two doubles with (roadmap Gap R.102, ADR 0254) | take the branch with `if`/`else` and `return` the number on each arm, or add it to `0.0` on the arm |
+| `winner's own kind needs the tagged value word` | `min` / `max` over runtime candidates whose static kinds mix `int` and `double`: the comparison is decidable, but the winner's kind is not, and forcing the double domain answers `min(2.5, 1)` as `1.0` (roadmap Gap R.109, ADR 0256) | keep candidates literal, use the interpreter, or wait for L11.1's tagged value word |
+| `takes values side by side or one container, not a container among values` | a `min` / `max` argument is a container literal beside another candidate; comparing containers by their handle words would answer with heap addresses (roadmap Gap R.107, ADR 0256) | flatten the candidates, or use the interpreter's element-wise ordering |
 
 Every container that crosses a function boundary is passed as a runtime heap
 handle (see `docs/language.md` § Containers across function boundaries); the
@@ -877,7 +879,13 @@ the interpreter. Literal operands are constant-folded.
 the LLVM AOT codegen path (previously interpreter-only). `sum`/`min`/`max`
 fold over an **inline list literal** (unrolled `add` / `icmp`+`select` chains
 over the list's global struct); `abs` accepts any integer expression and is
-constant-folded for literal arguments. Interpreter behavior is unchanged.
+constant-folded for literal arguments.
+
+`min(a, b, ...)` and `max(a, b, ...)` are one call surface on both legs (ADR 0256). The candidate that
+wins keeps its own kind: `min(1.0, 2)` prints `1.0`, while `min(2.5, 1)` prints `1`. Text candidates go
+through `rt_str_order`, and a source-visible text/`None`/container collision emits CPython's catchable
+`TypeError`, naming `<` for `min` and `>` for `max`. A runtime int/double mix or a runtime container is a
+named refusal pending L11.1's tagged value word; the interpreter and `--eval` answer them today.
 
 ## for-over-list (AOT codegen)
 
