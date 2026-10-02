@@ -1607,12 +1607,31 @@ xs[0] = [7]
 print(xs)                                  # [[7], [2], [9]]
 ```
 
+**A slot of a container the program *built* is read by asking the object** (ADR 0246). Appending to a
+list, assigning into a dict, or rebinding the name takes the literal out of the compiler's hands — ADR
+0241's read is a compile-time promise, and it runs out — but the object still knows: every writer went
+through ADR 0187's payload-and-tag door, so `len` of a slot asks the slot's own tag and measures the text
+in characters, the container in its own entries, and refuses to measure a number at all:
+
+```gy
+xs = []
+xs.append([7, 8])
+xs.append("abc")
+print(len(xs[0]), len(xs[1]))              # 2 3   — used to be refused: "len cannot reach into xs's slots"
+d = {}
+d["a"] = [1, 2, 3]
+print(len(d["a"]))                          # 3     — the dict was built by assignment, not spelled
+xs.append(5)
+print(len(xs[2]))                          # TypeError: object of type 'int' has no len() — as CPython
+```
+
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
-raises `unhashable type: 'list'`, and this backend has no hashing rule for a handle), and a tagged
-element whose kind only the run time can tell — a loop variable over a mixed list used as a number, or
-an element read through a runtime index — which needs the value word that carries its own tag
-(roadmap L11.1). A fold (`sum`, `min`, `max`) over container elements reports too, rather than reaching
-for the elements' addresses the way CPython raises a `TypeError`.
+raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
+length, Gap R.81), and a tagged element whose kind only the run time can tell — a loop variable over a
+mixed list used as a number, an element read through a runtime index used **as a number**
+(`xs[0][0] + 1` on a run-time-built container), or compared with text (Gap R.79) — which needs the value
+word that carries its own tag (roadmap L11.1). A fold (`sum`, `min`, `max`) over container elements
+reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
 value that *is* a tag: a compiled float still has no word to hold it (L11.6), a bool still prints

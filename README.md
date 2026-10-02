@@ -155,6 +155,14 @@ stride its two-word entries need, so `[k for k in d]` over `{1: "x", 2: "y"}` is
 each entry as two `(payload, tag)` pairs with the tag its key really has, so `{k: 1 for k in d}` over a
 text-keyed dict prints `{'a': 1}` and `out["a"]` finds it instead of dying with `KeyError` (Gap R.78).
 
+A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
+has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
+asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a
+list built by `xs.append([7, 8])` is `2`, a text slot is measured in characters, and a slot holding `5`
+raises CPython's `TypeError: object of type 'int' has no len()` rather than being measured as if it were a
+container (ADR 0246). What still refuses by naming itself: a slot used **as a number** on a container this
+pass cannot see, and comparing a mixed slot with text (Gap R.79).
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict

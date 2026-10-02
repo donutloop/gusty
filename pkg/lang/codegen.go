@@ -10831,6 +10831,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if h, _, okH := g.containerHandleOf(b, c.Args[0]); okH {
 				return g.heapLenOf(b, h), nil
 			}
+			if ix, isIx := c.Args[0].(*Index); isIx {
+				// The slot belongs to a container the program built rather than spelled: its own tag
+				// array says what it holds, so the length is asked of the object (ADR 0187, L11.1).
+				if v, t, okPair := g.runtimeSlotPair(b, ix); okPair {
+					return g.lenOfTaggedSlot(b, v, t, ix.Span()), nil
+				}
+			}
 			return "", g.slotReadRefusal(c.Args[0], "len")
 		default:
 			// len(xs[0]), len(d["a"]), len(s[0]): the argument is a read rather than a spelling, so
@@ -10840,6 +10847,14 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// object happens to share a number's index is not an answer (roadmap L11.1, ADR 0241).
 			if h, _, okH := g.containerHandleOf(b, c.Args[0]); okH {
 				return g.heapLenOf(b, h), nil
+			}
+			if ix, isIx := c.Args[0].(*Index); isIx {
+				if v, t, okPair := g.runtimeSlotPair(b, ix); okPair {
+					// The tag travels with the payload to the check, which is what lets a slot the
+					// compiler never saw be measured as the text or container it turned out to hold —
+					// and refuse to be measured as a number (roadmap L11.1, ADR 0241).
+					return g.lenOfTaggedSlot(b, v, t, ix.Span()), nil
+				}
 			}
 			return "", g.slotReadRefusal(c.Args[0], "len")
 		}

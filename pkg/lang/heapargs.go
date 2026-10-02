@@ -2149,6 +2149,98 @@ func (g *irGen) isLiteralNumExpr(e Expr) bool {
 	return false
 }
 
+// runtimeSlotPair reads the (payload, tag) pair of `base[key]` when `base` is a container the program
+// holds **at run time** — a list appended to, a dict assigned into — so no literal any longer describes
+// its slots. The static door (containerSlotRead, licensed by ADR 0241's compile-time promise) refuses
+// these, and this is the other half of that promise: the object's own tag array answers, because the
+// builder wrote a tag with every slot it filled (ADR 0187's rule, one write per (payload, tag)).
+//
+// The bounds check, the negative index, and the KeyError-on-a-missing-key come from containerSlotRead
+// itself, so the traps here are the same ones an ordinary read raises (ADR 0210, ADR 0189). Only a
+// variable with a real alloca is asked: a name the escape analysis kept as a compile-time list has no
+// slot to load, and emitting the load is the module `llc` rejects (ADR 0192).
+func (g *irGen) runtimeSlotPair(b *strings.Builder, ix *Index) (val, tag string, ok bool) {
+	nm, isName := ix.Obj.(*Name)
+	if !isName || !g.allocd[nm.Value] {
+		return "", "", false
+	}
+	n := nm.Value
+	kind := ""
+	switch {
+	case g.listVars[n] || g.mixedLists[n]:
+		kind = "list"
+	case g.runtimeDicts[n] || g.mixedDicts[n]:
+		kind = "dict"
+	default:
+		return "", "", false
+	}
+	g.heapUsed = true
+	h := g.newTmp()
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", h, "_"+n)
+	return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+}
+
+// lenOfTaggedSlot answers len() of a slot whose tag the compiler carries but cannot read: the tag goes
+// with the payload to the check, exactly as ADR 0187 requires, and decides which question the object is
+// asked. A text slot is measured in characters, a container slot in its own entries through
+// rt_heap_len — which dispatches on the object's record, not on what the builder claimed — and anything
+// that is not measurable raises what CPython raises, per kind, rather than answering 0.
+func (g *irGen) lenOfTaggedSlot(b *strings.Builder, payload, tag string, sp Span) string {
+	g.heapUsed = true
+	badBlock := func(t int32, typeName, msg string) {
+		cmp := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", cmp, tag, t)
+		g.markI1(cmp)
+		bad, next := g.newLabel("len.bad"), g.newLabel("len.chk")
+		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", cmp, bad, next)
+		fmt.Fprintf(b, "%s:\n", bad)
+		g.raiseTo(b, exnCode(typeName), typeName, msg, sp)
+		fmt.Fprintf(b, "%s:\n", next)
+	}
+	badBlock(int32(TagInt), "TypeError", "object of type 'int' has no len()")
+	badBlock(int32(TagFloat), "TypeError", "object of type 'float' has no len()")
+	badBlock(int32(TagBool), "TypeError", "object of type 'bool' has no len()")
+	badBlock(int32(TagNone), "TypeError", "object of type 'NoneType' has no len()")
+	// What is left is text, a container, or a kind this language has not grown yet (tuple, instance).
+	// The measurable tags ask their own question; everything else is told it has no length rather
+	// than being measured as if it were a container, which would read a word that means nothing.
+	parts := make([]string, 0, 4)
+	for _, t := range []int32{int32(TagStr), int32(TagList), int32(TagDict), int32(TagSet)} {
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, t)
+		g.markI1(c)
+		parts = append(parts, c)
+	}
+	acc := parts[0]
+	for _, p := range parts[1:] {
+		or := g.newTmp()
+		fmt.Fprintf(b, "  %s = or i1 %s, %s\n", or, acc, p)
+		g.markI1(or)
+		acc = or
+	}
+	okL, noL, strL, contL, doneL := g.newLabel("len.ok"), g.newLabel("len.none"), g.newLabel("len.str"), g.newLabel("len.cont"), g.newLabel("len.done")
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", acc, okL, noL)
+	fmt.Fprintf(b, "%s:\n", noL)
+	g.raiseTo(b, exnCode("TypeError"), "TypeError", "object has no len()", sp)
+	fmt.Fprintf(b, "%s:\n", okL)
+	isStr := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isStr, tag, int32(TagStr))
+	g.markI1(isStr)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isStr, strL, contL)
+	fmt.Fprintf(b, "%s:\n", strL)
+	sl := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_str_len(i32 %s)\n", sl, payload)
+	fmt.Fprintf(b, "  br label %%%s\n", doneL)
+	fmt.Fprintf(b, "%s:\n", contL)
+	hl := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_heap_len(i32 %s)\n", hl, payload)
+	fmt.Fprintf(b, "  br label %%%s\n", doneL)
+	fmt.Fprintf(b, "%s:\n", doneL)
+	res := g.newTmp()
+	fmt.Fprintf(b, "  %s = phi i32 [ %s, %%%s ], [ %s, %%%s ]\n", res, sl, strL, hl, contL)
+	return res
+}
+
 // slotReadRefusal is what `len(xs[0])`, `xs[0][1]` and friends say when the slot cannot be reached.
 // The generic "needs an inline literal" sent an agent looking at a shape that is fine: the program
 // reads a container through a name, and what ran out is the *promise* about that name — it was

@@ -34,6 +34,11 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 		{"comp_over_dict_literals", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d))\n", "2\n"},
 		{"print_set_element_comp", "d = [{1, 2} for x in [1]]\nprint(d)\n", "[{1, 2}]\n"},
 		{"print_dict_element_comp", "d = [{\"k\": 1} for x in [1]]\nprint(d)\n", "[{'k': 1}]\n"},
+		// Reaching into a slot the comprehension itself built, by the object's own tag array: the
+		// comprehension wrote payload and tag together, so `len` asks the object (ADR 0246) — these
+		// two were refusal rows until the read stopped needing a literal.
+		{"len_of_a_slot_of_a_built_comp", "d = [{1, 2} for x in [1]]\nprint(len(d[0]))\n", "2\n"},
+		{"len_of_a_dict_slot_of_a_built_comp", "d = [{\"k\": x} for x in [1, 2]]\nprint(len(d[0]))\n", "1\n"},
 		// The untagged-element writes: each of these printed the machine word, not the value.
 		{"print_list_element_comp", "xs = [[1, 2] for x in [1, 2]]\nprint(xs)\n", "[[1, 2], [1, 2]]\n"},
 		{"read_list_element_comp", "xs = [[1, 2] for x in [1]]\nprint(xs[0])\n", "[1, 2]\n"},
@@ -83,13 +88,10 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			// The comprehension built the object, so no literal describes its slots: ADR 0241's
-			// compile-time promise is out, and reaching into a slot by `len` says so.
-			"len_of_a_slot_of_a_built_comp",
-			"d = [{1, 2} for x in [1]]\nprint(len(d[0]))\n",
-			"cannot reach into d's slots",
-		},
-		{
+			// (Two `len(...)` rows used to sit here demanding refusals — `len(d[0])` of a comprehension
+			// whose element is a set, and of one whose element is a dict. The object carries its own tags,
+			// so both answer CPython's answer now and are pinned in TestComprehensionElementsMatchCPython;
+			// ADR 0246.)
 			"membership_in_a_slot_of_a_built_comp",
 			"d = [{1, 2} for x in [1]]\nprint(1 if 2 in d[0] else 0)\n",
 			"more than one kind",
@@ -103,11 +105,6 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 			"indexing a dict slot of a built comp",
 			"d = [{\"k\": x} for x in [1, 2]]\nprint(d[1][\"k\"])\n",
 			"index must be a constant",
-		},
-		{
-			"len of a dict slot of a built comp",
-			"d = [{\"k\": x} for x in [1, 2]]\nprint(len(d[0]))\n",
-			"cannot reach into d's slots",
 		},
 		{
 			"reaching into a built comprehension's slot",
@@ -458,8 +455,8 @@ func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
 		{
 			// A set's elements are keys too, and the same two facts decide what lands in the entry.
 			"text_set_into_a_dict",
-			"sa = {\"a\", \"b\"}\nout = {x: 1 for x in sa}\nprint(out)\nprint(out[\"b\"])\n",
-			"{'a': 1, 'b': 1}\n1\n",
+			"sa = {\"a\", \"b\"}\nout = {x: 1 for x in sa}\nprint(len(out))\nprint(out[\"b\"])\nprint(1 if out[\"a\"] == 1 else 0)\n",
+			"2\n1\n1\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -286,7 +286,9 @@ func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
 		{"int_keys_are_both_keys", "d = {}\nd[1] = \"x\"\nd[2] = \"y\"\nout = [k for k in d]\nprint(out)\nprint(len(out))\n", "[1, 2]\n2\n"},
 		{"int_keys_into_a_dict", "d = {}\nd[1] = \"x\"\nd[2] = \"y\"\nout = {k: 1 for k in d}\nprint(out)\nprint(out[2])\n", "{1: 1, 2: 1}\n1\n"},
 		{"text_dict_keys_into_a_list", "d = {}\nd[\"a\"] = 1\nd[\"b\"] = 2\nout = [k for k in d]\nprint(out)\n", "['a', 'b']\n"},
-		{"text_set_into_a_dict", "sa = {\"a\", \"b\"}\nout = {x: 1 for x in sa}\nprint(out)\nprint(out[\"b\"])\n", "{'a': 1, 'b': 1}\n1\n"},
+		// A set of strings has no agreed iteration order (CPython's moves with the hash seed),
+		// so this row asks length and a lookup rather than the printed dict.
+		{"text_set_into_a_dict", "sa = {\"a\", \"b\"}\nout = {x: 1 for x in sa}\nprint(len(out))\nprint(out[\"b\"])\n", "2\n1\n"},
 		{"mixed_dict_keys_into_a_list", "d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = [k for k in d]\nprint(out)\n", "['a', 2]\n"},
 	} {
 		out, err := InterpreterRun(tc.src)

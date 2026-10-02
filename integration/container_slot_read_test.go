@@ -28,6 +28,15 @@ import (
 func TestContainerSlotReadsMatchCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"len_of_element", "xs = [[1, 2], [3, 4]]\nprint(len(xs[0]))\n", "2\n"},
+		// A container the program built instead of spelled out: the answer comes from the object's own
+		// tag array, which every writer filled under ADR 0187's payload-and-tag rule. The compiler has
+		// no literal here at all, so this is L11.1's dynamic half arriving one read at a time.
+		{"len_of_a_run_time_built_container", "xs = []\nxs.append([7, 8])\nxs.append([9])\nprint(len(xs[0]), len(xs[1]))\n", "2 1\n"},
+		{"len_after_appending_to_a_literal_list", "xs = [[1, 2]]\nxs.append([9])\nprint(len(xs[0]))\n", "2\n"},
+		{"len_of_a_text_slot", "xs = []\nxs.append(\"abc\")\nprint(len(xs[0]))\n", "3\n"},
+		{"len_of_each_slot_of_a_container_that_grew", "xs = []\nxs.append([1, 2])\nxs.append(\"abc\")\nxs.append([9])\nprint(len(xs[0]), len(xs[1]), len(xs[2]))\n", "2 3 1\n"},
+		{"len_of_a_run_time_built_dict_slot", "d = {}\nd[\"a\"] = [1, 2, 3]\nprint(len(d[\"a\"]))\n", "3\n"},
+		{"len_of_a_dict_slot_built_at_run_time", "xs = []\nxs.append({\"k\": 1, \"j\": 2})\nprint(len(xs[0]))\n", "2\n"},
 		{"len_of_dict_value", "d = {\"a\": [1, 2], \"b\": [3]}\nprint(len(d[\"a\"]))\n", "2\n"},
 		{"len_of_set_element", "s = [{1, 2}]\nprint(len(s[0]))\n", "2\n"},
 		{"reindex_element", "xs = [[1, 2], [3, 4]]\nprint(xs[0][1])\n", "2\n"},
@@ -125,6 +134,30 @@ func TestContainerSlotReadTrapsMatchCPython(t *testing.T) {
 			"container_element_used_as_a_number",
 			"xs = [[1], 2]\nprint(xs[0] + 1)\n",
 			"can only concatenate list (not \"int\") to list",
+		},
+		// The same four questions asked of a container the program built at run time. Each is answered by
+		// the slot's own tag rather than by a compile-time guess: the length is asked of the object when
+		// the tag names one, and the TypeError CPython raises is raised, per kind, when it does not
+		// (roadmap L11.1, ADR 0241; the answers are in TestContainerSlotReadsMatchCPython).
+		{
+			"length_of_a_run_time_built_int_slot",
+			"xs = []\nxs.append([7, 8])\nxs.append(5)\nprint(len(xs[1]))\n",
+			"object of type 'int' has no len()",
+		},
+		{
+			"length_of_a_run_time_built_float_slot",
+			"xs = []\nxs.append([7, 8])\nxs.append(1.5)\nprint(len(xs[1]))\n",
+			"object of type 'float' has no len()",
+		},
+		{
+			"length_of_a_run_time_built_none_slot",
+			"xs = []\nxs.append([7, 8])\nxs.append(None)\nprint(len(xs[1]))\n",
+			"object of type 'NoneType' has no len()",
+		},
+		{
+			"length_of_a_run_time_built_dict_slot",
+			"d = {}\nd[\"a\"] = 5\nprint(len(d[\"a\"]))\n",
+			"object of type 'int' has no len()",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

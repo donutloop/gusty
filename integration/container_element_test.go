@@ -188,7 +188,9 @@ func TestNestedShapesThatStillRefuse(t *testing.T) {
 		{"container_key_in_a_dict_variable", "d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
 		{"arithmetic_on_a_container_element", "xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 		{"element_of_a_mutated_container_as_a_number", "xs = [[1, 2]]\nxs.append([3])\nprint(xs[0][0] + 1)\n", "cannot reach into xs's slots"},
-		{"mutated_container_slots", "xs = [[1, 2]]\nxs.append([9])\nprint(len(xs[0]))\n", "cannot reach into xs's slots"},
+		// (`xs = [[1, 2]]; xs.append([9]); len(xs[0])` used to sit here demanding a refusal. The object
+		// knows its own slots — every writer tags them — so it answers 2 on both engines and is pinned
+		// against CPython in TestContainerSlotReadsMatchCPython (ADR 0246).
 		{"nested_element_as_a_number", "xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 		{"sum_of_containers", "print(sum([[1], [2]]))\n", "sum adds numbers"},
 		{"any_of_containers", "print(any([[1], [2]]))\n", "no word for"},

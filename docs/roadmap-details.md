@@ -4264,3 +4264,38 @@ still needs the needle's kind to be provable before it will run the tagged scan 
 same tag, one reader short. It is not a regression — the shape never answered — and the refusal names the
 missing kind rather than answering `0`, which is what an untagged compare of an interned index against a
 string global would have cost.
+
+### Gap R.80 — printing a container parameter writes the first slot instead of the container (measured 2026-10-02, left open)
+
+    def f(y):
+        print(y)
+
+    xs = [[1, 2]]
+    f(xs)              # CPython [[1, 2]] · compiled: [1]
+
+Found while moving a row out of the refusal table: the program that exercised "the name was handed to
+code this pass cannot see" also printed the container, and the two engines agreed on `[1]` where CPython
+writes `[[1, 2]]`. Before writing that into the ledger I built `fa7c7b9` in a worktree and ran the same
+program: same output, so this is not fallout from the tagged-read work — it is the argument-passing half
+of a gap that already has a row for the return half (Gap R.67: a container *returned* from a function
+compiles to `ret i32 @.lst1`). A container's payload is a handle, and a parameter that loses that fact is
+printed by the number printer, which reads the object's first word and calls it the value.
+
+The parity tables deliberately do not contain this program. A row that asserts a wrong answer because it
+is convenient to have the program in the suite is how a bug becomes a requirement; the answering rows use
+a function that returns rather than prints, which is what let the `len(xs[0])` half be pinned at all.
+
+### Gap R.81 — a set accepts a member CPython refuses (measured 2026-10-02, left open)
+
+    sa = set()
+    sa.add([1])
+    print(len(sa))     # CPython: TypeError: unhashable type: 'list' · both engines: 1
+
+The dict side of this is already written down — a dict keyed by a container has no hashing rule for a
+handle — but nobody wrote the set side, and the set is the one a program reaches by accident, because
+`sa.add(...)` has no reason to fail. Set membership here is a payload-and-tag scan (ADR 0232), so nothing
+ever asks whether the value *can* be a member: a container slot's payload is an integer handle, two
+distinct lists get distinct handles and therefore distinct members, and `in` plus dedup quietly mean
+something other than what the language says. The fix is small and it is the same rule twice: `rt_set_add`
+raises for a list, dict or set member, with CPython's message — the trap ADR 0211's exception classes
+already know how to deliver.

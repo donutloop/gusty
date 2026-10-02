@@ -5198,3 +5198,40 @@ three others is fine; answering three and answering three *wrongly* is what this
 **Process.** Expectations from `python3` before writing any table (the set rows ask length/membership
 because CPython's own string-set order moves with the hash seed); suites green at the end —
 `./pkg/lang`, `./integration`, `./cmd/gustyc`.
+
+## L11.1 — a slot the compiler never saw is measured by asking the object (ADR 0246)
+
+**A refusal is a claim about the compiler, and it goes stale.** `len(xs[0])` after `xs.append([9])` used to
+say *"the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound
+to no longer says what the slots hold"* — true when written, and still true about the literal. But the
+*object* says what its slots hold, because every writer has gone through ADR 0187's payload-and-tag door
+since then. The refusal had become a claim about a promise that had moved from the compiler's notebook into
+the tag array, and the only reason nobody noticed is that three of its rows were pinned as *required
+refusals* in the unit suite. A refusal table is a snapshot of a limitation; when the limitation moves, the
+table has to be re-measured, not honoured.
+
+**The lift was found by accident, which is an argument for keeping refusal tables small.** I was moving one
+row (`appended to`) to answer, and the next run failed on the row after it (`rebound`) — the previous run
+had stopped at the first `t.Fatalf`, so the table had never been fully measured. Every row in a refusal
+table deserves a "does this still refuse?" pass whenever the surrounding machinery gains a door; one
+`Fatalf` can hide three stale claims.
+
+**The tag is the feature; the length is the payload.** The tempting implementation was `rt_heap_len` on the
+slot's i32, which answers with whatever word the slot happens to hold — an int slot would report the heap's
+own shape as a length. So the tag goes to the *check* (int, float, bool, None each raise CPython's own
+`object of type 'x' has no len()`; text measures in characters; containers measure their entries via the
+object's record) and only then does the payload mean anything. Same lesson as ADR 0187 and 0245, third
+time of the day, and it is clearly the language's central invariant: an i32 without its tag is not a value.
+
+**Two defects fell out of the repro programs, and neither was mine.** `def f(y): print(y)` called with a
+container prints `[1]` where CPython prints `[[1, 2]]`, and `sa.add([1])` puts an unhashable member in a
+set and reports a length where CPython raises `TypeError: unhashable type: 'list'`. Both measured identical
+on a worktree build of `fa7c7b9`, so they are pre-existing rather than fallout — recorded as Gap R.80 and
+Gap R.81 rather than absorbed into this cycle, because a fix I have not attempted should not be credited
+in a commit that did not attempt it. The parity rows that share a program with the printing bug use a
+function that *returns* rather than prints; pinning the whole program at `[1]` to keep the repro convenient
+is how a bug gets promoted to a requirement.
+
+**Process.** Expectations from `python3` first (it says `'bool' has no len()` where we say `'int'`, because
+bools are still ints here — that row belongs to the bool-as-value step, so it is not in the trap table
+yet); suites green: `./pkg/lang`, `./integration`, `./cmd/gustyc`.

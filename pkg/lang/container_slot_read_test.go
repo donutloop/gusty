@@ -23,6 +23,26 @@ func TestContainerSlotReadsAnswerInBothEngines(t *testing.T) {
 		want string
 	}{
 		{"length of an element", "xs = [[1, 2], [3, 4]]\nprint(len(xs[0]))\n", "2\n"},
+		// The same question asked of a container the program *built* rather than spelled out. No literal
+		// describes these slots, so ADR 0241's compile-time promise is out — and the object's own tag
+		// array answers, because every writer went through ADR 0187's payload-and-tag door (L11.1).
+		{"appended to a literal-built list", "xs = [[1, 2]]\nxs.append([9])\nprint(len(xs[0]))\n", "2\n"},
+		{"built entirely at run time", "xs = []\nxs.append([7, 8])\nxs.append([9])\nprint(len(xs[0]), len(xs[1]))\n", "2 1\n"},
+		{"text slot measured in characters", "xs = []\nxs.append(\"abc\")\nprint(len(xs[0]))\n", "3\n"},
+		{"one container, three slot kinds", "xs = []\nxs.append([1, 2])\nxs.append(\"abc\")\nxs.append([9])\nprint(len(xs[0]), len(xs[1]), len(xs[2]))\n", "2 3 1\n"},
+		{"dict built at run time", "d = {}\nd[\"a\"] = [1, 2, 3]\nprint(len(d[\"a\"]))\n", "3\n"},
+		{"dict slot holds a dict", "xs = []\nxs.append({\"k\": 1, \"j\": 2})\nprint(len(xs[0]))\n", "2\n"},
+		{"a rebound name", "xs = [[1, 2]]\nxs = [[5]]\nprint(len(xs[0]))\n", "1\n"},
+		{"an item-assigned name", "xs = [[1, 2]]\nxs[0] = [7, 8, 9]\nprint(len(xs[0]))\n", "3\n"},
+		{
+			// The name is handed to code this pass cannot see. The answer is the object's, not the
+			// literal's; the function returns rather than prints, because printing a container parameter
+			// is a separate measured defect (Gap R.80), not something to pin at what it does wrong.
+			"a name handed to an unknown function",
+			"def f(y):\n    return len(y)\n\nxs = [[1, 2]]\nprint(f(xs))\nprint(len(xs[0]))\n",
+			"1\n2\n",
+		},
+		{"mixed keys, one slot measured", "d = {}\nd[1] = [1, 2]\nd[\"k\"] = [3]\nprint(len(d[1]), len(d[\"k\"]))\n", "2 1\n"},
 		{"length of a dict value", "d = {\"a\": [1, 2], \"b\": [3]}\nprint(len(d[\"a\"]))\n", "2\n"},
 		{"length of a set element", "s = [{1, 2}]\nprint(len(s[0]))\n", "2\n"},
 		{"reindex an element", "xs = [[1, 2], [3, 4]]\nprint(xs[0][1])\n", "2\n"},
@@ -88,29 +108,14 @@ func TestContainerSlotReadRefusesWhatItCannotProve(t *testing.T) {
 		want string
 	}{
 		{
-			"appended to",
-			"xs = [[1, 2]]\nxs.append([9])\nprint(len(xs[0]))\n",
-			"cannot reach into xs's slots",
-		},
-		{
-			"rebound",
-			"xs = [[1, 2]]\nxs = [[5]]\nprint(len(xs[0]))\n",
-			"cannot reach into xs's slots",
-		},
-		{
-			"item assigned",
-			"xs = [[1, 2]]\nxs[0] = [7, 8, 9]\nprint(len(xs[0]))\n",
-			"cannot reach into xs's slots",
-		},
-		{
-			"handed to an unknown function",
-			"def f(y):\n    print(y)\n\nxs = [[1, 2]]\nf(xs)\nprint(len(xs[0]))\n",
-			"cannot reach into xs's slots",
-		},
-		{
+			// (Four rows used to sit here demanding refusals: `len(xs[0])` after an `append`, after a
+			// rebinding, after an item assignment, and after handing the name to a function this pass
+			// cannot see. All four answer CPython's answer now — the object carries the tags its writers
+			// left — and they are pinned in TestContainerSlotReadsAnswerInBothEngines (ADR 0246). What is
+			// left below really is out of reach: a payload the tag has not yet been allowed to explain.)
+			"arithmetic on a container element",
 			// The read is licensed and the answer needs the tag; the context wants a bare i32. That is
 			// the other half of L11.1, and the message says so instead of blaming the shape.
-			"arithmetic on a container element",
 			"xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n",
 			"needs a single static kind",
 		},
