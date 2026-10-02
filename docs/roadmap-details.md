@@ -4956,7 +4956,7 @@ arms' kind calls for — with the arms' raises hoisted the way ADR 0214 requires
 become parity rows the day it lands.
 
 <a id="gap-r-103"></a>
-### Gap R.103 — a dict literal whose value is a computed float prints `0` (OPEN, measured beside ADR 0254)
+### Gap R.103 — filed as the dict literal's, measured again as the container *return*'s (OPEN, owner Gap R.67)
 
 ```gusty
 def f(x):
@@ -4966,13 +4966,36 @@ def f(x):
 print(f(1.0))            # CPython {'k': 2.5} · --interp {'k': 2.5} · --aot 0, exit 0
 ```
 
-The wrong-answer class, found by the same sweep and *not* caused by it — `def f(x): return {"k": x}` called with
-`1.0` behaves identically, so this is the container's, not the return word's. A dict literal is emitted through
-the static path, which writes one `i32` word per slot; a `double` reaching that store is neither refused nor
-boxed, and the container printer is handed the slot without a tag and prints `0`. ADR 0238 gave a float *element*
-of a list a box and a tag, ADR 0243 taught the numeric read to use it; the dict literal's value store is the same
-write with the same missing pair. It is listed in the open queue's silently-wrong class, and no ledger row is
-accepted for it — the row is the bug.
+The row above is what this ID was filed as, and the diagnosis was wrong. Re-running the shape without the
+function clears the dict literal completely:
+
+```gusty
+x = 2.5
+print({"k": x})          # {'k': 2.5} on the interpreter, the compiled leg and CPython
+k = 6.0
+print({"k": k / 2})      # {'k': 3.0} on all three — the value is a computed double, and it prints as one
+```
+
+What the `0` needs is the **function around it**:
+
+```gusty
+def f():
+    return {"k": 1}
+print(f())               # CPython {'k': 1} · --interp {'k': 1} · --aot 0        ← exit 0, wrong
+
+def g():
+    return [1, 2]
+print(g())               # CPython [1, 2] · --interp [1, 2] · --aot exit 2      ← `ret i32 @.lst1`
+```
+
+So the defect is a container crossing a function boundary as a *return* — the callee has one `i32` word, the
+literal has no heap object to name, and the printer is handed a handle with no kind: **Gap R.67**, which has
+carried this measurement since ADR 0204's round and owns the queue row. This ID stays, wording corrected, for
+two reasons the roadmap's own rules give it: the misattribution is part of the record (a row written from one
+program's symptom, filed before the control was run), and the control that clears the dict literal is
+worth pinning where the next reader will look. The lesson is the general one: file the shape you *measured*,
+and run the smaller program before naming the cause — the row here claimed a missing tag on a dict slot that
+is written correctly.
 
 <a id="gap-r-104"></a>
 ### Gap R.104 — `min` / `max` with two arguments refuse in the interpreter (OPEN, measured beside ADR 0254)

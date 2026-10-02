@@ -5789,3 +5789,31 @@ gets announced.** No flag, code or schema changed this cycle, and that is exactl
 line in `docs/operations.md`: a script that had a branch for "comprehension with a division → toolchain
 rejected the module, try the interpreter" should now stop taking it. The ADR records the same thing from the
 compiler's side, and the roadmap row records it from the queue's.
+
+---
+
+## Record correction: Gap R.103 was filed with the wrong cause (owner is Gap R.67)
+
+`def f(x): x = x + 1.5; return {"k": x}` / `print(f(1.0))` printing `0` is a real measurement — I wrote the row,
+the queue entry and three documents from it, and the diagnosis ("the dict literal's value store loses the
+double's tag") was invented rather than tested. The control costs one line and it says otherwise:
+
+```gusty
+x = 2.5
+print({"k": x})    # {'k': 2.5} on --interp, --aot and CPython — the literal is fine
+```
+
+Add the function back and it breaks again, and the list spelling of the same shape is worse: `def g(): return
+[1, 2]` is exit 2 (`ret i32 @.lst1`). That is Gap **R.67** — a container returned from a function — which has
+had the measurement, the queue row and the owner since it was found.
+
+**The rule this buys:** before a filed row gets a cause, run the *smaller* program — the same expression with
+each surrounding construct removed, one at a time. The row here had one symptom (a dict printing `0`) and two
+candidate causes a single line apart, and the cheaper of the two was never tried. A cause that survives no
+control is a guess wearing the program's name.
+
+**What the correction is allowed to do and not do.** The ID stays — `R.103` is cited in an ADR, in README and in
+the ledger, and renumbering would break those citations (the rule exists for exactly this). What changes is the
+row's wording and the record section, which now print both the original claim and the control that refutes it.
+The queue row goes away, because the work belongs to R.67's row and a defect counted twice gets fixed once and
+celebrated twice.

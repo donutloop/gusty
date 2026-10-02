@@ -242,8 +242,9 @@ and any of them inside `if`, `while`, `try`, recursion or a default. What is not
 handle or an interned text the `double` word — a parameter the body also reads, or any method — the program is
 refused in words, naming the variable whose double has nowhere to go. Three shapes came out of that sweep and
 are filed rather than absorbed: the ternary arm (`return x if x > 2 else 0.0`, refused since ADR 0254 and a
-truncated `1` before it, Gap R.102), a dict literal whose value is a computed float (`print(f(1.0))` printing
-`0` for `{'k': 2.5}`, Gap R.103), and `min`/`max` with two arguments refusing in the interpreter while the
+truncated `1` before it, Gap R.102), a container **returned** from a function (`print(f(1.0))` printing `0` for
+`{'k': 2.5}` — filed as Gap R.103 and re-measured as Gap R.67's, since the same dict written with no function around it prints
+`{'k': 2.5}` on all three engines), and `min`/`max` with two arguments refusing in the interpreter while the
 compiled leg and CPython answer (Gap R.104).
 
 The element of a comprehension over a container the program built is free to **branch**, and the loop had to
