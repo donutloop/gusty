@@ -189,3 +189,79 @@ func TestMisParsedShapeIsNotAcceptedAnymore(t *testing.T) {
 		t.Fatalf("the comprehension's element should be a set literal, got %s", shape(lit.Elems[0]))
 	}
 }
+
+// TestComprehensionOverAOneKindContainerTagsItsElement is ADR 0244's rule about the element, measured
+// on both engines: a comprehension that walks a container registers the list it builds with the kind
+// its slots hold, so the container and one of its slots tell the same story.
+//
+// The row that motivated this is quieter than the exit-2 family and just as wrong: the element *is*
+// the loop variable, the loop's own facts about it (`internedVars`) are gone by the time the result is
+// bound, and the list was registered as a list of numbers. `print(out)` asked the object and printed
+// ['a']; `print(out[0])` asked the compiler and printed 0. Every row here therefore prints the
+// container and reads a slot of it, because a half-set pair is exactly what the table cannot see.
+func TestComprehensionOverAOneKindContainerTagsItsElement(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"grown_text_list", "names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names]\nprint(out)\nprint(out[0])\n", "['a', 'b', 'c']\na\n"},
+		{"grown_text_list_every_slot", "names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names]\nprint(out[0])\nprint(out[1])\nprint(out[2])\n", "a\nb\nc\n"},
+		{"grown_text_list_filter", "names = []\nnames.append(\"a\")\nnames.append(\"b\")\nout = [n for n in names if n == \"a\"]\nprint(len(out))\nprint(out[0])\nprint(out)\n", "1\na\n['a']\n"},
+		{
+			// A set's iteration order is the runtime's own business (CPython's even moves with the
+			// hash seed), so this row asks length and membership rather than the printed list.
+			"text_set_element",
+			"sa = {\"a\", \"b\"}\nout = [n for n in sa]\nprint(len(out))\nprint(1 if \"a\" in out else 0)\nprint(1 if \"z\" in out else 0)\n",
+			"2\n1\n0\n",
+		},
+		{"dict_keys_all_text", "d = {}\nd[\"a\"] = 1\nd[\"b\"] = 2\nout = [k for k in d]\nprint(out)\n", "['a', 'b']\n"},
+		{"dict_values_all_text", "d = {}\nd[\"a\"] = 1\nout = [v for v in d]\nprint(out)\nprint(out[0])\n", "['a']\na\n"},
+		{"grown_int_list", "xs = []\nxs.append(1)\nxs.append(2)\nout = [x * 2 for x in xs]\nprint(out)\nprint(out[1])\n", "[2, 4]\n4\n"},
+	} {
+		out, err := InterpreterRun(tc.src)
+		if err != nil {
+			t.Fatalf("%s: interpreter: %v", tc.name, err)
+		}
+		if out != tc.want {
+			t.Errorf("%s: interpreter printed %q, want CPython's %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+		}
+		res, cerr := Compile(tc.src)
+		if cerr != nil {
+			t.Fatalf("%s: compiled backend refused: %v", tc.name, cerr)
+		}
+		if got := runIR(t, res.IR); got != tc.want {
+			t.Errorf("%s: compiled ran %q, want CPython's %q\nsrc: %s", tc.name, got, tc.want, tc.src)
+		}
+	}
+}
+
+// TestComprehensionOverAMixedContainerRefusesItsUntaggedLoop is Gap R.76 in the library path. The
+// compiled backend's comprehension loop loads its variable without its tag, so iterating a container
+// whose slots mix kinds would print the interned index or the box handle where CPython prints the
+// element — [1, 0, 0] for {1, "a", None}, [0, 1] for a dict's text keys. It refuses instead, naming
+// the missing tag, and says which questions about that container it does answer. The interpreter,
+// which has real values, answers them all; both facts are pinned here so neither side can drift into
+// the other's failure mode.
+func TestComprehensionOverAMixedContainerRefusesItsUntaggedLoop(t *testing.T) {
+	for _, tc := range []struct{ name, src, want, refusal string }{
+		{"mixed_list", "xs = []\nxs.append(1)\nxs.append(\"a\")\nout = [x for x in xs]\nprint(out)\n", "[1, 'a']\n", "iterating a list whose elements are of more than one kind needs a tagged loop variable"},
+		{"mixed_set", "sa = {1, \"a\", None}\nout = [x for x in sa]\nprint(len(out))\nprint(1 if \"a\" in out else 0)\nprint(1 if None in out else 0)\n", "3\n1\n1\n", "iterating a set whose elements are of more than one kind needs a tagged loop variable"},
+		{"mixed_set_grown", "sa = set()\nsa.add(1)\nsa.add(\"a\")\nout = [x for x in sa]\nprint(out)\n", "[1, 'a']\n", "iterating a set whose elements are of more than one kind needs a tagged loop variable"},
+		{"mixed_dict_keys", "d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = [k for k in d]\nprint(out)\n", "['a', 2]\n", "iterating a dict whose elements are of more than one kind needs a tagged loop variable"},
+		{"mixed_dict_values", "d = {1: \"x\", \"k\": 2}\nout = [v for v in d]\nprint(out)\n", "[1, 'k']\n", "iterating a dict whose elements are of more than one kind needs a tagged loop variable"},
+		{"compile_time_list_as_iterable", "xs = [1, \"a\", None]\nout = [x for x in xs]\nprint(out)\n", "[1, 'a', None]\n", "kept as a compile-time constant"},
+	} {
+		out, err := InterpreterRun(tc.src)
+		if err != nil {
+			t.Fatalf("%s: interpreter: %v", tc.name, err)
+		}
+		if out != tc.want {
+			t.Errorf("%s: interpreter printed %q, want CPython's %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+		}
+		_, cerr := Compile(tc.src)
+		if cerr == nil {
+			t.Errorf("%s: compiled backend answered a half-tagged element (Gap R.76)\nsrc: %s", tc.name, tc.src)
+			continue
+		}
+		if !strings.Contains(cerr.Error(), tc.refusal) {
+			t.Errorf("%s: refusal %q does not name %q", tc.name, cerr.Error(), tc.refusal)
+		}
+	}
+}

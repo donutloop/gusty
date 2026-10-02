@@ -69,20 +69,27 @@ func TestStringSubscriptPrintsTextInTheInterpreter(t *testing.T) {
 	}
 }
 
-// TestPrintingAnElementOfAFreshComprehensionListIsPinned: `out = [n for n in names if n == "a"]`
-// followed by `print(out[0])` answers the index (0, the first interned string) where every oracle
-// says `a`. The element-kind fact is present when the list has been walked with `for` first and
-// absent when it has not, so the same program differs by a statement of position; recorded as
-// roadmap Gap R.46 rather than smoothed over, and pinned at what the compiler actually does.
-func TestPrintingAnElementOfAFreshComprehensionListIsPinned(t *testing.T) {
+// TestPrintingAnElementOfAFreshComprehensionListMatchesCPython is Gap R.46's pinned divergence, and it
+// is now a parity case, which is what the pin asked for: `out = [n for n in names if n == "a"]` and
+// `print(out[0])` used to answer 0 — the first interned string's *index* — because the element *is*
+// the loop variable, the loop's own facts about it are gone by the time the result is bound, and the
+// list was registered as a list of numbers. `print(out)` asked the object and printed ['a'] while
+// `print(out[0])` asked the compiler and printed 0. ADR 0244's rule about the element sets both halves
+// of ADR 0241's pair (the object's slot tag and the variable's element kind) from the one thing still
+// in scope — the container being iterated — so the two reads agree. Pinned here on the compiled
+// engine, where the divergence lived, and cross-checked against CPython.
+func TestPrintingAnElementOfAFreshComprehensionListMatchesCPython(t *testing.T) {
 	src := "names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names if n == \"a\"]\nprint(len(out))\nprint(out[0])\n"
 	path := writeSrc(t, t.TempDir(), "comp_elem.gy", src)
+	if py, ok := cpythonOut(t, path); ok && py != "1\na\n" {
+		t.Fatalf("the expectation is not CPython's: %q", py)
+	}
 	out, code := cliRunCode(t, "--aot", path)
 	if code != 0 {
 		t.Fatalf("aot exited %d:\n%s", code, out)
 	}
-	if out != "1\n0\n" {
-		t.Fatalf("aot printed %q — the pinned index-printing divergence (Gap R.46) has changed; if this is now \"1\\na\\n\" make it a parity case", out)
+	if out != "1\na\n" {
+		t.Fatalf("aot printed %q, want CPython's \"1\\na\\n\" (the pinned index-printing divergence of Gap R.46 is meant to be gone)", out)
 	}
 }
 

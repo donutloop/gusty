@@ -41,6 +41,15 @@ xs = [x + 1 for x in [1, 2]]
 print(xs[0], xs[0] + 1)          # 2 3        — an integer element still does integer things
 ```
 
+**What the loop variable knows** (ADR 0244, Gap R.46, Gap R.76). An element that *is* the loop variable
+carries its kind into the list it builds — asked of the container being iterated, because the loop
+variable's own facts are gone by the time the result is bound. That is what makes `print(out)` and
+`print(out[0])` agree on `['a']` and `a` instead of one printing text and the other the interned index.
+Iterating a container whose slots hold **more than one kind** — `[x for x in {1, "a", None}]` — is a
+refusal on the compiled backend, not a list of small integers: the comprehension's loop variable is
+still loaded rather than tagged the way `for` tags its own, and the refusal names the tag it needs and
+the questions about that container it can already answer.
+
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
 Sequence slicing is supported on strings and lists in both the interpreter and
@@ -1823,6 +1832,46 @@ lowering, which allocates a heap object and writes each slot with its tag. Set c
 unroll the iteration and deduplicate folded elements; dict comprehensions fold key/value pairs.
 Both are usable with `len(...)` via the `compLen` map, mirroring the interpreter's semantics. A
 comprehension whose iterable is a runtime container walks it with the same real loop `for` uses.
+
+**A brace display ends at its brace, and a comprehension's element is one value**
+**(both engines) (ADR 0244)** — Two rules, one row of output. *A `{…}` display* — a
+set or dict literal — *ends at its `}`*: a `for` written after the closing brace
+belongs to whatever encloses the display, not to the display itself. The parser
+used to read `for` after `}` unconditionally, so `[{1,2} for x in [1]]` parsed as a
+list holding one set comprehension, `[{x} for x in [1,2]]` collapsed to `[3, 3]`
+(one shared object appended twice), and — the reason this was not merely cosmetic —
+`{1,2} for x in y` was *accepted* where Python raises `SyntaxError: invalid
+syntax`. A `{…}` display in an expression now only takes a trailing `for` when it
+is not sitting in a `[…]` element position, which is exactly the call-argument form
+`len({x*x} for x in xs)` that needs the display to stay open. (That form's *answer*
+is still ours rather than CPython's — CPython raises `TypeError: object of type
+'generator' has no len()` there, and matching it would mean rejecting the
+`f(<expr> for x in it)` call form the conformance corpus uses; ADR 0244 records it
+as a deliberately unpaid divergence rather than a silent one.)
+
+*A comprehension's element is compiled as one value*, payload and tag written
+together through the same door `xs.append(v)` uses, so an element that is itself a
+container, a float, `None` or text arrives as one object rather than as whatever
+the compiler's most convenient global happened to be. `[[1,2] for x in [1]]`
+prints `[1, 2]` where it printed an interned string's characters, `[1.5 for x in
+[1]]` prints `[1.5]` where it printed `[1]` (a box *handle* read as an int),
+`[None for x in [1]]` prints `[None]` where it printed `[0]`, and `["a" for x in
+[1]]` prints `['a']` where `print(xs)` wrote bare `a` — the fold had interned the
+*variable*'s row as a string while its element was a list. The fold that turns a
+constant-seeded comprehension into an inline literal may no longer answer a value
+question with a truthiness answer: an element that folds to an integer it did not
+literally contain (`None`, text, a float) is compiled through the runtime loop
+instead, which tags it correctly. An element that *is* the loop variable registers
+the list it builds with the kind its slots hold — asked of the container being
+iterated, not of the loop variable, whose own facts die with the loop — so
+`print(out)` and `print(out[0])` give one answer (this closes Gap R.46, whose pin
+at the wrong output is now a parity case). What refuses, honestly and naming
+itself: iterating a container whose slots hold **more than one kind** (the
+comprehension's loop variable is loaded, not tagged the way `for` tags its own —
+the refusal names the missing tag and the questions it does answer; answering it
+is L11.2's tagged loop variable, Gap R.76), a comprehension over a name the
+compiler kept as a compile-time list, and a comprehension whose *filter* reads a
+container slot — the `cannot reach into …'s slots` refusal rather than a guess.
 
 Comprehension results are **indexable** exactly like their literal
 counterparts, resolved at codegen time:

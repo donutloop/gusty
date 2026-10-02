@@ -144,6 +144,15 @@ one write — the rule `xs.append(v)` already followed — so `[[1, 2] for x in 
 than the inner list's address, `[1.5 …]` prints `[1.5]` rather than a box handle, and `[None …]` prints
 `[None]` rather than the `0` that `if None:` folds to (ADR 0244).
 
+What the loop variable knows is part of the same rule: an element that *is* the loop variable carries its
+kind into the list it builds, and it asks the **container being iterated** — not the loop variable, whose
+facts are gone once the loop closes — so `print(out)` and `print(out[0])` tell one story (`['a']` and `a`)
+instead of one printing text and the other printing the interned index (Gap R.46, closed). Iterating a
+container whose slots hold more than one kind is a refusal on the compiled backend rather than a list of
+small integers: `[x for x in {1, "a", None}]` used to print `[1, 0, 0]` and `[k for k in d]` printed a
+dict's interned key indices; the refusal now names the tag the comprehension's loop variable still needs
+— the one `for` already carries — and says which questions about that container it answers (Gap R.76).
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict

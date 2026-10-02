@@ -4165,8 +4165,48 @@ only worth having if you follow it to the read: the fix sets the object's bit **
 variable tagged, and the integration table asserts both prints, which is the assertion that would have
 caught the half-fix.
 
-**What remains open is named in Gap R.46**, whose row is narrowed rather than closed:
-`names = ["a","b"]; names.append("c"); out = [n for n in names if n == "a"]; print(out[0])` still answers
-`0`, because promotion to mixed clears the `listElemStr` fact the loop variable's kind came from. The
-pre-change binary answers `0` too, so it is not fallout from this change — it is the next shape, and it
-wants the iterated object's *tag array* asked rather than the compile-time kind map.
+**What was still open is closed.** Gap R.46's remaining shape —
+`names = ["a","b"]; names.append("c"); out = [n for n in names if n == "a"]; print(out[0])`, which answered
+`0`, the interned index of `"a"` — needed the element's kind asked of the **iterated object** rather than
+of the loop variable, whose `internedVars` facts are scoped to the loop and gone by the time the result
+is bound. `compElemPrintsAsText` asks the container that is still in scope (`listElemStr`/`setElemStr`/
+`dictKeyStr` of the iterable's name), so the bound list registers with the kind its slots hold and the
+two reads — `print(out)` from the object, `print(out[0])` from the compiler — agree. The integration
+test that used to pin the wrong output (`1\n0\n`) is now the parity case it asked to become.
+
+### Gap R.76 — a comprehension over a mixed **set or dict** printed the machine word (found 2026-10-02 while measuring ADR 0244's element rule, closed the same cycle)
+
+| program | CPython | compiled, before | compiled, now |
+|---|---|---|---|
+| `sa = {1, "a", None}` → `out = [x for x in sa]` → `print(out)` | `[1, 'a', None]` | `[1, 0, 0]` | refusal: *iterating a **set** whose elements are of more than one kind needs a tagged loop variable…* |
+| `sa = set(); sa.add(1); sa.add("a")` → `print([x for x in sa])` | `[1, 'a']` | `[1, 0]` | refusal, naming the set |
+| `d = {}; d["a"] = 1; d[2] = "b"` → `out = [k for k in d]` | `['a', 2]` | `[0, 1]` | refusal, naming the dict |
+| `d = {1: "x", "k": 2}` → `out = [v for v in d]` | `[1, 'k']` | `['k', 'x']` | refusal, naming the dict |
+
+The last row is the one that shows how much the wrong answer was worth: iterating a dict bound its
+**keys** into the list while the program asked for its values, and dressed them in whatever the key
+row's interned index happened to be. A list of small integers is a plausible-looking output for a
+comprehension; nothing in the run tells you two of the elements were supposed to be text.
+
+The cause was one registry. ADR 0241 tags the loop variable of a `for` over a mixed container, and the
+guard that kept the *comprehension* loop — which never caught up — from answering anyway consulted
+`mixedLists` alone. A set's slots are registered in `mixedSets`, a dict's in `mixedDicts`, and neither
+was asked, so those two walked straight into the plain load and printed payloads with no tag to make
+them mean anything. The zeros are exactly what ADR 0238…0241 keep saying they are: an interned index and
+a fold's integer, wearing numbers. All three container kinds now go through the one door, which says
+which tag is missing and which questions about the container it can already answer (`print`, `len`,
+`==`). The answer itself needs L11.2's tagged comprehension loop variable, which is the same binding
+`for` performs.
+
+**The probe that nearly deleted the guard is the process lesson.** The guard looked dead: a build with a
+`println` at the top of it stayed silent across `./pkg/lang` and `./integration`, and hand-run probes of
+the four programs above printed `[1, 'a', None]`, `['a', 2]` and friends — so the guard was deleted on
+the theory that a door no corpus row opens is a lie about what the compiler fears. It was not a lie, it
+was the only thing keeping those four honest, and the corpus never opened the door because *the corpus
+has no mixed-kind comprehension in it* — which is what the row is for. The hand-run probes were worse
+than useless: `gustyc --file prog.gy` **defaults to the interpreter**, so every one of them measured the
+backend that had the right answer all along. Re-measured with `--aot` the numbers are the table above.
+Two rules come out of it, and both are now habits: a reachability probe has to run the backend the
+claim is about (say `--aot` out loud, never bare `--file`), and "no test covers this refusal" is evidence
+that the shape is untested, never evidence that the refusal is unnecessary.
+

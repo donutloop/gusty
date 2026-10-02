@@ -1267,6 +1267,45 @@ func dictWantsContainerKey(dl *DictLit) bool {
 	return false
 }
 
+// containerKindWord names a tracked container for a diagnostic. "collection" is the answer when the
+// compiler has lost even that, and a refusal that hedges about what it refused is a refusal nobody can
+// act on — the whole point of naming the container is that the programmer knows which one to look at.
+func containerKindWord(g *irGen, name string) string {
+	switch {
+	case g.mixedDicts[name] || g.runtimeDicts[name] || g.dictKeyStr[name]:
+		return "dict"
+	case g.mixedSets[name] || g.runtimeSets[name] || g.setElemStr[name]:
+		return "set"
+	case g.listVars[name] || g.mixedLists[name] || g.listElemStr[name]:
+		return "list"
+	}
+	return "collection"
+}
+
+// compElemPrintsAsText answers whether the elements of a runtime-built list comprehension are text,
+// and it asks the question of the **iterated object** rather than of the element expression. The
+// element of `[n for n in names]` is the loop variable, and the loop variable's own facts
+// (`internedVars[n]`) are scoped to the loop — by the time the assignment records `out`, they are
+// gone, and the list was bound as a list of numbers: `print(out)` reached the container printer, which
+// asks the object, and printed ['a'], while `print(out[0])` reached `%d` and printed the interned index
+// `0`. The iterated container is still there to be asked (roadmap Gap R.46, ADR 0244).
+func (g *irGen) compElemPrintsAsText(c *Comp) bool {
+	if c == nil || len(c.Elems) != 1 || c.ForVar == nil {
+		return false
+	}
+	nm, isName := c.Elems[0].(*Name)
+	if !isName || nm.Value != c.ForVar.Value {
+		// An element that computes something (`[n.upper() for n in names]`) is answered by the
+		// expression itself, which knows its own kind; this helper is only the identity case.
+		return false
+	}
+	it, isName := c.Iter.(*Name)
+	if !isName {
+		return g.exprIsString(c.Iter)
+	}
+	return g.listElemStr[it.Value] || g.setElemStr[it.Value] || g.dictKeyStr[it.Value]
+}
+
 // slotTagSelfDescribing reports whether a slot whose payload only means something through its tag
 // — a float box's handle, None's nothing, another container's handle — obliges the container to stop
 // claiming one element kind and let the printer and the lookup ask each slot instead. That is

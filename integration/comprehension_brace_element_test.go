@@ -171,3 +171,183 @@ func TestComprehensionFailuresMatchCPython(t *testing.T) {
 		})
 	}
 }
+
+// TestComprehensionOverAMixedContainerRefusesUntilItsLoopCarriesATag is Gap R.76, and it is the
+// compiled backend's half of ADR 0244's rule about the element.
+//
+// The comprehension's loop variable is loaded, not tagged: `for` over a container whose slots mix
+// kinds binds the element's tag alongside its payload (ADR 0241), and the comprehension loop never
+// caught up. So `out = [x for x in sa]` over {1, "a", None} printed [1, 0, 0] — three numbers, two of
+// them zeros, where CPython prints [1, 'a', None] — and iterating a dict printed its interned *key
+// indices* ([0, 1] where CPython prints ['a', 2]). The list case already refused; a set and a dict
+// answered anyway, because the guard that caught it looked only at the list registry. A wrong answer
+// that agrees with nothing is worth less than a refusal that names the missing tag, so all three
+// containers now go through the same door, and the rows below are the answer it gives. The work that
+// retires them is L11.2's tagged loop variable.
+func TestComprehensionOverAMixedContainerRefusesUntilItsLoopCarriesATag(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"mixed_list",
+			"xs = []\nxs.append(1)\nxs.append(\"a\")\nout = [x for x in xs]\nprint(out)\n",
+			"iterating a list whose elements are of more than one kind needs a tagged loop variable",
+		},
+		{
+			"mixed_list_through_a_name",
+			"xs = [1, \"a\"]\nxs.append(None)\nout = [x for x in xs]\nprint(out)\n",
+			"iterating a list whose elements are of more than one kind needs a tagged loop variable",
+		},
+		{
+			// The set and dict cases are what this row adds: before, only the list registry was
+			// consulted and these two printed interned indices as if they were elements.
+			"mixed_set",
+			"sa = {1, \"a\", None}\nout = [x for x in sa]\nprint(out)\n",
+			"iterating a set whose elements are of more than one kind needs a tagged loop variable",
+		},
+		{
+			"mixed_set_grown_at_runtime",
+			"sa = set()\nsa.add(1)\nsa.add(\"a\")\nout = [x for x in sa]\nprint(out)\n",
+			"iterating a set whose elements are of more than one kind needs a tagged loop variable",
+		},
+		{
+			"mixed_dict_keys",
+			"d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = [k for k in d]\nprint(out)\n",
+			"iterating a dict whose elements are of more than one kind needs a tagged loop variable",
+		},
+		{
+			"mixed_dict_values",
+			"d = {1: \"x\", \"k\": 2}\nout = [v for v in d]\nprint(out)\n",
+			"iterating a dict whose elements are of more than one kind needs a tagged loop variable",
+		},
+		{
+			// A different missing promise: a name the escape analysis kept as a compile-time list
+			// has no heap object to walk at all, and emitting the load is the module `llc` rejects.
+			"compile_time_list_as_iterable",
+			"xs = [1, \"a\", None]\nout = [x for x in xs]\nprint(out)\n",
+			"kept as a compile-time constant",
+		},
+		{
+			"literal_bound_text_list_read_by_slot",
+			"names = [\"a\", \"b\"]\nout = [n for n in names]\nprint(out[0])\n",
+			"kept as a compile-time constant",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "comp_tagged_refuse.gy", tc.src)
+			if py, ok := cpythonOut(t, path); !ok || py == "" {
+				t.Fatalf("this row is about a program CPython answers")
+			}
+			if out, code := cliRunCode(t, "--interp", path); code != 0 {
+				t.Fatalf("--interp exited %d on a program CPython answers: %s", code, out)
+			}
+			out, code := cliRunCode(t, "--aot", path)
+			if code == 2 {
+				t.Fatalf("--aot rejected the compiler's own module (exit 2): %s", cliRun(t, "--aot", path))
+			}
+			if code == 0 {
+				t.Fatalf("--aot answered %q where the answer is only half the value (Gap R.76)", out)
+			}
+			if combined := cliRun(t, "--aot", path); !strings.Contains(combined, tc.want) {
+				t.Fatalf("refusal %q does not name %q", combined, tc.want)
+			}
+		})
+	}
+}
+
+// TestComprehensionOverAOneKindContainerMatchesCPython is the same shape with the mixed kinds taken
+// out, and it works on both engines: an element that *is* the loop variable has to leave the bound
+// list registered with the kind its slots hold. It used to be registered as a list of numbers, so
+// `print(out)` asked the object and printed ['a'] while `print(out[0])` asked the compiler and printed
+// 0 — two answers to one question. ADR 0241's pair (mark the object *and* the variable) is what the
+// rows below check, each printing the container and reading a slot of it.
+func TestComprehensionOverAOneKindContainerMatchesCPython(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"grown_text_list",
+			"names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names]\nprint(out)\nprint(out[0])\n",
+			"['a', 'b', 'c']\na\n",
+		},
+		{
+			"grown_text_list_filter",
+			"names = []\nnames.append(\"a\")\nnames.append(\"b\")\nout = [n for n in names if n == \"a\"]\nprint(len(out))\nprint(out[0])\nprint(out)\n",
+			"1\na\n['a']\n",
+		},
+		{
+			"grown_text_list_every_slot",
+			"names = [\"a\", \"b\"]\nnames.append(\"c\")\nout = [n for n in names]\nprint(out[0])\nprint(out[1])\nprint(out[2])\n",
+			"a\nb\nc\n",
+		},
+		{
+			// A set of strings has no agreed iteration order — CPython's own varies with the hash
+			// seed — so this row asks length and membership, which is all of the element's identity
+			// that does not depend on the order.
+			"text_set_element",
+			"sa = {\"a\", \"b\"}\nout = [n for n in sa]\nprint(len(out))\nprint(1 if \"a\" in out else 0)\nprint(1 if \"z\" in out else 0)\n",
+			"2\n1\n0\n",
+		},
+		{
+			"dict_keys_all_text",
+			"d = {}\nd[\"a\"] = 1\nd[\"b\"] = 2\nout = [k for k in d]\nprint(out)\n",
+			"['a', 'b']\n",
+		},
+		{
+			"dict_values_all_text",
+			"d = {}\nd[\"a\"] = 1\nout = [v for v in d]\nprint(out)\nprint(out[0])\n",
+			"['a']\na\n",
+		},
+		{
+			"grown_int_list",
+			"xs = []\nxs.append(1)\nxs.append(2)\nout = [x * 2 for x in xs]\nprint(out)\nprint(out[1])\n",
+			"[2, 4]\n4\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "comp_onekind.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 2 {
+					t.Fatalf("%s rejected the compiler's own module (exit 2): %s", engine, cliRun(t, engine, path))
+				}
+				if code != 0 {
+					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want CPython's %q", engine, out, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestComprehensionOverAMixedContainerFailsLikeCPython — `xs = [1, "a"]; [x + 0 for x in xs]` is
+// CPython's `TypeError: can only concatenate str (not "int") to str`, and the interpreter raises it:
+// the tagged element reached the `+` as what it is. The compiled backend never gets that far, because
+// the same shape is the refusal above; the row only checks that neither engine exits 0 with a value,
+// and that the interpreter's own failure names what CPython names.
+func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"text_element_in_addition", "xs = [1, \"a\"]\nxs.append(2)\nout = [x + 0 for x in xs]\nprint(out)\n", "can only concatenate str"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "comp_mixed_trap.gy", tc.src)
+			py, pyCode := oracleTrap(t, path)
+			if pyCode == 0 || !strings.Contains(py, tc.want) {
+				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 0 {
+					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)
+				}
+				if code == 2 {
+					t.Errorf("%s exited 2 on a program the oracle rejects: %s", engine, cliRun(t, engine, path))
+				}
+			}
+			if combined := cliRun(t, "--interp", path); !strings.Contains(combined, tc.want) {
+				t.Errorf("--interp did not name %q: %s", tc.want, combined)
+			}
+		})
+	}
+}

@@ -5112,3 +5112,46 @@ assumed, and the worktree build is the cheapest way to get the answer. The call-
 (`len({...} for x in xs)` is a `TypeError` in CPython, `2` here) is recorded in the ADR instead of being
 asserted as if it were CPython's answer — a test that pins non-CPython behaviour without saying so is how
 a wrong answer becomes a requirement.
+
+## Gap R.46 + Gap R.76 — what a comprehension's loop variable knows (ADR 0244, continued)
+
+**The most expensive mistake of the cycle was a probe that ran the wrong backend.** A guard in
+`runtimeCompLoop` refused "a list whose elements are of more than one kind needs a tagged loop variable".
+It looked dead: a `println` probe stayed silent through `./pkg/lang` and `./integration`, and six hand-run
+programs printed the right answers, so I deleted it and wrote a comment calling the guard a lie about what
+the compiler fears. Re-measured with `--aot` spelled out, the same six programs print `[1, 0, 0]` for
+`[x for x in {1, "a", None}]` and `[0, 1]` for a dict's keys. The guard was the only thing standing between
+those outputs and the user. Two rules, both now habits: **`--file` defaults to the interpreter**, so a
+probe that does not name `--aot` is measuring the backend that has always been right; and "no corpus row
+reaches this refusal" means *untested*, never *unneeded* — the shape the row exists for is exactly the
+shape the corpus lacks, which is why the row exists.
+
+**The guard's real bug was one registry.** It asked `mixedLists` and nothing else. A set's slots are
+registered in `mixedSets`, a dict's in `mixedDicts`; neither was consulted, so those two walked the plain
+load and printed payloads with no tag to make them mean anything — the same lesson as ADR 0238…0241 in a
+new costume: an untagged read gives you the interned index and the fold's integer, and both look like
+plausible small integers in a printed list. Where an answer agrees with no oracle, refuse and name the
+missing thing; that is the exit-code contract's own logic, applied to values instead of modules.
+
+**Half the pair again, and this time it was the *variable*.** Gap R.46's `out = [n for n in names if n ==
+"a"]` printed `['a']` for `print(out)` and `0` for `print(out[0])`: the container knew its elements were
+text, the binding did not. The reason is scope, not forgetting — the loop variable's `internedVars` facts
+are alive inside the loop and gone when the result is assigned, so asking them at the assignment is asking
+a question nobody can any longer answer. Asking the **iterated container**, which is still in scope and
+still knows what its slots hold, is the fix. Generalisable: when a fact has to survive a scope, ask
+something that outlives it, and write the test so it reads the container *and* a slot of it — a table that
+only prints the container passes on the half-fix.
+
+**A pinned-divergence test told me the bug was fixed before I looked for it.**
+`TestPrintingAnElementOfAFreshComprehensionListIsPinned` asserted the *wrong* output (`1\n0\n`) and its
+failure message said "if this is now `1\na\n` make it a parity case". It went red the moment the binding
+was fixed, and promoting it was one edit. Pinning a known-wrong answer with instructions for its own
+promotion is the cheapest form of regression insurance this project has; the ones that only assert the
+right answer silently retire themselves when the bug is elsewhere.
+
+**Process notes.** Expectations were taken from `python3` before any table was written (a set-of-strings
+row had to go: CPython's own iteration order moves with the hash seed, so `{"a","b"}` is not a determinism
+oracle), and one trap row had to be rewritten when the oracle revealed it dies on `None + 0` *first*, with
+a different message than the one the table claimed — a trap table whose oracle does not fail as asserted is
+worse than no row, because it lazes a guess as a fact. Full suites green: `./pkg/lang`, `./integration`,
+`./cmd/gustyc` (42s / 155s / 48s).

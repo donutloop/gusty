@@ -81,19 +81,49 @@ display comprehension in this language; CPython builds a **generator** there, so
 the reading this language gives the form, and the divergence is named in the roadmap rather than asserted
 as CPython's answer.
 
-Gap R.46 also stays open with its remaining shape narrowed: `[n for n in names if n == "a"]` where
-`names` is a *run-time-grown* text list still prints `0`, because the loop variable's kind is lost when
-the iterable is promoted to mixed. Measured identical on the pre-change binary, so it is not a
-regression this change introduced — and it is not the same defect as the four above.
+Gap R.46's last shape closed with the same rule. `[n for n in names if n == "a"]` over a *run-time-grown*
+text list printed `0`, because the element *is* the loop variable and the loop variable's own facts
+(`internedVars`) are scoped to the loop: by the time the result is bound, nothing remembers that the
+elements were text, and the list was registered as a list of numbers. Asking the **iterated object** —
+which is still in scope, and still knows what its slots hold — is the whole fix. `print(out)` and
+`print(out[0])` now give `['a']` and `a`, and the integration test that pinned the old `0` is the parity
+case it asked to become.
+
+**A mixed iterable refuses rather than printing machine words** (Gap R.76). The comprehension's loop
+variable is a plain load; ADR 0241 tags the loop variable of a `for` over a container whose slots mix
+kinds, and the comprehension loop never caught up. A guard turned that into a refusal for mixed *lists*
+and only lists: it consulted `mixedLists`, never `mixedSets` or `mixedDicts`, so these two answered —
+`[x for x in {1, "a", None}]` printed `[1, 0, 0]` and `[k for k in d]` over `{"a": 1, 2: "b"}` printed
+`[0, 1]`, the interned key indices, while the program asked for values and got keys dressed as numbers.
+The decision is the same one the exit-code contract makes about a bad module: an answer that agrees with
+no oracle is worse than a refusal, because it is indistinguishable from success. The door now covers all
+three container kinds, names the container, and says what it can already answer (`print`, `len`, `==` on
+the container itself). The answer needs L11.2's tagged comprehension loop variable — the binding `for`
+already performs — and the rows below are written so that landing it turns refusals into parity, not
+silence.
+
+**Measured, and the measurement was almost wrong.** The guard above was deleted once, on the evidence
+that a `println` probe stayed silent across both test packages and that hand-run probes of the four
+programs printed the right answers. Both pieces of evidence were worthless: the corpus contains no
+mixed-kind comprehension (that is what the row is *for*), and `gustyc --file prog.gy` **defaults to the
+interpreter**, so the hand runs measured the backend that has always answered correctly. With `--aot`
+spelled out, the wrong answers appeared and the guard went back in. Two rules for this project's
+probing, learned the expensive way: name the backend in every probe, and read "no test reaches this
+refusal" as *untested*, never as *unneeded*.
 
 ## Consequences
 
 - `pkg/lang/comprehension_brace_element_test.go` — the AST shape table (the parser's own contract: two
   engines agreeing on output can still be agreeing on the wrong *program*), plus the interpreter rows.
-- `integration/comprehension_brace_element_test.go` — 21 programs × both engines against CPython with
-  the exit-2 guard, an honest-refusal table (the interpreter answers, the compiler refuses by naming the
-  promise), and a trap table for the positions CPython itself dies on.
-- Roadmap: Gap R.74 and Gap R.75 recorded as closed here; Gap R.46's row narrowed to the
-  runtime-grown-iterable shape it still fails, with the pre-change measurement attached.
-- `docs/language.md`: the comprehension section states the brace rule and that a comprehension's element
-  is a value — a container, a float, `None` or text — and is stored as one.
+- `integration/comprehension_brace_element_test.go` — the AST/element programs × both engines against
+  CPython with the exit-2 guard, an honest-refusal table (the interpreter answers, the compiler refuses
+  by naming the promise), a mixed-iterable refusal table for all three container kinds (Gap R.76), a
+  one-kind parity table for what the loop variable has to know (Gap R.46), and a trap table for the
+  positions CPython itself dies on.
+- `integration/string_value_test.go` — `TestPrintingAnElementOfAFreshComprehensionListMatchesCPython`,
+  the former Gap R.46 pin, promoted to a parity case against CPython.
+- Roadmap: Gap R.74 and Gap R.75 recorded as closed here; Gap R.46's row closed with the iterated-object
+  fix; Gap R.76 measured and closed here as the set/dict half of the mixed-iterable door.
+- `docs/language.md`: the comprehension section states the brace rule, that a comprehension's element
+  is a value — a container, a float, `None` or text — and is stored as one, and what the loop variable
+  knows about the container it came from.

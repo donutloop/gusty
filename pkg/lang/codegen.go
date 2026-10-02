@@ -8332,10 +8332,16 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 			return "", nestedContainerErr(el)
 		}
 	}
-	if nm, ok := c.Iter.(*Name); ok && g.mixedLists[nm.Value] {
-		// Iterating a mixed list has to bind the element's tag alongside its payload, which is
-		// the same tagged-loop-variable work `for` over such a list still needs.
-		return "", fmt.Errorf("codegen: iterating a list whose elements are of more than one kind needs a tagged loop variable (roadmap L11.2)")
+	// Iterating a container whose slots mix kinds has to bind the element's tag alongside its payload,
+	// and the comprehension's loop variable does not do that yet — `for` over such a container does
+	// (ADR 0241), the comprehension loop is still on the plain load. Reading a slot without its tag is
+	// how `out = [x for x in sa]` over {1, "a", None} printed [1, 0, 0] on the compiled backend: three
+	// numbers, two of them zeros, where CPython prints [1, 'a', None]; a dict iterated the same way
+	// printed its interned key indices ([0, 1] where CPython prints ['a', 2]). A refusal that names the
+	// missing tag is worth more than that answer, and the work that retires this door is L11.2's
+	// tagged loop variable.
+	if nm, ok := c.Iter.(*Name); ok && (g.mixedLists[nm.Value] || g.mixedSets[nm.Value] || g.mixedDicts[nm.Value]) {
+		return "", fmt.Errorf("codegen: iterating a %s whose elements are of more than one kind needs a tagged loop variable, so that each element's tag travels with its payload; print(...), len(...) and == on the container itself are answered (roadmap L11.2, Gap R.76)", containerKindWord(g, nm.Value))
 	}
 	// The iterable has to become a heap handle. A tracked container variable already has one;
 	// a variable the compiler kept as a compile-time list does not — its value is a folded
@@ -13134,7 +13140,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 							// instead of the list inside (roadmap Gap R.46, Gap R.75, ADR 0244).
 							g.mixedLists[nm.Value] = true
 							g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
-						} else if _, intern, kerr := g.heapElemKind(b, comp.Elems[0]); kerr == nil && intern {
+						} else if g.compElemPrintsAsText(comp) {
 							g.listElemStr[nm.Value] = true
 						} else {
 							g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
