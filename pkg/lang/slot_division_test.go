@@ -1,8 +1,10 @@
 package lang
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -295,6 +297,16 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 			"xs = []\nxs.append(6)\nn = 0\nn += xs[0] / 2\nprint(n)\n",
 			"writes a double into the i32 slot",
 		},
+		{
+			"the loop variable of a list whose slots are floats, used as a number",
+			"xs = []\nxs.append(6.0)\nprint([v / 2 for v in xs])\n",
+			"needs a tagged value",
+		},
+		{
+			"a comprehension whose iterable is a slot one level below",
+			"xs = []\nxs.append([4])\nprint([w / 2 for w in xs[0]])\n",
+			"comprehension iterable must be",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Compile(tc.src)
@@ -334,10 +346,10 @@ func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
 			"xs = []\nxs.append(6)\nprint([xs[0] / 2])\n", "[2]\n", "[3.0]\n", "roadmap Gap R.99", 0,
 		},
 		{
-			"a float element computed from the loop variable",
-			"xs = []\nxs.append(6)\nprint([v / 2 for v in xs])\n",
-			// the module llc rejects: the guard's `fdiv.ok` block is the real back edge
-			"PHI node entries do not match predecessors", "[3.0]\n", "roadmap Gap R.100", 2,
+			"the dict comprehension's value, computed as a double from the loop variable",
+			"xs = []\nxs.append(6)\nprint({v: v / 2 for v in xs})\n",
+			// the key travels with its tag, the value does not: the entry is printed as an int
+			"{6: 3}\n", "{6: 3.0}\n", "roadmap Gap R.105", 0,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -385,6 +397,225 @@ func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
 // honest (the raise sentence names the *other* operand's type, and with both sides in the object that is
 // one branch per pair of kinds), but it is a refusal of a program CPython answers, so it is recorded
 // rather than praised, and the row fails when the door grows the pair.
+// TestTrueDivisionOfARuntimeComprehensionLoopVariableAnswers is roadmap Gap R.100 paid. The element of a
+// comprehension over a container the program built is free to branch: `v / 2` emits its own zero guard
+// (ADR 0253) and a slot whose kind the object reports branches on the tag (ADR 0251). The loop's increment
+// therefore cannot live in the body block the induction `phi` names — it lives in a merge block with exactly
+// one predecessor, which is the block the `phi` names instead. Without it `llc` answered the most ordinary
+// program in this file with `PHI node entries do not match predecessors` and exit 2, where the oracle prints
+// `[3.0]`: the ADR 0138 lesson, one door over.
+func TestTrueDivisionOfARuntimeComprehensionLoopVariableAnswers(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"the shape the row was named for",
+			"xs = []\nxs.append(6)\nprint([v / 2 for v in xs])\n", "[3.0]\n",
+		},
+		{
+			"two elements, so the guard is on the loop's back edge twice",
+			"xs = []\nxs.append(6)\nxs.append(3)\nprint([v / 2 for v in xs])\n", "[3.0, 1.5]\n",
+		},
+		{
+			"the read sitting on the other side of the operator",
+			"xs = []\nxs.append(2)\nprint([6 / v for v in xs])\n", "[3.0]\n",
+		},
+		{
+			"through a filter that keeps the item",
+			"xs = []\nxs.append(6)\nprint([v / 2 for v in xs if v > 1])\n", "[3.0]\n",
+		},
+		{
+			"through a filter that drops it",
+			"xs = []\nxs.append(6)\nprint([v / 2 for v in xs if v > 9])\n", "[]\n",
+		},
+		{
+			"a set comprehension, whose add is a different call on the same loop",
+			"xs = []\nxs.append(6)\nprint({v / 2 for v in xs})\n", "{3.0}\n",
+		},
+		{
+			"a `for` whose body divides",
+			"xs = []\nxs.append(6)\nfor v in xs:\n    print(v / 2)\n", "3.0\n",
+		},
+		{
+			"a `for` that appends the quotient to another container",
+			"xs = []\nxs.append(6)\nxs.append(3)\nout = []\nfor v in xs:\n    out.append(v / 2)\nprint(out)\n", "[3.0, 1.5]\n",
+		},
+		{
+			"an operator that does not trap, on the same loop",
+			"xs = []\nxs.append(2)\nxs.append(4)\nprint([v % 3 for v in xs])\n", "[2, 1]\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("refused a program the oracle prints: %v", err)
+			}
+			assertNoForbiddenIR(t, tc.src, res.IR)
+			if out := runIR(t, res.IR); out != tc.want {
+				t.Errorf("%s: AOT ran %q, want CPython's %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+			}
+			if out := captureStdout(t, tc.src); out != tc.want {
+				t.Errorf("%s: interpreter printed %q, want CPython's %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+			}
+		})
+	}
+}
+
+// TestTrueDivisionOfARuntimeComprehensionLoopVariableTraps pins the other half of the same fix: the guard
+// the element carries is a *raise*, and a loop whose back edge was misnamed could only have it by never
+// emitting it. The wording is the pair's, chosen inside the arm that knows the operand kinds (ADR 0253),
+// and a `for` body's raise is catchable — the merge block is a block, not an exit.
+func TestTrueDivisionOfARuntimeComprehensionLoopVariableTraps(t *testing.T) {
+	for _, tc := range []struct{ name, src, class, message string }{
+		{
+			"the zero literal divisor inside the loop",
+			"xs = []\nxs.append(6)\nprint([v / 0 for v in xs])\n",
+			"ZeroDivisionError", "division by zero",
+		},
+		{
+			"the float wording, from a float written on the pair",
+			"xs = []\nxs.append(6)\nprint([v / 0.0 for v in xs])\n",
+			"ZeroDivisionError", "float division by zero",
+		},
+		{
+			"the divisor is the slot, and the slot is zero",
+			"xs = []\nxs.append(0)\nprint([6 / v for v in xs])\n",
+			"ZeroDivisionError", "division by zero",
+		},
+		{
+			"the trap is behind a filter that lets the item through",
+			"xs = []\nxs.append(6)\nxs.append(0)\nprint([v / 0 for v in xs if v > 1])\n",
+			"ZeroDivisionError", "division by zero",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ee := trapRun(t, tc.src)
+			if ee.ExnType != tc.class {
+				t.Errorf("interpreter raised %q, want %q (msg %q)", ee.ExnType, tc.class, ee.ExnMsg)
+			}
+			if ee.ExnMsg != tc.message {
+				t.Errorf("interpreter message =\n  %q\nwant\n  %q", ee.ExnMsg, tc.message)
+			}
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("the compiled backend refused a program the oracle traps on: %v", err)
+			}
+			out := runIRMayTrap(t, res.IR)
+			if !strings.Contains(out, "Traceback (most recent call last):") {
+				t.Errorf("the compiled program printed no traceback:\n%s", out)
+			}
+			if !strings.Contains(out, tc.message) {
+				t.Errorf("compiled message missing %q:\n%s", tc.message, out)
+			}
+		})
+	}
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"a `for` body that catches its own division trap",
+			"xs = []\nxs.append(6)\nfor v in xs:\n    try:\n        print(v / 0)\n    except ZeroDivisionError:\n        print(\"caught\")\n",
+			"caught\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if out := runIR(t, res.IR); out != tc.want {
+				t.Errorf("%s: AOT ran %q, want %q\nsrc: %s", tc.name, out, tc.want, tc.src)
+			}
+			if out := captureStdout(t, tc.src); out != tc.want {
+				t.Errorf("%s: interpreter printed %q, want %q", tc.name, out, tc.want)
+			}
+		})
+	}
+}
+
+// TestARuntimeComprehensionInductionPhiNamesTheBlockThatActuallyLoops is the IR half of Gap R.100, and it
+// is the check the module verifier makes for us — spelled out here so the failure names the loop rather
+// than a toolchain. Every induction `phi` of a comprehension loop must take its incoming counter from a
+// block whose terminator branches back to the block the `phi` lives in; before the merge block it named
+// the body block while the element's guard was the real back edge.
+func TestARuntimeComprehensionInductionPhiNamesTheBlockThatActuallyLoops(t *testing.T) {
+	src := "xs = []\nxs.append(6)\nxs.append(3)\nprint([v / 2 for v in xs])\n"
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	lines := strings.Split(res.IR, "\n")
+	phi := regexp.MustCompile(`^%\S+ = phi i32 \[ 0, %(\S+?) \], \[ %\S+, %(\S+?) \]$`)
+	checked := 0
+	for i, l := range lines {
+		m := phi.FindStringSubmatch(strings.TrimSpace(l))
+		if m == nil {
+			continue
+		}
+		checked++
+		// The block the phi lives in is the loop header: the nearest label above it.
+		header := ""
+		for j := i - 1; j >= 0; j-- {
+			if t := strings.TrimSpace(lines[j]); strings.HasSuffix(t, ":") && !strings.Contains(t, " = ") {
+				header = strings.TrimSuffix(t, ":")
+				break
+			}
+		}
+		if header == "" {
+			t.Fatalf("the phi on line %d has no containing block:\n%s", i+1, res.IR)
+		}
+		if !strings.HasPrefix(header, "comp.") {
+			continue // a runtime helper's own loop; this row is about the comprehension's
+		}
+		for _, pred := range []string{m[1], m[2]} {
+			target, ok := blockTerminator(res.IR, lines, pred)
+			if !ok {
+				t.Errorf("the phi names %%%s as a predecessor, but no such block is in the module:\n%s", pred, res.IR)
+				continue
+			}
+			if target != header {
+				where := fmt.Sprintf("its terminator goes to %%%s", target)
+				if target == "" {
+					where = "its terminator is a conditional branch, a return or a raise — not the unconditional back edge the entry list claims"
+				}
+				t.Errorf("the induction phi of %s names %%%s, and %s — llc calls this *PHI node entries do not match predecessors* (roadmap Gap R.100)",
+					header, pred, where)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatalf("no induction phi found — the comprehension loop stopped being a loop, so this row can no longer fail:\n%s", res.IR)
+	}
+}
+
+// blockTerminator returns the block an unconditional `br label %X` at the end of the named block goes to.
+func blockTerminator(ir string, lines []string, block string) (string, bool) {
+	start := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) == block+":" {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return "", false
+	}
+	target := ""
+	for _, l := range lines[start:] {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, ";") || strings.HasPrefix(t, "!") {
+			continue
+		}
+		if strings.HasSuffix(t, ":") && !strings.Contains(t, " = ") {
+			break // the next block; no terminator was found
+		}
+		if strings.HasPrefix(t, "br label %") {
+			target = strings.TrimPrefix(t, "br label %")
+			break
+		}
+		if strings.HasPrefix(t, "br ") || strings.HasPrefix(t, "ret ") || strings.HasPrefix(t, "unreachable") {
+			break
+		}
+	}
+	return target, true
+}
+
 func TestTrueDivisionOfTwoUnliteralisedSlotsIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct{ name, src, aotWant, oracle, gap string }{
 		{

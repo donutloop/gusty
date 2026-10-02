@@ -246,6 +246,18 @@ truncated `1` before it, Gap R.102), a dict literal whose value is a computed fl
 `0` for `{'k': 2.5}`, Gap R.103), and `min`/`max` with two arguments refusing in the interpreter while the
 compiled leg and CPython answer (Gap R.104).
 
+The element of a comprehension over a container the program built is free to **branch**, and the loop had to
+be told (ADR 0255, closing Gap R.100). `xs = []` / `xs.append(6)` / `print([v / 2 for v in xs])` was **exit
+2** — `llc` rejecting *PHI node entries do not match predecessors* — because the zero guard `/` carries
+(ADR 0253) ends the body in a block the induction `phi` had never heard of, while the `phi` went on naming
+the block the body *starts* in. The increment now lives in a latch block that every path the element can end
+on branches to, the entry list says where the back edge really comes from, and the program prints `[3.0]` on
+three engines: `[v / 0 for v in xs]` dies with `division by zero` (exit 3, behind a filter or in front of
+one), `{v / 2 for v in xs}` prints `{3.0}`, and a `for` whose body divides came with it. Two shapes from the
+same sweep are filed rather than absorbed, both silently-wrong answers with exit 0: the dict comprehension's
+value loses the double's tag (`{6: 3}` for `{6: 3.0}`, Gap R.105), and a loop variable whose slot holds text
+is divided by the static arm (`[0.0]` where every honest engine raises `TypeError`, Gap R.106).
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict

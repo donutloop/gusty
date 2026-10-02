@@ -5739,3 +5739,53 @@ that worked: re-`grep` a symbol before editing near it; `git status --porcelain`
 calls committed; `git worktree add /tmp/headcheck HEAD` to ask whether the *pushed* commit is green without
 touching the working tree; and `git log -S <symbol>` to learn that a "previous round's" change was never committed
 at all.
+
+---
+
+## Cycle: the latch block a comprehension loop's counter needs (ADR 0255, Gap R.100 closed; Gaps R.105–R.106 filed)
+
+**An emitter that hand-builds a loop has to ask its body where it finished.** The runtime comprehension named
+the body block in its induction `phi` because the body block used to be where the body ended. `/` grew a zero
+guard (ADR 0253) and a slot read grew a tag dispatch (ADR 0251), and suddenly the instructions that increment
+the counter and jump to the header lived two blocks down in `fdiv.ok6` — `llc` noticed, `xs.append(6)` +
+`print([v / 2 for v in xs])` exited 2, and the entry list was a sentence about a CFG that no longer existed.
+The fix is a latch block every element path branches to, which needs no state and cannot be forgotten; the
+alternative — a mutable current-block field every emitter must maintain — is correctness rented from memory,
+and ADR 0138 already billed that once.
+
+**Two spellings of one construct disagreeing is the cheapest bug report there is.** `[v / 0 for v in xs if v > 1]`
+trapped correctly while `[v / 0 for v in xs]` did not compile. The filtered path owned a merge block (`skip`)
+and so named an honest predecessor; the unfiltered path had none and guessed. When one variant of a construct
+works and a simpler one crashes, the difference is usually not the extra feature — it is that the extra
+feature forced the code to stop assuming. Same shape as the `for` statement working while the comprehension
+crashed: the `for` is unrolled, so it has no `phi` to misname.
+
+**A pin that cannot fail is a comment, so I broke the fix to check the pin.** The row that had pinned the
+`llvm-as` rejection was deleted (its own text said to), and the new IR row — parse the module, take each
+comprehension `phi`'s predecessors, and require each to end in a `br` back to the block holding the `phi` —
+was verified by replacing `backEdge = merge` with `_ = merge` and watching it fail with the loop named
+("the induction phi of `comp.cond2` names `%comp.body3`, whose terminator is a conditional branch"). Two of
+the nine parity rows also fail that way, but they fail as a verifier complaint; the IR row is the one that
+tells the next reader which block lied.
+
+**Expectations have to be measured before they are typed into a table.** Of twelve candidate rows for the new
+parity table, three were refusals, not answers (`xs.append(6.0)` then `[v / 2 for v in xs]` → "needs a tagged
+value"; `hs[0] + 1` over a comprehension-built list → the static-kind refusal; `[w / 2 for w in xs[0]]` →
+"comprehension iterable must be…"), so they went to the refusal table with the message each actually prints
+rather than to the parity table with the answer CPython prints. The three-engine sweep script is ~15 lines and
+has now caught wrong expectations in two consecutive cycles.
+
+**Filed-not-fixed rows are a queue, and the sweep that closes one usually finds the next.** Two came out of
+this one, both silently-wrong with exit 0, both into the open queue's priority-1 class: **Gap R.105** (the
+dict comprehension's value is stored without the tag its list-side twin carries, so `{v: v / 2 for v in xs}`
+prints `{6: 3}`) and **Gap R.106** (a loop variable bound from a container the compiler cannot see is read by
+the static arm, so `xs.append("a")` + `[v / 2 for v in xs]` prints `[0.0]` instead of raising — and the `for`
+spelling is wrong identically, which is how I could say the defect is the loop-variable binding and not the
+comprehension). Each is pinned by the row in `TestTrueDivisionInsideAComprehensionIsFiledNotFixed` that prints
+its wrong answer, so paying either has to break a test.
+
+**Process note — the exit-code table is where an agent reads the contract, so it is where a closed exit-2 class
+gets announced.** No flag, code or schema changed this cycle, and that is exactly the kind of change worth a
+line in `docs/operations.md`: a script that had a branch for "comprehension with a division → toolchain
+rejected the module, try the interpreter" should now stop taking it. The ADR records the same thing from the
+compiler's side, and the roadmap row records it from the queue's.

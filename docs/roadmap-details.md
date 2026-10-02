@@ -4846,7 +4846,8 @@ element's tag rather than at the loop. The fix is the one ADR 0238/ADR 0239 taug
 float, write the tag, let the printer and the read ask it — applied to `appendElem`, and the two rows in
 `TestTrueDivisionInsideAComprehensionIsFiledNotFixed` fail when it lands.
 
-### Gap R.100 — a comprehension element that traps moves the loop's back edge and `llc` rejects the module (measured 2026-10-02, left open)
+<a id="gap-r-100"></a>
+### Gap R.100 — a comprehension element that traps moves the loop's back edge and `llc` rejects the module (measured 2026-10-02, closed by ADR 0255)
 
 ```
 xs = []
@@ -4986,3 +4987,77 @@ list form, so a program that compiles and prints the oracle's answer refuses on 
 usual gap, and the more confusing of the two for anyone using the REPL. The interpreter's fold should be the
 codegen's: walk the arguments, compare with the shared truthiness/ordering helper, and render the winner in its
 own kind (which is what keeps `min(2.5, 1)` an `int`, the rule `numericFoldElems` exists for).
+
+
+### Gap R.100 — closed by ADR 0255: the loop's increment needs a latch block, not a guess
+
+```gusty
+xs = []
+xs.append(6)
+print([v / 2 for v in xs])   # CPython [3.0] · --interp [3.0] · --aot [3.0]  (was exit 2)
+```
+
+The runtime comprehension wrote its induction as
+
+```
+comp.pre1:   br label %comp.cond2
+comp.cond2:  %t3 = phi i32 [ 0, %comp.pre1 ], [ %cc2, %comp.body3 ]     ; ← the body, always
+             …
+comp.body3:  …the element…          ; `v / 2` emits `fcmp oeq … 0.0` + `br i1` here
+fdiv.ok6:    …append…; %cc2 = add i32 %t3, 1;  br label %comp.cond2
+```
+
+and that entry list is a lie the moment the element branches: the block that actually jumps back to the
+header is `fdiv.ok6`, not `comp.body3`, and `llc` says so — *PHI node entries do not match predecessors*,
+exit 2, on the most ordinary program in the file. The filter path had never shown it because it already
+owned a merge block: both arms of `br i1 …, keep, skip` end by branching to `skip`, so `skip` was already
+the one predecessor the `phi` could name honestly. The unfiltered path had no such block and was naming the
+block the body *starts* in.
+
+The fix is therefore the filter's own shape, used always: the increment moves into a fresh `comp.merge`
+block, every path the element can end on branches to it, and the `phi` names **that**. One predecessor, one
+terminator, and the entry list says what the CFG does. This is ADR 0224's lesson (a `phi` must name the
+predecessor the edge actually comes from) met one door over from where it was learned, and it was askable at
+all only because ADR 0253 made a guard report the block it ends in: an emitter that hand-builds a loop has
+to ask where its body finished, not assume.
+
+What the row now pins instead of the rejection: nine element shapes on both engines (one element, two, the
+slot as divisor, the filter keeping and dropping, a set comprehension, a `for` body that divides, a `for`
+that appends the quotient, a non-trapping operator on the same loop), four raises that must be **raised**
+with the pair's own `ZeroDivisionError` wording behind and in front of a filter, a catchable raise in a `for`
+body, and an IR row that reads the module's own terminators to check the `phi`'s entry list — the check
+`llc` makes, spelled so the failure names the loop. The row that had pinned the rejection printed its
+instructions ("this row is the pin") and was deleted on the day it stopped failing.
+
+<a id="gap-r-105"></a>
+### Gap R.105 — the dict comprehension's value loses the double's tag (OPEN, measured closing Gap R.100)
+
+```gusty
+xs = []
+xs.append(6)
+print({v: v / 2 for v in xs})   # CPython {6: 3.0} · --interp {6: 3.0} · --aot {6: 3}
+```
+
+The list comprehension on the same loop got it right — `rt_append_tagged` is handed payload *and* tag, and
+the printer renders `3.0` — while `rt_dict_put_tagged` is handed the key's tag honestly and the value's
+absent, so the slot prints as the int 3. The pair is the whole story here (ADR 0238 gave a float element its
+box, ADR 0243 taught a numeric read to ask for it, ADR 0232 made the object let each slot speak); this is the
+dict's write side, one call away from Gap R.99's list-side row, and it is listed as a silently-wrong answer
+rather than a refusal because exit 0 is the failure mode that fools people.
+
+<a id="gap-r-106"></a>
+### Gap R.106 — a comprehension loop variable whose slot holds text answers instead of raising (OPEN, measured closing Gap R.100)
+
+```gusty
+xs = []
+xs.append("a")
+print([v / 2 for v in xs])   # CPython TypeError: … 'str' and 'int' · --interp raises · --aot [0.0]
+```
+
+The same program's subscript spelling (`xs[0] / 2`) raises CPython's sentence with the slot's real kind in
+it, because ADR 0253's door asks the tag. The loop variable does not go through that door: the container's
+element kind is settled statically, so a text slot becomes an interned index and the index is divided — a
+number, printed, exit 0. The `for`-statement spelling is wrong the same way (`for v in xs: print(v / 2)`
+prints `0.0`), which is the sign that this is the loop-variable binding and not the comprehension: it wants
+the object's **kind** where the read today asks only its tag, which is L11.1's own remaining sentence
+rather than a patch at the comprehension.

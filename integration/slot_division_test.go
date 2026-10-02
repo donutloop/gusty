@@ -235,3 +235,83 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 		})
 	}
 }
+
+// TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython is roadmap Gap R.100 paid, at the CLI:
+// `xs = []` / `xs.append(6)` / `print([v / 2 for v in xs])` was **exit 2** — `llc` rejecting
+// *PHI node entries do not match predecessors* — because the element's own zero guard (ADR 0253) made the
+// block that branches back to the loop header something other than the block the induction `phi` named.
+// The increment now lives in a merge block of its own, so the entry list and the predecessors agree and
+// the program prints `[3.0]` on three engines.
+func TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"the_shape_the_gap_was_named_for", "xs = []\nxs.append(6)\nprint([v / 2 for v in xs])\n", "[3.0]\n"},
+		{"two_elements", "xs = []\nxs.append(6)\nxs.append(3)\nprint([v / 2 for v in xs])\n", "[3.0, 1.5]\n"},
+		{"the_slot_is_the_divisor", "xs = []\nxs.append(2)\nprint([6 / v for v in xs])\n", "[3.0]\n"},
+		{"filter_keeps", "xs = []\nxs.append(6)\nprint([v / 2 for v in xs if v > 1])\n", "[3.0]\n"},
+		{"filter_drops", "xs = []\nxs.append(6)\nprint([v / 2 for v in xs if v > 9])\n", "[]\n"},
+		{"set_comprehension", "xs = []\nxs.append(6)\nprint({v / 2 for v in xs})\n", "{3.0}\n"},
+		{"for_body_divides", "xs = []\nxs.append(6)\nfor v in xs:\n    print(v / 2)\n", "3.0\n"},
+		{"for_appends_the_quotient", "xs = []\nxs.append(6)\nxs.append(3)\nout = []\nfor v in xs:\n    out.append(v / 2)\nprint(out)\n", "[3.0, 1.5]\n"},
+		{"remainder_instead_of_division", "xs = []\nxs.append(2)\nxs.append(4)\nprint([v % 3 for v in xs])\n", "[2, 1]\n"},
+		{"a_for_body_that_catches_its_own_trap", "xs = []\nxs.append(6)\nfor v in xs:\n    try:\n        print(v / 0)\n    except ZeroDivisionError:\n        print(\"caught\")\n", "caught\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "comp_division.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 2 {
+					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
+						engine, cliRun(t, engine, path))
+				}
+				if code != 0 {
+					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want CPython's %q", engine, out, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestTrueDivisionOfAComprehensionLoopVariableTrapsLikeCPython pins that the merge block did not swallow
+// the raise: the guard is inside the loop, the loop still returns to its header from one block, and the
+// class and sentence are the pair's (ADR 0253's rule about which `ZeroDivisionError` wording is earned).
+func TestTrueDivisionOfAComprehensionLoopVariableTrapsLikeCPython(t *testing.T) {
+	for _, tc := range []struct{ name, src, msg string }{
+		{"zero_literal_divisor_in_the_loop", "xs = []\nxs.append(6)\nprint([v / 0 for v in xs])\n", "ZeroDivisionError: division by zero"},
+		{"float_zero_literal_divisor", "xs = []\nxs.append(6)\nprint([v / 0.0 for v in xs])\n", "ZeroDivisionError: float division by zero"},
+		{"the_slot_is_the_zero_divisor", "xs = []\nxs.append(0)\nprint([6 / v for v in xs])\n", "ZeroDivisionError: division by zero"},
+		{"the_trap_is_behind_a_filter_that_keeps_the_item", "xs = []\nxs.append(6)\nxs.append(0)\nprint([v / 0 for v in xs if v > 1])\n", "ZeroDivisionError: division by zero"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "comp_division_trap.gy", tc.src)
+			py, pyCode := oracleTrap(t, path)
+			if pyCode == 0 || !strings.Contains(py, tc.msg) {
+				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 0 {
+					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)
+				}
+				if code == 2 {
+					t.Errorf("%s exited 2 (compiler bug, ADR 0166) on a program the oracle dies on:\n%s", engine, out)
+				}
+				if code == 1 {
+					t.Errorf("%s refused at compile time what the oracle raises at run time:\n%s", engine, out)
+				}
+				combined := cliRun(t, engine, path)
+				if strings.Contains(combined, "codegen:") {
+					t.Errorf("%s refused at compile time what the oracle raises at run time:\n%s", engine, combined)
+				}
+				if !strings.Contains(combined, "Traceback (most recent call last):") || !strings.Contains(combined, tc.msg) {
+					t.Errorf("%s did not raise %q:\n%s", engine, tc.msg, combined)
+				}
+			}
+		})
+	}
+}

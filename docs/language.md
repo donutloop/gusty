@@ -432,6 +432,14 @@ this order:
    list, `rt_set_add_tagged` for a set (which dedups on the `(payload, tag)` pair, ADR 0232),
    `rt_dict_put_tagged` for a dict — and all three find their own slot, so an `if` filter that skips
    an item cannot leave a hole behind.
+   An element is free to **branch**: `v / 2` carries its own zero guard (ADR 0253) and a slot whose kind
+   the object reports branches on the tag (ADR 0251), so the counter's increment lives in a latch block of
+   its own — `comp.merge`, or the filter's `comp.skip` — that every path the element can end on branches
+   to, and the induction `phi` names *that* block instead of the body. The entry list has to say where the
+   back edge really comes from, which is the check `llc` makes and the reason `xs.append(6)` followed by
+   `print([v / 2 for v in xs])` was exit 2 until roadmap Gap R.100 (ADR 0255). A trapping element is
+   therefore a real trap: `[v / 0 for v in xs]` dies with `ZeroDivisionError: division by zero` and exit 3
+   inside the comprehension, behind a filter or in front of one.
 
 The result of either runtime path is an ordinary container: it can be assigned (`sqrs = [sq(x) for
 x in range(4)]`), printed, indexed, measured with `len`, iterated with `for`, and passed to a

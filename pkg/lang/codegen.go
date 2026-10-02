@@ -8708,11 +8708,21 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	// module, and the comparison bug underneath it (roadmap L11.8) has its own fix now
 	// (Gap R.42, ADR 0224).
 	backEdge := body
-	var keep, skip string
+	var keep, skip, merge string
 	if c.Cond != nil {
 		keep = g.newLabel("comp.keep")
 		skip = g.newLabel("comp.skip")
 		backEdge = skip
+	} else {
+		// The same merge the filter already needs, for the body that has no filter. An element is
+		// free to branch — `v / 2` emits its own zero guard (ADR 0253), and a slot whose kind the
+		// object reports branches on the tag (ADR 0251) — so the block the element instructions end
+		// in is not knowable here, and naming the body in the `phi` above built an entry list that
+		// did not match the loop's predecessors: `llc` rejected `[v / 2 for v in xs]` after
+		// `xs.append(6)` with *PHI node entries do not match predecessors*, exit 2 on a program the
+		// oracle prints `[3.0]` for (roadmap Gap R.100, ADR 0138's lesson one door over).
+		merge = g.newLabel("comp.merge")
+		backEdge = merge
 	}
 	b.WriteString(fmt.Sprintf("  %s = phi i32 [ 0, %%%s ], [ %s, %%%s ]\n", idx, pre, nextReg, backEdge))
 	cmp := g.newTmp()
@@ -8829,6 +8839,9 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		if err := appendElem(); err != nil {
 			return "", err
 		}
+		// Wherever the element's own branches left the block, the increment runs in a block with
+		// exactly one predecessor — the one the `phi` above names (Gap R.100).
+		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", merge, merge))
 	}
 	b.WriteString(fmt.Sprintf("  %s = add i32 %s, 1\n  br label %%%s\n%s:\n", nextReg, idx, cond, done))
 	if g.rtComps == nil {

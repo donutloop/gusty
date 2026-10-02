@@ -506,6 +506,13 @@ Two distinctions this table exists to make:
 name there is an execution failure (3), not a front-end one (1) — `--check`/`--build` are
 the modes where the checker gates.
 
+Code 2 is a bug report rather than a result, and the roadmap tracks each measured class of it
+until the class is empty (ADR 0166). One closed this round: a trapping element in a runtime
+comprehension — `xs.append(6)` then `print([v / 2 for v in xs])` — was `llc` refusing the module
+(exit 2), and now exits 0 with `[3.0]`, or 3 with the `ZeroDivisionError` the element earns
+(ADR 0255, Gap R.100). A script that was special-casing that rejection should stop: the program
+answers.
+
 ## Emitted IR
 
 Functions, control flow (`if`/`while`/`for`/`match`), the `pass` no-op
