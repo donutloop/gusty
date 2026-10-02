@@ -2726,6 +2726,70 @@ func (g *irGen) compareOperand(b *strings.Builder, e Expr, isContainer bool) (st
 	return g.value(b, e)
 }
 
+// textOrderOperands is the question the ordering door asks: is this an ordering between two values
+// the compiler can see are text? Equality of interned texts is an index comparison and is sound,
+// because interning is content-addressed; ordering is not, because an index records the order the
+// text *arrived*, not the order of its characters (roadmap Gap R.84).
+//
+// The two predicates below are the ones the print and operation paths already agree on (ADR 0224,
+// ADR 0229): an operand that renders as text is an operand that orders as text, or the two doors
+// disagree and one of them is quietly wrong.
+func (g *irGen) textOrderOperands(n *BinOp) bool {
+	switch n.Op {
+	case "<", "<=", ">", ">=":
+	default:
+		return false
+	}
+	return g.textOrderSide(n.L) && g.textOrderSide(n.R)
+}
+
+// textOrderSide is one operand of such an ordering: a literal text, or a value the printer renders
+// as text because its word is an index into @str_tab.
+func (g *irGen) textOrderSide(e Expr) bool {
+	if _, ok := g.stringVal(e); ok {
+		return true
+	}
+	return g.exprIsString(e) || g.printsAsInternedStr(e)
+}
+
+// emitTextOrder lowers `<`, `<=`, `>`, `>=` between two texts by asking strcmp which text comes
+// first, and returns the i32 0/1 the comparison is plus the i1 a condition can use directly.
+//
+// Before this, every one of these comparisons compared two indices into @str_tab: `print(1 if "b" >
+// "a" else 0)` printed 0, `a > b` printed whatever the declaration order said, and a sort wrote the
+// same sentence in its own helper (rt_sort's mode) while the operators never got it — so a program
+// could sort a list correctly and then compare two of its elements wrongly (roadmap Gap R.84).
+func (g *irGen) emitTextOrder(b *strings.Builder, n *BinOp) (string, string, error) {
+	l, err := g.value(b, n.L)
+	if err != nil {
+		return "", "", err
+	}
+	r, err := g.value(b, n.R)
+	if err != nil {
+		return "", "", err
+	}
+	return g.emitTextOrderOperands(b, n.Op, l, r)
+}
+
+// emitTextOrderOperands is the lowering, given the two registers the operands already live in: a
+// path that lowered them for its own purposes must not lower them twice, because an operand can
+// carry a print or a call (the rule ADR 0189 applies to a statically-decided comparison).
+func (g *irGen) emitTextOrderOperands(b *strings.Builder, op, l, r string) (string, string, error) {
+	pred, ok := map[string]string{"<": "icmp slt", "<=": "icmp sle", ">": "icmp sgt", ">=": "icmp sge"}[op]
+	if !ok {
+		return "", "", fmt.Errorf("codegen: %q is not an ordering (internal: emitTextOrderOperands)", op)
+	}
+	g.heapUsed = true // @str_tab and strcmp live in the heap block
+	ord := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_str_order(i32 %s, i32 %s)\n", ord, l, r)
+	i1 := g.newTmp()
+	fmt.Fprintf(b, "  %s = %s i32 %s, 0\n", i1, pred, ord)
+	g.markI1(i1)
+	res := g.newTmp()
+	fmt.Fprintf(b, "  %s = zext i1 %s to i32\n", res, i1)
+	return res, i1, nil
+}
+
 // isProvenScalarExpr reports what the compiler can show is *not* a container: a number, a string,
 // None. Container-vs-scalar is False the way Python says it is — but only when the other side is
 // proven, because an i32 with no static kind could be a handle, and two handles that differ are

@@ -266,6 +266,33 @@ strs:
   ret i32 %r2ok
 }
 
+; rt_str_order answers which of two interned texts comes first **in the text**, not in the program.
+;
+; An ordering has never been answerable from the payload: an index is the order the text arrived in
+; @str_tab, so print(1 if "b" > "a" else 0) — the first two texts the program mentioned intern to 0
+; and 1 — compared 0 with 1 and printed 0 where CPython prints 1 (roadmap Gap R.84). The same trap
+; is why rt_sort above takes a mode and compares strings with strcmp; the comparison operators were
+; never given the same question, so a > b, xs[0] < "c" and d["k"] >= "a" silently sorted texts by
+; whichever spelling the program happened to mention first.
+;
+; -1, 0, 1, the sign of strcmp. Equality of two interned texts stays an index comparison, because
+; interning is content-addressed (ADR 0173); ordering is the one thing that has to read the text.
+define internal i32 @rt_str_order(i32 %a, i32 %b) {
+entry:
+  %sa = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %a
+  %pa = load i8*, i8** %sa
+  %sb = getelementptr [4096 x i8*], [4096 x i8*]* @str_tab, i32 0, i32 %b
+  %pb = load i8*, i8** %sb
+  %c = call i32 @strcmp(i8* %pa, i8* %pb)
+  %islt = icmp slt i32 %c, 0
+  %br1 = zext i1 %islt to i32
+  %isgt = icmp sgt i32 %c, 0
+  %br2 = zext i1 %isgt to i32
+  %neg = sub i32 0, %br1
+  %r = add i32 %neg, %br2
+  ret i32 %r
+}
+
 ; rt_sort is an in-place insertion sort over a heap list. Stable, in the order-preserving sense
 ; that equal elements keep their relative positions — the compiled twin of the interpreter's
 ; sortElems, and the reason sorted(key=) will be able to sit on top of it later. The heap element
@@ -6499,6 +6526,16 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 			fmt.Fprintf(b, "  %s = icmp ne i32 %s, 0\n", t, eq)
 			return g.markI1(t), nil
 		}
+		// The same door as the value path: an ordering of two texts asks strcmp, because the
+		// operands at this point are two @str_tab indices and their order is the order the texts
+		// were interned (roadmap Gap R.84).
+		if g.textOrderOperands(n) {
+			_, i1, terr := g.emitTextOrder(b, n)
+			if terr != nil {
+				return "", terr
+			}
+			return i1, nil
+		}
 		l, err := g.value(b, n.L)
 		if err != nil {
 			return "", err
@@ -7255,6 +7292,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// `x in xs` compares against the words stored in the container, so a string needle
 		// must become its @str_tab index: passing @.strN to rt_contains(i32, i32) is the
 		// shape LLVM rejects (roadmap Gap I.2).
+		// An ordering of two texts is answered here, before the refusal below: the operands are
+		// already lowered, and the question is strcmp's, not the interned index's (roadmap Gap R.84).
+		if g.textOrderOperands(n) {
+			res, _, oerr := g.emitTextOrderOperands(b, n.Op, l, r)
+			if oerr != nil {
+				return "", oerr
+			}
+			return res, nil
+		}
 		// Arithmetic on a value that is really an index into the string table would compute a
 		// number from an address-like word (`s + 1` on a string parameter returned 1, where the
 		// interpreter raises TypeError). Refuse it as a compile diagnostic instead (Gap J.5).
@@ -7267,7 +7313,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				return g.printsAsInternedStr(e)
 			}
 			if (isStrOperand(n.L) || isStrOperand(n.R)) && n.Op != "+" {
-				return "", fmt.Errorf("codegen: operator %q on a string is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic and ordering on it have no meaning", n.Op)
+				// The message has to say what is missing rather than claim orderings on text have no
+				// meaning: an ordering of two texts the compiler can see is answered by strcmp since
+				// ADR 0248, and what reaches this line is arithmetic, or an ordering with an operand
+				// whose textness the compiler cannot prove — a parameter, typically, whose kind the call
+				// sites do not agree on in a way this pass can carry into the body (Gap R.38: a refusal
+				// that claims something false about the language is its own defect).
+				return "", fmt.Errorf("codegen: operator %q on a string (%s) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)", n.Op, exprSnippet(n.L))
 			}
 			if n.Op == "+" && (isStrOperand(n.L) || isStrOperand(n.R)) {
 				if _, ok := g.stringVal(n.L); ok {
@@ -7670,6 +7722,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			return "", fmt.Errorf("codegen: unsupported operator %q", n.Op)
 		}
 		if strings.HasPrefix(op, "icmp") {
+			// Two texts order by their characters, never by their interned index: the index records
+			// which spelling the program mentioned first, so every `<`/`>` on text had an answer that
+			// depended on the order of the source lines (roadmap Gap R.84). The operands are already
+			// lowered above, so the door takes their registers rather than lowering them a second time
+			// — an operand that prints must not print twice.
+			if g.textOrderOperands(n) {
+				res, _, terr := g.emitTextOrderOperands(b, n.Op, l, r)
+				if terr != nil {
+					return "", terr
+				}
+				return res, nil
+			}
 			// A comparison is a *value* (printable, storable, passable), so it
 			// returns the interpreter's i32 0/1; the i1 predicate stays internal
 			// (tracked in i1Vals) so a condition can use it without re-testing.

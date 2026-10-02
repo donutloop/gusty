@@ -165,7 +165,12 @@ container (ADR 0246). An equality asks the slot the same question the printer as
 so `xs[1] == "a"`, `xs[0] == xs[1]`, `xs[i] == "a"` over a position the program computes, and
 `d["k"] == [1, 2]` of a dict filled by assignment all answer CPython's answer instead of being refused,
 interned text stops equaling the number it is indexed by, and two float slots holding `1.5` finally
-compare equal rather than by box handle (ADR 0247, closing Gap R.79). What still refuses by naming
+compare equal rather than by box handle (ADR 0247, closing Gap R.79). An ordering reads the value
+too: `<`, `<=`, `>`, `>=` between two texts compares the bytes behind their interned indices, so
+`print(1 if "b" > "a" else 0)` is `1` compiled, interpreted and run under CPython — the index records
+which spelling the program mentioned first, and reading it as an ordering was the answer
+(ADR 0248, closing Gap R.84; equality stays an index comparison, because interning is
+content-addressed). What still refuses by naming
 itself: a slot used **as a number** on a container this pass cannot see, the nested read of a container
 built at run time (`xs[0][0]` after `xs.append([7, 8])`), an **ordering** comparison of such a slot
 (Gap R.82), and a comparison against an expression whose kind cannot be proven — which until this cycle

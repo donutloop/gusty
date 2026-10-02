@@ -786,8 +786,10 @@ the interpreter rather than failing in the verifier:
 - **concatenation of a runtime string** (`s + "!"`) — building a new string needs a buffer
   allocation the runtime does not have yet;
 - **string methods on a parameter** (`s.upper()`) — same reason;
-- **arithmetic or ordering on a string** (`s + 1`, `s < "z"`) — the interpreter raises
-  `TypeError`; compiled code refuses rather than computing with a table index;
+- **arithmetic on a string** (`s + 1`) — the interpreter raises `TypeError`; compiled code
+  refuses rather than computing with a table index. **Ordering is not in this list**: an
+  ordering of two texts is answered by `strcmp` on the bytes behind the index (ADR 0248), and
+  ordering a text against a number is a separate open trap (Gap R.85);
 - **a parameter used as both a string and a number** (`f("a")` and `f(7)`) — guessing would
   print `7` through the string table, so it stays a diagnostic.
 
@@ -2133,7 +2135,14 @@ reason (roadmap L11.7, ADR 0191).
 Ordering is defined per element kind, and both backends implement the same rules:
 numbers compare numerically (an int and a float mix fine, as Python's `<` does),
 and **strings compare by their text** — never by the interned index the value is
-stored as, which records the order the strings first appeared in the program.
+stored as, which records the order the strings first appeared in the program
+(ADR 0248: `print(1 if "b" > "a" else 0)` is `1` on both paths, and the same is true of
+`a > b` on two text variables, of a slot read, and of a comparison through a parameter;
+the sorter has compared by content since ADR 0173, and the operators were brought into
+line with it). Ordering a text against a number is a `TypeError` in Python, which the
+interpreter raises and the compiled backend still answers with a verdict — that is
+Gap R.85, not this rule. Equality of texts stays an index comparison, because interning
+is content-addressed (ADR 0173).
 A list whose elements are of more than one kind cannot be ordered: Python raises
 `TypeError: '<' not supported between instances of 'str' and 'int'`, the
 interpreter raises the same, and the compiled backend refuses with a message that
@@ -2259,9 +2268,10 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
 - Strings cross a function boundary in both backends: `greet("ada")` interns the argument and
   the callee receives the index (ADR 0174). What the compiled backend still cannot do is report
   itself rather than miscompile — concatenating a runtime string (`s + "!"`), a string method on
-  a parameter (`s.upper()`), arithmetic or ordering on a string, and a parameter used as both a
+  a parameter (`s.upper()`), arithmetic on a string, and a parameter used as both a
   string and a number. Each names the interpreter, which supports all four; see
-  § Strings across a function boundary.
+  § Strings across a function boundary. Ordering two texts is no longer one of them: an
+  interned index orders by `strcmp` on the text behind it (ADR 0248).
 - Strings are ordinary container elements in both backends (ADR 0173, ADR 0175): lists,
   dictionaries and sets of strings, written as literals (`["a"]`, `{"a": 1}`, `{"a", "b"}`) or
   built with `append` / `add` / item assignment, and printed the way Python renders `repr`.

@@ -4352,3 +4352,97 @@ be proven. What is owed is the answer, which needs a call to carry the pair a sl
 return kind per path, which is L11.7's "functions are values that compile" territory rather than a
 comparison-lowering patch. Until then the refusal is asserted in both suites so the wrong answer cannot
 sneak back as a regression.
+
+### Gap R.84 — an ordering of two texts compared their interned indices (measured and paid 2026-10-02, ADR 0248)
+
+    print(1 if "b" > "a" else 0)     # CPython 1 · --interp 1 · --aot 0 before ADR 0248
+
+    a = "b"
+    b = "a"
+    print(1 if a > b else 0)         # CPython 1 · --interp 1 · --aot 0 before ADR 0248
+
+A text value in the compiled backend is an index into `@str_tab`, and the index is handed out in the
+order the program mentions each spelling. Equality is safe under that representation — interning is
+content-addressed, so two equal texts are the same index, and that is what ADR 0173 bought — but an
+ordering is not: an index records arrival, not characters. Every `<`, `<=`, `>`, `>=` between two
+texts had the arrival answer, in both the value position and the condition position.
+
+The interesting part is that the fix already existed. `rt_sort` has taken a mode argument since ADR
+0173 and, for mode 1, compares two elements with `strcmp` rather than by payload, with the comment
+that sorting strings by payload "would sort them by arrival and look almost right until it did not".
+The sorter knew. The comparison operators were never given the same question, so a program could
+`sorted(xs)` correctly and then compare two of its elements wrongly — the two-doors shape this ledger
+keeps hitting, and the reason the ADR names one helper rather than one call site.
+
+Three lowering sites had to agree, not one: `value`'s comparison arm (which emitted
+`icmp sgt i32 %t1, %t2` on the two indices), the condition arm that reuses `cmpI1Op` to keep the `i1`
+for a branch, and — the one that hid the defect's shape — the string-operand guard that *refused*
+`later = a > b` with "operator ">" on a string is not supported in the AOT backend" while
+`print(1 if a > b else 0)` cheerfully answered the wrong thing. So the same comparison was a
+refusal in a `let` and a wrong answer in a `print`, and the fix had to hoist the door above the
+guard rather than patch the arm under it.
+
+Equality deliberately did **not** move to `strcmp`. It would be defensible for symmetry, but it pays a
+call to learn something the representation guarantees, and the pin in `text_order_test.go`
+(`TestTextEqualityIsStillAnIndexComparison`) is what keeps that asymmetry from being tidied away by a
+later cycle that "unifies" the two.
+
+### Gap R.85 — an ordering between kinds that do not order against each other gets a verdict (measured 2026-10-02, left open)
+
+    print(1 if "a" < 1 else 0)        # CPython TypeError · --interp TypeError · --aot 1
+    print(1 if 1 < "a" else 0)        # CPython TypeError · --interp TypeError · --aot 0
+    print(1 if None < "a" else 0)     # CPython TypeError · --interp TypeError · --aot 0
+    s = "a"
+    n = 1
+    print(1 if s < n else 0)          # CPython TypeError · --interp TypeError · --aot 1
+
+The interpreter is right here: it raises `TypeError: '<' not supported between instances of 'str' and
+'int'`, class and sentence, and `pkg/lang/slot_ordering_test.go` pins that so the two backends cannot
+drift apart about what traps. The compiled leg compares the two words it has — an interned index and an
+integer — and reports whichever way they happen to fall. That is Gap R.37's class exactly: a decision
+the compiler makes statically with no way to become a language event, which is why the row points at
+R.37 rather than pretending to be new.
+
+The shape of the fix is already sketched, because the ordering door written for ADR 0248 needed the
+classification anyway: an `orderKindOf` that sorts each operand into numeric / text / unorderable /
+unknown (a slot read placed by the tag its literal wrote, via `staticSlotTag`). Same family answers;
+different families raise through the door `lenOfTaggedSlot` already uses (`raiseTo(exnCode("TypeError"),
+...)` per kind, with the sentence built from `tagName`); an unknown family refuses by naming the tag. The
+first half of that is written and parked with the R.82 work, not in this commit, because it is a
+comparison-typing feature and ADR 0248 is a rendering-of-text fix.
+
+### Gap R.86 — a container orders against a container by its heap handle (measured 2026-10-02, left open)
+
+    xs = [2]
+    ys = [1]
+    print(1 if xs < ys else 0)        # CPython 0 · --interp 0 · --aot 1
+
+    xs = ["b"]
+    ys = ["a"]
+    print(1 if xs > ys else 0)        # CPython 1 · --interp 1 · --aot 0
+
+Python orders containers lexicographically and no Python answer ever depends on which object the
+allocator handed out first; here both rows depend on exactly that. Equality got the right helper long
+ago — `rt_container_eq` walks the slots and asks `rt_slot_eq` for each pair (ADR 0189) — and an ordering
+needs the walk with a sign instead of a boolean: an `rt_container_order` that pairs up slots, stops at
+the first pair that does not order, and returns -1/0/1. Until then the two directions are both pinned in
+the details rather than in a test, because one row alone would look like a passing program half the time
+(the first literal allocated is the smaller handle, so one of the two rows always agrees with CPython by
+accident).
+
+### Gap R.87 — two list literals compared for order make the compiler emit a module `llc` rejects (measured 2026-10-02, left open)
+
+    print(1 if [1, 2] < [1, 3] else 0)   # CPython 1 · --interp 1 · --aot: exit 2
+
+    llc-20: /tmp/gusty-jit-*/jit.ll:21:22: error: global variable reference must have pointer type
+      %t1 = icmp slt i32 @.lst1, @.lst2
+
+Exit 2 is not a refusal. Under ADR 0166's exit-code contract it means the compiler produced a module the
+toolchain rejects, and the program asked nothing exotic — a comparison of two list literals, the same
+question `==` answers through `rt_container_eq` and the same reason `containerOperand` exists (to keep
+`@.lstN` out of an `i32` slot, ADR 0166's global-in-a-parameter shape). The ordering door is the last
+comparison path that never learned either rule: equality was taught, ordering was not.
+
+This is filed separately from Gap R.86 on purpose. R.86 is a wrong answer, which is bad and quiet; this
+one is loud, and the fix is different — materialise both literals before the comparison, or refuse the
+shape honestly — but in neither case may the emitted module hand `@.lstN` to an `icmp`.

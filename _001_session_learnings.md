@@ -5279,3 +5279,85 @@ error three thousand lines from where you typed it — IR comments get no backti
 expectations for all 17 parity rows were taken from `python3` before any Go table existed, and one of
 them (`xs = [0, "zero"]`, does the number 0 equal the interned index of `"zero"`) is exactly the row that
 only an oracle makes you write. Suites green: `./pkg/lang`, `./integration`, `./cmd/gustyc`.
+
+## 0248 — an ordering of two texts asked the intern table the wrong question (Gap R.84, found by writing the table first)
+
+**The table found the bug, not a probe.** I sat down to continue the ordering half of L11.1 (Gap R.82:
+`xs[1] > "a"` on a container that mixes kinds) and wrote the parity rows before touching code, which is
+how every cycle here is supposed to work. The first run refused what I expected to refuse — and answered
+`0` for `xs = ["b", "a"]; print(1 if xs[0] > xs[1] else 0)`, where CPython says `1`. That row was not on
+any list: an ordering of two texts in the compiled backend was comparing **indices into `@str_tab`**, so
+`print(1 if "b" > "a" else 0)` printed 0. It had been in the shipped build the whole time, in every
+program that ever compared two strings.
+
+**The sorter knew; the operators never asked.** `rt_sort` has taken a mode argument since ADR 0173 and,
+for mode 1, compares two elements with `strcmp`, under the comment that ordering interned payloads
+"would sort them by arrival and look almost right until it did not". So `sorted(xs)` was right and
+`a > b` was wrong *in the same program* — this ledger's recurring two-doors shape, now with a written
+precedent for how to check: for any question a runtime helper answers, grep for the operators that ask
+it too.
+
+**One question had three lowering sites, and only two were wrong.** The `value` arm (which emitted
+`icmp sgt i32 %t1, %t2`), the condition arm that reuses `cmpI1Op` to keep an `i1` for a branch, and — the
+one that took the longest to find — the string-operand guard that *refused* `later = a > b` with
+*operator ">" on a string is not supported in the AOT backend*. So the identical comparison was a refusal
+in a binding and a wrong answer in a `print`, and patching the two `icmp` sites would have left the guard
+refusing a program the other two answer. The fix hoists the door **above** the guard and gives it the
+operands' registers, rather than lowering them again (an operand can carry a print — ADR 0189's rule).
+
+**Equality deliberately stayed on the index.** Two interned texts are equal exactly when their indices
+are (ADR 0173's content-addressing), so `==` pays nothing to stay where it is, and a test
+(`TestTextEqualityIsStillAnIndexComparison`) fails if a later cycle "unifies" the two comparisons for
+symmetry. The asymmetry is the point: ordering is the one thing an index cannot answer.
+
+**Table-first found three debts I had not gone looking for**, all recorded as fresh rows rather than
+absorbed into this one: Gap R.85 (`print(1 if "a" < 1 else 0)` prints `1` compiled where CPython and the
+interpreter raise `TypeError` — Gap R.37's class, the interpreter's side already correct), Gap R.86
+(`xs < ys` for two lists compares heap handles, so `[2] < [1]` answers `1`), and Gap R.87
+(`print(1 if [1, 2] < [1, 3] else 0)` emits `icmp slt i32 @.lst1, @.lst2`, `llc` rejects it, exit **2** —
+a compiler bug under ADR 0166, filed apart from R.86 because loud and quiet are different work).
+
+**I over-reached and had to put something back.** Mid-cycle I started writing the cross-kind classifier
+(`orderKindOf`, an `orderRefusal` naming the TypeError each pair deserves) inside the same worktree as
+the text-ordering fix. That is Gap R.85's feature, not R.84's, and bundling it would have made this
+commit two things. I cut it out (`python3` splice, not an `edit`, since the block was ~50 lines) and
+parked it with the R.85 row's *Next concrete action*, where the next cycle will find it already designed.
+The rule that saved the commit is AGENTS' own: one commit per feature.
+
+**The backtick lesson was already in this file and I tripped on it anyway.** Two separate
+`go build` failures came from backticks in the LLVM module's C comments — inside the raw string they end
+the string, three thousand lines from where they were typed. A recorded lesson that is not *applied* is
+not a lesson: IR comments get no backticks, and now I would add a build-time guard rather than re-learn
+it a third time.
+
+**An expectation I wrote from wishful Python-ness, not from the oracle.** I pinned
+`later = a > b; print(later)` as `True`, because CPython prints `True`. Both engines print `1` — a
+comparison lowers to the i32 0/1 in this backend until L11.1's "bools are values" row lands. The row now
+expects `1` with a comment saying who owes it. The oracle is where an expectation comes from; when the
+oracle and the language's own open debt disagree, the row records the debt, not the wish.
+
+**`max("b", "a")` is not this door's problem.** It refuses with *max expects one argument*, which is
+already Gap R.73 (two-argument `min`/`max`). Dropping the row and naming the row that owns it is cheaper
+than inventing a duplicate defect.
+
+Suites green: `./pkg/lang` (16 text-ordering rows × both engines, the slot-ordering parity/refusal/trap
+tables, the strcmp IR pins), `./integration` (20 oracle-checked programs), `./cmd/gustyc`.
+
+**A `Compile`-level refusal pin can go blind without anyone noticing.** `TestUnsupportedStringUsesStay
+Diagnostics` pinned `def f(s): return s < "z"` as a compile error. It stopped being one — not because the
+ordering was answered, but because a function *body* is lowered when the JIT reaches the call, so the
+diagnostic now leaves `Compile`'s view entirely: `Compile(src)` returns nil, the refusal arrives at run
+time from `jit:`. Same program, same exit class 1, same message at the CLI — and a unit pin that asserts
+`Compile` errors silently stops testing anything. Two consequences kept: refusals for programs that
+contain a function body are pinned in the **integration** package (where the CLI is run and exit codes are
+checked), and the unit table says so in its comment rather than keeping an assertion that can no longer
+fail. Found because my own change made the pin fire — the guard it guarded had changed wording, and the
+row's expectation was about a code path the test no longer reaches.
+
+**Rebuild before you probe, or you will file a defect that does not exist.** The CLI probes in this cycle
+ran `./gustyc`, and partway through I widened the door's text predicate — after which `def f(s): return s
+< "z"` answers, in both the condition and the print context. The stale binary still refused it, and I had
+already drafted a roadmap row for the "context-dependent classification" that the old build invented
+(Gap R.88, never filed). Two minutes of `go build -o gustyc ./cmd/gustyc` before each measurement round
+is cheaper than writing a defect into the tracker and having to delete it; a probe is only as current as
+the binary it runs, and this repo's probes all shell out to that binary rather than building from source.

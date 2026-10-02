@@ -901,7 +901,13 @@ tagged readers (`rt_dict_find`, `rt_dict_get_tagged`, `rt_dict_value_tag`,
 read, or a variable bound from one — is answered by `rt_payload_eq` too, the
 same equality `rt_slot_eq` uses to walk two containers, so a slot cannot answer
 `print` one way and `==` another (ADR 0247; the word-for-word `rt_mixed_eq` it
-used to use is gone from the module, and a test fails if it returns). A
+used to use is gone from the module, and a test fails if it returns). An
+ordering of two texts — `<`, `<=`, `>`, `>=` between two values the compiler can
+see are text, in either the value or the condition position — goes to
+`rt_str_order`, which compares the bytes behind the interned indices and returns
+-1/0/1; equality of texts stays an index comparison, because interning is
+content-addressed (ADR 0248, closing Gap R.84 — an index records the order a text
+was mentioned, and reading it as an ordering made `"b" > "a"` false). A
 container whose slots describe themselves is marked with
 `@rt_mark_estr(h, 8)`, which is what routes `rt_dict_print`/`rt_set_print` to
 the per-slot printers; a single-kind container does not set the bit and keeps
