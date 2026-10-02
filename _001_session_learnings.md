@@ -5617,3 +5617,69 @@ it; the deletion is in the same commit as the feature, and the parity rows that 
 `slot_order_object_test.go` so the reader can follow the shape. The bool-slot row went the other way: it pins
 `'int'` where CPython says `'bool'` — both engines agreeing with each other and neither with the oracle — and it
 sits in a table that says so, because L11.2 will flip it and that flip should be a deliberate edit.
+
+## Cycle: ADR 0253 — the true division of a slot no literal describes asks the tag (Gap R.96 closed)
+
+**The `0.0` was not arithmetic, and reading it as arithmetic would have fixed the wrong thing.** The first
+guess at Gap R.96 was "the float arm divides the payload as if it were an int, and the box handle makes an
+interesting numerator". It is nothing of the kind: `floatValue` returns `""` when it cannot lift an operand, and
+`floatBinOp` — the file that had already been bitten by `llc` rejecting an empty operand — substituted the
+literal `0.0` so the instruction would verify. The bug was therefore in the *caller's* coping strategy, not in
+any arm, and the fix has two halves that belong together: ask the tag which arm to emit, and delete the coping
+strategy. The float arm now returns the empty string *and* records the failure sticky in `noteUnlowered`, so a
+caller cannot forget to check; and `assertNoForbiddenIR` gained `fdiv/fadd/fmul/fsub double ,` needles, because
+the blacklist is the only thing between this backend and a substituted operand that verifies and lies.
+
+**"/ is a float whatever arrives" is the whole license, and it is a narrow one.** The gate admits a side whose
+kind the object reports for `/` and for nothing else, and the test table keeps it that way by pinning `xs[0] ** 2`
+(an int slot answers `36` by the ordinary path; a float slot refuses) beside the division rows. The temptation
+was to add `*` and `-` while I was in the file, since an int slot answers them correctly today — but "correctly
+today" for a container that may hold a float means *wrong tomorrow*, and a gate that admits an operator whose
+result kind is a fact about the data is a gate that prints `4.5` where the program's data says `4`.
+
+**The zero trap's placement was decided by a sentence, not by IR.** `fdiv` does not trap, so the guard is ours;
+and CPython's wording depends on whether either operand is a float (`division by zero` vs `float division by
+zero`). My first draft put one guard after the merge — cleaner `phi`, fewer blocks — and it printed the *float*
+sentence for `print(1 / xs[0])` over an int slot, because after the merge both arms look the same. The guard went
+inside the arms, which forced `guardNonZeroFloat`/`branchRaise` to return the block the continuation runs in: a
+`phi` written by hand has to name the block the guard *ends* in, not the one it was written in (ADR 0138's
+lesson, which we had been applying from memory). Two ADRs' worth of "remember to do this" turned into a
+signature, which is the kind of change this codebase keeps needing and keeps benefiting from.
+
+**The dead emission that was only dead until someone wrote a real register.** `t = 0.0` / `t += 1.5` had been
+`llc`-rejected for as long as augmented assignments existed — *multiple definition of local value named `_t`* —
+and `u = 0` / `u += 1.5` **panicked the compiler** (`assignment to entry in nil map`, in `floatVars`). Both were
+in the statement path that lowered a float result twice: once through `value()` into an `add i32` nobody read,
+once through `floatBinOp` into the `fadd` that stored it. Dead code is not free code: the moment a slot read
+could answer with a `double`, the dead `add i32` became `add i32 %_n.ld, %t` with a double operand, i.e. exit 2.
+The lesson I want kept: when a lowering has a "harmless" duplicate emission, delete it, because its harmlessness
+is a claim about today's operand types.
+
+**A double is only an answer where the caller can hold one.** The `doubleDomain` counter is the smallest
+possible encoding of "who asked", and it is what turns four `llc` rejections into four refusals. Its shape is
+worth writing down because it generalises: an instruction-producing door that can answer in more than one
+representation should ask the *context* which representation it wants before it emits, and refuse when the
+context cannot hold the one it picked — rather than emitting and hoping the verifier is the caller's problem.
+
+**Three new gaps, all pre-existing, all found by running programs rather than by reading code.** `[xs[0] / 2]`
+printing `[2]` (Gap R.99), `[v / 2 for v in xs]` exiting 2 with *PHI node entries do not match predecessors*
+(Gap R.100), and `xs[0] / ys[0]` refusing (Gap R.101). The first two were reproduced against a `git stash`-built
+HEAD binary before they were filed, which is the difference between "this cycle broke it" and "this cycle found
+it"; both rows say which, and each is pinned by a table that fails when it is fixed. Gap R.100 is the one to
+pick next: exit 2 on `[v / 2 for v in xs]` is ADR 0166's own bug class, and the fix (thread the generator's
+current block through the comprehension body) is the same shape as the `branchRaise` change this cycle needed
+anyway.
+
+**Process lesson — split the bundled worktree before writing a single line of docs.** This cycle inherited a
+worktree holding *two* features (the division door and the float-parameter refusal) in four files. `git diff` →
+save → `git checkout HEAD --` the file that belonged to the other feature → delete its three hunks from the
+shared file → commit one, restore, commit the other, is what kept "one commit per feature" true without
+re-implementing either. The rule that made it necessary is also the rule that made it cheap: roadmap IDs are
+permanent, so a commit message, an ADR and a test file can all cite the same row and be checked against it.
+
+**A pin that stops failing is as suspicious as one that starts.** Fixing the double-store in the assignment path
+made `probe_float_param_rebind`'s module verify — and the compiled leg, which had been an honest exit 2 since
+ADR 0196, started printing the *argument* (`1` for `2.5`) with exit 0. The ledger caught it: the debt row's pin
+said "the aot leg fails", and the run said otherwise. The right response was not to relax the pin but to
+re-pin it with the wrong answer written in, and to say in the row which ADR owes the fix. A compiler whose
+"known-failing" program stops failing has usually traded a loud bug for a quiet one.

@@ -635,6 +635,12 @@ func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
 		if ferr != nil {
 			return "", false, ferr
 		}
+		if inner == "" {
+			// A box needs the number to put in it. `rt_float_new(double )` is the module llc rejects,
+			// and ADR 0166 counts that as the compiler's bug; the element names itself instead
+			// (roadmap Gap R.88, measured beside Gap R.96).
+			return "", false, g.floatOperandRefusal(e)
+		}
 		bh := g.newTmp()
 		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", bh, inner)
 		return bh, false, nil
@@ -1206,11 +1212,17 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 		if g.strVals[nm.Value] != "" {
 			return int32(TagStr), true
 		}
-		// The same question the storage side asks: a name the generator knows holds a float is a
-		// float element, and the default TagInt below would label its box handle as a number.
-		if g.isFloat(e) {
-			return int32(TagFloat), true
-		}
+	}
+	// The same question the storage side asks — `heapElemKind`'s float arm and this line are one
+	// question, asked once: an element whose value is a float goes into the slot as the handle of a
+	// @float_box object, so the label beside it has to say *float* whatever spelled the float. The
+	// literal was covered by the case above and a float-valued variable by the Name arm this
+	// generalises; a call that returns one (`ys.append(half(3))`) and, since ADR 0253, the numeric
+	// door's answer for a slot the object describes (`ys.append(xs[0] / 2)`) were not, and the box
+	// went in beside a TagInt: the printer read the handle as the number and `print(ys[0])` answered
+	// `1` where CPython answers `3.0` (roadmap L11.1, ADR 0238's rule taken one spelling further).
+	if g.isFloat(e) {
+		return int32(TagFloat), true
 	}
 	return int32(TagInt), true
 }
@@ -1400,6 +1412,10 @@ func (g *irGen) taggedOperand(b *strings.Builder, e Expr) (val, tag string, ok b
 		// truncated word is how `1.0 in [1]` came back false (roadmap L11.1, ADR 0233).
 		g.floatFmtUsed = true
 		inner := g.floatValue(b, e)
+		if inner == "" {
+			// No number, no box: see the guard in heapElemWord above (roadmap Gap R.88).
+			return "", "", false
+		}
 		bh := g.newTmp()
 		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", bh, inner)
 		return bh, strconv.FormatInt(int64(TagFloat), 10), true
@@ -1710,6 +1726,25 @@ func (g *irGen) exprSummary(e Expr) string {
 		return "(" + n.Op + ")"
 	}
 	return exprTyName(e)
+}
+
+// exprGist renders an expression the way the program wrote it, as far as the names go. exprSummary
+// above answers the *kind* ("an element read"), which is what a message about a missing capability
+// wants; a message about a refused *sentence* wants the shape, because `print(xs[0] / 4)` and
+// `print(ys[1] / 4)` are different programs to the person reading the diagnostic. Only the leaves a
+// refusal actually reaches are spelled out; anything else keeps its kind-name.
+func (g *irGen) exprGist(e Expr) string {
+	switch n := e.(type) {
+	case *Index:
+		return g.exprGist(n.Obj) + "[" + g.exprGist(n.Idx) + "]"
+	case *BinOp:
+		return g.exprGist(n.L) + " " + n.Op + " " + g.exprGist(n.R)
+	case *IntLit:
+		return strconv.FormatInt(int64(n.Value), 10)
+	case *FloatLit:
+		return strconv.FormatFloat(n.Value, 'g', -1, 64)
+	}
+	return g.exprSummary(e)
 }
 
 // containerKindProvable asks whether a container slot may be labelled for this expression at all.
@@ -3795,7 +3830,30 @@ func (g *irGen) taggedNumberUseApplies(n *BinOp) bool {
 			if _, fOk := g.slotNumberFamily(ix.Obj); fOk {
 				return true
 			}
+			if n.Op == "/" && g.slotReadFromObject(ix) {
+				return true
+			}
 		}
+	}
+	return false
+}
+
+// slotReadFromObject reports that a subscript is answered by the object rather than by the literal —
+// the container was built by `append`/assignment, or the side is itself such a read — so the only thing
+// the compiler knows about the slot is the tag array. It is the same gate the print, the equality, the
+// length, the ordering and the subscript use (ADR 0251, ADR 0252), asked here of the arithmetic door
+// (roadmap L11.1, Gap R.96).
+func (g *irGen) slotReadFromObject(ix *Index) bool {
+	switch ix.Obj.(type) {
+	case *Name:
+		if !g.runtimeContainerSide(ix.Obj) {
+			return false
+		}
+		_, described := g.slotNumberFamily(ix.Obj)
+		return !described
+	case *Index:
+		r := g.runtimeSlotReadOf(ix)
+		return r
 	}
 	return false
 }
@@ -3807,6 +3865,18 @@ func (g *irGen) floatLoweringRefusal(n *BinOp) error {
 	why := g.floatUnlowerable
 	g.floatUnlowerable = ""
 	return fmt.Errorf("codegen: %s of %q has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and using it as a number needs the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)", why, n.Op)
+}
+
+// doubleDomainRefusal is what an int-domain sink says when the numeric use underneath it belongs to
+// the double domain: printing, a float comparison, an `if`/`while` head and a float assignment all ask
+// for a double and can hold one; a call argument, an augmented assignment onto an int variable,
+// str()'s argument and a container slot do not, and receiving the door's double there emits an i32
+// instruction, a call or a store with a double operand in it — the module llc rejects, which ADR 0166
+// counts as the compiler's bug for an ordinary program. The honest answer is to name the missing word:
+// the kind of a slot the object reports travels as a (payload, tag) pair, and a value that leaves the
+// expression it was computed in needs the tagged value word this row still owes (roadmap L11.1).
+func (g *irGen) doubleDomainRefusal(n *BinOp) error {
+	return fmt.Errorf("codegen: %s is answered with a double by the tagged numeric door, and this context stores an i32 word: printing, an assignment to a float variable, a comparison and a condition all take the double, and passing one to a call, a container slot or str() needs the (payload, tag) pair the tagged value word still owed here would carry — bind it to a variable that starts life a float (roadmap L11.1, Gap R.88, ADR 0166)", g.exprGist(n))
 }
 
 // slotNumberFamily is the promise the compiler can make about the numbers a slot may hold, for the
@@ -3940,6 +4010,12 @@ func unsupportedNumberOp(op, kind, other string) (string, string) {
 // here, in the compiler, or the answer would be printed in the wrong form — so the shapes allowed are
 // the ones where it is: a slot that can only hold floats, an ordering (whose answer is a bool whatever
 // arrives), and true division (which Python always answers with a float).
+//
+// The last of those is also the only arithmetic operator that can be answered for a slot **no literal
+// describes**: `xs = []` / `xs.append(3)` / `print(xs[0] / 2)` is `1.5` on every engine, because `/` is
+// a float whatever either side turns out to be, so the module can be written before the slot is asked.
+// `xs[0] + 1` is still refused: an int slot answers `4` and a float slot `4.5`, and the difference is a
+// fact about the program's data (roadmap L11.1, Gap R.96 — which measured this shape answering `0.0`).
 func (g *irGen) taggedNumberOperands(n *BinOp) (string, bool) {
 	switch n.Op {
 	case "+", "-", "*", "/", "//", "%", "**", "<", "<=", ">", ">=":
@@ -3950,6 +4026,11 @@ func (g *irGen) taggedNumberOperands(n *BinOp) (string, bool) {
 	for _, side := range []Expr{n.L, n.R} {
 		if ix, isIdx := side.(*Index); isIdx {
 			if _, fOk := g.slotNumberFamily(ix.Obj); fOk {
+				reads++
+				others = append(others, side)
+				continue
+			}
+			if n.Op == "/" && g.slotReadFromObject(ix) {
 				reads++
 				others = append(others, side)
 				continue
@@ -3977,6 +4058,9 @@ func (g *irGen) taggedNumberOperands(n *BinOp) (string, bool) {
 		if !isIdx {
 			continue
 		}
+		if n.Op == "/" && g.slotReadFromObject(ix) {
+			continue // the object reports this one; `/` settles the result's kind to float below
+		}
 		f, fOk := g.slotNumberFamily(ix.Obj)
 		if !fOk || f == "mixed" {
 			return "", false
@@ -3993,6 +4077,14 @@ func (g *irGen) taggedNumberOperands(n *BinOp) (string, bool) {
 	}
 	if fam != "float" && !relational {
 		return "", false
+	}
+	// A side the literal never described is only admissible where the object can be asked and the
+	// sentence CPython raises is still knowable: `/` names the other operand's type, which the gate
+	// above has already required the compiler to be able to name.
+	for _, o := range others {
+		if ix, isIdx := o.(*Index); isIdx && g.slotReadFromObject(ix) && n.Op != "/" {
+			return "", false
+		}
 	}
 	// Two slot reads: the door may only raise when a number is certain on the other side. With a
 	// payload-and-tag pair on *both* sides, text against text and container against container are
@@ -4148,7 +4240,171 @@ func (g *irGen) taggedFloatOperand(b *strings.Builder, e Expr, n *BinOp, fam str
 		}
 		return unsupportedNumberOp(n.Op, other, kindName)
 	}
+	if g.slotReadFromObject(ix) {
+		// No literal to read the kinds off: the object reports them, and the arms and their sentences
+		// are emitted per tag (roadmap L11.1, Gap R.96).
+		rv, rok, rerr := g.taggedDoubleFromObject(b, ix, n, e, other, sentence)
+		return rv, rok, rerr
+	}
 	return g.taggedDoubleFromSlot(b, ix, n.Span(), sentence)
+}
+
+// taggedDoubleFromObject lifts a slot **no literal describes** to the double an arithmetic arm needs:
+// the (payload, tag) pair comes out of the object, the float tag unboxes out of its @float_box, an int
+// or bool tag converts, and every other tag raises the sentence CPython writes for this operator and
+// that kind — the same closed tag set the ordering's raise chain walks (ADR 0252), because the writers
+// are ADR 0187's and nothing outside that list is ever stored beside a payload.
+//
+// A true division also has to trap a zero divisor, and CPython's wording for that trap depends on
+// whether either operand is a float: `3 / 0` is `division by zero` and `1.5 / 0` is
+// `float division by zero`. With one operand's kind a run-time question the wording is one too, so the
+// guard is emitted *inside* each arm, where the arm knows what it lifted — a guard placed after the
+// merge could only guess, and guessing here prints a sentence the program's `except` would not match.
+func (g *irGen) taggedDoubleFromObject(b *strings.Builder, ix *Index, n *BinOp, side Expr, otherName string, sentence func(string) (string, string)) (string, bool, error) {
+	payload, tag, ok := g.taggedSlotPair(b, ix)
+	if !ok || payload == "" || tag == "" {
+		return "", false, nil
+	}
+	g.heapUsed = true
+	g.floatFmtUsed = true
+	sp := ix.Span()
+	if n != nil {
+		sp = n.Span()
+	}
+
+	// A true division has to trap a zero divisor, and the sentence it raises is a fact about the two
+	// operand *kinds*: `3 / 0` is `division by zero` and `1.5 / 0` is `float division by zero`. One of
+	// those kinds lives only in the object, so the guard belongs inside the arm that knows it — a guard
+	// after the merge could only guess, and a guessed sentence is one the program's `except` would not
+	// match. What is guarded is whichever operand is the divisor: the lifted slot when the read sits on
+	// the right of `/`, the other operand when the read is the dividend. An operand the lift cannot reach
+	// for free (a call) is refused rather than divided by unguarded, because `fdiv` does not trap.
+	guardDiv, divisorIsSlot := n != nil && n.Op == "/", false
+	var divReg string
+	if guardDiv {
+		divisorIsSlot = n.R == side
+		if !divisorIsSlot {
+			// the operand on the other side of `/` from the slot read — the divisor when the read is
+			// the dividend, the dividend when the read is the divisor (which is guarded below as the
+			// lifted slot instead).
+			other := n.R
+			if n.R == side {
+				other = n.L
+			}
+			switch o := other.(type) {
+			case *IntLit:
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = sitofp i32 %d to double\n", t, o.Value)
+				divReg = t
+			case *BoolLit:
+				v := 0
+				if o.Value {
+					v = 1
+				}
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = sitofp i32 %d to double\n", t, v)
+				divReg = t
+			case *FloatLit, *Name:
+				// side-effect-free: lifting it here and letting the caller lift it again costs an
+				// instruction and nothing else. `floatValue` knows the double variable from the int one.
+				divReg = g.floatValue(b, other)
+			}
+			if divReg == "" {
+				return "", false, nil
+			}
+		}
+	}
+	// wording names the ZeroDivisionError sentence CPython writes for two operand kinds — a float
+	// anywhere in the pair picks the `float division by zero` phrasing, `int` and `bool` the plain one.
+	wording := func(armKind string) string {
+		if armKind == "float" || otherName == "float" || otherName == "double" {
+			return "float division by zero"
+		}
+		return "division by zero"
+	}
+
+	done := g.newLabel("objnumdone")
+	floatBlk, chkBlk := g.newLabel("objnumf"), g.newLabel("objnumc")
+	isFloat := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isFloat, tag, int32(TagFloat))
+	g.markI1(isFloat)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isFloat, floatBlk, chkBlk)
+
+	// ---- the float arm: the payload is a handle on an @float_box, so it unboxes.
+	fmt.Fprintf(b, "%s:\n", floatBlk)
+	dv := g.newTmp()
+	fmt.Fprintf(b, "  %s = call double @rt_float_of(i32 %s)\n", dv, payload)
+	floatFrom := floatBlk
+	if guardDiv {
+		if divisorIsSlot {
+			floatFrom = g.guardNonZeroFloat(b, dv, sp, wording("float"))
+		} else {
+			floatFrom = g.guardNonZeroFloat(b, divReg, sp, wording("float"))
+		}
+	}
+	fmt.Fprintf(b, "  br label %%%s\n", done)
+
+	// ---- the int/bool arm: the payload *is* the number, so it converts — the same widening L11.2
+	// will owe to bools, which gusty already answers as ints wherever a bool reaches a number.
+	fmt.Fprintf(b, "%s:\n", chkBlk)
+	isInt := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isInt, tag, int32(TagInt))
+	g.markI1(isInt)
+	isBool := g.newTmp()
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", isBool, tag, int32(TagBool))
+	g.markI1(isBool)
+	isNum := g.newTmp()
+	fmt.Fprintf(b, "  %s = or i1 %s, %s\n", isNum, isInt, isBool)
+	g.markI1(isNum)
+	intArm := g.newLabel("objnumint")
+	badBlk := g.newLabel("objnumbad")
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isNum, intArm, badBlk)
+	fmt.Fprintf(b, "%s:\n", intArm)
+	di := g.newTmp()
+	fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", di, payload)
+	intFrom := intArm
+	if guardDiv {
+		if divisorIsSlot {
+			intFrom = g.guardNonZeroFloat(b, di, sp, wording("int"))
+		} else {
+			intFrom = g.guardNonZeroFloat(b, divReg, sp, wording("int"))
+		}
+	}
+	fmt.Fprintf(b, "  br label %%%s\n", done)
+
+	// ---- the kinds with no number in them: one raise each, the last one as the else, so the merge's
+	// only predecessors stay the two arms that produce a double (ADR 0205, ADR 0166) and no reachables
+	// statement has to be written for a block nobody can enter (ADR 0214). The set is closed by the
+	// writers ADR 0187 allows: int, bool, float, NoneType, list, dict, set and str, and the two numeric
+	// ones are the arms above.
+	fmt.Fprintf(b, "%s:\n", badBlk)
+	kinds := []struct {
+		tg   int32
+		name string
+	}{
+		{int32(TagStr), "str"},
+		{int32(TagNone), "NoneType"},
+		{int32(TagList), "list"},
+		{int32(TagDict), "dict"},
+		{int32(TagSet), "set"},
+	}
+	for i, k := range kinds {
+		if i == len(kinds)-1 {
+			class, msg := sentence(k.name)
+			g.raiseTo(b, exnCode(class), class, msg, sp)
+			break
+		}
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, k.tg)
+		g.markI1(c)
+		class, msg := sentence(k.name)
+		g.branchRaise(b, c, class, msg, sp, "objnum")
+	}
+
+	res := g.newTmp()
+	fmt.Fprintf(b, "%s:\n", done)
+	fmt.Fprintf(b, "  %s = phi double [ %s, %%%s ], [ %s, %%%s ]\n", res, dv, floatFrom, di, intFrom)
+	return res, true, nil
 }
 
 // taggedFloatNegate lowers `-xs[i]` where the slot's kind is only in the object. Negation has its own

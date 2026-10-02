@@ -1,0 +1,53 @@
+# The true division of a slot no literal describes: `/` is a float whatever the
+# object turns out to hold, so the one thing the module has to know in advance —
+# the result's kind — is settled, and the tag answers the rest (roadmap L11.1,
+# ADR 0253, Gap R.96). `print(xs[0] / 4)` used to answer `0.0` with exit 0.
+xs = []
+xs.append(3)
+xs.append(1.5)
+xs.append("b")
+xs.append(None)
+xs.append(True)
+xs.append(0)
+print(xs[0] / 4)            # 0.75 — an int slot unboxes by converting
+print(xs[1] / 2)            # 0.75 — a float slot unboxes out of its box
+print(6 / xs[0])            # 2.0  — the read may sit on either side
+print(xs[0] / 4.0)          # 0.75 — the other operand may be written a float
+print(xs[4] / 2)            # 0.5  — a bool slot is the number CPython says it is
+d = 4.0
+print(xs[0] / d)            # 0.75 — or a settled variable
+y = xs[0] / 4               # the double travels to a binding, and to the next print
+print(y)                    # 0.75
+print(y * 2)                # 1.5
+i = 1
+print(xs[i] / 2)            # 0.75 — an index the program computes
+nested = []
+nested.append([4])
+nested.append({"k": 5})
+print(nested[0][0] / 2)     # 2.0  — one level below, through ADR 0251's read
+print(nested[1]["k"] / 2)   # 2.5
+filled = {}
+filled["a"] = 6
+print(filled["a"] / 3)      # 2.0  — the dict the program filled
+built = []
+for v in [3, 6]:
+    built.append(v * 2)
+print(built[0] / 4)         # 1.5  — a container a loop built
+print(built[1] / 4)         # 3.0
+ys = []
+ys.append(xs[0] / 2)        # and the answer goes on into a container as its own kind
+print(ys[0])                # 1.5
+if xs[0] / 4 > 0.5:         # the double is at home in a condition
+    print("half is more")   #
+try:
+    print(xs[2] / 2)        # TypeError: the slot's own kind named — 'str'
+except TypeError:
+    print("caught str")
+try:
+    print(1 / xs[5])        # ZeroDivisionError: the plain sentence, an int slot
+except ZeroDivisionError:
+    print("caught zero")
+try:
+    print(xs[0] / 0.0)      # ZeroDivisionError: the float sentence, a float on the pair
+except ZeroDivisionError:
+    print("caught float zero")

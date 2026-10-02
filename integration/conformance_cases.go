@@ -198,6 +198,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// CPython raises naming the kind the slot really holds — with the arms nobody can reach not
 		// emitted, and the cross-kind pairs caught rather than printed as a verdict (Gap R.93, ADR 0252).
 		"slot_order_object",
+		// The true division of those same slots: `/` is the one arithmetic operator whose result kind is
+		// settled before the slot is asked, so the tag answers the rest — an int or bool slot converts,
+		// a float slot unboxes, every other kind raises CPython's sentence naming what it holds, and both
+		// ZeroDivisionError wordings are chosen inside the arm that knows the operand kinds (Gap R.96,
+		// ADR 0253). Three engines, one source, where the compiled leg printed `0.0`.
+		"slot_division",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -515,9 +521,9 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L7.6a (deferred coroutines in codegen)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "between\neffect 1\n2\n"}, {Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
 	"programs/probe_float_param_rebind": {oracle: lang.OracleDebt,
-		reason: "a function's argument type is read from the shape of its return expression, so `x = x + 1.5; return x` is emitted as an int function: interpreted and in CPython 1.0 becomes 2.5, compiled the module is rejected",
-		ref:    "roadmap L11.6 (floats are half-implemented) — found closing Gap R.3",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2.5\n3.0\n"}, {Backend: "aot", Missing: true}}},
+		reason: "a function's argument type is read from the shape of its return expression, so `x = x + 1.5; return x` is emitted as an int function and the double the body computed has no word to travel in: interpreted and in CPython 1.0 becomes 2.5, compiled the call answers the argument. ADR 0196's copy-in let the module verify, so the leg that used to be rejected by llc now prints a number-shaped wrong answer",
+		ref:    "roadmap L11.6 / Gap R.3c (found closing Gap R.3, re-measured beside ADR 0253)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2.5\n3.0\n"}, {Backend: "aot", Stdout: "1\n3.0\n"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",

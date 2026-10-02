@@ -16,6 +16,14 @@ import (
 // numeric position, or a definition spliced into an initializer list.
 var forbiddenIR = []struct{ why, needle string }{
 	{"an instruction with an empty operand", "sitofp i32  to double"},
+	// The float twin of the row above, and the shape roadmap Gap R.96 was: an `fdiv` with an operand
+	// the compiler could not lift. `llc` rejects it (exit 2, ADR 0166's own class), and the version that
+	// substitutes a literal instead verifies happily and prints `0.0` — so the blacklist, not the
+	// verifier, is what has to catch it.
+	{"an instruction with an empty operand", "fdiv double ,"},
+	{"an instruction with an empty operand", "fadd double ,"},
+	{"an instruction with an empty operand", "fmul double ,"},
+	{"an instruction with an empty operand", "fsub double ,"},
 	{"a container global in a numeric conversion", "sitofp i32 @.lst"},
 	{"a container global in a numeric conversion", "sitofp i32 @.dict"},
 	{"a container global in a numeric conversion", "sitofp i32 @.set"},

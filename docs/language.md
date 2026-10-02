@@ -1721,6 +1721,48 @@ print(1 if xs2[0][0] > 1 else 0)            # 1      — one level below, throug
 print(1 if "a" < xs2[0][0] else 0)          # TypeError — CPython names the left operand's type first
 ```
 
+**…and one arithmetic operator may ask it for a number** (ADR 0253). Everything else that needs a
+number from a slot the literal never described still refuses, honestly, because the answer's kind is a
+fact about the data: an `int` slot makes `xs[0] + 1` a `4` and a `float` slot makes it a `4.5`, and the
+module has to be written before the slot is asked. **True division is the exception** — `/` is a float
+whatever arrives, so the one thing the compiler must know in advance is settled, and the tag can be asked
+for the rest. A float slot unboxes out of its `@float_box`, an `int` or `bool` slot converts, and every
+other kind raises CPython's own sentence for this operator and this kind — the same closed set of tags the
+ordering walks. Dividing by zero is trapped by the compiler rather than by `fdiv` (which answers ±inf), and
+the trap lives *inside* each arm, because which `ZeroDivisionError` wording the pair earns is itself a
+question about the operand kinds: `3 / 0` is `division by zero`, `1.5 / 0` is `float division by zero`.
+
+```gy
+xs = []
+xs.append(3)
+xs.append(1.5)
+xs.append("b")
+print(xs[0] / 4)                            # 0.75   — an int slot converts
+print(xs[1] / 2)                            # 0.75   — a float slot unboxes
+print(6 / xs[0])                            # 2.0    — the read may sit on either side
+print(xs[0] / 4.0)                          # 0.75   — or the other operand may be a float
+nested = []
+nested.append([4])
+print(nested[0][0] / 2)                     # 2.0    — one level below, through the same door
+d = {}
+d["a"] = 6
+print(d["a"] / 3)                           # 2.0    — the dict the program filled
+print(xs[2] / 2)                            # TypeError: unsupported operand type(s) for /: 'str' and 'int'
+ys = []
+ys.append(0)
+try:
+    print(5 / ys[0])                        # a zero slot traps, with CPython's own wording
+except ZeroDivisionError:
+    print("no")                             #          and the program catches it — exit 3, not 1
+```
+
+What the door still declines is written in words, never in a broken module: two sides the object would
+have to describe (`xs[0] / ys[0]`, roadmap Gap R.101), a result the compiler cannot settle (`xs[0] ** 2`
+where the slot may be a float), and a double handed to a context that stores an `i32` word — a call
+argument, `str()`'s argument, a dict slot written by key, `+=` onto a variable that started life an `int`
+(roadmap Gap R.98). Printing, a comparison, a condition, a float binding and a container element are in
+the double domain, and take the answer directly.
+
 **…and an equality asks it the same question** (ADR 0247). The tag was already carried to the printer,
 so `print(out[1])` rendered `a` while `out[1] == "a"` was refused — one read, two doors. Both sides of
 `==`/`!=` are now `(payload, tag)` pairs, and the one equality the container comparisons already use

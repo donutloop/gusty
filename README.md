@@ -199,15 +199,32 @@ of 'int' and 'str'* on both engines — as do the dict the program filled (`d["k
 slot one level below (`xs.append([3, "a"])` / `xs[0][0] > 1`). Two numbers become doubles, two texts go to
 `strcmp`, and every other pair raises CPython's sentence with the kind the slot really holds in it: the raise
 is one test per tag, because the sentence names *both* operand types, and it may end in an `else` only because
-the tags ADR 0187's writers can store are a closed set.
+the tags ADR 0187's writers can store are a closed set. One arithmetic operator can ask the same question,
+because it is the one whose **result** kind is settled before the slot is asked: **true division** (ADR 0253,
+closing Gap R.96). `xs = []` / `xs.append(3)` / `print(xs[0] / 4)` printed `0.0` with exit 0 — ADR 0249's
+empty-operand `fdiv` substituted into silence — and now prints `0.75` on both engines, because `/` is a float
+whatever arrives: a float slot unboxes, an `int` or `bool` slot converts, and a text, `None`, a list, a dict or
+a set raises CPython's own `unsupported operand type(s) for /` sentence naming the kind it really holds. The
+zero trap is emitted inside each arm rather than after the merge, because which wording the pair earns is
+itself a run-time question — `3 / 0` is `division by zero`, `1.5 / 0` is `float division by zero` — and a
+program's `except ZeroDivisionError:` reads that sentence.
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a
 function), the numeric, membership and loop uses of a slot only the run time can describe
 (`xs[0][0] + 1`, `-xs[0][0]`, `7 in xs[0]`, `for v in xs[0]` after `xs.append([7, 8])`) — the first two because
-a use whose kind only the object knows has no untagged lowering (and `xs[0] / 4` of such a slot answers `0.0`
-today, measured and owed as Gap R.96), the last two because they need the object's **kind** where the read
-asks only its tag — an **ordering of two such slots against each other** (`xs[0] > ys[0]`, filed as
+a use whose kind only the object knows has no untagged lowering, the last two because they need the object's
+**kind** where the read asks only its tag. The numeric shapes that still refuse are the operators whose answer
+is a fact about the slot rather than about the operator (`xs[0] + 1` or `xs[0] ** 2` on a container that may be
+holding a float; an all-`int` slot answers both today), and the division of two such slots at once
+(`xs[0] / ys[0]`, filed as Gap R.101 beside the ordering's Gap R.97). Two more come out of the sweep that
+opened the division: a float element of a comprehension over a container the program built is appended by the
+static path (`[xs[0] / 2]` prints `[2]`, Gap R.99), and when such an element raises, the guard's blocks move
+the comprehension's loop back edge and `llc` rejects the module (Gap R.100). So does the door's `double` handed
+to a context that stores an `i32` word — a call argument, `str()`'s argument, a dict slot written by key, `+=`
+onto a variable that started life an `int` (Gap R.98; printing, a comparison, a condition, a float binding and
+a container element are all in the double domain and take it) — and an **ordering of two such slots against
+each other** (`xs[0] > ys[0]`, filed as
 Gap R.97: one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing), and a comparison against an expression whose kind cannot be proven — which until ADR 0247 answered
 `1` where CPython answers `0` (Gap R.83, whose ordering side is measured by the same table).

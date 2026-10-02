@@ -3614,8 +3614,15 @@ type irGen struct {
 	// floatUnlowerable records that a float arm reached an operand it could not lift, which the caller
 	// turns into a front-end refusal instead of an instruction with an empty operand (Gap R.88).
 	floatUnlowerable string
-	heapSeq          int
-	handlerStack     []string
+	// doubleDomain counts the emissions that asked for a double. The numeric door answers a slot read
+	// of a container the program built with one, and only a caller that can hold a double may take it:
+	// an int-domain sink — a call argument, an augmented assignment, str()'s argument, a container
+	// element — that receives it emits `call i32 @gy_f(double %t29)`, which is the module llc rejects,
+	// and ADR 0166 counts that as the compiler's bug for an ordinary program. Outside the double domain
+	// the door therefore refuses by naming itself (roadmap Gap R.88, measured beside Gap R.96).
+	doubleDomain int
+	heapSeq      int
+	handlerStack []string
 	// handledArms counts the `except` arms whose body is currently being lowered. Inside one,
 	// the exception in flight has been *accepted by the program*, so a control transfer out of
 	// the arm (`return`, `break`, `continue`) has to leave the pending-exception flag cleared
@@ -6040,6 +6047,11 @@ func (g *irGen) noteUnlowered(where any, err error) {
 
 // floatValue emits a double IR operand for a float-typed expression e.
 func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
+	// Asking for a double is what licenses the numeric door: everything lowered underneath this call
+	// is headed for the double domain, and a slot read reaching the tag dispatch from here has an arm
+	// that can produce the double its caller wants (roadmap Gap R.88).
+	g.doubleDomain++
+	defer func() { g.doubleDomain-- }()
 	switch n := e.(type) {
 	case *FloatLit:
 		t := g.newTmp()
@@ -6308,17 +6320,24 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 		// llc rejecting the compiler's own module, which ADR 0166 counts as our bug rather than the
 		// program's, so the shape is recorded and the caller refuses it as a front-end diagnostic
 		// (roadmap Gap R.88).
+		//
+		// It is *recorded and returned empty*, not filled with `0.0`: an earlier draft of this path left
+		// the substitute in the instruction whenever the caller did not check the record, and `print
+		// (xs[0] / 2)` of a container the program built printed `0.0` with exit 0 — a wrong answer is a
+		// worse exit than a refusal, and ADR 0166 puts the blame on us either way (Gap R.96's measurement).
 		missing, which := n.L, "left"
 		if l != "" {
 			missing, which = n.R, "right"
 		}
 		g.floatUnlowerable = fmt.Sprintf("the %s operand %s of %q", which, g.exprSummary(missing), n.Op)
-		if l == "" {
-			l = "0.0"
-		}
-		if r == "" {
-			r = "0.0"
-		}
+		// Sticky as well as returned: the callers that check the record refuse with the good message, and
+		// the ones that do not are caught here rather than emitting `fadd double , %t1` for `llc` to
+		// reject — which ADR 0166 counts as the compiler's own bug, exit 2 (roadmap Gap R.96).
+		g.noteUnlowered(n, fmt.Errorf("%s of %q has no number the compiled backend can lift: a slot whose "+
+			"kind only the object knows is answered for printing, equality, length and ordering, and using it "+
+			"as a number needs the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)",
+			g.exprSummary(missing), n.Op))
+		return ""
 	}
 	t := g.newTmp()
 	switch n.Op {
@@ -7326,6 +7345,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if g.taggedNumberUseApplies(n) {
 			switch n.Op {
 			case "+", "-", "*", "/", "//", "%", "**":
+				if g.doubleDomain == 0 {
+					// The arms answer this with a double and nobody upstream asked for one: whoever
+					// receives it would type an i32 instruction, a call or a container slot with it,
+					// which is the module llc rejects. Refuse the use instead (roadmap Gap R.88).
+					return "", g.doubleDomainRefusal(n)
+				}
 				res := g.floatBinOp(b, n)
 				if g.floatUnlowerable != "" {
 					return "", g.floatLoweringRefusal(n)
@@ -11484,7 +11509,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// slot yet (L11.6, ADR 0226), and truncating one to render it would be the
 			// silent-truncation bug that gap exists to keep dead.
 			if !g.builtinShadowed("str") && len(c.Args) == 1 && !g.exprIsString(c.Args[0]) &&
-				!strings.Contains(exprTyName(c.Args[0]), "float") {
+				!strings.Contains(exprTyName(c.Args[0]), "float") && !g.isFloat(c.Args[0]) {
 				v, verr := g.value(b, c.Args[0])
 				if verr != nil {
 					return "", verr
@@ -12251,21 +12276,24 @@ func (g *irGen) guardNonZeroInt(b *strings.Builder, divisor string, sp Span, kin
 // LLVM — it returns ±inf, which is how the compiled backend came to print `inf` for
 // `print(1 / 0)` and exit 0 — so the test is ours to emit. A NaN divisor is not zero, exactly
 // as in Python, and -0.0 compares equal to 0.0, which is what Python does too.
-func (g *irGen) guardNonZeroFloat(b *strings.Builder, divisor string, sp Span, kind string) {
+func (g *irGen) guardNonZeroFloat(b *strings.Builder, divisor string, sp Span, kind string) string {
 	isZero := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = fcmp oeq double %s, 0.000000e+00\n", isZero, divisor))
 	g.markI1(isZero)
-	g.branchRaise(b, isZero, "ZeroDivisionError", kind, sp, "fdiv")
+	return g.branchRaise(b, isZero, "ZeroDivisionError", kind, sp, "fdiv")
 }
 
 // branchRaise emits `cond ? raise(class, kind) : continue` as its own pair of blocks, the
-// shape every emitted bounds/member check already uses.
-func (g *irGen) branchRaise(b *strings.Builder, cond, class, kind string, sp Span, tag string) {
+// shape every emitted bounds/member check already uses. The block the continuation runs in is
+// returned, because a hand-written `phi` after a guard has to name *that* block as its predecessor —
+// the block the guard was written in is no longer the one that branches on (ADR 0138's lesson).
+func (g *irGen) branchRaise(b *strings.Builder, cond, class, kind string, sp Span, tag string) string {
 	badL, okL := g.newLabel(tag+".bad"), g.newLabel(tag+".ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", cond, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
 	g.raiseTo(b, exnCode(class), class, kind, sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
+	return okL
 }
 
 // heapLenOf reads a container's length through the runtime, which is the only party that knows the
@@ -13736,12 +13764,22 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil
 			}
-			// String RHS: fold at compile time into strVals (strings are read back
-			// via strVals, never via the runtime slot). Emit a dummy i32 store so
-			// the generated IR is valid (the pointer would be invalid as i32).
 			var v string
 			var err error
 			if _, isStr := g.stringVal(n.Value); isStr {
+				// String RHS: fold at compile time into strVals (strings are read back
+				// via strVals, never via the runtime slot). Emit a dummy i32 store so
+				// the generated IR is valid (the pointer would be invalid as i32).
+				v = "0"
+			} else if g.isFloat(n.Value) {
+				// A float right-hand side belongs to the double domain, and the store below asks
+				// `floatValue` for it. Lowering it in the integer domain as well used to be dead but
+				// valid IR — an `sdiv` of two i32 registers nobody read — and it stayed invisible for
+				// every shape the int path could fold. Once a slot read of a container the program
+				// built could answer with a double, the dead emission became
+				// `add i32 %_total.ld1, %t27` with %t27 a double: the module `llc` rejects, which
+				// ADR 0166 counts as the compiler's bug rather than the program's (roadmap Gap R.88,
+				// measured beside Gap R.96). The value is asked for once, in the domain that stores it.
 				v = "0"
 			} else {
 				v, err = g.value(b, n.Value)
@@ -13962,14 +14000,47 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 		// augmented assignment: read target, apply op with rhs, store back.
 		binop := &BinOp{Op: n.Op, L: n.Target, R: n.Value}
 		if nm, ok := n.Target.(*Name); ok {
-			v, err := g.value(b, binop)
-			if err != nil {
-				return err
+			var v string
+			var err error
+			if g.isFloat(n.Target) || g.isFloat(n.Value) {
+				// The same rule as the plain assignment below: a float result belongs to the double
+				// domain, so it is asked for there and not lowered twice — once into a dead `add i32`
+				// and once into the `fadd` that stores it (roadmap Gap R.88, measured beside Gap R.96).
+				g.doubleDomain++
+				v = g.floatBinOp(b, binop)
+				g.doubleDomain--
+				if g.floatUnlowerable != "" {
+					return g.floatLoweringRefusal(binop)
+				}
+				if v == "" {
+					return g.floatOperandRefusal(n.Value)
+				}
+			} else {
+				v, err = g.value(b, binop)
+				if err != nil {
+					return err
+				}
 			}
 			if g.isFloat(n.Target) || g.isFloat(n.Value) {
-				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
+				if g.allocd[nm.Value] && !g.floatVars[nm.Value] && !g.unionVars[nm.Value] && !g.taggedVars[nm.Value] {
+					// The variable's slot is an i32 and `+=` produced a double: `t = 0` then
+					// `t += 1.5` is the assignment that changes a variable's kind, which needs the
+					// (payload, tag) pair the tagged value word carries — storing a double into the
+					// i32 slot is the module llc rejects (roadmap L11.1, Gap R.88).
+					return fmt.Errorf("codegen: %q on %q writes a double into the i32 slot the variable already has: the first assignment decided its kind, and re-deciding it needs the (payload, tag) pair the tagged value word still owed here would carry — assign a float to give the variable one (roadmap L11.1, Gap R.88, ADR 0166)", n.Op, nm.Value)
+				}
+				if !g.allocd[nm.Value] {
+					// The slot is the variable's, allocated once — `t = 0.0` then `t += 1.5` asked for
+					// a second `%_t` and llc rejected the module for the duplicate (measured beside
+					// roadmap Gap R.96; the plain-assignment branch above already asked `allocd`).
+					b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", nm.Value))
+					g.allocd[nm.Value] = true
+				}
 				b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", v, nm.Value))
-				g.floatVars[nm.Value] = true
+				if g.floatVars == nil {
+					g.floatVars = map[string]bool{}
+				}
+				g.floatVars[nm.Value] = true // `t += 1.5` as the first write had no table to note it in
 			} else {
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
 			}

@@ -4721,3 +4721,172 @@ IDs because the emission is the same one: an ordering whose settled side is a **
 **call of two kinds** (`xs[0] > pick(1)` printing `1` where the oracle traps) is Gap R.83's missing return tag
 seen from the relational side. Neither is made worse by this cycle — both reach the same lowering they reached
 before — and both are now named by a table that fails when someone fixes them.
+
+### L11.1 (1c) — the true division of a slot no literal describes (measured 2026-10-02, closed by ADR 0253)
+
+Gap R.96 was found by writing ADR 0252's tables and asking the obvious question — an *ordering* can ask the
+object because its verdict is a bool either way, so which arithmetic operator can? The answer is exactly one,
+and the row's own program is the measurement:
+
+| program | CPython 3.12 | `--interp` | `--aot` (before ADR 0253) |
+|---|---|---|---|
+| `xs = []` / `xs.append(3)` / `print(xs[0] / 4)` | `0.75` | `0.75` | **`0.0`, exit 0** |
+| `xs = []` / `xs.append(1.5)` / `print(xs[0] / 2)` | `0.75` | `0.75` | **`0.0`, exit 0** |
+| `xs = []` / `xs.append(3)` / `print(xs[0] + 1)` | `4` | `4` | `4` |
+| `xs = []` / `xs.append(1.5)` / `print(xs[0] + 1)` | `2.5` | `2.5` | refusal (honest) |
+
+`0.0` is the interesting part. It is not arithmetic gone wrong: it is ADR 0249's **empty operand** — the float
+arm calling `floatValue` for a register the tag never described, getting `""` back, and the caller writing the
+literal `0.0` so the instruction would at least parse. The version that reaches `llc` is exit 2, which ADR 0166
+already assigns to the compiler; the version that substitutes is worse, because the program prints a
+number-shaped answer, exits 0, and the person reading it has no reason to look twice. `+ 1`, `* 2`, `// 1`,
+`% 1`, `** 2` on the same slot either answered correctly for an `int` slot or refused honestly for a `float`
+one, which is what told us the defect was one operator's arm and not the door's.
+
+Why `/` may be answered at all: true division is a float **whatever arrives**, so the one thing the module has
+to commit to before the slot is asked — the result's kind — is settled by the operator, not by the data. Every
+other operator's result kind is a fact about the slot, and a compiler that guesses it prints `4.5` where the
+program's data says `4`. The gate in `taggedNumberOperands`/`taggedNumberUseApplies` therefore admits a side
+the literal never described (`slotReadFromObject`, the same gate the print, the equality, the length, the
+ordering and the subscript use) **for `/` only**, and the arms are the closed tag chain: `rt_float_of` for a
+float slot, `sitofp` for `int`/`bool`, one `raiseTo` per other kind with CPython's sentence for this operator
+and this kind.
+
+The zero trap took the longest to get right, and the reason is entirely about wording. LLVM's `fdiv` does not
+trap — it answers ±inf — so the `fcmp oeq … 0.0` guard is ours, and CPython's two sentences:
+
+| pair | CPython's sentence |
+|---|---|
+| `3 / 0`, `xs[0] / 0` with an `int` slot | `division by zero` |
+| `1.5 / 0`, `xs[0] / 0.0`, `xs[0] / 0` with a `float` slot | `float division by zero` |
+
+With one operand's kind only in the object, a guard placed after the merge could not tell which table to read,
+so the guard is emitted *inside* each arm, where the arm knows what it lifted — `guardNonZeroFloat` and
+`branchRaise` now return the block the continuation runs in, so the arm's `phi` names the block the guard ends
+in (ADR 0138's lesson, now carried in the signature). A guessed sentence is not a cosmetic failure: the
+program's own `except ZeroDivisionError:` may read the message, and a person always does.
+
+Three defects in the same emission family fell to the sweep, all pre-existing, all made visible by the new arm
+either reaching them or asking about them:
+
+| program | `--aot` before ADR 0253 | after |
+|---|---|---|
+| `t = 0.0` / `t += 1.5` / `print(t)` | `llc` rejects: *multiple definition of local value named `_t`* → **exit 2** | `1.5` |
+| `u = 0` / `u += 1.5` / `print(u)` | **`panic: assignment to entry in nil map`** — the compiler crashed | refusal, exit 1, names the tagged value word |
+| `n = 0` / `n += xs[0] / 2` | would emit `add i32 %_n.ld, %t` with `%t` a `double` → exit 2 | refusal, exit 1 |
+
+The augmented-assignment pair had been lowering its float result **twice** — once into a dead `add i32` nobody
+read, once into the `fadd` that stored it — and the dead half was harmless only while every operand it folded
+was an `i32` the folder could finish. `g.isFloat` is the question both statements now ask once, in the domain
+that stores the value, and `allocd` keeps the second `%_t` alloca from ever being written.
+
+**The domain gate.** `floatValue` increments `doubleDomain` around everything it lowers, and `value()` refuses
+a tagged numeric `BinOp` when the counter is zero. The rule is the one ADR 0166 forces: an answer the caller
+cannot hold is not an answer. Printing, a comparison, an `if`/`while` head, a float binding and a float-boxed
+container element ask for the double and take it; a call argument, `str()`'s argument, a dict slot written by
+key and `+=` onto an `int` variable do not, and receiving it there is the module `llc` rejects. Those four
+stay refusals and are recorded as Gap R.98 — answering them is the `(payload, tag)` pair, i.e. the tagged value
+word itself.
+
+Four shapes were measured beside the change and **filed rather than absorbed**, each by a table that fails when
+the compiler catches up: Gap R.98 (a double handed to an `i32` context), Gap R.99 (a float element of a
+comprehension over a container the program built, `[xs[0] / 2]` → `[2]`), Gap R.100 (a raising element moving
+the comprehension's loop back edge, `[v / 2 for v in xs]` → **exit 2** from *PHI node entries do not match
+predecessors*), Gap R.101 (`xs[0] / ys[0]`, the pair-of-kinds table the ordering also owes as Gap R.97). The
+last three are pinned by `TestTrueDivisionInsideAComprehensionIsFiledNotFixed` and
+`TestTrueDivisionOfTwoUnliteralisedSlotsIsFiledNotFixed`, in the unit file with each engine's own answer written
+into the row.
+
+### Gap R.96 — the true division of a slot the program built answered `0.0` with exit 0 (measured 2026-10-02, closed by ADR 0253)
+
+The row as filed by ADR 0252's sweep, and the measurement that settled it, are in
+[L11.1 (1c)](#l111-1c--the-true-division-of-a-slot-no-literal-describes-measured-2026-10-02-closed-by-adr-0253):
+`xs = []` / `xs.append(3)` / `print(xs[0] / 4)` printed `0.0` on the compiled leg for `0.75` everywhere else, the
+`0.0` being ADR 0249's empty `fdiv` operand substituted by the caller rather than refused. Closed by ADR 0253 —
+the arm asks the tag (`rt_float_of`, `sitofp`, one `raiseTo` per other kind), the substitution is gone from the
+file, and an operand that still cannot be lifted is refused at the front end. `integration/programs/slot_division.gy`
+is the corpus row: 19 lines, three engines, byte-identical.
+
+### Gap R.98 — the numeric door's double reaches a context that stores an i32 word (measured 2026-10-02, half paid by ADR 0253)
+
+A `double` is only an answer where the caller can hold one. Four sinks cannot, and each of them used to be a
+module `llc` rejects or a crash:
+
+| program | before ADR 0253 | today |
+|---|---|---|
+| `def f(a, b): return b` / `print(f(1, xs[0] / 2))` | `call i32 @gy_f(i32 1, double %t)` → **exit 2** | refusal, exit 1 |
+| `print(str(xs[0] / 2))` | `str()` of a double as an i32 word | refusal, exit 1 |
+| `d = {}` / `d["k"] = xs[0] / 2` | the double truncated into the slot, `print(d["k"])` answered `2` | refusal, exit 1 |
+| `n = 0` / `n += xs[0] / 2` | `add i32 %_n.ld, %t` with `%t` a `double` → **exit 2** | refusal, exit 1 |
+| `t = 0.0` / `t += 1.5` | *multiple definition of local value named `_t`* → **exit 2** | `1.5` — paid |
+| `u = 0` / `u += 1.5` | **`panic: assignment to entry in nil map`** | refusal, exit 1 — the crash is paid |
+
+The refusals stand because the value that leaves the expression it was computed in is the `(payload, tag)` pair
+the tagged value word carries: a call's argument word, `str()`'s argument word and a container slot are one
+static word each, and choosing that word from the run-time kind is precisely what L11.1 owes. The gate is a
+counter (`doubleDomain`) around `floatValue`, so the refusal is raised by the context, in one sentence, rather
+than by whichever instruction happened to be emitted last.
+
+### Gap R.99 — a float element of a comprehension over a container the program built is appended as an i32 (measured 2026-10-02, left open)
+
+```
+xs = []
+xs.append(6)
+print([xs[0] / 2])      # CPython [3.0] · --interp [3.0] · --aot [2]
+print([v / 2 for v in xs])
+```
+
+Not a regression, and not the division's: the comprehension appends its element through the **static** path,
+which never consults the numeric door, so the `double` is truncated to the one `i32` word a slot is. The same
+program with an `int` element (`[v + 1 for v in xs]` → `[7]`) is correct today, which locates the defect at the
+element's tag rather than at the loop. The fix is the one ADR 0238/ADR 0239 taught the `append` path — box the
+float, write the tag, let the printer and the read ask it — applied to `appendElem`, and the two rows in
+`TestTrueDivisionInsideAComprehensionIsFiledNotFixed` fail when it lands.
+
+### Gap R.100 — a comprehension element that traps moves the loop's back edge and `llc` rejects the module (measured 2026-10-02, left open)
+
+```
+xs = []
+xs.append(6)
+print([v / 2 for v in xs])
+# llc: PHI node entries do not match predecessors!
+#   %t3 = phi i32 [ 0, %comp.pre1 ], [ %cc2, %comp.body3 ]
+#   label %comp.body3 / label %fdiv.ok6
+```
+
+The runtime comprehension writes its induction `phi` with a back edge named for the block the body *starts* in
+(`comp.body`), and an element that emits a guard — the zero trap here, a bounds check tomorrow — ends the body
+in a block the `phi` has never heard of. It is ADR 0224's lesson (a `phi` whose entry list must match its
+predecessors, discovered with a string filter) met again one door over, and the same root as the `for`
+statement's latch, which is why `for v in xs: print(v / 2)` works and the comprehension does not. The fix is to
+thread the generator's *current block* through the body rather than assume it, the way `branchRaise` now reports
+the block it ends in. Exit 2 on an ordinary program is ADR 0166's own class, which is why this row is in the
+queue's priority-1 neighbourhood rather than filed under the comprehension.
+
+### Gap R.101 — the true division of two slots the object would have to describe refuses (measured 2026-10-02, left open)
+
+```
+xs = []
+xs.append(6)
+ys = []
+ys.append(4)
+print(xs[0] / ys[0])    # CPython 1.5 · --interp 1.5 · --aot refusal (exit 1)
+```
+
+Honest, but a refusal of a program the oracle answers, so it is recorded rather than praised. The gate admits
+one side whose kind the object reports, because the raise sentence names *two* types and a second such side is
+one branch per pair of kinds — 16 blocks of tag tests for one `fdiv`, for the common case where both slots are
+numbers. It is the same table the ordering owes as Gap R.97 and the equality would have wanted before ADR 0247's
+`rt_payload_eq`; the shape worth building is one pair table shared by `/`, `<`/`>` and `==`, not three. Pinned by
+`TestTrueDivisionOfTwoUnliteralisedSlotsIsFiledNotFixed` (unit) and the `two_built_slots` row of
+`TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly` (CLI), which fail when the door grows the pair.
+
+### Gap R.3c — re-measured beside ADR 0253: the leg stopped being rejected and started being wrong
+
+`programs/probe_float_param_rebind` has been a debt row since ADR 0196, pinned as "the compiled leg does not
+compile" (`%p0` defined with type `double` but expected `i32`, **exit 2**). ADR 0253's store-once rule — ask a
+float value for in the domain that stores it, and consult `allocd` before writing a second `%_t` — made that
+module verify, and the pin broke in the direction nobody wants: the leg runs, prints `1` for `print(addf(1.0))`
+where the oracle prints `2.5`, and exits 0. The row now pins both legs' stdout, because a debt that silently
+changes shape is a debt that stops being measurable; the fix is the function's **return word**, chosen from what
+the body does with the parameter rather than from the shape of the last line, which is L11.6's to make.
