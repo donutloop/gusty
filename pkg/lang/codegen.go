@@ -8332,16 +8332,22 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 			return "", nestedContainerErr(el)
 		}
 	}
-	// Iterating a container whose slots mix kinds has to bind the element's tag alongside its payload,
-	// and the comprehension's loop variable does not do that yet — `for` over such a container does
-	// (ADR 0241), the comprehension loop is still on the plain load. Reading a slot without its tag is
-	// how `out = [x for x in sa]` over {1, "a", None} printed [1, 0, 0] on the compiled backend: three
-	// numbers, two of them zeros, where CPython prints [1, 'a', None]; a dict iterated the same way
-	// printed its interned key indices ([0, 1] where CPython prints ['a', 2]). A refusal that names the
-	// missing tag is worth more than that answer, and the work that retires this door is L11.2's
-	// tagged loop variable.
-	if nm, ok := c.Iter.(*Name); ok && (g.mixedLists[nm.Value] || g.mixedSets[nm.Value] || g.mixedDicts[nm.Value]) {
-		return "", fmt.Errorf("codegen: iterating a %s whose elements are of more than one kind needs a tagged loop variable, so that each element's tag travels with its payload; print(...), len(...) and == on the container itself are answered (roadmap L11.2, Gap R.76)", containerKindWord(g, nm.Value))
+	// Iterating a container whose slots mix kinds binds its loop variable by tag — the pair ADR 0185
+	// put in `%_x` and `%_x_tag` for `for`, and which the comprehension loop now binds the same way.
+	// Reading the payload without the tag is how `out = [x for x in sa]` over {1, "a", None} printed
+	// [1, 0, 0] on the compiled backend: three numbers, two of them zeros, where CPython prints
+	// [1, 'a', None] (roadmap Gap R.76, ADR 0244).
+	mixedIter := false
+	if nm, ok := c.Iter.(*Name); ok {
+		mixedIter = g.mixedLists[nm.Value] || g.mixedSets[nm.Value] || g.mixedDicts[nm.Value]
+	}
+	// Iterating a dict walks its **keys**, and a dict entry occupies two words, so the position is the
+	// counter doubled and the length asked of the object is its entry count — the same pair of facts
+	// `for v in d:` applies (ADR 0188). Reading slot 0 and slot 1 instead of slot 0 and slot 2 answers
+	// `['a', 1]` for `{"a": 1, 2: "b"}`, which is a key and a value wearing the two keys' place.
+	iterIsDict := false
+	if nm, ok := c.Iter.(*Name); ok {
+		iterIsDict = g.runtimeDicts[nm.Value] || g.mixedDicts[nm.Value]
 	}
 	// The iterable has to become a heap handle. A tracked container variable already has one;
 	// a variable the compiler kept as a compile-time list does not — its value is a folded
@@ -8389,7 +8395,10 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	// string global — which is the IR llc rejects (the `for` statement records the same fact).
 	iterIsStrElems := false
 	if nm, ok := c.Iter.(*Name); ok {
-		iterIsStrElems = g.listElemStr[nm.Value] || g.setElemStr[nm.Value]
+		// A dict iteration yields keys, so it is the key kind that decides what the loop variable
+		// holds — the same fact `for v in d:` uses to print a text key as text instead of as its
+		// index in @str_tab (Gap I.2, ADR 0188).
+		iterIsStrElems = g.listElemStr[nm.Value] || g.setElemStr[nm.Value] || g.dictKeyStr[nm.Value]
 	}
 	if ty := exprTyName(c.Iter); !iterIsStrElems && containerKindFromTy(ty) != "" && strings.Contains(ty, "str") {
 		// The compiler's own tracking is not the only evidence: the analyzer inferred
@@ -8414,7 +8423,11 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	}
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 %d)\n", h, allocKind))
 	nlen := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", nlen, src))
+	dictLenFn := "rt_list_len"
+	if iterIsDict {
+		dictLenFn = "rt_dict_len"
+	}
+	b.WriteString(fmt.Sprintf("  %s = call i32 @%s(i32 %s)\n", nlen, dictLenFn, src))
 	// A named preheader block: the induction phi needs a predecessor to take its 0 from, and
 	// the block the loop is written in has no name to reference.
 	pre := g.newLabel("comp.pre")
@@ -8446,29 +8459,81 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 	cmp := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = icmp slt i32 %s, %s\n  br i1 %s, label %%%s, label %%%s\n%s:\n", cmp, idx, nlen, cmp, body, done, body))
 	iv := g.newTmp()
-	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", iv, src, idx))
+	pos := idx
+	if iterIsDict {
+		scaled := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = mul i32 %s, 2\n", scaled, idx))
+		pos = scaled
+	}
+	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", iv, src, pos))
 	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", iv, lv))
+	if mixedIter {
+		// The companion tag slot, in the loop body and not in the preheader, because it is the element
+		// of *this* iteration that is being named. `for` over the same container binds it identically
+		// (ADR 0185), and the two allocas are read as one pair by elemPayloadAndTag.
+		if !g.allocd[lv+"_tag"] {
+			b.WriteString(fmt.Sprintf("  %%_%s_tag = alloca i32\n", lv))
+			g.allocd[lv+"_tag"] = true
+		}
+		lvt := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", lvt, src, pos))
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", lvt, lv))
+		g.taggedVars[lv] = true
+	}
 	appendElem := func() error {
 		if c.Kind == CompDict {
-			kv, kerr := g.value(b, c.Keys[0])
+			// A dict entry is two (payload, tag) pairs, and a pair is only ever read or written as a
+			// pair. When the key or value is the loop variable of a container whose slots mix kinds,
+			// its kind lives in the object and nowhere else, so the pair comes from the two allocas —
+			// the same door the list element goes through (ADR 0185, ADR 0244). Anything else keeps the
+			// static answer it always had, including the message for a kind the compiler cannot name.
+			dictPair := func(e Expr) (payload, tag string, interned, dynamic bool, err error) {
+				if nm, isName := e.(*Name); isName {
+					if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+						return p, t, false, true, nil
+					}
+					// The loop variable of a text container holds an index into @str_tab, and the tag has
+					// to say so: writing it as the integer 0 makes the entry an int the lookup cannot
+					// find, so `{k: 1 for k in d}` printed {0: 1} and `out["a"]` died with KeyError
+					// while the interpreter and CPython both answered {'a': 1} (roadmap Gap R.78, ADR 0245).
+					if c.ForVar != nil && nm.Value == c.ForVar.Value && g.internedVars[nm.Value] {
+						p, perr := g.value(b, e)
+						if perr != nil {
+							return "", "", false, false, perr
+						}
+						return p, strconv.FormatInt(int64(TagStr), 10), true, false, nil
+					}
+				}
+				p, verr := g.value(b, e)
+				if verr != nil {
+					return "", "", false, false, verr
+				}
+				t, ok := g.elemKindTag(e)
+				if !ok {
+					return "", "", false, false, fmt.Errorf("codegen: a dict entry whose key or value is not a kind the compiler can name needs a tagged value word (roadmap L11.1)")
+				}
+				_, intern, _ := g.heapElemKind(b, e)
+				return p, strconv.FormatInt(int64(t), 10), intern, false, nil
+			}
+			kv, kt, kIntern, kDyn, kerr := dictPair(c.Keys[0])
 			if kerr != nil {
 				return kerr
 			}
-			vv, verr := g.value(b, c.Vals[0])
+			vv, vt, vIntern, vDyn, verr := dictPair(c.Vals[0])
 			if verr != nil {
 				return verr
 			}
-			kt, kok := g.elemKindTag(c.Keys[0])
-			vt, vok := g.elemKindTag(c.Vals[0])
-			if !kok || !vok {
-				return fmt.Errorf("codegen: a dict entry whose key or value is not a kind the compiler can name needs a tagged value word (roadmap L11.1)")
-			}
-			b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, kv, vv, kt, vt))
-			if _, intern, kerr := g.heapElemKind(b, c.Keys[0]); kerr == nil && intern {
+			b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)\n", h, kv, vv, kt, vt))
+			if kIntern {
 				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 2)\n", h))
 			}
-			if _, intern, verr := g.heapElemKind(b, c.Vals[0]); verr == nil && intern {
+			if vIntern {
 				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 4)\n", h))
+			}
+			if kDyn || vDyn {
+				// A slot written from a tag the compiler only carries, never reads, obliges the object
+				// to let each slot speak for itself when it is printed (ADR 0232).
+				b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 			}
 			return nil
 		}
@@ -8486,8 +8551,10 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 		if intern {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 1)\n", h))
 		}
-		// As above: a slot that needs its tag obliges the object to let each slot speak (ADR 0232).
-		if t, okTag := g.elemKindTag(c.Elems[0]); okTag && slotTagSelfDescribing(t) {
+		// As above: a slot that needs its tag obliges the object to let each slot speak (ADR 0232). A
+		// tagged loop variable always needs it — its kind is in the object and nowhere the compiler can
+		// read it at this point in the program.
+		if t, okTag := g.elemKindTag(c.Elems[0]); (okTag && slotTagSelfDescribing(t)) || g.compElemIsTaggedLoopVar(c) {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 		}
 		return nil
@@ -13133,7 +13200,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				default:
 					g.listVars[nm.Value] = true
 					if len(comp.Elems) == 1 {
-						if t, okTag := g.elemKindTag(comp.Elems[0]); okTag && slotTagSelfDescribing(t) {
+						if g.compElemIsTaggedLoopVar(comp) {
+							// The element's kind is only in the object: the loop variable came out of a
+							// container whose slots mix kinds, so nothing static says what landed in this
+							// list. It has to let its slots speak (ADR 0232) and be able to print a float it
+							// cannot see coming (roadmap Gap R.76, ADR 0244).
+							g.mixedLists[nm.Value] = true
+							g.listElemStr[nm.Value] = false
+							g.floatFmtUsed = true
+						} else if t, okTag := g.elemKindTag(comp.Elems[0]); okTag && slotTagSelfDescribing(t) {
 							// The builder wrote a tag with every slot and told the object to let its slots
 							// speak; the read has to ask them too, or `print(xs[0])` shows the float box's
 							// handle where CPython shows 1.5, and a container element prints its handle

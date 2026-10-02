@@ -1267,21 +1267,6 @@ func dictWantsContainerKey(dl *DictLit) bool {
 	return false
 }
 
-// containerKindWord names a tracked container for a diagnostic. "collection" is the answer when the
-// compiler has lost even that, and a refusal that hedges about what it refused is a refusal nobody can
-// act on — the whole point of naming the container is that the programmer knows which one to look at.
-func containerKindWord(g *irGen, name string) string {
-	switch {
-	case g.mixedDicts[name] || g.runtimeDicts[name] || g.dictKeyStr[name]:
-		return "dict"
-	case g.mixedSets[name] || g.runtimeSets[name] || g.setElemStr[name]:
-		return "set"
-	case g.listVars[name] || g.mixedLists[name] || g.listElemStr[name]:
-		return "list"
-	}
-	return "collection"
-}
-
 // compElemPrintsAsText answers whether the elements of a runtime-built list comprehension are text,
 // and it asks the question of the **iterated object** rather than of the element expression. The
 // element of `[n for n in names]` is the loop variable, and the loop variable's own facts
@@ -1561,6 +1546,14 @@ func exprSnippet(e Expr) string {
 // `xs.append(v)` already used this door; a comprehension built its elements with `g.value` alone,
 // which is why the same program worked one way and failed the other.
 func (g *irGen) elemPayloadAndTag(b *strings.Builder, e Expr) (payload, tag string, interned bool, err error) {
+	// A variable the compiler bound from a container whose slots carry tags already holds the pair;
+	// asking it for the payload alone is the mistake Gap R.76 refuses to make, so the read goes through
+	// the two allocas together and the tag that arrives is the object's own, not a guess.
+	if nm, isName := e.(*Name); isName {
+		if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+			return p, t, false, nil
+		}
+	}
 	t, ok := g.elemKindTag(e)
 	if !ok {
 		return "", "", false, mixedTaggedElemErr(e)
@@ -1590,6 +1583,42 @@ func (g *irGen) mixedElemTag(b *strings.Builder, e Expr) (payload, tag string, e
 		return "", "", err
 	}
 	return p, t, nil
+}
+
+// taggedLoopVarRead emits the (payload, tag) pair of a variable the compiler bound out of a
+// container whose slots carry tags — the loop variable of a `for` or a comprehension over a container
+// that holds more than one kind. The pair lives in two allocas, `%_x` and `%_x_tag`, and ADR 0185's
+// rule is that one without the other means nothing: an i32 that is 1 could be the integer 1 or the
+// interned index of some text. So the only way to ask for the payload is to ask for both, and the
+// caller gets the tag as the object wrote it rather than as the compiler guessed it.
+func (g *irGen) taggedLoopVarRead(b *strings.Builder, name string) (payload, tag string, ok bool) {
+	if !g.taggedVars[name] || !g.allocd[name+"_tag"] {
+		return "", "", false
+	}
+	p := g.newTmp()
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", p, "_"+name)
+	t := g.newTmp()
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", t, "_"+name+"_tag")
+	return p, t, true
+}
+
+// compElemIsTaggedLoopVar reports whether a comprehension's element is its own loop variable and the
+// container being iterated holds more than one kind — the case where the element's kind is only in the
+// object, never in the compiler. The list the comprehension builds therefore has to be registered as
+// one whose slots speak for themselves (ADR 0232), because nothing static says what is in it.
+func (g *irGen) compElemIsTaggedLoopVar(c *Comp) bool {
+	if c == nil || len(c.Elems) != 1 || c.ForVar == nil {
+		return false
+	}
+	nm, isName := c.Elems[0].(*Name)
+	if !isName || nm.Value != c.ForVar.Value {
+		return false
+	}
+	it, isName := c.Iter.(*Name)
+	if !isName {
+		return false
+	}
+	return g.mixedLists[it.Value] || g.mixedSets[it.Value] || g.mixedDicts[it.Value]
 }
 
 // mixedElemPair emits the tagged *read* of one element: the payload through rt_get_elem and its

@@ -172,55 +172,106 @@ func TestComprehensionFailuresMatchCPython(t *testing.T) {
 	}
 }
 
-// TestComprehensionOverAMixedContainerRefusesUntilItsLoopCarriesATag is Gap R.76, and it is the
-// compiled backend's half of ADR 0244's rule about the element.
+// TestComprehensionOverAMixedContainerMatchesCPython is Gap R.76 answered rather than refused.
 //
-// The comprehension's loop variable is loaded, not tagged: `for` over a container whose slots mix
-// kinds binds the element's tag alongside its payload (ADR 0241), and the comprehension loop never
-// caught up. So `out = [x for x in sa]` over {1, "a", None} printed [1, 0, 0] — three numbers, two of
-// them zeros, where CPython prints [1, 'a', None] — and iterating a dict printed its interned *key
-// indices* ([0, 1] where CPython prints ['a', 2]). The list case already refused; a set and a dict
-// answered anyway, because the guard that caught it looked only at the list registry. A wrong answer
-// that agrees with nothing is worth less than a refusal that names the missing tag, so all three
-// containers now go through the same door, and the rows below are the answer it gives. The work that
-// retires them is L11.2's tagged loop variable.
-func TestComprehensionOverAMixedContainerRefusesUntilItsLoopCarriesATag(t *testing.T) {
+// The comprehension's loop variable used to be a plain load: `for` over a container whose slots mix
+// kinds binds the element's tag alongside its payload (ADR 0185, ADR 0241), and the comprehension loop
+// never caught up. So `out = [x for x in sa]` over {1, "a", None} printed [1, 0, 0] — three numbers,
+// two of them zeros, where CPython prints [1, 'a', None] — and iterating a dict read slot 0 and slot 1
+// of a two-word entry, answering ['a', 1] for {"a": 1, 2: "b"}: a key and a value wearing the two keys'
+// place. The loop now binds the same (payload, tag) pair `for` binds, walks a dict's keys at stride 2,
+// and registers the list it builds as one whose slots speak for themselves, because nothing static says
+// what is in it (ADR 0232).
+//
+// A set's iteration order is this runtime's own business — CPython's moves with the hash seed — so the
+// set rows ask length and membership, and pin a printed list only where the order is agreed.
+func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"mixed_list",
-			"xs = []\nxs.append(1)\nxs.append(\"a\")\nout = [x for x in xs]\nprint(out)\n",
-			"iterating a list whose elements are of more than one kind needs a tagged loop variable",
+			"xs = []\nxs.append(1)\nxs.append(\"a\")\nxs.append(None)\nout = [x for x in xs]\nprint(out)\n",
+			"[1, 'a', None]\n",
 		},
 		{
-			"mixed_list_through_a_name",
-			"xs = [1, \"a\"]\nxs.append(None)\nout = [x for x in xs]\nprint(out)\n",
-			"iterating a list whose elements are of more than one kind needs a tagged loop variable",
+			"mixed_list_every_slot",
+			"xs = []\nxs.append(1)\nxs.append(\"a\")\nxs.append(None)\nout = [x for x in xs]\nprint(out[0])\nprint(out[1])\nprint(out[2])\n",
+			"1\na\nNone\n",
 		},
 		{
-			// The set and dict cases are what this row adds: before, only the list registry was
-			// consulted and these two printed interned indices as if they were elements.
+			// The float is the row ADR 0238 exists for: the slot holds the handle of a box, and only
+			// the tag says so.
+			"mixed_list_with_a_float",
+			"xs = []\nxs.append(1)\nxs.append(1.5)\nxs.append(\"a\")\nxs.append(None)\nout = [x for x in xs]\nprint(out)\n",
+			"[1, 1.5, 'a', None]\n",
+		},
+		{"mixed_list_membership", "xs = []\nxs.append(1)\nxs.append(\"a\")\nout = [x for x in xs]\nprint(1 if \"a\" in out else 0)\nprint(1 if \"z\" in out else 0)\nprint(len(out))\n", "1\n0\n2\n"},
+		{
+			"mixed_list_filtered_by_a_number",
+			"xs = []\nxs.append(1)\nxs.append(\"a\")\nsel = [x for x in xs if x == 1]\nprint(len(sel))\nprint(sel[0])\n",
+			"1\n1\n",
+		},
+		{
+			"mixed_list_against_an_equal_list",
+			"xs = []\nxs.append(1)\nxs.append(\"a\")\nys = [x for x in xs]\nzs = [x for x in xs]\nprint(1 if ys == zs else 0)\n",
+			"1\n",
+		},
+		{
 			"mixed_set",
-			"sa = {1, \"a\", None}\nout = [x for x in sa]\nprint(out)\n",
-			"iterating a set whose elements are of more than one kind needs a tagged loop variable",
+			"sa = {1, \"a\", None}\nout = [x for x in sa]\nprint(len(out))\nprint(1 if 1 in out else 0)\nprint(1 if \"a\" in out else 0)\nprint(1 if None in out else 0)\n",
+			"3\n1\n1\n1\n",
 		},
+		{"mixed_set_grown", "sa = set()\nsa.add(1)\nsa.add(\"a\")\nout = [x for x in sa]\nprint(out)\n", "[1, 'a']\n"},
+		{"mixed_set_into_a_set", "sa = {1, \"a\", None}\nout = {x for x in sa}\nprint(len(out))\nprint(1 if \"a\" in out else 0)\n", "3\n1\n"},
 		{
-			"mixed_set_grown_at_runtime",
-			"sa = set()\nsa.add(1)\nsa.add(\"a\")\nout = [x for x in sa]\nprint(out)\n",
-			"iterating a set whose elements are of more than one kind needs a tagged loop variable",
-		},
-		{
+			// Iterating a dict yields its keys, and a dict entry is two words: the position is the
+			// counter doubled, the same pair of facts `for v in d:` applies (ADR 0188).
 			"mixed_dict_keys",
 			"d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = [k for k in d]\nprint(out)\n",
-			"iterating a dict whose elements are of more than one kind needs a tagged loop variable",
+			"['a', 2]\n",
+		},
+		{"mixed_dict_values_asked_as_keys", "d = {1: \"x\", \"k\": 2}\nout = [v for v in d]\nprint(out)\n", "[1, 'k']\n"},
+		{
+			// A dict comprehension whose key arrives from a mixed dict: the entry is two (payload,
+			// tag) pairs, and a pair is only ever written as a pair.
+			"mixed_dict_into_a_dict",
+			"d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = {k: 1 for k in d}\nprint(out)\nprint(len(out))\n",
+			"{'a': 1, 2: 1}\n2\n",
 		},
 		{
-			"mixed_dict_values",
-			"d = {1: \"x\", \"k\": 2}\nout = [v for v in d]\nprint(out)\n",
-			"iterating a dict whose elements are of more than one kind needs a tagged loop variable",
+			"mixed_dict_into_a_dict_value_read",
+			"d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = {k: 1 for k in d}\nprint(out[\"a\"])\nprint(out[2])\n",
+			"1\n1\n",
 		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "comp_mixed.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 2 {
+					t.Fatalf("%s rejected the compiler's own module (exit 2): %s", engine, cliRun(t, engine, path))
+				}
+				if code != 0 {
+					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want CPython's %q", engine, out, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestComprehensionOverAMixedContainerStillRefusesHonestly keeps the shapes the tagged loop variable
+// does not reach. Each is answered by CPython and by the interpreter; the compiled backend declines by
+// naming the promise it is missing, and never by exiting 2.
+func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
 		{
-			// A different missing promise: a name the escape analysis kept as a compile-time list
-			// has no heap object to walk at all, and emitting the load is the module `llc` rejects.
+			// A name the escape analysis kept as a compile-time list has no heap object to walk at all,
+			// and emitting the load is the module `llc` rejects.
 			"compile_time_list_as_iterable",
 			"xs = [1, \"a\", None]\nout = [x for x in xs]\nprint(out)\n",
 			"kept as a compile-time constant",
@@ -229,6 +280,13 @@ func TestComprehensionOverAMixedContainerRefusesUntilItsLoopCarriesATag(t *testi
 			"literal_bound_text_list_read_by_slot",
 			"names = [\"a\", \"b\"]\nout = [n for n in names]\nprint(out[0])\n",
 			"kept as a compile-time constant",
+		},
+		{
+			// The slot's tag is carried but a `==` against text needs it as an operand the comparison
+			// lowering cannot build yet.
+			"comparing_a_slot_with_text",
+			"xs = []\nxs.append(1)\nxs.append(\"a\")\nout = [x for x in xs]\nprint(1 if out[1] == \"a\" else 0)\n",
+			"more than one kind",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -244,7 +302,7 @@ func TestComprehensionOverAMixedContainerRefusesUntilItsLoopCarriesATag(t *testi
 				t.Fatalf("--aot rejected the compiler's own module (exit 2): %s", cliRun(t, "--aot", path))
 			}
 			if code == 0 {
-				t.Fatalf("--aot answered %q where the answer is only half the value (Gap R.76)", out)
+				t.Fatalf("--aot answered %q where this row is about a refusal", out)
 			}
 			if combined := cliRun(t, "--aot", path); !strings.Contains(combined, tc.want) {
 				t.Fatalf("refusal %q does not name %q", combined, tc.want)
@@ -347,6 +405,79 @@ func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
 			}
 			if combined := cliRun(t, "--interp", path); !strings.Contains(combined, tc.want) {
 				t.Errorf("--interp did not name %q: %s", tc.want, combined)
+			}
+		})
+	}
+}
+
+// TestDictComprehensionEntriesCarryTheirOwnKeysAndValues is Gap R.77 and Gap R.78: the two ways a dict
+// comprehension used to answer without knowing what it was writing.
+//
+// Iterating a dict yields its **keys**, and an entry occupies two words, so the iteration has to scale
+// its counter by 2 and measure the object in entries (ADR 0188) — `for v in d:` already did, and the
+// comprehension loop did not. Reading slots 0 and 1 of a two-entry dict answers one key and one value:
+// `{1: "x", 2: "y"}` printed `[1, 0]`, with no mixed kind anywhere in the program to blame.
+//
+// And the entry write asked `elemKindTag` for the tag of a key that is the loop variable of a text
+// container, which answers *int* — so the interned index went in as an integer, `print(out)` wrote
+// `{0: 1}`, and `out["a"]`, which looks text up by index and tag together, died with `KeyError: key not
+// found` while the interpreter and CPython both printed 1.
+func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"text_key_is_findable_by_its_text",
+			"d = {}\nd[\"a\"] = 1\nout = {k: 1 for k in d}\nprint(len(out))\nprint(out[\"a\"])\n",
+			"1\n1\n",
+		},
+		{
+			"text_key_prints_as_text",
+			"d = {}\nd[\"a\"] = 1\nout = {k: 1 for k in d}\nprint(out)\n",
+			"{'a': 1}\n",
+		},
+		{
+			"text_key_as_its_own_value",
+			"d = {}\nd[\"a\"] = 1\nout = {k: k for k in d}\nprint(out)\n",
+			"{'a': 'a'}\n",
+		},
+		{
+			// The stride row, with no mixed kind anywhere: keys 1 and 2, values text.
+			"int_keys_are_both_keys",
+			"d = {}\nd[1] = \"x\"\nd[2] = \"y\"\nout = [k for k in d]\nprint(out)\nprint(len(out))\n",
+			"[1, 2]\n2\n",
+		},
+		{
+			"int_keys_into_a_dict",
+			"d = {}\nd[1] = \"x\"\nd[2] = \"y\"\nout = {k: 1 for k in d}\nprint(out)\nprint(out[2])\n",
+			"{1: 1, 2: 1}\n1\n",
+		},
+		{
+			"text_dict_keys_into_a_list",
+			"d = {}\nd[\"a\"] = 1\nd[\"b\"] = 2\nout = [k for k in d]\nprint(out)\nprint(1 if \"a\" in out else 0)\n",
+			"['a', 'b']\n1\n",
+		},
+		{
+			// A set's elements are keys too, and the same two facts decide what lands in the entry.
+			"text_set_into_a_dict",
+			"sa = {\"a\", \"b\"}\nout = {x: 1 for x in sa}\nprint(out)\nprint(out[\"b\"])\n",
+			"{'a': 1, 'b': 1}\n1\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "comp_dict_entry.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 2 {
+					t.Fatalf("%s rejected the compiler's own module (exit 2): %s", engine, cliRun(t, engine, path))
+				}
+				if code != 0 {
+					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want CPython's %q", engine, out, tc.want)
+				}
 			}
 		})
 	}

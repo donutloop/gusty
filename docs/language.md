@@ -41,14 +41,16 @@ xs = [x + 1 for x in [1, 2]]
 print(xs[0], xs[0] + 1)          # 2 3        — an integer element still does integer things
 ```
 
-**What the loop variable knows** (ADR 0244, Gap R.46, Gap R.76). An element that *is* the loop variable
-carries its kind into the list it builds — asked of the container being iterated, because the loop
-variable's own facts are gone by the time the result is bound. That is what makes `print(out)` and
-`print(out[0])` agree on `['a']` and `a` instead of one printing text and the other the interned index.
-Iterating a container whose slots hold **more than one kind** — `[x for x in {1, "a", None}]` — is a
-refusal on the compiled backend, not a list of small integers: the comprehension's loop variable is
-still loaded rather than tagged the way `for` tags its own, and the refusal names the tag it needs and
-the questions about that container it can already answer.
+**What the loop variable knows** (ADR 0244, ADR 0245, Gap R.46, Gap R.76). An element that *is* the loop variable
+carries its kind — and, over a container whose slots mix kinds, its **tag** — into the list it builds,
+asked of the container being iterated, because the loop variable's own facts are gone once the loop
+closes. That is what makes `print(out)` and `print(out[0])` agree on `['a']` and `a` instead of one
+printing text and the other the interned index, and what lets `[x for x in {1, "a", None}]` print
+`[1, 'a', None]` on the compiled backend instead of `[1, 0, 0]`. Iterating a dict walks its keys at the
+stride its two-word entries need (ADR 0188), and a dict comprehension writes each entry as two
+`(payload, tag)` pairs, so `{k: 1 for k in d}` produces an entry `out["a"]` can find. What still refuses
+by naming itself: a comprehension over a name the compiler kept as a compile-time list, and comparing a
+slot of a run-time-built mixed list with text (Gap R.79).
 
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
@@ -1866,12 +1868,31 @@ the list it builds with the kind its slots hold — asked of the container being
 iterated, not of the loop variable, whose own facts die with the loop — so
 `print(out)` and `print(out[0])` give one answer (this closes Gap R.46, whose pin
 at the wrong output is now a parity case). What refuses, honestly and naming
-itself: iterating a container whose slots hold **more than one kind** (the
-comprehension's loop variable is loaded, not tagged the way `for` tags its own —
-the refusal names the missing tag and the questions it does answer; answering it
-is L11.2's tagged loop variable, Gap R.76), a comprehension over a name the
-compiler kept as a compile-time list, and a comprehension whose *filter* reads a
-container slot — the `cannot reach into …'s slots` refusal rather than a guess.
+itself: a comprehension over a name the
+compiler kept as a compile-time list (there is no heap object to walk, and emitting the load is the
+module `llc` rejects — ADR 0192), a comprehension whose *filter* reads a
+container slot — the `cannot reach into …'s slots` refusal rather than a guess, and comparing a slot of a
+run-time-built mixed list with text (`out[1] == "a"`, Gap R.79, where the tag is carried to the printer
+but not yet to the comparison).
+
+**A comprehension's loop variable carries its element's tag** (ADR 0245, Gap R.76). Iterating a container
+whose slots hold more than one kind binds the same `(payload, tag)` pair `for` binds (ADR 0185), so the
+member arrives as what it is rather than as whatever its i32 happens to equal:
+
+```gy
+sa = {1, "a", None}
+print([x for x in sa])            # [1, 'a', None]  — was [1, 0, 0]: an index and a fold's integer
+d = {}
+d["a"] = 1
+d[2] = "b"
+print([k for k in d])             # ['a', 2]         — a dict is walked by its entries, keys only (ADR 0188)
+print({k: 1 for k in d})          # {'a': 1, 2: 1}   — each entry is two (payload, tag) pairs
+```
+
+An element that is a text loop variable keeps its text kind into the container it builds — the list is
+registered from the iterated object, so `print(out)` and `print(out[0])` tell one story — and a dict
+comprehension over a text dict writes keys tagged as text, which is what lets `out["a"]` find the entry
+the printer already named (Gap R.46, Gap R.78).
 
 Comprehension results are **indexable** exactly like their literal
 counterparts, resolved at codegen time:

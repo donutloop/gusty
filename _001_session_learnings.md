@@ -5155,3 +5155,46 @@ oracle), and one trap row had to be rewritten when the oracle revealed it dies o
 a different message than the one the table claimed — a trap table whose oracle does not fail as asserted is
 worse than no row, because it lazes a guess as a fact. Full suites green: `./pkg/lang`, `./integration`,
 `./cmd/gustyc` (42s / 155s / 48s).
+
+## Gap R.76 + Gap R.77 + Gap R.78 — a comprehension's loop variable carries its element's tag (ADR 0245)
+
+**A refusal costs coverage, and nobody audits the bill until the next cycle.** The previous cycle ended
+with a door that refused any comprehension iterating a container whose slots mix kinds. Honest — and it
+also refused `[k for k in d]` over `{"a": 1, "b": 2}`, a program this compiler has always been able to
+answer. The row was written as "closed with a refusal", which is a phrase that should worry whoever reads
+it next: a refusal is the right shape when the alternative is `[1, 0, 0]`, and it is a bug when the
+alternative is available. Both sides belong in the record — what the refusal prevented *and* the ordinary
+programs it took away — or the next cycle inherits a coverage hole with a green tick next to it.
+
+**Two loops, one rule, and only one of them learned it.** `for v in d:` knows a dict entry is two words:
+it scales its counter and asks `rt_dict_len`. The comprehension loop is a second implementation of "walk
+this container" that had never been told, so it read slots 0 and 1 of a two-entry dict — one key and one
+value — and returned them as the two keys. `[1, 0]` for `[1, 2]`, no mixed kind in sight, no guard in
+sight either. The generalisation is uncomfortable but useful: where two constructs share a rule, the rule
+should be one question both ask ("what kind of container is this name, and how do its elements lie?"),
+because the divergence is invisible until somebody prints a wrong answer with a straight face.
+
+**One wrong tag, two symptoms, in two subsystems.** `{k: 1 for k in d}` over a text-keyed dict printed
+`{0: 1}` *and* died with `KeyError: key not found`: the loop variable held an interned index, the entry
+write asked `elemKindTag` for a tag and got *int*, so the printer labelled it a number and the lookup —
+which asks index **and** tag — could not find an entry its own printer had already mislabelled. The
+tempting fix was the printer (it is the symptom you see), and it would have left the KeyError in place.
+The rule this project keeps relearning: name the tag once, at the write, and test every reader of it.
+Same lesson as ADR 0244's half-pair, one layer down.
+
+**"Before" is a binary, not a claim.** The first draft of ADR 0245's table said the mixed-list-with-a-float
+row used to print `[1, 2, 0, 3]`-shaped words. It did not: it *refused*, because the list-only door was
+already in place. Building the two parent commits in a `git worktree` and running the same seven programs
+through each (`/tmp/gusty_fa`, `/tmp/gusty_before`) turned a guessed column into a measured one, and the
+table now says which binary produced which output. That also caught the fact that the mixed-iterable door
+added nothing for `[1, 0]` — the stride defect walked straight out from both binaries — which is exactly
+why Gap R.77 is its own row and not a clause of Gap R.76.
+
+**Kept the honest refusals where they were.** `[x for x in xs]` over a compile-time-constant `xs`, the
+`cannot reach into …'s slots` family, and `out[1] == "a"` (Gap R.79) still refuse by naming the missing
+promise, and the table asserts exit 1 rather than exit 2 for each. Answering three shapes and refusing
+three others is fine; answering three and answering three *wrongly* is what this cycle was for.
+
+**Process.** Expectations from `python3` before writing any table (the set rows ask length/membership
+because CPython's own string-set order moves with the hash seed); suites green at the end —
+`./pkg/lang`, `./integration`, `./cmd/gustyc`.

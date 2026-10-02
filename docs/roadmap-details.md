@@ -4210,3 +4210,57 @@ Two rules come out of it, and both are now habits: a reachability probe has to r
 claim is about (say `--aot` out loud, never bare `--file`), and "no test covers this refusal" is evidence
 that the shape is untested, never evidence that the refusal is unnecessary.
 
+
+**Paid the cycle after it was opened (ADR 0245).** The answer this row said it needed — the comprehension's
+loop variable carrying its element's tag, the way `for` already does — is what shipped, so the refusal is
+gone and the rows above are parity rows. Refusing was the right call when it was written (an answer that
+agrees with no oracle is not an answer), and it was also the wrong call for coverage: the door caught
+`[k for k in d]` over a plain text-keyed dict, a program that had always been answerable. A refusal is for
+the thing the compiler cannot do, not for the thing it has not been asked to do yet.
+
+### Gap R.77 — a comprehension walked a dict at stride 1 (found 2026-10-02 while answering Gap R.76, closed the same cycle with ADR 0245)
+
+`d = {}; d[1] = "x"; d[2] = "y"; print([k for k in d])` answered `[1, 0]` where CPython answers `[1, 2]`,
+and `{1: "x", "k": 2}` answered `['k', 'x']`. A dict entry is two words — a key word and a value word —
+and iterating a dict yields its **keys**, so `for v in d:` scales its counter by 2 and measures the object
+in entries (ADR 0188). The comprehension loop did neither: slot 0 and slot 1 are one key and one value, and
+it called them the two keys.
+
+Two things make this its own row rather than a clause of Gap R.76. Nothing in the program is *mixed*: the
+keys are all ints and the values all text, so a guard keyed on mixed containers could never have caught
+it, and the answer looks exactly as plausible as a correct one — a list of small integers. And it survived
+the mixed-iterable door that was added between the two binaries measured in ADR 0245: `[1, 0]` came out of
+both, which is the evidence that the guard was covering a different defect. `for` had the rule; the
+comprehension had never been told, and the two loops kept their own copies of "how do you walk a dict".
+
+### Gap R.78 — a dict comprehension wrote an interned key as an integer (found 2026-10-02 with Gap R.77, closed the same cycle with ADR 0245)
+
+    d = {}; d["a"] = 1
+    out = {k: 1 for k in d}
+    print(out)         # CPython {'a': 1} · compiled, measured: {0: 1}
+    print(out["a"])    # CPython 1        · compiled, measured: KeyError: key not found
+
+Iterating a text container binds its loop variable to an index into `@str_tab`. The entry write took that
+payload and asked `elemKindTag` what it was, and the answer was *int* — so the key went in as the integer
+`0`, the printer wrote `{0: 1}`, and the lookup, which asks index **and** tag, could not find an entry
+whose key it had been told to read as a number. One wrong tag, two symptoms, in different subsystems: the
+kind facts this backend keeps in `listElemStr` / `setElemStr` / `dictKeyStr` had simply never been asked
+for the dict key case, and `elemKindTag` of a loop variable does not know what the container holds.
+
+The trap here is the one half the pair: `print(out)` and `out["a"]` are two different readers of one tag,
+and fixing only the printer would have produced `{0: 1}` that happened to look up correctly. Both readers
+now see the same `TagStr`, and the test asserts both, having learned it from ADR 0244.
+
+### Gap R.79 — comparing a slot of a run-time-built mixed list with text refuses (measured 2026-10-02 while paying Gap R.76, left open)
+
+    xs = []; xs.append(1); xs.append("a")
+    out = [x for x in xs]
+    print(out[1])                         # compiled: a            — answered
+    print(1 if out[1] == "a" else 0)      # CPython 1 · compiled: refusal
+
+The row is worth writing down because it shows where the tag now reaches: the *printer* can already ask a
+slot what it holds and render text for an i32 that is an interned index, but the *comparison* lowering
+still needs the needle's kind to be provable before it will run the tagged scan (ADR 0232). Same slot,
+same tag, one reader short. It is not a regression — the shape never answered — and the refusal names the
+missing kind rather than answering `0`, which is what an untagged compare of an interned index against a
+string global would have cost.

@@ -145,13 +145,15 @@ than the inner list's address, `[1.5 …]` prints `[1.5]` rather than a box hand
 `[None]` rather than the `0` that `if None:` folds to (ADR 0244).
 
 What the loop variable knows is part of the same rule: an element that *is* the loop variable carries its
-kind into the list it builds, and it asks the **container being iterated** — not the loop variable, whose
-facts are gone once the loop closes — so `print(out)` and `print(out[0])` tell one story (`['a']` and `a`)
-instead of one printing text and the other printing the interned index (Gap R.46, closed). Iterating a
-container whose slots hold more than one kind is a refusal on the compiled backend rather than a list of
-small integers: `[x for x in {1, "a", None}]` used to print `[1, 0, 0]` and `[k for k in d]` printed a
-dict's interned key indices; the refusal now names the tag the comprehension's loop variable still needs
-— the one `for` already carries — and says which questions about that container it answers (Gap R.76).
+kind — and, over a container whose slots mix kinds, its **tag** — into the list it builds, and it asks the
+**container being iterated**, not the loop variable, whose facts are gone once the loop closes. So
+`print(out)` and `print(out[0])` tell one story (`['a']` and `a`) instead of one printing text and the
+other the interned index (Gap R.46, closed), and `[x for x in {1, "a", None}]` prints `[1, 'a', None]`
+where the compiled backend printed `[1, 0, 0]` (Gap R.76). Iterating a dict walks its **keys** at the
+stride its two-word entries need, so `[k for k in d]` over `{1: "x", 2: "y"}` is `[1, 2]` and not the
+`[1, 0]` — a key and a value — the compiler used to hand back (Gap R.77); and a dict comprehension writes
+each entry as two `(payload, tag)` pairs with the tag its key really has, so `{k: 1 for k in d}` over a
+text-keyed dict prints `{'a': 1}` and `out["a"]` finds it instead of dying with `KeyError` (Gap R.78).
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
