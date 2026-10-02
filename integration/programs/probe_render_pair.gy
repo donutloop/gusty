@@ -1,0 +1,52 @@
+# Conformance program (L11.2, ADR 0258) — str() and repr() are one pair, per backend.
+#
+# Every way a value can be written, asked twice: once of str(), once of repr(). The answers come
+# from the same renderer print uses — pointed at a capture buffer instead of at stdout — so the
+# two halves cannot disagree about a form, which is what they used to do. print had a printer and
+# str() had a number-formatter beside it, and every form the second one had not been told about
+# came back as the number underneath: str([1, 2]) compiled answered 0 and str(None) answered 0,
+# both with exit 0. A text is the only form the pair disagrees on, and it disagrees the way
+# CPython does — characters under str, quoting under repr, and quoting inside a container either
+# way.
+#
+# What is deliberately absent: a bool inside a container (the slot answers with the number the
+# verdict is stored as — Gap R.112) and a tuple (the compiled backend has no tuple value to
+# render, so the pair refuses rather than guessing).
+xs = [1, 2]
+print(str(xs))
+print(repr(xs))
+print(str([]))
+print(repr([]))
+ys = ["a", 1]
+print(str(ys))
+print(repr(ys))
+zs = [[1, 2], [3]]
+print(str(zs))
+d = {"a": 1}
+print(str(d))
+print(repr(d))
+print(str({1}))
+s = set()
+print(str(s))
+print(repr(s))
+print(str(None))
+print(repr(None))
+print(str(True))
+print(repr(False))
+x = 2.0
+print(str(x))
+print(repr(x))
+n = 42
+print(str(n))
+print(repr(n))
+t = "hi"
+print(str(t))
+print(repr(t))
+built = []
+built.append("v" + str(7))
+print(str(built))
+print(repr(built))
+print(str(xs) == "[1, 2]")
+print(len(str(xs)))
+u = str(xs)
+print(u.upper())

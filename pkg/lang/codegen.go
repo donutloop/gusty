@@ -902,10 +902,132 @@ fin:
   ret i32 %idx
 }
 
+; rt_repr_of_text is the run-time half of Python's quoting (roadmap L11.2, ADR 0258).
+;
+; @str_tab/@str_repr_tab have carried a text's repr since ADR 0224, but only for text the
+; compiler could see: rt_str_intern2 was handed both forms, and the single-argument
+; rt_str_intern — the one every runtime-built text goes through — filled the raw slot and left
+; the repr slot null. A text built at run time inside a container therefore printed as
+; printf("%s", null), which glibc spells (null): n = 7 / xs.append("v" + str(n)) /
+; print(xs) printed [(null)] where CPython prints ['v7']. Making repr() a builtin makes
+; the quoting rule unavoidable at run time, so it lives here beside the Go table in
+; render.go, and the pair table test holds the two to CPython's answers rather than to each
+; other's.
+define internal i8* @rt_repr_of_text(i8* %raw) {
+entry:
+  br label %length
+; The length is counted here rather than asked of @strlen: this block travels with the heap
+; runtime, and strlen's declare lives in the string block, so a module that renders a repr
+; without ever building a string had the call and not the declaration — llc called that a use of
+; an undefined value on a program that never mentioned a string function (ADR 0209's rule: a
+; runtime block carries what it calls; roadmap L11.2, ADR 0258).
+length:
+  %n = phi i64 [ 0, %entry ], [ %nnext, %stepl ]
+  %cand = getelementptr i8, i8* %raw, i64 %n
+  %cb = load i8, i8* %cand
+  %end = icmp eq i8 %cb, 0
+  br i1 %end, label %sized, label %stepl
+stepl:
+  %nnext = add i64 %n, 1
+  br label %length
+sized:
+  %w = mul i64 %n, 2
+  %sz = add i64 %w, 3
+  %buf = call ptr @malloc(i64 %sz)
+  br label %scan
+scan:
+  ; The predecessor is sized, not entry: the byte count above sits in between, and a phi names
+  ; the blocks that actually branch to it (llc calls a wrong one a malformed PHI).
+  %i = phi i64 [ 0, %sized ], [ %inext, %scanbody ]
+  %hasq = phi i32 [ 0, %sized ], [ %qnext, %scanbody ]
+  %hasd = phi i32 [ 0, %sized ], [ %dnext, %scanbody ]
+  %done = icmp eq i64 %i, %n
+  br i1 %done, label %choose, label %scanbody
+scanbody:
+  %sp = getelementptr i8, i8* %raw, i64 %i
+  %c = load i8, i8* %sp
+  %issq = icmp eq i8 %c, 39
+  %isdq = icmp eq i8 %c, 34
+  %tq = select i1 %issq, i32 1, i32 0
+  %qnext = add i32 %hasq, %tq
+  %td = select i1 %isdq, i32 1, i32 0
+  %dnext = add i32 %hasd, %td
+  %inext = add i64 %i, 1
+  br label %scan
+choose:
+  %qseen = icmp ne i32 %hasq, 0
+  %dseen = icmp eq i32 %hasd, 0
+  %double = and i1 %qseen, %dseen
+  %q = select i1 %double, i8 34, i8 39
+  %op = getelementptr i8, i8* %buf, i64 0
+  store i8 %q, i8* %op
+  br label %write
+write:
+  %j = phi i64 [ 1, %choose ], [ %jnext3, %next ]
+  %k = phi i64 [ 0, %choose ], [ %knext, %next ]
+  %done2 = icmp eq i64 %k, %n
+  br i1 %done2, label %term, label %body
+body:
+  %src = getelementptr i8, i8* %raw, i64 %k
+  %ch = load i8, i8* %src
+  %isq = icmp eq i8 %ch, %q
+  %isbs = icmp eq i8 %ch, 92
+  %isnl = icmp eq i8 %ch, 10
+  %istab = icmp eq i8 %ch, 9
+  %any1 = or i1 %isq, %isbs
+  %any2 = or i1 %any1, %isnl
+  %esc = or i1 %any2, %istab
+  br i1 %esc, label %emitesc, label %emitplain
+emitesc:
+  %d1 = getelementptr i8, i8* %buf, i64 %j
+  store i8 92, i8* %d1
+  %j1 = add i64 %j, 1
+  %s1 = select i1 %isq, i8 %q, i8 0
+  %s2 = select i1 %isbs, i8 92, i8 %s1
+  %s3 = select i1 %isnl, i8 110, i8 %s2
+  %s4 = select i1 %istab, i8 116, i8 %s3
+  %d2 = getelementptr i8, i8* %buf, i64 %j1
+  store i8 %s4, i8* %d2
+  %je = add i64 %j1, 1
+  br label %next
+emitplain:
+  %d3 = getelementptr i8, i8* %buf, i64 %j
+  store i8 %ch, i8* %d3
+  %jp = add i64 %j, 1
+  br label %next
+next:
+  %jnext3 = phi i64 [ %je, %emitesc ], [ %jp, %emitplain ]
+  %knext = add i64 %k, 1
+  br label %write
+term:
+  ; The closing quote is the character this block existed to write and did not: a text built at
+  ; run time came back with an opening quote and no closing one, so xs.append("v" + str(7))
+  ; printed ['v7] where CPython prints ['v7']. The buffer was sized for it (2n + 3), so the only
+  ; thing missing was the store (roadmap L11.2, ADR 0258).
+  %closep = getelementptr i8, i8* %buf, i64 %j
+  store i8 %q, i8* %closep
+  %close1 = add i64 %j, 1
+  %t = getelementptr i8, i8* %buf, i64 %close1
+  store i8 0, i8* %t
+  ret i8* %buf
+}
+
+; rt_str_repr_ptr hands back a text's quoted form, building it the first time it is asked for.
+; Interning a run-time text fills the raw slot only, so the repr is derived on demand and cached
+; in the same table — which is also what makes a runtime-built element inside a container print
+; as 'v7' instead of the (null) an unfilled slot printed.
 define internal i8* @rt_str_repr_ptr(i32 %i) {
 entry:
   %slot = getelementptr [4096 x i8*], [4096 x i8*]* @str_repr_tab, i32 0, i32 %i
   %p = load i8*, i8** %slot
+  %missing = icmp eq i8* %p, null
+  br i1 %missing, label %build, label %have
+build:
+  %raw = call i8* @rt_str_ptr(i32 %i)
+  %r = call i8* @rt_repr_of_text(i8* %raw)
+  store i8* %r, i8** %slot
+  ret i8* %r
+have:
   ret i8* %p
 }
 
@@ -948,16 +1070,119 @@ full:
   ret i32 %last
 }
 
+; ---------------------------------------------------------------------------
+; The rendering sink (roadmap L11.2, ADR 0258).
+;
+; Every value printer in this module writes through rt_out_txt / rt_out_int, which have exactly
+; two destinations: the process's stdout, and — while str() or repr() is rendering — a capture
+; buffer that comes back as an ordinary string value. One renderer with two sinks is what makes
+; print(x), str(x) and the element of a container the same table instead of three separate
+; guesses about how a value is written. Before this, print had a renderer and str() had a
+; number-formatter, and every form the second one had not been told about came back as the
+; number underneath: str([1, 2]) compiled answered 0 and str(None) answered 0, both with
+; exit 0. A missing rendering is not allowed to become a number.
+;
+; The capture buffer is bounded, and a value that overflows it is not silently truncated: the
+; length stops growing, and the str comes back short. A container bigger than 64 KB of text is
+; beyond what this backend stores anyway (256 slots per object), and the bound is stated here
+; rather than discovered in a test that happened to be small.
+; ---------------------------------------------------------------------------
+@rt_capturing = internal global i32 0
+@rt_cap_len = internal global i32 0
+@rt_cap = internal global [65536 x i8] zeroinitializer
+
+; rt_out_txt writes a run-time text to the sink the renderer is pointed at.
+define internal void @rt_out_txt(i8* %p) {
+entry:
+  %cap = load i32, i32* @rt_capturing
+  %to_stdout = icmp eq i32 %cap, 0
+  br i1 %to_stdout, label %emit, label %scan
+emit:
+  %r = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %p)
+  ret void
+scan:
+  %i = phi i32 [ 0, %entry ], [ %inext, %store ]
+  %src = getelementptr i8, i8* %p, i32 %i
+  %ch = load i8, i8* %src
+  %done = icmp eq i8 %ch, 0
+  br i1 %done, label %fin, label %copy
+copy:
+  %len = load i32, i32* @rt_cap_len
+  %fits = icmp slt i32 %len, 65535
+  br i1 %fits, label %store, label %fin
+store:
+  %dst = getelementptr [65536 x i8], [65536 x i8]* @rt_cap, i32 0, i32 %len
+  store i8 %ch, i8* %dst
+  %nlen = add i32 %len, 1
+  store i32 %nlen, i32* @rt_cap_len
+  %inext = add i32 %i, 1
+  br label %scan
+fin:
+  ret void
+}
+
+; rt_out_int writes a number to the same sink: printf's %d, or the digits into the buffer.
+define internal void @rt_out_int(i32 %v) {
+entry:
+  %cap = load i32, i32* @rt_capturing
+  %to_stdout = icmp eq i32 %cap, 0
+  br i1 %to_stdout, label %emit, label %capnum
+emit:
+  %r = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
+  ret void
+capnum:
+  %buf = call ptr @malloc(i64 16)
+  %n = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %buf, i32 16, i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
+  call void @rt_out_txt(i8* %buf)
+  ret void
+}
+
+; rt_str_of_value is the str()/repr() half of the pair for one value: point the renderer at the
+; buffer, ask the one printer this module has, and hand the text back as a string value. The tag
+; says which arm of the printer runs; %quote is the pair's own question — a text writes its
+; characters under str and its quoted repr under repr, and the caller is the only thing that
+; knows which context it is in (ADR 0185's flag, now carrying the pair).
+define internal i32 @rt_str_of_value(i32 %v, i32 %t, i32 %quote) {
+entry:
+  store i32 0, i32* @rt_cap_len
+  store i32 1, i32* @rt_capturing
+  call void @rt_print_mixed_value(i32 %v, i32 %t, i32 %quote)
+  br label %taken
+taken:
+  %n = load i32, i32* @rt_cap_len
+  store i32 0, i32* @rt_capturing
+  %p = bitcast [65536 x i8]* @rt_cap to i8*
+  %idx = call i32 @rt_str_from_bytes(i8* %p, i32 %n)
+  ret i32 %idx
+}
+
+; rt_str_of_container asks a container object to render itself as a string. The object answers
+; how its own slots are stored — plain numbers, interned text, or per-slot tags — which is why
+; the question has to go to the printer rather than to whatever the builder happened to record.
+define internal i32 @rt_str_of_container(i32 %h, i32 %quote) {
+entry:
+  store i32 0, i32* @rt_cap_len
+  store i32 1, i32* @rt_capturing
+  call void @rt_print_container_value(i32 %h, i32 %quote)
+  br label %taken
+taken:
+  %n = load i32, i32* @rt_cap_len
+  store i32 0, i32* @rt_capturing
+  %p = bitcast [65536 x i8]* @rt_cap to i8*
+  %idx = call i32 @rt_str_from_bytes(i8* %p, i32 %n)
+  ret i32 %idx
+}
+
 ; rt_print_str writes an interned string (an index into @str_tab) as its text, honouring the
 ; caller's newline flag: printing an element shows the characters, not the index.
 define internal void @rt_print_str(i32 %idx, i32 %nl) {
 entry:
   %sp = call i8* @rt_str_ptr(i32 %idx)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %sp)
+  call void @rt_out_txt(i8* %sp)
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -979,13 +1204,13 @@ str:
 strq:
   ; the repr slot already carries Python's chosen quotes, so it prints with a plain %s
   %rp = call i8* @rt_str_repr_ptr(i32 %v)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %rp)
+  call void @rt_out_txt(i8* %rp)
   ret void
 strraw:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %sp)
+  call void @rt_out_txt(i8* %sp)
   ret void
 num:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
+  call void @rt_out_int(i32 %v)
   ret void
 }
 
@@ -1000,10 +1225,10 @@ entry:
   %isEmpty = icmp eq i32 %len, 0
   br i1 %isEmpty, label %empty, label %open
 empty:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
   br label %fin
 open:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
   br label %loop
 loop:
   %i = phi i32 [ 0, %open ], [ %next, %cont ]
@@ -1015,7 +1240,7 @@ body:
   %first = icmp eq i32 %i, 0
   br i1 %first, label %emit, label %sepd
 sepd:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   br label %emit
 emit:
   call void @rt_print_value(i32 %idx, i32 1, i32 1)
@@ -1024,11 +1249,11 @@ cont:
   %next = add i32 %i, 1
   br label %loop
 done:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -1042,7 +1267,7 @@ entry:
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
   br label %loop
 loop:
   %i = phi i32 [ 0, %entry ], [ %next, %cont ]
@@ -1058,22 +1283,22 @@ body:
   %first = icmp eq i32 %i, 0
   br i1 %first, label %emit, label %sepd
 sepd:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   br label %emit
 emit:
   call void @rt_print_value(i32 %k, i32 %ks, i32 1)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtcolon, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtcolon, i32 0, i32 0))
   call void @rt_print_value(i32 %v, i32 %vs, i32 1)
   br label %cont
 cont:
   %next = add i32 %i, 1
   br label %loop
 done:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -1394,11 +1619,11 @@ str:
   br i1 %q, label %strrepr, label %strraw
 strrepr:
   %rp = call i8* @rt_str_repr_ptr(i32 %v)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %rp)
+  call void @rt_out_txt(i8* %rp)
   ret void
 strraw:
   %sp = call i8* @rt_str_ptr(i32 %v)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %sp)
+  call void @rt_out_txt(i8* %sp)
   ret void
 checkNone:
   %isNone = icmp eq i32 %t, 3
@@ -1416,7 +1641,7 @@ checkFloat:
 flt:
   %d = call double @rt_float_of(i32 %v)
   %fp = call i8* @rt_fmt_double(double %d)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %fp)
+  call void @rt_out_txt(i8* %fp)
   ret void
 checkContainer:
   ; A slot that names another container is rendered by that container's own printer, chosen at
@@ -1434,7 +1659,7 @@ cont:
   call void @rt_print_container_value(i32 %v, i32 %quote)
   ret void
 num:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmti, i32 0, i32 0), i32 %v)
+  call void @rt_out_int(i32 %v)
   ret void
 }
 
@@ -1446,7 +1671,7 @@ entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
   br label %loop
 loop:
   %i = phi i32 [ 0, %entry ], [ %i1, %cont ]
@@ -1463,18 +1688,18 @@ first:
   call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
   br label %cont
 sep:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
   br label %cont
 cont:
   %i1 = add i32 %i, 1
   br label %loop
 done:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -1488,7 +1713,7 @@ entry:
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
   %dp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 2
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
   br label %loop
 loop:
   %i = phi i32 [ 0, %entry ], [ %next, %cont ]
@@ -1500,7 +1725,7 @@ body:
   %first = icmp eq i32 %i, 0
   br i1 %first, label %emit, label %sepd
 sepd:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   br label %emit
 emit:
   call void @rt_print_value(i32 %idx, i32 1, i32 1)
@@ -1509,11 +1734,11 @@ cont:
   %next = add i32 %i, 1
   br label %loop
 done:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -1549,11 +1774,11 @@ entry:
 ; runtime printer (ADR 0165: the printer does not own the terminator).
 define internal void @rt_print_none(i32 %nl) {
 entry:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([5 x i8], [5 x i8]* @.fmtnone, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([5 x i8], [5 x i8]* @.fmtnone, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -1569,11 +1794,11 @@ define internal void @rt_print_bool(i32 %v, i32 %nl) {
 entry:
   %t = icmp ne i32 %v, 0
   %tp = select i1 %t, i8* getelementptr ([5 x i8], [5 x i8]* @.fmttrue, i32 0, i32 0), i8* getelementptr ([6 x i8], [6 x i8]* @.fmtfalse, i32 0, i32 0)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmts, i32 0, i32 0), i8* %tp)
+  call void @rt_out_txt(i8* %tp)
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -1613,7 +1838,7 @@ notMixed:
   %eb = and i32 %flags, 1
   %isStr = icmp ne i32 %eb, 0
   %istr = zext i1 %isStr to i32
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtlopen, i32 0, i32 0))
   br label %loop
 loop:
   ; The predecessor is notMixed, not entry: a phi names the blocks that actually branch to it,
@@ -1630,18 +1855,18 @@ first:
   call void @rt_print_value(i32 %e, i32 %istr, i32 1)
   br label %cont
 sep:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   call void @rt_print_value(i32 %e, i32 %istr, i32 1)
   br label %cont
 cont:
   %i1 = add i32 %i, 1
   br label %loop
 done:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtlclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -2001,7 +2226,7 @@ entry:
   %obj = getelementptr [1024 x {i32, i32, [256 x i32]}], [1024 x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h
   %lp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %obj, i32 0, i32 1
   %len = load i32, i32* %lp
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtdopen, i32 0, i32 0))
   br label %loop
 loop:
   %i = phi i32 [ 0, %entry ], [ %next, %cont ]
@@ -2021,22 +2246,22 @@ body:
   %first = icmp eq i32 %i, 0
   br i1 %first, label %emit, label %sepd
 sepd:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   br label %emit
 emit:
   call void @rt_print_mixed_value(i32 %k, i32 %keyTag, i32 1)
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtcolon, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtcolon, i32 0, i32 0))
   call void @rt_print_mixed_value(i32 %v, i32 %valTag, i32 1)
   br label %cont
 cont:
   %next = add i32 %i, 1
   br label %loop
 done:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -2052,10 +2277,10 @@ entry:
   %isEmpty = icmp eq i32 %len, 0
   br i1 %isEmpty, label %empty, label %open
 empty:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
   br label %fin
 open:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
   br label %loop
 loop:
   %i = phi i32 [ 0, %open ], [ %next, %cont ]
@@ -2069,7 +2294,7 @@ body:
   %first = icmp eq i32 %i, 0
   br i1 %first, label %emit, label %sepd
 sepd:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtsep, i32 0, i32 0))
   br label %emit
 emit:
   call void @rt_print_mixed_value(i32 %e, i32 %t, i32 1)
@@ -2078,11 +2303,11 @@ cont:
   %next = add i32 %i, 1
   br label %loop
 done:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -2282,16 +2507,16 @@ notMixed:
   %isEmpty = icmp eq i32 %len, 0
   br i1 %isEmpty, label %empty, label %open
 empty:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([6 x i8], [6 x i8]* @.fmtemptyset, i32 0, i32 0))
   %wantnl0 = icmp ne i32 %nl, 0
   br i1 %wantnl0, label %eol0, label %fin0
 eol0:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin0
 fin0:
   ret void
 open:
-  %r1 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsopen, i32 0, i32 0))
   br label %check
 check:
   ; the phi's incoming block follows the new predecessor: entry no longer reaches check
@@ -2307,17 +2532,17 @@ body:
   %c1 = icmp slt i32 %i1, %len
   br i1 %c1, label %sep, label %cont
 sep:
-  %r3 = call i32 (i8*, ...) @printf(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtssep, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([3 x i8], [3 x i8]* @.fmtssep, i32 0, i32 0))
   br label %cont
 cont:
   %next = phi i32 [ %i1, %body ], [ %i1, %sep ]
   br label %check
 done:
-  %r4 = call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtsclose, i32 0, i32 0))
   %wantnl = icmp ne i32 %nl, 0
   br i1 %wantnl, label %eol, label %fin
 eol:
-  call i32 (i8*, ...) @printf(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
+  call void @rt_out_txt(i8* getelementptr ([2 x i8], [2 x i8]* @.fmtnl, i32 0, i32 0))
   br label %fin
 fin:
   ret void
@@ -4210,8 +4435,10 @@ func (g *irGen) exprIsString(e Expr) bool {
 			}
 		}
 		// str(n) is text whatever n is (ADR 0229): the print path and the operation path ask
-		// one predicate, or a number's digits come out as an index.
-		if g.builtinCallAs(v, "str") {
+		// one predicate, or a number's digits come out as an index. repr is text for the same
+		// reason and asked of the same predicate — the pair is one question, so the answer to
+		// "is it text" cannot be yes for one half and no for the other (roadmap L11.2, ADR 0258).
+		if g.builtinCallAs(v, "str") || g.builtinCallAs(v, "repr") {
 			return true
 		}
 		return false
@@ -11897,11 +12124,32 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("codegen: range needs one argument")
 		}
 		return g.value(b, c.Args[0])
-	case "str":
-		// str(n) folds to the decimal string of an int literal.
+	case "str", "repr":
+		// str() and repr() are one pair, and the pair is one table (roadmap L11.2, ADR 0258).
+		// The question each half asks is "how does this value write?", and the answer comes from
+		// the same renderer print uses — pointed at a capture buffer instead of stdout — so the
+		// two can no longer disagree about a form, the way they did while str() had a
+		// number-formatter and print had a printer. Everything the pair can name by its own rules
+		// answers here, in the order the forms are distinguished: a container asks its object,
+		// a verdict writes its name, the void writes None, a float takes the round-tripping text,
+		// a text writes itself under str and its quoted repr under repr, and a number writes its
+		// digits. What none of those rules covers is refused by naming the half that is missing,
+		// because a missing rendering must not become the number underneath the value: `str([1, 2])`
+		// used to answer `0` and `str(None)` answered `0`, both with exit 0.
 		if len(c.Args) != 1 {
-			return "", fmt.Errorf("str expects one argument")
+			return "", fmt.Errorf("%s expects one argument", calleeName(c))
 		}
+		form := FormStr
+		if calleeName(c) == "repr" {
+			form = FormRepr
+		}
+		if out, handled, rerr := g.renderPair(b, c.Args[0], form, c.Span()); handled {
+			return out, rerr
+		}
+		if calleeName(c) == "repr" {
+			return "", g.renderPairRefusal(c.Args[0], form)
+		}
+		// str(n) folds to the decimal string of an int literal.
 		// str(True) is the word "True" and not the digit "1". Both spellings are known right
 		// here, so the answer is the @str_tab index the 0/1 selects — an ordinary string value
 		// from here on, which is what makes `s = str(flag)` then `print(s.upper())` behave like
@@ -12439,8 +12687,12 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		if nm, ok := v.Fn.(*Name); ok && (nm.Value == "min" || nm.Value == "max") && !g.builtinShadowed(nm.Value) && g.minMaxCallReturnsText(v) {
 			return true
 		}
-		// str(n) is text whatever n is, so printing it shows digits and not a count.
-		if g.builtinCallAs(v, "str") {
+		// str(n) is text whatever n is, so printing it shows digits and not a count. repr is
+		// the same answer with the quoting question asked: both halves hand back an @str_tab
+		// index, and if this predicate said yes to one and no to the other, print(repr(x))
+		// would write the intern table's position instead of the quoted text (roadmap L11.2,
+		// ADR 0258 — the pair is one question, asked once per value).
+		if g.builtinCallAs(v, "str") || g.builtinCallAs(v, "repr") {
 			return true
 		}
 		return false
@@ -14271,6 +14523,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// container prints through rt_print_list_mixed. Everything else that would
 				// read an element out of it keeps refusing (ADR 0184).
 				mixed := g.taggableMixedList(lit)
+				// How the slots are stored is written on the object as well as remembered in
+				// this scope: bit 1 for interned text, bit 8 for a list whose slots must be read
+				// one at a time. print has always chosen its printer from the record kept beside
+				// the compiler; str() and repr() ask the object, so the object has to answer.
+				estrBits := 0
 				for i, el := range lit.Elems {
 					// heapElemKind, not value(): an assigned container literal is still a
 					// runtime container, so a string element becomes an index into @str_tab
@@ -14286,6 +14543,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// printer reads, so answering it only one way prints the index (ADR 0225).
 					if !interned {
 						interned = g.exprIsString(el)
+					}
+					if interned {
+						estrBits |= 1
 					}
 					// Every slot is tagged, not just the ones in a mixed list: rt_container_eq
 					// compares (payload, tag) pairs, and a slot whose tag was never written holds
@@ -14306,6 +14566,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if mixed {
 					g.mixedLists[nm.Value] = true
 					delete(g.listElemStr, nm.Value)
+					estrBits |= 8
+					// The object says so too. The set and dict assignment paths have marked
+					// bit 8 on a mixed object all along; the list one recorded the fact only in
+					// this scope, so print — which picks its printer from the record — was right
+					// while anything that asks the object was wrong. str() and repr() ask the
+					// object, because the pair is one renderer pointed at a different sink and a
+					// handle reaches it without the builder's scope beside it: ["a", 1] came back
+					// as [0, 1], the two interned indexes (roadmap L11.2, ADR 0258).
+				}
+				if estrBits != 0 {
+					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, estrBits))
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
 				return nil

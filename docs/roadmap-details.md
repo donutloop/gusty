@@ -869,16 +869,71 @@ start L11.3/L11.4/L11.5 before it, or they re-decide the representation locally.
       `str(None)` back to `"0"`. `print(set())` (compiled prints `0`) and container quoting
       remain open here; `str(True)` remains `1` because bools are not values yet.
 <a id="l11-2"></a>
-- **L11.2 — `str()` vs `repr()` are one function per backend (closes Gap L.2)**
-  ⏳ PLANNED — **gated on L11.1's bool step**: `print(True)`/`print(1 == 1)` print `1` on
-  *both* backends and `--json` reports `"type": "int"` for `True`, so the rendering table
-  cannot be fixed before bools are values (measured 2026-08-04). The parts that do not need
-  a tag — the empty-set rule (`print(set())` is `set()` interpreted, `0` compiled), quoting
-  inside containers, and `str(None)`'s invalid-IR emission — can land with it. — `print(True)` is `1` today; bools, `True`/`False`, `None`, quoting
-  and the empty-set `set()` rule are decided in two places (Go `Repr`, IR
-  `@rt_print_value`). Make it one shared, context-correct pair (`str` for
-  `print`/f-strings, `repr` inside containers), pinned by a table test that runs
-  every value form through both backends + CPython.
+- **L11.2 — `str()` vs `repr()` are one pair per backend (closes Gap L.2)** ✅ DONE (ADR 0258) —
+  the pair is one renderer on each side, asked which of its two forms the caller is in.
+
+  *What was measured first (2026-10-02, three engines, before touching anything).* `repr` existed in
+  neither backend: `repr(1)` was `NameError` on the interpreter and `unsupported call "repr"`
+  compiled, both exit 1. `str` was a **second** renderer, and a form it had not been told about came
+  back as the number underneath the value:
+
+  | program | CPython | interpreter | compiled, before |
+  |---|---|---|---|
+  | `xs = [1, 2]` · `print(str(xs))` | `[1, 2]` | `[1, 2]` | **`0`**, exit 0 — the heap handle's digits |
+  | `print(str(None))` | `None` | `None` | **`0`**, exit 0 |
+  | `x = 1.5` · `print(str(x))` | `1.5` | `1.5` | refusal `str on non-integer`, exit 1 |
+  | `print(str({1}))`, `print(str(set()))` | `{1}`, `set()` | same | **exit 2** — `llc` rejected the module |
+  | `xs = [[1, 2], [3]]` · `print(str(xs))` | `[[1, 2], [3]]` | same | **`[1, 2]`** — the two inner handles |
+  | `xs = ["a", 1]` · `print(str(xs))` | `['a', 1]` | same | **`[0, 1]`** — the two intern indexes |
+  | `xs = []` · `xs.append("v" + str(7))` · `print(xs)` | `['v7']` | `['v7']` | **`(null)`**, then `['v7]` once a runtime repr existed |
+
+  Every one of those had exit 0. A missing rendering was answering as a number, which is what made
+  the defect survivable: nothing distinguished it from an answer, and the two backends agreed with
+  each other on `0` often enough that the matrix had nothing to say.
+
+  *The design that closed it.* The compiled printers no longer call `printf`. All 51 of their writes
+  go through `rt_out_txt` (text) and `rt_out_int` (digits), which are pointed either at stdout or —
+  while `str()`/`repr()` render — at a capture buffer whose bytes come back interned. `str` and
+  `repr` are then: point the sink, run the printer `print` would have run, intern what was written.
+  The `quote` flag ADR 0185 introduced for container elements now carries the pair, and it is read
+  only by the text arms at the top of a render, because a text is the one value whose two halves
+  differ; inside a container both halves quote, which is why `print(xs)` and `str(xs)` cannot drift.
+  On the interpreter side `repr` delegates to the same `Repr` that `print` and `str` already shared
+  and differs only in quoting a text. `--json --eval 'repr("hi")'` reports
+  `{"result": "'hi'", "type": "str"}`; `str()`/`repr()` of a form the expression does not name is a
+  refusal in words, exit 1, naming which half is missing — never the number underneath, never exit 2.
+
+  *What the fix surfaced, and had nothing to do with `str`.* A container assigned from a literal
+  wrote per-slot tags but never said so on the object: the element kinds were recorded only in the
+  compiler's scope, so `print` — which chooses its printer from that record — was right while anything
+  that *asks the object* was wrong. The set and dict assignment paths had marked `@estr` bit 8 ("the
+  slots describe themselves") all along; the list one had not, and no assignment path marked bit 1 for
+  interned text either. That is the same asymmetry Gap L.2 was, one level down, and it is why
+  `print(["a", 1])` printed `['a', 1]` while `str(["a", 1])` answered `[0, 1]` from the same object.
+  Objects now describe their own slots on every assignment path (`heapListFrom`, the list-assignment
+  builder, the dict and set twins).
+
+  *Where the pair still stops, and why.* It renders what the expression can name: a container literal,
+  a registered container variable, a constructor whose inferred type names its kind, a text, a float,
+  a verdict, `None`, a number. A value handed over as an untagged word whose kind no expression names
+  still takes the digits arm — both halves agree, which is what this row promised, and both are wrong
+  together, which is filed as Gap R.115. A container returned from a function is Gap R.67's
+  (`ret i32 @.lst1`, exit 2, unchanged by this row); a bool inside a container prints the number the
+  verdict is stored as (Gap R.112, unchanged); a tuple is L11.3's and refuses; and an f-string cannot
+  interpolate a container variable at all (Gap R.114).
+
+  *Coverage.* `pkg/lang/render_pair_test.go` is the table: 55 value forms through both backends, each
+  expected to write CPython's answer — the expectations taken from `python3`, because pinning the pair
+  to itself is how this defect stayed alive — plus a negative table that fails if a form answers
+  `0`/`1`/`2`, a `print`-vs-`str` agreement table, and an IR row that fails the day a second value
+  renderer reappears in a module. `integration/render_pair_test.go` drives 21 of them through the CLI
+  legs, the `--json` machine leg, and the `--oracle` leg (a matching pair program is exit 0; a bool
+  inside a rendered container is still exit 6, which is Gap R.112 being reported rather than hidden).
+  `programs/probe_render_pair.gy` joined the conformance corpus and is `match` on all three legs. Two
+  refusal rows left `slot_division_test.go` (unit and integration): `str()` is a context a double now
+  can travel into, because the renderer that prints a float writes into the capture buffer — that
+  program is pinned at CPython's `3.0` instead, and the sinks that store an `i32` word still refuse.
+
 <a id="l11-3"></a>
 - **L11.3 — Tuples are values, not syntax sugar** ⏳ PLANNED — `TupleLit` has no
   AOT lowering at all (`unsupported expression *lang.Tuple`, so
@@ -4850,6 +4905,49 @@ float, write the tag, let the printer and the read ask it — applied to `append
 `TestTrueDivisionInsideAComprehensionIsFiledNotFixed` fail when it lands.
 
 <a id="gap-r-100"></a>
+### Gap R.114 — an f-string cannot interpolate a container variable (OPEN, measured closing Gap L.2)
+
+```gusty
+xs = [1, 2]
+print(f"{xs}")          # CPython and --interp: [1, 2]
+```
+
+The compiled leg answers `gustyc: jit: codegen: codegen: undefined name "xs" (no binding for it;
+assign it before use)`, exit 1, on both paths — while the same shape written `print(str(xs))` prints
+`[1, 2]` on all three engines (that row is green in `TestRenderPairWritesWhatCPythonWrites`). The name
+*is* bound: `print(xs)` from the same source compiles. The interpolation lowers its expression in a
+scope that never saw the binding, so it never reaches a renderer at all.
+
+An f-string's `{expr}` **is** `str(expr)` — which is what makes ADR 0258's pair worth reaching for: one
+call into `renderPair`, the same arms, the same refusal. Filed rather than fixed in this cycle because
+the defect is the interpolation's scope handling, not the renderer's, and because a defect measured
+while closing one row and left unwritten is the same as one that does not exist. No test yet; the row
+moves from the refusal tables into the pair table when it closes.
+
+### Gap R.115 — `str()` / `repr()` of a value whose kind no expression names answers digits (OPEN, measured closing Gap L.2)
+
+```gusty
+def g():
+    return [1, 2]
+
+print(str(g()))         # CPython and --interp: [1, 2]
+```
+
+Compiled, this is exit 2 today — `llc: global variable reference must have pointer type` on
+`ret i32 @.lst1` — which is Gap R.67's emission, owned there, and measured unchanged by ADR 0258. What
+*this* row owns is what the pair does with a value whose kind the compiler cannot see once the handle
+does survive: it takes the digits arm and writes the decimal form of the heap index, with exit 0. Both
+halves agree, which is exactly what L11.2 promised them, and both are wrong in the same place — the
+value arrived as an untagged word, and a table cannot be consulted about a kind nobody states.
+
+The container arms fire for a literal, for a variable the container records registered, and for a
+constructor whose inferred type names its kind (`str(set())`, `str(list())` — the checker's type being
+the second witness the container arm consults). The digits arm is what remains, and it should answer
+only a value the compiler can *prove* is a number; anything else should be refused the way a tuple
+already is (`TestStrOfAValueWhoseFormIsNotVisibleRefusesBothHalvesTogether` pins that refusal, and
+`TestPairRefusalIsWrittenForTheAgent` forbids exit 2 on the CLI leg). L11.1's tagged value word is the
+real owner: a `(payload, tag)` pair reaching the builtin is a form the renderer can be asked about.
+
 ### Gap R.100 — a comprehension element that traps moves the loop's back edge and `llc` rejects the module (measured 2026-10-02, closed by ADR 0255)
 
 ```

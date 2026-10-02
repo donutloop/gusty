@@ -1448,11 +1448,44 @@ read those numbers; the compiled heap's own object-header kind is a projection o
 this — it is an immediate or an interned string"). `gustyc --lang` prints both tables, and
 `--schema`'s `valueTag` definition documents the numbering.
 
-`str(x)` of a value the compiler can fold at compile time produces the same text on both
-backends and the same text CPython prints: `str(None)` is `"None"` (not `"0"`), `str(1.5)` is
-`"1.5"`, and `str("x")` is `x` — `str()` is the unquoted form, so it is not `repr()`. A folded
-string may be printed but never stored as a global; where it is stored, the text is interned
-and the handle kept (ADR 0183).
+### `str(x)` and `repr(x)` — one pair, one renderer each (ADR 0258)
+
+`str()` and `repr()` are a **pair**, not two renderers: for every value they agree, and the one
+value they disagree on is a **text**, which writes its characters under `str` and its quoted source
+form under `repr` — `'hi'`, and `"it's"` when the text contains a single quote and no double one.
+Inside a container both halves quote, which is why `print(xs)` and `str(xs)` write the same line:
+a list element is always rendered by the `repr` half (ADR 0185's `quote` flag, now carrying the pair).
+
+There is **one renderer per backend**, and `print`, `str()` and a container element are its three
+callers. In the interpreter that renderer is the evaluator's value printer, and `repr()` asks it the
+quoting question a text alone answers differently. In the compiled backend the value printers no
+longer call `printf` at all: every write goes through `rt_out_txt` / `rt_out_int`, which are pointed
+either at stdout or — while `str()`/`repr()` render — at a capture buffer whose bytes come back as an
+interned string (`rt_str_of_container` asks the object to render itself; `rt_str_of_value` renders one
+value by its tag). A form added for `print` is therefore a form the pair has; the module fails its own
+test (`TestRenderPairIsOneTableNotTwo`) the day a second value renderer appears.
+
+A value is rendered by the form its **expression names**, not by the slot that happens to hold it:
+
+```python
+print(str([1, 2]))      # [1, 2]        · was `0`, exit 0
+print(str(set()))       # set()         · was exit 2, llc rejecting the module
+print(str(None))        # None          · was `0`, exit 0
+print(str(1.5))         # 1.5           · was refused, `str on non-integer`
+print(repr("hi"))       # 'hi'
+print(str(True))        # True          · ADR 0257: the verdict's name, not the 1 stored for it
+xs = []
+xs.append("v" + str(7))
+print(xs)               # ['v7']        · a text built at run time had no repr: it printed (null)
+```
+
+`str(x)` of a value the compiler can fold produces the same text on both backends and the same text
+CPython prints: `str(None)` is `"None"` (not `"0"`), `str(1.5)` is `"1.5"`, and `str("x")` is `x`. A
+folded string may be printed but never stored as a global; where it is stored, the text is interned
+and the handle kept (ADR 0183). A value whose kind **no expression names** — an untagged word the
+compiler cannot read — is refused in words, exit 1, naming which half is missing, rather than
+answering with the number underneath it; the remaining shapes of that kind are roadmap Gap R.115, and
+a tuple is refused until L11.3 gives it a value to render.
 
 A **container slot is an i32 word**, so the element kinds a compiled container can hold are the kinds
 a word can carry: integers, interned strings (`@str_tab` indices, ADR 0224) and `None` — each with its
@@ -1957,12 +1990,14 @@ not offered in completions.
   use `%d\n`. Zero-argument `print()` writes nothing (no `printf`), matching
   the interpreter's no-op.
 - `range(n)` — iteration bound for `for` loops.
-- `str(x)` — converts a value to its string representation. In the
-  interpreter, `str(x)` boxes `repr(x)` as a string; in codegen, `str(int)`
-  folds to the decimal string constant and `str(float-constant)` folds to its
-  `%g` decimal string (matching the interpreter's `repr`), so `print(str(3.5))`
-  emits a valid `%s` printf with the string-global pointer rather than a `%d`
-  printf fed an `i8*`. `len(str(...))` also folds.
+- `str(x)` — the value's own text, returned as a string value: printable, comparable,
+  subscriptable, case-foldable (`s = str(xs)` then `print(s.upper())` works, ADR 0224/0257).
+  In codegen a readable number folds to its decimal constant, a float to Python's
+  round-tripping text, a container to its own printer's output, and `len(str(...))` folds.
+- `repr(x)` — the value's written form, from the **same renderer**: identical to `str(x)` except
+  for a text, which comes back quoted (`repr("hi")` is `'hi'`). Registered as a string-returning
+  builtin, so `print(repr(x))` writes the text and not the intern table's position (roadmap L11.2,
+  ADR 0258, closing Gap L.2).
 
 ## Generators & lists
 - `def g(): yield a; yield b` is a generator: calling `g()` runs the body and

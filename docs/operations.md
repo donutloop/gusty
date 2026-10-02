@@ -779,6 +779,15 @@ against its own ability to fail).
   answers a question — a bool literal, a comparison, membership or identity test, `not`, `all`/`any`,
   an `and`/`or` of two verdicts, a ternary with verdict arms, a call whose every `return` is one, or a
   name last bound to any of those. `and`/`or` of numbers stay `int`, because Python yields the operand.
+- `--json --eval "repr(\"hi\")"` → `{"result": "'hi'", "type": "str", "backend": "interpreter", "exit": 0}`,
+  and `--json --eval "str([1, 2])"` → `{"result": "[1, 2]", "type": "str", …}`. `str()` and `repr()` are
+  one pair over one renderer per backend — `print`, `str()` and a container element all ask the same
+  table, so the two halves cannot disagree about a form and the machine path reports the same text the
+  console does (roadmap L11.2, ADR 0258, closing Gap L.2). The pair's one disagreement is CPython's: a
+  text writes its characters under `str` and its quoting under `repr`, quoted either way inside a
+  container. Where an expression names no form at all the call is **refused** — exit 1, `"error"` in
+  the JSON, the missing half named — and never answered with the decimal form of the handle, which is
+  what `str([1, 2])` used to be: `0`, exit 0, on both backends.
 - every execution result carries `"backend"`: `"interpreter"` or `"aot"`. It is a fact
   about the run, not something to infer from the flag list — `--file` without
   `--aot` reports `"backend": "interpreter"` (roadmap Gap M.2). Captured-output

@@ -199,6 +199,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// branches on. It is here rather than in conformanceProbes because both backends now print
 		// CPython's answer on every line (roadmap L11.1, ADR 0251).
 		"probe_nested_list",
+		// The rendering pair, three engines on one source: every value form written twice, once by
+		// str() and once by repr(), from the one renderer print uses. Both backends print CPython's
+		// answer on every line, which is what moved this program out of the probe list; the forms
+		// the compiled backend cannot name are refusals it makes the same way on both halves
+		// (roadmap L11.2, ADR 0258, closing Gap L.2).
+		"probe_render_pair",
 		// The ordering of those same slots, three engines on one source: `<`, `<=`, `>`, `>=` of a slot
 		// whose kind only the object can report, answered as two numbers, two texts, or the `TypeError`
 		// CPython raises naming the kind the slot really holds — with the arms nobody can reach not

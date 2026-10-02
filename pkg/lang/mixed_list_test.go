@@ -25,7 +25,7 @@ func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
 		{`None`, int32(TagNone), true, "the None singleton"},
 		// A bool is tagged TagInt, because that is what both backends store today: the
 		// interpreter keeps bool as Int(1) and renders it through the number path, which is
-		// the difference probe_bool_value pins. When L11.2 gives bool its own kind this case
+		// the difference probe_bool_value pins. When Gap R.112 gives bool its own kind this case
 		// flips to TagBool and every container follows (ADR 0232).
 		{`True`, int32(TagInt), true, "a bool, stored as the number it behaves like"},
 		{`1.5`, int32(TagFloat), true, "a float's slot is the handle of a float box, which the mixed printer renders and rt_payload_eq compares by value (ADR 0233)"},
@@ -140,7 +140,7 @@ func TestMixedListElementUsesStillRefuse(t *testing.T) {
 		{"xs = [1, \"a\"]\nfor x in xs:\n    print(x > 2)\n", "using it as a number needs a tagged value"},
 		// An element the tag table has no entry for at all. A bool is not in this set: it is
 		// tagged TagInt, which is what both backends store today (the rendering difference is the
-		// pinned probe_bool_value debt, L11.2), so appending one is answered, not refused.
+		// pinned Gap R.112 debt, not this table), so appending one is answered, not refused.
 		{"xs = [1, \"a\"]\nxs.append(lambda x: x)\nprint(xs)\n", "must carry a tag"},
 
 		// The nested container answers when it is *read back* through its own printer, its length, its

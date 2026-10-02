@@ -196,11 +196,11 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 			"def f(a, b):\n    return b\n\nxs = []\nxs.append(6)\nprint(f(1, xs[0] / 2))\n",
 			"this context stores an i32 word",
 		},
-		{
-			"double_to_str",
-			"xs = []\nxs.append(6)\nprint(str(xs[0] / 2))\n",
-			"this context stores an i32 word",
-		},
+		// The `double_to_str` row this table carried is gone: roadmap L11.2's rendering pair gave
+		// the double a word to travel in. str() and repr() run the float renderer into the capture
+		// buffer and intern the text, so the argument of str() is a context the pair can name — the
+		// program is pinned green (3.0, CPython's answer) by TestDoubleIntoThePairIsRendered, and the
+		// contexts that store an i32 word still refuse, as the rows above and below show.
 		{
 			"double_to_a_dict_slot",
 			"xs = []\nxs.append(6)\nd = {}\nd[\"k\"] = xs[0] / 2\nprint(d[\"k\"])\n",

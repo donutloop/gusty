@@ -67,7 +67,7 @@ func TestContainerEqualityMatchesCPython(t *testing.T) {
 }
 
 // Comparing a container with something of unknown kind has no honest answer until values carry
-// tags (L11.2): the i32s are both numbers, and only one of them is a handle. It refuses, and the
+// tags (Gap R.112): the i32s are both numbers, and only one of them is a handle. It refuses, and the
 // refusal says what is missing.
 func TestContainerEqualityWithUnknownKindRefuses(t *testing.T) {
 	for _, src := range []string{

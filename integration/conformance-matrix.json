@@ -2111,6 +2111,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_render_pair",
+        "name": "probe_render_pair.gy",
+        "source": "# Conformance program (L11.2, ADR 0258) — str() and repr() are one pair, per backend.\n#\n# Every way a value can be written, asked twice: once of str(), once of repr(). The answers come\n# from the same renderer print uses — pointed at a capture buffer instead of at stdout — so the\n# two halves cannot disagree about a form, which is what they used to do. print had a printer and\n# str() had a number-formatter beside it, and every form the second one had not been told about\n# came back as the number underneath: str([1, 2]) compiled answered 0 and str(None) answered 0,\n# both with exit 0. A text is the only form the pair disagrees on, and it disagrees the way\n# CPython does — characters under str, quoting under repr, and quoting inside a container either\n# way.\n#\n# What is deliberately absent: a bool inside a container (the slot answers with the number the\n# verdict is stored as — Gap R.112) and a tuple (the compiled backend has no tuple value to\n# render, so the pair refuses rather than guessing).\nxs = [1, 2]\nprint(str(xs))\nprint(repr(xs))\nprint(str([]))\nprint(repr([]))\nys = [\"a\", 1]\nprint(str(ys))\nprint(repr(ys))\nzs = [[1, 2], [3]]\nprint(str(zs))\nd = {\"a\": 1}\nprint(str(d))\nprint(repr(d))\nprint(str({1}))\ns = set()\nprint(str(s))\nprint(repr(s))\nprint(str(None))\nprint(repr(None))\nprint(str(True))\nprint(repr(False))\nx = 2.0\nprint(str(x))\nprint(repr(x))\nn = 42\nprint(str(n))\nprint(repr(n))\nt = \"hi\"\nprint(str(t))\nprint(repr(t))\nbuilt = []\nbuilt.append(\"v\" + str(7))\nprint(str(built))\nprint(repr(built))\nprint(str(xs) == \"[1, 2]\")\nprint(len(str(xs)))\nu = str(xs)\nprint(u.upper())\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "[1, 2]\n[1, 2]\n[]\n[]\n['a', 1]\n['a', 1]\n[[1, 2], [3]]\n{'a': 1}\n{'a': 1}\n{1}\nset()\nset()\nNone\nNone\nTrue\nFalse\n2.0\n2.0\n42\n42\nhi\n'hi'\n['v7']\n['v7']\nTrue\n6\n[1, 2]\n",
+      "aot_ok": true,
+      "aot_stdout": "[1, 2]\n[1, 2]\n[]\n[]\n['a', 1]\n['a', 1]\n[[1, 2], [3]]\n{'a': 1}\n{'a': 1}\n{1}\nset()\nset()\nNone\nNone\nTrue\nFalse\n2.0\n2.0\n42\n42\nhi\n'hi'\n['v7']\n['v7']\nTrue\n6\n[1, 2]\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n[1, 2]\n[]\n[]\n['a', 1]\n['a', 1]\n[[1, 2], [3]]\n{'a': 1}\n{'a': 1}\n{1}\nset()\nset()\nNone\nNone\nTrue\nFalse\n2.0\n2.0\n42\n42\nhi\n'hi'\n['v7']\n['v7']\nTrue\n6\n[1, 2]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/slot_order_object",
         "name": "slot_order_object.gy",
         "source": "# The ordering of a slot no literal describes: the object says which pair it was\n# given (roadmap L11.1, ADR 0252, Gap R.93). The arms — two numbers, two texts, and\n# CPython's TypeError naming the kind the slot really holds — are chosen at run time\n# by the tag beside the payload, so no table of \"what xs can hold\" is consulted.\nxs = []\nxs.append(3)\nxs.append(\"b\")\nxs.append(1.5)\nxs.append(None)\nprint(1 if xs[0] \u003e 1 else 0)            # 1  — two numbers\nprint(1 if xs[0] \u003c 1 else 0)            # 0\nprint(1 if xs[2] \u003e 1 else 0)            # 1  — a float slot against an int\nprint(1 if xs[1] \u003e \"a\" else 0)          # 1  — two texts, by their characters\nprint(1 if xs[1] \u003e \"c\" else 0)          # 0\ni = 3\nprint(1 if xs[0] \u003e= i else 0)           # 1  — the index and the number may both move\nd = {}\nd[\"k\"] = 5\nd[\"j\"] = \"m\"\nprint(1 if d[\"k\"] \u003e= 5 else 0)          # 1  — the dict the program filled\nprint(1 if d[\"j\"] \u003e \"a\" else 0)         # 1\nys = []\nfor v in [2, 4]:\n    ys.append(v)\nprint(1 if ys[0] \u003e 3 else 0)            # 0  — a container a loop built\nprint(1 if ys[1] \u003e 3 else 0)            # 1\nnested = []\nnested.append([3, \"a\"])\nnested.append({\"k\": 7})\nprint(1 if nested[0][0] \u003e 1 else 0)     # 1  — one level below, through ADR 0251's read\nprint(1 if nested[0][1] \u003e \"A\" else 0)   # 1\nprint(1 if nested[1][\"k\"] \u003c 9 else 0)   # 1\ntry:\n    print(1 if xs[0] \u003e \"a\" else 0)      # TypeError: int against str — the slot's kind named\nexcept TypeError:\n    print(\"caught int/str\")\ntry:\n    print(1 if xs[3] \u003e 1 else 0)        # TypeError: NoneType against int\nexcept TypeError:\n    print(\"caught None/int\")\ntry:\n    print(1 if xs[1] \u003c 1 else 0)        # TypeError: str against int, left named first\nexcept TypeError:\n    print(\"caught str/int\")\n",
@@ -3169,11 +3192,11 @@
       ]
     }
   ],
-  "rows": 111,
+  "rows": 112,
   "skipped": 19,
-  "pass": 92,
+  "pass": 93,
   "fail": 0,
-  "oracle_match": 78,
+  "oracle_match": 79,
   "oracle_debt": 16,
   "oracle_not_applicable": 17,
   "oracle_drift": 0

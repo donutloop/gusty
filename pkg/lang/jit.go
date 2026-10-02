@@ -33,8 +33,8 @@ type Evaluator struct {
 	// function's own `flag` is its business and must not make the module's `flag` print True
 	// (roadmap L11.1 step 2, ADR 0257).
 	boolVars map[string]bool
-	curRet      *Type  // return annotation of the function currently executing
-	fnName      string // name of the function whose body is being evaluated
+	curRet   *Type  // return annotation of the function currently executing
+	fnName   string // name of the function whose body is being evaluated
 	// curFD is the *FuncDef whose body is executing, and curBodies caches which names each body
 	// binds anywhere inside itself. A name the body binds is local to that body whatever the module
 	// holds, so reading it before any path assigned it is UnboundLocalError rather than a lookup
@@ -4049,7 +4049,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 					}
 				}
 				e.Vars[p.Name] = argVals[i]
-		e.forgetBool(p.Name)
+				e.forgetBool(p.Name)
 			}
 			if containsYield(fd.Body) {
 				genH := e.allocObj("list")
@@ -4495,9 +4495,10 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return x, nil
 
-		case "str":
+		case "str", "repr":
+			called := n.Fn.(*Name).Value
 			if len(n.Args) != 1 {
-				return 0, &EvalError{Msg: "str expects 1 argument"}
+				return 0, &EvalError{Msg: called + " expects 1 argument"}
 			}
 			av, err := e.eval(n.Args[0])
 			if err != nil {
@@ -4508,7 +4509,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if IsBoolExpr(n.Args[0], e.boolEnv()) {
 				return e.allocStr(BoolText(e.truthy(av))), nil
 			}
-			return e.allocStr(e.Repr(av)), nil
+			// str and repr are one pair and one renderer: Repr is the text print already
+			// writes, and repr differs from it only where Python's own pair differs — a text,
+			// which writes its quoted form. Every other value is the same answer from the same
+			// code, which is what closes Gap L.2: the two halves used to be two functions.
+			return e.allocStr(e.renderOf(av, formOfName(called))), nil
 		case "set", "list":
 			// Empty constructors, and copies of another container. `{}` is already the
 			// empty dict, but the empty *set* has no literal (Python renders it set()),

@@ -709,7 +709,13 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	// the slots instead of the list. The dict and set builders already did this; the list one asked
 	// only on its tagged path, so a nested list reached through rt_print_list printed its inner
 	// object's handle (roadmap L11.1, ADR 0232).
-	if literalNeedsTags(ln) {
+	// The same rule extended to a list that mixes kinds, not only to one whose elements need
+	// tags: ["a", 1] has no single kind either. print chose its printer from this scope and got
+	// it right; str() and repr() ask the object, because the pair is one renderer pointed at a
+	// different sink, and a renderer that asks the object can be handed a handle the builder's
+	// scope never saw. Answering [0, 1] for ["a", 1] was the object not saying what it holds
+	// (roadmap L11.2, ADR 0258 — Gap L.2's shape one level down).
+	if literalNeedsTags(ln) || literalMixedKinds(ln) {
 		bits |= 8
 	}
 	if bits != 0 {

@@ -11,7 +11,7 @@ import (
 // pythonOutput runs src through CPython via the shared oracle leg
 // (lang.PythonRun, roadmap L11.9/ADR 0186) and returns its stdout with the one
 // documented rendering divergence normalised away: bare booleans print as 1/0
-// until bools are values (L11.2), and the expectations in *this* file were
+// until Gap R.112 gives a verdict its own element tag, and the expectations in *this* file were
 // written against that. The conformance matrix does **not** apply this
 // normalisation — it records those same rows as pinned debt — so a "what Python
 // prints" claim here still fails the build when it is wrong, and the

@@ -282,11 +282,13 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 			"def f(a, b):\n    return b\n\nxs = []\nxs.append(6)\nprint(f(1, xs[0] / 2))\n",
 			"this context stores an i32 word",
 		},
-		{
-			"the double has no word to travel in to str()",
-			"xs = []\nxs.append(6)\nprint(str(xs[0] / 2))\n",
-			"this context stores an i32 word",
-		},
+		// The row this table used to keep for str() — 「the double has no word to travel in to
+		// str()」 — is gone, because roadmap L11.2's pair gave it one. str() and repr() now run
+		// the float renderer (rt_fmt_double) into the capture buffer and intern the text, so the
+		// double travels as the thing a str() argument is anyway: text. The program is pinned
+		// green against CPython's answer (3.0) in the pair table test, TestRenderPairAgreesWith
+		// CPpython; a context that stores an i32 word still refuses, as the rows above and below
+		// show (ADR 0226's boundary, moved exactly as far as the pair reaches).
 		{
 			"the double has no word to travel in to a dict slot",
 			"xs = []\nxs.append(6)\nd = {}\nd[\"k\"] = xs[0] / 2\nprint(d[\"k\"])\n",

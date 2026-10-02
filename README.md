@@ -295,6 +295,25 @@ the number it is stored as (Gap R.111), and a bool inside a list or dict prints 
 `[True, 1]`, the container element's tag vocabulary having no bool to read back (Gap R.112). `--json` names the
 type `bool`, and `--eval '1 == 1'` echoes `True`.
 
+`str()` and `repr()` are **one pair over one renderer** (ADR 0258, closing Gap L.2). `print`, `str()`
+and a container element ask the same table: in the compiled backend the value printers no longer call
+`printf` — every write goes through a sink that is either stdout or, while the pair renders, a capture
+buffer whose bytes come back interned — so a form that exists for `print` exists for `str()` and
+`repr()`, and the module fails its own test the day a second value renderer appears. A text is the
+only value the two halves disagree on, and it disagrees the way CPython does: `str("hi")` is `hi`,
+`repr("hi")` is `'hi'`, and inside a container both quote, which is why `print(xs)` and `str(xs)`
+write one line. What that closed is a class of answers rather than one bug: `str([1, 2])` compiled
+answered `0` and `str(None)` answered `0`, both with exit 0 — a missing rendering returning the number
+underneath the value — while `str({1})`, `str(set())` and `str(1.5)` refused or reached `llc` with a
+module it rejected, and a text built at run time printed `(null)` inside a container because only the
+compiler had ever been able to produce a repr. Three container builders wrote per-slot tags without
+saying so on the object, so `print(["a", 1])` was right while `str(["a", 1])` answered `[0, 1]` from
+the same object; objects now describe their own slots on every assignment path. A value whose kind no
+expression names is refused in words with exit 1 and the missing half named — never the number
+underneath (the residual shapes are Gap R.115, a container returned from a function is Gap R.67's, a
+tuple is L11.3's, and `print(f"{xs}")` is Gap R.114). `--json --eval 'repr("hi")'` reports
+`{"result": "'hi'", "type": "str"}`, and `programs/probe_render_pair.gy` is `match` on all three legs.
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict
