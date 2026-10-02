@@ -204,6 +204,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// ZeroDivisionError wordings are chosen inside the arm that knows the operand kinds (Gap R.96,
 		// ADR 0253). Three engines, one source, where the compiled leg printed `0.0`.
 		"slot_division",
+		// A parameter the body rebinds to a float and returns by bare name: the return word used to be
+		// chosen from the shape of the return expression alone, so the function was emitted `i32` and the
+		// float the body computed had no word to travel in — the call answered the argument, and the
+		// ledger had been pinning that as debt since ADR 0196 measured it (roadmap L11.6, Gap R.3c,
+		// ADR 0254). Three engines, one source.
+		"probe_float_param_rebind",
 		// The precise-root repro: a frame local that must survive a nested allocation
 		// storm, a statement-position callee whose loop reclaims as it goes, and
 		// thousands of short-lived containers (ADR 0181).
@@ -284,9 +290,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_comp_runtime_reduce", // L11.7 — sum/min/max over a runtime comprehension
 		"probe_comp_folded_iter",    // L11.2 — iterating a list the compiler folded away
 
-		// Pinned by the rebound-parameter work (ADR 0196): the scalar half is fixed,
-		// and this is the float half the tagged value word still owes.
-		"probe_float_param_rebind", // L11.6 — a parameter rebound to a float, returned bare
 
 		// Pinned by the await/return discipline (ADR 0195): the checker now refuses the
 		// dishonest async programs, so what is left is the honest one that still disagrees.
@@ -520,10 +523,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call and the interpreter prints at the await; CPython rejects the program outright (module-scope await)",
 		ref:    "roadmap L7.6a (deferred coroutines in codegen)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "between\neffect 1\n2\n"}, {Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
-	"programs/probe_float_param_rebind": {oracle: lang.OracleDebt,
-		reason: "a function's argument type is read from the shape of its return expression, so `x = x + 1.5; return x` is emitted as an int function and the double the body computed has no word to travel in: interpreted and in CPython 1.0 becomes 2.5, compiled the call answers the argument. ADR 0196's copy-in let the module verify, so the leg that used to be rejected by llc now prints a number-shaped wrong answer",
-		ref:    "roadmap L11.6 / Gap R.3c (found closing Gap R.3, re-measured beside ADR 0253)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2.5\n3.0\n"}, {Backend: "aot", Stdout: "1\n3.0\n"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",

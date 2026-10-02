@@ -229,6 +229,23 @@ Gap R.97: one side whose kind comes from the object is a chain, two is a table t
 inventing), and a comparison against an expression whose kind cannot be proven — which until ADR 0247 answered
 `1` where CPython answers `0` (Gap R.83, whose ordering side is measured by the same table).
 
+A function's **return word** is now read from what its body does rather than from the shape of its `return`
+line (ADR 0254, closing Gap R.3c). `def addf(x): x = x + 1.5` / `return x` / `print(addf(1.0))` printed the
+*argument* — `1`, with the exit code of success — because the answer's type came from `return x`, which says
+nothing about a kind, while the body had already stored a double into the parameter's slot. The gate asks the
+same question the emitted instructions ask (`isFloat`, over the body with the rebound names read as the doubles
+they became), so the `ret` and the value it writes cannot disagree, and the family answers: the bare name,
+`return x * 2`, `x % 3`, `abs(x)`, `abs(-x)`, `return -x` — which had been an `llc` rejection, `ret i32` under a
+`define double`, ever since the body learned to negate a double — the local spelling `y = x + 0.5; return y`,
+and any of them inside `if`, `while`, `try`, recursion or a default. What is not that double keeps its own word
+(`int(x)`, `round(x)`, `x > 2`, a user callee), and where the one convention would have to hand a container
+handle or an interned text the `double` word — a parameter the body also reads, or any method — the program is
+refused in words, naming the variable whose double has nowhere to go. Three shapes came out of that sweep and
+are filed rather than absorbed: the ternary arm (`return x if x > 2 else 0.0`, refused since ADR 0254 and a
+truncated `1` before it, Gap R.102), a dict literal whose value is a computed float (`print(f(1.0))` printing
+`0` for `{'k': 2.5}`, Gap R.103), and `min`/`max` with two arguments refusing in the interpreter while the
+compiled leg and CPython answer (Gap R.104).
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict

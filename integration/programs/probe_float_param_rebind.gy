@@ -1,8 +1,10 @@
-# A parameter rebound to a float, returned as a bare name. A function's argument type
-# is read from the shape of its *return expression*, and `return x` says nothing, so the
-# function is emitted with int parameters: the float argument arrives truncated. The
-# interpreter and CPython agree on 2.5 and 3.0; the compiled backend cannot compile the
-# module at all (roadmap L11.6, Gap R.3c, ADR 0196).
+# A parameter the body rebinds to a float, returned by bare name (roadmap L11.6, Gap R.3c).
+# A function's argument and return words used to be read from the shape of its *return
+# expression* alone, and `return x` says nothing: the function was emitted `i32`, the float
+# the body computed had no word to travel in, and the call happily printed the argument
+# back. The compiled backend now promotes such a body to a `double` return (ADR 0254), so
+# all three engines agree — this program is parity surface, promoted out of the oracle
+# ledger's debt rows on the day both backends started printing CPython's answer.
 
 def addf(x):
     x = x + 1.5
@@ -10,12 +12,28 @@ def addf(x):
 
 print(addf(1.0))
 
-# The same shape written so the return *expression* is visibly a float: then the
-# convention sees it, the argument arrives as a double, and everything agrees. The
-# bug is exactly this — a type decided from the shape of one line rather than from
-# what the body does with the value.
+# The same shape written so the return *expression* is visibly a float: the convention saw
+# that one all along. The two lines agree now for the same reason the first one did not —
+# which is the whole point of reading the body, not just the last line.
 def scaled(x):
     x = x * 2.0
     return x + 0.0
 
 print(scaled(1.5))
+
+# The same answer wearing a negation, and a kind-preserving builtin over it. `return -x`
+# of such a parameter used to reach no gate at all — the return word was read off the
+# shape of the return expression, and a unary minus says nothing either — so the module
+# came out `define double` ending in `ret i32`, which `llc` rejected (exit 2, ADR 0166's
+# class). Both engines and the oracle now agree on all four numbers.
+def down(x):
+    x = x + 1.5
+    return -x
+
+print(down(1.0), down(2), down(0.0))
+
+def magnitude(x):
+    x = x + 1.5
+    return abs(-x)
+
+print(magnitude(1.0))

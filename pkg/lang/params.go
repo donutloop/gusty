@@ -1,5 +1,7 @@
 package lang
 
+import "sort"
+
 // Rebound parameters — a parameter is a local that starts out bound to an argument.
 //
 // Python-shaped programs rebind parameters constantly: an accumulator that
@@ -90,6 +92,203 @@ func reboundParams(fd *FuncDef, isFloat func(Expr) bool) map[string]bool {
 		return nil
 	}
 	return out
+}
+
+// returnedFloatRebindings names the variables of fd — parameters and body-local bindings alike —
+// that its own body binds to a float value *and* whose `return` reads back as a bare name, an
+// arithmetic expression over it, or a kind-preserving numeric builtin of it. That is the shape the
+// compiled backend could not answer while the return word came from the last line's syntax.
+//
+// A function's calling convention is written twice, from two different questions: the argument words
+// come from the call sites and the return word from the shape of the return *expression*
+// (`return x + 0.0` is a double, `return x` says nothing and so gets an i32). A body that then stores
+// a double into the parameter's slot has nowhere for that double to be returned from: the read of `x`
+// keeps answering the incoming register, and
+//
+//	def addf(x):
+//	    x = x + 1.5
+//	    return x
+//
+//	print(addf(1.0))   # CPython 2.5 · --interp 2.5 · --aot answered 1
+//
+// answers the *argument*, with exit 0. Rebinding a parameter to a plain int is fine (ADR 0196's
+// copy-in gives the slot a word to live in), reading such a parameter in the body is fine (the float
+// variable table answers those reads), and returning a float *expression* is fine (the function is
+// emitted double-returning). What was not fine was returning the name itself — whether the name came
+// in through the parameter list or was bound inside the body, which is why the scan covers both: the
+// local spelling (`y = x + 0.5` / `return y`) answers `0`, and a program cannot tell the two apart.
+// It stays a statement-shape question rather than a "does the body mention a float" question, because
+// the second would refuse the programs that answer correctly today.
+//
+// A refusal is what ADR 0166 asks for here: an answer that is a truncated word, printed happily, is
+// the compiler's bug (roadmap L11.6, Gap R.3c, ADR 0196 — the tagged value word is what makes this
+// shape answerable rather than refuseable).
+func returnedFloatRebindings(fd *FuncDef, isFloat func(Expr) bool) []string {
+	if fd == nil || len(fd.Params) == 0 {
+		return nil
+	}
+	bindings := map[string][]Expr{}
+	scanRebinds(fd.Body, bindings)
+	returned := map[string]bool{}
+	scanBareReturns(fd.Body, returned)
+	var out []string
+	// Every name the return reads back, whether it arrived as an argument or was bound inside the
+	// body: `y = x + 0.5` / `return y` is the same lie as the parameter form, and answers 0.
+	for nm, vals := range bindings {
+		if !returned[nm] {
+			continue
+		}
+		for _, v := range vals {
+			if v != nil && isFloat != nil && isFloat(v) {
+				out = append(out, nm)
+				break
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Strings(out)
+	return out
+}
+
+// namedNumericLeaves names the variables an arithmetic-shaped expression reads: straight through a
+// parenthesised/ unary / binary / conditional wrapper, which is how far a return expression carries
+// the identity of the number it is built from (roadmap Gap R.3c).
+func namedNumericLeaves(e Expr) []string {
+	var out []string
+	var walk func(Expr)
+	walk = func(e Expr) {
+		switch n := e.(type) {
+		case nil:
+		case *Name:
+			out = append(out, n.Value)
+		case *UnOp:
+			walk(n.X)
+		case *BinOp:
+			walk(n.L)
+			walk(n.R)
+		case *CondExpr:
+			walk(n.If)
+			walk(n.Else)
+		}
+	}
+	walk(e)
+	return out
+}
+
+// kindPreservingNumericBuiltins are the calls that return their numeric argument as the same kind it
+// arrived, which is what lets a `return abs(x)` of a rebound parameter travel in the double word.
+var kindPreservingNumericBuiltins = map[string]bool{"abs": true, "float": true}
+
+// isArithmeticOp is the operator set whose result is a number whatever the operands are, which is the
+// set the double-return promotion may carry. Ordering, equality and `not` answer with a bool word and
+// unary minus with a plain i32, so a promoted function returning one would store an i32 in a double `ret`.
+func isArithmeticOp(op string) bool {
+	switch op {
+	case "+", "-", "*", "/", "//", "%", "**":
+		return true
+	}
+	return false
+}
+
+// scanBareReturns records the name of every `return <name>` in a statement list, including the
+// returns nested in compound statements. A nested def, lambda or class body is not walked: its
+// returns belong to that function's own convention, and it gets this question asked of it when it is
+// emitted.
+func scanBareReturns(list []Stmt, into map[string]bool) {
+	var walk func([]Stmt)
+	walk = func(stmts []Stmt) {
+		for _, st := range stmts {
+			switch s := st.(type) {
+			case *ReturnStmt:
+				switch r := s.Expr.(type) {
+				case *Name:
+					into[r.Value] = true
+				case *Call:
+					// Only the builtins that hand the number back as the same kind it
+					// came in: `return abs(x)` and `return float(x)` of such a parameter
+					// are the double wearing a function call. `int(x)`/`round(x)` answer
+					// with an int whatever arrives and `str(x)` with text, so promoting
+					// those would put an i32 (or a string index) in the double's word —
+					// and a user callee's return word is its own question, not this one.
+					if fn, ok := r.Fn.(*Name); ok && kindPreservingNumericBuiltins[fn.Value] {
+						for _, a := range r.Args {
+							// `return abs(-x)` is the same double wearing a call and a negation:
+							// the shape under the call still names the parameter, and the abs
+							// lowering reads it as a double. Missing that arm left the return
+							// word with nothing to choose from and the module came out
+							// `ret i32` under a `define double` (roadmap Gap R.3c, ADR 0166).
+							for _, nm := range namedNumericLeaves(a) {
+								into[nm] = true
+							}
+						}
+					}
+				case *UnOp:
+					// `-x` is arithmetic too, and the body already knows how to say it:
+					// the negation of a float-rebound parameter is emitted `fsub double
+					// 0.0, %v`, so the promoted function's `ret double` has its double.
+					// Before this arm, `return -x` reached no gate at all — the return
+					// word came from the last line's syntax, which reads a unary minus
+					// as nothing, and the module came out `ret i32` under a
+					// `define double`: the verifier's rejection, exit 2 (roadmap
+					// Gap R.3c, ADR 0166).
+					if n, ok := r.X.(*Name); ok && r.Op == "-" {
+						into[n.Value] = true
+					}
+				case *CondExpr:
+					// `return x if x > 2 else 0.0` reads the rebound parameter on one of the
+					// two arms, so the answer's word is the arm's, and a `select` of two
+					// doubles needs the double. Named here so the gate at least asks the
+					// question; the ternary's own lowering is a number-typed `select`, which
+					// is the shape this backend has never emitted (roadmap Gap R.102).
+					for _, arm := range []Expr{r.If, r.Else} {
+						for _, nm := range namedNumericLeaves(arm) {
+							into[nm] = true
+						}
+					}
+				case *BinOp:
+					// Arithmetic only. `return x > 2` of such a parameter answers with a
+					// bool word, and promoting the function to a double return would put
+					// an i32 in the double's word. That shape stays a refusal (roadmap
+					// Gap R.3c, ADR 0166).
+					if !isArithmeticOp(r.Op) {
+						continue
+					}
+					for _, side := range []Expr{r.L, r.R} {
+						if nm, ok := side.(*Name); ok {
+							into[nm.Value] = true
+						}
+					}
+				}
+			case *IfStmt:
+				walk(s.Then)
+				for _, e := range s.Elifs {
+					walk(e.Then)
+				}
+				walk(s.Else)
+			case *WhileStmt:
+				walk(s.Body)
+				walk(s.Else)
+			case *ForStmt:
+				walk(s.Body)
+				walk(s.Else)
+			case *WithStmt:
+				walk(s.Body)
+			case *TryStmt:
+				walk(s.Body)
+				for _, e := range s.Excepts {
+					walk(e.Body)
+				}
+				walk(s.Finally)
+			case *MatchStmt:
+				for _, c := range s.Cases {
+					walk(c.Body)
+				}
+			}
+		}
+	}
+	walk(list)
 }
 
 // scanRebinds records every name a statement list binds, without descending into a

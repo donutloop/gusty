@@ -2548,6 +2548,58 @@ body, and after the loop the variable still holds the last element (`for i in
 range(3)` leaves `2`, never `3`). A `for` whose `else:` clause runs on normal completion
 is unaffected.
 
+## The word a function returns (L11.6, ADR 0254)
+
+A function is emitted with a type for each parameter and a type for its answer. Those
+words used to be chosen by two unrelated questions — the parameters from the call sites,
+the answer from **the shape of the `return` expression** — and a shape is not evidence:
+
+```gy
+def addf(x):
+    x = x + 1.5      # the body stores a double into x's slot
+    return x         # `return x` says nothing about the answer's kind
+
+print(addf(1.0))     # CPython 2.5, the interpreter 2.5, the compiled leg answered 1
+```
+
+The return word is now read from the same predicate the emitted body itself asks —
+`isFloat`, the one the arithmetic, the negation and `print` consult — run over the body
+with the names the body rebinds to a float taken as the doubles they became. So the `ret`
+and the value it writes cannot disagree, and the program above answers `2.5` on both
+backends. What the rule covers is the answer, not the last line: a bare name, an
+arithmetic expression over it (`return x * 2`, `return x % 3`), its negation
+(`return -x`, which used to reach no gate at all and produced a module `llc` rejected), a
+kind-preserving numeric builtin of it (`return abs(x)`, `return abs(-x)`, `float(x)`), a
+name bound inside the body (`y = x + 0.5; return y`), and any of those inside `if`, `while`,
+`try` or recursion.
+
+What the rule deliberately does **not** promote is an answer that is not that double, because
+promoting it would put an `i32` in a `double`'s word — the same bug in the other direction:
+`return int(x)` and `return round(x)` answer with an int whatever arrives, `return x > 2`
+answers with the bool word, `return str(x)` with an interned index, and a user callee's return
+word is that callee's own question. Those stay exactly as they were.
+
+Two shapes cannot carry the answer and **refuse in words** (exit 1, never the module `llc`
+rejects — ADR 0166), because the convention that picks the return word picks every parameter's
+word with it:
+
+```gy
+def f(xs, y):
+    y = y + 0.5
+    print(xs[0])     # the body reads the container: its word is a heap handle
+    return y         # refused: `xs` would have to arrive as a `double`
+
+def g(x):
+    x = x + 1.5
+    return x if x > 2 else 0.0   # refused: no number-typed `select` (Gap R.102)
+```
+
+Each names the variable whose double has nowhere to go and says what to write instead
+(`return x + 0.0`, bind it to a new name, or take the branch with `if`/`else`). A **method**
+is emitted `i32`-returning whatever its body computes — the receiver's word and the answer's
+are fixed together — so a method with this body is refused the same way; that is a method
+limit, not a language one, and the interpreter answers all of these.
+
 ## Declaration order (ADR 0197)
 
 A `def` is a binding of the scope that contains it — not only of the text below its line.

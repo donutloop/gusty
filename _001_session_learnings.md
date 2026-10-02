@@ -5683,3 +5683,59 @@ ADR 0196, started printing the *argument* (`1` for `2.5`) with exit 0. The ledge
 said "the aot leg fails", and the run said otherwise. The right response was not to relax the pin but to
 re-pin it with the wrong answer written in, and to say in the row which ADR owes the fix. A compiler whose
 "known-failing" program stops failing has usually traded a loud bug for a quiet one.
+
+---
+
+## Cycle: the word a function returns (ADR 0254, Gap R.3c closed; Gaps R.102–R.104 filed)
+
+**The predicate that obeys a decision is the predicate that should make it.** The compiled backend chose a
+function's return type from `funcReturnsFloat` — `isFloat` applied to the `return` *expression* — while the
+instructions that emit the answer ask `isFloat` again, later, with the float-variable table filled by the
+assignments the walk passed. Two answers to one question, one of them early and uninformed, is exactly the
+`ret i32` under a `define double` that `llc` has been rejecting since before this ADR's numbering. The fix is
+not a new analysis: copy the table, add the names the body rebound to a float, ask the *same* function, restore.
+Where a module has one writer for a fact, the gate should consult that writer.
+
+**"Promote whenever the body mentions a float" is a shape question wearing a type question's clothes.** The first
+cut promoted on any float rebind, and it broke the programs that answer with an `i32` on purpose — `return int(x)`,
+`return round(x)`, `return x > 2` — because promoting those writes an `i32` into the double's `ret`. The set that
+is *at stake* is syntactic (a name the body binds to a float, read back by a `return` as a bare name, an
+arithmetic expression, a negation, a kind-preserving numeric builtin, a ternary arm); the choice inside that set,
+promote-or-refuse, is the predicate's. Splitting those two questions is what made 23 CLI rows answer and 7 rows
+refuse, with none of them emitted wrong.
+
+**A refusal is only honest if the alternative was measured.** Two rows in the refusal table exist because I forced
+the promotion through them and wrote down what came out: `sitofp i32 @.lst1 to double` for a container parameter
+the body reads, and `call void @rt_print_str(i32 %p1)` with `%p1` a `double` for an interned-text parameter. Same
+for the method (a method's receiver and answer are one convention, emitted `i32` whatever the body computes) and
+for the ternary (no number-typed `select` exists in this lowering, so `return x if x > 2 else 0.0` truncated to
+`1`). A refusal whose alternative nobody ran is a guess about the compiler, and guesses here become either lost
+features or exit 2s.
+
+**The row that said "not this ADR's" was the row to read twice.** `TestReturningAReboundParameterNegatedIsFiledNotFixed`
+had pinned the negation's `llc` rejection and instructed "the row fails the day the emission learns". Reading it
+as settled history would have left a broken module in the corpus on the same commit that promoted everything else;
+the emission needed one more arm in the at-stake scan, and the row became a parity row (`fsub double 0.0` in the
+body, `ret double` at the end) answering `-2.5` on three engines. Filed-not-fixed rows are a queue, not a shelf.
+
+**A pin that starts passing tells you what the last commit really changed.** `programs/probe_float_param_rebind`
+moved from the ledger's debt rows to `conformanceStandalone()` and reads `match` on all three legs — the third
+promotion this session for answering rather than for being re-pinned. The registry comment says why it is in the
+parity list and not the probe list, which is the only reason a later cycle can tell a promotion from a migration.
+
+**Three gaps, all pre-existing, all found by running a generated sweep of the shape under change** — 15 return
+expressions over one rebound parameter, three engines each: the ternary arm (`Gap R.102`), a dict literal holding
+a computed float printing `0` for `{'k': 2.5}` (`Gap R.103`, a silently-wrong answer, so it went into the open
+queue's priority-1 class), and `min(x, 1.0)` refusing in the **interpreter** while the compiled leg and CPython
+answer (`Gap R.104`, the interactive path being the one a person and an agent feel first). Each was re-checked
+without the rebind to be sure the gate did not cause it before being filed.
+
+**Process lesson — distrust a remembered tree.** The context handed to this cycle described files, tests and
+roadmap rows that did not all exist (`integration/conformance_ledger.go`, `docs/capabilities.json`, a
+`floatReboundLocals` promotion in `pkg/lang/params.go`, a capability entry with no capability file). Every one was
+caught by `grep`/`git ls-files`/`git log -S` before an edit, and two of them would have produced an ADR citing an
+artifact nobody could open — the exact rot `TestRecordCitationsResolveToRealPrograms` exists to catch. The rules
+that worked: re-`grep` a symbol before editing near it; `git status --porcelain` for untracked test files a summary
+calls committed; `git worktree add /tmp/headcheck HEAD` to ask whether the *pushed* commit is green without
+touching the working tree; and `git log -S <symbol>` to learn that a "previous round's" change was never committed
+at all.

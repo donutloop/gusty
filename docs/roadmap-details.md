@@ -1829,7 +1829,7 @@ of the body — the point Python binds it. (The container-loop lowering already 
 shape; the range path did not.)
 
 <a id="gap-r-3c"></a>
-### R.3c — a parameter rebound to a float, returned as a bare name (OPEN)
+### R.3c — a parameter rebound to a float, returned as a bare name (CLOSED, ADR 0254)
 
 ```gusty
 def addf(x):
@@ -1846,7 +1846,10 @@ made `llc` reject the module one layer later, because the type is then decided t
 two different pieces of evidence. That is the tagged value word (**L11.6**), not a patch
 here. Pinned as `programs/probe_float_param_rebind`: the interpreter leg prints
 `2.5 / 3.0`, the compiled leg fails, and paying L11.6 flips the row rather than passing
-unnoticed. Related, and also fixed by (e) of ADR 0196: a float-returning function whose
+unnoticed. **It was paid in ADR 0254, and the diagnosis above was half wrong**: the type was indeed decided
+twice, but the second decision did not need the tagged value word — it needed to be asked of the predicate the
+emitted body already asks (`isFloat`), before the header is written. See *Gap R.3c — paid beside ADR 0254* at the
+end of this file. Related, and also fixed by (e) of ADR 0196: a float-returning function whose
 body assigns a parameter used to emit a second `alloca` of the same name — an `llc`
 "multiple definition of local value" rejection — and compiles now.
 
@@ -4890,3 +4893,96 @@ module verify, and the pin broke in the direction nobody wants: the leg runs, pr
 where the oracle prints `2.5`, and exits 0. The row now pins both legs' stdout, because a debt that silently
 changes shape is a debt that stops being measurable; the fix is the function's **return word**, chosen from what
 the body does with the parameter rather than from the shape of the last line, which is L11.6's to make.
+
+
+### Gap R.3c — paid beside ADR 0254: the return word is read from what the body does
+
+```gusty
+def addf(x):
+    x = x + 1.5
+    return x
+
+print(addf(1.0))         # CPython 2.5 · --interp 2.5 · --aot 2.5  (was 1, exit 0)
+```
+
+Two measurements decided this one, and the second is the reason the ADR is not just a promotion rule.
+
+The first is the obvious one: `funcReturnsFloat` asks `g.isFloat` of each `return` **expression**, and a bare
+name is not evidence of a kind. So the return word was asked of the last line's syntax while the body — generated
+afterwards, with the float-variable table filled by the assignments it walked past — already knew the parameter
+held a double. Reading the body answered it, and the whole family came with it: the bare name, `return x * 2`,
+`x % 3`, `x // 1`, `abs(x)`, `float(x)`, the local spelling `y = x + 0.5; return y`, each inside `if`, `while`,
+`try`, recursion, defaults and a nested `def`.
+
+The second measurement is why "just promote anything whose body stores a float into a parameter" was rejected.
+The same question asked that way also promotes `return int(x)`, `return round(x)` and `return x > 2`, which
+answer with an `i32` — and an `i32` written to a `double` `ret` is the module `llc` rejects. So the at-stake set
+is a **statement shape** (`returnedFloatRebindings`: a name the body binds to a float, read back by a `return` as
+a bare name, an arithmetic expression, a negation, a kind-preserving numeric builtin, or a ternary arm), and the
+promote-or-refuse decision inside that set is the predicate's own answer, asked over a copy of the float-variable
+table. One question, asked once, of the thing that will obey it.
+
+Asking it that way also closed a defect that had been pinned as unfixable. `return -x` of such a parameter had
+been an `llc` rejection since before this ADR's numbering — `isFloat` does answer a unary minus, but only once
+the parameter is known to be a float, which happened too late to influence the header — and the module was
+emitted `define double` ending in `ret i32` of a `fsub double 0.0`. The row that pinned it said it should fail
+the day the emission learned; the emission learned, and the row is a parity row now.
+
+What still cannot be carried is refused before the header is written, and the refusal is measured rather than
+theoretical: forcing the promotion through a mixed signature yields `sitofp i32 @.lst1 to double` (a container
+parameter the body reads) and `call void @rt_print_str(i32 %p1)` with `%p1` a `double` (an interned-text
+parameter the body reads); a method has one convention for receiver and answer together and is emitted `i32`
+whatever its body computes. Each names the variable whose double has nowhere to go, and each is exit 1 —
+`assertNoForbiddenIR` and the CLI tables forbid exit 2 in every one of those rows.
+
+<a id="gap-r-102"></a>
+### Gap R.102 — the ternary arm of a rebound parameter (OPEN, measured beside ADR 0254)
+
+```gusty
+def f(x):
+    x = x + 1.5
+    return x if x > 2 else 0.0
+
+print(f(1.0))            # CPython 2.5 · --interp 2.5 · --aot refused in words (was 1, exit 0)
+```
+
+The answer's word is the arm's, and `isFloat` has no `CondExpr` arm, so the promotion does not run — which left
+the program answering a truncated `1` with exit 0 until ADR 0254 gave it a refusal. Choosing between two doubles
+is `select i1 %c, double %a, double %b`, and this backend's ternary lowering has only ever built an `i32` select
+(it was written for the `1 if x else 2` shape ADR 0167 measured). The fix is small and belongs to the ternary,
+not to the gate: let `isFloat` answer a conditional by asking both arms, and let the lowering emit the select the
+arms' kind calls for — with the arms' raises hoisted the way ADR 0214 requires. Two rows, one per backend table,
+become parity rows the day it lands.
+
+<a id="gap-r-103"></a>
+### Gap R.103 — a dict literal whose value is a computed float prints `0` (OPEN, measured beside ADR 0254)
+
+```gusty
+def f(x):
+    x = x + 1.5
+    return {"k": x}
+
+print(f(1.0))            # CPython {'k': 2.5} · --interp {'k': 2.5} · --aot 0, exit 0
+```
+
+The wrong-answer class, found by the same sweep and *not* caused by it — `def f(x): return {"k": x}` called with
+`1.0` behaves identically, so this is the container's, not the return word's. A dict literal is emitted through
+the static path, which writes one `i32` word per slot; a `double` reaching that store is neither refused nor
+boxed, and the container printer is handed the slot without a tag and prints `0`. ADR 0238 gave a float *element*
+of a list a box and a tag, ADR 0243 taught the numeric read to use it; the dict literal's value store is the same
+write with the same missing pair. It is listed in the open queue's silently-wrong class, and no ledger row is
+accepted for it — the row is the bug.
+
+<a id="gap-r-104"></a>
+### Gap R.104 — `min` / `max` with two arguments refuse in the interpreter (OPEN, measured beside ADR 0254)
+
+```gusty
+print(min(1.0, 2), max(1, 2.5))   # CPython 1.0 2.5 · --aot 1.0 2.5 · --interp: min/max expects 1 argument
+```
+
+The one defect of this family that lives on the interactive path, which is the path a person and an agent feel
+first. The codegen has a variadic fold for these two builtins and the interpreter accepts only the one-argument
+list form, so a program that compiles and prints the oracle's answer refuses on `--eval` — the inverse of the
+usual gap, and the more confusing of the two for anyone using the REPL. The interpreter's fold should be the
+codegen's: walk the arguments, compare with the shared truthiness/ordering helper, and render the winner in its
+own kind (which is what keeps `min(2.5, 1)` an `int`, the rule `numericFoldElems` exists for).

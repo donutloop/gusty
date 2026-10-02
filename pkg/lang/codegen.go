@@ -3992,6 +3992,20 @@ func (g *irGen) copyInReboundParams(b *strings.Builder, fd *FuncDef, floatRet bo
 
 // emitClassMethod emits a class method as an LLVM function with self as param 0.
 func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
+	// A method is emitted i32-returning whatever its body computes, so a parameter the body rebinds to
+	// a float and returns by bare name answers the argument: the same refusal funcDef issues for a
+	// module function, asked here before the header is written so no half-emitted define is left
+	// behind (roadmap L11.6, Gap R.3c, ADR 0196).
+	// A method is emitted i32-returning whatever its body computes, so a parameter the body rebinds to a
+	// float and hands back as a value has no word for the answer: the same refusal funcDef issues for a
+	// module function, asked here before the header is written so no half-emitted define is left behind.
+	// Asked for every shape the return can read the rebound name in — including the ternary arm, which the
+	// module-function gate refuses separately and which a method would otherwise answer as a truncated
+	// i32 select (`c.m(1.0)` printing 1 for 2.5) (roadmap L11.6, Gap R.3c, Gap R.102, ADR 0196).
+	if bad := returnedFloatRebindings(fd, g.isFloat); len(bad) > 0 {
+		g.noteUnlowered(fd, fmt.Errorf("%q is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)", bad[0]))
+		return
+	}
 	prevParams := g.params
 	prevSlot := g.paramSlot
 	prevSelf := g.selfClass
@@ -6037,6 +6051,11 @@ func (g *irGen) noteUnlowered(where any, err error) {
 		if t := exprTyName(n); t != "" {
 			what = t
 		}
+	case *FuncDef:
+		// A definition is not a statement a program wrote in a body: naming it by its Go type read as
+		// "a *lang.FuncDef statement cannot be compiled", which told the reader nothing about which
+		// function to fix (roadmap Gap R.38's rule — a refusal names the program's own thing).
+		what = fmt.Sprintf("function %q", n.Name)
 	case Stmt:
 		what = fmt.Sprintf("a %T statement", n)
 	}
@@ -12736,6 +12755,51 @@ func (g *irGen) tryStmt(b *strings.Builder, ts *TryStmt) error {
 	return nil
 }
 
+// floatReboundReturnAsksForTheDouble asks the body the question its own instructions are about to
+// ask: does some `return` expression read as a double once the names the body rebinds to a float are
+// read as the doubles the body stored into them?
+//
+// It is the same `isFloat` the arithmetic, negation and print lowerings consult, run over a copy of
+// the float-variable table with the rebound names added — so the answer is the one the emitted body
+// will act on, not a second opinion guessed from the return line's syntax. That agreement is what
+// keeps a promoted function from ending in `ret i32` under a `define double`: `return -x` of such a
+// parameter used to reach no gate at all, because the return word was read off the shape of the
+// return expression and a unary minus says nothing, and the module came out rejected (roadmap
+// L11.6, Gap R.3c, ADR 0166).
+func (g *irGen) floatReboundReturnAsksForTheDouble(fd *FuncDef, atStake []string) bool {
+	saved := g.floatVars
+	merged := make(map[string]bool, len(saved)+len(atStake))
+	for k, v := range saved {
+		merged[k] = v
+	}
+	for _, nm := range atStake {
+		merged[nm] = true
+	}
+	g.floatVars = merged
+	needs := funcReturnsFloat(g, fd)
+	g.floatVars = saved
+	return needs
+}
+
+// doubleReturnCarriable reports whether emitting fd with a `double` return word can carry the answer at
+// all. The convention that decides the return word decides every parameter's word with it — a
+// float-returning function takes `double` parameters — so a body with a container parameter (whose word
+// is a heap handle) or an interned-text parameter (whose word is an index into `@str_tab`) cannot be
+// promoted without handing the callee a `sitofp` of a global, which is the module `llc` rejects and
+// ADR 0166 calls our bug. Those shapes stay refusals, and the answer is the tagged value word's.
+func (g *irGen) doubleReturnCarriable(fd *FuncDef) bool {
+	fn := g.fnName(fd)
+	for i, p := range fd.Params {
+		if g.paramHeapKind(fn, i, p) != HeapNone {
+			return false
+		}
+		if g.strParamOf[fn][i] {
+			return false
+		}
+	}
+	return true
+}
+
 // funcReturnsFloat reports whether fd has a return expression that produces a
 // double. It scans the body for ReturnStmt expressions and asks isFloat, also
 // tracking local variables that are assigned float values so that a function
@@ -12922,13 +12986,37 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	g.params = map[string]string{}
 	g.paramSlot = nil
 	g.curFunc = g.fnName(fd)
-	// A parameter the body rebinds to a float is a float variable, and the calling
-	// convention does not know that yet: `def addf(x): x = x + 1.5; return x` returns a
-	// bare name, so nothing reads the assignment, the function is emitted as
-	// int-returning, and 1.0 arrives truncated to 1. Teaching it needs the tagged value
-	// word, because the argument's type and the return's type are decided separately
-	// today (roadmap L11.6, pinned as programs/probe_float_param_rebind).
+	// The word a function returns is a fact about its body, not about its last line. `floatRet` below
+	// asks `isFloat` of each `return` *expression*, which is enough for `return x + 0.0` and nothing at
+	// all for `return x` — and a body that has just stored a double into its parameter's slot then has no
+	// double word to return it in: the read of the name keeps answering the incoming register, the call
+	// hands back the argument, and `print(addf(1.0))` prints `1` with the exit code of success
+	// (roadmap L11.6, Gap R.3c, ADR 0254; `programs/probe_float_param_rebind.gy` is the corpus form).
 	floatRet := funcReturnsFloat(g, fd)
+	// The rebind that convention cannot answer, asked before a single instruction is written — and asked
+	// of the same predicate the instructions below will ask, so the word the `ret` writes and the word the
+	// value arrives in cannot disagree. Where every parameter is a number the body is emitted
+	// double-returning and the program simply answers; where a parameter carries a container handle or an
+	// interned text the same convention would have to give that parameter a `double` too — the return
+	// convention decides every parameter together — and the program is refused in words rather than
+	// emitted wrong, because the emitted form is `sitofp i32 @.lst1 to double` and `llc` rejects it
+	// (roadmap ADR 0166; see `returnedFloatRebindings` and `doubleReturnCarriable`).
+	if !floatRet {
+		if bad := returnedFloatRebindings(fd, g.isFloat); len(bad) > 0 {
+			// The gate asks the same question the instructions below will ask, so the word the
+			// `ret` writes and the word the value arrives in cannot disagree — which is what the
+			// module verifier checks and what `return -x` used to get wrong in silence.
+			if !g.floatReboundReturnAsksForTheDouble(fd, bad) {
+				return fmt.Errorf("%q returns a ternary arm of %q, which its own body binds to a float: the answer's word is the arm's, and the compiled backend has no number-typed `select` to choose two doubles with, so the double the body computed has no word to travel in and the call answers a truncated i32 — a number-shaped answer that is the wrong one, which ADR 0166 counts as this compiler's bug rather than the program's (take the branch with `if`/`else` and `return` the number itself, or add it to `0.0` on the arm; roadmap L11.6, Gap R.102)",
+					g.fnName(fd), bad[0])
+			}
+			if !g.doubleReturnCarriable(fd) {
+				return fmt.Errorf("%q returns %q, which its own body binds to a float: the compiled backend chooses a function's return word from the shape of its return expression, and `return %s` says nothing, so the double the body computed has no word to travel in and the call answers the argument as it arrived — a number-shaped answer that is the wrong one, which ADR 0166 counts as this compiler's bug rather than the program's (write `return %s + 0.0`, or bind it to a new name, to say the answer is a float; roadmap L11.6, Gap R.3c, ADR 0196)",
+					g.fnName(fd), bad[0], bad[0], bad[0])
+			}
+			floatRet = true
+		}
+	}
 	retTy := "i32"
 	retVal := "0"
 	paramTy := "i32"
