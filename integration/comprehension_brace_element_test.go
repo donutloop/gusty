@@ -220,7 +220,18 @@ func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
 			"sa = {1, \"a\", None}\nout = [x for x in sa]\nprint(len(out))\nprint(1 if 1 in out else 0)\nprint(1 if \"a\" in out else 0)\nprint(1 if None in out else 0)\n",
 			"3\n1\n1\n1\n",
 		},
-		{"mixed_set_grown", "sa = set()\nsa.add(1)\nsa.add(\"a\")\nout = [x for x in sa]\nprint(out)\n", "[1, 'a']\n"},
+		{
+			// A set that has grown, walked into a list. What the row asserts is length and membership,
+			// not the printed order: CPython's order for a set containing text moves with the hash seed
+			// (an unseeded `python3` re-orders `{1, "a"}` between runs), so the oracle leg used to fail
+			// on roughly one run in six — a row that pins the *oracle's* nondeterminism is worse than no
+			// row, because it reads as a regression whenever the seed says so. The engines' own
+			// insertion order is pinned without an oracle leg in
+			// `pkg/lang/comprehension_brace_element_test.go` (roadmap Gap R.84).
+			"mixed_set_grown",
+			"sa = set()\nsa.add(1)\nsa.add(\"a\")\nout = [x for x in sa]\nprint(len(out))\nprint(1 if 1 in out else 0)\nprint(1 if \"a\" in out else 0)\n",
+			"2\n1\n1\n",
+		},
 		{"mixed_set_into_a_set", "sa = {1, \"a\", None}\nout = {x for x in sa}\nprint(len(out))\nprint(1 if \"a\" in out else 0)\n", "3\n1\n"},
 		{
 			// Iterating a dict yields its keys, and a dict entry is two words: the position is the
