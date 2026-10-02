@@ -81,6 +81,60 @@ func (p *parser) atIndent() bool  { return p.cur.atIndent() }
 func (p *parser) next() Token     { return p.cur.next() }
 func (p *parser) skipNewlines()   { p.cur.skipNewlines() }
 
+// skipSemis consumes ';' statement separators. A `;` is the on-line spelling of
+// the newline that would otherwise break the statements apart, so every loop
+// that lists statements has to step over it - and an inline suite has to notice
+// it, because `for i in xs: f(i); g(i)` puts both calls in the suite.
+func (p *parser) skipSemis() {
+	for p.peek().Kind == TokSemi {
+		p.next()
+	}
+}
+
+// skipSemiRun consumes one run of ';' separators and reports the empty statement
+// CPython calls a syntax error: two separators with nothing between them
+// (`x = 1;;y = 2`). It belongs to the parser, where every syntax rule lives, so
+// that no engine can read the same source differently from another.
+func (p *parser) skipSemiRun() error {
+	if !p.atSemi() {
+		return nil
+	}
+	first := p.peek()
+	n := 0
+	for p.atSemi() {
+		p.next()
+		n++
+	}
+	if n > 1 {
+		return p.errorf(first, "empty statement: ';' separates two statements, and there is nothing between them")
+	}
+	return nil
+}
+
+// atSemi reports whether the parser sits on a ';' separator.
+func (p *parser) atSemi() bool { return p.peek().Kind == TokSemi }
+
+// skipSeparators steps over everything that can sit *between* statements: blank
+// lines and ';' separators, in either order. `x = 1;` ends with a separator that
+// is followed by the line's NEWLINE, so a loop that only skipped one kind would
+// hand parseStmt a NEWLINE to parse as a statement.
+func (p *parser) skipSeparators() error {
+	saw := false
+	for {
+		p.skipNewlines()
+		if !p.atSemi() {
+			return nil
+		}
+		if saw {
+			return p.errorf(p.peek(), "empty statement: ';' separates two statements, and there is nothing between them")
+		}
+		if err := p.skipSemiRun(); err != nil {
+			return err
+		}
+		saw = true
+	}
+}
+
 // errorf reports a parse error at the given token span.
 func (p *parser) errorf(t Token, msg string) error {
 	return &ParseError{Span: t.Span, Msg: msg}
@@ -276,11 +330,28 @@ func (p *parser) parseStmt() (Stmt, error) {
 func (p *parser) parseBlock(open Span) ([]Stmt, error) {
 	// support single-line block: `if x: stmt` (no NEWLINE/INDENT)
 	if !p.atNewline() {
-		st, err := p.parseStmt()
-		if err != nil {
-			return nil, err
+		// A suite may be a list of simple statements separated by ';':
+		// `for i in xs: f(i); g(i)` runs both per iteration, so both belong to
+		// the suite. Stop at the NEWLINE that ends the physical line - the line
+		// after it is the enclosing block's, not the suite's.
+		var oneLine []Stmt
+		for {
+			st, err := p.parseStmt()
+			if err != nil {
+				return nil, err
+			}
+			oneLine = append(oneLine, st)
+			if !p.atSemi() {
+				break
+			}
+			if err := p.skipSemiRun(); err != nil {
+				return nil, err
+			}
+			if p.atNewline() || p.atEOF() {
+				break // `x = 1;` - a trailing separator is not an empty statement
+			}
 		}
-		return []Stmt{st}, nil
+		return oneLine, nil
 	}
 	// consume NEWLINE(s)
 	p.skipNewlines()
@@ -292,7 +363,9 @@ func (p *parser) parseBlock(open Span) ([]Stmt, error) {
 	p.nest++
 	var stmts []Stmt
 	for !p.atDedent() && !p.atEOF() {
-		p.skipNewlines()
+		if err := p.skipSeparators(); err != nil {
+			return nil, err
+		}
 		if p.atDedent() || p.atEOF() {
 			break
 		}

@@ -310,7 +310,15 @@ func parseTopLevel(toks []Token, src string, startTok int) (stmts []Stmt, starts
 	p := newParser(src, toks)
 	p.cur.pos = startTok
 	for !p.atEOF() {
-		p.skipNewlines()
+		if err := p.skipSeparators(); err != nil {
+			if pe, ok := err.(*ParseError); ok {
+				errs = append(errs, pe)
+			} else {
+				errs = append(errs, &ParseError{Span: p.peek().Span, Msg: err.Error()})
+			}
+			p.recoverStmt()
+			continue
+		}
 		if p.atEOF() {
 			break
 		}
@@ -360,6 +368,15 @@ func filterLex(raw []Token) (ok []Token, diags []Diagnostic) {
 			diags = append(diags, Diagnostic{Level: LevelError, Span: tk.Span, Msg: tk.ErrMsg, Code: CodeParseError})
 		case TokWarning:
 			diags = append(diags, Diagnostic{Level: LevelWarning, Span: tk.Span, Msg: tk.ErrMsg})
+		case TokSemi:
+			// `x = 1; print(x)` - the ';' is the on-line spelling of the statement
+			// break, and an inline suite (`for i in xs: f(i); g(i)`) needs to see it:
+			// the statements after a ';' belong to the suite, not to the block
+			// enclosing it. So it stays in the stream as a separator token and the
+			// statement loops consume it. It is not a diagnostic: the same program
+			// must not answer on the interpreter and be refused by the JIT/AOT
+			// (roadmap Gap R.72).
+			ok = append(ok, tk)
 		default:
 			ok = append(ok, tk)
 		}
@@ -370,7 +387,9 @@ func filterLex(raw []Token) (ok []Token, diags []Diagnostic) {
 // skipNewlinesAt returns the index of the first non-NEWLINE token at or
 // after pos.
 func skipNewlinesAt(toks []Token, pos int) int {
-	for pos < len(toks) && toks[pos].Kind == TokNewline {
+	// Both statement separators count: a blank line and a `;` are the same kind
+	// of nothing-between-statements.
+	for pos < len(toks) && (toks[pos].Kind == TokNewline || toks[pos].Kind == TokSemi) {
 		pos++
 	}
 	return pos

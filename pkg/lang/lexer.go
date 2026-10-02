@@ -299,6 +299,18 @@ func Lex(src string) ([]Token, error) {
 				for i < n && src[i] != '\n' {
 					i++
 				}
+			case c == ';':
+				// A ';' between simple statements is the on-line spelling of the
+				// newline that would otherwise separate them (`x = 1; print(x)`).
+				// It used to be lexed as an unexpected character, which recorded a
+				// diagnostic that the interpreter ignored and the JIT/AOT refused -
+				// so the same program answered on one engine and was rejected by
+				// another. A separator is not an error: emit a token, say nothing.
+				// (`x = 1;;y = 2` - the empty statement - is rejected by the parser,
+				// where every syntax rule lives, not by a diagnostic the interpreter
+				// would read differently from the JIT.)
+				emit(TokSemi, ";", i, i+1, nil)
+				i++
 			case c == '\\':
 				// L4.6 line continuation: a trailing backslash immediately before
 				// the newline joins the next physical line into this logical line,

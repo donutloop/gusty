@@ -3983,3 +3983,30 @@ element (`xs[0] + 1`, `max(xs[0])`) — the tagged value word in its arithmetic 
 **built at run time** (`xs = []; xs.append([7, 8]); xs[0][0]`), which no literal ever described. The
 second is why `probe_nested_list` stays in the oracle ledger after `probe_heterogeneous` was promoted out
 of it.
+
+**Resolved 2026-10-02 (ADR 0242): `;` is a statement separator.** The row above listed two legitimate
+endings and this cycle chose the second one's opposite — accept the separator, because the parser already
+understood the statements on either side and forbidding it would have bought truth with less language.
+
+What the change came down to, beyond a lexer case:
+
+- **The token has to stay in the stream.** The old error token was dropped by `filterLex`, so the parser
+  saw `for i in [1,2]: print(i) print("step")` and put the second statement *after* the loop: engines
+  agreed on `1 2 step` where CPython prints `1 step 2 step`. An inline suite is a list of simple
+  statements, so `TokSemi` is kept and `parseBlock`'s single-line branch loops over the separated
+  statements, stopping at the NEWLINE that ends the physical line. That wrong answer is the reason the
+  first attempt at this change is in the test table (`inline_for_body_runs_per_iteration`).
+- **The rule belongs to the parser, not to the diagnostic channel.** `x = 1;;y = 2` (the empty statement,
+  which CPython also rejects) is a `ParseError`, asserted in the same table to be rejected by the
+  interpreter path too. Had it stayed a lexer diagnostic, the interpreter would have run the program the
+  JIT refused — the very disagreement this row is about, recreated one level down.
+- **Separators and blank lines are skipped together.** `x = 5;` ends with a separator followed by the
+  line's NEWLINE; a loop that skipped only one kind handed `parseStmt` a NEWLINE to parse as a statement.
+  `skipSeparators` loops over both, and `skipNewlinesAt` (the incremental parse cache's boundary helper)
+  skips both, so statement boundaries stay aligned across an edit between two separated statements.
+- **Indentation is unchanged** — the separator is emitted from the line loop, so INDENT/DEDENT still come
+  one pair per physical line; a dedicated regression test covers the body-with-separator shape.
+
+`x = 5; print(x+1)` now prints `6` under `--interp`, `--eval`, `--repl`, `--jit`, `--aot` and
+`--emit-llvm` alike. ADR 0240's message stays: a program with a real syntax error is still refused, with
+its message, on every path.

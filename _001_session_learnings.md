@@ -4987,3 +4987,43 @@ that asserts "still refuses" is a standing claim about today's compiler, so payi
 the row in the same commit — otherwise the suite reports a regression exactly when the work succeeds.
 (3) Both-legs tables have to be *run* on both legs: the interpreter rows are what told me the compiled
 refusal was the anomaly rather than the program being illegal.
+
+## Cycle: Gap R.72 — `;` is a statement separator, so it is a token and never a diagnostic (ADR 0242)
+
+**What the row measured.** `x = 5; print(x+1)` printed `6` under `--interp`/`--eval`/`--repl`, was
+refused by `--jit`/`--aot` with `unexpected character ";"`, and `--emit-llvm` answered exit 0 with a
+module `llc` accepted. One line of source, three verdicts — the shape of bug an agent reads as "the
+backends disagree", verifies by trying a third flag, and loses a round to.
+
+**Root cause, in three layers.** The lexer had no `;` case, so it fell through the operator scan to
+`unexpected character ";"`. `filterLex` turned that token into an error diagnostic *and dropped it from
+the stream*. The parser — which never looks at TokError — carried on parsing both statements. Then each
+entry point kept its own opinion: `JITWithOptions` fails on any error-level diagnostic, `Compile`
+collects diagnostics and returns the IR anyway, the interpreter never asks. Each layer was defensible;
+the composition was the bug.
+
+**The decision, and the trap in its first attempt.** Accept the separator (the parser already understood
+the statements either side of it — forbidding it would have traded language surface for truth). The first
+version dropped `TokSemi` the way the error token had been dropped, and `for i in [1,2]: print(i);
+print("step")` printed `1 2 step` where CPython prints `1 step 2 step`: all three engines agreeing on a
+wrong answer, which is the worst outcome this project has ever measured. An inline suite is a *list of
+simple statements*, so the separator must stay in the token stream and `parseBlock`'s single-line branch
+must loop over it, stopping at the NEWLINE that ends the physical line.
+
+**Rules go in the parser when all paths must agree.** `a = 1;;b = 2` is the empty statement, and CPython
+rejects it. Making it a lexer diagnostic would have rebuilt the same disagreement one level down —
+interpreter runs it, JIT refuses it. As a `ParseError` it is one verdict, and the test asserts the
+interpreter rejects it too.
+
+**Two small things that were not small.** (1) `x = 5;` ends with a separator *followed by* the line's
+NEWLINE: a statement loop that skipped newlines and separators in two separate calls handed `parseStmt` a
+NEWLINE to parse as a statement. `skipSeparators` loops over both kinds. (2) The incremental parse cache's
+`skipNewlinesAt` had to learn about separators too, or an edit between two `;`-separated statements shifts
+the reused-prefix boundary by a token.
+
+**Process lessons.** (1) *Build the binary you are going to measure.* Half of this cycle went into a
+"the fix does nothing" chase because `go build -o gusty` and `./gustyc` were different files. (2) A probe
+whose verdict differs between `;` and a newline is telling you something — my first sweep used `;`-joined
+statements and drew conclusions about the wrong engine. (3) When a change removes a diagnostic, the test
+that matters is "no error-level diagnostic is recorded" (`TestSemicolonIsNotADiagnostic`), not "the
+message reads better" — that was ADR 0240's job, and it stays useful for programs with real syntax errors.

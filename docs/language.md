@@ -225,6 +225,33 @@ the interpreter and the AOT backend agree on `0xFF + 0b101 + 0o17 + 1_000`.
 
 ## Statements
 
+### Statement separators (`;`)
+
+A `;` separates simple statements written on one line — the on-line spelling of the newline that would
+otherwise divide them (ADR 0242, closing roadmap Gap R.72):
+
+```
+x = 5; print(x + 1)        # 6
+a = 1; b = 2; print(a + b) # 3
+print("done");             # a trailing separator is fine; it is not an empty statement
+```
+
+An inline suite is a list of simple statements too, so the statements after a `;` belong to the suite and
+not to the block that contains it:
+
+```
+for i in [1, 2]:
+    print(i); print("step")   # 1, step, 2, step — both statements run per iteration
+```
+
+The empty statement is rejected, wherever a syntax rule lives (the parser, not a diagnostic one entry
+point happens to enforce): `a = 1;;b = 2`, `a = 1; ;b = 2`, a line beginning with `;`, and `if x: pass;;`
+are all reported as `empty statement: ';' separates two statements, and there is nothing between them`.
+`a = (1; 2)` is rejected too — a separator is a statement-level token, not an operator. Every entry point
+— `--interp`, `--eval`, `--repl`, `--jit`/`--aot`, `--emit-llvm` — gives the same verdict on the same
+source, which is the point: `;` used to be a program to the interpreter, a refusal to the JIT, and a clean
+compile to `--emit-llvm`.
+
 ### Assignment
 
 ```

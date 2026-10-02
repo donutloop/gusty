@@ -28,6 +28,11 @@ const (
 	TokKeyword
 	TokError
 	TokWarning
+	// TokSemi is a ';' between simple statements on one line - `x = 1; print(x)`.
+	// Python spells a statement break with a newline and allows ';' as the
+	// on-line form; it is a separator, not an error, and the parser treats it
+	// exactly like the newline the statements would have had.
+	TokSemi
 )
 
 // Token is a single lexical token with its source span.
