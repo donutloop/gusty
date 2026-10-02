@@ -14,6 +14,33 @@ List, dict, and set comprehensions are supported on both backends. Dict/set comp
 dict, `{x for x in [1,2]}` a set. The `if` filter is the comprehension's on every kind —
 `{x for x in xs if x > 1}` parses (ADR 0234). See ADR 0095.
 
+**A `{…}` display ends at its brace.** A `for` after the closing brace finishes a display only when
+the display is the whole expression — the call-argument form `len({x * x} for x in xs)`. Inside a list
+display the `for` belongs to the *enclosing* comprehension, so the braces hold an element and not a
+second comprehension (ADR 0244):
+
+```gy
+d = [{1, 2} for x in [1, 2]]   # a list of two sets — not a set
+print(len(d))                   # 2
+print(d[0])                     # {1, 2}
+d = [{"k": x} for x in [1, 2]] # a list of two dicts, each with its own entry
+print(d[1])                     # {'k': 2}
+```
+
+**A comprehension's element is a value, and it is stored as one** (ADR 0244). A container, a float,
+`None` and a piece of text each go into the slot with the tag that says what they are — payload and
+tag in one write, the same rule `xs.append(v)` follows — so the container prints them and a slot read
+prints them back:
+
+```gy
+print([[1, 2] for x in [1]])     # [[1, 2]]   — the element is the list, not its address
+print([1.5 for x in [1]])        # [1.5]      — not the float box's handle
+print([None for x in [1]])       # [None]     — not the 0 that `if None:` folds to
+print(["a" for x in [1]])        # ['a']      — the container prints, not the string printer
+xs = [x + 1 for x in [1, 2]]
+print(xs[0], xs[0] + 1)          # 2 3        — an integer element still does integer things
+```
+
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
 Sequence slicing is supported on strings and lists in both the interpreter and
@@ -404,10 +431,12 @@ Three shapes refuse rather than answer wrongly, each naming its reason:
 - `sum`/`min`/`max` over a comprehension whose elements are computed at runtime — there is no
   compile-time element set to fold, and folding the empty one answers **0 for a list that has
   elements** (`probe_comp_runtime_reduce`; a runtime reduction is the open item).
-- printing an element of a comprehension list the program has not walked elsewhere —
-  `out = [n for n in names if n == "a"]; print(out[0])` answers the interned index (`0`) where
-  CPython answers `a`; the element-kind fact is only there once something has looked at the list
-  (roadmap Gap R.46);
+- printing an element of a comprehension whose **iterable** is a run-time-grown text list —
+  `names = ["a", "b"]; names.append("c"); out = [n for n in names if n == "a"]; print(out[0])` answers
+  the interned index (`0`) where CPython answers `a`: promoting the list to mixed clears the
+  `listElemStr` fact the loop variable's kind came from, so the elements are tagged as numbers
+  (roadmap Gap R.46). The other element kinds are answered — a container, a float, `None` or text
+  written into a comprehension's slot carries its tag and prints back as itself (ADR 0244);
 - `str(x)` of a value the compiler cannot fold, and indexing a `sorted(...)` result, refuse with a
   message (roadmap Gap R.22);
 - any string question asked at *run* time on the compiled leg — `s[i]` with a variable index,

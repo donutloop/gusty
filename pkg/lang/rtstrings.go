@@ -102,7 +102,7 @@ func (g *irGen) scanStringBindings(stmts []Stmt) {
 	for _, st := range stmts {
 		switch n := st.(type) {
 		case *AssignStmt:
-			if nm, ok := n.Target.(*Name); ok && g.exprIsString(n.Value) {
+			if nm, ok := n.Target.(*Name); ok && g.exprIsString(n.Value) && !bindsAContainerExpr(n.Value) {
 				g.internedVars[nm.Value] = true
 			}
 			for _, t := range []Expr{} {
@@ -320,4 +320,16 @@ func (g *irGen) emitForOverRuntimeString(b *strings.Builder, n *ForStmt) error {
 	}
 	fmt.Fprintf(b, "%s:\n", endL)
 	return nil
+}
+
+// bindsAContainerExpr is the one exception scanStringBindings makes: a comprehension or a generator
+// binds a *container*, never an index into @str_tab, whatever its elements are. Marking `xs` a string
+// because `xs = ["a" for q in qs]` has text in it made print(xs) call the string printer on a list
+// handle, which wrote a bare `a` where the container printer writes ['a'] (roadmap Gap R.75, ADR 0244).
+func bindsAContainerExpr(e Expr) bool {
+	switch e.(type) {
+	case *Comp, *Generator:
+		return true
+	}
+	return false
 }

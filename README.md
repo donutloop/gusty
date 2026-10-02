@@ -136,6 +136,14 @@ number for arithmetic, so `xs = [1, "a"]; print(xs[0] + 1)` prints `2` and `ys =
 prints `3.0` (ADR 0243). Where the promise runs out — including rebinding the very name the read goes
 through — the answer is a refusal naming the promise, not a payload read back as a handle.
 
+A `{…}` display ends at its brace: `[{1, 2} for x in xs]` is a list of two sets, not a set, because the
+`for` after the brace belongs to the enclosing list comprehension — only a display that *is* the whole
+expression (`len({x*x} for x in xs)`) finishes itself into one. And a comprehension's element is a value:
+a container, a float, `None` or text enters the slot with the tag that says what it is, payload and tag in
+one write — the rule `xs.append(v)` already followed — so `[[1, 2] for x in [1]]` prints `[[1, 2]]` rather
+than the inner list's address, `[1.5 …]` prints `[1.5]` rather than a box handle, and `[None …]` prints
+`[None]` rather than the `0` that `if None:` folds to (ADR 0244).
+
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
 the variable's kind recorded — so print, `in`, subscript and `for` treat a bound set or dict

@@ -43,6 +43,13 @@ type parser struct {
 	src  string
 	cur  Cursor
 	nest int // currently-open block depth (unconsumed DEDENTs); used by panic-mode recovery
+	// inListLit counts the `[` displays whose element list this expression is being parsed inside.
+	// A `{…}` display may finish itself into a comprehension when a `for` follows its `}` — that is
+	// the call-argument genexp form `len({x*x} for x in xs)` — but not when the display is an
+	// *element* of a list display: there the `for` belongs to the enclosing `[`, and stealing it made
+	// `[{1, 2} for x in xs]` a list of one set comprehension instead of a list comprehension over
+	// set literals (roadmap Gap R.74, ADR 0244).
+	inListLit int
 	// typeAliases records compile-time structural type aliases (`type X = T`)
 	// so later annotations resolve them structurally (L5.7).
 	typeAliases map[string]*Type
@@ -1864,6 +1871,10 @@ func (p *parser) parseGeneratorTail(elem Expr) (*Generator, error) {
 
 func (p *parser) parseListOrComp() (Expr, error) {
 	t := p.next() // '['
+	// Every expression parsed below is an element of this display: a `{…}` among them must leave a
+	// following `for` to this display, which is what turns it into a list comprehension (Gap R.74).
+	p.inListLit++
+	defer func() { p.inListLit-- }()
 	var elems []Expr
 	for !p.peek().IsOp("]") {
 		ex, err := p.parseExpr()
@@ -2003,7 +2014,11 @@ func (p *parser) parseDictOrSet() (Expr, error) {
 	if err := p.expectOp("}"); err != nil {
 		return nil, err
 	}
-	if p.peek().IsKeyword("for") {
+	// A `for` after the closing brace finishes a display that is the *whole* expression — the
+	// call-argument genexp `len({x*x} for x in xs)`. Inside a list display it is the enclosing
+	// comprehension's, so the display stops here and `parseListOrComp` builds the comprehension over
+	// this literal (roadmap Gap R.74, ADR 0244: `[{1, 2} for x in xs]` is a list of sets, not a set).
+	if p.inListLit == 0 && p.peek().IsKeyword("for") {
 		p.next() // 'for'
 		v := p.peek()
 		if v.Kind != TokIdent {

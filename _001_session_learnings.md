@@ -5075,3 +5075,40 @@ being quietly folded into L11.1's row — and that discovery only happened becau
 CPython rather than between the backends. (4) The roadmap's ledger table is edited by *cell*, and a whole-row
 paste can silently splice two rows into one; the row count is worth checking after a table edit
 (`Gap R.71` briefly lost its identity to `Gap R.73` this way).
+
+## Gap R.74 + Gap R.75 — a brace display ends at its brace, and a comprehension slot gets its tag (ADR 0244)
+
+**The measurement came from the oracle, not from parity.** I swept comprehension programs through
+`--interp`, `--aot` and `python3` side by side. Parity had nothing to say about any of it, because the two
+backends were wrong *together*: `[{"k": x} for x in [1, 2]]` printed `1` for `len(d)` on both, and
+`[1.5 for x in [1]]` printed `[1]` on both. Two engines agreeing on a wrong answer is the failure mode
+this project keeps hitting, and the only cure found so far is a third engine that neither of them wrote.
+
+**The wrongest answer was in the parser.** `[{1, 2} for x in [1]]` evaluated to a one-member set because
+it *parsed* to a list containing a set comprehension — `ListLit[Comp(set, elems=[1,2])]`. The evaluator
+was innocent; a `for` branch in `parseDictOrSet`, placed after the display's closing brace, had stolen
+the enclosing list comprehension's clause. Reading the AST was five minutes; reasoning about the
+evaluator would have been an afternoon. Dump the tree before you form a theory about the back end.
+
+**Deleting a branch that serves two readings is the whole difficulty.** The post-`brace branch was not
+gratuitous: `len({x*x} for x in xs)` depends on it, and it is in the suite. So the fix is contextual — the
+parser counts the `[` displays whose element list it is parsing, and the branch runs only at depth 0 — and
+pinned on *both* sides: the mis-parsed shape must not come back, and the call-argument reading must not
+leave. Where two readings share a token, an AST table is cheaper than an output table, because an output
+table can be satisfied by the wrong program.
+
+**Four symptoms, one missing door.** Exit 2 (`@.set1` in a value position), `[1]` for `[1.5]`, `[0]` for
+`[None]`, and a bare `a` for `['a']` all came from the comprehension builder writing elements with
+`g.value` alone, while `xs.append(v)` had ADR 0187's payload-and-tag door. One detail deserves pinning:
+after fixing the *object* (marking it self-describing), `print(xs)` was right and `print(xs[0])` was still
+wrong, because the *binding* recorded the variable as an ordinary int list. A tag is only worth having if
+you follow it to the read — half the pair is worse than useless, because the half that works is the half
+you will test.
+
+**Honesty about what is left.** Gap R.46 stays open, narrowed rather than closed: with a run-time-grown
+text iterable the element still prints `0`. I built HEAD in a `git worktree` and confirmed the pre-change
+binary answers `0` too before writing that into the row — "not a regression" has to be measured, not
+assumed, and the worktree build is the cheapest way to get the answer. The call-argument genexp divergence
+(`len({...} for x in xs)` is a `TypeError` in CPython, `2` here) is recorded in the ADR instead of being
+asserted as if it were CPython's answer — a test that pins non-CPython behaviour without saying so is how
+a wrong answer becomes a requirement.

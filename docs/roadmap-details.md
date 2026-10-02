@@ -4093,3 +4093,80 @@ which is why the two rows name the same owner (L11.6): one shared reduction mean
 and `True`/`0` comparisons cannot drift between the engines. Until then the row is asserted by the
 three-engine table in `integration/container_slot_read_test.go`, where `max(xs[0], 5)` is expected to be
 refused by both engines rather than to answer `5`.
+
+### Gap R.74 — `[{1, 2} for x in xs]` parsed as a list holding one set comprehension (found 2026-10-02 by comparing comprehensions against CPython, closed the same cycle with ADR 0244)
+
+Every row below was measured through `--interp`, `--aot` and `python3` on the same file. A parity test
+would have shown none of it, because both backends were wrong *together*:
+
+| program | CPython | both backends, before |
+|---|---|---|
+| `d = [{1, 2} for x in [1]]` → `print(len(d[0]))` | `2` | refused / `{1}` |
+| `d = [{"k": x} for x in [1, 2]]` → `print(len(d))` | `2` | `1`, and `d[0]` printed `{'k': 1, 'k': 2}` |
+| `d = [{1, 2} for x in [1, 2]]` → `print(len(d))` | `2` | `1` |
+
+**The AST was the bug, not the evaluator.** Dumping the tree said it: `[{1, 2} for x in [1]]` came back as
+`ListLit[ Comp(set, elems=[1,2]) ]` — the list comprehension had vanished, and a set comprehension had
+taken its `for`. `parseDictOrSet` carried two `for` branches: one *before* the closing brace, which is
+`{x for x in xs}` and correct, and one *after* it. The later branch exists for the call-argument form
+`len({x * x} for x in xs)`, where the display really is the whole expression the `for` completes. Inside
+a `[` it is a theft — there the `for` belongs to the enclosing list display — and that single branch
+explained every symptom, including the dict row: with the comprehension stolen, one dict literal was
+built once and filled once per item, which is what `{'k': 1, 'k': 2}` is.
+
+**The rule, and the case that must not break.** CPython rejects `d = {1, 2} for x in y` outright; it
+accepts the display-then-`for` form only as a call argument, where it builds a *generator*. So the
+branch cannot simply be deleted — `len({x*x} for x in xs)` is in the test suite and on the interpreter
+path today. The parser now counts the `[` displays whose element list an expression is being parsed
+inside (`inListLit`), and the brace-stealing branch runs only at depth 0. `[{1, 2} for x in xs]` builds a
+list comprehension over a set literal; `len({x*x} for x in xs)` keeps the reading it has, and ADR 0244
+states out loud that CPython's answer there is a `TypeError` on a generator, so the divergence is
+recorded rather than asserted as truth.
+
+**Why the test asserts the tree.** An output table can only show that the engines agree. The AST table
+(`TestBraceDisplayDoesNotStealTheEnclosingFor`, ten shapes, with the call-argument form among them and a
+separate `TestMisParsedShapeIsNotAcceptedAnymore`) is what makes it expensive to put the branch back.
+
+### Gap R.75 — a comprehension wrote its slots without their tags (found 2026-10-02 with Gap R.74, closed the same cycle with ADR 0244)
+
+With the AST fixed, the compiled backend met the programs the parser had been hiding:
+
+| program | CPython | compiled, before |
+|---|---|---|
+| `xs = [[1, 2] for x in [1]]` → `print(xs[0])` | `[1, 2]` | **exit 2**: `call void @rt_append_tagged(i32 %h1, i32 @.set1, i32 7)` — `global variable reference must have pointer type` |
+| `xs = [1.5 for x in [1]]` → `print(xs)` | `[1.5]` | `[1]` |
+| `xs = [None for x in [1]]` → `print(xs)` | `[None]` | `[0]` |
+| `xs = ["a" for x in [1]]` → `print(xs)` | `['a']` | `a` |
+
+Four symptoms, one cause: `runtimeCompList` and `runtimeCompLoop` compiled each element with `g.value`
+and appended it, falling back to the **untagged** `rt_append`/`rt_set_add` whenever `elemKindTag` could
+not name the kind. Every other writer in this backend goes through ADR 0187's rule — payload and tag in
+one call — because a slot that gets only a payload reads back tagged as whatever the previous occupant of
+that recycled heap slot was. `xs.append(v)` had that door; the comprehension had a path around it.
+
+- **The container element** reached the slot as the compiler's *global* (`@.set1`, `@.lst1`) rather than a
+  heap handle. `llc` rejected the module and the CLI exited 2 — the compiler reporting its own output as
+  broken, which the exit-code contract classifies as a bug and never as a refusal. Fixed by taking the
+  element through `heapElemKind`, which materialises it into the heap the way the append path does.
+- **The float element** had a correct tag and a wrong *object*: nothing had told the container its slots
+  describe themselves, so the printer rendered every slot through the number printer and printed the box
+  handle. Fixed by `rt_mark_estr(h, 8)` when the element's tag is one a compiled word cannot render.
+- **The `None` element** never reached the runtime builder at all: `foldConstInt` answers `0` for `None`,
+  which is the right answer to `if None:` and a wrong answer to "what is in this slot". `foldsToAnInteger`
+  keeps non-integer elements out of the constant path, which is where the tag can still be written.
+- **The text element** made the *variable* an interned-string variable — `scanStringBindings` asked
+  `exprIsString` of the comprehension, which asked its element. A comprehension binds a container, so it
+  is now an explicit exception, and `print(xs)` reaches the container printer instead of `rt_print_str`.
+
+**The half-pair is the part worth keeping.** Marking the object self-describing fixed `print(xs)` and left
+`print(xs[0])` printing the handle, because the *binding* still recorded the variable as an ordinary
+int list (`g.mixedLists[xs] = false`, set by the comprehension branch of the assignment path). A tag is
+only worth having if you follow it to the read: the fix sets the object's bit **and** marks the bound
+variable tagged, and the integration table asserts both prints, which is the assertion that would have
+caught the half-fix.
+
+**What remains open is named in Gap R.46**, whose row is narrowed rather than closed:
+`names = ["a","b"]; names.append("c"); out = [n for n in names if n == "a"]; print(out[0])` still answers
+`0`, because promotion to mixed clears the `listElemStr` fact the loop variable's kind came from. The
+pre-change binary answers `0` too, so it is not fallout from this change — it is the next shape, and it
+wants the iterated object's *tag array* asked rather than the compile-time kind map.

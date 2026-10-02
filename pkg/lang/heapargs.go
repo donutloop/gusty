@@ -1511,26 +1511,46 @@ func exprSnippet(e Expr) string {
 // checked against each other, and a disagreement refuses: "the payload is an interned index but
 // the tag says int" is precisely the wrong-answer shape the mixed-container refusal exists to
 // prevent, so it is never emitted (ADR 0184, ADR 0187).
-func (g *irGen) mixedElemTag(b *strings.Builder, e Expr) (payload, tag string, err error) {
+// elemPayloadAndTag is the one door that turns an expression into what a container slot holds: the
+// payload word, the tag that says what it is, and whether the payload is an interned string index.
+// Every writer of a slot goes through it, because the two halves must be written together — a slot
+// that gets a payload without a tag reads back as whatever the previous occupant of that recycled
+// heap slot was tagged as (ADR 0187, ADR 0189), and a container element whose payload is the
+// compiler's *global* (`@.set1`) rather than a heap handle is the module `llc` rejects (roadmap
+// Gap R.75, ADR 0244: a comprehension over container literals hit exactly that).
+//
+// `xs.append(v)` already used this door; a comprehension built its elements with `g.value` alone,
+// which is why the same program worked one way and failed the other.
+func (g *irGen) elemPayloadAndTag(b *strings.Builder, e Expr) (payload, tag string, interned bool, err error) {
 	t, ok := g.elemKindTag(e)
 	if !ok {
-		return "", "", mixedTaggedElemErr(e)
+		return "", "", false, mixedTaggedElemErr(e)
 	}
-	v, interned, err := g.heapElemKind(b, e)
-	if err != nil {
-		return "", "", err
+	v, intern, herr := g.heapElemKind(b, e)
+	if herr != nil {
+		return "", "", false, herr
 	}
-	if interned && t != int32(TagStr) {
-		return "", "", mixedTaggedElemErr(e)
+	// A string is taggable only if the word really is an interned index, and a container only if
+	// heapElemKind materialised it into the heap; either way the tag and the word have to agree.
+	if intern && t != int32(TagStr) {
+		return "", "", false, mixedTaggedElemErr(e)
 	}
-	if !interned && t == int32(TagStr) {
-		return "", "", mixedTaggedElemErr(e)
+	if !intern && t == int32(TagStr) {
+		return "", "", false, mixedTaggedElemErr(e)
 	}
 	if t == int32(TagNone) {
 		// None has no i32 payload of its own; the tag is what renders it.
 		v = "0"
 	}
-	return v, strconv.FormatInt(int64(t), 10), nil
+	return v, strconv.FormatInt(int64(t), 10), intern, nil
+}
+
+func (g *irGen) mixedElemTag(b *strings.Builder, e Expr) (payload, tag string, err error) {
+	p, t, _, err := g.elemPayloadAndTag(b, e)
+	if err != nil {
+		return "", "", err
+	}
+	return p, t, nil
 }
 
 // mixedElemPair emits the tagged *read* of one element: the payload through rt_get_elem and its

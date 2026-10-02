@@ -8466,21 +8466,23 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 			}
 			return nil
 		}
-		av, aerr := g.value(b, c.Elems[0])
+		av, kt, intern, aerr := g.elemPayloadAndTag(b, c.Elems[0])
 		if aerr != nil {
 			return aerr
 		}
-		add, addTagged := "rt_append", "rt_append_tagged"
+		addTagged := "rt_append_tagged"
 		if c.Kind == CompSet {
-			add, addTagged = "rt_set_add", "rt_set_add_tagged"
+			addTagged = "rt_set_add_tagged"
 		}
-		if kt, ok := g.elemKindTag(c.Elems[0]); ok {
-			b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 %s, i32 %d)\n", addTagged, h, av, kt))
-		} else {
-			b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 %s)\n", add, h, av))
-		}
-		if _, intern, kerr := g.heapElemKind(b, c.Elems[0]); kerr == nil && intern {
+		// Payload and tag are one call, through the door `xs.append(v)` uses: no untagged add is left to
+		// fall back to, so a slot can never carry the tag of whoever held it last (ADR 0187, ADR 0244).
+		b.WriteString(fmt.Sprintf("  call void @%s(i32 %s, i32 %s, i32 %s)\n", addTagged, h, av, kt))
+		if intern {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 1)\n", h))
+		}
+		// As above: a slot that needs its tag obliges the object to let each slot speak (ADR 0232).
+		if t, okTag := g.elemKindTag(c.Elems[0]); okTag && slotTagSelfDescribing(t) {
+			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 		}
 		return nil
 	}
@@ -8515,6 +8517,12 @@ func (g *irGen) comprehensionFolds(c *Comp, items []int64) bool {
 	if len(c.Elems) != 1 {
 		return false
 	}
+	// `None` folds to the integer 0 — which is the right answer to `if None:` and the wrong answer to
+	// \"what is in this slot\". An element that is not an integer belongs to the runtime builder, which
+	// tags every slot it writes (roadmap Gap R.75, ADR 0244).
+	if !foldsToAnInteger(c.Elems[0]) {
+		return false
+	}
 	for _, item := range items {
 		g.constBindings[c.ForVar.Value] = item
 		_, ok := g.foldConstInt(c.Elems[0])
@@ -8528,6 +8536,20 @@ func (g *irGen) comprehensionFolds(c *Comp, items []int64) bool {
 		if !ok {
 			return false
 		}
+	}
+	return true
+}
+
+// foldsToAnInteger is the comprehension fold's own question, asked before the shared folder answers
+// the truthiness one: an element that is literally a None, a piece of text or a float is a *value* of
+// that kind, not the integer its truthiness happens to fold to. Those elements go to the runtime
+// builder, where the slot gets the tag that says what it holds (roadmap Gap R.75, ADR 0244).
+func foldsToAnInteger(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *BoolLit:
+		return true
+	case *NoneLit, *StrLit, *FloatLit:
+		return false
 	}
 	return true
 }
@@ -8563,24 +8585,28 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 	g.heapSeq++
 	h := fmt.Sprintf("%%h%d", g.heapSeq)
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_alloc(i32 1)\n", h))
-	internedElems := false
-	if kind, intern, err := g.heapElemKind(b, c.Elems[0]); err == nil && kind == "str" {
-		internedElems = intern
-	}
-	// appendElem writes the payload and the tag together (ADR 0187): an append that wrote only
-	// the payload would leave the slot tagged as whatever held it before.
+	// Whether the elements are interned text is asked of the element itself, once per write, by the
+	// door below — a pre-scan here emitted an intern call the loop never used.
+	// appendElem writes the payload and the tag together, through the same door `xs.append(v)` uses
+	// (ADR 0187, ADR 0244). An append that wrote only the payload leaves the new slot tagged as
+	// whatever held it before, and an element compiled with `g.value` alone reaches a container slot as
+	// the compiler's *global* (`@.lst1`) — a value position `llc` rejects, which is how a comprehension
+	// over container literals ended the module instead of building the list (roadmap Gap R.75).
 	appendElem := func() error {
-		av, err := g.value(b, c.Elems[0])
+		av, kt, intern, err := g.elemPayloadAndTag(b, c.Elems[0])
 		if err != nil {
 			return err
 		}
-		if kt, ok := g.elemKindTag(c.Elems[0]); ok {
-			b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %s, i32 %s, i32 %d)\n", h, av, kt))
-		} else {
-			b.WriteString(fmt.Sprintf("  call void @rt_append(i32 %s, i32 %s)\n", h, av))
-		}
-		if internedElems {
+		b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %s, i32 %s, i32 %s)\n", h, av, kt))
+		if intern {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 1)\n", h))
+		}
+		// A slot whose payload only means something through its tag — a float box, None, another
+		// container — obliges the whole object to stop claiming one element kind, or the printer renders
+		// every slot through the number printer and `[[1, 2] for x in [1]]` prints the box handles
+		// ([2, 3]) instead of the lists (ADR 0232, roadmap Gap R.75).
+		if t, okTag := g.elemKindTag(c.Elems[0]); okTag && slotTagSelfDescribing(t) {
+			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 		}
 		return nil
 	}
@@ -13101,7 +13127,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				default:
 					g.listVars[nm.Value] = true
 					if len(comp.Elems) == 1 {
-						if _, intern, kerr := g.heapElemKind(b, comp.Elems[0]); kerr == nil && intern {
+						if t, okTag := g.elemKindTag(comp.Elems[0]); okTag && slotTagSelfDescribing(t) {
+							// The builder wrote a tag with every slot and told the object to let its slots
+							// speak; the read has to ask them too, or `print(xs[0])` shows the float box's
+							// handle where CPython shows 1.5, and a container element prints its handle
+							// instead of the list inside (roadmap Gap R.46, Gap R.75, ADR 0244).
+							g.mixedLists[nm.Value] = true
+							g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
+						} else if _, intern, kerr := g.heapElemKind(b, comp.Elems[0]); kerr == nil && intern {
 							g.listElemStr[nm.Value] = true
 						} else {
 							g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
