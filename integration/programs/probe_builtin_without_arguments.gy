@@ -1,0 +1,18 @@
+# What CPython prints for both lines here (python3, 3.12):
+#
+#   0
+#   0.0
+#
+# `int()` and `float()` with no argument are the conversions of zero, which is what the reference
+# answers — and neither engine gets there. The interpreter reaches for `Args[0]` before it has asked
+# whether there is one, so the program dies with a Go runtime panic and **exit 2**, the code the
+# exit-code contract reserves for a compiler bug (ADR 0166). The compiled backend refuses with
+# `int expects one argument` and exit 1, which is the code for "your program has a compile error" —
+# issued here for a program CPython runs in one line (roadmap L11.8's complaint exactly).
+#
+# `round()` was the fifth member of this family and answers an arity error on both engines now
+# (ADR 0263). `ord()` and `chr()` panic the same way on programs CPython itself rejects, and `chr()`
+# panics the compiler as well. Owner: the same arity check in front of every builtin that takes an
+# argument (roadmap Gap R.131).
+print(int())
+print(float())

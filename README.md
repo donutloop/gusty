@@ -612,9 +612,31 @@ falls back to dynamic dispatch.
   implementations to each other. Both backends now name the operation — `math.RoundToEven`,
   `llvm.roundeven.f64` — and `programs/round_ties.gy` entered the corpus with no ledger row, which here
   means "print what CPython prints", so the old answer is a CI failure. What the same probe found and
-  did not fix: `round(2.345, 2)` is `2.35` in CPython, `2` in the interpreter (the digit count is
-  ignored) and an exit-1 refusal compiled — a compile-error exit code for a program CPython runs, which
-  is Gap R.69 and the exit-code contract's own subject (ADR 0211).
+  did not fix, until ADR 0263: `round(2.345, 2)` is `2.35` in CPython, `2` in the interpreter (the digit
+  count is ignored) and an exit-1 refusal compiled — a compile-error exit code for a program CPython runs,
+  which was Gap R.69 and the exit-code contract's own subject (ADR 0211).
+- **The digit count rounds the decimal, so both backends borrow the conversion** (ADR 0263, closing
+  Gap R.69) — `round(x)` had been taught to name the IEEE operation; `round(x, ndigits)` arrived with
+  three answers, one per engine, and the third was an exit code. The row's own suggested fix — scale by
+  10ⁿ, ask `roundeven`, unscale — was measured and thrown away, on 1,077 of 375,224 fractional pairs and
+  74,838 of 156,048 negative-digit ones. It fails in the worst available way: it prints CPython's `2.35`
+  for the row's own example, because that double happens to sit above its tie, and disagrees elsewhere.
+  The mechanism is that **scaling manufactures ties the value never had** — `0.005` is
+  0.00500000000000000010408… and rounds up to `0.01`, but times 100 it is exactly `0.5`, and a
+  nearest-even rule answers that `0`; `0.075` scales to `7.5` and comes back `0.08` where the reference
+  says `0.07`. What the reference rounds is the **exact
+  decimal value of the double**, which is not a question the binary domain can answer at any level of
+  cleverness about ties. It is a correctly-rounded double→decimal conversion, an operation neither
+  backend owns: the evaluator asks Go's `strconv.FormatFloat`/`ParseFloat`, the compiled runtime asks the
+  C library's `snprintf("%.*f")`/`strtod` through one `rt_round_digits`, and both are reached from one
+  Go rule, `roundToDigits`. Neither is trusted on sight — 531,272 `(value, ndigits)` pairs were swept
+  against CPython and compared bit for bit, the residual 143 (all between |x| = 4.117e18 and 1e300 with a
+  negative digit count, all one ULP, where the scale itself is the inexact step) got a roadmap row instead
+  of a passing test, and the same scale-and-`roundeven` shape at the negative branch sat 74,838 cases from
+  the reference where the `%.0f`+`strtod` shape shipped sits 143. The answer is the kind the value arrived as (`round(3.5, 0)` is `4.0`, `round(5, 2)` is
+  `5`), a digit count that is not an integer is **raised** as CPython's `TypeError` rather than refused
+  into exit 1, and the two clamps are arithmetic facts with reasons: 324 digits is past every double's
+  expansion, and 10³⁰⁹ is past the largest finite one.
 - **A class pattern asked two backends the same question, and got two answers** (ADR 0235) —
   `case Point(a, b):` on an instance with `x` and `y` **matched** compiled and printed `pt 0 0`, while
   the interpreter and `docs/language.md` both say a missing attribute fails the case: the compiled arm
@@ -878,10 +900,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **122 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — 97 rows asserting parity and 23 recorded without it (the probe and merged
+  `conformance-matrix.json`: **127 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — 98 rows asserting parity and 29 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
-  the oracle verdict being 83 `match`, 19 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
+  the oracle verdict being 84 `match`, 25 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its

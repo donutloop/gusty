@@ -1,0 +1,20 @@
+# What CPython prints for all three lines here (python3, 3.12):
+#
+#   3.0
+#   2.5
+#   0.75
+#
+# A `for` binding over a container of doubles is a number in CPython and in the interpreter, and is
+# not one on the compiled leg: the loop hands over the element *handle* and nothing beside it says the
+# slot holds a double, so `v * 2` multiplies the handle, `v + 1` adds to it, and `v / 2` — true
+# division, which is a float whatever arrives — divides it. Exit 0, three number-shaped answers.
+#
+# This is not a rounding defect and it is not new to ADR 0263: it is what the compiled backend does
+# with a loop variable over a literal container of doubles today, and `round(v, 2)` inherits it (the
+# second line of probe_round_digit_count_kind_unseen). The subscript read of the same container
+# (`xs[0] * 2`) answers correctly, because ADR 0243 made the *literal's* element readable — the loop
+# binding never got the same pair (roadmap Gap R.91's family, roadmap L11.1's tagged value word).
+for v in [1.5]:
+    print(v * 2)
+    print(v + 1)
+    print(v / 2)

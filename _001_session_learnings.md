@@ -6261,3 +6261,99 @@ which only works if a row exists in exactly one table.
 where the paid refusal lived; only the full run found the two contract rows that would have gone green forever
 while asserting nothing. Deleting a paid contract row is the right move; repinning it to expect the answer the
 fix now produces is the same row demanding the bug come back.
+## Gap R.69: what CPython rounds is a decimal, and neither backend owns the conversion (ADR 0263)
+
+**A roadmap row's "next concrete action" is a hypothesis, and this one was wrong — and its own definition of
+done could not tell me.** The row said: scale by `10**n`, ask the named ties-to-even operation, unscale,
+return a float — and pointed at `math.RoundToEven` / `@llvm.roundeven.f64` as already in the tree after ADR
+0236, which they are. I built that first, because it is the shape that paid `round(x)`. It prints CPython's
+`2.35` for `round(2.345, 2)`, which is the row's entire stated definition of done. It also answers
+`round(0.005, 2)` as `0.0` where the reference says `0.01`, `round(0.025, 2)` as `0.02` against `0.03`, and
+`round(0.075, 2)` as `0.08` against `0.07`. The mechanism is not that ties are subtle: it is that **scaling
+manufactures ties the value never had**. `0.005`'s double is 0.00500000000000000010408…, above the tie, which
+is why CPython rounds it up; multiplied by 100 it is exactly `0.5`, and a nearest-even rule answers that `0`.
+2.345 is above its tie too, which is the only reason the row's example survives the wrong algorithm — the
+scaled product lands past 234.5 and even-rounding reaches CPython's answer for reasons the question does not
+contain. CPython rounds the **exact decimal value of the double** and comes back to the nearest double: a
+correctly-rounded double→decimal conversion, which ADR 0236's "just name the IEEE operation" trick does not
+generalize to. Had I implemented the row instead of measuring it, both backends would have agreed with each
+other, the DoD program would have passed, and the two-engine matrix — which compares the two of them to each
+other — would have been green. The oracle leg found it; the sweep is what settled it.
+
+**A definition of done written as one example is not a test of a rule.** Every one of this cycle's real
+behaviour came from sweeping the rule across a region rather than from checking the example in the row. When
+I write a DoD for a numeric row from now on, it names a *sweep* and a tolerance (here: zero differences over
+a defined grid of values and digit counts), not two printed numbers.
+
+**When the rule is somebody else's correctly-rounded algorithm, borrow it twice and check it against the
+reference rather than trusting it on sight.** The evaluator asks Go (`strconv.FormatFloat(v,'f',n,64)` →
+`ParseFloat`); the compiled runtime asks the C library (`snprintf("%.*f")` → `strtod`) through one
+`rt_round_digits`. Those are two different implementations of dtoa on two different platforms, so "they'll both
+be right" is a claim, not a plan: **531,272 `(value, ndigits)` pairs** were swept against CPython and compared
+bit for bit — every `k/1000` and `k/100` in range, 22,500 uniform randoms, 500 raw bit patterns, digit counts
+−2..10 (zero differences, both spellings), then −400..400 for the negative branch. The residual 143 cases are
+all between |x| = 4.117e18 and 1e300, all one ULP, all from the scale step rather than the conversion, and
+they got a roadmap row instead of a narrower test. The scale-and-`roundeven` shape at the negative branch sat
+74,838 of those pairs away from the reference where the `%.0f`+`strtod` shape that shipped sits 143 away — the
+lesson above arriving a second time within one file.
+
+**Re-run the measurement before you publish the number, including numbers I wrote to myself an hour earlier.**
+Three figures in my first draft of this cycle were remembered rather than re-derived — a residual count, a
+"lost N cases" count, and the exact scaled value of 2.345, which I had wrong in a way that flattered the
+argument (it made the rejected algorithm look wrong on the DoD example, which it is not). All three are now
+re-measured with the programs that produced them, and the argument is stronger for it: an algorithm that fails
+1,077 of 375,224 cases *while passing the row's example* is a much better case for sweeping than an algorithm
+that fails the example. A number in prose is a claim; the claim's file is the only thing that makes it a fact.
+
+**Make the two backends walk the same *sequence*, not just compute the same formula.** `pow10` multiplies by ten
+k times, in Go and as a `phi` loop in the emitted runtime, instruction for instruction. Calling libm `pow` in
+one backend and squaring in the other would have given the two of them different last bits in the *scale*, and
+then a digit-count round disagrees across engines for a reason no error message mentions. Every power of ten up
+to 10²² is exact anyway; the point is that no one gets to be cleverer than the other.
+
+**A clamp is a fact with a number attached, or it is a mood.** 324 is where the conversion stops asking, because
+every binary double is exactly a decimal with at most 324 digits after the point (the smallest subnormal is
+4.94e-324) — so `n ≥ 324` is the identity, which also happens to keep the text inside the runtime's buffer. −309
+is where 10³⁰⁹ passes the largest finite double, so the nearest multiple of that scale to any finite value is
+zero *with its sign*, which is what CPython answers there. The sign comes from the value's own bits, because an
+`fcmp` cannot tell −0.0 from 0.0 and a clamp that loses a sign is a wrong answer that only shows up at 3 a.m. in
+a review nobody books.
+
+**An exit code is a claim about who is wrong.** `round()` with no argument is a typo in the program: both engines
+say one sentence (`roundArityMessage`, written once), exit 1 compiled, exit 3 interpreted, exit 2 nowhere — where
+until this cycle the evaluator did `n.Args[0]` and produced a Go panic, exit 2, the contract's *compiler-bug* code
+spent on a user's mistake. A digit count of the wrong kind is the opposite event: `round(2.345, 1.5)` is a
+program CPython runs and stops on, so both engines **raise** its `TypeError` through the same catchable door an
+out-of-range index uses, and `except TypeError` takes the branch on both. Refusing that at compile time would be
+exit 1 for a program the reference runs — and would also make the compiled leg unable to catch something the
+other two engines can.
+
+**A constant is a value; it does not need an instruction to become one.** The fold's first version emitted
+`%t = fadd double 0.0, <const>` to get a name for the rounded constant, which is a habit from contexts that need
+a register. That addition is where `round(-0.5, 0)` lost its sign and printed `0.0` where CPython prints
+`-0.0`. Handing back the constant itself is both one instruction cheaper and correct. The *literal* spelling of
+the same question — `print(-0.0)` — still prints `0.0` compiled, measured against the pre-cycle binary to be
+sure this cycle did not cause it, and filed as Gap R.132 rather than quietly swept under the fold's fix.
+
+**Promotion rules need to know which argument they are reading.** `round(v, 2)` is kind-preserving in its
+**first** argument and nothing else: the float whose point moved leaves a float, the int stays an int, and the
+digit count is an integer whoever wrote it. `round` joined `kindPreservingNumericBuiltins` (`abs`, `float`) so
+ADR 0254/0262's `scanBareReturns` promotes the function's return word — but the walk is cut to `Args[:1]`,
+because walking the digit count would promote a function for reasons to do with a name in the count. The gate
+that picks a return word reading the wrong operand is how `ret i32 %t` ended up under a program that wants a
+double, which is `llc` exit 2 with the compiler blamed.
+
+**File what you cannot answer; do not refuse what prints a plausible number.** `def f(x): return round(x, 2)`
+follows `x`'s kind, and the compiled backend can only follow a kind the module can see. Refusing it is honest
+and retires a program whose int call-sites work today, so it stays: pinned as Gap R.129 with the interpreter's
+`2.35` and the compiled `2` written beside it, and `for w in [2.345]` (Gap R.130) pinned below that, because a
+loop variable off a literal list of doubles has no kind to follow at all. `int()`, `float()`, `ord()` and
+`chr()` still panic on zero arguments and are Gap R.131's; `int()`/`float()` with nothing are programs CPython
+answers with `0`/`0.0` while the compiler refuses them, which is L11.8's next complaint.
+
+**Two IR habits, both learned the expensive way earlier and both relevant here.** A string literal's array size
+must be exact (`@rt.rd.fmt = private constant [5 x i8] c"%.*f\00"` — five, the terminator included) or the module
+is a liar; and a runtime block earns its place: `@rt_round_digits` is emitted only because the module calls it,
+and a test asserts that a program which never rounds does not carry it, because a runtime block nobody reads is
+a runtime block nobody audits.
+

@@ -138,10 +138,41 @@ IEEE operation rather than implementing a rounding rule — `math.RoundToEven` i
 independent implementations of "half away from zero" agreed with each other for as long as nobody
 asked CPython (Gap R.50, ADR 0236).
 
-`round(x, ndigits)` is **not** implemented, and the two backends currently fail differently (Gap R.69):
-the interpreter ignores `ndigits` and returns an integer (`round(2.345, 2)` → `2`, where CPython gives
-`2.35`), and the compiler refuses the call (`round expects one argument`). Write `round(x * 100) / 100`
-or an explicit `int` conversion until that row closes.
+`round(x, ndigits)` **moves the decimal point instead of asking for a whole number, and answers with
+the kind the value arrived as** (Gap R.69, ADR 0263): `round(2.345, 2)` is `2.35`, `round(3.5, 0)` is
+`4.0` — the trailing zero of a float answer, not `4` — `round(2.675, 2)` is `2.67`, `round(2500, -2)`
+is `2500`, `round(1234.5678, -2)` is `1200.0`, and an integer or a verdict keeps being an integer
+(`round(5, 2)` is `5`, `round(True, 2)` is `1`, `round(2.345, True)` is `2.3`). What rounds is the
+*exact decimal value of the double*, ties to even — **not** the value scaled by `10**n` in binary,
+which manufactures ties the value never had: `0.005` is `0.00500000000000000010408…` and so rounds up
+to `0.01`, but times 100 it is exactly `0.5`, and a nearest-even rule answers that `0`. The same
+family gives `0.025`→`2.5`→`0.02` (CPython `0.03`) and `0.075`→`7.5`→`0.08` (CPython `0.07`). The
+answer is the nearest double to the rounded decimal. So this is a second named operation, not
+`roundeven` again: `strconv.FormatFloat`/`ParseFloat` in the evaluator, and `snprintf("%.*f")`/`strtod`
+in the compiled runtime's `rt_round_digits`, both correctly rounded, both reached from the one Go rule
+in `pkg/lang/round_digits.go`. The two were swept against CPython over 531,272 `(value, ndigits)` pairs
+compared bit for bit; the residual class — 143 cases, all between |x| = 4.117e18 and 1e300 with a
+negative digit count, all one ULP, where the scale itself is the inexact step — is roadmap's, not hidden
+under a green test.
+
+Two clamp facts come with it: every double is exactly a decimal with at most 324 digits after the
+point, so a digit count of `324` or more is the identity; and `10^309` is beyond the largest finite
+double, so a digit count of `-309` or below answers zero with the sign kept — which is what CPython
+answers there too. Infinity and NaN are handed back (`round(inf, 2)` is `inf`).
+
+A digit count that is not an integer is CPython's `TypeError`, **raised** on both engines and
+catchable on both — `round(2.345, 1.5)` gives `'float' object cannot be interpreted as an integer`
+under `--interp` and `--aot`, and a `try`/`except TypeError` takes the branch on each (exit 3, not a
+refusal: ADR 0166 keeps exit 1 for programs the reference itself rejects). `round()` with no argument
+and `round(x, 1, 2)` with three answer an arity error in one shared sentence on both engines;
+four other builtins (`int`, `float`, `ord`, `chr`) still panic the evaluator on that shape and are
+roadmap Gap R.131's.
+
+What the digit count cannot follow is a value whose kind the module cannot see: `round(v, 2)` of a
+parameter the call filled with a double answers `2` rather than `2.35` on the compiled leg, and a
+loop variable off a literal list of doubles is worse (Gap R.129, Gap R.130 — the tagged value word's,
+L11.1, as with Gaps R.107–R.110). Bound the value in the body instead (`v = v * 1.0`) and the answer
+arrives.
 
 `float(x)` folds a constant int to itself and a constant string to its parsed
 then-truncated float value in the AOT codegen (the backend represents floats
@@ -2711,7 +2742,10 @@ and the value it writes cannot disagree, and the program above answers `2.5` on 
 backends. What the rule covers is the answer, not the last line: a bare name, an
 arithmetic expression over it (`return x * 2`, `return x % 3`), its negation
 (`return -x`, which used to reach no gate at all and produced a module `llc` rejected), a
-kind-preserving numeric builtin of it (`return abs(x)`, `return abs(-x)`, `float(x)`), a
+kind-preserving numeric builtin of it (`return abs(x)`, `return abs(-x)`, `float(x)`, and — in its
+two-argument form only — `return round(x, 2)`, whose answer is the kind its *first* argument arrived
+as and nothing else: the digit count is an integer whoever wrote it, and walking it would promote a
+function because a name in that count happens to hold a double, ADR 0263), a
 name bound inside the body (`y = x + 0.5; return y`), and any of those inside `if`, `while`,
 `try` or recursion.
 
@@ -2719,7 +2753,9 @@ What the rule deliberately does **not** promote is an answer that is not that do
 promoting it would put an `i32` in a `double`'s word — the same bug in the other direction:
 `return int(x)` and `return round(x)` answer with an int whatever arrives, `return x > 2`
 answers with the bool word, `return str(x)` with an interned index, and a user callee's return
-word is that callee's own question. Those stay exactly as they were.
+word is that callee's own question. Those stay exactly as they were. (`round` is on both lists, and
+the split is the language's: one argument answers a whole number, two answer in the kind that came
+in.)
 
 Two shapes cannot carry the answer and **refuse in words** (exit 1, never the module `llc`
 rejects — ADR 0166), because the convention that picks the return word picks every parameter's

@@ -1,0 +1,23 @@
+# What CPython prints for all four lines here (python3, 3.12):
+#
+#   -0.0
+#   -0.0
+#   -0.0
+#   -0.0
+#
+# Negative zero is a float with a sign, and Python renders it with that sign. The compiled leg drops
+# the sign wherever the value is one the *compiler* wrote and keeps it wherever the target computed it:
+# the emitter materialises a folded float constant with `fadd double 0.0, <const>`, and IEEE says
+# -0.0 + +0.0 = +0.0 — so the minus is gone before the module exists, and the runtime formatter
+# (`rt_fmt_double`, which handles the sign correctly) is never given anything to render. The lines
+# below are the boundary: a literal, and a name bound to that literal, lose it; a product the target
+# multiplies keeps it, and so does a rounding — both roads of it, since ADR 0263's digit-count fold
+# hands back the constant instead of re-additioning it.
+#
+# One idiom, thirteen sites, one answer (roadmap Gap R.132). Same shape as ADR 0236's lesson about
+# round's ties: two renderers of one value, one rule, implemented twice — owned by L11.6.
+print(-0.0)
+y = -0.0
+print(y)
+print(0.0 * -1)
+print(round(-0.5, 0))

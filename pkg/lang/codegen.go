@@ -5936,6 +5936,12 @@ func (g *irGen) isFloat(e Expr) bool {
 				if id.Value == "sqrt" || id.Value == "floor" || id.Value == "ceil" {
 					return true
 				}
+				if id.Value == "round" && len(n.Args) == 2 {
+					// `round(x, ndigits)` answers with the number whose decimal point moved, which is a
+					// float whatever came in — `round(3.5, 0)` is `4.0`, printed with the trailing zero,
+					// while the one-argument form above stays the integer-answering question (Gap R.69).
+					return g.isFloatNumericOperand(n.Args[0])
+				}
 				if id.Value == "sum" {
 					for _, a := range n.Args {
 						if g.isFloatNumericOperand(a) {
@@ -6908,6 +6914,21 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				rt := g.newTmp()
 				fmt.Fprintf(b, "  %s = call double @llvm.sqrt.f64(double %s)\n", rt, fx)
 				return rt
+			}
+			if id, ok := n.Fn.(*Name); ok && id.Value == "round" && len(n.Args) == 2 {
+				// The double domain's digit-count round: one runtime call, not an i32 truncation of one.
+				d, raised, err := g.roundDigitsDouble(b, n.Args[0], n.Args[1], n.Span())
+				if err != nil {
+					return ""
+				}
+				if raised {
+					// Dead code past the raise; a well-formed double keeps the module the verifier accepts.
+					return "0.000000e+00"
+				}
+				if d == "" {
+					return ""
+				}
+				return d
 			}
 			if id, ok := n.Fn.(*Name); ok && (id.Value == "floor" || id.Value == "ceil") {
 				fx := g.floatValue(b, n.Args[0])
@@ -12480,8 +12501,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// roundTiesToEven and `math.RoundToEven` is the same operation on the host, so the constant
 		// fold, the runtime call and the interpreter cannot drift the way `llvm.round.f64` and
 		// `math.Round` did — both tied away from zero, both wrong where CPython ties to even.
-		if len(c.Args) != 1 {
-			return "", fmt.Errorf("round expects one argument")
+		//
+		// The two-argument form is a different operation and lives in round_digits.go: a digit
+		// count moves the decimal point rather than asking for a whole number, so `round(x, n)`
+		// answers with a float (`round(3.5, 0)` is `4.0`) and has to say so (Gap R.69, ADR 0263).
+		if len(c.Args) == 0 || len(c.Args) > 2 {
+			return "", fmt.Errorf("%s", roundArityMessage(len(c.Args)))
+		}
+		if len(c.Args) == 2 {
+			return g.roundDigitsValue(b, c)
 		}
 		if g.isFloat(c.Args[0]) {
 			if fv, ok := g.floatEval(c.Args[0]); ok {
@@ -12656,6 +12684,86 @@ addzero:
   br label %done
 done:
   ret i8* %buf
+}
+
+; rt_round_digits answers round(x, ndigits) by moving the decimal point, which is the one
+; rounding question the binary domain cannot answer — not because ties are subtle, but because
+; scaling manufactures ties the value never had. round(0.005, 2) is 0.01 in CPython (the exact
+; value of that double is 0.00500000000000000010408…, above the tie), while multiplying by 100
+; gives exactly 0.5, which roundeven answers 0 (roadmap Gap R.69, ADR 0263). The same family:
+; round(0.025, 2) is 0.03 and scales to 2.5, round(0.075, 2) is 0.07 and scales to 7.5,
+; round(2.675, 2) is 2.67 and scales to 267.5. What CPython rounds is the *exact decimal value of
+; the double*, ties to even, and the answer is the nearest double to that decimal. That is a
+; correctly-rounded double-to-decimal conversion — the same named operation the interpreter asks
+; of Go's dtoa (strconv.FormatFloat/ParseFloat), asked here of the C library's. The two were swept
+; against CPython over 531,272 (value, ndigits) pairs compared bit for bit and agree with it
+; everywhere but the 143 far-magnitude negative-digit cases their own scale step causes (all
+; between |x| = 4.117e18 and 1e300, all one ULP).
+;
+; The two clamps are facts, not moods: every double is exactly a decimal with at most 324 digits
+; after the point (the smallest subnormal is 4.94e-324), so rounding at 324 places or beyond is
+; the identity and the text stays inside the buffer; and 10^309 is past the largest finite
+; double, so the nearest multiple of it to any finite value is zero with the sign kept — which is
+; what CPython answers there as well. %.0f of the scaled quotient is the digit-free form of the
+; same conversion, and multiplying back lands on the answer for the negative digit counts.
+@rt.rd.buf = private global [768 x i8] zeroinitializer
+@rt.rd.fmt = private constant [5 x i8] c"%.*f\00"
+
+define internal double @rt_round_digits(double %v, i32 %n) {
+entry:
+  %wide = icmp sge i32 %n, 324
+  %deep = icmp slt i32 %n, -308
+  %nsc = select i1 %deep, i32 -308, i32 %n
+  %nuse = select i1 %wide, i32 0, i32 %nsc
+  %down = icmp slt i32 %nuse, 0
+  ; The sign of the zero the deep branch answers with, taken from the value's own bits so that
+  ; round(-0.0, -400) is -0.0 and not 0.0 — a fcmp cannot tell those two apart.
+  %bits = bitcast double %v to i64
+  %sign = and i64 %bits, -9223372036854775808
+  %negz = icmp ne i64 %sign, 0
+  %zero = select i1 %negz, double -0.000000e+00, double 0.000000e+00
+  br i1 %wide, label %asis, label %deepcheck
+asis:
+  ; Beyond every double's decimal expansion: the value it arrived with.
+  br label %done
+deepcheck:
+  br i1 %deep, label %zeroed, label %pick
+zeroed:
+  br label %done
+pick:
+  br i1 %down, label %scaled, label %text
+scaled:
+  ; 10^(-n) one multiplication at a time — the sequence the interpreter's pow10 walks, so the
+  ; two backends round the same products rather than each finding its own power.
+  br label %sloop
+sloop:
+  %s = phi double [ 1.000000e+00, %scaled ], [ %sm, %sbody ]
+  %i = phi i32 [ 0, %scaled ], [ %inext, %sbody ]
+  %m = sub i32 0, %nuse
+  %more = icmp slt i32 %i, %m
+  br i1 %more, label %sbody, label %sdone
+sbody:
+  %sm = fmul double %s, 1.000000e+01
+  %inext = add i32 %i, 1
+  br label %sloop
+sdone:
+  %q = fdiv double %v, %s
+  br label %text
+text:
+  ; One conversion, asked two ways: at %nuse places for a digit count that reaches into the
+  ; fraction, at none at all for a digit count that reaches past the point.
+  %tv = phi double [ %v, %pick ], [ %q, %sdone ]
+  %tp = phi i32 [ %nuse, %pick ], [ 0, %sdone ]
+  %tm = phi double [ 1.000000e+00, %pick ], [ %s, %sdone ]
+  %bp = getelementptr [768 x i8], [768 x i8]* @rt.rd.buf, i32 0, i32 0
+  %fp = getelementptr [5 x i8], [5 x i8]* @rt.rd.fmt, i32 0, i32 0
+  %w = call i32 (i8*, i32, i8*, ...) @snprintf(i8* %bp, i32 768, i8* %fp, i32 %tp, double %tv)
+  %back = call double @strtod(i8* %bp, i8* null)
+  %res = fmul double %back, %tm
+  br label %done
+done:
+  %out = phi double [ %v, %asis ], [ %zero, %zeroed ], [ %res, %text ]
+  ret double %out
 }
 
 `

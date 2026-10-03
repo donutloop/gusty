@@ -43,7 +43,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"ctrl_a", "ctrl_b", "ctrl_c",
 		"data_a", "data_b", "data_c",
 		"features_a", "features_b",
-		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "match_classpat", "round_ties", "wrapping_decorator", "dunder",
+		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "match_classpat", "round_ties", "round_ndigits", "wrapping_decorator", "dunder",
 		"async_basic",
 		"async_for",
 		"async_multi",
@@ -318,6 +318,23 @@ func conformanceProbes() []lang.ConformanceCase {
 		// both print the number underneath, one on the compiled leg and one on both.
 		"probe_minmax_candidate_unreadable",
 		"probe_ternary_the_test_chose",
+		// `round(x, ndigits)` itself is parity surface (programs/round_ndigits.gy, ADR 0263). What stays
+		// filed beside it is the same call on a value whose kind the module cannot see — a parameter the
+		// call filled with a double, a loop variable off a literal list — where the compiled leg reads
+		// the i32 road of the call and prints the truncated number, or the handle (roadmap Gap R.129).
+		"probe_round_digit_count_kind_unseen",
+		// The wall underneath that one, measured while finding it and older than it: a `for` binding over
+		// a literal container of doubles used as a number multiplies the element handle (roadmap Gap
+		// R.130, ADR 0261's read paid for the subscript, the loop binding never followed).
+		"probe_float_loop_variable_as_number",
+		// A negative zero the *compiler* wrote loses its sign on the way to the printer (the folded
+		// constant is materialised with `fadd double 0.0, …`), while one the program computed keeps
+		// it (roadmap Gap R.132, ADR 0263).
+		"probe_negative_zero_constant",
+		// A builtin called with no argument: the interpreter indexes `Args[0]` before asking whether
+		// there is one and dies with a Go panic and exit 2, while the compiler refuses a program
+		// CPython runs (roadmap Gap R.131, ADR 0263 — `round` itself is paid).
+		"probe_builtin_without_arguments",
 		// The ternary's *number* half is paid (ADR 0262 emitted the double `select`). What stays
 		// filed is the same question asked of the other two kinds of arm: text arms print the
 		// interned index (`0`) on the compiled leg, and container arms put `@.lstN` in an operand
@@ -519,6 +536,22 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
 		ref:    "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n"}, {Backend: "aot", Missing: true, Err: "global variable reference must have pointer type"}}},
+	"programs/probe_round_digit_count_kind_unseen": {oracle: lang.OracleDebt,
+		reason: "round(x, ndigits) answers with the kind x arrived as, and only where the module can see that kind: of a parameter the call filled with a double the compiled leg takes the i32 road of the call and prints the truncated number, and of a loop variable over a literal list of doubles it prints the element handle",
+		ref:    "roadmap Gap R.129 (measured landing ADR 0263; the tagged value word's, roadmap L11.1, as with Gaps R.107–R.110)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2.35\n2.35\n"}, {Backend: "aot", Stdout: "2\n0\n"}}},
+	"programs/probe_float_loop_variable_as_number": {oracle: lang.OracleDebt,
+		reason: "a for binding over a literal container of doubles is not a number on the compiled leg: v * 2, v + 1 and v / 2 arithmetic on the element handle answer 0, 1 and 0.0 with exit 0, where the interpreter and CPython answer 3.0, 2.5 and 0.75 — the subscript read of the same container is parity, the binding never got ADR 0243's pair",
+		ref:    "roadmap Gap R.130 (measured while landing ADR 0263; Gap R.91's family, roadmap L11.1)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3.0\n2.5\n0.75\n"}, {Backend: "aot", Stdout: "0\n1\n0.0\n"}}},
+	"programs/probe_negative_zero_constant": {oracle: lang.OracleDebt,
+		reason: "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, <const>` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
+		ref:    "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-0.0\n-0.0\n-0.0\n-0.0\n"}, {Backend: "aot", Stdout: "0.0\n0.0\n-0.0\n-0.0\n"}}},
+	"programs/probe_builtin_without_arguments": {oracle: lang.OracleDebt,
+		reason: "int() and float() with no argument are the conversions of zero in CPython; the interpreter reaches for Args[0] before asking whether there is one and dies with a Go panic and exit 2 — the contract's compiler-bug code — while the compiled backend refuses with an arity message and exit 1, the code for a program the reference rejects",
+		ref:    "roadmap Gap R.131 (measured landing ADR 0263, which pays round's half of it)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "index out of range [0] with length 0"}, {Backend: "aot", Missing: true, Err: "int expects one argument"}}},
 	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
 		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
 		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",

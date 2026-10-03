@@ -605,6 +605,29 @@
     },
     {
       "case": {
+        "id": "programs/round_ndigits",
+        "name": "round_ndigits.gy",
+        "source": "# round with a digit count moves the decimal point instead of asking for a whole\n# number (roadmap Gap R.69, ADR 0263). Every line is what CPython prints, on both\n# backends: the DoD pair first, then the ties, the sign, the int that stays an int,\n# and the digit count that reaches past the point.\nprint(round(2.345, 2))\nprint(round(3.5, 0))\nprint(round(2.5, 0))\nprint(round(2.675, 2))\nprint(round(1.005, 2))\nprint(round(0.125, 2))\nprint(round(0.375, 2))\nprint(round(2.345, 1))\nprint(round(2.345, 40))\nprint(round(2500, -2))\nprint(round(1234.5678, -2))\nprint(round(5, 2))\nprint(round(True, 2))\nprint(round(5.0, 2))\nprint(round(2.345, True))\nx = 2.345\nn = 2\nprint(round(x, n))\nprint(round(x, 2) * 2)\nprint([round(2.345, 2), round(3.5, 0)])\nprint(str(round(2.345, 2)))\nprint(round(2.345, 2) == 2.35)\ndef scale(v):\n    v = v * 1.0\n    return round(v, 2)\n\nprint(scale(2.345))\nprint(scale(5))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "2.35\n4.0\n2.0\n2.67\n1.0\n0.12\n0.38\n2.3\n2.345\n2500\n1200.0\n5\n1\n5.0\n2.3\n2.35\n4.7\n[2.35, 4.0]\n2.35\nTrue\n2.35\n5.0\n",
+      "aot_ok": true,
+      "aot_stdout": "2.35\n4.0\n2.0\n2.67\n1.0\n0.12\n0.38\n2.3\n2.345\n2500\n1200.0\n5\n1\n5.0\n2.3\n2.35\n4.7\n[2.35, 4.0]\n2.35\nTrue\n2.35\n5.0\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "2.35\n4.0\n2.0\n2.67\n1.0\n0.12\n0.38\n2.3\n2.345\n2500\n1200.0\n5\n1\n5.0\n2.3\n2.35\n4.7\n[2.35, 4.0]\n2.35\nTrue\n2.35\n5.0\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/wrapping_decorator",
         "name": "wrapping_decorator.gy",
         "source": "def add1(g):\n    def wrap(x):\n        return g(x) + 1\n    return wrap\n@add1\ndef f(x):\n    return x * 2\nprint(f(3))\n",
@@ -2614,6 +2637,171 @@
     },
     {
       "case": {
+        "id": "programs/probe_round_digit_count_kind_unseen",
+        "name": "probe_round_digit_count_kind_unseen.gy",
+        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   2.35      (round(2.345, 2) — the digit count moved the decimal point)\n#   2.35      (the same rounding, taken from a loop over a literal list)\n#\n# `round(x, ndigits)` answers with the kind `x` arrived as: the float keeps its digits, the int stays\n# an int (roadmap Gap R.69, ADR 0263). Both backends ask that question of the same correctly-rounded\n# decimal conversion — but only where the module can see which kind came in. Here it cannot: `v` is a\n# parameter the call filled with a double and nothing in the function's own text says so, and `w` is a\n# loop variable bound from a literal list of doubles. The compiled leg then reads the *i32* road of the\n# call and prints what that road holds — the truncated number on the first line, the container's heap\n# handle on the second — exit 0, while the interpreter, which boxes the value and asks it, prints\n# CPython's answer on both.\n#\n# The wall is the tagged value word's (roadmap L11.1, the same one as Gaps R.107–R.110 and Gap R.130),\n# not the rounding's: the value has to travel with the tag that says it is a float. Pinned per leg so\n# opening that door has to move the pin.\ndef scale(v):\n    return round(v, 2)\n\nprint(scale(2.345))\nfor w in [2.345]:\n    print(round(w, 2))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "round(x, ndigits) answers with the kind x arrived as, and only where the module can see that kind: of a parameter the call filled with a double the compiled leg takes the i32 road of the call and prints the truncated number, and of a loop variable over a literal list of doubles it prints the element handle",
+        "ref": "roadmap Gap R.129 (measured landing ADR 0263; the tagged value word's, roadmap L11.1, as with Gaps R.107–R.110)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "2.35\n2.35\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "2\n0\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "2.35\n2.35\n",
+      "aot_ok": true,
+      "aot_stdout": "2\n0\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "2.35\n2.35\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "round(x, ndigits) answers with the kind x arrived as, and only where the module can see that kind: of a parameter the call filled with a double the compiled leg takes the i32 road of the call and prints the truncated number, and of a loop variable over a literal list of doubles it prints the element handle",
+      "oracle_ref": "roadmap Gap R.129 (measured landing ADR 0263; the tagged value word's, roadmap L11.1, as with Gaps R.107–R.110)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_float_loop_variable_as_number",
+        "name": "probe_float_loop_variable_as_number.gy",
+        "source": "# What CPython prints for all three lines here (python3, 3.12):\n#\n#   3.0\n#   2.5\n#   0.75\n#\n# A `for` binding over a container of doubles is a number in CPython and in the interpreter, and is\n# not one on the compiled leg: the loop hands over the element *handle* and nothing beside it says the\n# slot holds a double, so `v * 2` multiplies the handle, `v + 1` adds to it, and `v / 2` — true\n# division, which is a float whatever arrives — divides it. Exit 0, three number-shaped answers.\n#\n# This is not a rounding defect and it is not new to ADR 0263: it is what the compiled backend does\n# with a loop variable over a literal container of doubles today, and `round(v, 2)` inherits it (the\n# second line of probe_round_digit_count_kind_unseen). The subscript read of the same container\n# (`xs[0] * 2`) answers correctly, because ADR 0243 made the *literal's* element readable — the loop\n# binding never got the same pair (roadmap Gap R.91's family, roadmap L11.1's tagged value word).\nfor v in [1.5]:\n    print(v * 2)\n    print(v + 1)\n    print(v / 2)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a for binding over a literal container of doubles is not a number on the compiled leg: v * 2, v + 1 and v / 2 arithmetic on the element handle answer 0, 1 and 0.0 with exit 0, where the interpreter and CPython answer 3.0, 2.5 and 0.75 — the subscript read of the same container is parity, the binding never got ADR 0243's pair",
+        "ref": "roadmap Gap R.130 (measured while landing ADR 0263; Gap R.91's family, roadmap L11.1)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "3.0\n2.5\n0.75\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "0\n1\n0.0\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "3.0\n2.5\n0.75\n",
+      "aot_ok": true,
+      "aot_stdout": "0\n1\n0.0\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "3.0\n2.5\n0.75\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a for binding over a literal container of doubles is not a number on the compiled leg: v * 2, v + 1 and v / 2 arithmetic on the element handle answer 0, 1 and 0.0 with exit 0, where the interpreter and CPython answer 3.0, 2.5 and 0.75 — the subscript read of the same container is parity, the binding never got ADR 0243's pair",
+      "oracle_ref": "roadmap Gap R.130 (measured while landing ADR 0263; Gap R.91's family, roadmap L11.1)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_negative_zero_constant",
+        "name": "probe_negative_zero_constant.gy",
+        "source": "# What CPython prints for all four lines here (python3, 3.12):\n#\n#   -0.0\n#   -0.0\n#   -0.0\n#   -0.0\n#\n# Negative zero is a float with a sign, and Python renders it with that sign. The compiled leg drops\n# the sign wherever the value is one the *compiler* wrote and keeps it wherever the target computed it:\n# the emitter materialises a folded float constant with `fadd double 0.0, \u003cconst\u003e`, and IEEE says\n# -0.0 + +0.0 = +0.0 — so the minus is gone before the module exists, and the runtime formatter\n# (`rt_fmt_double`, which handles the sign correctly) is never given anything to render. The lines\n# below are the boundary: a literal, and a name bound to that literal, lose it; a product the target\n# multiplies keeps it, and so does a rounding — both roads of it, since ADR 0263's digit-count fold\n# hands back the constant instead of re-additioning it.\n#\n# One idiom, thirteen sites, one answer (roadmap Gap R.132). Same shape as ADR 0236's lesson about\n# round's ties: two renderers of one value, one rule, implemented twice — owned by L11.6.\nprint(-0.0)\ny = -0.0\nprint(y)\nprint(0.0 * -1)\nprint(round(-0.5, 0))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, \u003cconst\u003e` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
+        "ref": "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "-0.0\n-0.0\n-0.0\n-0.0\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "0.0\n0.0\n-0.0\n-0.0\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "-0.0\n-0.0\n-0.0\n-0.0\n",
+      "aot_ok": true,
+      "aot_stdout": "0.0\n0.0\n-0.0\n-0.0\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "-0.0\n-0.0\n-0.0\n-0.0\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, \u003cconst\u003e` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
+      "oracle_ref": "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_builtin_without_arguments",
+        "name": "probe_builtin_without_arguments.gy",
+        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   0\n#   0.0\n#\n# `int()` and `float()` with no argument are the conversions of zero, which is what the reference\n# answers — and neither engine gets there. The interpreter reaches for `Args[0]` before it has asked\n# whether there is one, so the program dies with a Go runtime panic and **exit 2**, the code the\n# exit-code contract reserves for a compiler bug (ADR 0166). The compiled backend refuses with\n# `int expects one argument` and exit 1, which is the code for \"your program has a compile error\" —\n# issued here for a program CPython runs in one line (roadmap L11.8's complaint exactly).\n#\n# `round()` was the fifth member of this family and answers an arity error on both engines now\n# (ADR 0263). `ord()` and `chr()` panic the same way on programs CPython itself rejects, and `chr()`\n# panics the compiler as well. Owner: the same arity check in front of every builtin that takes an\n# argument (roadmap Gap R.131).\nprint(int())\nprint(float())\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "int() and float() with no argument are the conversions of zero in CPython; the interpreter reaches for Args[0] before asking whether there is one and dies with a Go panic and exit 2 — the contract's compiler-bug code — while the compiled backend refuses with an arity message and exit 1, the code for a program the reference rejects",
+        "ref": "roadmap Gap R.131 (measured landing ADR 0263, which pays round's half of it)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "error": "index out of range [0] with length 0",
+            "missing": true
+          },
+          {
+            "backend": "aot",
+            "error": "int expects one argument",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": false,
+      "interp_stdout": "",
+      "interp_error": "compiler panic: runtime error: index out of range [0] with length 0",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "int expects one argument",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "0\n0.0\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "int() and float() with no argument are the conversions of zero in CPython; the interpreter reaches for Args[0] before asking whether there is one and dies with a Go panic and exit 2 — the contract's compiler-bug code — while the compiled backend refuses with an arity message and exit 1, the code for a program the reference rejects",
+      "oracle_ref": "roadmap Gap R.131 (measured landing ADR 0263, which pays round's half of it)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter leg failed: compiler panic: runtime error: index out of range [0] with length 0",
+        "compiled leg failed: int expects one argument"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -2677,7 +2865,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3796463296/102/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3436261779/106/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -2691,7 +2879,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3796463296/102/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3436261779/106/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3533,12 +3721,12 @@
       ]
     }
   ],
-  "rows": 122,
-  "skipped": 25,
-  "pass": 97,
+  "rows": 127,
+  "skipped": 29,
+  "pass": 98,
   "fail": 0,
-  "oracle_match": 83,
-  "oracle_debt": 21,
+  "oracle_match": 84,
+  "oracle_debt": 25,
   "oracle_not_applicable": 18,
   "oracle_drift": 0
 }

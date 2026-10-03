@@ -1,0 +1,32 @@
+# round with a digit count moves the decimal point instead of asking for a whole
+# number (roadmap Gap R.69, ADR 0263). Every line is what CPython prints, on both
+# backends: the DoD pair first, then the ties, the sign, the int that stays an int,
+# and the digit count that reaches past the point.
+print(round(2.345, 2))
+print(round(3.5, 0))
+print(round(2.5, 0))
+print(round(2.675, 2))
+print(round(1.005, 2))
+print(round(0.125, 2))
+print(round(0.375, 2))
+print(round(2.345, 1))
+print(round(2.345, 40))
+print(round(2500, -2))
+print(round(1234.5678, -2))
+print(round(5, 2))
+print(round(True, 2))
+print(round(5.0, 2))
+print(round(2.345, True))
+x = 2.345
+n = 2
+print(round(x, n))
+print(round(x, 2) * 2)
+print([round(2.345, 2), round(3.5, 0)])
+print(str(round(2.345, 2)))
+print(round(2.345, 2) == 2.35)
+def scale(v):
+    v = v * 1.0
+    return round(v, 2)
+
+print(scale(2.345))
+print(scale(5))

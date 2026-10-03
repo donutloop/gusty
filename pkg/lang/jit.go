@@ -4627,11 +4627,32 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			// IEEE roundTiesToEven, which is CPython's rule and the rule the compiled backend emits
 			// (`@llvm.roundeven.f64`). `math.Round` here used to tie away from zero, so both backends
 			// answered round(2.5) = 3 and the parity matrix, comparing us to us, saw nothing.
+			//
+			// round(x, ndigits) is the other question — it moves the decimal point instead of asking
+			// for a whole number, so it answers with a float (`round(3.5, 0)` is `4.0`) through the
+			// one rule in round_digits.go that the compiled runtime answers with the C library's own
+			// conversion. Ignoring ndigits and handing back an int was Gap R.69.
+			if len(n.Args) == 0 || len(n.Args) > 2 {
+				return 0, &EvalError{Msg: roundArityMessage(len(n.Args))}
+			}
 			x, err := e.eval(n.Args[0])
 			if err != nil {
 				return 0, err
 			}
+			nd := 0
+			if len(n.Args) == 2 {
+				nv, err := e.eval(n.Args[1])
+				if err != nil {
+					return 0, err
+				}
+				if nd, err = e.roundNdigits(nv); err != nil {
+					return 0, err
+				}
+			}
 			if o, ok := e.heap[x]; ok && o.kind == "float" {
+				if len(n.Args) == 2 {
+					return e.allocFloat(roundToDigits(o.fval, nd)), nil
+				}
 				return int64(math.RoundToEven(o.fval)), nil
 			}
 			return x, nil

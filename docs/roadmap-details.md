@@ -3862,35 +3862,113 @@ L11.9, is a measured claim rather than an assumption).
 
 <a id="gap-r-69"></a>
 
-### Gap R.69 — `round(x, ndigits)` is three behaviours, one of them the wrong exit code (found 2026-10-02 while closing Gap R.50)
+### Gap R.69 — `round(x, ndigits)` is three behaviours, one of them the wrong exit code (✅ CLOSED by ADR 0263, 2026-10-03; found 2026-10-02 while closing Gap R.50)
 
 ```
-print(round(2.345, 2))   # CPython 2.35 | --interp 2 | --aot exit 1: round expects one argument
-print(round(3.5, 0))     # CPython 4.0  | --interp 4 | --aot exit 1: round expects one argument
+print(round(2.345, 2))   # CPython 2.35 | --interp was 2 | --aot was exit 1: round expects one argument
+print(round(3.5, 0))     # CPython 4.0  | --interp was 4 | --aot was exit 1: round expects one argument
 ```
 
 Three engines, three behaviours, all of them wrong in a different register:
 
-- **The interpreter ignores `ndigits` and returns an integer.** `round(2.345, 2)` gives `2` — not
-  `2.35`, and not a float. A caller that did `x * 100` afterwards gets an answer off by the whole
+- **The interpreter ignored `ndigits` and returned an integer.** `round(2.345, 2)` gave `2` — not
+  `2.35`, and not a float. A caller that did `x * 100` afterwards got an answer off by the whole
   fractional part, with nothing said.
-- **The compiled backend refuses the call**, which is defensible as a refusal and indefensible as
-  emitted: `gustyc: jit: codegen: round expects one argument` comes back with **exit 1**, the contract's
+- **The compiled backend refused the call**, which is defensible as a refusal and indefensible as
+  emitted: `gustyc: jit: codegen: round expects one argument` came back with **exit 1**, the contract's
   "your program has a compile error" class (ADR 0211), for a program CPython runs. That is L11.8's and
   Gap R.38's subject exactly — a refusal claiming something false about the program.
-- **CPython returns a float**, which is the part the row exists to pin: `round(3.5, 0)` is `4.0`, not
+- **CPython returns a float**, which is the part the row existed to pin: `round(3.5, 0)` is `4.0`, not
   `4`. In a language whose float/int distinction reaches `print` (`4.0` vs `4`), getting the digits
   right and the type wrong is still a wrong answer.
 
-The value half is small and already equipped: scale by `10**n`, ask for the named ties-to-even operation
-(`math.RoundToEven` / `@llvm.roundeven.f64`, both in the tree since ADR 0236), unscale. What is not small
-is the type: the compiled backend must *record* that the function returns a float, because ADR 0230 found
-a correct slice printing `1` for want of exactly that record — producing a value and announcing its kind
-are two separate facts here, and the second is what `print` reads.
+**The row's own suggested fix was measured and rejected.** It proposed ADR 0236's shape one step out —
+`s = 10**n; roundeven(x*s)/s` — and that algorithm is wrong, not approximate. The failure is not that
+ties are subtle; it is that **scaling manufactures ties the value never had**:
 
-Until then `docs/language.md` says so out loud and points at the workaround (`round(x * 100) / 100`),
-so the refusal is at least discoverable from the language documentation rather than only from a failed
-compile.
+| program | the double's exact value | ×100 | CPython | scale · `roundeven` · unscale |
+|---|---|---|---|---|
+| `round(0.005, 2)` | 0.00500000000000000010408… | `0.5` | `0.01` | `0.0` |
+| `round(0.025, 2)` | 0.0250000000000000013877… | `2.5` | `0.03` | `0.02` |
+| `round(0.075, 2)` | 0.0749999999999999972244… | `7.5` | `0.07` | `0.08` |
+| `round(2.675, 2)` | 2.67499999999999982236… | `267.5` | `2.67` | `2.68` |
+| `round(-0.005, 2)` | −0.00500000000000000010408… | `-0.5` | `-0.01` | `-0.0` |
+| `round(2.345, 2)` | 2.34500000000000019539… | 234.50000000000003 | `2.35` | `2.35` — right by luck |
+
+The last row is the one that should worry anyone: the roadmap's own definition-of-done program prints
+CPython's `2.35` under **both** algorithms, because that particular double happens to sit above its tie,
+so the scaled product lands past it and even-rounding reaches the same answer for reasons the question
+does not contain. A DoD written as one example is not a test of a rule. Across the sweeps the row's rule
+differs from CPython on **1,077 of 375,224** fractional pairs and **74,838 of 156,048** negative-digit
+ones (the last figure including every pair at a digit count where the scale overflows to +Inf and the
+rule answers NaN).
+
+What the reference rounds is the **exact decimal value of the double**, to `ndigits` places, ties to even,
+and the answer is the nearest double to that decimal (David Gay's dtoa, tie broken against the true value).
+That is a correctly-rounded double→decimal conversion — a different operation from `roundeven`, and one
+neither backend owns. So neither implements it. `pkg/lang/round_digits.go`'s `roundToDigits` is the one rule,
+and its decisive step is borrowed per platform:
+
+```
+interpreter   strconv.FormatFloat(v, 'f', n, 64) → strconv.ParseFloat     (Go's dtoa)
+compiled      snprintf("%.*f", n, v)             → strtod                 (the C library's, in rt_round_digits)
+```
+
+Neither library is trusted on sight. **531,272 `(value, ndigits)` pairs** were swept against CPython and
+compared bit for bit: every `k/1000` and `k/100` in the tested range, 22,500 uniform randoms, 500 raw bit
+patterns, `ndigits` −2..10 — 375,224 pairs, **zero** differences for either spelling — then the same shapes
+with `ndigits` −400..400 for the negative branch, 156,048 more. The 143 that remain are all between
+|x| = 4.117e18 and 1e300, all exactly one ULP, are the scale's own inexactness rather than the conversion's,
+and are recorded below rather than hidden behind a passing test.
+
+The four pieces under the round trip, and why each is shaped as it is:
+
+* **negative digit counts** divide to bring the round point to the units place, ask the same conversion with
+  no fractional digits, and scale back. `math.RoundToEven(v/scale)*scale` — the row's idea, again — was built
+  first: 74,838 of those 156,048 pairs away from the reference, where the `%.0f`+`strtod` shape that shipped
+  is 143.
+* **`pow10` is ten multiplied by itself k times**, in Go and as a `phi` loop in the emitted runtime, so the two
+  backends round the same products instead of one calling libm `pow` and the other squaring. Every power up to
+  10²² is exact; below that the agreement comes from walking the same sequence, not from agreeing on a formula.
+* **the clamps are arithmetic facts.** Every binary double is exactly a decimal with at most 324 digits after
+  the point (the smallest subnormal is 4.94e-324), so `n ≥ 324` is the identity — and the rendered text stays
+  inside the runtime's buffer. `10^309` is past the largest finite double, so `n ≤ −309` asks the nearest
+  multiple of a scale no double reaches: zero, **with the sign taken from the value's own bits**, because an
+  `fcmp` cannot tell −0.0 from 0.0. CPython answers the same at both clamps.
+* **the answer is the kind the value arrived as**: `round(5, 2)` is the int `5`, `round(True, 2)` is `1`
+  (ADR 0257), `round(5.0, 2)` is `5.0`, `round(3.5, 0)` is `4.0`. The digit count is evaluated even when the
+  value is an int, because `round(5, 1.5)` is a `TypeError` in the reference and not a free pass.
+
+Two exit-code decisions, both ADR 0166's and neither obvious:
+
+- a digit count that is not an integer (`round(2.345, 1.5)`, `round(2.345, "2")`) is a program CPython *runs
+  and stops on*, so both engines **raise** its `TypeError: '<kind>' object cannot be interpreted as an
+  integer` through the same catchable door an out-of-range index uses — `except TypeError` works on all three
+  engines, exit 3 — rather than refusing to build the program at exit 1. Truncating the digit count instead
+  would be this row's original mistake wearing a different hat, so the compiled fold checks the count *before*
+  it folds anything.
+- `round()` and `round(x, 1, 2)` are typos in the program: one shared sentence (`roundArityMessage`), exit 1
+  compiled and exit 3 interpreted, **exit 2 nowhere**. Until this cycle `round()` was `n.Args[0]` in the
+  evaluator — a Go panic, `index out of range [0] with length 0`, exit 2 spent on a user's mistake.
+
+And one small trap in the fold: the first version emitted `%t = fadd double 0.0, <const>` to get a name for
+the constant, which is where `round(-0.5, 0)` lost the sign of its zero. A constant is a value; it travels as
+itself. The *literal* spelling of that sign question is still broken and is Gap R.132 below.
+
+What is left is not the rounding. `round(x, ndigits)` follows the kind of `x`, and the compiled backend can
+only follow a kind the module can see — which is why Gaps R.129 and R.130 are filed with each engine's number
+pinned instead of refused: retiring `def f(x): return round(x, 2)` would trade a working int-call-site program
+for an error message. `int()`, `float()`, `ord()` and `chr()` have the arity panic this cycle fixed for
+`round`, and are Gap R.131's.
+
+`integration/programs/round_ndigits.gy` is the row's own definition of done and is in the corpus as a
+standalone row — `oracle: match`, parity yes, `2.35` and `4.0` on all three engines. The rule is tested four
+ways: `pkg/lang/round_digits_test.go` (a parity table of every shape the rule can name × both engines against
+CPython, an IR row that the conversion is asked for exactly once and is not carried by programs that never
+round, the trap half including its catchability, the arity half, and `roundToDigits` itself with the swept
+values and its two clamps), `integration/round_digits_test.go` (the same through the shipped CLI against
+`python3`, with the exit classes pinned and exit 2 failing the file), and the filed-not-fixed tables that keep
+the boundary of the feature in the suite rather than in a comment.
 
 
 ### Gap R.70 — `for` over a set or dict literal reached the range path, and its bound was the container's global (found 2026-10-02 while closing the nested half of L11.1)
@@ -5640,3 +5718,113 @@ once the handle is chosen at run time.
 Recorded in `programs/probe_ternary_container_arms.gy`, with the compiled leg pinned as `Missing` and the
 reference's own line in its header, so the ledger shows a rejection rather than quietly omitting the row.
 
+
+<a id="gap-r-129"></a>
+### Gap R.129 — a digit-count round of a value whose kind the module cannot see takes the i32 road (OPEN, measured landing ADR 0263)
+
+```gusty
+def scale(v):
+    return round(v, 2)
+
+print(scale(2.345))          # CPython 2.35 · --interp 2.35 · --aot 2
+```
+
+`round(x, ndigits)` answers with the kind `x` arrived as — that is half of what Gap R.69 was about — and
+the compiled backend can only follow a kind the module can see. `v` is a parameter the call filled with a
+double; nothing in the function's own text says so, so the call's i32 road is emitted and the truncation
+happens where the argument was lowered rather than where the rounding was asked. The interpreter boxes the
+value and asks it, and prints CPython's answer.
+
+The row is deliberately **not** a refusal. The same call with a body that binds `v = v * 1.0` — the shape
+ADR 0254 taught the return-word gate to read — answers `2.35` on both engines, so a refusal would retire
+programs that work today (int call sites included) to replace a wrong number with an error message. What is
+owed is the `(payload, tag)` pair travelling out of the call, which is L11.1's tagged value word and the
+same wall as Gaps R.107–R.110.
+
+Pinned per leg in `programs/probe_round_digit_count_kind_unseen.gy`, and in the two filed-not-fixed tables —
+`pkg/lang/round_digits_test.go::TestADigitCountOfAValueTheModuleCannotSeeIsFiledNotFixed` and
+`integration/round_digits_test.go::TestTheDigitCountProbeStillOwesWhatTheRoadmapSays` — which fail in the
+other direction the day the answer arrives, at which point the row and the pin both get deleted.
+
+<a id="gap-r-130"></a>
+### Gap R.130 — a loop variable over a literal list of doubles has no kind at all to follow (OPEN, measured landing ADR 0263)
+
+```gusty
+for v in [1.5]:
+    print(v * 2)     # CPython 3.0 · --interp 3.0 · --aot 0
+    print(v + 1)     # CPython 2.5 · --interp 2.5 · --aot 1
+    print(v / 2)     # CPython 0.75 · --interp 0.75 · --aot 0.0
+```
+
+Filed separately from Gap R.129, because it is a different wall and older than `round`. The compiled `for`
+hands the loop variable the element's **handle** and nothing beside it says the slot holds a double, so `v * 2`
+multiplies the handle, `v + 1` adds to it, and `v / 2` — true division, whose result kind is a float whatever
+arrives — divides it. Exit 0, three number-shaped answers. ADR 0243 made the *element of a literal container*
+readable when it is subscripted (`xs[0] * 2` answers `3.0` on both engines); the loop binding never got the
+same pair, and ADR 0245's tagged loop variable exists for comprehensions over *tagged* containers only.
+
+`round(v, 2)` inherits this, which is the second line of `programs/probe_round_digit_count_kind_unseen.gy`
+printing `0` rather than `2.35`: the answer is the handle, and the digit count never got a chance to matter.
+
+Pinned in `programs/probe_float_loop_variable_as_number.gy` with the reference's three answers in its header.
+Owner: L11.1, and the shape to copy is ADR 0245's — bind the element from the object's tag, not from the
+literal's spelling.
+
+<a id="gap-r-131"></a>
+### Gap R.131 — a built-in called with no argument: four still reach for `Args[0]` first (OPEN, measured landing ADR 0263)
+
+```gusty
+print(int())      # CPython 0     · --interp Go panic (index out of range), exit 2 · --aot exit 1
+print(float())    # CPython 0.0   · --interp Go panic, exit 2                       · --aot exit 1
+```
+
+`int()` and `float()` are the conversions of zero, which is what the reference answers. The evaluator indexes
+`n.Args[0]` before anything asks whether there is an argument, so the program dies with a Go runtime panic and
+**exit 2** — the code the exit-code contract reserves for *the compiler is broken* (ADR 0166), spent on a typo.
+The compiled backend refuses with `int expects one argument` and **exit 1**, the code for "your program has a
+compile error", on a program CPython runs — L11.8's complaint in its purest form. `ord()` and `chr()` panic on
+the same shape (programs CPython itself rejects, so exit 1/3 is owed there rather than an answer), and `chr()`
+panics the compiler as well as the evaluator.
+
+`round` is the closed half of this row and the template for the rest: one sentence
+(`roundArityMessage`, `pkg/lang/round_digits.go`) written once and read by both backends — raised by the
+evaluator, refused by codegen — exit 3 and exit 1, exit 2 nowhere. The two conversions of zero need CPython's
+answers as well as the sentence, because zero arguments *is* a call they answer.
+
+Recorded in `programs/probe_builtin_without_arguments.gy`, with the interpreter leg pinned as a panic and the
+compiled leg as a refusal, plus an exit-code-class row in `integration/bool_element_test.go`: a panic that
+turned into a clean exit 2, or an exit 2 that quietly became an answer, both move the pin.
+
+<a id="gap-r-132"></a>
+### Gap R.132 — a negative zero the compiler wrote has no sign (OPEN, measured landing ADR 0263)
+
+```gusty
+print(-0.0)             # CPython -0.0 · --interp -0.0 · --aot 0.0
+y = -0.0
+print(y)                # CPython -0.0 · --interp -0.0 · --aot 0.0
+print(0.0 * -1)         # CPython -0.0 · --interp -0.0 · --aot -0.0
+print(round(-0.5, 0))   # CPython -0.0 · --interp -0.0 · --aot -0.0
+```
+
+The boundary is the interesting part, and it is one instruction wide. Where the *target* computes the value
+— a runtime `fmul`, the compiled `rt_round_digits` — the sign survives, because the runtime's float formatter
+handles negative zero correctly. Where the *compiler* wrote it, the sign is gone, because the emitter
+materialises a folded float constant with
+
+```llvm
+  %t1 = fadd double 0.0, -0.0e+00
+```
+
+— thirteen such sites in `pkg/lang/codegen.go` — and IEEE answers −0.0 + +0.0 with **+0.0**. The minus dies
+before the module exists, and `rt_fmt_double`, which would have rendered it, is never handed anything.
+
+This is ADR 0236's shape one more time: one rule with two implementers, and the two disagree. It arrived in
+this cycle's own work — the digit-count fold was going to ship as `fadd double 0.0, <const>` too, which is
+how `round(-0.5, 0)` would have printed `0.0` alongside a green DoD program — and the fold now hands back the
+constant itself, because a constant is a value and does not need an instruction to become one. What is left
+here is the other twelve sites, and the fix is the same one-line idea applied to all of them, with print,
+`str()`, a binding and a container slot asserted.
+
+Recorded in `programs/probe_negative_zero_constant.gy`, whose four lines are chosen as the boundary rather
+than as a list of complaints: two lose the sign, two keep it, and the day all four keep it the row leaves the
+ledger.

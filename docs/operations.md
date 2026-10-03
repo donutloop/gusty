@@ -513,6 +513,24 @@ comprehension — `xs.append(6)` then `print([v / 2 for v in xs])` — was `llc`
 (ADR 0255, Gap R.100). A script that was special-casing that rejection should stop: the program
 answers.
 
+A second class closed, and four named as what is left of it (ADR 0263, roadmap Gap R.131). A
+built-in called with no argument used to be reached before the question "is there an argument?"
+was asked, so `gustyc --interp --eval 'print(round())'` died with a Go stack trace and **exit 2**
+— the compiler-bug code spent on a program with a typo. `round` now answers its arity in words on
+both engines, one sentence written once in `pkg/lang/round_digits.go` and read by both backends:
+exit 1 compiled (`round expects 1 or 2 arguments, none given: …`, the program never ran) and exit 3
+interpreted (the raise is a runtime event). Four built-ins still take the panic path on that shape
+— `int()`, `float()`, `ord()`, `chr()`, `chr()` panicking the compiler as well as the evaluator —
+and `int()`/`float()` are programs CPython runs (they are the conversions of zero) while codegen
+refuses them. Until that row closes, exit 2 on a program whose only mistake is a missing argument
+is Gap R.131, not a new finding.
+
+The other half of `round`, the digit count, is the case where *not* refusing is the contract: a
+digit count that is not an integer (`print(round(2.345, 1.5))`) is a program CPython stops on, so
+both engines raise its `TypeError` — exit 3, catchable by `except TypeError` on each — and neither
+returns exit 1, which belongs to programs the reference rejects. `--oracle` scores such a program
+`not_applicable`: with the reference raising, there is no stdout opinion to match.
+
 ## Emitted IR
 
 Functions, control flow (`if`/`while`/`for`/`match`), the `pass` no-op

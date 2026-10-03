@@ -1511,13 +1511,25 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			return TDyn()
 		case "float", "round", "int", "str", "chr", "ord":
 			// conversion builtins: infer args, then return the converted type.
-			for _, a := range n.Args {
-				an.inferArg(a)
+			var firstTy *Type
+			for i, a := range n.Args {
+				ty := an.inferArg(a)
+				if i == 0 {
+					firstTy = ty
+				}
 			}
 			switch name.Value {
 			case "float":
 				return TFlt()
-			case "round", "int", "ord":
+			case "round":
+				// round(x) answers with a whole number; round(x, ndigits) answers with the number
+				// whose decimal point moved, which is a float whatever came in — round(3.5, 0) is
+				// 4.0, and an int argument stays an int (roadmap Gap R.69, ADR 0263).
+				if len(n.Args) == 2 && firstTy != nil && firstTy.Kind == KindFloat {
+					return TFlt()
+				}
+				return TInt()
+			case "int", "ord":
 				return TInt()
 			default:
 				return TStr()

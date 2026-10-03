@@ -1,0 +1,23 @@
+# What CPython prints for both lines here (python3, 3.12):
+#
+#   2.35      (round(2.345, 2) — the digit count moved the decimal point)
+#   2.35      (the same rounding, taken from a loop over a literal list)
+#
+# `round(x, ndigits)` answers with the kind `x` arrived as: the float keeps its digits, the int stays
+# an int (roadmap Gap R.69, ADR 0263). Both backends ask that question of the same correctly-rounded
+# decimal conversion — but only where the module can see which kind came in. Here it cannot: `v` is a
+# parameter the call filled with a double and nothing in the function's own text says so, and `w` is a
+# loop variable bound from a literal list of doubles. The compiled leg then reads the *i32* road of the
+# call and prints what that road holds — the truncated number on the first line, the container's heap
+# handle on the second — exit 0, while the interpreter, which boxes the value and asks it, prints
+# CPython's answer on both.
+#
+# The wall is the tagged value word's (roadmap L11.1, the same one as Gaps R.107–R.110 and Gap R.130),
+# not the rounding's: the value has to travel with the tag that says it is a float. Pinned per leg so
+# opening that door has to move the pin.
+def scale(v):
+    return round(v, 2)
+
+print(scale(2.345))
+for w in [2.345]:
+    print(round(w, 2))

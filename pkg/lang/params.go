@@ -179,7 +179,9 @@ func namedNumericLeaves(e Expr) []string {
 
 // kindPreservingNumericBuiltins are the calls that return their numeric argument as the same kind it
 // arrived, which is what lets a `return abs(x)` of a rebound parameter travel in the double word.
-var kindPreservingNumericBuiltins = map[string]bool{"abs": true, "float": true}
+// `round` is in the set with a condition the scan applies: only the two-argument form, whose answer
+// is the kind its first argument arrived as (Gap R.69, ADR 0263).
+var kindPreservingNumericBuiltins = map[string]bool{"abs": true, "float": true, "round": true}
 
 // isArithmeticOp is the operator set whose result is a number whatever the operands are, which is the
 // set the double-return promotion may carry. Ordering, equality and `not` answer with a bool word and
@@ -212,8 +214,22 @@ func scanBareReturns(list []Stmt, into map[string]bool) {
 					// with an int whatever arrives and `str(x)` with text, so promoting
 					// those would put an i32 (or a string index) in the double's word —
 					// and a user callee's return word is its own question, not this one.
-					if fn, ok := r.Fn.(*Name); ok && kindPreservingNumericBuiltins[fn.Value] {
-						for _, a := range r.Args {
+					if fn, ok := r.Fn.(*Name); ok {
+						callArgs := r.Args
+						if fn.Value == "round" {
+							// `round(x, ndigits)` is kind-preserving in its *first* argument and
+							// nothing else: the float whose point moved leaves a float, the int stays
+							// an int, and the digit count is an integer whoever wrote it (roadmap
+							// Gap R.69, ADR 0263). Walking it would promote a function because a name
+							// in its digit count happens to hold a double.
+							if len(callArgs) != 2 {
+								continue
+							}
+							callArgs = callArgs[:1]
+						} else if !kindPreservingNumericBuiltins[fn.Value] {
+							continue
+						}
+						for _, a := range callArgs {
 							// `return abs(-x)` is the same double wearing a call and a negation:
 							// the shape under the call still names the parameter, and the abs
 							// lowering reads it as a double. Missing that arm left the return
@@ -224,6 +240,7 @@ func scanBareReturns(list []Stmt, into map[string]bool) {
 							}
 						}
 					}
+					continue
 				case *UnOp:
 					// `-x` is arithmetic too, and the body already knows how to say it:
 					// the negation of a float-rebound parameter is emitted `fsub double
