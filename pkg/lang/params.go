@@ -238,10 +238,8 @@ func scanBareReturns(list []Stmt, into map[string]bool) {
 					}
 				case *CondExpr:
 					// `return x if x > 2 else 0.0` reads the rebound parameter on one of the
-					// two arms, so the answer's word is the arm's, and a `select` of two
-					// doubles needs the double. Named here so the gate at least asks the
-					// question; the ternary's own lowering is a number-typed `select`, which
-					// is the shape this backend has never emitted (roadmap Gap R.102).
+					// two arms, so the answer's word is the arm's, and the `select` that
+					// chooses it chooses two doubles (roadmap Gap R.102, ADR 0262).
 					for _, arm := range []Expr{r.If, r.Else} {
 						for _, nm := range namedNumericLeaves(arm) {
 							into[nm] = true
@@ -255,9 +253,15 @@ func scanBareReturns(list []Stmt, into map[string]bool) {
 					if !isArithmeticOp(r.Op) {
 						continue
 					}
+					// A side of the product may itself be the ternary whose arm is the name
+					// the body rebound, and the gate has to see through that wrapper:
+					// `return (x if x > 2 else 0.0) * 2` carries the parameter's identity
+					// through the conditional, and a gate that stops at the wrapper emits an
+					// i32 `ret` for a program whose answer is a double (roadmap Gap R.102,
+					// ADR 0262; the same lesson ADR 0254 learned for the bare name).
 					for _, side := range []Expr{r.L, r.R} {
-						if nm, ok := side.(*Name); ok {
-							into[nm.Value] = true
+						for _, nm := range namedNumericLeaves(side) {
+							into[nm] = true
 						}
 					}
 				}

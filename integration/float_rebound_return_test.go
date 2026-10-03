@@ -126,13 +126,10 @@ func TestAReboundFloatReturnIsRefusedWhereItCannotBeCarried(t *testing.T) {
 			"def f(xs, y):\n    y = y + 0.5\n    print(xs[0])\n    return y\n\nprint(f([7, 2], 1.0))\n",
 			"the double the body computed has no word to travel in",
 		},
-		{
-			"ternary_arm_holding_the_rebound_parameter",
-			// Answers a truncated `1` with exit 0 up to this round: the return word came from the
-			// shape of the return expression, and a ternary says nothing either (Gap R.102).
-			"def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0.0\n\nprint(f(1.0))\n",
-			"no number-typed `select`",
-		},
+		// The ternary arm of a rebound parameter is not here any more: ADR 0262 emitted the
+		// number-typed `select` the refusal blamed, and the shape answers CPython — it is pinned at
+		// `TestATernaryAnswersItsArmsWordAtTheCLI`. The method below keeps its refusal because a
+		// method is emitted with an i32 return word whatever its body computes.
 		{
 			"method_ternary_arm_holding_the_rebound_parameter",
 			// The same shape on the path with no double word at all: also `1` with exit 0, and
@@ -189,5 +186,122 @@ func TestFloatReturnCorpusProgramsAgreeOnBothLegs(t *testing.T) {
 				t.Fatalf("%s printed %q (exit %d), want the oracle's %q\n%s", engine, out, code, py, cliRun(t, engine, path))
 			}
 		}
+	}
+}
+
+// TestATernaryAnswersItsArmsWordAtTheCLI is the same rule at the interface a person and an agent use:
+// three engines, one answer per line, and the exit code that says which happened. Every row here is
+// CPython's answer on both backends; the sibling refusal test below holds the one shape the compiled
+// backend may not answer. Roadmap L11.6, Gap R.102; ADR 0262.
+func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"gap_r102_ternary_arm_of_a_rebound_parameter",
+			"def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0.0\n\nprint(f(1))\n", "2.5\n"},
+		{"gap_r102_the_other_arm",
+			"def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0.0\n\nprint(f(5))\n", "6.5\n"},
+		{"both_arms_doubles_from_a_function",
+			"def f(x):\n    return 1.5 if x > 2 else 2.5\n\nprint(f(1), f(5))\n", "2.5 1.5\n"},
+		{"constant_test_takes_the_integer_arm",
+			"print(1 if 1 else 2.5)\n", "1\n"},
+		{"constant_test_takes_the_double_arm",
+			"print(1 if 0 else 2.5)\n", "2.5\n"},
+		{"constant_test_through_an_empty_container",
+			"print(1.5 if [] else 2)\n", "2\n"},
+		{"double_arm_chosen_by_arithmetic",
+			"def f(x):\n    return x * 1.5 if x > 2 else x / 2\n\nprint(f(3), f(1))\n", "4.5 0.5\n"},
+		{"ternary_inside_a_product",
+			"c = 1\nprint((1.5 if c > 0 else 2.5) * 2)\n", "3.0\n"},
+		{"double_arm_through_str",
+			"c = 0\nprint(str(1.5 if c > 0 else 2.5))\n", "2.5\n"},
+		{"double_arm_in_a_container_slot",
+			"c = 0\nprint([1.5 if c > 0 else 2.5])\n", "[2.5]\n"},
+		{"double_arm_bound_to_a_name",
+			"c = 0\nt = 1.5 if c > 0 else 2.5\nprint(t)\n", "2.5\n"},
+		{"integer_arms_are_untouched",
+			"c = 1\nprint(1 if c > 0 else 2)\n", "1\n"},
+		{"verdict_arms_are_untouched",
+			"c = 1\nprint(True if c > 0 else False)\n", "True\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "ternary_word.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, path)
+				if code == 2 {
+					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
+						engine, cliRun(t, engine, path))
+				}
+				if code != 0 {
+					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
+				}
+				if out != tc.want {
+					t.Fatalf("%s printed %q, want CPython's %q", engine, out, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// The container-arm shape is not a row here: it is the toolchain rejection roadmap Gap R.128 records, and
+// programs/probe_ternary_container_arms.gy pins it per leg. A row in a parity table would assert an exit
+// code this repository calls a compiler bug.
+
+// TestATernaryWithDisagreeingArmsRefusesAtTheCLI pins the compiled backend's honest answer for the shape
+// it cannot take: exit 1, the missing word named, and the interpreter answering CPython on the same
+// source. Exit 2 in any row here fails the file, and a row that printed a truncated number would fail it
+// too — that is the answer this rule removed.
+func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
+	for _, tc := range []struct{ name, src, want, interp string }{
+		{
+			"one_arm_a_double_at_the_top_level",
+			"c = 1\nprint(1 if c > 0 else 2.5)\n",
+			"do not agree on a word", "1\n",
+		},
+		{
+			// The leg that used to print `2` with a happy exit code: the truncation the row was filed
+			// for is now a refusal rather than an answer.
+			"the_double_arm_is_the_one_that_runs",
+			"c = 0\nprint(1 if c > 0 else 2.5)\n",
+			"do not agree on a word", "2.5\n",
+		},
+		{
+			"one_arm_a_double_in_a_returned_expression",
+			"def f(x):\n    return 1 if x > 2 else 0.0\n\nprint(f(1))\n",
+			"do not agree on a word", "0.0\n",
+		},
+		{
+			"the_rebound_parameter_against_an_integer",
+			"def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0\n\nprint(f(1))\n",
+			"do not agree on a word", "2.5\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "ternary_refuse.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.interp {
+				t.Fatalf("the interpreter's expectation is not CPython's: got %q want %q", py, tc.interp)
+			}
+			_, code := cliRunCode(t, "--aot", path)
+			if code == 2 {
+				t.Fatalf("the compiled leg reached the toolchain instead of refusing (ADR 0166):\n%s", cliRun(t, "--aot", path))
+			}
+			if code != 1 {
+				t.Fatalf("the compiled leg exited %d, want the refusal exit 1: %s", code, cliRun(t, "--aot", path))
+			}
+			combined := cliRun(t, "--aot", path)
+			if !strings.Contains(combined, tc.want) {
+				t.Fatalf("the refusal says %q, want it to mention %q", combined, tc.want)
+			}
+			for _, bad := range []string{"LLVM ERROR", "verifier", "must have pointer type"} {
+				if strings.Contains(combined, bad) {
+					t.Fatalf("the refusal is a toolchain rejection: %s", combined)
+				}
+			}
+			jitOut, code := cliRunCode(t, "--interp", path)
+			if code != 0 || jitOut != tc.interp {
+				t.Fatalf("the interpreter printed %q (exit %d), want CPython's %q", jitOut, code, tc.interp)
+			}
+		})
 	}
 }

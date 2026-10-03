@@ -4888,7 +4888,8 @@ static word each, and choosing that word from the run-time kind is precisely wha
 counter (`doubleDomain`) around `floatValue`, so the refusal is raised by the context, in one sentence, rather
 than by whichever instruction happened to be emitted last.
 
-### Gap R.99 — a float element of a comprehension over a container the program built is appended as an i32 (measured 2026-10-02, left open)
+<a id="gap-r-99"></a>
+### Gap R.99 — a float element of a comprehension over a container the program built is appended as an i32 (✅ CLOSED by ADR 0262, measured 2026-10-02)
 
 ```
 xs = []
@@ -4903,6 +4904,17 @@ program with an `int` element (`[v + 1 for v in xs]` → `[7]`) is correct today
 element's tag rather than at the loop. The fix is the one ADR 0238/ADR 0239 taught the `append` path — box the
 float, write the tag, let the printer and the read ask it — applied to `appendElem`, and the two rows in
 `TestTrueDivisionInsideAComprehensionIsFiledNotFixed` fail when it lands.
+
+**Closed by ADR 0262, from one door earlier than this row predicted.** The element *was* already boxed and
+tagged — `heapElemKind` asks `g.isFloat(e)` of the expression, not just a literal, and it has for a while. What
+was missing was the container's own announcement: `literalNeedsTags` tested `isFloatLitExpr`, so an element that
+is a float-valued *expression* rather than a float literal left the object unmarked, the printer followed the
+container-wide kind, and the `@float_box` handle printed as the number it is — `[2]`, the handle, not the value.
+`floatSlotExpr` asks the element as an expression, which is exactly the shape ADR 0259 chose for a verdict slot
+(`boolSlotExpr`) for the same reason. The row out of `TestTrueDivisionInsideAComprehensionIsFiledNotFixed` is now
+`TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow`, in the same file, asserting CPython's answer on
+both engines; Gap R.100 (the element that raises, whose guard blocks land between a loop header and its `phi`'s
+back edge) is the sibling that is still open.
 
 <a id="gap-r-100"></a>
 ### Gap R.114 — an f-string cannot interpolate a container variable (OPEN, measured closing Gap L.2)
@@ -5038,23 +5050,53 @@ whatever its body computes. Each names the variable whose double has nowhere to 
 `assertNoForbiddenIR` and the CLI tables forbid exit 2 in every one of those rows.
 
 <a id="gap-r-102"></a>
-### Gap R.102 — the ternary arm of a rebound parameter (OPEN, measured beside ADR 0254)
+### Gap R.102 — the ternary arm of a rebound parameter (✅ CLOSED by ADR 0262)
 
 ```gusty
 def f(x):
     x = x + 1.5
     return x if x > 2 else 0.0
 
-print(f(1.0))            # CPython 2.5 · --interp 2.5 · --aot refused in words (was 1, exit 0)
+print(f(1.0))            # CPython 2.5 · --interp 2.5 · --aot 2.5 (was: refused in words; before that 1, exit 0)
 ```
 
-The answer's word is the arm's, and `isFloat` has no `CondExpr` arm, so the promotion does not run — which left
-the program answering a truncated `1` with exit 0 until ADR 0254 gave it a refusal. Choosing between two doubles
-is `select i1 %c, double %a, double %b`, and this backend's ternary lowering has only ever built an `i32` select
-(it was written for the `1 if x else 2` shape ADR 0167 measured). The fix is small and belongs to the ternary,
-not to the gate: let `isFloat` answer a conditional by asking both arms, and let the lowering emit the select the
-arms' kind calls for — with the arms' raises hoisted the way ADR 0214 requires. Two rows, one per backend table,
-become parity rows the day it lands.
+The row named one missing instruction — `select i1 %c, double %a, double %b` — and the instruction was legal LLVM
+the whole time. What was missing was a predicate willing to say the arms were doubles. `isFloat` had no `CondExpr`
+arm, so a ternary answered "not a float" whatever it held, and the two arms were handed to `value()`, whose float
+case renders a double by its truncated integer. Every one of these came out of that single no, on the compiled leg,
+with exit 0:
+
+| program | CPython | compiled, before ADR 0262 |
+|---|---|---|
+| `print(1 if 0 else 2.5)` | `2.5` | `2` |
+| `def f(x): return 1.5 if x > 2 else 2.5` → `f(1)` | `2.5` | `2` |
+| `def f(x): return 1 if x > 2 else 0.0` → `f(1)` | `0.0` | `0` |
+| `def f(x): x = x + 1.5` / `return x if x > 2 else 0.0` | `2.5` | refused in words (the row itself) |
+| `print([1.5 if c > 0 else 2.5])` | `[2.5]` | `[2]` |
+
+The fix is one question, asked in one place (`ternaryKind` in `pkg/lang/ternary_number.go`) and read by the four
+doors that had been answering it separately: the renderer (`isFloat`, so `print`/`str()`/f-strings pick the float
+formatter), the i32 lowering (`ternaryI32`), the double lowering (`ternaryDouble`, the select), and the gate that
+picks a function's return word. Three consequences had to be chased, each one a door that asked the question in
+its own way:
+
+* **the return-word gate stopped at the wrapper** — `scanBareReturns` looked through a `*Call`, a `-x`, and a
+  ternary's arms, but read only a bare `*Name` on the side of a product, so `return (x if x > 2 else 0.0) * 2` was
+  never promoted and answered an i32 under a program that wanted a double. It now walks
+  `namedNumericLeaves`, the same walker ADR 0254 introduced for `return abs(-x)`.
+* **the container asked a literal where it should have asked an expression** — `literalNeedsTags` tested
+  `isFloatLitExpr`, so a float-valued *ternary* in a list left the container unmarked; the builder stored the
+  `@float_box` handle correctly and the printer then read that handle as the number it is (`[1]`). The sibling of
+  ADR 0259's `boolSlotExpr`, `floatSlotExpr`, asks `isFloat` of the element.
+* **the constant test is a different question from the run-time test** — `print(1 if 1 else 2.5)` and
+  `print(1 if 0 else 2.5)` have different answers in CPython (`1` and `2.5`), so a ternary whose test is a value the
+  source wrote takes the kind of the arm that *runs* (ADR 0261's `constantTestArm`), and the dead arm is not
+  emitted at all — which is what the reference does with it too.
+
+What remains beyond this row is the shape whose arms do **not** agree on a word: `1 if c else 0.0`, where which
+arm runs is a run-time fact and neither an `i32` nor a `double` prints both answers correctly. That is refused in
+words, with the tagged value word (L11.1) named — and its two non-numeric siblings are Gaps R.127 and R.128 below,
+filed while measuring this one.
 
 <a id="gap-r-103"></a>
 ### Gap R.103 — filed as the dict literal's, measured again as the container *return*'s (OPEN, owner Gap R.67)
@@ -5556,3 +5598,45 @@ number, printed, exit 0. The `for`-statement spelling is wrong the same way (`fo
 prints `0.0`), which is the sign that this is the loop-variable binding and not the comprehension: it wants
 the object's **kind** where the read today asks only its tag, which is L11.1's own remaining sentence
 rather than a patch at the comprehension.
+
+<a id="gap-r-127"></a>
+### Gap R.127 — a ternary whose arms are text prints the interned index (OPEN, measured landing ADR 0262)
+
+```gusty
+c = 1
+print("a" if c > 0 else "b")      # CPython a · --interp a · --aot 0
+print("x" if 1 else "y")          # CPython x · --interp x · --aot 2
+```
+
+ADR 0262 gave the ternary its number-word rule, and this is the same question asked of the other kinds an arm can
+have. Text is an index into `@str_tab`; the compiled `select` chooses an index, and the printer is never told the
+answer is text, so it renders the index as a number — `0` and `2`, the two interned slots, printed happily with
+exit 0. The second line is the interesting one: its test is a constant, so this is not a question about which arm
+runs (the compiler knows), and no branch analysis can be the missing piece. It is the tag: the value has to say it
+is text, which is the wall L11.1 owns with Gaps R.107–R.110, and the reason ADR 0262's rule stops at numbers
+rather than pretending to finish here.
+
+Pinned per leg in `programs/probe_ternary_text_arms.gy`, because both backends agreeing with each other on the
+interpreter leg is exactly what makes a two-engine matrix green while CPython prints `a`.
+
+<a id="gap-r-128"></a>
+### Gap R.128 — a ternary whose arms are containers is rejected by the assembler (OPEN, measured landing ADR 0262)
+
+```gusty
+c = 1
+print([1, 2] if c > 0 else [3])   # CPython [1, 2] · --interp [1, 2] · --aot exit 2
+```
+
+The lowering asks `value()` for each arm, and a container literal's `value()` is the name of its global —
+`select i1 %c, i32 @.lst1, i32 @.lst2` — and `llc` refuses a global in a value position. So an ordinary program
+whose answer is one line ends as a toolchain rejection (exit 2), which ADR 0166 counts as the compiler's bug.
+
+This is not a new family: it is `i32 @.N`-in-an-operand-position (Gap R.67's `ret i32 @.str1`, Gap J.6's stores and
+calls) arriving through a construct that has never compiled. Every container builder has handed back a *built
+handle* since ADR 0189, and the ternary's lowering is the one place still asking for the global's name. The DoD is
+that — choose the object, not the symbol that names it — and the tagged value word makes the print side correct
+once the handle is chosen at run time.
+
+Recorded in `programs/probe_ternary_container_arms.gy`, with the compiled leg pinned as `Missing` and the
+reference's own line in its header, so the ledger shows a rejection rather than quietly omitting the row.
+

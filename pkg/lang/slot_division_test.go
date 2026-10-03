@@ -332,21 +332,18 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 // expectations to keep: each row records what every engine answers *today*, and the row fails the day
 // the compiler catches up.
 //
-// The two float rows share a root: the comprehension appends the element through the static path, which
-// never asks the numeric door — so the double is either truncated to the i32 word the slot keeps
-// (`[xs[0] / 2]` → `[2]`, roadmap Gap R.99) or, when the element raises, the guard's blocks land between
-// the loop header and the increment the induction `phi` names as its back edge, and `llc` rejects the
-// module (roadmap Gap R.100 — ADR 0224's lesson, one door over).
+// Both rows come from the comprehension appending its element through a path that did not ask the
+// numeric door. The truncation half — `[xs[0] / 2]` printing `[2]` — was roadmap Gap R.99 and is paid:
+// the container now marks itself when an element is a float-valued *expression* rather than a float
+// literal (`floatSlotExpr`, ADR 0262), so the slot carries the tag the printer asks. What remains here
+// is the row whose guard's blocks land between the loop header and the increment the induction `phi`
+// names as its back edge, which `llc` rejects (roadmap Gap R.100 — ADR 0224's lesson, one door over).
 func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, aotWant, oracle string
 		gap                        string
 		aotExit                    int
 	}{
-		{
-			"a float element of a comprehension over a built container",
-			"xs = []\nxs.append(6)\nprint([xs[0] / 2])\n", "[2]\n", "[3.0]\n", "roadmap Gap R.99", 0,
-		},
 		{
 			"the dict comprehension's value, computed as a double from the loop variable",
 			"xs = []\nxs.append(6)\nprint({v: v / 2 for v in xs})\n",
@@ -391,6 +388,24 @@ func TestTrueDivisionInsideAComprehensionIsFiledNotFixed(t *testing.T) {
 				t.Errorf("%s: the interpreter prints %q, want the oracle's %q", tc.name, got, tc.oracle)
 			}
 		})
+	}
+}
+
+// TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow now answers CPython on both engines, so
+// it is pinned as an answer and not as a divergence: the row out of the filed table above, kept where it
+// was written so the day it came back is visible next to the row that recorded it going.
+func TestAFloatElementOfAComprehensionOverABuiltContainerIsAPaidRow(t *testing.T) {
+	const src = "xs = []\nxs.append(6)\nprint([xs[0] / 2])\n"
+	res, err := Compile(src)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	assertNoForbiddenIR(t, src, res.IR)
+	if out := runIR(t, res.IR); out != "[3.0]\n" {
+		t.Errorf("the compiled leg printed %q, want CPython's \"[3.0]\\n\" (roadmap Gap R.99, ADR 0262)", out)
+	}
+	if out := captureStdout(t, src); out != "[3.0]\n" {
+		t.Errorf("the interpreter printed %q, want CPython's \"[3.0]\\n\"", out)
 	}
 }
 

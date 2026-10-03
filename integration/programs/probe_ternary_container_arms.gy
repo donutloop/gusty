@@ -1,0 +1,17 @@
+# What CPython prints for these two lines (python3, 3.12):
+#
+#   [1, 2]
+#   {'k': 1}
+#
+# A ternary whose arms are containers reaches the assembler with the containers themselves in the
+# choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position, so
+# the compiled leg exits 2 on a program whose answer the interpreter and the reference both print in
+# one line. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the
+# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time —
+# and the answer is the tagged value word's handle, chosen as a value rather than as a global name
+# (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).
+#
+# Both legs are pinned: the compiled one because the toolchain rejection is what has to be visible in
+# the ledger, and the interpreter one because the answer it prints is the answer the compiled leg owes.
+c = 1
+print([1, 2] if c > 0 else [3])

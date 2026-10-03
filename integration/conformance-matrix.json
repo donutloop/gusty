@@ -2614,6 +2614,88 @@
     },
     {
       "case": {
+        "id": "programs/probe_ternary_text_arms",
+        "name": "probe_ternary_text_arms.gy",
+        "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a ternary whose arms are text picks an interned index and nothing beside it says the answer is text, so the compiled leg prints the index (0) where the interpreter and CPython print the string; the constant-test spelling is the same answer, which is what makes it a tag question and not a branch question",
+        "ref": "roadmap Gap R.127 (measured while landing Gap R.102, ADR 0262)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "a\nx\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "0\n2\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "a\nx\n",
+      "aot_ok": true,
+      "aot_stdout": "0\n2\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "a\nx\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a ternary whose arms are text picks an interned index and nothing beside it says the answer is text, so the compiled leg prints the index (0) where the interpreter and CPython print the string; the constant-test spelling is the same answer, which is what makes it a tag question and not a branch question",
+      "oracle_ref": "roadmap Gap R.127 (measured while landing Gap R.102, ADR 0262)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_ternary_container_arms",
+        "name": "probe_ternary_container_arms.gy",
+        "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   [1, 2]\n#   {'k': 1}\n#\n# A ternary whose arms are containers reaches the assembler with the containers themselves in the\n# choose: `select i1 %c, i32 @.lst1, i32 @.lst2`, and `llc` rejects a global in a value position, so\n# the compiled leg exits 2 on a program whose answer the interpreter and the reference both print in\n# one line. It is the family ADR 0166 counts as the compiler's bug — the same `i32 @.lstN` operand the\n# string family has been paying (roadmap Gap R.67, Gap J.6) arriving through the ternary this time —\n# and the answer is the tagged value word's handle, chosen as a value rather than as a global name\n# (roadmap Gap R.128, owner L11.1; measured 2026-10-03 while landing ADR 0262).\n#\n# Both legs are pinned: the compiled one because the toolchain rejection is what has to be visible in\n# the ledger, and the interpreter one because the answer it prints is the answer the compiled leg owes.\nc = 1\nprint([1, 2] if c \u003e 0 else [3])\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
+        "ref": "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[1, 2]\n"
+          },
+          {
+            "backend": "aot",
+            "error": "global variable reference must have pointer type",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[1, 2]\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3796463296/102/prog.ll:25:28: error: global variable reference must have pointer type",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[1, 2]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
+      "oracle_ref": "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3796463296/102/prog.ll:25:28: error: global variable reference must have pointer type"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_in_a_comprehension",
         "name": "probe_bool_in_a_comprehension.gy",
         "source": "# A comprehension that builds verdicts. The list works on both backends now (roadmap Gap R.112,\n# ADR 0259); the set and the dict do not, because their compile-time fold writes a static global and a\n# static global has no tag table to write True into — the fold now declines rather than store the\n# number and let the printer follow it (roadmap Gap R.116).\n#\n# What each engine answers today:\n#   --interp  [True, 1, 1]  {True}  {1: True}  {True: 1}\n#   --aot     refuses, in words, exit 1: \"a comprehension of verdicts needs the tagged set builder,\n#             which a set comprehension does not have yet\" — no line is printed at all\n#   python3   [True, 1, 1]  {True}  {1: True}  {True: 1}\n#\n# The list row is here so the family stays one row: it is the shape that IS built tagged, and the\n# refusal above is only believable next to it.\nprint([x for x in [True, 1, 1]])\nprint({True for x in [1]})\nprint({1: True for x in [1]})\nprint({True: 1 for x in [1]})\n",
@@ -3451,12 +3533,12 @@
       ]
     }
   ],
-  "rows": 120,
-  "skipped": 23,
+  "rows": 122,
+  "skipped": 25,
   "pass": 97,
   "fail": 0,
   "oracle_match": 83,
-  "oracle_debt": 19,
+  "oracle_debt": 21,
   "oracle_not_applicable": 18,
   "oracle_drift": 0
 }

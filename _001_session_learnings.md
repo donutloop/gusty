@@ -6215,3 +6215,49 @@ the error class, and loses the run directory) plus the tripwire that keeps it
 scratch path). The general shape: when a committed artifact diffs on every run, do not normalise the diff
 by hand each cycle — find the field that quotes something that is not a fact about the language, and stop
 quoting it there.
+
+## Gap R.102: the missing instruction was never missing (ADR 0262)
+
+**A row can name the right instruction and the wrong cause.** Gap R.102 said the compiled backend had “no
+number-typed `select` to choose two doubles with”, and I went looking for the emitter I would have to write.
+It was already there — four copies of `select i1 … double …, double …` in the `min`/`max` folds and the
+remainder fixups. What was missing was that `isFloat` had no `*CondExpr` arm, so a ternary answered “not a
+float” whatever it held, and both arms were handed to `value()`, whose float case is
+`fmt.Sprintf("%d", int64(n.Value))`: right for a context that stores an `i32`, silently truncating for every
+context that was never asked. The row described the last instruction in a chain of five places that had each
+decided the same question for themselves. Reading the row got me the instruction; reading the *chain* got me
+the bug.
+
+**One predicate, and then go and find out whether anyone else was answering it separately.** `ternaryKind` is
+asked by the renderer, the i32 lowering, the double lowering and the return-word gate. Two of the four
+“bugs” this cycle fixed were not in the ternary at all: `scanBareReturns` read a bare `*Name` on the side of a
+product, so `return (x if x > 2 else 0.0) * 2` was never promoted; and `literalNeedsTags` tested
+`isFloatLitExpr`, so a float-valued ternary in a list built its `@float_box` handle correctly and then printed
+the handle as a number — `[1]`. ADR 0259's `boolSlotExpr` exists because the same blind spot was found once
+already; the float door had never been given the expression-shaped question.
+
+**Measure the neighbours, and the table writes itself.** The five compiled-leg wrong answers in the ADR's
+table came from asking one shape (`return x if … else …`) and then varying the arms and the test, not from the
+roadmap row. Two of them (`print(1 if 0 else 2.5)` → `2`, and `def f(x): return 1.5 if x > 2 else 2.5` → `2`)
+had never been filed by anyone: they exit 0, they look like numbers, and the two-engine matrix cannot see them
+because the interpreter is right.
+
+**Say no out loud when yes would print a plausible number.** For `1 if c else 0.0` with a run-time `c`,
+choosing `double` answers `1.0` where CPython writes `1`, and choosing `i32` truncates the other arm. The
+tempting fix — always take the double — makes `(1 if c else 2.5) * 2` print `2.0` where CPython prints `2`:
+the same bug with a decimal point, and quiet about it. The refusal is in words, names the tagged value word as
+the owner, and retires no program that answers correctly today, because every program in that class was
+already truncating. Its two non-numeric siblings became fresh rows with pinned per-leg answers rather than
+disappearing from my test tables: Gap R.127 (text arms print the interned index) and Gap R.128 (container arms
+put `@.lstN` in an operand position and `llc` exits 2).
+
+**A tracker defect is still a defect.** Last cycle's ledger row landed inside the Open queue — a ✅ `DONE` row
+sitting in “the only list of owed work”, beside a pre-existing unnumbered row. Both came out, the closed row
+was rewritten in the ledger's own shape, the owed row got a number, and the snapshot's *Rows owed* was
+recomputed from the table rather than remembered. The roadmap rules say the row's `Status` cell is the truth,
+which only works if a row exists in exactly one table.
+
+**Run the suite you did not edit.** Nothing in the files I touched mentioned `float_rebound_return_test.go`,
+where the paid refusal lived; only the full run found the two contract rows that would have gone green forever
+while asserting nothing. Deleting a paid contract row is the right move; repinning it to expect the answer the
+fix now produces is the same row demanding the bug come back.

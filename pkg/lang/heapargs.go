@@ -938,29 +938,44 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
+			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
+			if g.floatSlotExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
 				return true
 			}
 		}
 	case *DictLit:
 		for _, k := range n.Keys {
-			if isFloatLitExpr(k) || isNoneLitExpr(k) || g.boolSlotExpr(k) {
+			if g.floatSlotExpr(k) || isNoneLitExpr(k) || g.boolSlotExpr(k) {
 				return true
 			}
 		}
 		for _, v := range n.Vals {
-			if isFloatLitExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) {
+			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// floatSlotExpr is the question a slot asks to find out whether it holds a double: the literal, or
+// any expression the compiler can see is one — `1.5 if c > 0 else 2.5` is written by a program that
+// put a float in the slot, and only the ternary's shape hides that from a literal test. Asked as an
+// expression question and not a literal question for the same reason ADR 0259 asks `boolSlotExpr`:
+// the builder below stores the `@float_box` handle and tags it, and a container that does not say
+// "the slots describe themselves" is printed by the container-wide kind, which reads that handle as
+// the number it is — `[1.5 if c > 0 else 2.5]` came out `[1]`, the box's index in the heap (roadmap
+// L11.6, Gap R.102, ADR 0262; the sibling of ADR 0233's float element).
+func (g *irGen) floatSlotExpr(e Expr) bool {
+	if isFloatLitExpr(e) {
+		return true
+	}
+	return g != nil && g.isFloat(e)
 }
 
 // boolSlotExpr is the one question a slot asks to find out whether it is holding a verdict: the

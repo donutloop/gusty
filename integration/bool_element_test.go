@@ -75,6 +75,8 @@ func TestOracleStillCallsTheBoolNameLossShapes(t *testing.T) {
 		{"probe_bool_in_a_comprehension", 6},     // Gap R.116
 		{"probe_minmax_candidate_unreadable", 6}, // Gap R.124 (the compiled leg's leg)
 		{"probe_ternary_the_test_chose", 6},      // Gap R.125 (both engines, against CPython)
+		{"probe_ternary_text_arms", 6},           // Gap R.127 (the compiled leg's leg)
+		{"probe_ternary_container_arms", 6},      // Gap R.128 (the compiled leg rejects the module)
 		{"probe_slot_order_in_a_ternary", 7},     // Gap R.119 (CPython raises, so there is no opinion)
 	} {
 		src := readProgramSrc(tc.name)

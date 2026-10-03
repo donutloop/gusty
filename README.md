@@ -878,7 +878,7 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **120 rows over three legs** — the AST interpreter, the LLVM AOT
+  `conformance-matrix.json`: **122 rows over three legs** — the AST interpreter, the LLVM AOT
   binary, and **CPython** — 97 rows asserting parity and 23 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
   the oracle verdict being 83 `match`, 19 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==

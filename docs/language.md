@@ -578,8 +578,27 @@ interpreter and the AOT codegen. The condition is an or-level expression; the
 `1 if 0 else 2 if 1 else 3` is `1 if 0 else (2 if 1 else 3)`.
 
 In the AOT path, a constant condition folds to the taken branch, and a runtime
-condition (a comparison, or `and`/`or`) lowers to an LLVM `select i1 cond,
-i32 then, i32 else`, so the ternary is allocation-free and needs no blocks.
+condition (a comparison, or `and`/`or`) lowers to an LLVM `select`. The select's word is the
+arms' word, asked once — `ternaryKind` in `pkg/lang/ternary_number.go` — and read by the renderer,
+the arithmetic and the gate that picks a function's return word, so the four cannot disagree about
+what the same expression is (roadmap Gap R.102, ADR 0262):
+
+| arms | the answer |
+|---|---|
+| both doubles | `select i1 cond, double then, double else` — `def f(x): x = x + 1.5` / `return x if x > 2 else 0.0` answers `2.5` |
+| neither a double | `select i1 cond, i32 then, i32 else` — the ternary stays allocation-free and needs no blocks |
+| the test is a value the source wrote | the arm that runs answers, in its own kind, and the other arm is not emitted: `print(1 if 1 else 2.5)` is `1` and `print(1 if 0 else 2.5)` is `2.5` |
+| exactly one arm is a double, and the test must be evaluated | refused in words, not truncated: `print(1 if c else 0.0)` — neither word prints both arms the way the reference does, and the tagged value word (roadmap L11.1) is what makes the run-time choice answerable |
+
+An arm that is not already a double converts inside a context that asks for one, because that is
+what the reference's own promotion means: `(1 if c else 2.5) * 2` multiplies a `1.0`. A container
+holding such an arm says so on the object, so `print([1.5 if c > 0 else 2.5])` is `[2.5]` (ADR 0259's
+`boolSlotExpr` has a float sibling, `floatSlotExpr`, for the same reason).
+
+What the same question cannot answer yet is an arm that is text or a container: the compiled leg
+prints the interned index (`print("a" if c else "b")` is `0`) or puts the container's own global in the
+select and the assembler rejects the module (exit 2). Those are roadmap Gaps R.127 and R.128, each
+pinned per leg rather than skipped.
 
 ## Truthiness
 

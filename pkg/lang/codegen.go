@@ -5888,6 +5888,13 @@ func (g *irGen) isFloat(e Expr) bool {
 		// `sitofp i32 <handle> to double`, comparing boxes rather than contents (roadmap L11.1,
 		// ADR 0233). A program that wants a number out of a container asks for the element.
 		return false
+	case *CondExpr:
+		// What a ternary answers with is what its arms answer with, asked in one place
+		// (`ternaryKind`) and read by the print formatter, the return-word gate and both lowerings —
+		// never re-derived from the shape of the line, which is how the arithmetic and the renderer
+		// came to disagree about the same expression (roadmap L11.6, Gap R.102, ADR 0262).
+		k := g.ternaryKind(n)
+		return k == ternaryArmIsDouble || k == ternaryBothAreDoubles
 	case *Call:
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok {
@@ -6677,6 +6684,12 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		t := g.newTmp()
 		fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(n.Value))
 		return t
+	case *CondExpr:
+		// The double domain's ternary: `select i1 %c, double %a, double %b` — the instruction roadmap
+		// Gap R.102 was filed for, and the reason `def f(x): x = x + 1.5` / `return x if x > 2 else 0.0`
+		// had to be refused. Every arm that is not already a double converts, because the caller asked
+		// for a double and that conversion is what the reference's own promotion means (ADR 0262).
+		return g.ternaryDouble(b, n)
 	case *Index:
 		// The numeric half of the slot read (roadmap L11.1, ADR 0243): a slot whose literal is a float
 		// *is* that float for arithmetic. The word the slot holds is a float box handle, and lifting one
@@ -8609,24 +8622,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		return t, nil
 	case *CondExpr:
-		// ternary `then if cond else otherwise`: pick a branch by condition.
-		cond, cerr := g.truthyValue(b, n.Cond)
-		if cerr != nil {
-			return "", cerr
-		}
-		then, err := g.value(b, n.If)
-		if err != nil {
-			return "", err
-		}
-		els, err := g.value(b, n.Else)
-		if err != nil {
-			return "", err
-		}
-		// the condition is an i1 (comparison/and/or) or a bare constant that
-		// LLVM infers as i1 in the select context.
-		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, cond, then, els))
-		return t, nil
+		// The answer's word is the arms' word. A ternary whose arms are doubles is chosen by a
+		// number-typed `select`; one whose arms disagree on the word has no word, and is refused
+		// rather than truncated (roadmap L11.6, Gap R.102, ADR 0262 — `ternary_number.go`).
+		return g.ternaryI32(b, n)
 
 	case *StrLit:
 		// A string *value* in this language is an index into the runtime @str_tab, not the
@@ -13841,7 +13840,15 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 			// `ret` writes and the word the value arrives in cannot disagree — which is what the
 			// module verifier checks and what `return -x` used to get wrong in silence.
 			if !g.floatReboundReturnAsksForTheDouble(fd, bad) {
-				return fmt.Errorf("%q returns a ternary arm of %q, which its own body binds to a float: the answer's word is the arm's, and the compiled backend has no number-typed `select` to choose two doubles with, so the double the body computed has no word to travel in and the call answers a truncated i32 — a number-shaped answer that is the wrong one, which ADR 0166 counts as this compiler's bug rather than the program's (take the branch with `if`/`else` and `return` the number itself, or add it to `0.0` on the arm; roadmap L11.6, Gap R.102)",
+				// The arms of the returned ternary do not agree on a word, which is the one
+				// shape of this family the compiler cannot take: whichever word it chose, the
+				// other arm would print a number-shaped wrong answer. The wording comes from
+				// the same helper the ternary lowering refuses with, so the two cannot drift
+				// into describing different programs (roadmap Gap R.102, ADR 0262).
+				if cond := returnedTernary(fd); cond != nil {
+					return fmt.Errorf("%q returns `%s`: %v", g.fnName(fd), exprSurface(cond), ternaryWordErr(cond, ternaryArmDisagrees))
+				}
+				return fmt.Errorf("%q returns a value read off %q, which its own body binds to a float, and the answer's word is not one the compiled backend can write: the double the body computed has no word to travel in and the call answers a truncated i32 — a number-shaped answer that is the wrong one, which ADR 0166 counts as this compiler's bug rather than the program's (take the branch with `if`/`else` and `return` the number itself, or add it to `0.0` on the arm; roadmap L11.6, Gap R.102)",
 					g.fnName(fd), bad[0])
 			}
 			if !g.doubleReturnCarriable(fd) {

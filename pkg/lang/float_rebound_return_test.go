@@ -161,13 +161,11 @@ func TestAReboundParameterIsRefusedWhereTheWordCannotCarryIt(t *testing.T) {
 			"def f(x, s):\n    x = x + 0.5\n    print(s)\n    return x\n\nprint(f(1.0, \"z\"))\n",
 			"which its own body binds to a float",
 		},
-		// The ternary's answer word is its arm's, and the backend has no number-typed `select` to
-		// choose two doubles with. It answered a truncated `1` until this round (Gap R.102).
-		{
-			"a ternary arm holding the rebound parameter",
-			"def f(x):\n    x = x + 1.5\n    return x if x > 2 else 0.0\n\nprint(f(1.0))\n",
-			"no number-typed `select`",
-		},
+		// The ternary arm of such a parameter is no longer this test's: ADR 0262 gave the compiled
+		// backend the number-typed `select` it was missing, so
+		// `def f(x): x = x + 1.5` / `return x if x > 2 else 0.0` answers `2.5` — the row moved to
+		// `TestATernaryAnswersInTheWordItsArmsAnswer` rather than being repinned. The method below
+		// stays, because a method's return word is fixed at i32 whatever the body computes.
 		{
 			"a method's ternary arm: no double word anywhere, and no select either",
 			"class C:\n    def m(self, x):\n        x = x + 1.5\n        return x if x > 2 else 0.0\n\nc = C()\nprint(c.m(1.0))\n",

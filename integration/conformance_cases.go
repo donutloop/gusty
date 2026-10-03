@@ -318,6 +318,13 @@ func conformanceProbes() []lang.ConformanceCase {
 		// both print the number underneath, one on the compiled leg and one on both.
 		"probe_minmax_candidate_unreadable",
 		"probe_ternary_the_test_chose",
+		// The ternary's *number* half is paid (ADR 0262 emitted the double `select`). What stays
+		// filed is the same question asked of the other two kinds of arm: text arms print the
+		// interned index (`0`) on the compiled leg, and container arms put `@.lstN` in an operand
+		// position and the assembler rejects the module (roadmap Gaps R.127 and R.128, both owned
+		// by L11.1's tagged value word; measured while landing ADR 0262).
+		"probe_ternary_text_arms",
+		"probe_ternary_container_arms",
 		// A list comprehension tags the slot it copies; a set or dict comprehension still folds to a
 		// compile-time global with no tag table, so those lines refuse rather than print the number
 		// (roadmap Gap R.116, measured closing Gap R.112).
@@ -504,6 +511,14 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a ternary whose test the compiler cannot read has no arm known to run, so the conservative rule — a verdict only when both arms are — prints the number: the compiled leg prints 1 on all four lines and the interpreter on two of them, where CPython prints True on all four",
 		ref:    "roadmap Gap R.125 (measured while closing Gap R.117, ADR 0261)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "True\n1\nTrue\n1\n"}, {Backend: "aot", Stdout: "1\n1\n1\n1\n"}}},
+	"programs/probe_ternary_text_arms": {oracle: lang.OracleDebt,
+		reason: "a ternary whose arms are text picks an interned index and nothing beside it says the answer is text, so the compiled leg prints the index (0) where the interpreter and CPython print the string; the constant-test spelling is the same answer, which is what makes it a tag question and not a branch question",
+		ref:    "roadmap Gap R.127 (measured while landing Gap R.102, ADR 0262)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "a\nx\n"}, {Backend: "aot", Stdout: "0\n2\n"}}},
+	"programs/probe_ternary_container_arms": {oracle: lang.OracleDebt,
+		reason: "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
+		ref:    "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n"}, {Backend: "aot", Missing: true, Err: "global variable reference must have pointer type"}}},
 	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
 		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
 		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",

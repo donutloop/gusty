@@ -1,0 +1,17 @@
+# What CPython prints for these two lines (python3, 3.12):
+#
+#   a       x
+#
+# A ternary whose arms are text hands back the text, and both engines agree with the reference on the
+# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the
+# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the
+# index instead of asking for the string. This is the same wall as the number half of the ternary
+# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the
+# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with
+# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).
+#
+# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row
+# that only recorded the interpreter would let that answer look like parity.
+c = 1
+print("a" if c > 0 else "b")
+print("x" if 1 else "y")
