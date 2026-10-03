@@ -1,7 +1,7 @@
-# probe_arith_result_bound_to_a_name.gy — the same arithmetic the print position answers, one statement
-# earlier. CPython and the interpreted leg print 14; the compiled leg declines to build it (roadmap Gap
-# R.138, measured landing ADR 0265), because the pair road is taken where the print dispatch asks for a
-# value and an ordinary numeric binding does not ask.
+# probe_arith_result_bound_to_a_name.gy — the arithmetic the print position answers, one statement
+# earlier. CPython, the interpreted leg and the compiled leg all print 14: the binding stores the
+# (payload, tag) pair the print door reads, so the name carries the tag its own expression produced
+# (roadmap Gap R.138, ADR 0266 — the row this program was filed against).
 xs = []
 xs.append([7, 8])
 n = xs[0][0] * 2

@@ -556,10 +556,14 @@ holding one can reach any container slot in the program (`ADR 0265`). A program 
 the refusal it has always had — exit 1, `index cannot reach into xs's slots`, naming the missing half —
 which means adding a string to a container can turn a working compiled arithmetic into a refusal. That is
 deliberate and coarse (the reference *answers* `"a" + "b"` and `[1] * 2`; this backend cannot, so the door
-must not open there), and the positions the door does not reach are filed rather than silent: an arithmetic
-result bound to a name (`Gap R.138`, `programs/probe_arith_result_bound_to_a_name`) and a slot read handed
-to a function (`Gap R.139`, `programs/probe_slot_read_handed_to_a_function`) are both CPython's and the
-interpreted leg's `14` against the compiled leg's exit 1. The negation of a text is worse and also filed:
+must not open there), and the positions the door does not reach are filed rather than silent: the answer
+**used as a number** after it was bound (`print(n + 1)` following `n = xs[0][0] * 2`, `Gap R.140`,
+`programs/probe_tagged_answer_used_as_a_number`) and a slot read **handed to a function**
+(`Gap R.139`, `programs/probe_slot_read_handed_to_a_function`) are both CPython's and the interpreted
+leg's answer against the compiled leg's exit 1. Binding the answer to a name is no longer one of them:
+`n = xs[0][0] * 2` then `print(n)` prints `14` on all three engines, because the binding stores the
+(payload, tag) pair the print door reads (`Gap R.138`, `ADR 0266`,
+`programs/probe_arith_result_bound_to_a_name`). The negation of a text is worse and also filed:
 `print(-"hi")` answers `-281474976710658` interpreted and `0` compiled at exit 0, where the reference
 raises (`Gap R.137`). To reproduce any of these numbers, force the leg: `gustyc --file <path> --interp` and
 `gustyc --file <path> -aot` — a bare `--file` is the interpreter's default, and `-aot` written after the

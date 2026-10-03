@@ -6010,7 +6010,7 @@ a slot that turns out to hold text — and the same table has to be reachable fr
 where the compiler *does* know the operand is a text and can emit the raise directly. `probe_negated_text_slot`
 is the ledger row; it becomes a `match` when both engines stop.
 
-### Gap R.138 — the arithmetic the print position answers is refused one statement earlier (OPEN, owner L11.1, measured landing ADR 0265)
+### Gap R.138 — the arithmetic the print position answers is refused one statement earlier (✅ CLOSED by ADR 0266, owner L11.1, measured landing ADR 0265)
 
 ```
 xs = []
@@ -6033,6 +6033,48 @@ The way out is small and already built: an assignment whose value is arithmetic 
 slot stores the pair the printer reads — `_n` and `_n_tag`, the tagged-variable shape the print door and
 `arithOperandPair` already handle — and the name carries the tag the expression produced. The gate is the
 same proof; nothing about which programs may take the road changes.
+
+**Closed 2026-10-04 by ADR 0266**, which is exactly that: the assignment asks the print dispatch's own
+question (`arithWouldRefuse`), calls the same door (`taggedArithPair`), and hands the answer to the same
+binder (`bindTaggedVar`) that the dict value, the list element and the slot-under-a-slot already use. The
+compiled leg prints `14`; the probe left the ledger for `conformanceStandalone()`; the IR shows the pair
+being written — `%t45 = call i32 @rt_num_arith(...)` then `store i32 %t50, i32* %_n` and
+`store i32 %t51, i32* %_n_tag` — and `print(n)` loads both. Two things the row did not predict:
+
+- A name whose slot the compiler had already settled as a `double` cannot take the pair (the store is an
+  `i32`, the slot is a `double*`, and `llc` is the referee), so the road declines there and the program
+  keeps its old exit-1 refusal. That is **Gap R.98**'s word, named in ADR 0266's decision rather than
+  papered over with a bitcast.
+- One statement further, `print(n + 1)` on the name just bound still refuses, and the message that
+  refuses it claimed the name "comes from a loop over a mixed list" in a program with no loop. The wrong
+  sentence is fixed with the row (one message, naming the state); the refusal itself is the new row
+  **Gap R.140** below, because the interpreter answers `15` where the compiled leg exits 1.
+
+### Gap R.140 — the answer bound to a name cannot itself be used as a number (OPEN, owner L11.1, measured landing ADR 0266)
+
+```
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n + 1)      # CPython 15 · --interp 15 · --aot exit 1
+```
+
+The binding is paid by ADR 0266 and `print(n)` prints `14` on all three engines; one operator later the
+same name is refused. The reason is the same wall the loop variable over a mixed list has always hit: the
+numeric road reads a `Name` and asks it for one `i32` of a statically settled kind, and a name bound from
+the pair road has a value slot that means nothing without its tag. `value()` answers such a name with
+`mixedTaggedVarErr` — the same refusal `for x in [1, "a"]: print(x + 1)` has always raised, and the shape
+`pkg/lang/mixed_list_test.go` pins.
+
+It is filed rather than fixed here for the reason ADR 0266 records in its rejected alternatives: opening
+the numeric road to a tagged operand is the same change as opening it to a *loop* variable used as a
+number, which is a bigger claim (its gate, its float word, its per-kind raises, and the loop binding's
+own missing pair — **Gap R.130** — all have to be answered together) and is not this row's Definition of
+Done. What this commit did fix is the sentence: it no longer blames a loop for a binding.
+
+Pinned as `programs/probe_tagged_answer_used_as_a_number` with each leg's answer written into the ledger
+(`--interp` `15`, `--aot` the exit-1 refusal), and in `TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest`
+as the second refusal row, so the day the road opens both pins fail and the row has to be retired.
 
 ### Gap R.139 — the same slot read as an argument is refused (OPEN, owner L11.1, measured landing ADR 0265)
 

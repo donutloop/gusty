@@ -14930,6 +14930,24 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					return nil
 				}
 			}
+			// `n = xs[0][0] * 2` — arithmetic over a slot whose kind the run time describes, bound to a
+			// name instead of printed straight away. The arithmetic itself has been answered since ADR
+			// 0265 wherever the print dispatch reached it, and one statement earlier the same expression
+			// spent exit 1 on `index cannot reach into xs's slots`: the pair road was opened at the
+			// printer, and an ordinary numeric binding never asks for a tag (roadmap Gap R.138, ADR 0266).
+			// The binding is where the pair belongs — the name carries the tag its own expression
+			// produced, in the tagged-variable shape the print door, `arithOperandPair` and every
+			// comparison already read. Same gate as the print road (`arithWouldRefuse`), so no program
+			// that was answered before is rerouted through here, and a double slot is left alone: the
+			// store below writes an i32, and the pair has no word to put a double in yet (Gap R.98).
+			if g.arithWouldRefuse(n.Value) && !(g.allocd[nm.Value] && g.floatVars[nm.Value]) {
+				if val, tg, okPair, perr := g.taggedArithPair(b, n.Value); perr != nil {
+					return perr
+				} else if okPair {
+					g.bindTaggedVar(b, nm.Value, val, tg)
+					return nil
+				}
+			}
 			if lit, ok := n.Value.(*ListLit); ok {
 				g.heapUsed = true
 				g.heapSeq++

@@ -1570,11 +1570,14 @@ func mixedReadErr(what string) error {
 	return fmt.Errorf("codegen: a compiled %s holds elements of more than one kind, so one element is a (value, tag) pair; print(xs[i]), v = xs[i] and — since ADR 0249 — a numeric use whose result kind the compiler can settle all work because the tag travels with them, but this context needs a single static kind (roadmap L11.1, Gap R.82)", what)
 }
 
-// mixedTaggedVarErr is what a loop variable from a mixed list reports when the program
-// wants a number from it: printing dispatches on the tag, but arithmetic and calls have no
-// tag to carry (roadmap L11.1, ADR 0185).
+// mixedTaggedVarErr is what a binding that travels with a tag reports when the program wants a
+// number out of it: printing dispatches on the tag, but arithmetic and calls have no word to carry
+// the pair in (roadmap L11.1, ADR 0185, ADR 0266). The binding that puts a name in this state is not
+// always a loop — a slot read, an element of a mixed container and an arithmetic answer the run time
+// described bind the same pair — so the sentence names the state rather than one origin, which is the
+// Gap R.38 rule applied to the origin this file's own door newly created.
 func mixedTaggedVarErr(name string) error {
-	return fmt.Errorf("codegen: %s comes from a loop over a mixed list; print(%s) works, but using it as a number needs a tagged value (roadmap L11.1)", name, name)
+	return fmt.Errorf("codegen: %s travels with a tag — a loop over a mixed list, a slot read or an answer the run time described bound it as a (value, tag) pair — print(%s) works, but using it as a number needs a tagged value (roadmap L11.1)", name, name)
 }
 
 // mixedTaggedElemErr names the element that cannot be tagged, and why refusing is the only
@@ -2614,6 +2617,11 @@ func (g *irGen) bindTaggedVar(b *strings.Builder, name, val, tag string) {
 	if g.floatVars != nil {
 		delete(g.floatVars, name)
 	}
+	// A name that used to render as a bool renders now by the tag it was just handed: the latest
+	// binding decides (ADR 0172's rule, carried to bools by ADR 0257), and the shapes that bind a
+	// tagged pair — a dict value, a list element, a slot under a slot, an arithmetic answer — must
+	// forget together or the print door ends up asking two masters.
+	delete(g.boolVars, name)
 	if !g.allocd[name] {
 		b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+name))
 		g.allocd[name] = true

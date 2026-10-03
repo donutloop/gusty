@@ -226,7 +226,10 @@ reason the module could not be written at all — the pair goes to the target, w
 and answers a pair back, so the tag that decides `8` from `8.0` is the one the object carries. `+` and `*`
 take that road only under a program-wide proof that the slots hold numbers, because CPython *answers*
 `"a" + "b"` and `[1] * 2` and this backend builds neither from a slot (`Gap R.82`); where the proof is
-absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.137`–`R.139`).
+absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.137`, `R.139`,
+`R.140`). The answer need not be printed to keep its kind: `n = xs[0][0] * 2` then `print(n)` prints `14`
+compiled as it does interpreted, because the **binding** stores the pair rather than a bare word, and the
+name is tagged by the arithmetic that produced it (`Gap R.138`, ADR 0266).
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a

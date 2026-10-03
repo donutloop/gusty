@@ -1,0 +1,9 @@
+# probe_tagged_answer_used_as_a_number.gy — one statement past the paid row. `n = xs[0][0] * 2` binds the
+# (payload, tag) pair the print door reads and `print(n)` answers 14 on all three engines (Gap R.138, ADR
+# 0266); the statement here uses the bound answer *as a number*, and the ordinary numeric road asks the
+# name for a static kind the binding never claimed to give it. CPython and the interpreted leg print 15;
+# the compiled leg refuses to build it (roadmap Gap R.140, measured landing ADR 0266).
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n + 1)

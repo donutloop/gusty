@@ -346,17 +346,40 @@
       "case": {
         "id": "programs/numeric_slot_arith",
         "name": "numeric_slot_arith.gy",
-        "source": "# numeric_slot_arith.gy — the number use of a slot whose kind only the run time can describe\n# (roadmap L11.1's last clause, ADR 0265).\n#\n# Before this door the three shapes below were a compile-time refusal on the compiled leg — \"cannot\n# reach into xs's slots\" — because the compiler wanted to settle the answer's kind (`int` or `float`)\n# before writing the module, and the kind lives in the object. What the pair (payload, tag) can now do\n# is arithmetic: the answer's kind travels with the answer.\nxs = []\nxs.append([7, 8])\nprint(xs[0][0] + 1)\nprint(xs[0][1] - 3)\nprint(-xs[0][0])\nprint(xs[0][0] + xs[0][1])\nys = []\nys.append([7.5, 8])\nprint(ys[0][0] * 2)\nprint(ys[0][0] + 1)\nd = {}\nd[\"k\"] = 40\nprint(d[\"k\"] + 2)\n",
+        "source": "# numeric_slot_arith.gy — the number use of a slot whose kind only the run time can describe\n# (roadmap L11.1's last clause, ADR 0265).\n#\n# Before this door the shapes below were a compile-time refusal on the compiled leg — \"cannot\n# reach into xs's slots\" — because the compiler wanted to settle the answer's kind (`int` or `float`)\n# before writing the module, and the kind lives in the object. What the pair (payload, tag) can now do\n# is arithmetic: the answer's kind travels with the answer.\n#\n# The last two pairs bind that answer to a name before printing it, which is the same pair one\n# statement further along: the name carries the tag its own expression produced, so `print(answer)`\n# dispatches on the tag rather than on a kind the compiler guessed (roadmap Gap R.138, ADR 0266).\nxs = []\nxs.append([7, 8])\nprint(xs[0][0] + 1)\nprint(xs[0][1] - 3)\nprint(-xs[0][0])\nprint(xs[0][0] + xs[0][1])\nys = []\nys.append([7.5, 8])\nprint(ys[0][0] * 2)\nprint(ys[0][0] + 1)\nd = {}\nd[\"k\"] = 40\nprint(d[\"k\"] + 2)\nanswer = xs[0][0] * 2\nprint(answer)\ndelta = ys[0][0] - 1\nprint(delta)\n",
         "shared": true,
         "oracle": "match"
       },
       "interp_ok": true,
-      "interp_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n",
+      "interp_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n14\n6.5\n",
       "aot_ok": true,
-      "aot_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n",
+      "aot_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n14\n6.5\n",
       "parity": true,
       "python_ok": true,
-      "python_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n",
+      "python_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n14\n6.5\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_arith_result_bound_to_a_name",
+        "name": "probe_arith_result_bound_to_a_name.gy",
+        "source": "# probe_arith_result_bound_to_a_name.gy — the arithmetic the print position answers, one statement\n# earlier. CPython, the interpreted leg and the compiled leg all print 14: the binding stores the\n# (payload, tag) pair the print door reads, so the name carries the tag its own expression produced\n# (roadmap Gap R.138, ADR 0266 — the row this program was filed against).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "14\n",
+      "aot_ok": true,
+      "aot_stdout": "14\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "14\n",
       "interp_matches_python": true,
       "aot_matches_python": true,
       "oracle": "match",
@@ -2869,44 +2892,44 @@
     },
     {
       "case": {
-        "id": "programs/probe_arith_result_bound_to_a_name",
-        "name": "probe_arith_result_bound_to_a_name.gy",
-        "source": "# probe_arith_result_bound_to_a_name.gy — the same arithmetic the print position answers, one statement\n# earlier. CPython and the interpreted leg print 14; the compiled leg declines to build it (roadmap Gap\n# R.138, measured landing ADR 0265), because the pair road is taken where the print dispatch asks for a\n# value and an ordinary numeric binding does not ask.\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\n",
+        "id": "programs/probe_tagged_answer_used_as_a_number",
+        "name": "probe_tagged_answer_used_as_a_number.gy",
+        "source": "# probe_tagged_answer_used_as_a_number.gy — one statement past the paid row. `n = xs[0][0] * 2` binds the\n# (payload, tag) pair the print door reads and `print(n)` answers 14 on all three engines (Gap R.138, ADR\n# 0266); the statement here uses the bound answer *as a number*, and the ordinary numeric road asks the\n# name for a static kind the binding never claimed to give it. CPython and the interpreted leg print 15;\n# the compiled leg refuses to build it (roadmap Gap R.140, measured landing ADR 0266).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n + 1)\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
-        "ref": "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
+        "reason": "CPython prints 15 and the interpreted leg prints 15; the compiled leg spends exit 1 on the name the arithmetic bound — the binding stores a (payload, tag) pair, and the ordinary numeric road asks that name for one i32 of a static kind, which is the tagged value word one step further along from the row ADR 0266 just paid",
+        "ref": "roadmap Gap R.140 (measured landing ADR 0266); docs/adr/0266, Consequences",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "14\n"
+            "stdout": "15\n"
           },
           {
             "backend": "aot",
-            "error": "index cannot reach into xs's slots",
+            "error": "using it as a number needs a tagged value",
             "missing": true
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "14\n",
+      "interp_stdout": "15\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)",
+      "aot_error": "codegen: n travels with a tag — a loop over a mixed list, a slot read or an answer the run time described bound it as a (value, tag) pair — print(n) works, but using it as a number needs a tagged value (roadmap L11.1)",
       "parity": false,
       "python_ok": true,
-      "python_stdout": "14\n",
+      "python_stdout": "15\n",
       "interp_matches_python": true,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
-      "oracle_ref": "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
+      "oracle_reason": "CPython prints 15 and the interpreted leg prints 15; the compiled leg spends exit 1 on the name the arithmetic bound — the binding stores a (payload, tag) pair, and the ordinary numeric road asks that name for one i32 of a static kind, which is the tagged value word one step further along from the row ADR 0266 just paid",
+      "oracle_ref": "roadmap Gap R.140 (measured landing ADR 0266); docs/adr/0266, Consequences",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)"
+        "compiled leg failed: codegen: n travels with a tag — a loop over a mixed list, a slot read or an answer the run time described bound it as a (value, tag) pair — print(n) works, but using it as a number needs a tagged value (roadmap L11.1)"
       ]
     },
     {
@@ -2916,8 +2939,8 @@
         "source": "# probe_slot_read_handed_to_a_function.gy — a slot read as an argument. CPython and the interpreted leg\n# print 14; the compiled leg declines (roadmap Gap R.139, measured landing ADR 0265): the parameter's kind\n# would have to be settled where the caller cannot see it.\ndef twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\nprint(twice(xs[0][0]))\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
-        "ref": "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
+        "reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the caller has the pair since ADR 0266 paid the binding side, and the parameter is the half that does not take it",
+        "ref": "roadmap Gap R.139 (measured landing ADR 0265, still open after ADR 0266); docs/adr/0265, Consequences",
         "pins": [
           {
             "backend": "interpreter",
@@ -2942,8 +2965,8 @@
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
-      "oracle_ref": "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
+      "oracle_reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the caller has the pair since ADR 0266 paid the binding side, and the parameter is the half that does not take it",
+      "oracle_ref": "roadmap Gap R.139 (measured landing ADR 0265, still open after ADR 0266); docs/adr/0265, Consequences",
       "oracle_rules": [
         "set-order"
       ],
@@ -3272,7 +3295,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix866824181/112/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1822356950/113/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3286,7 +3309,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix866824181/112/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1822356950/113/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4128,11 +4151,11 @@
       ]
     }
   ],
-  "rows": 137,
+  "rows": 138,
   "skipped": 37,
-  "pass": 100,
+  "pass": 101,
   "fail": 0,
-  "oracle_match": 85,
+  "oracle_match": 86,
   "oracle_debt": 30,
   "oracle_not_applicable": 22,
   "oracle_drift": 0

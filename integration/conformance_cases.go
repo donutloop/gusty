@@ -47,8 +47,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// records it and the CLI test runs the twin.
 		"whole_number_builtins",
 		// The number use of a slot whose kind only the run time can describe: a list of lists, and
-		// arithmetic on what comes out of one (roadmap L11.1's last clause, ADR 0265).
+		// arithmetic on what comes out of one (roadmap L11.1's last clause, ADR 0265), and the same
+		// answer bound to a name one statement earlier, which is the pair travelling with it (Gap
+		// R.138, ADR 0266).
 		"numeric_slot_arith",
+		// The arithmetic the print position answered, bound to a name first: the name carries the tag
+		// its own expression produced, so `print(n)` dispatches on it on all three engines. It is here
+		// rather than in conformanceProbes because both backends now print CPython's answer (roadmap
+		// Gap R.138, ADR 0266).
+		"probe_arith_result_bound_to_a_name",
 		"features_a", "features_b",
 		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "match_classpat", "round_ties", "round_ndigits", "wrapping_decorator", "dunder",
 		"async_basic",
@@ -343,9 +350,11 @@ func conformanceProbes() []lang.ConformanceCase {
 		// answers CPython's number, the compiled guard raises a catchable OverflowError naming L12.12
 		// rather than truncate a double through an i32 (ADR 0264's lesson at the new door).
 		"probe_whole_number_slot_beyond_the_int_word",
-		// The arithmetic the print position answers, one statement earlier: bound to a name first. The
-		// reference and the interpreted leg print 14, the compiled leg declines to build it (Gap R.138).
-		"probe_arith_result_bound_to_a_name",
+		// The arithmetic the print position answers, one statement earlier: bound to a name first — paid
+		// by ADR 0266, and the program promoted to conformanceStandalone with it. What stays filed is one
+		// statement further: the bound answer used *as a number*, a tagged binding the arithmetic road
+		// still asks for a static kind from (roadmap Gap R.140, measured landing ADR 0266).
+		"probe_tagged_answer_used_as_a_number",
 		// The same slot read as an argument. Again the reference and the interpreted leg answer, and the
 		// compiled leg declines — a parameter's kind settled where the caller cannot see it (Gap R.139).
 		"probe_slot_read_handed_to_a_function",
@@ -491,13 +500,13 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against both engines",
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}, {Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
-	"programs/probe_arith_result_bound_to_a_name": {oracle: lang.OracleDebt,
-		reason: "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
-		ref:    "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
+	"programs/probe_tagged_answer_used_as_a_number": {oracle: lang.OracleDebt,
+		reason: "CPython prints 15 and the interpreted leg prints 15; the compiled leg spends exit 1 on the name the arithmetic bound — the binding stores a (payload, tag) pair, and the ordinary numeric road asks that name for one i32 of a static kind, which is the tagged value word one step further along from the row ADR 0266 just paid",
+		ref:    "roadmap Gap R.140 (measured landing ADR 0266); docs/adr/0266, Consequences",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "15\n"}, {Backend: "aot", Missing: true, Err: "using it as a number needs a tagged value"}}},
 	"programs/probe_slot_read_handed_to_a_function": {oracle: lang.OracleDebt,
-		reason: "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
-		ref:    "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
+		reason: "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the caller has the pair since ADR 0266 paid the binding side, and the parameter is the half that does not take it",
+		ref:    "roadmap Gap R.139 (measured landing ADR 0265, still open after ADR 0266); docs/adr/0265, Consequences",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
 	"programs/probe_negated_text_slot": {oracle: lang.OracleNA,
 		reason: "the reference stops with TypeError: bad operand type for unary -: 'str'; the compiled leg names the kind the object carries, and the interpreted leg answers -281474976710659 — a number, from a text, at exit 0. Pinning the split rather than averaging it is the rule (Gap R.37); the interpreted half is Gap R.137",

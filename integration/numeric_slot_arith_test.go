@@ -65,6 +65,28 @@ func TestTheNumberUseOfARunTimeSlotAnswersLikeTheReferenceAtTheCLI(t *testing.T)
 			"xs = []\nxs.append([[7, 8]])\nprint(xs[0][0][1] - 1)\n", "7\n"},
 		{"true division keeps its own door",
 			"xs = []\nxs.append([7, 8])\nprint(xs[0][0] / 2)\n", "3.5\n"},
+		{
+			// The same arithmetic bound to a name before it is printed. The road was opened at the printer
+			// and stopped one statement short of it; the binding stores the pair, so the name carries the
+			// tag its own expression produced (roadmap Gap R.138, ADR 0266).
+			"the answer bound to a name first",
+			"xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\n", "14\n"},
+		{
+			// And the bound answer keeps the kind the slot gave it — a float stays a float through the
+			// name, which is the whole point of carrying the tag with the payload.
+			"the float answer bound to a name keeps the float",
+			"xs = []\nxs.append([7.5, 8])\nm = xs[0][0] * 2\nprint(m)\n", "15.0\n"},
+		{"the negation bound to a name",
+			"xs = []\nxs.append([7, 8])\nk = -xs[0][0]\nprint(k)\n", "-7\n"},
+		{"two slots summed into a name",
+			"xs = []\nxs.append([7, 8])\nt = xs[0][0] + xs[0][1]\nprint(t)\n", "15\n"},
+		{"a dict value bound to a name",
+			"d = {}\nd[\"k\"] = 40\nn = d[\"k\"] + 2\nprint(n)\n", "42\n"},
+		{
+			// A name bound twice — a plain number first, the run-time answer second — takes the second
+			// binding's kind, the way every other tracked binding in this backend does (ADR 0172).
+			"a name rebound from a plain number to a run-time answer",
+			"xs = []\nxs.append([7, 8])\nn = 0\nn = xs[0][0] * 2\nprint(n)\n", "14\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -212,7 +234,7 @@ func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the registered corpus file is missing: %v", err)
 	}
-	want := "8\n5\n-7\n15\n15.0\n8.5\n42\n"
+	want := "8\n5\n-7\n15\n15.0\n8.5\n42\n14\n6.5\n"
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "numeric_slot_arith.gy", string(src))
 	if py, ok := cpythonPlainOut(t, dir, string(src)); !ok || py != want {
@@ -230,21 +252,24 @@ func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 }
 
 // TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest is the door's edge, written down rather than
-// hoped away. The pair road is taken where the print dispatch asks for a value; the same expression bound
-// to a name, or handed to a function, is still the ordinary numeric road, which refuses the slot it
-// cannot see into. Both are exit 1 with the missing half named — the interpreter answers the reference in
-// each case, so each is a filed row (roadmap Gaps R.138 and R.139), not a parity claim.
+// hoped away. The pair road is taken where the print dispatch asks for a value *and* where a name is
+// bound to one — ADR 0266 paid the binding, and its row answers in the parity table above. What the
+// ordinary numeric road still refuses is the pair handed across a call, and the pair used as a number.
+// Both are exit 1 with the missing half named — the interpreter answers the reference in each case, so
+// each is a filed row (roadmap Gaps R.139 and R.140), not a parity claim.
 func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{
-			"the answer bound to a name first",
-			"xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\n",
-			"cannot reach into",
-		},
 		{
 			"the answer handed to a function",
 			"def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\nprint(twice(xs[0][0]))\n",
 			"cannot reach into",
+		},
+		{
+			// The name the pair was bound to, used as a number: the value slot means nothing without its
+			// tag, and this context has no word to carry the pair in (Gap R.140).
+			"the bound name used as a number",
+			"xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n + 1)\n",
+			"using it as a number needs a tagged value",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

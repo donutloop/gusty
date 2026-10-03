@@ -2010,11 +2010,32 @@ compiled 32-bit `int` word raises a catchable `OverflowError` naming `roadmap L1
 through the conversion into a silent negative; the interpreted leg, whose ints are 64-bit, answers the
 number, and the split is recorded rather than averaged.
 
+The answer does not have to be printed straight away. **Binding** it to a name is the same pair one
+statement further along — the name stores the payload *and* the tag its own expression produced, in the
+tagged-variable shape `print` already dispatches on — so the kind stays a fact about the value rather than
+a guess the compiler makes at the store (`roadmap Gap R.138`, `ADR 0266`):
+
+```python
+xs = []
+xs.append([7, 8])
+answer = xs[0][0] * 2
+print(answer)               # 14   — the name carries the tag the arithmetic answered with
+ys = []
+ys.append([7.5, 8])
+delta = ys[0][0] - 1
+print(delta)                # 6.5  — a float answer stays a float through the name
+```
+
+What the name cannot yet do is be used **as a number** itself (`print(answer + 1)`) — the same missing word
+one step further on (`Gap R.140`) — and a name whose slot the compiler already settled as a `double` keeps
+that road, because the pair has no double-sized word to travel in yet (`Gap R.98`).
+
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), a tagged element whose kind only the run time can tell used as a number by a road this
-backend does not open there — a loop variable over a mixed list, an arithmetic result **bound to a name**
-(`n = xs[0][0] * 2` then `print(n)`, Gap R.138) or **handed to a function** (`twice(xs[0][0])`, Gap R.139),
+backend does not open there — a loop variable over a mixed list, the arithmetic answer bound to a name
+**used as a number** (`print(answer + 1)`, Gap R.140) or the slot read **handed to a function**
+(`twice(xs[0][0])`, Gap R.139),
 **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
 CPython raises — one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a

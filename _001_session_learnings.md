@@ -6467,3 +6467,44 @@ taken. And the door turns out to open in the print position only: the same arith
 (`Gap R.138`) or handed to a function (`Gap R.139`) is still the refusal. All three are rows with their exact
 per-engine numbers, filed before the commit that found them, because a half-lift that is written down is a
 half-lift and one that is not is a surprise.
+
+## The pair has to survive the statement after the print (ADR 0266, roadmap Gap R.138)
+
+**A door opened at one caller is a half-lift, and the ledger is what makes it visible.** ADR 0265 opened the
+tagged arithmetic road where the print dispatch asks for a value, and filed the fact that a binding did not
+take it. This cycle went to collect that row: `n = xs[0][0] * 2` then `print(n)` refused with
+`index cannot reach into xs's slots` while `print(xs[0][0] * 2)` answered `14`. The fix was not new machinery
+— it was calling the door that already existed (`arithWouldRefuse` to ask whether the ordinary road would have
+refused, `taggedArithPair` to compute the pair, `bindTaggedVar` to store it) from the second caller that
+needed it. Two callers, one gate, one binder: the gate did not widen by a line, which is the only reason the
+landing could be trusted not to reroute a program that was already answered.
+
+**Write the store at the binder, never at the call site.** `bindTaggedVar` exists because four shapes — a dict
+value, a list element, a slot under a slot, and now an arithmetic answer — bind the same pair, and it is the
+one place that frees the old heap binding, clears the GC root, forgets the stale kind notes, allocates both
+slots once, and marks both bound for the definite-assignment question. The fast version (`g.taggedVars[n] =
+true`, two stores) skips exactly the two things that bite weeks later: the root that keeps a container alive
+and the mark that lets the checker say the name was written. It also put the bool-forget question in front of
+me, and a rule written at one of four callers is a rule that drifts, so the forget moved into the binder.
+
+**A name settled as a `double` is not a name that can hold a pair — and the honest answer is still a
+refusal.** The first version of the road stored the pair unconditionally, and `n = 1.5` earlier in the body
+means `%_n` is a `double*`: an `i32` store through it is the module `llc` rejects, which ADR 0166 counts as
+this compiler's bug rather than the program's. The road now declines that binding, the program keeps the
+refusal it always had, and the missing word is named as Gap R.98's rather than bought with a bitcast. A
+bitcast verifies. It also reads a tag out of a bit pattern, prints a plausible number, and joins the row of
+"exit 0, wrong answer" bugs that are the most expensive kind this project has.
+
+**Fixing a row's neighbour often means fixing a sentence.** One statement past the paid binding,
+`print(n + 1)` still refuses — that is Gap R.140, measured and pinned. But the message that refuses it said
+`n comes from a loop over a mixed list`, in a program with no loop, because the tagged-variable state gained
+an origin the message had been written before. Gap R.38 is filed as "a refusal message claims something false
+about the other backend"; the same failure one level closer to home is a message that claims something false
+about *this* backend, and it reaches the same page. One message now, naming the state and listing the ways it
+arises, with the pinned substring kept so the old contract still holds.
+
+**Measure the corpus, don't recite it.** Updating the roadmap snapshot gave three stale numbers — the artifact
+says 138 matrix rows, 42 registered probe/merged programs, 258 ADRs, and the snapshot said 127 / 29 / 255.
+The lines are labelled "measured, not remembered" and are only that if someone runs the measurement; the
+counting is four commands, and a snapshot that has drifted is worse than one that is missing, because it is
+read as truth.
