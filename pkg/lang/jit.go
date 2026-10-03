@@ -115,6 +115,7 @@ type obj struct {
 	dvals  []int64          // dict values parallel to elems keys (kind=dict)
 	sval   string           // string value (kind=str)
 	fval   float64          // float value (kind=float)
+	bval   int64            // bool payload, 0 or 1 (kind=bool) — the 0/1 a verdict was made from
 	doc    string           // __doc__ string (def/class/closure objects)
 	args   []int64          // bound arg values for coroutine
 	result int64            // memoized coroutine result (0 = not yet run)
@@ -208,6 +209,8 @@ func (e *Evaluator) truthy(v int64) bool {
 		switch o.kind {
 		case "float":
 			return o.fval != 0
+		case "bool":
+			return o.bval != 0
 		case "str":
 			return o.sval != ""
 		case "list", "set", "dict":
@@ -282,13 +285,17 @@ func (e *Evaluator) storeIndex(ix *Index, val int64) error {
 	}
 	switch o.kind {
 	case "dict":
+		// Both halves of the entry are slot values: d[True] = 1 and d[1] = True have to be found
+		// and printed as what they are, and the key of an assignment is an expression the
+		// interpreter can still read (Gap R.112, ADR 0259).
+		key := e.slotVal(ix.Idx, idx)
 		for i, k := range o.elems {
 			if e.dictKeyEq(k, idx) {
 				o.dvals[i] = val
 				return nil
 			}
 		}
-		o.elems = append(o.elems, idx)
+		o.elems = append(o.elems, key)
 		o.dvals = append(o.dvals, val)
 		return nil
 	case "list":
@@ -454,6 +461,53 @@ func (e *Evaluator) allocFloat(val float64) int64 {
 	return id
 }
 
+// allocBool allocates a boxed bool: the 0/1 a verdict was made from, plus the fact that it is a
+// verdict. A bool is a number to this interpreter — True + 1 is 2, [True] == [1] is True, 1 in
+// {True} is True — and every one of those questions is answered by the payload. The box exists
+// for the one question the payload cannot answer: what to print. Inside a container slot there is
+// no expression left to ask, which is why [True] printed [1] until a slot could say bool itself
+// (roadmap Gap R.112, ADR 0259). It is the shape a float already has: a payload the read sites
+// unbox, and a kind that decides the rendering.
+func (e *Evaluator) allocBool(val int64) int64 {
+	id := e.allocObj("bool")
+	e.heap[id].bval = val
+	return id
+}
+
+// boolOf reads a boxed bool's payload, mirroring floatOf.
+func (e *Evaluator) boolOf(id int64) (int64, bool) {
+	if o, ok := e.heap[id]; ok && o.kind == "bool" {
+		return o.bval, true
+	}
+	return 0, false
+}
+
+// unboxBool answers "what number is this?" on behalf of every numeric, ordering and equality path
+// in the interpreter: a bool is that number, anything else is itself. A float box needed the same
+// treatment and got it per site; a bool box meets this one line at each entry point, because the
+// two differ only in which rendering Repr chooses.
+func (e *Evaluator) unboxBool(v int64) int64 {
+	if b, ok := e.boolOf(v); ok {
+		return b
+	}
+	return v
+}
+
+// slotVal is what goes INTO a container slot, as distinct from what an expression evaluates to. A
+// bool is stored boxed, because a container is read back long after the expression that produced
+// an element is out of scope: ADR 0257's print rule asks the AST, and a slot has no AST. Everything
+// else is stored as it arrived — a float is already a box, an int already says its own number
+// (roadmap Gap R.112, ADR 0259).
+func (e *Evaluator) slotVal(el Expr, v int64) int64 {
+	if e.isHandle(v) {
+		return v
+	}
+	if e.IsBoolExpr(el) {
+		return e.allocBool(v)
+	}
+	return v
+}
+
 // allocExn allocates an exception object of the given class with a message.
 // kind="exn", class=type name, sval=message.
 func (e *Evaluator) allocExn(exnType, msg string) int64 {
@@ -550,6 +604,13 @@ func (e *Evaluator) Repr(id int64) string {
 			return o.sval
 		case "float":
 			return pyFloatRepr(o.fval)
+		case "bool":
+			// The name and not the number — and unquoted: Python puts a bool in no one's quotes,
+			// inside a container included. reprNested's default lands here (Gap R.112).
+			if o.bval != 0 {
+				return "True"
+			}
+			return "False"
 		case "list":
 			parts := make([]string, 0, len(o.elems))
 			for _, el := range o.elems {
@@ -604,6 +665,10 @@ func (e *Evaluator) typeOfVal(val int64) *Type {
 			return TNone()
 		case "float":
 			return TFlt()
+		case "bool":
+			// A bool read out of a container knows its own type now, and so does --json:
+			// "type": "bool" for xs[0] of [True] is what CPython's type() answers (Gap R.112).
+			return TBool()
 		case "str":
 			return TStr()
 		case "list":
@@ -1472,7 +1537,9 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 			// the value was thrown away — the statement did nothing, silently, on both
 			// backends.
 			if ix, ok := s.Target.(*Index); ok {
-				if err := e.storeIndex(ix, v); err != nil {
+				// The right-hand side's expression still says whether this slot is a verdict, and
+				// it is the last place that does: xs[0] = True / d["k"] = 1 == 1 (Gap R.112, ADR 0259).
+				if err := e.storeIndex(ix, e.slotVal(s.Value, v)); err != nil {
 					return 0, err
 				}
 				last = v
@@ -1767,7 +1834,9 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			o.elems = append(o.elems, ev)
+			// The element goes in as what a slot can say back. The AST is still in scope here,
+			// and this is the last place in the interpreter where it will be (Gap R.112, ADR 0259).
+			o.elems = append(o.elems, e.slotVal(el, ev))
 		}
 		return h, nil
 	case *Tuple:
@@ -1778,7 +1847,9 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			o.elems = append(o.elems, ev)
+			// The element goes in as what a slot can say back. The AST is still in scope here,
+			// and this is the last place in the interpreter where it will be (Gap R.112, ADR 0259).
+			o.elems = append(o.elems, e.slotVal(el, ev))
 		}
 		return h, nil
 	case *CondExpr:
@@ -1931,8 +2002,8 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			o.elems = append(o.elems, kv)
-			o.dvals = append(o.dvals, vv)
+			o.dvals = append(o.dvals, e.slotVal(n.Vals[i], vv))
+			o.elems = append(o.elems, e.slotVal(k, kv))
 		}
 		return h, nil
 	case *SetLit:
@@ -1943,9 +2014,13 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
+			v = e.slotVal(el, v)
 			found := false
 			for _, x := range o.elems {
-				if x == v {
+				// Members are compared as values, not as words: {True, 1} is one member in
+				// Python, and the first spelling inserted is the one the set keeps and prints
+				// — which is eqVal's question, not `==` on two handles (Gap R.112, ADR 0259).
+				if e.eqVal(x, v) {
 					found = true
 					break
 				}
@@ -2040,15 +2115,19 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			ro.elems = append(ro.elems, v)
+			// A comprehension builds an ordinary container, so its elements are ordinary slot
+			// values: [x for x in [True]] prints [True], and the element expression is the only
+			// thing left that can say so (Gap R.112, ADR 0259).
+			ro.elems = append(ro.elems, e.slotVal(c.Elems[0], v))
 		case CompSet:
 			v, err := e.eval(c.Elems[0])
 			if err != nil {
 				return 0, err
 			}
+			v = e.slotVal(c.Elems[0], v)
 			dup := false
 			for _, x := range ro.elems {
-				if x == v {
+				if e.eqVal(x, v) {
 					dup = true
 					break
 				}
@@ -2065,8 +2144,8 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			ro.elems = append(ro.elems, k)
-			ro.dvals = append(ro.dvals, v)
+			ro.elems = append(ro.elems, e.slotVal(c.Keys[0], k))
+			ro.dvals = append(ro.dvals, e.slotVal(c.Vals[0], v))
 		}
 	}
 	return rh, nil
@@ -2113,6 +2192,10 @@ func (e *Evaluator) evalGen(g *Generator) (int64, error) {
 // element-wise, and handle identity for everything else. Identity is `is`; `==` on a
 // container is not (ADR 0189).
 func (e *Evaluator) eqVal(l, r int64) bool {
+	// A bool is the number it behaves like, before any of the rules below look at it: True == 1,
+	// [True] == [1], True in [1], and {True, 1} dedups — all decided by the payload the box
+	// carries (roadmap Gap R.112, ADR 0259).
+	l, r = e.unboxBool(l), e.unboxBool(r)
 	if l == r {
 		// The same handle is equal to itself under every rule below: an immediate is the same
 		// number, an interned string is the same text, a container is the same container.
@@ -2362,6 +2445,16 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 	// The gate decides whether this operator may be applied to *these* values at all
 	// (ADR 0215). It sits after dunder dispatch, so an operand class that defines the
 	// operation still performs it, and before every arithmetic path.
+	// A bool operand of an *arithmetic* operator is the number it behaves like — `True + 1` is 2 and
+	// `xs[0] * 3` over a bool slot is 3 — so the box is opened before the gate that guards arithmetic
+	// looks at the operand (roadmap Gap R.112, ADR 0259). It sits after dunder dispatch, so an operand
+	// class that overloads the operator still performs it, and it deliberately excludes the comparison
+	// operators: an ordering against a text has to reach the gate still wearing the bool, because the
+	// TypeError it raises names 'bool' and the compiled backend already says so.
+	switch n.Op {
+	case "+", "-", "*", "/", "//", "%", "**":
+		l, r = e.unboxBool(l), e.unboxBool(r)
+	}
 	if err := e.checkBinOp(n.Op, l, r); err != nil {
 		return 0, err
 	}
@@ -3376,7 +3469,9 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 		if err != nil {
 			return 0, err
 		}
-		o.elems = append(o.elems, v)
+		// The argument's own expression decides whether the slot says bool: xs.append(True) and
+		// xs.append(1 == 1) are both verdicts, and xs.append(n) is not (Gap R.111/R.112, ADR 0259).
+		o.elems = append(o.elems, e.slotVal(args[0], v))
 		return recv, nil
 	case "pop":
 		// l.pop() removes and returns the last element; l.pop(i) removes and returns
@@ -3462,14 +3557,21 @@ func (e *Evaluator) compareElems(a, b int64) (int, error) {
 // max's asks `>`; sharing one comparator while always printing `<` told the reader that min had
 // failed when the program had called max (roadmap Gap R.104).
 func (e *Evaluator) compareOrder(a, b int64, op string) (int, error) {
+	// A bool orders as its number: min([True, 0]), sorted([True, False]) and `True < 1` are
+	// numeric questions, and the box exists only for the rendering (Gap R.112, ADR 0259).
+	// The kinds the refusal names are read first, from what the program actually wrote: CPython
+	// says 'bool' for `xs[0] > "a"` of a bool slot, and the compiled backend already does — the
+	// two engines may disagree about an answer, not about which word to print in an error.
+	aKind, bKind := e.operandKind(a), e.operandKind(b)
+	a, b = e.unboxBool(a), e.unboxBool(b)
 	af, aIsFloat := e.floatOf(a)
 	bf, bIsFloat := e.floatOf(b)
 	if aIsFloat || bIsFloat {
 		if !aIsFloat && e.isHandle(a) {
-			return 0, unsupportedCompare(op, e.operandKind(a), e.operandKind(b))
+			return 0, unsupportedCompare(op, aKind, bKind)
 		}
 		if !bIsFloat && e.isHandle(b) {
-			return 0, unsupportedCompare(op, e.operandKind(a), e.operandKind(b))
+			return 0, unsupportedCompare(op, aKind, bKind)
 		}
 		if !aIsFloat {
 			af = float64(a)
@@ -3493,7 +3595,7 @@ func (e *Evaluator) compareOrder(a, b int64, op string) (int, error) {
 		return strings.Compare(ao.sval, bo.sval), nil
 	}
 	if aIsObj || bIsObj {
-		return 0, unsupportedCompare(op, e.operandKind(a), e.operandKind(b))
+		return 0, unsupportedCompare(op, aKind, bKind)
 	}
 	switch {
 	case a < b:
@@ -3540,8 +3642,11 @@ func (e *Evaluator) callSetMethod(recv int64, name string, args []Expr) (int64, 
 		if err != nil {
 			return 0, err
 		}
+		v = e.slotVal(args[0], v)
 		for _, x := range o.elems {
-			if x == v {
+			// Value equality, so s.add(True) on a set holding 1 is a no-op like Python's, and the
+			// member already there keeps the spelling it arrived with (Gap R.112, ADR 0259).
+			if e.eqVal(x, v) {
 				return recv, nil // sets are a set: adding twice is a no-op
 			}
 		}
@@ -3576,6 +3681,9 @@ func (e *Evaluator) callSetMethod(recv int64, name string, args []Expr) (int64, 
 // return boxed lists of the keys/values in insertion order.
 // dictKeyEq reports whether two dict keys compare equal by content.
 func (e *Evaluator) dictKeyEq(k, idx int64) bool {
+	// {1: "a"} answers d[True] and {True: "a"} answers d[1], because a bool key is a number key
+	// to Python (roadmap Gap R.112, ADR 0259).
+	k, idx = e.unboxBool(k), e.unboxBool(idx)
 	ko, kObj := e.heap[k]
 	io, iObj := e.heap[idx]
 	if kObj && ko.kind == "str" {
@@ -3603,6 +3711,9 @@ func (e *Evaluator) dictKeyEq(k, idx int64) bool {
 
 // lessVal reports whether boxed value a is less than b (ints by value, strings by content).
 func (e *Evaluator) lessVal(a, b int64) bool {
+	// False sorts as 0 and True as 1 — the order CPython's sort gives a list of bools — and the
+	// box is not a number, so it is asked for its payload first (Gap R.112, ADR 0259).
+	a, b = e.unboxBool(a), e.unboxBool(b)
 	ao, ok := e.heap[a]
 	if ok && ao.kind == "str" {
 		bo, ok2 := e.heap[b]
@@ -4358,6 +4469,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			anyFloat := false
 			for _, el := range so.elems {
 				if o, isObj := e.heap[el]; isObj {
+					if o.kind == "bool" {
+						// sum([True, 1]) is 2 in Python: a bool adds as its number (Gap R.112).
+						itotal += o.bval
+						continue
+					}
 					if o.kind == "float" {
 						ftotal += o.fval
 						anyFloat = true

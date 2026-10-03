@@ -83,11 +83,23 @@ func TestTaggedNumericSlotUsesMatchCPython(t *testing.T) {
 		},
 		{
 			// The comparisons are asked in the `1 if ... else 0` spelling rather than printed raw,
-			// because a bool is not a value yet in either backend: `print(xs[i] > 1.0)` answers 1 on
-			// both, which is roadmap L11.1's open "bools are values" step (row 2, probe_bool_value),
-			// not something this feature can settle.
+			// A slot used as a number asks the object the same question the printer asks it, and the
+			// comparison itself is a verdict the front end can name: `print(xs[i] > 1.0)` prints True on
+			// both backends and in CPython (ADR 0257's predicate for the result, ADR 0259's tag for the
+			// operand). The `1 if ... else 0` spelling stays pinned because it is the shape that was
+			// written when a bool still printed as a number.
 			"a_slot_ordered_against_a_number",
 			"xs = [1.5, \"a\"]\ni = 0\nprint(1 if xs[i] > 1.0 else 0)\nprint(1 if xs[i] < 1.0 else 0)\nprint(1 if xs[i] >= 1.5 else 0)\n",
+		},
+		{
+			"a_slot_ordered_against_a_number_prints_the_verdict",
+			"xs = [1.5, 2.5]\ni = 0\nprint(xs[i] > 1.0)\nprint(xs[i] < 1.0)\nprint(xs[i] == 2.5)\n",
+		},
+		{
+			// A container handed to a function, from the refusal list: a literal in a value position is
+			// built as the heap object its slots need, so the body's arithmetic has something to ask.
+			"a_float_slot_handed_to_a_function",
+			"def half(xs):\n    return xs[0] / 2\n\nprint(half([1.5]))\n",
 		},
 		{
 			"a_slot_in_a_condition_decides_a_branch",
@@ -242,12 +254,12 @@ func TestTaggedNumericSlotRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
 			"a_container_the_literal_no_longer_describes",
 			"xs = []\nxs.append(1.5)\nxs.append(\"a\")\ni = 0\nprint(xs[i] + 1)\n",
 		},
-		{
-			// A container handed to a function: the body cannot read the object to learn the kind,
-			// and this backend does not yet let a parameter's container hold a float at all.
-			"a_container_handed_to_a_function",
-			"def half(xs):\n    return xs[0] / 2\n\nprint(half([1.5]))\n",
-		},
+		// `def half(xs): return xs[0] / 2` / `print(half([1.5]))` is not on this list any more: it
+		// answers 0.75 on both backends and in CPython, and moved to the parity table above. The gate
+		// on a literal in a value position asked only literalNeedsHeap — "does a payload not fit an
+		// i32?" — so a float-holding literal fell through to the static global emitter and was refused
+		// there; it now asks ADR 0233's second question too, "can a slot report its own kind?", which
+		// builds the heap object the answer needs (roadmap Gap R.112, ADR 0259).
 		{
 			// Ints here, floats there, both from the same literal: the result's kind is a run-time
 			// question, which is the tagged value word Gap R.82 still owes.

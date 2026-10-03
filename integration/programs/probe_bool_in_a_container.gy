@@ -1,6 +1,51 @@
-# A bool inside a container. The element tag vocabulary that tells a list's element from text or
-# a float has no bool in it, so both backends print the number a bool is stored as: `[1, 1]` and
-# `{'k': 1}` where CPython prints `[True, 1]` and `{'k': True}` (roadmap Gap R.112, filed by ADR
-# 0257 — the print rule landed there; the element tag of the ADR 0184 vocabulary still has to grow).
+# What CPython prints for every shape here (python3, 3.12):
+#
+#   [True, 1]
+#   [True]
+#   [False]
+#   {'k': True}
+#   {True}
+#   [1, 2, True]
+#   True
+#   True
+#   True
+#   2
+#   [True, 'a']
+#   {True: 1}
+#   [True, 1, 1]
+#
+# A container slot is allowed to say `bool`. Before this the shape printed the number it is stored
+# as — `[1, 1]` and `{'k': 1}` — and both backends agreed, which is exactly why no two-backend test
+# ever saw it (roadmap Gap R.112, ADR 0259).
+#
+# The rows come in two families. A *literal* slot (`[True, 1]`, `{"k": True}`) is a `BoolLit` the tag
+# table can see directly; a slot whose verdict comes from an *expression* — the comparison feeding a
+# `list.append`, the call argument, the ternary among strings, the dict key that is a variable holding
+# a comparison — has to be asked of that expression, through the same `IsBoolExpr` the rendering pair
+# asks (ADR 0257). A list comprehension whose element copies the loop variable is the same question
+# one level indirect: `x` says True only if the item it copied does.
+#
+# What a bool is *not* is the other half of the row: `[True] == [1]` answers True and `True + 1` is 2,
+# because the payload underneath the tag is still the number, and the compiled comparison's numeric
+# family is int, float AND bool.
 print([True, 1])
+print([True])
+print([False])
 print({"k": True})
+print({True, 1})
+xs = [1, 2]
+b = 1 == 1
+xs.append(b)
+print(xs)
+print([True] == [1])
+xs2 = [True, 1]
+print(xs2[0])
+if xs2[0]:
+    print(True)
+else:
+    print(False)
+print(True + 1)
+y = 1 == 1
+print([True if y else False, "a"])
+print({y: 1})
+print([x for x in [True, 1, 1]])

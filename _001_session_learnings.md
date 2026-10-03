@@ -6020,3 +6020,69 @@ grepped one is a fact. The matrix normalization also needed a second attempt: my
 from a grep-ism, so zero lines normalized and the diff stayed at 46 noise lines — the fix was to compare
 normalized **whole lines** against HEAD and copy HEAD's line back, which left the artifact's diff at exactly
 the new row plus three counters.
+
+## Cycle: a container slot may say `bool` (ADR 0259, L11.1's element tag for verdicts — Gap R.112 closed; Gaps R.116–R.119 filed)
+
+**Two backends agreeing is not evidence.** `print([True, 1])` printed `[1, 1]` in the interpreter and
+`[1, 1]` compiled, for three cycles, with a green two-backend matrix over it. The CPython leg is the only
+engine in the building that could see it, and nothing had been pointed at the program. Same shape again:
+the interpreter said `'int'` and the compiled backend `'bool'` for the *same* `TypeError` sentence on a
+bool slot — the opposite disagreement, equally invisible to a parity test.
+
+**One vocabulary, asked in one place, is the whole feature.** The tag table has had `TagBool` since ADR
+0182; what was missing was permission in `elemKindTag`, and then the discovery that three predicates —
+`taggableMixedList`, `taggableMixedSet`, `taggableMixedDict` — each carried their own transcription of
+"which tags need the tagged build path". Bool fell through the gap between them, which is why `[True]`
+printed as a number while `{True}` and `{1: True}` were *refused outright* ("either strings or numbers, not
+both", "set literal elements must be constant integers"). All three now ask `slotTagSelfDescribing` through
+one `elemsTaggable`, and a table test asserts all three agree on the same six literals — the drift test for
+the mistake, not for the fix.
+
+**"Does the payload fit?" is the wrong question for a tag.** `value()`'s literal gates asked
+`literalNeedsHeap` alone; a bool's payload fits an `i32` perfectly, which is exactly why the static global
+is the wrong place for it — the word is right and nothing beside it says what it is. The gates ask
+`literalNeedsHeap(n) || g.literalNeedsTags(n)` now, and the same reasoning un-broke a family nobody had
+measured: a float-holding literal in a *value position* was refused ("a compiled container cannot hold a
+float yet") while the identical literal in a binding compiled fine. `def half(xs): return xs[0] / 2` /
+`print(half([1.5]))` answers `0.75` on both engines.
+
+**A landing may not break a green promise.** Tagging `[True, 1]` silently turned
+`xs = [True, 1]` / `i = 0` / `print(xs[i] + 1)` — which printed `2` — into a "this context needs one static
+kind" refusal. That is the worst kind of progress: exit 1 replacing a correct answer. `numericSlotUse` is
+the second door for that read (literal-backed container, every slot int-or-bool → the payload *is* the
+number), and its test asserts both halves: the answer is `2` and the exit code is 0. A float among the slots
+closes the door, because there the payload is a box handle.
+
+**A comprehension's element is the item, not the expression.** `[x for x in [True, 1, 1]]` stayed at
+`[1, 1, 1]` after every literal rule was fixed, because the element *expression* is the loop variable `x`
+and the constant fold re-synthesised each element as an `IntLit`. ADR 0244 had already solved this for
+`None`, `float` and `str` with `foldsToAnInteger` — and `*BoolLit` was still sitting on its "folds to a
+number" arm. Fixed twice over: the fold declines (`compElemCopiesABool` asks the *item*), and the runtime
+builder asks the item for the tag while taking the payload from the slot.
+
+**Refusing beats a wrong answer wearing the right clothes.** With the fold fixed for lists, a set/dict
+comprehension of verdicts would have kept printing `{1}` and `{1: 1}` — the exact defect this ADR closes,
+one kind away. Those three lines now refuse with the missing half named ("needs the tagged set builder,
+which a set comprehension does not have yet"), the interpreter answers all four, and the row is filed as Gap
+R.116 with each engine's answer pinned. Turning a wrong answer into an honest refusal is not a regression
+and the ledger is what makes that claim checkable.
+
+**A fixture that stops being a divergence must move.** Closing R.112 promoted
+`programs/probe_bool_in_a_container.gy` to the parity corpus. Three rows had been pointing at it: the CLI
+exit-code-contract row (exit 6), the oracle "third leg is not a stub" check, and the pair table's divergence
+leg. Each was repointed at `probe_bool_through_a_call` — the shape that *is* still debt — because a contract
+test pinned to a closed debt passes forever without asserting anything. The ledger's own guard caught the
+first attempt at exactly this ("a probe that now matches CPython is a paid debt — promote it and delete its
+row").
+
+**Beware a test harness whose binary path you did not read.** `cmp.py` takes `GUSTY`, defaulting to
+`/tmp/gustyc` — a binary from an earlier cycle. Two rounds of "still broken" measurements were that stale
+binary, and the tell was the Go tests passing while the CLI harness disagreed with itself. `ls -l` on the two
+paths, and the answers flipped from 3 wrong to 33-of-36 right. Measure with the thing you just built.
+
+**Environment, again: the loop harness commits the worktree.** Same `pi-loop.mjs --force-reset` background
+process as last cycle, and this time it *committed and pushed* the working tree as its own author and
+force-reset the tree, deleting an untracked file (a hand-written second ADR for the same feature, which had
+to be recovered from the committed filename). The recovery stands: work in `git worktree add -b <branch>
+/tmp/…  HEAD`, push with `git push origin HEAD:main`, and cite documents by the name they were committed
+under, not the one you drafted.

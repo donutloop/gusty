@@ -205,6 +205,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the compiled backend cannot name are refusals it makes the same way on both halves
 		// (roadmap L11.2, ADR 0258, closing Gap L.2).
 		"probe_render_pair",
+		// A bool stored in a container, three engines on one source: the slot carries a bool tag, so
+		// the list, the dict and the str()/repr() of both print `[True, 1]` and `{'k': True}` like
+		// CPython — and the numeric questions still answer as the number (True + 1, [True] == [1],
+		// d[True]) on every leg (roadmap Gap R.112, ADR 0259; the program left the debt ledger with
+		// that row, which is the promotion rule of ADR 0186).
+		"probe_bool_in_a_container",
 		// The ordering of those same slots, three engines on one source: `<`, `<=`, `>`, `>=` of a slot
 		// whose kind only the object can report, answered as two numbers, two texts, or the `TypeError`
 		// CPython raises naming the kind the slot really holds — with the arms nobody can reach not
@@ -288,12 +294,24 @@ func conformanceProbes() []lang.ConformanceCase {
 		// comparison produced and nothing says it was ever a verdict, so both backends print 1
 		// where CPython prints True (roadmap Gap R.111, filed by ADR 0257).
 		"probe_bool_through_a_call",
-		// A bool stored in a container. The element tag vocabulary has no bool in it — bools are
-		// immediate values the way ints are — so both backends render the number: `[1, 1]` and
-		// `{'k': 1}` where CPython prints `[True, 1]` and `{'k': True}` (roadmap Gap R.112, filed by
-		// ADR 0257, which paid the print rule and left this tag question behind).
-		"probe_bool_in_a_container",
-		"probe_tuple",      // L11.3 — no tuple lowering at all
+		// The verdict an operator *picks* — max/min's chosen candidate — comes back as the 0/1 it was
+		// chosen from: CPython and the interpreter say True and False, the compiled backend 1 and 0.
+		// The `and` row in the same program is parity, because CPython hands back the operand there
+		// (roadmap Gap R.117, measured closing Gap R.112).
+		"probe_bool_chosen_by_an_operator",
+		// A list comprehension tags the slot it copies; a set or dict comprehension still folds to a
+		// compile-time global with no tag table, so those lines refuse rather than print the number
+		// (roadmap Gap R.116, measured closing Gap R.112).
+		"probe_bool_in_a_comprehension",
+		// A dict comprehension that writes the same key twice keeps both entries in the interpreter, so
+		// `len` counts the pair; nothing in the program is a verdict (roadmap Gap R.118).
+		"probe_dict_comprehension_duplicate_key",
+		// An ordering a program cannot ask for — a container slot against a text — inside a ternary:
+		// CPython and the interpreter raise TypeError, the compiled backend folds the condition and
+		// prints the true branch. The int spelling predates this cycle; the bool spelling is what
+		// found it (roadmap Gap R.119).
+		"probe_slot_order_in_a_ternary",
+		"probe_tuple", // L11.3 — no tuple lowering at all
 
 		"probe_mixed_return_value",    // Gap R.22 — returns of differing types share one lowering
 		"probe_builtin_traps_untyped", // Gap R.25 — a trap with no class cannot be caught
@@ -315,7 +333,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// llc rejection that is a compiler bug, all recorded rather than remembered.
 		"probe_comp_runtime_reduce", // L11.7 — sum/min/max over a runtime comprehension
 		"probe_comp_folded_iter",    // L11.2 — iterating a list the compiler folded away
-
 
 		// Pinned by the await/return discipline (ADR 0195): the checker now refuses the
 		// dishonest async programs, so what is left is the honest one that still disagrees.
@@ -451,10 +468,25 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
 		ref:    "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n"}, {Backend: "aot", Stdout: "1\n1\n"}}},
-	"programs/probe_bool_in_a_container": {oracle: lang.OracleDebt,
-		reason: "a bool in a list or dict prints as the number it is stored as on both backends: the element tag vocabulary a container carries has no bool in it, so the printer reads 1 where Python reads True",
-		ref:    "roadmap Gap R.112 (filed by ADR 0257, the bools-are-values cycle)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 1]\n{'k': 1}\n"}, {Backend: "aot", Stdout: "[1, 1]\n{'k': 1}\n"}}},
+	// A bool stored in a container is no longer a probe: it prints CPython's answer on both backends
+	// and lives in conformanceStandalone (roadmap Gap R.112, ADR 0259).
+	"programs/probe_bool_in_a_container": {oracle: lang.OracleMatch},
+	"programs/probe_bool_chosen_by_an_operator": {oracle: lang.OracleDebt,
+		reason: "the candidate a max/min fold returns is the 0/1 it was chosen from, with no tag travelling with it: the compiled leg answers 1 and 0 where CPython and the interpreter answer True and False; `ys[0] and ys[1]` is the row that must not move, because CPython hands back the operand and its number there too",
+		ref:    "roadmap Gap R.117 (measured while closing Gap R.112, ADR 0259)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "True\nFalse\n1\n"}, {Backend: "aot", Stdout: "1\n0\n1\n"}}},
+	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
+		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
+		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n"}, {Backend: "aot", Missing: true, Err: "comprehension of verdicts needs the tagged set builder"}}},
+	"programs/probe_dict_comprehension_duplicate_key": {oracle: lang.OracleDebt,
+		reason: "a dict comprehension that writes the same key twice keeps both entries in the interpreter, so the container holds two slots under one key and len counts the pair; the compiled fold and CPython both replace the value and keep the size",
+		ref:    "roadmap Gap R.118 (measured while closing Gap R.112, ADR 0259)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "{1: 2, 1: 2}\n2\n"}, {Backend: "aot", Stdout: "{1: 2}\n1\n"}}},
+	"programs/probe_slot_order_in_a_ternary": {oracle: lang.OracleNA,
+		reason: "the ordering CPython itself refuses — an int against a text raises TypeError, so there is no third opinion to compare; what is recorded is that the interpreter raises the same sentence and the compiled backend folds the ternary's condition and prints the true branch, measured on HEAD so it is a gap and not a regression from ADR 0259",
+		ref:    "roadmap Gap R.119 (measured while closing Gap R.112, ADR 0259)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "not supported between instances of 'int' and 'str'"}, {Backend: "aot", Stdout: "1\n1\n"}}},
 	"programs/probe_tuple": {oracle: lang.OracleDebt,
 		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
 		ref:    "roadmap L11.3 (tuples are values)",

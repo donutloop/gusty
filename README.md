@@ -290,9 +290,14 @@ every `return` is a verdict (ADR 0254's rule, read from the body) are verdicts, 
 until something that is not an expression rebinds it — `for flag in [1, 2]` prints `1` and `2`, because a loop
 binds elements. A comparison that reached a class's own `__lt__` is not a verdict at all: the program's method
 returned an int, and `print(a < 4)` prints `1` on all three engines. Two shapes stay where a tag has to travel
-rather than be read off an expression, and are filed rather than absorbed: a bool handed to a function prints
-the number it is stored as (Gap R.111), and a bool inside a list or dict prints `[1, 1]` where CPython prints
-`[True, 1]`, the container element's tag vocabulary having no bool to read back (Gap R.112). `--json` names the
+rather than be read off an expression. A bool in a container used to be one of them — `print([True, 1])`
+printed `[1, 1]` on both backends, because the element tag vocabulary had no bool to read back — and is
+paid: the slot now carries a bool tag, the container printer, the set dedup and the ordering sentence all
+read `bool`, and `[True, 1]`, `{'k': True}` and `{True}` come out as CPython writes them while every
+numeric question about the same slot still answers as its number (ADR 0259, closing Gap R.112). What stays
+filed is the shape no tag can reach from the caller's side: a bool handed to a function prints the number it
+is stored as (Gap R.111), and the three comprehension and fold shapes this cycle measured are filed with
+their per-engine answers (Gaps R.116–R.119). `--json` names the
 type `bool`, and `--eval '1 == 1'` echoes `True`.
 
 `str()` and `repr()` are **one pair over one renderer** (ADR 0258, closing Gap L.2). `print`, `str()`
@@ -841,8 +846,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **66 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — for 48 parity cases plus 18 pinned probes. Parity (interpreter ==
+  `conformance-matrix.json`: **116 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — 94 rows asserting parity and 22 recorded without it (the probe and merged
+  rows, which record an answer rather than assert one),
+  the oracle verdict being 80 `match`, 18 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its

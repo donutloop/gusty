@@ -46,7 +46,7 @@ func TestTaggableMixedDictAndSetAskTheSameQuestion(t *testing.T) {
 		{`{"a": 1, "b": [1]}`, true, false}, // a nested value is a handle: the tag says so
 		{`{1, "a"}`, false, true},           // members mix
 		{`{1, "a", None}`, false, true},     // three kinds, all describable
-		{`{1, True}`, false, false},         // a bool is stored as the number it behaves like
+		{`{1, True}`, false, true},          // a bool member has no untagged spelling of its kind (Gap R.112)
 		{`{1, 2}`, false, false},            // one kind is not a mix
 		{`{1, 1.5}`, false, true},           // a float member's payload is a box handle (ADR 0233)
 		{`{1, [1]}`, false, true},           // a nested member is a handle too

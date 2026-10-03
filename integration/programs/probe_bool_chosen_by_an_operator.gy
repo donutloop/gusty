@@ -1,0 +1,20 @@
+# An operator that *chooses* one of its operands hands back a verdict, and the compiled backend prints
+# the number that verdict is stored as while the interpreter prints the verdict (roadmap Gap R.117).
+#
+# What each engine answers today:
+#   --interp  True  False  0
+#   --aot     1     0      0
+#   python3   True  False  0
+#
+# ADR 0259 gave a container slot the right to say `bool`; these three are the places where a bool is
+# *chosen* rather than written, and the rendering follows the chosen operand's static type.
+#
+# `max([True, 0])` returns the slot, whose tag the compiled lowering never carries into the result. The
+# `and` row is the same question: CPython returns the operand itself, so `xs[0] and xs[1]` where both are
+# ints answers the number — the last row is the one that must NOT change, and it is why this probe keeps
+# its three rows together.
+xs = [True, 0]
+print(max([True, 0]))
+print(min([False, 1]))
+ys = [True, 1]
+print(ys[0] and ys[1])

@@ -622,8 +622,9 @@ no `range` (full text) to force a clean re-parse.
 
 Parity — the interpreter and the compiled backend printing the same bytes — is a necessary
 contract, and it is not a sufficient one: two backends that share a bug agree. `print(True)`
-printed `1` on both sides of a green build for a hundred ADRs (ADR 0257 pays that one; the bool **inside** a
-container is still the row above), and so did `len("café") == 5`,
+printed `1` on both sides of a green build for a hundred ADRs (ADR 0257 pays the print rule, ADR 0259
+the container tag — `print([True, 1])` is `[True, 1]` on all three legs now), and so did
+`len("café") == 5`,
 `"abc"[1] == 98`, and a trap where Python answers `3` for `xs[-1]` (L11.4 closed the last of those,
 ADR 0210). The third leg closes that
 hole: **a program is conformant when both backends agree *and* what they print is what
@@ -643,13 +644,34 @@ oracle: match (parity yes)
   rules: set-order
 
 $ gustyc --oracle 'print([True, 1])'; echo $?
-oracle: debt (parity yes)
-  interpreter ok       differs from CPython
-      | [1, 1]
-  aot         ok       differs from CPython
-      | [1, 1]
+oracle: match (parity yes)
+  interpreter ok       matches CPython
+      | [True, 1]
+  aot         ok       matches CPython
+      | [True, 1]
   python      ok       the oracle
       | [True, 1]
+  rules: set-order
+0
+```
+
+A slot that carries a bool tag is answered by the object, which is why both backends and the oracle now
+print the same line (ADR 0259). What the tag still cannot reach is a *boundary*: the same verdict passed
+to a function is a fresh binding the caller's expression does not travel with, and that program is what
+the debt class is for today.
+
+```console
+$ gustyc --oracle 'def show(f):
+>     print(f)
+>
+> show(True)'; echo $?
+oracle: debt (parity yes)
+  interpreter ok       differs from CPython
+      | 1
+  aot         ok       differs from CPython
+      | 1
+  python      ok       the oracle
+      | True
   note: interpreter stdout differs from CPython
   note: compiled stdout differs from CPython
   rules: set-order
@@ -779,6 +801,11 @@ against its own ability to fail).
   answers a question — a bool literal, a comparison, membership or identity test, `not`, `all`/`any`,
   an `and`/`or` of two verdicts, a ternary with verdict arms, a call whose every `return` is one, or a
   name last bound to any of those. `and`/`or` of numbers stay `int`, because Python yields the operand.
+- `--json --eval "xs = [True, 1]\nxs[0]"` → `{"result": "True", "type": "bool", …}` while the very next
+  line, `xs[1]`, reports `"type": "int"`: a slot is asked what it holds, and the element tag answers
+  (ADR 0259). An agent reading a container therefore gets the kind the object carries, not the number
+  the verdict is stored under — and the number is still there for the questions CPython answers with it
+  (`--json --eval "xs = [True, 1]\nxs[0] + 1"` is `{"result": "2", "type": "int", …}`).
 - `--json --eval "repr(\"hi\")"` → `{"result": "'hi'", "type": "str", "backend": "interpreter", "exit": 0}`,
   and `--json --eval "str([1, 2])"` → `{"result": "[1, 2]", "type": "str", …}`. `str()` and `repr()` are
   one pair over one renderer per backend — `print`, `str()` and a container element all ask the same
@@ -1129,10 +1156,13 @@ heap kinds (compiled runtime object headers): list dict set instance (0 = not he
 
 `print(True)` prints `True`, and `--json` reports `"type": "bool"` for it — the verdict is named by
 the expression that produced it, which both backends ask of one shared AST predicate rather than of
-the storage that holds it (ADR 0257). What that rule cannot reach is where a value crosses a binding
-the caller's expression does not travel with: a bool passed to a function prints `1` (Gap R.111) and
-a bool stored in a container prints `1` (Gap R.112), because a slot — a parameter's or a container
-element's — is asked what it holds and its vocabulary still has no bool in it.
+the storage that holds it (ADR 0257). Where the expression is gone — a slot in a container — the slot
+carries the answer itself: an element whose value is a verdict is tagged `bool`, so `print([True, 1])`
+is `[True, 1]`, `print({"k": True})` is `{'k': True}`, `print({True, 1})` is `{True}` and the ordering
+trap names `'bool'`, on both backends (ADR 0259, closing Gap R.112). What neither rule reaches is a
+value crossing a binding the caller's expression does not travel with: **a bool passed to a function
+prints `1`** (Gap R.111), because the parameter is a fresh slot and the tag would have to ride with the
+argument.
 
 What L11.1 has opened since, in the LLVM backend, is element-level tagging: a mixed list
 literal tags each slot, `xs.append(v)` appends payload-and-tag together

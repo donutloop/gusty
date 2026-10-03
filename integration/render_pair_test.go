@@ -123,7 +123,7 @@ func TestJSONReportsThePair(t *testing.T) {
 // job is that question. A program the pair renders correctly is a match (exit 0); a form the pair
 // cannot name yet is still reported, not swallowed.
 func TestPairAgreesWithTheOracle(t *testing.T) {
-	const agreeSrc = "xs = [1, 2]\nprint(str(xs))\nprint(repr(xs))\nprint(str([]))\nprint(repr(\"hi\"))\nprint(str(set()))\nprint(str(None))\nprint(repr(True))\nprint(str(1.5))\n"
+	const agreeSrc = "xs = [1, 2]\nprint(str(xs))\nprint(repr(xs))\nprint(str([]))\nprint(repr(\"hi\"))\nprint(str(set()))\nprint(str(None))\nprint(repr(True))\nprint(str(1.5))\nprint(str([True, 1]))\nprint(repr([True, False]))\nprint(str({\"k\": True}))\n"
 	out, code := cliRunCode(t, "--oracle", agreeSrc)
 	if code == 2 {
 		t.Fatalf("the oracle leg rejected the compiler's own module (ADR 0166): %s", out)
@@ -132,12 +132,14 @@ func TestPairAgreesWithTheOracle(t *testing.T) {
 		t.Fatalf("the oracle called a matching pair program a divergence (exit %d):\n%s", code, out)
 	}
 
-	// A bool inside a container is Gap R.112's, not this row's: the pair renders the container and
-	// the slot answers for the verdict with the number it is stored as. The oracle must still say so.
-	const boolInContainer = "xs = [True, 1]\nprint(str(xs))\n"
-	out, code = cliRunCode(t, "--oracle", boolInContainer)
+	// A bool the program hands to a function is Gap R.111's, not this row's: the pair renders the
+	// argument, and the parameter holds the 1 the caller's verdict was made from because no tag
+	// travels across the call. The oracle must still say so — the shape this row used to pin, a bool
+	// inside a container, is the one ADR 0259 closed, so it now belongs to the agreeing leg above.
+	const boolThroughACall = "def show(f):\n    print(str(f))\n\nshow(True)\n"
+	out, code = cliRunCode(t, "--oracle", boolThroughACall)
 	if code != 6 {
-		t.Errorf("the oracle scored a bool inside a rendered container as %d, want 6 (a divergence, Gap R.112):\n%s", code, out)
+		t.Errorf("the oracle scored a bool through a call as %d, want 6 (a divergence, Gap R.111):\n%s", code, out)
 	}
 }
 

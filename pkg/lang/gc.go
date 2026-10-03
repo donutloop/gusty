@@ -486,7 +486,7 @@ func (e *Evaluator) collect() {
 	freed := 0
 	reclaim := func(id int64, o *obj) bool {
 		switch o.kind {
-		case "list", "dict", "set", "str", "int", "float":
+		case "list", "dict", "set", "str", "int", "float", "bool":
 			delete(e.heap, id)
 			return true
 		}

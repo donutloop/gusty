@@ -5215,7 +5215,7 @@ is the `(payload, tag)` pair arriving with the argument, which is L11.1's tagged
 Pinned twice so it cannot drift quietly: the probe program's row in the oracle ledger carries each leg's exact
 `1\n1\n`, and the unit table pins the same answer with the gap named in the failure text.
 
-### Gap R.112 — a verdict stored in a container prints the number it was stored as (OPEN, measured landing ADR 0257)
+### Gap R.112 — closed by ADR 0259: a verdict stored in a container says `True`
 
 ```gusty
 print([True, 1])        # CPython [True, 1] · both engines [1, 1]
@@ -5249,6 +5249,90 @@ binding, so this is unimplemented surface rather than a regression; it is filed 
 reached for it while asking what `print(0 == None)` should look like inside a `try`, found nothing, and a
 defect that is measured and not written down is the same as one that does not exist. No test yet: the closure
 owes the program above running on three engines, and the test that pins today's parse failure comes with it.
+
+### Gap R.116 — a set or dict comprehension over verdicts refuses (OPEN, measured closing Gap R.112)
+
+```gusty
+print([x for x in [True, 1, 1]])   # [True, 1, 1] on three engines — paid by ADR 0259
+print({True for x in [1]})         # CPython {True} · --interp {True} · --aot refuses, exit 1
+print({1: True for x in [1]})      # CPython {1: True} · --interp {1: True} · --aot refuses, exit 1
+print({True: 1 for x in [1]})      # CPython {True: 1} · --interp {True: 1} · --aot refuses, exit 1
+```
+
+A list comprehension over verdicts was the last shape printing `[1, 1, 1]` after the literal rule was
+fixed, and the reason is that the element *expression* is the loop variable: `x` says nothing about a
+kind, and `comprehensionFolds` re-synthesised every folded element as an `IntLit`. ADR 0244 had already
+drawn this line for `None`, float and text — `foldsToAnInteger` declines them so the runtime builder can
+tag the slot — and `*BoolLit` was still on the declining arm's "folds to a number" side. Two changes
+follow: the fold asks the **item** (`compElemCopiesABool`), and `runtimeCompList` takes the tag from the
+item while the payload still comes from the slot. `[x for x in [True, 1] if x]` is the filtered twin.
+
+The set and the dict cannot take that route yet, because their fold (`foldSetComp`, `foldDictComp`) emits
+`@.set%d`/`@.dict%d` — a compile-time global of payloads with no `@heap_tags` row to write into. Before
+ADR 0259 they answered `{1}`, `{1: 1}` and `{1: 1}`: Gap R.112's defect one container kind away, produced
+by the code that was supposed to fix it. They now decline, and the refusal names the half that is missing
+— `a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet`
+— while the interpreter prints all four lines. A refusal that says what it lacks is a row the next cycle
+can start from; a number in a container that should say `True` is the row we just closed.
+
+### Gap R.117 — the verdict a fold chooses prints its number (OPEN, measured closing Gap R.112)
+
+```gusty
+print(max([True, 0]))     # CPython True · --interp True · --aot 1
+print(min([False, 1]))    # CPython False · --interp False · --aot 0
+ys = [True, 1]
+print(ys[0] and ys[1])    # 1 on all three — CPython hands back the operand, and its number
+```
+
+ADR 0256 fixed the *choice*: a fold returns the candidate it chose, not the comparison that found it, so
+an int winner among doubles stays `1` and text is ordered by its content. What it could not fix is the
+candidate's **kind** once the candidate is a container slot — the compiled fold compares two
+`(payload, tag)` pairs and then hands back the payload, because the value crossing a `select` is an `i32`.
+The printer follows the number. Same root as Gaps R.107–R.110 and Gap R.115: the value that travels is not
+a pair yet.
+
+The third line is why this probe keeps its rows together. `and` also hands back an operand, and CPython
+prints `1` there — the number is the *right answer*, so a "fix" that makes every chosen operand print like
+a verdict would break a line that is currently conformant. A closure has to move two rows and leave the
+third exactly where it is.
+
+### Gap R.118 — a dict comprehension that repeats a key keeps both entries (OPEN, found separating the bool rows)
+
+```gusty
+d = {1: 2 for x in [1, 2]}
+print(d)        # CPython {1: 2} · --aot {1: 2} · --interp {1: 2, 1: 2}
+print(len(d))   # CPython 1     · --aot 1     · --interp 2
+```
+
+Nothing in the program is a verdict; this is not a bool defect wearing bool clothes, it is the
+interpreter's `CompDict` path, found while asking why `{1: True for x in [1, 2]}` printed two entries.
+A dict is a key → value mapping: writing a key that is already present replaces the value and leaves the
+size alone — which is what `d[k] = v` does through `dictKeyEq`, and what the compiled fold does by
+deduplicating keys as it unrolls. The comprehension loop appends an entry without asking, so the object
+carries two slots under one key, both printed and both counted. It is the rare ledger row where the
+**interpreter** is the diverging leg and the compiled backend is the reference, and it reproduces on the
+commit before ADR 0259, so it is filed as a gap rather than treated as a regression.
+
+### Gap R.119 — an ordering CPython refuses answers in the compiled backend inside a ternary (OPEN, pre-existing, found by the bool spelling)
+
+```gusty
+xs = [1]
+print(1 if xs[0] > "a" else 0)
+# CPython  TypeError: '>' not supported between instances of 'int' and 'str'  (exit 3)
+# --interp  the same sentence, raised, exit 3
+# --aot     1     (exit 0)
+```
+
+ADR 0250 and ADR 0252 built the arms that raise this: a comparison of a tagged slot against a text walks
+one test per tag and raises CPython's own sentence naming the kind the slot really holds. Those arms are
+reached from a `>` in an expression, an `if` head, a `while` head and an `and` compound — but not from a
+`CondExpr`'s **condition**, where the compiled path still folds the comparison against a literal-backed
+container and lets the ternary choose a branch. The trap never runs, and the program exits 0 with an
+answer. The int spelling above is what the probe pins, because it reproduces on the commit before this
+cycle: the bool spelling (`xs.append(True)` and the same comparison) is what made someone look, and ADR
+0259 made the bool slot name itself in the sentence — see `TestSlotOrderOfABoolSlotNamesBool`, where both
+engines now raise `'bool'` for the shape that is not folded. The oracle leg of the probe is
+`not_applicable`, because CPython raises too and has no opinion to compare against; the honest exit is 7.
 
 ### Gap R.100 — closed by ADR 0255: the loop's increment needs a latch block, not a guess
 

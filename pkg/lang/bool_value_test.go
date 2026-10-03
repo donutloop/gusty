@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -121,23 +120,18 @@ func TestDunderComparisonIsNotAVerdict(t *testing.T) {
 	}
 }
 
-// The two shapes that still print the number a bool is stored as, pinned as they answer
-// today: a parameter is a fresh binding the caller's expression never travels with
-// (Gap R.111), and a container element has no bool in the tag vocabulary the printer reads
-// (Gap R.112).
-func TestBoolThroughACallAndAContainerAreStillNumbers(t *testing.T) {
+// The one shape that still prints the number a bool is stored as, pinned as it answers today: a
+// parameter is a fresh binding the caller's expression never travels with, so ADR 0257's predicate
+// has nothing to read across the call (Gap R.111 — ADR 0256's Gap R.110 and Gap R.80's container
+// argument in bool clothing). The container shape this test used to pin is closed: a slot now
+// carries a bool tag of its own, and programs/probe_bool_in_a_container.gy pins CPython's answer
+// on every engine (Gap R.112, ADR 0259).
+func TestBoolThroughACallIsStillANumber(t *testing.T) {
 	call := "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"
 	if got, want := boolInterp(t, call), "1\n1\n"; got != want {
 		t.Errorf("bool through a call = %q, want %q (Gap R.111)", got, want)
 	}
 	if code, out := negBuildRun(t, "bool_call", call); code == 0 && out != "1\n1\n" {
 		t.Errorf("compiled bool through a call = %q, want %q (Gap R.111)", out, "1\n1\n")
-	}
-	container := "print([True, 1])\n"
-	if got, want := boolInterp(t, container), "[1, 1]\n"; got != want {
-		t.Errorf("bool in a list = %q, want %q (Gap R.112)", got, want)
-	}
-	if code, out := negBuildRun(t, "bool_container", container); code == 0 && !strings.Contains(out, "1") {
-		t.Errorf("compiled bool in a list = %q, still a number-shaped answer (Gap R.112)", out)
 	}
 }

@@ -1,0 +1,10 @@
+# A comparison that CPython refuses answers in the compiled backend. `xs[0] > "a"` is an ordering
+# between a number and a text — Python raises TypeError naming both kinds, the interpreter raises
+# it through the same gate, and the compiled path folds the container read to the literal element
+# and then folds the *condition* rather than trapping, so the ternary takes the true branch and
+# prints 1. Both spellings are pinned: the int one is the shape that predates this cycle, the bool
+# one is what made it visible (roadmap Gap R.119, measured while closing Gap R.112).
+xs = [1]
+print(1 if xs[0] > "a" else 0)
+ys = [True]
+print(1 if ys[0] > "a" else 0)

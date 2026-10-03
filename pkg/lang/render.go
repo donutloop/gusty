@@ -162,12 +162,12 @@ func (g *irGen) renderPairContainer(b *strings.Builder, e Expr) (string, bool, e
 		// (ADR 0184's rule, applied to str()/repr() by roadmap L11.2, ADR 0258). Without it
 		// a nested list is a pair of heap handles printed as numbers: str([[1, 2], [3]])
 		// answered [1, 2], which is the handles, not the contents.
-		if lit, ok := e.(*ListLit); ok && (literalMixedKinds(e) || literalNeedsTags(e)) && g.taggableMixedList(lit) {
+		if lit, ok := e.(*ListLit); ok && (literalMixedKinds(e) || g.literalNeedsTags(e)) && g.taggableMixedList(lit) {
 			g.heapUsed = true
 			h, err := g.heapListFromTagged(b, lit)
 			return h, true, err
 		}
-		if (literalMixedKinds(e) || literalNeedsTags(e)) && !g.literalMixedIsTaggable(e) {
+		if (literalMixedKinds(e) || g.literalNeedsTags(e)) && !g.literalMixedIsTaggable(e) {
 			noun := "list"
 			switch e.(type) {
 			case *SetLit:

@@ -1,0 +1,17 @@
+# A comprehension that builds verdicts. The list works on both backends now (roadmap Gap R.112,
+# ADR 0259); the set and the dict do not, because their compile-time fold writes a static global and a
+# static global has no tag table to write True into — the fold now declines rather than store the
+# number and let the printer follow it (roadmap Gap R.116).
+#
+# What each engine answers today:
+#   --interp  [True, 1, 1]  {True}  {1: True}  {True: 1}
+#   --aot     refuses, in words, exit 1: "a comprehension of verdicts needs the tagged set builder,
+#             which a set comprehension does not have yet" — no line is printed at all
+#   python3   [True, 1, 1]  {True}  {1: True}  {True: 1}
+#
+# The list row is here so the family stays one row: it is the shape that IS built tagged, and the
+# refusal above is only believable next to it.
+print([x for x in [True, 1, 1]])
+print({True for x in [1]})
+print({1: True for x in [1]})
+print({True: 1 for x in [1]})

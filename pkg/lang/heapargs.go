@@ -715,7 +715,7 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	// different sink, and a renderer that asks the object can be handed a handle the builder's
 	// scope never saw. Answering [0, 1] for ["a", 1] was the object not saying what it holds
 	// (roadmap L11.2, ADR 0258 — Gap L.2's shape one level down).
-	if literalNeedsTags(ln) || literalMixedKinds(ln) {
+	if g.literalNeedsTags(ln) || literalMixedKinds(ln) {
 		bits |= 8
 	}
 	if bits != 0 {
@@ -934,33 +934,45 @@ func literalNeedsHeap(e Expr) bool {
 // handle and the zero (roadmap L11.1, ADR 0233). It is deliberately a separate question from
 // literalNeedsHeap: the two were one predicate, and folding them diverted sum([1.5, 2.5]) from
 // the static array it handles to a heap list it does not.
-func literalNeedsTags(e Expr) bool {
+func (g *irGen) literalNeedsTags(e Expr) bool {
 	switch n := e.(type) {
 	case *ListLit:
 		for _, el := range n.Elems {
-			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) {
+			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
 				return true
 			}
 		}
 	case *SetLit:
 		for _, el := range n.Elems {
-			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) {
+			if isFloatLitExpr(el) || isNoneLitExpr(el) || isContainerLiteral(el) || g.boolSlotExpr(el) {
 				return true
 			}
 		}
 	case *DictLit:
 		for _, k := range n.Keys {
-			if isFloatLitExpr(k) || isNoneLitExpr(k) {
+			if isFloatLitExpr(k) || isNoneLitExpr(k) || g.boolSlotExpr(k) {
 				return true
 			}
 		}
 		for _, v := range n.Vals {
-			if isFloatLitExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) {
+			if isFloatLitExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// boolSlotExpr is the one question a slot asks to find out whether it is holding a verdict: the
+// literal, a comparison, a name the program last bound to one, or a call whose body returns one.
+// It is the same predicate print, str() and repr() answer with (ADR 0257), reached from the element
+// rather than the print site — and it has to be asked of an expression, not just a literal, or
+// print([verdict(), 0]) is built by the static path and prints [1, 0] (roadmap Gap R.112, ADR 0259).
+func (g *irGen) boolSlotExpr(e Expr) bool {
+	if _, ok := e.(*BoolLit); ok {
+		return true
+	}
+	return g != nil && g.printsAsBool(e)
 }
 
 // isFloatLitExpr and isNoneLitExpr are the two elements that make a container literal need the
@@ -975,6 +987,10 @@ func isNoneLitExpr(e Expr) bool {
 	_, ok := e.(*NoneLit)
 	return ok
 }
+
+// (The bool arm of literalNeedsTags used to be a sibling of these two helpers, testing for the
+// literal alone. It is now irGen.boolSlotExpr, because a slot holding the call
+// `verdict()` is as much a verdict as one holding True.)
 
 // emitModuleContainerList gives a module-level container variable the one thing
 // the per-function parameter path cannot give it: a slot in main's entry block
@@ -1108,35 +1124,11 @@ func stringConstOf(e Expr) (string, bool) {
 }
 
 // taggableMixedList reports whether a list literal's every element is one the per-element tag can
-// describe today, and whether the tags are needed at all. Two rules, matching the two ways a slot
-// can be unreadable: a literal that mixes interned text with anything else has no element kind, so
-// it is the tagged path or a refusal; and a literal holding a float or None has no untagged
-// representation even when every element is alike, because the payload is a box handle or nothing
-// at all. Bools stay excluded because bools are not values in either backend yet (L11.1) — a
-// [True] prints 1 and disagrees with Python, which is the pinned probe_bool_value debt — and a
-// nested container stays excluded until the collector is reached (ADR 0184, ADR 0233).
+// describe today, and whether the tags are needed at all — the list spelling of elemsTaggable,
+// which the set and the dict ask too. Bool is what proved the point: the element tag grew a bool
+// and only one of the three spellings noticed (roadmap Gap R.112, ADR 0259).
 func (g *irGen) taggableMixedList(ln *ListLit) bool {
-	if len(ln.Elems) == 0 {
-		return false
-	}
-	sawStr, sawOther, sawMustTag := false, false, false
-	for _, el := range ln.Elems {
-		tag, ok := g.elemKindTag(el)
-		if !ok {
-			return false
-		}
-		switch tag {
-		case int32(TagStr):
-			sawStr = true
-		case int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
-			// A container slot is a handle: read back without its tag it is a number, which is how
-			// [[1, 2]] would print as [[5]] — the inner object's handle (roadmap L11.1).
-			sawMustTag = true
-		default:
-			sawOther = true
-		}
-	}
-	return sawMustTag || (sawStr && sawOther)
+	return g.elemsTaggable(ln.Elems)
 }
 
 // elemKindTag is the codegen's answer to "what tag does this element's slot carry", and the
@@ -1188,12 +1180,12 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	case *Tuple, *Lambda:
 		return 0, false
 	case *BoolLit:
-		// Both backends store a bool as the number it behaves like today — the interpreter
-		// keeps bool as Int(1) and prints it through the number path, which is the pinned
-		// debt probe_bool_value records. Tagging it TagInt therefore agrees with both, and
-		// when L11.2 gives bool its own kind this line returns TagBool and every container
-		// follows without another change (ADR 0232).
-		return int32(TagInt), true
+		// The tag table has always had a bool in it (value.go); what was missing was a container
+		// slot allowed to say so. The payload stays the 0/1 the verdict was made from — a bool
+		// behaves as that number everywhere (True + 1 is 2, [True] == [1] is True, 1 in {True} is
+		// True, all pinned) — and the tag beside it is what lets the printer answer True rather
+		// than 1. ADR 0232 promised this line; ADR 0259 is the day it was kept (roadmap Gap R.112).
+		return int32(TagBool), true
 	case *NoneLit:
 		return int32(TagNone), true
 	case *StrLit:
@@ -1230,6 +1222,14 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	if g.isFloat(e) {
 		return int32(TagFloat), true
 	}
+	// The same question ADR 0257's print rule asks, asked of a slot: `b = 1 == 1` and
+	// `xs.append(b)`/`xs.append(1 == 1)` store a verdict the program called bool, and the tag has
+	// to say bool for the printer to name it. ADR 0257 made this one question for a print site;
+	// a container slot is the second site that has to ask it, and it asks the same predicate
+	// rather than keeping its own list, so the two cannot drift (roadmap Gap R.112, ADR 0259).
+	if g != nil && g.printsAsBool(e) {
+		return int32(TagBool), true
+	}
 	return int32(TagInt), true
 }
 
@@ -1252,17 +1252,21 @@ func (g *irGen) taggableMixedDict(dl *DictLit) bool {
 		}
 		if kt == int32(TagStr) {
 			keyStr = true
-		} else if kt == int32(TagFloat) || kt == int32(TagNone) {
-			mustTag = true
 		} else {
+			// One table for both sides of the dict and for all three container shapes
+			// (elemsTaggable's rule, restated here for a key and a value at once).
+			if slotTagSelfDescribing(kt) {
+				mustTag = true
+			}
 			keyOther = true
 		}
 		if vt, ok := g.elemKindTag(dl.Vals[i]); ok {
 			if vt == int32(TagStr) {
 				valStr = true
-			} else if vt == int32(TagFloat) || vt == int32(TagNone) || vt == int32(TagList) || vt == int32(TagDict) || vt == int32(TagSet) {
-				mustTag = true
 			} else {
+				if slotTagSelfDescribing(vt) {
+					mustTag = true
+				}
 				valOther = true
 			}
 		} else {
@@ -1315,8 +1319,41 @@ func (g *irGen) compElemPrintsAsText(c *Comp) bool {
 // ADR 0232's move, extended to the tags a compiled word cannot render at all (roadmap L11.1).
 func slotTagSelfDescribing(t int32) bool {
 	switch t {
-	case int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
+	case int32(TagBool), int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
 		return true
+	}
+	return false
+}
+
+// compElemCopiesABool answers the printing question for a comprehension slot that is nothing but a
+// copy of the loop variable. `[x for x in [True, 1, 1]]` has an element expression (`x`) that says
+// nothing on its own — the item it copies is what says True — so the tag has to be asked of the item
+// or the list is built as three integers (roadmap Gap R.112, ADR 0259).
+func (g *irGen) compElemCopiesABool(elem Expr, lv string, item Expr) bool {
+	if lv == "" || elem == nil || item == nil {
+		return false
+	}
+	var bound string
+	switch id := elem.(type) {
+	case *Name:
+		bound = id.Value
+	default:
+		return false
+	}
+	return bound == lv && g.boolSlotExpr(item)
+}
+
+// anyItemIsAVerdict asks the same question of every item a comprehension will walk, which is what
+// the compile-time fold has to know before it commits the result to a global.
+func (g *irGen) anyItemIsAVerdict(elem Expr, forVar *Name, itemExprs []Expr) bool {
+	lv := ""
+	if forVar != nil {
+		lv = forVar.Value
+	}
+	for _, it := range itemExprs {
+		if g.compElemCopiesABool(elem, lv, it) {
+			return true
+		}
 	}
 	return false
 }
@@ -1373,21 +1410,32 @@ func (g *irGen) taggableNestedElem(e Expr) bool {
 // taggableMixedSet is taggableMixedDict for a set literal: every member taggable, and members of
 // more than one kind present.
 func (g *irGen) taggableMixedSet(sl *SetLit) bool {
-	if len(sl.Elems) == 0 {
+	return g.elemsTaggable(sl.Elems)
+}
+
+// elemsTaggable is the one question three container builders used to each spell out: can every
+// element of this run carry a tag, and does at least one of them need one. A slot whose tag says
+// *itself* (slotTagSelfDescribing) needs the tagged path because its payload is a handle, nothing,
+// or a 0/1 that cannot speak its kind; a run that mixes interned text with anything else has no
+// element kind either. The list, set and dict builders ask this together so a kind added to the
+// tag table — bool is the case that proves the point (Gap R.112) — cannot be true for one
+// container shape and refused for the other two.
+func (g *irGen) elemsTaggable(elems []Expr) bool {
+	if len(elems) == 0 {
 		return false
 	}
 	sawStr, sawOther, sawMustTag := false, false, false
-	for _, el := range sl.Elems {
+	for _, el := range elems {
 		t, ok := g.elemKindTag(el)
 		if !ok {
 			return false
 		}
-		switch t {
-		case int32(TagStr):
+		if t == int32(TagStr) {
 			sawStr = true
-		case int32(TagFloat), int32(TagNone), int32(TagList), int32(TagDict), int32(TagSet):
-			sawMustTag = true
-		default:
+		} else {
+			if slotTagSelfDescribing(t) {
+				sawMustTag = true
+			}
 			sawOther = true
 		}
 	}
@@ -2174,6 +2222,48 @@ func (g *irGen) numericElemUse(b *strings.Builder, n *Index) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	return v, true
+}
+
+// numericSlotUse is the second door a numeric read of a mixed container's slot can go through.
+// ADR 0243's door reads the *element expression*, so it needs a constant index; this one needs
+// only the tag list: when the literal that built the container is still the whole story about its
+// slots (ADR 0241's promise, the same record ADR 0249 reads) and every slot in it is a plain
+// number or a bool, then whatever the program computes as the index, the word the slot holds is
+// the number the arithmetic wants. A float among the slots closes the door — there the payload is
+// a @float_box handle, and converting it is ADR 0249's job, not this one. Without this door,
+// making bool a taggable element kind would have taken `xs = [True, 1]` / `i = 0` /
+// `print(xs[i] + 1)` from a correct 2 to a refusal: a landing may not break a green promise
+// (roadmap L11.1, Gap R.112, ADR 0259).
+func (g *irGen) numericSlotUse(b *strings.Builder, name string, ix *Index) (string, bool) {
+	if !g.allocd[name] {
+		return "", false // no slot to load: the escape analysis kept this one as a global
+	}
+	tags, ok := g.orderSlotTags(name)
+	if !ok {
+		return "", false
+	}
+	for _, t := range tags {
+		if t != int32(TagInt) && t != int32(TagBool) {
+			return "", false
+		}
+	}
+	g.heapUsed = true
+	idxOp := "0"
+	if k, isConst := g.foldConstInt(ix.Idx); isConst {
+		idxOp = strconv.FormatInt(k, 10)
+	} else {
+		v, err := g.value(b, ix.Idx)
+		if err != nil || v == "" {
+			return "", false
+		}
+		idxOp = v
+	}
+	h := g.newTmp()
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", h, "_"+name)
+	pos := g.normalizeIndex(b, h, idxOp, ix.Span())
+	v := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_get_elem(i32 %s, i32 %s)\n", v, h, pos)
 	return v, true
 }
 
@@ -2994,7 +3084,7 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		// no single element kind: it is built tagged, with bit 8 set, so the printer asks each slot.
 		// Built untagged instead, a nested [1, "a"] claimed to be the string list and printed its
 		// integer as an interned index — [[1, "a"]] came out as [['b', 'a']] (roadmap L11.1).
-		if g.taggableMixedList(n) || literalNeedsTags(n) {
+		if g.taggableMixedList(n) || g.literalNeedsTags(n) {
 			return g.heapListFromTagged(b, n)
 		}
 		return g.heapListFrom(b, n, "")

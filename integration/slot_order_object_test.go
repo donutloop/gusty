@@ -225,23 +225,23 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable(t *testing.T) {
 	}
 }
 
-// TestSlotOrderOfABoolSlotNamesIntUntilGapR112 is a debt row, and it is deliberately not checked against
-// the oracle's wording: a bool goes into a slot tagged as the number both engines treat it as
-// (ADR 0232), so the sentence says 'int' where CPython says 'bool'. ADR 0257 made a bool print its
-// verdict where the front end can see the expression that made it, which is not this row: a container
-// slot still carries no bool tag, so the sentence under test is still the number's, and it changes
-// when the slot's tag vocabulary gets a bool (roadmap Gap R.112).
-func TestSlotOrderOfABoolSlotNamesIntUntilGapR112(t *testing.T) {
+// TestSlotOrderOfABoolSlotNamesBool is the row ADR 0259 turned from a debt into a parity claim: a
+// bool goes into a container slot carrying its own tag, so the sentence the ordering trap prints
+// names 'bool' the way CPython's does — where ADR 0232's vocabulary tagged the slot as the number
+// and both engines said 'int'. ADR 0257 had already made a bool print its verdict where the front
+// end could see the expression that made it; a container slot is where it cannot, which is why this
+// row needed the tag and not the predicate.
+func TestSlotOrderOfABoolSlotNamesBool(t *testing.T) {
 	src := "xs = []\nxs.append(True)\nprint(1 if xs[0] > \"a\" else 0)\n"
 	path := writeSrc(t, t.TempDir(), "slot_order_bool.gy", src)
 	if pyOut, pyCode := oracleTrap(t, path); pyCode == 0 || !strings.Contains(pyOut, "TypeError") {
 		t.Fatalf("the oracle should reject this shape outright:\n%s", pyOut)
 	}
-	const want = "TypeError: '>' not supported between instances of 'int' and 'str'"
+	const want = "TypeError: '>' not supported between instances of 'bool' and 'str'"
 	for _, engine := range []string{"--interp", "--aot"} {
 		out := cliRun(t, engine, path)
 		if !strings.Contains(out, want) {
-			t.Errorf("%s raised %q, want the bool-as-number sentence %q", engine, out, want)
+			t.Errorf("%s raised %q, want the bool's own sentence %q", engine, out, want)
 		}
 		if _, code := cliRunCode(t, engine, path); code != 3 {
 			t.Errorf("%s exited %d, want 3", engine, code)

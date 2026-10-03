@@ -1412,14 +1412,27 @@ payloads:
   %pr = zext i1 %peq to i32
   ret i32 %pr
 mixed:
+  ; A bool is a number to Python, and now that a container slot can say bool the comparison has to
+  ; agree with the printer: True == 1, True == 1.0, {1: 'a'}[True] is 'a' and {True, 1} has one
+  ; member. So the numeric family this block serves is int, float AND bool, and two slots of that
+  ; family decide it on the payload they all carry — the same route an int and a float already took,
+  ; which is why a bool needs no arithmetic of its own here. A bool against a text, a None or a
+  ; container stays unequal, which is what the tags say (Gap R.112, ADR 0259).
   %aIsInt = icmp eq i32 %ta, 0
+  %aIsBool = icmp eq i32 %ta, 2
+  %aIsNum = or i1 %aIsInt, %aIsBool
+  %bIsInt = icmp eq i32 %tb, 0
+  %bIsBool = icmp eq i32 %tb, 2
+  %bIsNum = or i1 %bIsInt, %bIsBool
+  %bothNum = and i1 %aIsNum, %bIsNum
+  br i1 %bothNum, label %payloads, label %mixedFloat
+mixedFloat:
   %bIsFloat = icmp eq i32 %tb, 1
-  %forward = and i1 %aIsInt, %bIsFloat
+  %forward = and i1 %aIsNum, %bIsFloat
   br i1 %forward, label %intFloat, label %backward
 backward:
   %aIsFloat = icmp eq i32 %ta, 1
-  %bIsInt = icmp eq i32 %tb, 0
-  %reverse = and i1 %aIsFloat, %bIsInt
+  %reverse = and i1 %aIsFloat, %bIsNum
   br i1 %reverse, label %floatInt, label %unequal
 intFloat:
   %da = sitofp i32 %a to double
@@ -1637,11 +1650,23 @@ checkFloat:
   ; Python's 1.0 rather than printf's 1. Inside a container Python shows repr(), which for a
   ; float is its str() — the same call, not a second formatter (roadmap L11.1, ADR 0233).
   %isFloat = icmp eq i32 %t, 1
-  br i1 %isFloat, label %flt, label %checkContainer
+  br i1 %isFloat, label %flt, label %checkBool
 flt:
   %d = call double @rt_float_of(i32 %v)
   %fp = call i8* @rt_fmt_double(double %d)
   call void @rt_out_txt(i8* %fp)
+  ret void
+checkBool:
+  ; A bool slot is the 0/1 the verdict was made from, and the tag beside it is the only thing in
+  ; the module that says so — which is exactly why [True] used to print [1] (Gap R.112). The
+  ; rendering is rt_bool_text, the one answer ADR 0257 landed for print and ADR 0258 made the
+  ; pair's: the name, through the same sink every other element goes through, and the quote flag
+  ; does not apply because Python quotes a bool in no context.
+  %isBool = icmp eq i32 %t, 2
+  br i1 %isBool, label %bl, label %checkContainer
+bl:
+  %bp = call i8* @rt_bool_text(i32 %v)
+  call void @rt_out_txt(i8* %bp)
   ret void
 checkContainer:
   ; A slot that names another container is rendered by that container's own printer, chosen at
@@ -8610,7 +8635,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return "", fmt.Errorf("codegen: f-string requires a constant expression (AOT backend)")
 	case *ListLit:
 		// inline list literal: emit a dedicated global struct and return its name.
-		if literalNeedsHeap(n) {
+		// Two questions open the heap path, not one: literalNeedsHeap asks whether a payload fits
+		// an i32 slot, literalNeedsTags whether a slot can say what it holds. A bool answers the
+		// first yes and the second no — the 0/1 fits, and nothing beside it names it — so asking
+		// only the first kept [True] on the static path, printing [1] (roadmap Gap R.112, ADR 0259).
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
 			// A literal that mixes kinds is not a refusal when every slot can be tagged: the tags
 			// carry the meaning the container-wide kind used to. The list branch asked this later
 			// than the dict and set branches did, so `f([1, "a"])` was refused where `f({1: "a"})`
@@ -8630,7 +8659,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// global — that layout is i32-only — so build a heap dict and intern (Gap J.6).
 		// A dict that mixes kinds is not a refusal when every slot can be tagged: it is a
 		// dict with no kind, and the tags carry the meaning (ADR 0232).
-		if literalNeedsHeap(n) {
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
 			if literalMixedKinds(n) && !g.taggableMixedDict(n) {
 				return "", mixedKindErr("dict")
 			}
@@ -8642,7 +8671,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		}
 		return name, nil
 	case *SetLit:
-		if literalNeedsHeap(n) {
+		// The set gate is the dict gate: a bool's 0/1 fits an i32 slot perfectly and has no way
+		// to say what it is, so the static global path has to hand it to the tagged builder.
+		// Asking literalNeedsHeap alone refused {True, 1} as "either strings or numbers".
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
 			if literalMixedKinds(n) && !g.taggableMixedSet(n) {
 				return "", mixedKindErr("set")
 			}
@@ -8845,6 +8877,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					// element, a runtime index, text or a container in the slot — keeps the refusal below, because
 					// for those the tag is exactly what the answer depends on.
 					if v, ok := g.numericElemUse(b, n); ok {
+						return v, nil
+					}
+					if v, ok := g.numericSlotUse(b, obj.Value, n); ok {
 						return v, nil
 					}
 					return "", mixedReadErr("list")
@@ -9437,7 +9472,7 @@ func (g *irGen) runtimeCompLoop(b *strings.Builder, c *Comp) (string, error) {
 // expression for every item. It runs the same fold the constant path will run, so the two can
 // never disagree about what is foldable — a probe that lies would build a list at compile time
 // and a list at runtime and call whichever failed an error.
-func (g *irGen) comprehensionFolds(c *Comp, items []int64) bool {
+func (g *irGen) comprehensionFolds(c *Comp, items []int64, itemExprs []Expr) bool {
 	if g.constBindings == nil {
 		g.constBindings = map[string]int64{}
 	}
@@ -9447,7 +9482,13 @@ func (g *irGen) comprehensionFolds(c *Comp, items []int64) bool {
 	// `None` folds to the integer 0 — which is the right answer to `if None:` and the wrong answer to
 	// \"what is in this slot\". An element that is not an integer belongs to the runtime builder, which
 	// tags every slot it writes (roadmap Gap R.75, ADR 0244).
-	if !foldsToAnInteger(c.Elems[0]) {
+	if !g.foldsToAnInteger(c.Elems[0]) {
+		return false
+	}
+	// The same question one level indirect: an element that is only a copy of the loop variable is a
+	// verdict when the item it copies is, and a folded comprehension is a compile-time global with no
+	// tag table to say so with (roadmap Gap R.112, ADR 0259).
+	if g.anyItemIsAVerdict(c.Elems[0], c.ForVar, itemExprs) {
 		return false
 	}
 	for _, item := range items {
@@ -9471,11 +9512,18 @@ func (g *irGen) comprehensionFolds(c *Comp, items []int64) bool {
 // the truthiness one: an element that is literally a None, a piece of text or a float is a *value* of
 // that kind, not the integer its truthiness happens to fold to. Those elements go to the runtime
 // builder, where the slot gets the tag that says what it holds (roadmap Gap R.75, ADR 0244).
-func foldsToAnInteger(e Expr) bool {
+//
+// A verdict is the same trap (roadmap Gap R.112, ADR 0259): `[x for x in [True, 1, 1]]` used to fold
+// to [1, 1, 1], and a folded comprehension is a compile-time global with no tag table to write, so
+// the printing question had no answer to be given. It belongs to the runtime builder beside the rest.
+func (g *irGen) foldsToAnInteger(e Expr) bool {
 	switch e.(type) {
-	case *IntLit, *BoolLit:
+	case *IntLit:
 		return true
-	case *NoneLit, *StrLit, *FloatLit:
+	case *BoolLit, *NoneLit, *StrLit, *FloatLit:
+		return false
+	}
+	if g != nil && g.printsAsBool(e) {
 		return false
 	}
 	return true
@@ -9519,10 +9567,22 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 	// whatever held it before, and an element compiled with `g.value` alone reaches a container slot as
 	// the compiler's *global* (`@.lst1`) — a value position `llc` rejects, which is how a comprehension
 	// over container literals ended the module instead of building the list (roadmap Gap R.75).
-	appendElem := func() error {
+	appendElem := func(item Expr) error {
+		// When the element is only a copy of the loop variable, the printing question belongs to the item
+		// it copies: `[x for x in [True, 1, 1]]` asks `x`, which says nothing by itself, and the list came
+		// out as three integers (roadmap Gap R.112, ADR 0259).
+		tagQuery := c.Elems[0]
+		if g.compElemCopiesABool(c.Elems[0], lv, item) {
+			tagQuery = item
+		}
 		av, kt, intern, err := g.elemPayloadAndTag(b, c.Elems[0])
 		if err != nil {
 			return err
+		}
+		if tagQuery != c.Elems[0] {
+			if t, okTag := g.elemKindTag(tagQuery); okTag {
+				kt, intern = strconv.FormatInt(int64(t), 10), false
+			}
 		}
 		b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %s, i32 %s, i32 %s)\n", h, av, kt))
 		if intern {
@@ -9532,7 +9592,7 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		// container — obliges the whole object to stop claiming one element kind, or the printer renders
 		// every slot through the number printer and `[[1, 2] for x in [1]]` prints the box handles
 		// ([2, 3]) instead of the lists (ADR 0232, roadmap Gap R.75).
-		if t, okTag := g.elemKindTag(c.Elems[0]); okTag && slotTagSelfDescribing(t) {
+		if t, okTag := g.elemKindTag(tagQuery); okTag && slotTagSelfDescribing(t) {
 			b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %s, i32 8)\n", h))
 		}
 		return nil
@@ -9544,7 +9604,7 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		}
 		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", iv, lv))
 		if c.Cond == nil {
-			if err := appendElem(); err != nil {
+			if err := appendElem(item); err != nil {
 				return "", err
 			}
 			continue
@@ -9557,7 +9617,7 @@ func (g *irGen) runtimeCompList(b *strings.Builder, c *Comp, itemExprs []Expr) (
 		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", condL, condL))
 		tv := g.truthOperand(b, c.Cond)
 		b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n%s:\n", tv, itemL, skipL, itemL))
-		if err := appendElem(); err != nil {
+		if err := appendElem(item); err != nil {
 			return "", err
 		}
 		b.WriteString(fmt.Sprintf("  br label %%%s\n%s:\n", skipL, skipL))
@@ -9647,7 +9707,12 @@ func (g *irGen) foldConstUnder(noun, forVar string, item int64, e Expr) (int64, 
 // seen is dropped. The literal is what the binding rule stores into the heap, so a folded set
 // comprehension and the equivalent `{1, 2}` literal build the very same object (roadmap Gap J.2,
 // ADR 0234).
-func (g *irGen) foldSetComp(c *Comp, items []int64) (*SetLit, []int64, error) {
+func (g *irGen) foldSetComp(c *Comp, items []int64, itemExprs []Expr) (*SetLit, []int64, error) {
+	// A set comprehension folds into a compile-time global, which has no tag table; an element that
+	// has to say True has nowhere to say it (roadmap Gap R.112, ADR 0259, roadmap Gap R.116).
+	if g.boolSlotExpr(c.Elems[0]) || g.anyItemIsAVerdict(c.Elems[0], c.ForVar, itemExprs) {
+		return nil, nil, fmt.Errorf("codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)")
+	}
 	seen := map[int64]bool{}
 	var vals []int64
 	var elems []Expr
@@ -9677,7 +9742,13 @@ func (g *irGen) foldSetComp(c *Comp, items []int64) (*SetLit, []int64, error) {
 
 // foldDictComp is the same unrolling for a dict comprehension, keeping the folded keys beside the
 // literal so `d[k]` on a folded comprehension can still be answered at codegen time.
-func (g *irGen) foldDictComp(c *Comp, items []int64) (*DictLit, []int64, []int64, error) {
+func (g *irGen) foldDictComp(c *Comp, items []int64, itemExprs []Expr) (*DictLit, []int64, []int64, error) {
+	// The same rule as the set: a folded dict is a compile-time global, and a slot that has to say
+	// True or False has no tag to say it with (roadmap Gap R.112, ADR 0259, roadmap Gap R.116).
+	if g.boolSlotExpr(c.Keys[0]) || g.boolSlotExpr(c.Vals[0]) ||
+		g.anyItemIsAVerdict(c.Keys[0], c.ForVar, itemExprs) || g.anyItemIsAVerdict(c.Vals[0], c.ForVar, itemExprs) {
+		return nil, nil, nil, fmt.Errorf("codegen: a comprehension of verdicts needs the tagged dict builder, which a dict comprehension does not have yet (roadmap Gap R.116)")
+	}
 	var keys, vals []int64
 	var kexprs, vexprs []Expr
 	for _, item := range items {
@@ -9719,7 +9790,7 @@ func (g *irGen) foldedContainerCompLiteral(e Expr) (Expr, bool) {
 	if c.ForVar == nil || len(c.Elems) > 1 || len(c.Keys) > 1 || len(c.Vals) > 1 {
 		return nil, false
 	}
-	items, _, err := g.compItems(c)
+	items, itemExprs, err := g.compItems(c)
 	if err != nil {
 		return nil, false
 	}
@@ -9728,14 +9799,14 @@ func (g *irGen) foldedContainerCompLiteral(e Expr) (Expr, bool) {
 		if len(c.Elems) != 1 {
 			return nil, false
 		}
-		if lit, _, ferr := g.foldSetComp(c, items); ferr == nil {
+		if lit, _, ferr := g.foldSetComp(c, items, itemExprs); ferr == nil {
 			return lit, true
 		}
 	case CompDict:
 		if len(c.Keys) != 1 || len(c.Vals) != 1 {
 			return nil, false
 		}
-		if lit, _, _, ferr := g.foldDictComp(c, items); ferr == nil {
+		if lit, _, _, ferr := g.foldDictComp(c, items, itemExprs); ferr == nil {
 			return lit, true
 		}
 	}
@@ -9779,7 +9850,7 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 	// string, or anything else the folder cannot see — the ordinary `[f(x) for x in range(5)]`
 	// — the comprehension is built at runtime instead, with the same per-item unrolling this
 	// backend already does for `for` loops (roadmap L11.7, ADR 0192).
-	if c.Kind == CompList && !g.comprehensionFolds(c, items) {
+	if c.Kind == CompList && !g.comprehensionFolds(c, items, itemExprs) {
 		return g.runtimeCompList(b, c, itemExprs)
 	}
 	// Unroll the comprehension, binding the loop variable to each item.
@@ -9840,7 +9911,7 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 		n := len(results)
 		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, strings.Join(parts, ", ")))
 	case CompSet:
-		sl, vals, serr := g.foldSetComp(c, items)
+		sl, vals, serr := g.foldSetComp(c, items, itemExprs)
 		if serr != nil {
 			return "", serr
 		}
@@ -9858,7 +9929,7 @@ func (g *irGen) comp(b *strings.Builder, c *Comp) (string, error) {
 		n := len(results)
 		g.globals.WriteString(fmt.Sprintf("%s = private global {i32, [%d x i32]} { i32 %d, [%d x i32] [%s] }\n", name, n, n, n, strings.Join(parts, ", ")))
 	case CompDict:
-		dl, keys, vals, derr := g.foldDictComp(c, items)
+		dl, keys, vals, derr := g.foldDictComp(c, items, itemExprs)
 		if derr != nil {
 			return "", derr
 		}
@@ -11402,10 +11473,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// take this branch — an integer and an interned string already have their answers from the
 			// paths above, and routing them here too dragged the string runtime into a module for a
 			// loop over plain numbers. A container element is a handle, and printing it without its
-			// tag is how `for row in [[1, 2], [3, 4]]` printed 0 and 1 (roadmap L11.1, ADR 0233).
+			// tag is how `for row in [[1, 2], [3, 4]]` printed 0 and 1 (roadmap L11.1, ADR 0233). A
+			// bool joins them for the same reason a float does: the unrolled loop forgot the verdict
+			// when it bound the name, so only the element's tag can still say True (Gap R.112).
 			if nm, ok := a.(*Name); ok && g.loopElemTag != nil && !g.listVars[nm.Value] && !g.taggedVars[nm.Value] {
 				if tg, has := g.loopElemTag[nm.Value]; has && (tg == int32(TagFloat) || tg == int32(TagNone) ||
-					tg == int32(TagList) || tg == int32(TagDict) || tg == int32(TagSet)) {
+					tg == int32(TagBool) || tg == int32(TagList) || tg == int32(TagDict) || tg == int32(TagSet)) {
 					vv := g.newTmp()
 					b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", vv, nm.Value))
 					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %d, i32 0)\n", vv, tg))
@@ -11478,7 +11551,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					}
 				}
 				if isContainerLiteral(a) {
-					if _, isLL := a.(*ListLit); isLL && (literalMixedKinds(a) || literalNeedsTags(a)) && g.taggableMixedList(a.(*ListLit)) {
+					if _, isLL := a.(*ListLit); isLL && (literalMixedKinds(a) || g.literalNeedsTags(a)) && g.taggableMixedList(a.(*ListLit)) {
 						// Heterogeneous list of taggable elements: build it with per-element
 						// tags and print through the tag-aware printer, which is what the
 						// interpreter's Repr does element by element (ADR 0184).
@@ -11493,7 +11566,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					// A literal that mixes kinds is printed through the same dispatching
 					// printers its variable-bound twin uses, whenever every slot can say what
 					// it holds (ADR 0232); only a slot that cannot is the refusal.
-					if (literalMixedKinds(a) || literalNeedsTags(a)) && !g.literalMixedIsTaggable(a) {
+					if (literalMixedKinds(a) || g.literalNeedsTags(a)) && !g.literalMixedIsTaggable(a) {
 						noun := "list"
 						switch a.(type) {
 						case *SetLit:

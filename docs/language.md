@@ -46,12 +46,18 @@ carries its kind — and, over a container whose slots mix kinds, its **tag** �
 asked of the container being iterated, because the loop variable's own facts are gone once the loop
 closes. That is what makes `print(out)` and `print(out[0])` agree on `['a']` and `a` instead of one
 printing text and the other the interned index, and what lets `[x for x in {1, "a", None}]` print
-`[1, 'a', None]` on the compiled backend instead of `[1, 0, 0]`. Iterating a dict walks its keys at the
+`[1, 'a', None]` on the compiled backend instead of `[1, 0, 0]`. A verdict is asked the same way
+(ADR 0259): `[x for x in [True, 1, 1]]` builds `[True, 1, 1]`, because `x` says True only if the item
+it copied does, and the constant fold declines to write such a list into a global that has no tag
+table. Iterating a dict walks its keys at the
 stride its two-word entries need (ADR 0188), and a dict comprehension writes each entry as two
 `(payload, tag)` pairs, so `{k: 1 for k in d}` produces an entry `out["a"]` can find. A slot of that
 list answers an equality the way the printer already answers `print`: `out[1] == "a"` asks the slot's
 own tag (ADR 0247, closing Gap R.79). What still refuses
-by naming itself: a comprehension over a name the compiler kept as a compile-time list.
+by naming itself: a comprehension over a name the compiler kept as a compile-time list, and — since
+ADR 0259 took bool out of the fold — a **set or dict comprehension whose element, key or value is a
+verdict** (`{True for x in [1]}`, `{1: True for x in [1]}`), which folds to a compile-time global with
+nowhere to write the tag; the interpreter answers all three lines (roadmap Gap R.116).
 
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
@@ -633,9 +639,13 @@ label = "yes" if text else "no"
 Booleans are values, not just tests: `a and b`, `x in xs` and `not x` produce a verdict that can be
 printed, stored (`flag = a < b`) and re-tested. A verdict writes its own name — `print(1 == 1)` is
 `True`, `print(not True)` is `False` — and is still the `0`/`1` every numeric path reads, so
-`True + 1` is `2`, `-True` is `-1` and `sum([True, True])` is `2` (ADR 0257). The name comes from the
-expression, not from the storage: a `for` variable, a parameter or a container element is a slot that
-has not been told, and prints the number (roadmap Gap R.111, Gap R.112).
+`True + 1` is `2`, `-True` is `-1` and `sum([True, True])` is `2` (ADR 0257). A verdict in a container
+carries its own tag, so `print([True, 1])` is `[True, 1]`, `print({"k": True})` is `{'k': True}` and
+`print({True, 1})` is `{True}` — while every numeric, ordering, equality and membership question about
+that same slot keeps answering as the number, which is why `[True] == [1]`, `1 in {True}`, `d[True]`
+and `sum([True, 1])` are CPython's answers too (ADR 0259, closing roadmap Gap R.112). One rendering
+is still owed: **a bool passed to a function prints `1`**, because a parameter is a fresh binding and
+nothing travels with the argument saying it was a verdict (roadmap Gap R.111).
 
 How each backend gets there is an implementation detail, but a load-bearing one
 (ADR 0167): in IR a value is either an `i32` or the `i1` result of a comparison, and
@@ -770,11 +780,13 @@ Rules that both backends implement:
  A verdict writes its own name wherever the front end can see the expression that made it —
   `print(True)` is `True`, `print(1 == 1)` is `True`, `str(True)` is `'True'` (a real string, so
   `.lower()` works on it), and an f-string interpolates `True`/`False` — while the value behind it
-  stays the untagged `0`/`1` both backends have always used (ADR 0257). Two renderings are still owed
-  for the reason ADR 0257 records: **a bool passed to a function prints `1`** (a parameter is a fresh
-  binding the caller's expression never travels with — Gap R.111), and **a bool inside a container
-  prints `1`** (`[True, 1]` comes out `[1, 1]`, because the element tag vocabulary has no bool in it —
-  Gap R.112). Inside containers strings are quoted as Python does.
+  stays the untagged `0`/`1` both backends have always used (ADR 0257). Where the front end cannot
+  see the expression — inside a container, where only the slot is left — the slot carries the tag that
+  says so, so `print([True, 1])` is `[True, 1]`, `print({"k": True})` is `{'k': True}`,
+  `print({True, 1})` is `{True}` and `str([True, 1])` is the same text, because print and the pair are
+  one table (ADR 0258, ADR 0259; Gap R.112). One rendering is still owed for the reason ADR 0257
+  records: **a bool passed to a function prints `1`** (a parameter is a fresh binding the caller's
+  expression never travels with — Gap R.111). Inside containers strings are quoted as Python does.
   Sets iterate in **insertion order** in both backends — deterministic, and identical between
   them, where CPython's order comes from hashing. `{"q", "r"}` prints as `{'q', 'r'}` here.
 
@@ -1850,10 +1862,11 @@ declines, Gap R.94) — all of which need the value word that carries its own ta
 reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
 
 The tag is what makes a value's kind a fact rather than a guess. What it does not buy yet is a
-value that *is* a tag: a compiled float still has no word to hold it (L11.6), a bool reaching a
-printer through a call or a container still prints as the number it is stored as — `show(True)`
-says `1`, `print([True])` says `[1]` (Gaps R.111, R.112; the print *rule* landed in ADR 0257, the tag
-that would carry the verdict across a boundary has not) — and a container inside a
+value that *is* a tag: a compiled float still has no word to hold it (L11.6), and a bool reaching a
+printer through a call still prints as the number it is stored as — `show(True)` says `1` (Gap R.111;
+the print *rule* landed in ADR 0257, the container tag in ADR 0259, and what neither can reach is the
+argument crossing the boundary) — while a bool in a container slot says `True` on both backends and
+still answers every numeric question as its number. A container inside a
 container is still a handle in a slot built for a word (L11.1 (5), the tagged value word, which
 also collapses the parallel tag array into the value itself).
 

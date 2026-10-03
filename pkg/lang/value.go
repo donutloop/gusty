@@ -37,10 +37,16 @@ const (
 // continue signals) are not part of the %obj value model.
 func objKindTag(kind string) ValueTag {
 	switch kind {
-	case "int", "float", "bool":
-		// ints/bools are plain immediate values in the interpreter; the heap only
-		// allocates reference kinds, so these never appear as objs.
+	case "int", "float":
+		// ints and floats are plain immediate values for everything the interpreter does from
+		// the source; the heap allocates a box when the value has to outlive the expression —
+		// a float whose bits travel, and now a bool stored in a container slot (Gap R.112).
 		return TagInt
+	case "bool":
+		// A bool in a container slot is a heap object carrying a 0/1, and the tag table has
+		// always had a name for it: the slot says bool, and the printer and the comparison read
+		// that from the same table the compiled runtime reads (ADR 0182's one-table rule).
+		return TagBool
 	case "none", "None":
 		// None is the one null that *is* heap-allocated (the singleton), because
 		// ints are raw int64s and no int value is free to stand for "no value".

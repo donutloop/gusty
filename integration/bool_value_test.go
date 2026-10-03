@@ -87,18 +87,14 @@ const boolValueProbeSrc = "print(True)\n" +
 	"print(0 == None)\n" +
 	`print("a" in ["a", "b"])` + "\n"
 
-// The two shapes still owed, pinned from the same source text the probe programs carry:
-// the authoritative pins live in conformance_cases.go, and what is asserted here is that
-// the oracle still calls them divergences, so a closure has to change a verdict as well
-// as a number.
-func TestOracleStillCallsTheRemainingBoolShapesDivergences(t *testing.T) {
-	for _, tc := range []struct{ name, src string }{
-		{"probe_bool_through_a_call", "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"},
-		{"probe_bool_in_a_container", "print([True, 1])\nprint({\"k\": True})\n"},
-	} {
-		out, code := cliRunCode(t, "--oracle", tc.src)
-		if code != 6 {
-			t.Errorf("%s diverges from CPython but --oracle exited %d, want the divergence code\n%s", tc.name, code, out)
-		}
+// The one shape still owed, pinned from the same source text the probe program carries: the
+// authoritative pin lives in conformance_cases.go, and what is asserted here is that the oracle
+// still calls it a divergence, so a closure has to change a verdict as well as a number. The
+// container shape used to be here too — ADR 0259 gave a slot its bool tag, and
+// programs/probe_bool_in_a_container.gy left the ledger for the parity corpus with it.
+func TestOracleStillCallsTheBoolThroughACallADivergence(t *testing.T) {
+	out, code := cliRunCode(t, "--oracle", "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n")
+	if code != 6 {
+		t.Errorf("a bool through a call still diverges, but --oracle exited %d, want the divergence code\n%s", code, out)
 	}
 }

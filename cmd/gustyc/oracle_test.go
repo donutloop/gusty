@@ -66,14 +66,16 @@ func TestCLIOracleReportsThreeLegs(t *testing.T) {
 }
 
 func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
-	// A bool inside a container prints [1, 1] on both backends and [True, 1] in CPython (roadmap Gap
+	// A bool handed to a function prints 1 on both backends and True in CPython (roadmap Gap
 	// R.112): the program is valid, it ran, and the answer is wrong. That class is exit 6 — not a
-	// compile error (1) and not a crash (3). This fixture used to be `print(True)`, which stopped
-	// being a divergence when ADR 0257 gave a verdict its name; the debt had to move to a program
-	// that really still owes one, or the test would have been asserting a contract nothing violates.
-	out, code := benchCLI(t, "--json", "--oracle", "print([True, 1])\n")
+	// compile error (1) and not a crash (3). This fixture used to be `print([True, 1])`, which stopped
+	// being a divergence when ADR 0259 gave a container slot its bool tag; the debt had to move to a
+	// program that really still owes one, or the test would have been asserting a contract nothing
+	// violates — the same reason it moved off `print(True)` when ADR 0257 landed.
+	const boolThroughACall = "def show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n"
+	out, code := benchCLI(t, "--json", "--oracle", boolThroughACall)
 	if code != exitOracleDivergence {
-		t.Fatalf("--oracle on print([True, 1]): exit = %d, want %d\n%s", code, exitOracleDivergence, out)
+		t.Fatalf("--oracle on a bool through a call: exit = %d, want %d\n%s", code, exitOracleDivergence, out)
 	}
 	var p oraclePayload
 	if err := json.Unmarshal([]byte(out), &p); err != nil {
@@ -88,7 +90,7 @@ func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
 	if p.Legs[0].Matches || p.Legs[1].Matches {
 		t.Errorf("neither leg may claim a match: %+v", p.Legs)
 	}
-	human, hcode := benchCLICombined(t, "--oracle", "print([True, 1])\n")
+	human, hcode := benchCLICombined(t, "--oracle", boolThroughACall)
 	if hcode != exitOracleDivergence {
 		t.Errorf("human form exit = %d, want %d", hcode, exitOracleDivergence)
 	}

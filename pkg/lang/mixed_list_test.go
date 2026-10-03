@@ -23,11 +23,11 @@ func TestElemKindTagDecidesWhatAMixedListMayHold(t *testing.T) {
 		{`1`, int32(TagInt), true, "an integer"},
 		{`"a"`, int32(TagStr), true, "a string literal"},
 		{`None`, int32(TagNone), true, "the None singleton"},
-		// A bool is tagged TagInt, because that is what both backends store today: the
-		// interpreter keeps bool as Int(1) and renders it through the number path, which is
-		// the difference probe_bool_value pins. When Gap R.112 gives bool its own kind this case
-		// flips to TagBool and every container follows (ADR 0232).
-		{`True`, int32(TagInt), true, "a bool, stored as the number it behaves like"},
+		// The tag table has had a bool since ADR 0182; what it never had was a container slot
+		// allowed to say it. ADR 0232 promised this line would flip and ADR 0259 kept the promise:
+		// the payload stays the 0/1 both backends store, and the tag is what lets the printer,
+		// the str()/repr() pair and the comparisons read the verdict back as a verdict (Gap R.112).
+		{`True`, int32(TagBool), true, "a bool: the payload is the number it behaves like, the tag is the name"},
 		{`1.5`, int32(TagFloat), true, "a float's slot is the handle of a float box, which the mixed printer renders and rt_payload_eq compares by value (ADR 0233)"},
 		// A container element is stored as the inner object's handle; the tag is what routes the
 		// print to the container printer and the comparison to rt_container_eq instead of an
@@ -66,7 +66,8 @@ func TestTaggableMixedListRequiresActualMixing(t *testing.T) {
 		{`[1, "a"]`, true},
 		{`[1, "a", None]`, true},
 		{`[]`, false},
-		{`[1, True]`, false},   // a bool stored as a number is not a second kind
+		{`[1, True]`, true},    // a bool slot cannot report its own kind without a tag (Gap R.112)
+		{`[True]`, true},       // a list of nothing but verdicts still has nothing to print from
 		{`[True, "a"]`, true},  // number and string still mix
 		{`[1.5, "a"]`, true},   // a float slot can only be read through its tag (ADR 0233)
 		{`[1.5]`, true},        // a literal of nothing but floats still has no untagged representation

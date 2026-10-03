@@ -2134,6 +2134,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_bool_in_a_container",
+        "name": "probe_bool_in_a_container.gy",
+        "source": "# What CPython prints for every shape here (python3, 3.12):\n#\n#   [True, 1]\n#   [True]\n#   [False]\n#   {'k': True}\n#   {True}\n#   [1, 2, True]\n#   True\n#   True\n#   True\n#   2\n#   [True, 'a']\n#   {True: 1}\n#   [True, 1, 1]\n#\n# A container slot is allowed to say `bool`. Before this the shape printed the number it is stored\n# as — `[1, 1]` and `{'k': 1}` — and both backends agreed, which is exactly why no two-backend test\n# ever saw it (roadmap Gap R.112, ADR 0259).\n#\n# The rows come in two families. A *literal* slot (`[True, 1]`, `{\"k\": True}`) is a `BoolLit` the tag\n# table can see directly; a slot whose verdict comes from an *expression* — the comparison feeding a\n# `list.append`, the call argument, the ternary among strings, the dict key that is a variable holding\n# a comparison — has to be asked of that expression, through the same `IsBoolExpr` the rendering pair\n# asks (ADR 0257). A list comprehension whose element copies the loop variable is the same question\n# one level indirect: `x` says True only if the item it copied does.\n#\n# What a bool is *not* is the other half of the row: `[True] == [1]` answers True and `True + 1` is 2,\n# because the payload underneath the tag is still the number, and the compiled comparison's numeric\n# family is int, float AND bool.\nprint([True, 1])\nprint([True])\nprint([False])\nprint({\"k\": True})\nprint({True, 1})\nxs = [1, 2]\nb = 1 == 1\nxs.append(b)\nprint(xs)\nprint([True] == [1])\nxs2 = [True, 1]\nprint(xs2[0])\nif xs2[0]:\n    print(True)\nelse:\n    print(False)\nprint(True + 1)\ny = 1 == 1\nprint([True if y else False, \"a\"])\nprint({y: 1})\nprint([x for x in [True, 1, 1]])\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "[True, 1]\n[True]\n[False]\n{'k': True}\n{True}\n[1, 2, True]\nTrue\nTrue\nTrue\n2\n[True, 'a']\n{True: 1}\n[True, 1, 1]\n",
+      "aot_ok": true,
+      "aot_stdout": "[True, 1]\n[True]\n[False]\n{'k': True}\n{True}\n[1, 2, True]\nTrue\nTrue\nTrue\n2\n[True, 'a']\n{True: 1}\n[True, 1, 1]\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "[True, 1]\n[True]\n[False]\n{'k': True}\n{True}\n[1, 2, True]\nTrue\nTrue\nTrue\n2\n[True, 'a']\n{True: 1}\n[True, 1, 1]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/slot_order_object",
         "name": "slot_order_object.gy",
         "source": "# The ordering of a slot no literal describes: the object says which pair it was\n# given (roadmap L11.1, ADR 0252, Gap R.93). The arms — two numbers, two texts, and\n# CPython's TypeError naming the kind the slot really holds — are chosen at run time\n# by the tag beside the payload, so no table of \"what xs can hold\" is consulted.\nxs = []\nxs.append(3)\nxs.append(\"b\")\nxs.append(1.5)\nxs.append(None)\nprint(1 if xs[0] \u003e 1 else 0)            # 1  — two numbers\nprint(1 if xs[0] \u003c 1 else 0)            # 0\nprint(1 if xs[2] \u003e 1 else 0)            # 1  — a float slot against an int\nprint(1 if xs[1] \u003e \"a\" else 0)          # 1  — two texts, by their characters\nprint(1 if xs[1] \u003e \"c\" else 0)          # 0\ni = 3\nprint(1 if xs[0] \u003e= i else 0)           # 1  — the index and the number may both move\nd = {}\nd[\"k\"] = 5\nd[\"j\"] = \"m\"\nprint(1 if d[\"k\"] \u003e= 5 else 0)          # 1  — the dict the program filled\nprint(1 if d[\"j\"] \u003e \"a\" else 0)         # 1\nys = []\nfor v in [2, 4]:\n    ys.append(v)\nprint(1 if ys[0] \u003e 3 else 0)            # 0  — a container a loop built\nprint(1 if ys[1] \u003e 3 else 0)            # 1\nnested = []\nnested.append([3, \"a\"])\nnested.append({\"k\": 7})\nprint(1 if nested[0][0] \u003e 1 else 0)     # 1  — one level below, through ADR 0251's read\nprint(1 if nested[0][1] \u003e \"A\" else 0)   # 1\nprint(1 if nested[1][\"k\"] \u003c 9 else 0)   # 1\ntry:\n    print(1 if xs[0] \u003e \"a\" else 0)      # TypeError: int against str — the slot's kind named\nexcept TypeError:\n    print(\"caught int/str\")\ntry:\n    print(1 if xs[3] \u003e 1 else 0)        # TypeError: NoneType against int\nexcept TypeError:\n    print(\"caught None/int\")\ntry:\n    print(1 if xs[1] \u003c 1 else 0)        # TypeError: str against int, left named first\nexcept TypeError:\n    print(\"caught str/int\")\n",
@@ -2441,43 +2464,167 @@
     },
     {
       "case": {
-        "id": "programs/probe_bool_in_a_container",
-        "name": "probe_bool_in_a_container.gy",
-        "source": "# A bool inside a container. The element tag vocabulary that tells a list's element from text or\n# a float has no bool in it, so both backends print the number a bool is stored as: `[1, 1]` and\n# `{'k': 1}` where CPython prints `[True, 1]` and `{'k': True}` (roadmap Gap R.112, filed by ADR\n# 0257 — the print rule landed there; the element tag of the ADR 0184 vocabulary still has to grow).\nprint([True, 1])\nprint({\"k\": True})\n",
+        "id": "programs/probe_bool_chosen_by_an_operator",
+        "name": "probe_bool_chosen_by_an_operator.gy",
+        "source": "# An operator that *chooses* one of its operands hands back a verdict, and the compiled backend prints\n# the number that verdict is stored as while the interpreter prints the verdict (roadmap Gap R.117).\n#\n# What each engine answers today:\n#   --interp  True  False  0\n#   --aot     1     0      0\n#   python3   True  False  0\n#\n# ADR 0259 gave a container slot the right to say `bool`; these three are the places where a bool is\n# *chosen* rather than written, and the rendering follows the chosen operand's static type.\n#\n# `max([True, 0])` returns the slot, whose tag the compiled lowering never carries into the result. The\n# `and` row is the same question: CPython returns the operand itself, so `xs[0] and xs[1]` where both are\n# ints answers the number — the last row is the one that must NOT change, and it is why this probe keeps\n# its three rows together.\nxs = [True, 0]\nprint(max([True, 0]))\nprint(min([False, 1]))\nys = [True, 1]\nprint(ys[0] and ys[1])\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "a bool in a list or dict prints as the number it is stored as on both backends: the element tag vocabulary a container carries has no bool in it, so the printer reads 1 where Python reads True",
-        "ref": "roadmap Gap R.112 (filed by ADR 0257, the bools-are-values cycle)",
+        "reason": "the candidate a max/min fold returns is the 0/1 it was chosen from, with no tag travelling with it: the compiled leg answers 1 and 0 where CPython and the interpreter answer True and False; `ys[0] and ys[1]` is the row that must not move, because CPython hands back the operand and its number there too",
+        "ref": "roadmap Gap R.117 (measured while closing Gap R.112, ADR 0259)",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "[1, 1]\n{'k': 1}\n"
+            "stdout": "True\nFalse\n1\n"
           },
           {
             "backend": "aot",
-            "stdout": "[1, 1]\n{'k': 1}\n"
+            "stdout": "1\n0\n1\n"
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "[1, 1]\n{'k': 1}\n",
+      "interp_stdout": "True\nFalse\n1\n",
       "aot_ok": true,
-      "aot_stdout": "[1, 1]\n{'k': 1}\n",
-      "parity": true,
+      "aot_stdout": "1\n0\n1\n",
+      "parity": false,
       "python_ok": true,
-      "python_stdout": "[True, 1]\n{'k': True}\n",
-      "interp_matches_python": false,
+      "python_stdout": "True\nFalse\n1\n",
+      "interp_matches_python": true,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "a bool in a list or dict prints as the number it is stored as on both backends: the element tag vocabulary a container carries has no bool in it, so the printer reads 1 where Python reads True",
-      "oracle_ref": "roadmap Gap R.112 (filed by ADR 0257, the bools-are-values cycle)",
+      "oracle_reason": "the candidate a max/min fold returns is the 0/1 it was chosen from, with no tag travelling with it: the compiled leg answers 1 and 0 where CPython and the interpreter answer True and False; `ys[0] and ys[1]` is the row that must not move, because CPython hands back the operand and its number there too",
+      "oracle_ref": "roadmap Gap R.117 (measured while closing Gap R.112, ADR 0259)",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
-        "interpreter stdout differs from CPython",
         "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_bool_in_a_comprehension",
+        "name": "probe_bool_in_a_comprehension.gy",
+        "source": "# A comprehension that builds verdicts. The list works on both backends now (roadmap Gap R.112,\n# ADR 0259); the set and the dict do not, because their compile-time fold writes a static global and a\n# static global has no tag table to write True into — the fold now declines rather than store the\n# number and let the printer follow it (roadmap Gap R.116).\n#\n# What each engine answers today:\n#   --interp  [True, 1, 1]  {True}  {1: True}  {True: 1}\n#   --aot     refuses, in words, exit 1: \"a comprehension of verdicts needs the tagged set builder,\n#             which a set comprehension does not have yet\" — no line is printed at all\n#   python3   [True, 1, 1]  {True}  {1: True}  {True: 1}\n#\n# The list row is here so the family stays one row: it is the shape that IS built tagged, and the\n# refusal above is only believable next to it.\nprint([x for x in [True, 1, 1]])\nprint({True for x in [1]})\nprint({1: True for x in [1]})\nprint({True: 1 for x in [1]})\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
+        "ref": "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n"
+          },
+          {
+            "backend": "aot",
+            "error": "comprehension of verdicts needs the tagged set builder",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
+      "oracle_ref": "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_dict_comprehension_duplicate_key",
+        "name": "probe_dict_comprehension_duplicate_key.gy",
+        "source": "# A dict comprehension that writes the same key twice keeps both entries in the interpreter. This is\n# not about bools (nothing here is a verdict) — it is the dict-comp fold keeping a list of entries where\n# a dict needs a lookup, measured while separating the bool-in-a-container rows (roadmap Gap R.118).\n#\n# What each engine answers today:\n#   --interp  {1: 2, 1: 2}   2\n#   --aot     {1: 2}         1\n#   python3   {1: 2}         1\n#\n# A dict is a key → value mapping: rebinding a key that is already there replaces the value and leaves\n# the size alone, which is what the compiled fold and CPython both do. The interpreter appends, so the\n# container holds two entries under one key and `len` counts the pair.\nd = {1: 2 for x in [1, 2]}\nprint(d)\nprint(len(d))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a dict comprehension that writes the same key twice keeps both entries in the interpreter, so the container holds two slots under one key and len counts the pair; the compiled fold and CPython both replace the value and keep the size",
+        "ref": "roadmap Gap R.118 (measured while closing Gap R.112, ADR 0259)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "{1: 2, 1: 2}\n2\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "{1: 2}\n1\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "{1: 2, 1: 2}\n2\n",
+      "aot_ok": true,
+      "aot_stdout": "{1: 2}\n1\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "{1: 2}\n1\n",
+      "interp_matches_python": false,
+      "aot_matches_python": true,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a dict comprehension that writes the same key twice keeps both entries in the interpreter, so the container holds two slots under one key and len counts the pair; the compiled fold and CPython both replace the value and keep the size",
+      "oracle_ref": "roadmap Gap R.118 (measured while closing Gap R.112, ADR 0259)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_slot_order_in_a_ternary",
+        "name": "probe_slot_order_in_a_ternary.gy",
+        "source": "# A comparison that CPython refuses answers in the compiled backend. `xs[0] \u003e \"a\"` is an ordering\n# between a number and a text — Python raises TypeError naming both kinds, the interpreter raises\n# it through the same gate, and the compiled path folds the container read to the literal element\n# and then folds the *condition* rather than trapping, so the ternary takes the true branch and\n# prints 1. Both spellings are pinned: the int one is the shape that predates this cycle, the bool\n# one is what made it visible (roadmap Gap R.119, measured while closing Gap R.112).\nxs = [1]\nprint(1 if xs[0] \u003e \"a\" else 0)\nys = [True]\nprint(1 if ys[0] \u003e \"a\" else 0)\n",
+        "shared": false,
+        "oracle": "not_applicable",
+        "reason": "the ordering CPython itself refuses — an int against a text raises TypeError, so there is no third opinion to compare; what is recorded is that the interpreter raises the same sentence and the compiled backend folds the ternary's condition and prints the true branch, measured on HEAD so it is a gap and not a regression from ADR 0259",
+        "ref": "roadmap Gap R.119 (measured while closing Gap R.112, ADR 0259)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "error": "not supported between instances of 'int' and 'str'",
+            "missing": true
+          },
+          {
+            "backend": "aot",
+            "stdout": "1\n1\n"
+          }
+        ]
+      },
+      "interp_ok": false,
+      "interp_stdout": "",
+      "interp_error": "eval error: '\u003e' not supported between instances of 'int' and 'str'",
+      "aot_ok": true,
+      "aot_stdout": "1\n1\n",
+      "parity": false,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "the ordering CPython itself refuses — an int against a text raises TypeError, so there is no third opinion to compare; what is recorded is that the interpreter raises the same sentence and the compiled backend folds the ternary's condition and prints the true branch, measured on HEAD so it is a gap and not a regression from ADR 0259",
+      "oracle_ref": "roadmap Gap R.119 (measured while closing Gap R.112, ADR 0259)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
       ]
     },
     {
@@ -3192,12 +3339,12 @@
       ]
     }
   ],
-  "rows": 112,
-  "skipped": 19,
-  "pass": 93,
+  "rows": 116,
+  "skipped": 22,
+  "pass": 94,
   "fail": 0,
-  "oracle_match": 79,
-  "oracle_debt": 16,
-  "oracle_not_applicable": 17,
+  "oracle_match": 80,
+  "oracle_debt": 18,
+  "oracle_not_applicable": 18,
   "oracle_drift": 0
 }
