@@ -4694,3 +4694,298 @@ func orderKindSlot(name string, isDict bool) string {
 	}
 	return "list"
 }
+
+// taggedArithPair is the numeric door for the one question a slot keeps to itself until the program
+// runs: **what kind of number is in here**. `xs = []` / `xs.append([7, 8])` / `print(xs[0][0] + 1)` is
+// CPython's `8` and the evaluator's `8`, and until now the compiled backend refused it — the refusal
+// was honest (it named the missing half) but it was exit 1 on a program the reference runs, and the
+// tag the object already carries answers the question the compiler could not (roadmap L11.1's
+// remaining numeric clause, ADR 0265).
+//
+// What it does is ask the object, once, and let the target finish the sentence: both operands become
+// (payload, tag) pairs — a literal is a pair with a constant tag, a tagged variable is already one, a
+// slot read comes out of the door that reads the payload with its tag — and `@rt_num_arith` does the
+// operator in the one word that holds both families, deciding the *answer's* kind from the two tags it
+// was handed. The raise is emitted here rather than in the helper, because only this code knows
+// whether a handler is open: the helper fills a buffer, the emitted code stores it through the same
+// raise door every trap in the language uses, so `except TypeError:` reaches it (ADR 0228) and the
+// sentence is CPython's own (`unsupported operand type(s) for +: 'int' and 'str'`, and for a negation
+// the different sentence the reference really writes, `bad operand type for unary -: 'str'`).
+//
+// It is deliberately narrow. Both operands must be pairable, at least one of them must actually need
+// the pair — otherwise the ordinary road already gets the kind right — and anything the pairing cannot
+// name (a call, an attribute) declines, which leaves the existing refusal in place rather than
+// replacing a precise diagnostic with a wrong number.
+func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok bool, err error) {
+	var op int
+	var l, r Expr
+	var sp Span
+	switch n := e.(type) {
+	case *BinOp:
+		switch n.Op {
+		case "+":
+			op = 0
+		case "-":
+			op = 1
+		case "*":
+			op = 2
+		default:
+			return "", "", false, nil
+		}
+		l, r = n.L, n.R
+		sp = n.Src
+	case *UnOp:
+		if n.Op != "-" {
+			return "", "", false, nil
+		}
+		op, l, r = 3, n.X, n.X
+		sp = n.Src
+	default:
+		return "", "", false, nil
+	}
+	if !g.operandMayNeedPair(l) && !g.operandMayNeedPair(r) {
+		return "", "", false, nil
+	}
+	// `+` and `*` are the two operators the reference can answer with something that is not a number and
+	// is not a raise: text or a list repeated, two texts or two lists joined. Answering a raise where the
+	// reference answered a value is a wrong program, and this backend cannot answer the repetition at all
+	// (Gap R.82), so those two operators take the door only where the compiler can see that no text and no
+	// container can reach a slot (ADR 0265). `-` and the unary `-` answer a number or raise, always, so
+	// they take it whatever the container holds.
+	if op == 0 || op == 2 {
+		if !slotLiteralMayBeNumber(l) || !slotLiteralMayBeNumber(r) {
+			return "", "", false, nil
+		}
+		if isStringExpr(l) || isStringExpr(r) {
+			return "", "", false, nil
+		}
+		if !g.slotArithmeticIsProven(l) || !g.slotArithmeticIsProven(r) {
+			return "", "", false, nil
+		}
+	}
+	ap, at, okA, errA := g.arithOperandPair(b, l)
+	if errA != nil {
+		return "", "", false, errA
+	}
+	bp, bt, okB, errB := g.arithOperandPair(b, r)
+	if errB != nil {
+		return "", "", false, errB
+	}
+	if !okA || !okB {
+		return "", "", false, nil
+	}
+	g.heapUsed = true
+	g.floatFmtUsed = true
+	g.arithUsed = true
+	outp, outt, outm, st := g.newTmp(), g.newTmp(), g.newTmp(), g.newTmp()
+	fmt.Fprintf(b, "  %s = alloca i32\n", outp)
+	fmt.Fprintf(b, "  %s = alloca i32\n", outt)
+	fmt.Fprintf(b, "  %s = alloca i8*\n", outm)
+	fmt.Fprintf(b, "  %s = call i32 @rt_num_arith(i32 %d, i32 %s, i32 %s, i32 %s, i32 %s, i32* %s, i32* %s, i8** %s)\n",
+		st, op, ap, at, bp, bt, outp, outt, outm)
+	// Two statuses, two classes: the operands do not add (CPython's TypeError) or the whole number
+	// the answer would be does not fit this backend's int word (an OverflowError naming L12.12, raised
+	// rather than letting `fptosi` answer poison — the rule Gap R.133 established the day it was filed).
+	isType, isOvf := g.newTmp(), g.newTmp()
+	next, badType, badOvf, done := g.newLabel("numnext"), g.newLabel("numtype"), g.newLabel("numovf"), g.newLabel("numok")
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 1\n", isType, st)
+	g.markI1(isType)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isType, badType, next)
+	fmt.Fprintf(b, "%s:\n", badType)
+	g.raiseRuntimeMsg(b, "TypeError", outm, sp)
+	fmt.Fprintf(b, "%s:\n", next)
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 2\n", isOvf, st)
+	g.markI1(isOvf)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isOvf, badOvf, done)
+	fmt.Fprintf(b, "%s:\n", badOvf)
+	g.raiseRuntimeMsg(b, "OverflowError", outm, sp)
+	fmt.Fprintf(b, "%s:\n", done)
+	v, t := g.newTmp(), g.newTmp()
+	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", v, outp)
+	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", t, outt)
+	return v, t, true, nil
+}
+
+// raiseRuntimeMsg is setExn with a message the *target* wrote: the class and the frame come from the
+// compiler, the bytes come from a buffer the runtime filled, and the raise leaves through the open
+// handler or the function's raise-exit like any other (ADR 0228's "a built-in trap is a typed raise").
+func (g *irGen) raiseRuntimeMsg(b *strings.Builder, class string, msgPtr string, sp Span) {
+	g.raiseUsed = true
+	b.WriteString("  store i32 1, i32* @exn_flag\n")
+	fmt.Fprintf(b, "  store i32 %d, i32* @exn_code\n", exnCode(class))
+	mv := g.newTmp()
+	fmt.Fprintf(b, "  %s = load i8*, i8** %s\n", mv, msgPtr)
+	fmt.Fprintf(b, "  store i8* %s, i8** @exn_msg\n", mv)
+	if frame := g.raiseFrame(sp); frame != "" {
+		fmt.Fprintf(b, "  store i8* %s, i8** @exn_frame\n", g.strConst(frame))
+	} else {
+		b.WriteString("  store i8* null, i8** @exn_frame\n")
+	}
+	if len(g.handlerStack) > 0 {
+		b.WriteString("  br label %" + g.handlerStack[len(g.handlerStack)-1] + "\n")
+	} else {
+		b.WriteString("  br label %" + g.funcRaiseExit + "\n")
+	}
+}
+
+// operandMayNeedPair is the side-effect-free question that decides whether to try the door at all: only
+// a slot read whose kind lives in the object can hold a kind the compiler does not know, so a sum of
+// literals, a double variable and an int variable stay on the ordinary road they have always used.
+func (g *irGen) operandMayNeedPair(e Expr) bool { return g.arithWouldRefuse(e) }
+
+// arithWouldRefuse is the cheap question the print dispatch asks before trying the tagged arithmetic
+// door: would the ordinary numeric road have refused this expression? It is the same test
+// slotReadRefusal makes when it writes "cannot reach into xs's slots" — the deepest subscript walks back
+// to a container name this pass no longer has a literal story about. Anything else keeps the road it was
+// already answered on, so landing this door cannot reroute a working program, and `/` is left out
+// because true division has had its own door since ADR 0253.
+func (g *irGen) arithWouldRefuse(e Expr) bool {
+	switch n := e.(type) {
+	case *BinOp:
+		if n.Op == "/" {
+			return false
+		}
+		return g.arithWouldRefuse(n.L) || g.arithWouldRefuse(n.R)
+	case *UnOp:
+		return n.Op == "-" && g.arithWouldRefuse(n.X)
+	case *Index:
+		return g.indexKindIsRuntimeObject(n)
+	}
+	return false
+}
+
+// indexKindIsRuntimeObject walks a chained subscript back to the name it reads through and asks whether
+// that name is a container the analysis has lost: allocated, a container by kind, and no longer
+// described by the literal that built it. That is precisely the set of names whose numeric read is
+// refused today, which is why it is safe to use as the gate.
+func (g *irGen) indexKindIsRuntimeObject(ix *Index) bool {
+	for {
+		switch o := ix.Obj.(type) {
+		case *Index:
+			ix = o
+		case *Name:
+			if !g.allocd[o.Value] || !g.containerNamed(o.Value) {
+				return false
+			}
+			_, provable := g.containerLits[o.Value]
+			return !provable
+		default:
+			return false
+		}
+	}
+}
+
+// arithOperandPair turns one operand into the (payload, tag) pair `@rt_num_arith` asks about. A literal
+// carries its own kind as a constant; a double variable is boxed on the way in (the same handle a float
+// slot holds, so the helper's one lift serves both); a tagged variable already is the pair; a slot read
+// comes from the doors that read payload and tag together. Anything else declines.
+func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok bool, err error) {
+	switch n := e.(type) {
+	case *IntLit:
+		return strconv.FormatInt(n.Value, 10), "0", true, nil
+	case *BoolLit:
+		if n.Value {
+			return "1", "2", true, nil
+		}
+		return "0", "2", true, nil
+	case *FloatLit:
+		g.heapUsed = true
+		h := g.newTmp()
+		fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", h, floatConst(n.Value))
+		return h, "1", true, nil
+	case *NoneLit:
+		return "0", "3", true, nil
+	case *StrLit:
+		v, verr := g.value(b, e)
+		if verr != nil || v == "" {
+			return "", "", false, verr
+		}
+		return v, "4", true, nil
+	case *UnOp:
+		// The negation of a literal is the literal with its sign taken at compile time — the pair the
+		// operand needs is a constant, and asking the target for `-1` costs an instruction for nothing.
+		if n.Op != "-" {
+			return "", "", false, nil
+		}
+		switch v := n.X.(type) {
+		case *IntLit:
+			return strconv.FormatInt(-v.Value, 10), "0", true, nil
+		case *FloatLit:
+			g.heapUsed = true
+			hn := g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", hn, floatConst(-v.Value))
+			return hn, "1", true, nil
+		}
+		return "", "", false, nil
+	case *Name:
+		if g.taggedVars[n.Value] {
+			v, t := g.newTmp(), g.newTmp()
+			fmt.Fprintf(b, "  %s = load i32, i32* %%_%s\n", v, n.Value)
+			fmt.Fprintf(b, "  %s = load i32, i32* %%_%s_tag\n", t, n.Value)
+			return v, t, true, nil
+		}
+		if g.isFloat(e) || g.isFloatNumericOperand(e) {
+			d := g.floatValue(b, e)
+			if d == "" {
+				return "", "", false, nil
+			}
+			g.heapUsed = true
+			h := g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", h, d)
+			return h, "1", true, nil
+		}
+		v, verr := g.value(b, e)
+		if verr != nil || v == "" {
+			return "", "", false, verr
+		}
+		return v, "0", true, nil
+	case *Index:
+		if v, t, okPair := g.runtimeSlotPairDeep(b, e); okPair {
+			return v, t, true, nil
+		}
+		if v, t, okPair := g.taggedSlotPair(b, n); okPair {
+			return v, t, true, nil
+		}
+		if v, t, okPair := g.runtimeSlotPair(b, n); okPair {
+			return v, t, true, nil
+		}
+	}
+	return "", "", false, nil
+}
+
+// slotLiteralMayBeNumber reports whether an operand written as a literal could ever be anything but a
+// number. It is the narrow half of the `+` and `*` gate (ADR 0265): the operand a slot is paired with
+// has to be a number too, because "a" + xs[0] and [1] * xs[0] are answered by the reference with a
+// joined text and a repeated list, and this backend can build neither from a slot (Gap R.82).
+func slotLiteralMayBeNumber(e Expr) bool {
+	switch n := e.(type) {
+	case *StrLit, *FString:
+		return false
+	case *ListLit, *DictLit, *SetLit, *Tuple:
+		return false
+	case *BinOp:
+		return slotLiteralMayBeNumber(n.L) && slotLiteralMayBeNumber(n.R)
+	case *UnOp:
+		return slotLiteralMayBeNumber(n.X)
+	case *CondExpr:
+		return slotLiteralMayBeNumber(n.If) && slotLiteralMayBeNumber(n.Else)
+	default:
+		return true
+	}
+}
+
+// slotArithmeticIsProven answers the gate's question for one operand of a `+` or a `*`: is this a read
+// of a slot the program is *shown* to hold only numbers? A read of a container the notebook has nothing
+// to say about is answered no, and so is an operand that is neither a slot read nor something the
+// ordinary numeric road can already value.
+func (g *irGen) slotArithmeticIsProven(e Expr) bool {
+	if !g.operandMayNeedPair(e) {
+		// Not a slot read at all: the road this operand always took is the one it takes now.
+		return true
+	}
+	nm, depth := chainDepth(e)
+	if nm == nil || depth < 1 || g.numChains == nil || g.numChains.blocked {
+		return false
+	}
+	return g.numChains.numeric(nm.Value, depth)
+}

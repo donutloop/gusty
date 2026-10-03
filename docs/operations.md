@@ -548,6 +548,23 @@ rows found by walking the predeclared table and choosing test values — `progra
 our `unsupported call "pow"` compiled). A module that would die in `llc` is now caught in `pkg/lang` before
 anyone links: `inf.0e+00` and `nan.0e+00` are on the shared `forbiddenIR` blacklist (Gap R.134).
 
+Arithmetic on a container slot whose kind only the run time can describe is answered by the compiled leg as
+well, in the print position (`print(xs[0][0] + 1)`, `print(xs[0][0] * 2)`, `print(-xs[0][0])` after
+`xs.append([7, 8])`), and it is the one place where a *program-wide* property decides whether the compiler
+will build the module at all: `+` and `*` on such a slot are emitted only when no text and no container
+holding one can reach any container slot in the program (`ADR 0265`). A program that fails that proof keeps
+the refusal it has always had — exit 1, `index cannot reach into xs's slots`, naming the missing half —
+which means adding a string to a container can turn a working compiled arithmetic into a refusal. That is
+deliberate and coarse (the reference *answers* `"a" + "b"` and `[1] * 2`; this backend cannot, so the door
+must not open there), and the positions the door does not reach are filed rather than silent: an arithmetic
+result bound to a name (`Gap R.138`, `programs/probe_arith_result_bound_to_a_name`) and a slot read handed
+to a function (`Gap R.139`, `programs/probe_slot_read_handed_to_a_function`) are both CPython's and the
+interpreted leg's `14` against the compiled leg's exit 1. The negation of a text is worse and also filed:
+`print(-"hi")` answers `-281474976710658` interpreted and `0` compiled at exit 0, where the reference
+raises (`Gap R.137`). To reproduce any of these numbers, force the leg: `gustyc --file <path> --interp` and
+`gustyc --file <path> -aot` — a bare `--file` is the interpreter's default, and `-aot` written after the
+path is parsed as that flag's value rather than as the compiled leg.
+
 ## Emitted IR
 
 Functions, control flow (`if`/`while`/`for`/`match`), the `pass` no-op

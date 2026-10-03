@@ -1,0 +1,20 @@
+# numeric_slot_arith.gy — the number use of a slot whose kind only the run time can describe
+# (roadmap L11.1's last clause, ADR 0265).
+#
+# Before this door the three shapes below were a compile-time refusal on the compiled leg — "cannot
+# reach into xs's slots" — because the compiler wanted to settle the answer's kind (`int` or `float`)
+# before writing the module, and the kind lives in the object. What the pair (payload, tag) can now do
+# is arithmetic: the answer's kind travels with the answer.
+xs = []
+xs.append([7, 8])
+print(xs[0][0] + 1)
+print(xs[0][1] - 3)
+print(-xs[0][0])
+print(xs[0][0] + xs[0][1])
+ys = []
+ys.append([7.5, 8])
+print(ys[0][0] * 2)
+print(ys[0][0] + 1)
+d = {}
+d["k"] = 40
+print(d["k"] + 2)

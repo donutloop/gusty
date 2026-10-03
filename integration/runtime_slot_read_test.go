@@ -196,8 +196,10 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 // a verdict. CPython's answer is written into the roadmap row beside each.
 func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"number_use_of_an_unseen_slot", "xs = []\nxs.append([7, 8])\nprint(xs[0][0] + 1)\n", "cannot reach into xs's slots"},
-		{"negation_of_an_unseen_slot", "xs = []\nxs.append([7, 8])\nprint(-xs[0][0])\n", "cannot reach into xs's slots"},
+		// The **number** use of the same slot, and its negation, were in this table until ADR 0265 answered
+		// them: the pair (payload, tag) goes to the target, which does the sum and answers a pair back, so
+		// the answer brings its own kind. They live in numeric_slot_arith_test.go now, together with the
+		// gate that decides which programs may take the road at all.
 		// The *ordering* of the same slot used to be in this table; ADR 0252 answers it, and the rows
 		// moved to TestSlotOrderOfAnUnliteralisedSlotMatchesCPython in slot_order_object_test.go.
 		{"membership_in_a_built_container", "xs = []\nxs.append([7, 8])\nprint(1 if 7 in xs[0] else 0)\n", "needs a single static kind"},

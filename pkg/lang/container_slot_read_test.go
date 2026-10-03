@@ -132,13 +132,6 @@ func TestContainerSlotReadRefusesWhatItCannotProve(t *testing.T) {
 			"more than one kind",
 		},
 		{
-			// The promise ran out, so even the numeric read is not allowed: the slot might not hold what
-			// the literal wrote, and a number read out of the wrong object is a wrong answer.
-			"element of a mutated container used as a number",
-			"xs = [[1, 2]]\nxs.append([3])\nprint(xs[0][0] + 1)\n",
-			"cannot reach into xs's slots",
-		},
-		{
 			// A loop variable over a mixed list takes its tag per iteration; arithmetic on it is the
 			// tagged value word, not this read.
 			"loop variable used as a number",

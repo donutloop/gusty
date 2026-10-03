@@ -46,6 +46,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// ADR 0264); the file is gusty's spelling of the reference's math-module names, so the ledger
 		// records it and the CLI test runs the twin.
 		"whole_number_builtins",
+		// The number use of a slot whose kind only the run time can describe: a list of lists, and
+		// arithmetic on what comes out of one (roadmap L11.1's last clause, ADR 0265).
+		"numeric_slot_arith",
 		"features_a", "features_b",
 		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "match_classpat", "round_ties", "round_ndigits", "wrapping_decorator", "dunder",
 		"async_basic",
@@ -332,6 +335,20 @@ func conformanceProbes() []lang.ConformanceCase {
 		// compiled guard raises an OverflowError naming L12.12, rather than wrapping in silence
 		// (roadmap Gap R.133).
 		"probe_whole_number_beyond_the_int_word",
+		// The negation of a slot that turns out to hold text. The compiled leg now names the kind the object
+		// carries; the interpreted leg answers a number where CPython stops, which is Gap R.137 and a pin,
+		// not an average (roadmap L11.1, ADR 0265).
+		"probe_negated_text_slot",
+		// Arithmetic whose whole-number answer will not fit the compiled int word: the evaluator's int64
+		// answers CPython's number, the compiled guard raises a catchable OverflowError naming L12.12
+		// rather than truncate a double through an i32 (ADR 0264's lesson at the new door).
+		"probe_whole_number_slot_beyond_the_int_word",
+		// The arithmetic the print position answers, one statement earlier: bound to a name first. The
+		// reference and the interpreted leg print 14, the compiled leg declines to build it (Gap R.138).
+		"probe_arith_result_bound_to_a_name",
+		// The same slot read as an argument. Again the reference and the interpreted leg answer, and the
+		// compiled leg declines — a parameter's kind settled where the caller cannot see it (Gap R.139).
+		"probe_slot_read_handed_to_a_function",
 		// A double written with an exponent — the spelling a scientific value arrives in — does not lex:
 		// both engines stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
 		// R.135). Filed while measuring `sqrt`, whose natural test values are 1e18 and 1e-3.
@@ -474,6 +491,22 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against both engines",
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}, {Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
+	"programs/probe_arith_result_bound_to_a_name": {oracle: lang.OracleDebt,
+		reason: "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
+		ref:    "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
+	"programs/probe_slot_read_handed_to_a_function": {oracle: lang.OracleDebt,
+		reason: "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
+		ref:    "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
+	"programs/probe_negated_text_slot": {oracle: lang.OracleNA,
+		reason: "the reference stops with TypeError: bad operand type for unary -: 'str'; the compiled leg names the kind the object carries, and the interpreted leg answers -281474976710659 — a number, from a text, at exit 0. Pinning the split rather than averaging it is the rule (Gap R.37); the interpreted half is Gap R.137",
+		ref:    "roadmap Gap R.137 (measured landing ADR 0265); docs/adr/0265, Measurement",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-281474976710659\n"}, {Backend: "aot", Missing: true, Err: "exit status 3"}}},
+	"programs/probe_whole_number_slot_beyond_the_int_word": {oracle: lang.OracleDebt,
+		reason: "CPython answers 7000000000 and so does the interpreted leg, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
+		ref:    "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "7000000000\n"}, {Backend: "aot", Missing: true, Err: "exit status 3"}}},
 	"programs/probe_whole_number_beyond_the_int_word": {oracle: lang.OracleNA,
 		reason: "the same spelling (the reference's math.floor / math.ceil), and the two engines disagree here on purpose: the evaluator's ints are int64 and answer 3000000000, while the compiled int word is 32 bits and its guard raises `OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)` rather than wrapping a poison `fptosi` into a silent negative — the harness sees the compiled leg's exit class, and integration/math_names_test.go is where the sentence itself and its catchability are asserted",
 		ref:    "roadmap Gap R.133 (measured landing ADR 0264); the decision this waits on is L12.12's",

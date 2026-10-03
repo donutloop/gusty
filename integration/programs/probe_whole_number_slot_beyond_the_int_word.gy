@@ -1,0 +1,7 @@
+# probe_whole_number_slot_beyond_the_int_word.gy — the arithmetic whose answer will not fit the compiled
+# int word. CPython answers 7000000000; the interpreted leg answers it too (int64), and the compiled
+# leg raises a catchable OverflowError rather than truncate a double through an i32 into a silent
+# negative (ADR 0264's lesson, applied to the new door; roadmap L12.12 owns the word).
+xs = []
+xs.append([7, 8])
+print(xs[0][0] * 1000000000)

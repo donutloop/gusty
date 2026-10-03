@@ -219,7 +219,14 @@ whatever arrives: a float slot unboxes, an `int` or `bool` slot converts, and a 
 a set raises CPython's own `unsupported operand type(s) for /` sentence naming the kind it really holds. The
 zero trap is emitted inside each arm rather than after the merge, because which wording the pair earns is
 itself a run-time question — `3 / 0` is `division by zero`, `1.5 / 0` is `float division by zero` — and a
-program's `except ZeroDivisionError:` reads that sentence.
+program's `except ZeroDivisionError:` reads that sentence. The rest of arithmetic follows the same road
+(ADR 0265, roadmap L11.1's last clause): `xs = []` / `xs.append([7, 8])` / `print(xs[0][0] + 1)` is `8` and
+`xs.append([7.5, 8])` / `print(xs[0][0] * 2)` is `15.0` compiled, where the answer's kind used to be the
+reason the module could not be written at all — the pair goes to the target, which does the sum in a `double`
+and answers a pair back, so the tag that decides `8` from `8.0` is the one the object carries. `+` and `*`
+take that road only under a program-wide proof that the slots hold numbers, because CPython *answers*
+`"a" + "b"` and `[1] * 2` and this backend builds neither from a slot (`Gap R.82`); where the proof is
+absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.137`–`R.139`).
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a

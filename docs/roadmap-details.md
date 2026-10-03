@@ -5988,3 +5988,65 @@ the ten, with the interpreted `name 'pow' is not defined` and the compiled `unsu
 leg by leg). The fix for each is the one ADR 0264 made for the other three names: lower it on both paths, or
 take it out of the table so the checker stops promising it — and the sweep that found them is worth
 re-running after any change to `predeclared.go`, because the table and the engines drift apart silently.
+
+### Gap R.137 — the negation of a text answers a number on both engines (OPEN, owner L11.5, measured landing ADR 0265)
+
+`print(-"hi")` and `x = "hi"` / `print(-x)` are stopped by CPython with
+`TypeError: bad operand type for unary -: 'str'`. Both of this compiler's engines answer a **number** and
+exit 0: `-281474976710658` interpreted, `0` compiled. Measured with `/tmp/r51/gustyc` (the pre-door
+binary) so the numbers are not this commit's own output quoted back at itself.
+
+The interpreted digits are the interned *index* of the text with its sign taken — the evaluator's unary
+`-` is reached with whatever word the value carries and does not ask what the value is. The compiled
+`0` is a folded negation of a value whose payload is a table index the folder could not read. Either way
+the shape is the numeric road accepting an operand it has no meaning for, which is ADR 0166's own class:
+a silent wrong answer at exit 0 is the single outcome the exit-code contract does not permit, worse than
+the refusal this commit replaced.
+
+Filed rather than fixed in the ADR 0265 commit: the door shipped there is a different feature, and a
+silent-exit-0 row earns its own measurement, its own probes and its own commit. The way out is already
+written — `@rt_kind_name` and `@rt_num_bad` name the operand's kind and raise the reference's sentence for
+a slot that turns out to hold text — and the same table has to be reachable from the static numeric road,
+where the compiler *does* know the operand is a text and can emit the raise directly. `probe_negated_text_slot`
+is the ledger row; it becomes a `match` when both engines stop.
+
+### Gap R.138 — the arithmetic the print position answers is refused one statement earlier (OPEN, owner L11.1, measured landing ADR 0265)
+
+```
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n)
+```
+
+CPython prints `14`; the interpreted leg prints `14`; the compiled leg spends exit 1 on
+`index cannot reach into xs's slots`. One statement earlier — `print(xs[0][0] * 2)` — the same expression
+prints `14` from the compiled leg since ADR 0265.
+
+The difference is not the arithmetic, it is who asks. The pair road is opened in the print dispatch, where
+a value and its tag are exactly what the mixed printer wants. An assignment asks the ordinary numeric road
+instead, and that road still insists on a static kind before it will emit an `add`. So the door works where
+the print dispatch reaches and stops one statement short of it, which is the definition of a half-lift and
+the reason it is recorded as a row rather than quietly left as a surprise.
+
+The way out is small and already built: an assignment whose value is arithmetic over a run-time-described
+slot stores the pair the printer reads — `_n` and `_n_tag`, the tagged-variable shape the print door and
+`arithOperandPair` already handle — and the name carries the tag the expression produced. The gate is the
+same proof; nothing about which programs may take the road changes.
+
+### Gap R.139 — the same slot read as an argument is refused (OPEN, owner L11.1, measured landing ADR 0265)
+
+```
+def twice(v):
+    return v * 2
+
+xs = []
+xs.append([7, 8])
+print(twice(xs[0][0]))
+```
+
+`14` from CPython, `14` from the interpreted leg, exit 1 from the compiled leg. One word short of Gap
+R.138's fix: the caller has the pair in hand, and the parameter does not take it. A parameter whose
+argument arrived as a pair has to be bound as a tagged parameter, so the body's `v * 2` sees the tag the
+caller saw — which is L11.1's own sentence, quoted again at the fourth door in a row: the kind belongs to
+the value, and every place a value crosses a boundary has to carry the tag across with it.

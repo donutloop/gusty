@@ -1980,13 +1980,42 @@ xs2.append([1, 2])
 print(1 if xs2[0] == [1, 2] else 0)         # 1   — a container slot equals an equal container
 ```
 
+Such a slot can also be **used as a number**, and the answer's kind is the answer's own
+(`xs[0][0] + 1` is `8` where the slot holds `7` and `15.0` where it holds `7.5`). The compiler hands the
+pair — the payload and the tag its writers left — to the target, which does the arithmetic in the one word
+that holds both families exactly and answers a pair back; the printer reads that tag, so no instruction had
+to guess (`roadmap L11.1`, `ADR 0265`):
+
+```python
+xs = []
+xs.append([7, 8])
+print(xs[0][0] + 1)         # 8    — the slot holds an int, the answer is an int
+print(-xs[0][0])            # -7
+xs.append([7.5, 8])
+print(xs[1][0] * 2)         # 15.0 — the same source, and the answer is a float
+d = {}
+d["k"] = 40
+print(d["k"] + 2)           # 42
+```
+
+`+` and `*` take that road only where the program can be *shown* to keep numbers in the slots the read
+reaches: one text, or one value the compiler cannot see through, stored into any container closes those
+two operators, because CPython answers `"a" + "b"` and `[1] * 2` with a value this backend cannot build
+from a slot (`Gap R.82`) and a raise where the reference returns a number is the one answer this compiler
+does not ship. `-` and the unary `-` answer a number or raise whatever the slot holds, so they take the door
+either way; a text under the negation raises CPython's own
+`TypeError: bad operand type for unary -: 'str'`, naming the kind the object carries, and the raise leaves
+through the same door `except TypeError:` and `except OverflowError:` reach. A whole-number answer past the
+compiled 32-bit `int` word raises a catchable `OverflowError` naming `roadmap L12.12` rather than truncate
+through the conversion into a silent negative; the interpreted leg, whose ints are 64-bit, answers the
+number, and the split is recorded rather than averaged.
+
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
-length, Gap R.81), and a tagged element whose kind only the run time can tell — a loop variable over a
-mixed list used as a number, an element of a container the program built used **as a number**
-(`xs[0][0] + 1`, `-xs[0][0]` — the result could be `4` or `4.5`, and the module has to be written before the
-slot is asked; `xs[0] / 4` of such a slot answers `0.0` today instead of refusing, which is measured and owed
-as Gap R.96), **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
+length, Gap R.81), a tagged element whose kind only the run time can tell used as a number by a road this
+backend does not open there — a loop variable over a mixed list, an arithmetic result **bound to a name**
+(`n = xs[0][0] * 2` then `print(n)`, Gap R.138) or **handed to a function** (`twice(xs[0][0])`, Gap R.139),
+**two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
 CPython raises — one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a
 **membership** test or a **loop** whose haystack is such a slot (`7 in xs[0]`, `for v in xs[0]` after

@@ -344,6 +344,29 @@
     },
     {
       "case": {
+        "id": "programs/numeric_slot_arith",
+        "name": "numeric_slot_arith.gy",
+        "source": "# numeric_slot_arith.gy — the number use of a slot whose kind only the run time can describe\n# (roadmap L11.1's last clause, ADR 0265).\n#\n# Before this door the three shapes below were a compile-time refusal on the compiled leg — \"cannot\n# reach into xs's slots\" — because the compiler wanted to settle the answer's kind (`int` or `float`)\n# before writing the module, and the kind lives in the object. What the pair (payload, tag) can now do\n# is arithmetic: the answer's kind travels with the answer.\nxs = []\nxs.append([7, 8])\nprint(xs[0][0] + 1)\nprint(xs[0][1] - 3)\nprint(-xs[0][0])\nprint(xs[0][0] + xs[0][1])\nys = []\nys.append([7.5, 8])\nprint(ys[0][0] * 2)\nprint(ys[0][0] + 1)\nd = {}\nd[\"k\"] = 40\nprint(d[\"k\"] + 2)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n",
+      "aot_ok": true,
+      "aot_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "8\n5\n-7\n15\n15.0\n8.5\n42\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/features_a",
         "name": "features_a.gy",
         "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n",
@@ -2761,6 +2784,175 @@
     },
     {
       "case": {
+        "id": "programs/probe_negated_text_slot",
+        "name": "probe_negated_text_slot.gy",
+        "source": "# probe_negated_text_slot.gy — the negation of a slot that turns out to hold text. CPython stops with\n# TypeError: bad operand type for unary -: 'str'. The compiled leg now names the kind the object\n# carries; the interpreted leg answers a number (roadmap Gap R.137, so this row is pinned, not averaged).\nxs = []\nxs.append(\"hi\")\nprint(-xs[0])\n",
+        "shared": false,
+        "oracle": "not_applicable",
+        "reason": "the reference stops with TypeError: bad operand type for unary -: 'str'; the compiled leg names the kind the object carries, and the interpreted leg answers -281474976710659 — a number, from a text, at exit 0. Pinning the split rather than averaging it is the rule (Gap R.37); the interpreted half is Gap R.137",
+        "ref": "roadmap Gap R.137 (measured landing ADR 0265); docs/adr/0265, Measurement",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "-281474976710659\n"
+          },
+          {
+            "backend": "aot",
+            "error": "exit status 3",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "-281474976710659\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "exit status 3",
+      "parity": false,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "the reference stops with TypeError: bad operand type for unary -: 'str'; the compiled leg names the kind the object carries, and the interpreted leg answers -281474976710659 — a number, from a text, at exit 0. Pinning the split rather than averaging it is the rule (Gap R.37); the interpreted half is Gap R.137",
+      "oracle_ref": "roadmap Gap R.137 (measured landing ADR 0265); docs/adr/0265, Measurement",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_whole_number_slot_beyond_the_int_word",
+        "name": "probe_whole_number_slot_beyond_the_int_word.gy",
+        "source": "# probe_whole_number_slot_beyond_the_int_word.gy — the arithmetic whose answer will not fit the compiled\n# int word. CPython answers 7000000000; the interpreted leg answers it too (int64), and the compiled\n# leg raises a catchable OverflowError rather than truncate a double through an i32 into a silent\n# negative (ADR 0264's lesson, applied to the new door; roadmap L12.12 owns the word).\nxs = []\nxs.append([7, 8])\nprint(xs[0][0] * 1000000000)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython answers 7000000000 and so does the interpreted leg, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
+        "ref": "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "7000000000\n"
+          },
+          {
+            "backend": "aot",
+            "error": "exit status 3",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "7000000000\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "exit status 3",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "7000000000\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython answers 7000000000 and so does the interpreted leg, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
+      "oracle_ref": "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: exit status 3"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_arith_result_bound_to_a_name",
+        "name": "probe_arith_result_bound_to_a_name.gy",
+        "source": "# probe_arith_result_bound_to_a_name.gy — the same arithmetic the print position answers, one statement\n# earlier. CPython and the interpreted leg print 14; the compiled leg declines to build it (roadmap Gap\n# R.138, measured landing ADR 0265), because the pair road is taken where the print dispatch asks for a\n# value and an ordinary numeric binding does not ask.\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
+        "ref": "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "14\n"
+          },
+          {
+            "backend": "aot",
+            "error": "index cannot reach into xs's slots",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "14\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "14\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
+      "oracle_ref": "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_slot_read_handed_to_a_function",
+        "name": "probe_slot_read_handed_to_a_function.gy",
+        "source": "# probe_slot_read_handed_to_a_function.gy — a slot read as an argument. CPython and the interpreted leg\n# print 14; the compiled leg declines (roadmap Gap R.139, measured landing ADR 0265): the parameter's kind\n# would have to be settled where the caller cannot see it.\ndef twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\nprint(twice(xs[0][0]))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
+        "ref": "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "14\n"
+          },
+          {
+            "backend": "aot",
+            "error": "index cannot reach into xs's slots",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "14\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "14\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
+      "oracle_ref": "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_float_literal_with_exponent",
         "name": "probe_float_literal_with_exponent.gy",
         "source": "print(1e18)\n",
@@ -3080,7 +3272,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1367998630/109/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix866824181/112/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3094,7 +3286,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1367998630/109/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix866824181/112/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3936,12 +4128,12 @@
       ]
     }
   ],
-  "rows": 132,
-  "skipped": 33,
-  "pass": 99,
+  "rows": 137,
+  "skipped": 37,
+  "pass": 100,
   "fail": 0,
-  "oracle_match": 84,
-  "oracle_debt": 27,
-  "oracle_not_applicable": 21,
+  "oracle_match": 85,
+  "oracle_debt": 30,
+  "oracle_not_applicable": 22,
   "oracle_drift": 0
 }

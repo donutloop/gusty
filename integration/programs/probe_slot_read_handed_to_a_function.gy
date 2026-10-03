@@ -1,0 +1,9 @@
+# probe_slot_read_handed_to_a_function.gy — a slot read as an argument. CPython and the interpreted leg
+# print 14; the compiled leg declines (roadmap Gap R.139, measured landing ADR 0265): the parameter's kind
+# would have to be settled where the caller cannot see it.
+def twice(v):
+    return v * 2
+
+xs = []
+xs.append([7, 8])
+print(twice(xs[0][0]))

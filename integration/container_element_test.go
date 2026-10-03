@@ -187,7 +187,11 @@ func TestNestedShapesThatStillRefuse(t *testing.T) {
 		{"container_key", "print({[1, 2]: 3})\n", "cannot hold"},
 		{"container_key_in_a_dict_variable", "d = {[1]: 1}\nprint(d)\n", "constant integer keys only"},
 		{"arithmetic_on_a_container_element", "xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
-		{"element_of_a_mutated_container_as_a_number", "xs = [[1, 2]]\nxs.append([3])\nprint(xs[0][0] + 1)\n", "cannot reach into xs's slots"},
+		// (`element_of_a_mutated_container_as_a_number` — `xs = [[1, 2]]` / `xs.append([3])` /
+		// `print(xs[0][0] + 1)` — sat in this table demanding a refusal until ADR 0265: the pair (payload,
+		// tag) now travels to the target, which does the sum and answers a pair back, so the answer brings
+		// its own kind. It is a parity row in numeric_slot_arith_test.go, with the gate that proves the
+		// slots hold numbers.)
 		// (`xs = [[1, 2]]; xs.append([9]); len(xs[0])` used to sit here demanding a refusal. The object
 		// knows its own slots — every writer tags them — so it answers 2 on both engines and is pinned
 		// against CPython in TestContainerSlotReadsMatchCPython (ADR 0246).

@@ -1,0 +1,6 @@
+# probe_negated_text_slot.gy — the negation of a slot that turns out to hold text. CPython stops with
+# TypeError: bad operand type for unary -: 'str'. The compiled leg now names the kind the object
+# carries; the interpreted leg answers a number (roadmap Gap R.137, so this row is pinned, not averaged).
+xs = []
+xs.append("hi")
+print(-xs[0])

@@ -151,36 +151,23 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 
 // TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve pins what the door still declines, and that
 // it declines by naming the missing half. A *read* is answered by the object, and so is an *ordering*
-// of it (ADR 0252, slot_order_object_test.go); what is still owed is the **number** — the arithmetic
-// use of a slot only the run time can describe, whose result kind (`int` or `float`) the compiler would
-// have to settle before writing the module — and the membership test and the loop, which need the
-// haystack's *kind* rather than its tag. Each of these is a refusal with a name, never an exit 2 and
-// never a verdict (roadmap L11.1's remaining clauses, Gaps R.95 and R.83).
+// of it (ADR 0252, slot_order_object_test.go); the **number** use of the same slot is answered since
+// ADR 0265 (numeric_slot_arith_test.go). What is still owed is the membership test and the loop, which
+// need the haystack's *kind* rather than its tag. Each of these is a refusal with a name, never an
+// exit 2 and never a verdict (roadmap L11.1's remaining clauses, Gaps R.95 and R.83).
 func TestRunTimeBuiltNestedSlotReadRefusesWhatItCannotProve(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			"number use of a slot the compiler never saw",
-			"xs = []\nxs.append([7, 8])\nprint(xs[0][0] + 1)\n",
-			"cannot reach into xs's slots",
-		},
-		{
-			// The negation is still owed the number: `-xs[0][0]` needs to know whether the answer is an
-			// int or a float before the module is written, and only the slot knows. The *ordering* of the
-			// same slot is answered — its verdict is a bool whatever arrives — in slot_order_object_test.go
-			// (roadmap L11.1, ADR 0252).
-			"negation of a slot the compiler never saw",
-			"xs = []\nxs.append([7, 8])\nprint(-xs[0][0])\n",
-			"cannot reach into xs's slots",
-		},
-		{
-			// The haystack is a slot read; the needle is a pair; but which helper asks the question is
-			// chosen by the *kind* the compiler cannot state. That is the same missing word as the three
-			// rows above, on the membership side.
+			// The haystack is a slot read, and the needle is a pair; but which helper asks the question
+			// is chosen by the *kind* the compiler cannot state. The tag answers an equality and an
+			// ordering; a membership needs to know whether to walk slots or bytes at all.
 			"membership in a container the program built",
 			"xs = []\nxs.append([7, 8])\nprint(1 if 7 in xs[0] else 0)\n",
 			"needs a single static kind",
 		},
 		{
+			// Iteration is the same missing word with a loop around it: the loop body's variable takes its
+			// kind from the slot, which is the tagged value word again.
 			"iteration of a container the program built",
 			"xs = []\nxs.append([7, 8])\nfor v in xs[0]:\n    print(v)\n",
 			"needs a single static kind",

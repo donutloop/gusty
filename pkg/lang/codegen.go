@@ -3049,6 +3049,180 @@ miss:
 
 `
 
+// numArithRuntimeIR is the arithmetic door for the one question the compiler cannot ask a slot
+// before the module is written: **what kind of number lives here**. A slot read out of a container
+// the pass cannot see (`xs = []` / `xs.append([7, 8])` / `xs[0][0] + 1`) carries its tag with it, and
+// the tag decides everything about the answer — whether `+ 1` prints `8` or `8.5`, and whether a text
+// operand is a number or CPython's `TypeError: unsupported operand type(s) for +: 'list' and 'int'`.
+// Until now the compiled backend declined the whole question (roadmap L11.1's remaining numeric
+// clause, ADR 0265); the interpreter had been answering it correctly all along, which is what made it
+// a divergence rather than a missing feature.
+//
+// The shape is ADR 0253's (`/` is a float whatever arrives, so one lift was enough) generalised to the
+// operators whose *answer* changes kind: the helper takes both (payload, tag) pairs, does the
+// arithmetic in double — the one word that holds both families exactly for the magnitudes at stake
+// here — and hands back the payload **and** the tag the caller must print with. The raise stays with
+// the caller: the helper fills a static buffer and returns a status, and the emitted code does the
+// store-and-branch every raise in this language does, so `except TypeError:` reaches it (ADR 0228).
+//
+// The int arm is guarded before the `fptosi`, for the reason Gap R.133 learned the day it was filed:
+// out of the compiled `int` word the truncation is poison, not a wrong number, so an answer that would
+// not fit raises rather than wrapping (L12.12 owns the word; until then it owns the message).
+const numArithRuntimeIR = `@rt.num.fmt = private constant [61 x i8] c"TypeError: unsupported operand type(s) for %s: '%s' and '%s'\00"
+@rt.num.negfmt = private constant [46 x i8] c"TypeError: bad operand type for unary -: '%s'\00"
+@rt.num.ofmt = private constant [121 x i8] c"OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)\00"
+@rt.num.msg = private global [192 x i8] zeroinitializer
+@rt.k.int = private constant [4 x i8] c"int\00"
+@rt.k.float = private constant [6 x i8] c"float\00"
+@rt.k.bool = private constant [5 x i8] c"bool\00"
+@rt.k.none = private constant [9 x i8] c"NoneType\00"
+@rt.k.str = private constant [4 x i8] c"str\00"
+@rt.k.list = private constant [5 x i8] c"list\00"
+@rt.k.dict = private constant [5 x i8] c"dict\00"
+@rt.k.set = private constant [4 x i8] c"set\00"
+@rt.k.tuple = private constant [6 x i8] c"tuple\00"
+@rt.k.obj = private constant [7 x i8] c"object\00"
+@rt.o.add = private constant [2 x i8] c"+\00"
+@rt.o.sub = private constant [2 x i8] c"-\00"
+@rt.o.mul = private constant [2 x i8] c"*\00"
+
+; rt_kind_name answers the word CPython puts inside the quotes of its operand-type message, from the
+; canonical tag in value.go — the same table the printer, the comparison and the interpreter read, so
+; one tag vocabulary names a value everywhere and nowhere twice. The default is 'object', which is
+; what the reference calls an instance of a user class.
+define internal i8* @rt_kind_name(i32 %t) {
+entry:
+  %e0 = icmp eq i32 %t, 0
+  %e1 = icmp eq i32 %t, 1
+  %e2 = icmp eq i32 %t, 2
+  %e3 = icmp eq i32 %t, 3
+  %e4 = icmp eq i32 %t, 4
+  %e5 = icmp eq i32 %t, 5
+  %e6 = icmp eq i32 %t, 6
+  %e7 = icmp eq i32 %t, 7
+  %e8 = icmp eq i32 %t, 8
+  %n8 = select i1 %e8, i8* getelementptr inbounds ([6 x i8], [6 x i8]* @rt.k.tuple, i32 0, i32 0), i8* getelementptr inbounds ([7 x i8], [7 x i8]* @rt.k.obj, i32 0, i32 0)
+  %n7 = select i1 %e7, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @rt.k.set, i32 0, i32 0), i8* %n8
+  %n6 = select i1 %e6, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @rt.k.dict, i32 0, i32 0), i8* %n7
+  %n5 = select i1 %e5, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @rt.k.list, i32 0, i32 0), i8* %n6
+  %n4 = select i1 %e4, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @rt.k.str, i32 0, i32 0), i8* %n5
+  %n3 = select i1 %e3, i8* getelementptr inbounds ([9 x i8], [9 x i8]* @rt.k.none, i32 0, i32 0), i8* %n4
+  %n2 = select i1 %e2, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @rt.k.bool, i32 0, i32 0), i8* %n3
+  %n1 = select i1 %e1, i8* getelementptr inbounds ([6 x i8], [6 x i8]* @rt.k.float, i32 0, i32 0), i8* %n2
+  %res = select i1 %e0, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @rt.k.int, i32 0, i32 0), i8* %n1
+  ret i8* %res
+}
+
+; rt_num_bad writes the sentence CPython writes — 'unsupported operand type(s) for +: 'int' and 'str''
+; for a binary operator, 'bad operand type for unary -: 'str'' for the negation, which is a different
+; sentence in the reference and not a stylistic variation of the first. snprintf is the one this module
+; already declares; the extra arguments the unary format does not use are ignored by it, which is the
+; only reason one call serves both.
+define internal void @rt_num_bad(i32 %op, i32 %lt, i32 %rt) {
+entry:
+  ; Two calls, not one, because the two sentences ask for different things: the binary one wants the
+  ; operator symbol and both kind names, the negation wants the kind name and has no operator to
+  ; interpolate. One variadic call serving both printed a bare minus where CPython prints the operand's
+  ; kind — measured the day this shipped, and the reason the two formats are not shared.
+  %isneg = icmp eq i32 %op, 3
+  %buf = getelementptr [192 x i8], [192 x i8]* @rt.num.msg, i32 0, i32 0
+  br i1 %isneg, label %neg, label %bin
+neg:
+  %ln0 = call i8* @rt_kind_name(i32 %lt)
+  %w0 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* getelementptr inbounds ([46 x i8], [46 x i8]* @rt.num.negfmt, i32 0, i32 0), i8* %ln0)
+  ret void
+bin:
+  %o0 = icmp eq i32 %op, 0
+  %o1 = icmp eq i32 %op, 1
+  %o2 = icmp eq i32 %op, 2
+  %sa = select i1 %o0, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.add, i32 0, i32 0), i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.sub, i32 0, i32 0)
+  %sb = select i1 %o1, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.sub, i32 0, i32 0), i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.mul, i32 0, i32 0)
+  %sym = select i1 %o2, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.mul, i32 0, i32 0), i8* %sa
+  %ln1 = call i8* @rt_kind_name(i32 %lt)
+  %rn1 = call i8* @rt_kind_name(i32 %rt)
+  %w1 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* getelementptr inbounds ([61 x i8], [61 x i8]* @rt.num.fmt, i32 0, i32 0), i8* %sym, i8* %ln1, i8* %rn1)
+  ret void
+}
+
+; rt_lift_num is the one place a tagged slot becomes a double: a float slot's payload is a handle on an
+; @float_box and is unboxed, an int's *is* the number and is widened (ADR 0243's payload+widen step),
+; and a bool is a number to Python, so it widens too — the same rule rt_payload_eq follows for '=='.
+define internal double @rt_lift_num(i32 %p, i32 %t) {
+entry:
+  %isf = icmp eq i32 %t, 1
+  br i1 %isf, label %box, label %wide
+box:
+  %d = call double @rt_float_of(i32 %p)
+  br label %lifted
+wide:
+  %w = sitofp i32 %p to double
+  br label %lifted
+lifted:
+  %v = phi double [ %d, %box ], [ %w, %wide ]
+  ret double %v
+}
+
+; rt_num_arith answers the pair question. 0 means "the payload and the tag are written"; 1 means "the
+; operands do not add" and leaves CPython's sentence in *outmsg; 2 means the int answer would not fit
+; this backend's int word. The caller — not this helper — turns a status into a raise, because only the
+; emitted code knows whether a handler is open.
+define internal i32 @rt_num_arith(i32 %op, i32 %ap, i32 %at, i32 %bp, i32 %bt, i32* %outp, i32* %outt, i8** %outmsg) {
+entry:
+  %a0 = icmp eq i32 %at, 0
+  %a1 = icmp eq i32 %at, 1
+  %a2 = icmp eq i32 %at, 2
+  %a01 = or i1 %a0, %a1
+  %aisnum = or i1 %a01, %a2
+  %b0 = icmp eq i32 %bt, 0
+  %b1 = icmp eq i32 %bt, 1
+  %b2 = icmp eq i32 %bt, 2
+  %b01 = or i1 %b0, %b1
+  %bisnum = or i1 %b01, %b2
+  %both = and i1 %aisnum, %bisnum
+  br i1 %both, label %calc, label %bad
+bad:
+  call void @rt_num_bad(i32 %op, i32 %at, i32 %bt)
+  %m = getelementptr [192 x i8], [192 x i8]* @rt.num.msg, i32 0, i32 0
+  store i8* %m, i8** %outmsg
+  ret i32 1
+calc:
+  %af = call double @rt_lift_num(i32 %ap, i32 %at)
+  %bf = call double @rt_lift_num(i32 %bp, i32 %bt)
+  %sum = fadd double %af, %bf
+  %dif = fsub double %af, %bf
+  %prd = fmul double %af, %bf
+  %neg = fneg double %af
+  %o0 = icmp eq i32 %op, 0
+  %o1 = icmp eq i32 %op, 1
+  %o2 = icmp eq i32 %op, 2
+  %o3 = icmp eq i32 %op, 3
+  %c0 = select i1 %o0, double %sum, double %dif
+  %c1 = select i1 %o1, double %dif, double %prd
+  %c2 = select i1 %o2, double %prd, double %c0
+  %r = select i1 %o3, double %neg, double %c2
+  %aiint = or i1 %a0, %a2
+  %biint = or i1 %b0, %b2
+  %bothint = and i1 %aiint, %biint
+  %hi = fcmp oge double %r, 2147483648.000000e+00
+  %lo = fcmp olt double %r, -2147483648.000000e+00
+  %oor = or i1 %hi, %lo
+  %oob = and i1 %bothint, %oor
+  br i1 %oob, label %ovf, label %fin
+ovf:
+  %om = getelementptr [121 x i8], [121 x i8]* @rt.num.ofmt, i32 0, i32 0
+  store i8* %om, i8** %outmsg
+  ret i32 2
+fin:
+  %ip = fptosi double %r to i32
+  %fp = call i32 @rt_float_new(double %r)
+  %pl = select i1 %bothint, i32 %ip, i32 %fp
+  store i32 %pl, i32* %outp
+  %tg = select i1 %bothint, i32 0, i32 1
+  store i32 %tg, i32* %outt
+  ret i32 0
+}
+`
+
 // gcRootCap is the capacity of the compiled backend's root stack (ADR 0181). One
 // entry is one *live handle variable* in one *active frame*, so the working set is
 // (container variables in scope) x (call depth) — 4096 is generous for real
@@ -3305,6 +3479,9 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// Which container variables are still the literal they were bound to, which is what decides
 	// whether reading one of their slots can be checked against the tag the builder wrote (ADR 0241).
 	g.containerLits = containerLiteralsOf(prog)
+	// What each container's slots can hold, spelled out of the literals the program stores into them:
+	// the gate on answering `+` and `*` on a slot read at run time (ADR 0265).
+	g.numChains = computeNumericSlotChains(prog)
 	// Which names a body may read before assigning them is the checker's question, asked once here
 	// so codegen does not grow a second, subtly different dataflow rule (ADR 0228).
 	g.unwritten = UnwrittenReads(prog)
@@ -3537,6 +3714,17 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	}
 	if needHeap {
 		g.globals.WriteString(heapRuntimeIR)
+	}
+	// The tagged arithmetic door (roadmap L11.1, ADR 0265) is its own block for the same reason the two
+	// above are: a program that never does arithmetic on a slot it cannot see should not carry a
+	// snprintf-ing raise formatter. It rides with the heap block rather than alone, because
+	// `rt_lift_num` asks the heap block for `rt_float_of` and `rt_float_new` — a referenced internal
+	// function that was never emitted is the module `llc` rejects (ADR 0173, ADR 0192).
+	if g.arithUsed || runtimeBlockReferenced(numArithRuntimeIR, bodyText) {
+		if !needHeap {
+			g.globals.WriteString(heapRuntimeIR)
+		}
+		g.globals.WriteString(numArithRuntimeIR)
 	}
 	// The precise-root stack runtime (ADR 0181) is emitted whether or not the program
 	// allocates: every function prologue calls rt_frame_open, and a referenced but
@@ -3895,6 +4083,15 @@ type irGen struct {
 	// floatFmtUsed records that a float is rendered at run time, which pulls in
 	// floatRuntimeIR (rt_fmt_double).
 	floatFmtUsed bool
+	// arithUsed records that this module does arithmetic on a slot whose kind only the run time can
+	// describe, which is what pulls in the tagged arithmetic door (roadmap L11.1, ADR 0265).
+	arithUsed bool
+	// numChains is the gate on the `+` and `*` half of that door: the literal kind tree of what a program
+	// can store into each container's slots, level by level. `+` and `*` are answered by the reference
+	// with a joined text or a repeated list when a slot holds one, and this backend can build neither
+	// (Gap R.82), so those two operators take the door only where the tree proves the slots hold numbers.
+	// `-` and the unary `-` answer a number or raise, always, and are not gated (ADR 0265).
+	numChains *numericSlotChains
 	// numCtx is the BinOp currently being lowered into the float arms, so the slot read inside it can
 	// name the operator and span in the TypeError it raises. Set and restored by floatBinOp.
 	numCtx *BinOp
@@ -11429,6 +11626,23 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s_tag\n", tg, nm.Value))
 				b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", vt, tg))
 				continue
+			}
+			// print(xs[0][0] + 1), print(-xs[0][0]): arithmetic on a slot whose kind lives in the object
+			// rather than in the spelling. The ordinary numeric road asks for one i32 with no tag attached
+			// and refuses (correctly — a payload without its tag is a number wearing another object's
+			// bits); this is the other answer to the same question, asked of the object and printed from
+			// the (payload, tag) pair the answer arrives with (roadmap L11.1, ADR 0265). It is taken only
+			// where the ordinary road would have refused, so no program that was answered before is now
+			// routed through here.
+			if g.arithWouldRefuse(a) {
+				if val, tg, okPair, perr := g.taggedArithPair(b, a); perr != nil {
+					return "", perr
+				} else if okPair {
+					g.heapUsed = true
+					g.floatFmtUsed = true
+					b.WriteString(fmt.Sprintf("  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", val, tg))
+					continue
+				}
 			}
 			if ix, ok := a.(*Index); ok {
 				// print(xs[i]) reads the element *and* its tag, so the printer dispatches on

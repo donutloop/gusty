@@ -6433,3 +6433,37 @@ different and worse complaint), and that the float answer leaked into arithmetic
 correctly, because `2.0 + 1.5` is `3.5` for the same reason `2 + 1.5` is — the leak was in `str()`, the
 f-string, the container and `* 3`, all measured). Both are the same failure mode as the language defect this
 cycle fixed: implementations, or memories of them, corroborating each other.
+
+## The pair that goes to the target comes back with its own kind (ADR 0265, roadmap L11.1's last clause)
+
+**A door that opens for the wrong program is worse than a door that stays shut.** The shape this cycle paid
+for was `xs = []` / `xs.append([7, 8])` / `print(xs[0][0] + 1)` — refused compiled, answered by the
+interpreter and by CPython. The obvious implementation (lift both slots to `double`, do the arithmetic, print
+a float) answers `8.0` where the reference answers `8`, and the slightly-less-obvious one (ask the runtime
+what the tag is and raise if it is not a number) raises `TypeError` where CPython *returns a value*: `"a" +
+"b"` is `"ab"`, `[1] * 2` is `[1, 1]`, and this backend can build neither from a slot. Every check the suite
+has — verifier, `llc`, output diff on the rows that work — passes a door that opens for those programs. Only
+the gate, a proof that the slots hold numbers, keeps the answer honest, so the gate is asked directly in a
+unit test rather than inferred from emitted IR.
+
+**Coarseness is a direction, and it has to be the safe one.** The pass that answers "can a text reach a
+slot?" is program-wide, not per-container: one `ys.append("word")` anywhere closes `+` and `*` for every
+slot read in the module, including an unrelated `xs[0][0] + 1`. That is a real cost and it is written into
+`docs/operations.md` rather than hidden, because refusing too often is a bug someone will report and
+answering too often is a bug someone will *ship*. When the coarseness bites, the fix is to deepen the
+notebook, not to widen the door.
+
+**Read the reference's sentence back, not your own.** The first version of the raise table shared one
+`snprintf` call between the binary and the negation formats, and the negation printed `bad operand type for
+unary -: '-'` — the operator symbol where the operand's kind belongs, because the binary format's first `%s`
+is the symbol and both formats were fed the same three varargs. `llc` accepted it, the verifier accepted it,
+the number in the passing rows printed fine. It surfaced only because a failing program's *stderr was read
+aloud*. Two calls under a branch now, and the row that caught it is a table of exact sentences.
+
+**A new door is a good time to walk the boundary of the old one.** Measuring the negation found a worse bug
+than the one being closed: `print(-"hi")` answers `-281474976710658` interpreted and `0` compiled, at exit 0,
+on a program the reference stops (`Gap R.137`) — the interpreted digits are the interned index with a sign
+taken. And the door turns out to open in the print position only: the same arithmetic bound to a name
+(`Gap R.138`) or handed to a function (`Gap R.139`) is still the refusal. All three are rows with their exact
+per-engine numbers, filed before the commit that found them, because a half-lift that is written down is a
+half-lift and one that is not is a surprise.
