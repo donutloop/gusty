@@ -1,0 +1,18 @@
+# What CPython prints for these two lines — with `from math import floor, ceil, sqrt` prefixed, which
+# is where the reference keeps the three names (python3 3.12):
+#
+#   3000000000
+#   3000000000
+#
+# The evaluator's ints are int64, so it answers both, and answers them correctly. The compiled
+# backend's int word is 32 bits, and `fptosi` of a double outside that word is not a wrong number,
+# it is poison — so the guard asks first and raises, naming the row that owns the decision (roadmap
+# L12.12, "integers are integers, or the language says so"). A wrong number with a happy exit code is
+# what Gap R.64's silent overflow already costs the language; this row is not going to add to it.
+#
+# The two engines therefore disagree here on purpose, and the disagreement is pinned rather than
+# smoothed over: the compiled leg stops with an OverflowError, and the day it answers the number is
+# the day this row leaves the ledger (roadmap Gap R.133, measured landing ADR 0264).
+x = 3000000000.0
+print(floor(x))
+print(ceil(x))

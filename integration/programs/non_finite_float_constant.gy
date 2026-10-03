@@ -1,0 +1,23 @@
+# The two numbers a decimal spelling cannot write (roadmap Gap R.134, ADR 0264). Every line is what
+# CPython prints, on both backends.
+#
+# Until now the compiler could not emit them at all: a folded non-finite constant reached the module as
+# Go's own spelling with this emitter's `e+00` suffix glued on — `inf.0e+00` — and `llc` stopped at
+# `expected value token`. That is exit 2, the contract's "the compiler is broken" code, spent on a
+# program the reference runs and prints. The IEEE bit pattern is what LLVM's parser does take, and it
+# is what a double literal is made of anyway.
+#
+# The first two lines are the row as it was found: an `inf` in a name, the simplest program that died in
+# the assembler. The rest is the same value travelling — through a negation, into `sqrt`, where the
+# domain guard has to answer `inf` for `sqrt(inf)` and raise for `sqrt(-inf)` rather than hand back a
+# number the reference stops on.
+print(float("inf"))
+x = float("inf")
+print(x)
+print(-float("inf"))
+print(float("nan"))
+y = float("nan")
+print(y)
+print(sqrt(float("inf")))
+print(sqrt(float("nan")))
+print(1.0 / x)

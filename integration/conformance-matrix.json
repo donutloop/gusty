@@ -303,6 +303,47 @@
     },
     {
       "case": {
+        "id": "programs/whole_number_builtins",
+        "name": "whole_number_builtins.gy",
+        "source": "# What CPython prints for this program when the three names are the reference's own —\n# `from math import floor, ceil, sqrt` on the first line, which is what the reference calls them\n# (python3 3.12). gusty has them as builtins, so the oracle leg cannot run this file as written and\n# the ledger records it `not_applicable`; the twin comparison is asserted in\n# integration/math_names_test.go, which runs the same source with that import prefixed.\n#\n#   2\n#   -3\n#   3\n#   -2\n#   2\n#   7\n#   1\n#   3.0\n#   1.4142135623730951\n#   3.5\n#   [2, 3]\n#   2\n#   True\n#\n# The first eight lines are the row (roadmap Gap R.51, ADR 0264): `floor` and `ceil` answer a whole\n# number, in the word a whole number travels in, on both backends. They used to answer `2.0`,\n# `-3.0`, `3.0`, `-2.0` compiled and `NameError` interpreted — three engines, three behaviours, and\n# the checker in the middle calling all of them well-typed. The rest is the answer travelling: beside\n# a float (widened, not truncated), in a container, in an f-string, in a comparison.\nprint(floor(2.7))\nprint(floor(-2.7))\nprint(ceil(2.2))\nprint(ceil(-2.2))\nprint(floor(2.7))\nprint(floor(7))\nprint(ceil(True))\nprint(sqrt(9))\nprint(sqrt(2))\nprint(floor(2.7) + 1.5)\nprint([floor(2.7), ceil(2.2)])\nprint(f\"{floor(2.7)}\")\nprint(sqrt(4) == 2)\n",
+        "shared": true,
+        "oracle": "not_applicable",
+        "reason": "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against both engines",
+        "ref": "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n",
+      "aot_ok": true,
+      "aot_stdout": "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n",
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against both engines",
+      "oracle_ref": "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/features_a",
         "name": "features_a.gy",
         "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n",
@@ -2677,6 +2718,180 @@
     },
     {
       "case": {
+        "id": "programs/probe_whole_number_beyond_the_int_word",
+        "name": "probe_whole_number_beyond_the_int_word.gy",
+        "source": "# What CPython prints for these two lines — with `from math import floor, ceil, sqrt` prefixed, which\n# is where the reference keeps the three names (python3 3.12):\n#\n#   3000000000\n#   3000000000\n#\n# The evaluator's ints are int64, so it answers both, and answers them correctly. The compiled\n# backend's int word is 32 bits, and `fptosi` of a double outside that word is not a wrong number,\n# it is poison — so the guard asks first and raises, naming the row that owns the decision (roadmap\n# L12.12, \"integers are integers, or the language says so\"). A wrong number with a happy exit code is\n# what Gap R.64's silent overflow already costs the language; this row is not going to add to it.\n#\n# The two engines therefore disagree here on purpose, and the disagreement is pinned rather than\n# smoothed over: the compiled leg stops with an OverflowError, and the day it answers the number is\n# the day this row leaves the ledger (roadmap Gap R.133, measured landing ADR 0264).\nx = 3000000000.0\nprint(floor(x))\nprint(ceil(x))\n",
+        "shared": false,
+        "oracle": "not_applicable",
+        "reason": "the same spelling (the reference's math.floor / math.ceil), and the two engines disagree here on purpose: the evaluator's ints are int64 and answer 3000000000, while the compiled int word is 32 bits and its guard raises `OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)` rather than wrapping a poison `fptosi` into a silent negative — the harness sees the compiled leg's exit class, and integration/math_names_test.go is where the sentence itself and its catchability are asserted",
+        "ref": "roadmap Gap R.133 (measured landing ADR 0264); the decision this waits on is L12.12's",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "3000000000\n3000000000\n"
+          },
+          {
+            "backend": "aot",
+            "error": "exit status 3",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "3000000000\n3000000000\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "exit status 3",
+      "parity": false,
+      "python_ok": false,
+      "python_stdout": "",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "the same spelling (the reference's math.floor / math.ceil), and the two engines disagree here on purpose: the evaluator's ints are int64 and answer 3000000000, while the compiled int word is 32 bits and its guard raises `OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)` rather than wrapping a poison `fptosi` into a silent negative — the harness sees the compiled leg's exit class, and integration/math_names_test.go is where the sentence itself and its catchability are asserted",
+      "oracle_ref": "roadmap Gap R.133 (measured landing ADR 0264); the decision this waits on is L12.12's",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_float_literal_with_exponent",
+        "name": "probe_float_literal_with_exponent.gy",
+        "source": "print(1e18)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "the reference parses `1e18` as a float literal and prints 1e+18; here the exponent marker is not in the number lexer, so the `e18` is read as a name and both legs stop at the same parse error before either engine runs",
+        "ref": "roadmap Gap R.135 (measured landing ADR 0264); docs/language.md § Lexical structure → Numeric literals",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "error": "parse error at 1:8: expected \")\"",
+            "missing": true
+          },
+          {
+            "backend": "aot",
+            "error": "parse error at 1:8: expected \")\"",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": false,
+      "interp_stdout": "",
+      "interp_error": "parse error at 1:8: expected \")\"",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "parse error at 1:8: expected \")\"",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "1e+18\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "the reference parses `1e18` as a float literal and prints 1e+18; here the exponent marker is not in the number lexer, so the `e18` is read as a name and both legs stop at the same parse error before either engine runs",
+      "oracle_ref": "roadmap Gap R.135 (measured landing ADR 0264); docs/language.md § Lexical structure → Numeric literals",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter leg failed: parse error at 1:8: expected \")\"",
+        "compiled leg failed: parse error at 1:8: expected \")\""
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/non_finite_float_constant",
+        "name": "non_finite_float_constant.gy",
+        "source": "# The two numbers a decimal spelling cannot write (roadmap Gap R.134, ADR 0264). Every line is what\n# CPython prints, on both backends.\n#\n# Until now the compiler could not emit them at all: a folded non-finite constant reached the module as\n# Go's own spelling with this emitter's `e+00` suffix glued on — `inf.0e+00` — and `llc` stopped at\n# `expected value token`. That is exit 2, the contract's \"the compiler is broken\" code, spent on a\n# program the reference runs and prints. The IEEE bit pattern is what LLVM's parser does take, and it\n# is what a double literal is made of anyway.\n#\n# The first two lines are the row as it was found: an `inf` in a name, the simplest program that died in\n# the assembler. The rest is the same value travelling — through a negation, into `sqrt`, where the\n# domain guard has to answer `inf` for `sqrt(inf)` and raise for `sqrt(-inf)` rather than hand back a\n# number the reference stops on.\nprint(float(\"inf\"))\nx = float(\"inf\")\nprint(x)\nprint(-float(\"inf\"))\nprint(float(\"nan\"))\ny = float(\"nan\")\nprint(y)\nprint(sqrt(float(\"inf\")))\nprint(sqrt(float(\"nan\")))\nprint(1.0 / x)\n",
+        "shared": false,
+        "oracle": "not_applicable",
+        "reason": "the last two lines ask `sqrt`, which the reference keeps in the math module, so the CPython leg stops at a NameError there — the rows above them do match, and integration/math_names_test.go runs this file against `from math import floor, ceil, sqrt` on both engines",
+        "ref": "roadmap Gap R.134 (closed alongside Gap R.51 by ADR 0264)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n",
+      "aot_ok": true,
+      "aot_stdout": "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n",
+      "parity": true,
+      "python_ok": false,
+      "python_stdout": "inf\ninf\n-inf\nnan\nnan\n",
+      "python_error": "exit status 1: Traceback (most recent call last):",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "not_applicable",
+      "oracle_declared": "not_applicable",
+      "oracle_reason": "the last two lines ask `sqrt`, which the reference keeps in the math module, so the CPython leg stops at a NameError there — the rows above them do match, and integration/math_names_test.go runs this file against `from math import floor, ceil, sqrt` on both engines",
+      "oracle_ref": "roadmap Gap R.134 (closed alongside Gap R.51 by ADR 0264)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_predeclared_name_not_callable",
+        "name": "probe_predeclared_name_not_callable.gy",
+        "source": "# A name the checker was told about and the engines never learned (roadmap Gap R.136, ADR 0264's sweep).\n#\n# `predeclared.go` keeps one list of the names the checker is allowed to see. Ten of them are in that list\n# and callable on neither engine: `map`, `filter`, `isinstance`, `hash`, `id`, `getattr`, `callable`,\n# `pow`, `divmod`, `fabs`. The row this probe pins is the same shape `floor` / `ceil` / `sqrt` had until\n# ADR 0264 — the toolchain accepts a program, and then the engine refuses to run it — measured by walking\n# the predeclared table and calling every name in it.\n#\n# `pow` is the sharpest of the ten because CPython runs it in one line:\n#\n#     print(pow(2, 3))     # CPython 8 · --interp NameError, exit 3 · --aot exit 1 `unsupported call \"pow\"`\n#\n# so one leg spends a runtime trap and the other spends exit 1 — the contract's \"your program has a\n# compile error\" class — on a program the reference evaluates without complaint (ADR 0211, L11.8). The\n# fix is the one ADR 0264 made for the other three: implement it on both paths, or take the name out of\n# the table so the checker stops promising it.\nprint(pow(2, 3))\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython evaluates `pow(2, 3)` as 8; here the name is in the checker's predeclared table and in neither engine's call table, so the interpreted leg traps NameError and the compiled leg refuses the call — a program the reference runs, spent on exit 3 and exit 1 (ADR 0211's misclassed class)",
+        "ref": "roadmap Gap R.136 (measured landing ADR 0264); the same shape Gap R.51 had, and the same two ways out",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "error": "name 'pow' is not defined",
+            "missing": true
+          },
+          {
+            "backend": "aot",
+            "error": "unsupported call \"pow\"",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": false,
+      "interp_stdout": "",
+      "interp_error": "eval error: name 'pow' is not defined",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: unsupported call \"pow\"",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "8\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython evaluates `pow(2, 3)` as 8; here the name is in the checker's predeclared table and in neither engine's call table, so the interpreted leg traps NameError and the compiled leg refuses the call — a program the reference runs, spent on exit 3 and exit 1 (ADR 0211's misclassed class)",
+      "oracle_ref": "roadmap Gap R.136 (measured landing ADR 0264); the same shape Gap R.51 had, and the same two ways out",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter leg failed: eval error: name 'pow' is not defined",
+        "compiled leg failed: codegen: unsupported call \"pow\""
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_float_loop_variable_as_number",
         "name": "probe_float_loop_variable_as_number.gy",
         "source": "# What CPython prints for all three lines here (python3, 3.12):\n#\n#   3.0\n#   2.5\n#   0.75\n#\n# A `for` binding over a container of doubles is a number in CPython and in the interpreter, and is\n# not one on the compiled leg: the loop hands over the element *handle* and nothing beside it says the\n# slot holds a double, so `v * 2` multiplies the handle, `v + 1` adds to it, and `v / 2` — true\n# division, which is a float whatever arrives — divides it. Exit 0, three number-shaped answers.\n#\n# This is not a rounding defect and it is not new to ADR 0263: it is what the compiled backend does\n# with a loop variable over a literal container of doubles today, and `round(v, 2)` inherits it (the\n# second line of probe_round_digit_count_kind_unseen). The subscript read of the same container\n# (`xs[0] * 2`) answers correctly, because ADR 0243 made the *literal's* element readable — the loop\n# binding never got the same pair (roadmap Gap R.91's family, roadmap L11.1's tagged value word).\nfor v in [1.5]:\n    print(v * 2)\n    print(v + 1)\n    print(v / 2)\n",
@@ -2865,7 +3080,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3436261779/106/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1367998630/109/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -2879,7 +3094,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3436261779/106/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1367998630/109/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3721,12 +3936,12 @@
       ]
     }
   ],
-  "rows": 127,
-  "skipped": 29,
-  "pass": 98,
+  "rows": 132,
+  "skipped": 33,
+  "pass": 99,
   "fail": 0,
   "oracle_match": 84,
-  "oracle_debt": 25,
-  "oracle_not_applicable": 18,
+  "oracle_debt": 27,
+  "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

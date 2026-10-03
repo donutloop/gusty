@@ -531,6 +531,23 @@ both engines raise its `TypeError` — exit 3, catchable by `except TypeError` o
 returns exit 1, which belongs to programs the reference rejects. `--oracle` scores such a program
 `not_applicable`: with the reference raising, there is no stdout opinion to match.
 
+The third pair of the same family is `floor` / `ceil` / `sqrt` (ADR 0264, roadmap Gap R.51), and it moved
+four programs from a wrong answer to a classified one. `sqrt(-1)`, `floor("a")`, `ceil(None)`,
+`floor([1])`, `floor(float("nan"))` and `ceil(float("inf"))` are all programs the reference runs and stops
+on, so both engines **raise** — exit 3, with CPython's own sentence (`math domain error`,
+`must be real number, not str`, `cannot convert float NaN to integer`,
+`cannot convert float infinity to integer`), each catchable by its class (`except ValueError` /
+`except TypeError` / `except OverflowError`, verified on both legs). None of them is exit 1, and the arity
+mistakes (`floor()`, `sqrt(1, 2)`) are exit 1 compiled and exit 3 interpreted from one shared sentence in
+`pkg/lang/math_names.go`, never exit 2. Two engine-split rows are pinned in the matrix rather than
+averaged: `programs/probe_whole_number_beyond_the_int_word` (the interpreted leg prints
+`3000000000`, the compiled leg exits 3 with an `OverflowError` naming L12.12) and two new `oracle: debt`
+rows found by walking the predeclared table and choosing test values — `programs/probe_float_literal_with_exponent`
+(`1e18` does not lex; both legs report `parse error at 1:8: expected ")"`, exit 1) and
+`programs/probe_predeclared_name_not_callable` (`pow(2, 3)` is CPython's `8`, our NameError interpreted and
+our `unsupported call "pow"` compiled). A module that would die in `llc` is now caught in `pkg/lang` before
+anyone links: `inf.0e+00` and `nan.0e+00` are on the shared `forbiddenIR` blacklist (Gap R.134).
+
 ## Emitted IR
 
 Functions, control flow (`if`/`while`/`for`/`match`), the `pass` no-op

@@ -27,6 +27,11 @@ var exnClasses = []struct {
 	// CPython does for `except UnboundLocalError:` to match on either of them (roadmap Gap R.36
 	// + R.39, ADR 0228; the same "a built-in trap is a typed raise" rule as ADR 0212).
 	{"UnboundLocalError", 8},
+	// `math.floor(1e300)` has no whole number to answer with, and neither does the compiled
+	// backend's bounded int word (roadmap L12.12). CPython's `int(inf)` is an OverflowError, so the
+	// class the compiled guard raises is the one a program's `except` can already match on the other
+	// two engines (roadmap Gap R.51, ADR 0264).
+	{"OverflowError", 9},
 }
 
 // isExnClass reports whether name is a built-in exception constructor. `except E:`

@@ -4530,6 +4530,39 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return -av, nil
 			}
 			return av, nil
+		case "floor", "ceil", "sqrt":
+			// The three names `predeclared.go` has always advertised and the checker has always
+			// typed, and that the evaluator has never answered: `print(floor(3.7))` trapped
+			// `NameError: name 'floor' is not defined` — a program the toolchain accepts and then
+			// refuses to run (roadmap Gap R.51, ADR 0264). The reference is `math.floor` / `math.ceil`
+			// / `math.sqrt`, which answer an int, an int and a float, and raise for a non-real
+			// argument and for a domain the number has no answer in.
+			if len(n.Args) != 1 {
+				return 0, &EvalError{Msg: mathNameArityMessage(name.Value, len(n.Args))}
+			}
+			arg, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			f, err := e.realOf(arg)
+			if err != nil {
+				return 0, err
+			}
+			if name.Value == "sqrt" {
+				sv, serr := sqrtAnswer(f)
+				if serr != nil {
+					return 0, serr
+				}
+				return e.allocFloat(sv), nil
+			}
+			whole, werr := floorAnswer(f)
+			if name.Value == "ceil" {
+				whole, werr = ceilAnswer(f)
+			}
+			if werr != nil {
+				return 0, werr
+			}
+			return whole, nil
 		case "int":
 			av, err := e.eval(n.Args[0])
 			if err != nil {

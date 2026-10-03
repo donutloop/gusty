@@ -6357,3 +6357,79 @@ is a liar; and a runtime block earns its place: `@rt_round_digits` is emitted on
 and a test asserts that a program which never rounds does not carry it, because a runtime block nobody reads is
 a runtime block nobody audits.
 
+
+## Cycle: `floor` and `ceil` answer a whole number, `sqrt` answers a float, and every raise is the reference's sentence (ADR 0264 — Gap R.51 and Gap P.2 closed; Gaps R.133–R.136 filed)
+
+**`--file` runs the interpreter, and a measurement that forgets that is one engine measured twice.** The
+first sweep of this cycle compared "interpreter" against "compiled" for thirty shapes and found them in
+perfect agreement — because both columns were `--file`, and `--file` *defaults to the interpreter*, as the
+tool's own help line says: `--aot … --file defaults to the interpreter, so say so explicitly`. The compiled
+leg needs `-aot`, and it is accepted *after* the path (`gustyc --file x.gy -aot`); written before it, the
+`-aot` is swallowed as the flag's value and the path becomes a positional, which is how one run reported
+`open -aot: no such file or directory`. Every number in this cycle's ADR was re-derived after that was
+noticed, and one of them changed: the compiled leg had been agreeing with itself, not with CPython.
+
+**`--emit-llvm` takes a source *string*, not a file, and a grep over the wrong thing looks exactly like a
+verification.** `gustyc --emit-llvm programs/foo.gy` compiles the *path* as if it were a program (one run
+answered `undefined name "integration"`), and the previous cycle's claim that the compiled digit-round calls
+`snprintf`/`strtod` had been "verified" by grepping that output for `rt.round.digits` — which matches because
+the whole runtime block is a Go string inside the emitter, present whenever any float helper is pulled in.
+The real check is `--emit-llvm "$(cat file)"` and then reading `define i32 @main`: that is how this feature's
+IR was finally read, and it is where the `fptosi` guard, the `llvm.sqrt.f64` call and the `fcmp olt` domain
+test were confirmed to exist at all.
+
+**A definition of done written as printed examples will pass under a wrong algorithm; walk the boundary
+instead.** `print(floor(3.7))` → `3` says nothing about `±2^31`. The int-word guard was written as
+`fcmp oge 2147483648.0` / `fcmp olt -2147483649.0` — symmetric-looking, reasonable, and *wrong on the low
+side*: the i32 holds −2147483648 … 2147483647, so `-2147483649.0` is out of range, `olt` does not catch it,
+and the value went into the poison `fptosi` and came back as `2147483647`, a positive answer to a negative
+question with exit 0. The two bounds cannot be the same shape, because the word is not symmetric about
+zero. Nothing in the DoD would have noticed; the row's own tests now walk both edges from both sides.
+
+**Poison is not a wrong number, and the difference decides what you may emit.** `fptosi` of an
+out-of-range double has no defined result, so "what does it print" is not a question with an answer —
+on this machine it is `0x80000000`, on another it is anything. That is why the guard asks before truncating
+and raises the reference's own `OverflowError` naming L12.12, and why the interpreter — whose ints are
+`int64` and which really can answer `floor(3000000000.0)` — was *not* changed to raise to match. Two legs
+that agree on a wrong answer is worse than two legs that disagree in a pinned row.
+
+**"Documented divergence" needs the reference in the room, because docs, tests and the roadmap will
+otherwise corroborate each other.** `TestExecFloorCeil` pinned `2.0` with a comment citing the language's
+"the largest double <=", and roadmap's Gap P.2 cited the same phrase as its reason for leaving the row open.
+Three artefacts, one story, zero contact with CPython. The ADR now keeps the old expectations quoted in the
+test's own comment: a rewritten expectation is a destroyed record unless the reason survives with it.
+
+**Exit 2 hides wherever the corpus has never looked, and the blacklist is the layer that catches it.**
+`print(float("inf"))` had always worked — the printer's constant path never needs a double literal — so
+nobody had ever *bound* one, and `x = float("inf")` had been dying in `llc` with `inf.0e+00` for as long as
+the emitter existed. `sqrt(float("inf"))` reached the same spelling through a fold. The fix is one branch in
+`floatConst` (write the IEEE bit pattern), but the durable part is `forbiddenIR`: a needle list in the test
+package that no module may contain, checked by every codegen test, is what turns "the linker will notice
+eventually" into "the package fails now".
+
+**Test values are information about the toolchain.** Choosing values for `sqrt` produced `1e18`, `1.5e-3`,
+`2E8` — and none of them parses, on either engine, with a `parse error … expected ")"` (Gap R.135). The
+temptation was to write `1000000000000000000.0` and move on. The finding is that a whole class of numeric
+literals is missing from the lexer, discovered by *needing* one; filed, with the workaround (`float("1e18")`)
+named in the row so nobody has to rediscover it.
+
+**Cheap sweeps find families.** Calling every name in `predeclared.go` takes a minute and found that `map`,
+`filter`, `isinstance`, `hash`, `id`, `getattr`, `callable`, `pow`, `divmod` and `fabs` have exactly the
+defect this cycle closed for `floor`/`ceil`/`sqrt` — a checker that promises, an evaluator that traps
+`NameError`, a codegen that refuses with exit 1 on a program CPython evaluates (`pow(2, 3)` → `8`). Filed as
+Gap R.136, with the note that the sweep should be re-run whenever the table changes, because the table and
+the engines drift apart silently.
+
+**Pin only as far as the harness can see, and assert the rest where it can.** A ledger pin's `Err` is
+matched against the *harness's* error for that leg, which for a compiled program that raises is
+`exit status 3` — the program's own stderr (`OverflowError: floor: …`) never reaches it. The first draft of
+the int-word row "failed" for claiming a message the harness cannot observe. Right now: the ledger pins the
+exit *class* per leg, and the CLI test asserts the sentence, its class and its catchability. A pin that
+asserts something nobody can see is a pin that will be deleted by the next person who runs it.
+
+**Re-measure before publishing, even for a paragraph you are sure of.** Two claims in the first ADR draft
+died at the keyboard: that the old compiler *refused* `sqrt(-1)` (it printed `nan` with exit 0, which is a
+different and worse complaint), and that the float answer leaked into arithmetic as `4.5` (it printed `3.5`,
+correctly, because `2.0 + 1.5` is `3.5` for the same reason `2 + 1.5` is — the leak was in `str()`, the
+f-string, the container and `* 3`, all measured). Both are the same failure mode as the language defect this
+cycle fixed: implementations, or memories of them, corroborating each other.

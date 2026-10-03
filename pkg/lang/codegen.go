@@ -5807,6 +5807,21 @@ func (g *irGen) dictIndex(dl *DictLit, key int64) (string, error) {
 
 // floatConst formats a float constant as an LLVM double literal.
 func floatConst(v float64) string {
+	// The two values a decimal spelling cannot write. LLVM 20's parser takes no `inf` or `nan`
+	// keyword in a double literal (it wants the hex bit pattern), and Go's own rendering of them is
+	// `inf`/`-inf`/`nan` — which this compiler used to glue `e+00` onto, producing `inf.0e+00` and an
+	// assembler that stops at `expected value token`: a program of ours reaching llc and failing there,
+	// which is exit 2 and the one outcome this compiler is never allowed to produce (roadmap Gap R.133,
+	// ADR 0264). The IEEE bit pattern is what the parser does accept, and it says exactly the number:
+	// no rounding, no sign lost, no dependence on a fold.
+	switch {
+	case math.IsNaN(v):
+		return "0x7FF8000000000000"
+	case math.IsInf(v, 1):
+		return "0x7FF0000000000000"
+	case math.IsInf(v, -1):
+		return "0xFFF0000000000000"
+	}
 	f := pyFloatRepr(v)
 	// LLVM double literals need a decimal point in the mantissa.
 	if i := strings.IndexAny(f, "eE"); i >= 0 {
@@ -5933,8 +5948,11 @@ func (g *irGen) isFloat(e Expr) bool {
 						}
 					}
 				}
-				if id.Value == "sqrt" || id.Value == "floor" || id.Value == "ceil" {
-					return true
+				if id.Value == "sqrt" {
+					// sqrt answers a float whatever arrives; floor and ceil do not — they answer a whole
+					// number, and saying "float" here is what made `print(floor(3.7))` print `3.0`
+					// (roadmap Gap R.51, ADR 0264).
+					return len(n.Args) == 1
 				}
 				if id.Value == "round" && len(n.Args) == 2 {
 					// `round(x, ndigits)` answers with the number whose decimal point moved, which is a
@@ -6910,10 +6928,13 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				return t
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "sqrt" {
-				fx := g.floatValue(b, n.Args[0])
-				rt := g.newTmp()
-				fmt.Fprintf(b, "  %s = call double @llvm.sqrt.f64(double %s)\n", rt, fx)
-				return rt
+				// The domain is guarded here too: a negative asks for CPython's ValueError rather than
+				// the `nan` the intrinsic hands back (roadmap Gap R.51, ADR 0264).
+				sv, raised, err := g.sqrtDouble(b, n.Args[0], n.Span())
+				if err != nil || raised {
+					return "0.000000e+00"
+				}
+				return sv
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "round" && len(n.Args) == 2 {
 				// The double domain's digit-count round: one runtime call, not an i32 truncation of one.
@@ -6931,13 +6952,20 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				return d
 			}
 			if id, ok := n.Fn.(*Name); ok && (id.Value == "floor" || id.Value == "ceil") {
-				fx := g.floatValue(b, n.Args[0])
-				rt := g.newTmp()
-				if id.Value == "floor" {
-					fmt.Fprintf(b, "  %s = call double @llvm.floor.f64(double %s)\n", rt, fx)
-				} else {
-					fmt.Fprintf(b, "  %s = call double @llvm.ceil.f64(double %s)\n", rt, fx)
+				// The whole-number answer, asked on the road that wants a double: `floor(3.7) + 1.5`
+				// is an int beside a float, so the answer is computed in the int word and lifted — the
+				// same (payload, widen) step ADR 0243 does for an element. It is not computed as a
+				// double any more: that is what printed `3.0` for `floor(3.7)` (Gap R.51, ADR 0264).
+				who := id.Value
+				if len(n.Args) != 1 {
+					return ""
 				}
+				iv, err := g.floorCeilValue(b, who, n.Args[0], n.Span())
+				if err != nil || iv == "" {
+					return ""
+				}
+				rt := g.newTmp()
+				fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", rt, iv)
 				return rt
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
@@ -12173,41 +12201,37 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, cmp, neg, v))
 		return t, nil
 	case "sqrt":
-		// sqrt promotes its argument to float and returns the square root.
-		if fv, ok := g.floatEval(c.Args[0]); ok {
-			if fv < 0 {
-				return "", fmt.Errorf("sqrt: cannot take square root of a negative number")
-			}
-			t := g.newTmp()
-			fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(math.Sqrt(fv)))
-			return t, nil
+		// sqrt promotes its argument to a real number and answers the square root as a float —
+		// and RAISES where the argument is negative, which is what the reference does with it.
+		// Until ADR 0264 a visible negative was a compile-time refusal (exit 1 for a program
+		// CPython runs) and a run-time negative answered `nan`, a value where the reference has a
+		// raise (roadmap Gap R.51).
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("%s", mathNameArityMessage("sqrt", len(c.Args)))
 		}
-		fx := g.floatValue(b, c.Args[0])
-		rt := g.newTmp()
-		fmt.Fprintf(b, "  %s = call double @llvm.sqrt.f64(double %s)\n", rt, fx)
-		return rt, nil
-	case "floor":
-		// floor returns the largest double <= the float value of its argument.
-		if fv, ok := g.floatEval(c.Args[0]); ok {
-			t := g.newTmp()
-			fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(math.Floor(fv)))
-			return t, nil
+		sv, raised, serr := g.sqrtDouble(b, c.Args[0], c.Span())
+		if serr != nil {
+			return "", serr
 		}
-		fx := g.floatValue(b, c.Args[0])
-		rt := g.newTmp()
-		fmt.Fprintf(b, "  %s = call double @llvm.floor.f64(double %s)\n", rt, fx)
-		return rt, nil
-	case "ceil":
-		// ceil returns the smallest double >= the float value of its argument.
-		if fv, ok := g.floatEval(c.Args[0]); ok {
-			t := g.newTmp()
-			fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(math.Ceil(fv)))
-			return t, nil
+		if raised {
+			// The block is closed over by the raise; a well-formed double keeps whatever is emitted
+			// next parseable.
+			return "0.000000e+00", nil
 		}
-		fx := g.floatValue(b, c.Args[0])
-		rt := g.newTmp()
-		fmt.Fprintf(b, "  %s = call double @llvm.ceil.f64(double %s)\n", rt, fx)
-		return rt, nil
+		return sv, nil
+	case "floor", "ceil":
+		// The whole-number question, answered in the word a whole number travels in. Both backends
+		// used to disagree with the reference and with each other here: the evaluator trapped
+		// `NameError` on a name the checker predeclares, and the compiled leg returned the double
+		// (`print(floor(3.7))` → `3.0` where `math.floor` answers the int `3`).
+		who := "floor"
+		if n, ok := c.Fn.(*Name); ok && n.Value == "ceil" {
+			who = "ceil"
+		}
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("%s", mathNameArityMessage(who, len(c.Args)))
+		}
+		return g.floorCeilValue(b, who, c.Args[0], c.Span())
 	case "range":
 		for _, a := range c.Args {
 			if _, ok := a.(*KeywordArg); ok {

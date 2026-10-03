@@ -637,6 +637,35 @@ falls back to dynamic dispatch.
   `5`), a digit count that is not an integer is **raised** as CPython's `TypeError` rather than refused
   into exit 1, and the two clamps are arithmetic facts with reasons: 324 digits is past every double's
   expansion, and 10³⁰⁹ is past the largest finite one.
+- **Three names, three engines, three behaviours — and the docs agreed with the wrong one** (ADR 0264,
+  closing Gap R.51 and Gap P.2) — `floor`, `ceil` and `sqrt` were in the checker's predeclared table since
+  it existed, so `gustyc check` called any program that used them well-typed. Behind that table:
+  `print(floor(3.7))` was CPython's `3`, an interpreted `NameError` at **exit 3**, and compiled `3.0`;
+  `print(ceil(-0.5))` was `0`, `NameError`, `-0.0`; `print(sqrt(-1))` was a `ValueError`, `NameError`, and
+  **`nan` with exit 0**; `print(floor("a"))` was a `TypeError`, `NameError`, and `0.0`. The test said so too
+  — `TestExecFloorCeil` pinned `2.0\n-3.0\n3.0\n-2.0` under a comment quoting the language's own "the
+  largest double <=", and roadmap's Gap P.2 quoted the same phrase back as a *decision*. Three voices
+  agreeing with each other and with nothing outside, which is why every row here is asserted against
+  `from math import floor, ceil, sqrt` on the first line of the same bytes.
+  What shipped is one rule per name in `pkg/lang/math_names.go`, read by both backends: `floor`/`ceil`
+  answer a **whole number** (the reference's `math.floor`/`math.ceil` return an `int`) and `sqrt` a float,
+  the checker types them that way too, and a whole number beside a float is **widened, not truncated** —
+  `floor(2.7) + 1.5` is `3.5`, `[floor(2.7), ceil(2.2)]` is `[2, 3]`, `str(floor(2.7))` is `2`. A text, a
+  `None` or a container argument, a negative under `sqrt`, a NaN or an infinity under `floor` are all
+  **raises with the reference's sentence**, exit 3 and catchable by class on both engines — `must be real
+  number, not str` (unquoted, unlike this language's other `TypeError` family, because CPython writes two
+  different sentences and a program's `except` reads them), `math domain error`, `cannot convert float NaN
+  to integer`, `cannot convert float infinity to integer` — the last of which needed `OverflowError` in the
+  exception table. Beyond the compiled `int` word the legs disagree on purpose: `floor(3000000000.0)` is
+  answered by the `int64` evaluator and **raised** by the compiled leg rather than letting `fptosi` return
+  poison, and the split is a ledger row with a pin per leg (Gap R.133, owned by L12.12). Walking that
+  boundary found the bug the middle would have hidden: the lower guard was `-2147483649.0`, which lets
+  `-2147483649.0` through into the poison truncation, where it printed `2147483647`. And two findings the
+  row did not own got IDs of their own: a folded `inf` could not be emitted at all — `x = float("inf")`
+  died in `llc` with `inf.0e+00`, **exit 2**, and now writes its IEEE bit pattern with both bad spellings on
+  the `forbiddenIR` blacklist (Gap R.134, closed here) — and `1e18` does not lex, filed with the ten other
+  predeclared names no engine can call (`pow`, `divmod`, `hash`, …), `print(pow(2, 3))` being a program
+  CPython evaluates and the compiled leg answers with exit 1 (Gaps R.135, R.136).
 - **A class pattern asked two backends the same question, and got two answers** (ADR 0235) —
   `case Point(a, b):` on an instance with `x` and `y` **matched** compiled and printed `pt 0 0`, while
   the interpreter and `docs/language.md` both say a missing attribute fails the case: the compiled arm
@@ -900,10 +929,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **127 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — 98 rows asserting parity and 29 recorded without it (the probe and merged
+  `conformance-matrix.json`: **132 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — 99 rows asserting parity and 33 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
-  the oracle verdict being 84 `match`, 25 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
+  the oracle verdict being 84 `match`, 27 pinned `debt` and 21 `not_applicable`. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its

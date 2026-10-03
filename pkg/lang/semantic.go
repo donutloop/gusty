@@ -1509,6 +1509,19 @@ func (an *SemanticAnalyzer) inferCall(n *Call) *Type {
 			}
 		case "super":
 			return TDyn()
+		case "floor", "ceil", "sqrt":
+			// The three names `predeclared.go` advertises and the two backends used to answer
+			// differently — or not at all. The checker now says what the reference says:
+			// `math.floor` / `math.ceil` return a whole number, `math.sqrt` returns a float
+			// (roadmap Gap R.51, ADR 0264). A name the checker types one way and the codegen lowers
+			// another is how `print(floor(3.7))` came to print `3.0`.
+			for _, a := range n.Args {
+				an.inferArg(a)
+			}
+			if name.Value == "sqrt" {
+				return TFlt()
+			}
+			return TInt()
 		case "float", "round", "int", "str", "chr", "ord":
 			// conversion builtins: infer args, then return the converted type.
 			var firstTy *Type

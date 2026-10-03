@@ -882,13 +882,19 @@ func TestExecSqrt(t *testing.T) {
 }
 
 func TestExecFloorCeil(t *testing.T) {
-	// Standard-library floor/ceil builtins: llvm.floor.f64 / llvm.ceil.f64
-	// with float promotion and constant folding.
-	// floor/ceil return a float (documented: "the largest double <="), so an integral
-	// result renders as 2.0 — where Python's math.floor returns an int. The remaining
-	// divergence is tracked in the roadmap (Gap P.2).
-	assertOutput(t, "print(floor(2.7))\nprint(floor(-2.7))\nprint(ceil(2.2))\nprint(ceil(-2.2))", "2.0\n-3.0\n3.0\n-2.0\n")
-	assertOutput(t, "print(floor(7))\nprint(ceil(7))", "7.0\n7.0\n")
+	// The whole-number builtins answer in the word a whole number travels in (roadmap Gap R.51,
+	// ADR 0264). The rows below used to pin `2.0`, `-3.0`, `7.0` — with a comment citing the
+	// language's own "the largest double <=" wording and a roadmap row for the divergence. That was
+	// the defect, documented rather than fixed: `math.floor` returns an `int`, so `print(floor(2.7))`
+	// prints `2`, and a language that prints `2.0` has shown the program a number it never wrote.
+	// The old expectations are kept here because "the docs, the compiler and the test all said the
+	// same wrong thing, and the reference was not in the room" is the lesson worth carrying.
+	assertOutput(t, "print(floor(2.7))\nprint(floor(-2.7))\nprint(ceil(2.2))\nprint(ceil(-2.2))", "2\n-3\n3\n-2\n")
+	assertOutput(t, "print(floor(7))\nprint(ceil(7))", "7\n7\n")
+	// An answer that is a whole number is one on both roads: beside a float, where the word has to
+	// be widened rather than truncated.
+	assertOutput(t, "print(floor(2.7) + 1.5)", "3.5\n")
+	assertOutput(t, "print([floor(2.7), ceil(2.2)])", "[2, 3]\n")
 }
 
 func TestExecTryExcept(t *testing.T) {

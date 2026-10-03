@@ -31,6 +31,12 @@ var forbiddenIR = []struct{ why, needle string }{
 	{"a global definition spliced into an element list", "[2 x i32] [@"},
 	{"a global reference in an i32 return slot", "ret i32 @."},
 	{"a global reference in an i32 comparison", "icmp eq i32 @."},
+	// A double the compiler folded to a non-finite value used to be written with Go's own spelling plus
+	// this emitter's exponent suffix — `inf.0e+00`, `nan.0e+00` — which LLVM 20's parser has no token
+	// for. `llc` stops, which is exit 2 on a program the reference prints (roadmap Gap R.134, ADR 0264);
+	// the IEEE bit pattern is the spelling the parser takes.
+	{"a non-finite double in a spelling the parser has no token for", "inf.0e+00"},
+	{"a non-finite double in a spelling the parser has no token for", "nan.0e+00"},
 }
 
 func assertNoForbiddenIR(t *testing.T, src, ir string) {

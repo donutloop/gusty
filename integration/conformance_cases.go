@@ -42,6 +42,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"single", "sq", "print1", "ir", "fstr", "floatfn",
 		"ctrl_a", "ctrl_b", "ctrl_c",
 		"data_a", "data_b", "data_c",
+		// floor/ceil/sqrt answer whole numbers and a float respectively, on both backends (Gap R.51,
+		// ADR 0264); the file is gusty's spelling of the reference's math-module names, so the ledger
+		// records it and the CLI test runs the twin.
+		"whole_number_builtins",
 		"features_a", "features_b",
 		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "match_classpat", "round_ties", "round_ndigits", "wrapping_decorator", "dunder",
 		"async_basic",
@@ -323,6 +327,24 @@ func conformanceProbes() []lang.ConformanceCase {
 		// call filled with a double, a loop variable off a literal list — where the compiled leg reads
 		// the i32 road of the call and prints the truncated number, or the handle (roadmap Gap R.129).
 		"probe_round_digit_count_kind_unseen",
+		// floor/ceil answer a whole number on both engines now (Gap R.51, ADR 0264). What stays filed is
+		// the answer past the compiled int word: the evaluator's int64 answers CPython's number and the
+		// compiled guard raises an OverflowError naming L12.12, rather than wrapping in silence
+		// (roadmap Gap R.133).
+		"probe_whole_number_beyond_the_int_word",
+		// A double written with an exponent — the spelling a scientific value arrives in — does not lex:
+		// both engines stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
+		// R.135). Filed while measuring `sqrt`, whose natural test values are 1e18 and 1e-3.
+		"probe_float_literal_with_exponent",
+		// A folded non-finite constant used to be emitted as `inf.0e+00`, which `llc` rejects: exit 2 on a
+		// program the reference prints. Fixed by spelling the value as its IEEE bit pattern; this row is
+		// the regression net, and it is `not_applicable` only because `sqrt` is not a CPython builtin
+		// (roadmap Gap R.134, closed alongside Gap R.51 by ADR 0264).
+		"non_finite_float_constant",
+		// A name the checker's own table advertises and neither engine can call: `pow` is CPython's `8`,
+		// this toolchain's answer is a NameError interpreted and a refusal compiled (roadmap Gap R.136,
+		// found by calling every name in `predeclared.go`, the same sweep that found R.51's three alive).
+		"probe_predeclared_name_not_callable",
 		// The wall underneath that one, measured while finding it and older than it: a `for` binding over
 		// a literal container of doubles used as a number multiplies the element handle (roadmap Gap
 		// R.130, ADR 0261's read paid for the subscript, the loop binding never followed).
@@ -448,6 +470,28 @@ var oracleLedger = map[string]oracleDecl{
 	// (rows below are `oracle: match` by default; see the drift tests)
 
 	// ---- gusty-only surface: CPython cannot run the program at all --------------
+	"programs/whole_number_builtins": {oracle: lang.OracleNA,
+		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against both engines",
+		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}, {Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
+	"programs/probe_whole_number_beyond_the_int_word": {oracle: lang.OracleNA,
+		reason: "the same spelling (the reference's math.floor / math.ceil), and the two engines disagree here on purpose: the evaluator's ints are int64 and answer 3000000000, while the compiled int word is 32 bits and its guard raises `OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)` rather than wrapping a poison `fptosi` into a silent negative — the harness sees the compiled leg's exit class, and integration/math_names_test.go is where the sentence itself and its catchability are asserted",
+		ref:    "roadmap Gap R.133 (measured landing ADR 0264); the decision this waits on is L12.12's",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3000000000\n3000000000\n"}, {Backend: "aot", Missing: true, Err: "exit status 3"}}},
+	"programs/probe_predeclared_name_not_callable": {oracle: lang.OracleDebt,
+		reason: "CPython evaluates `pow(2, 3)` as 8; here the name is in the checker's predeclared table and in neither engine's call table, so the interpreted leg traps NameError and the compiled leg refuses the call — a program the reference runs, spent on exit 3 and exit 1 (ADR 0211's misclassed class)",
+		ref:    "roadmap Gap R.136 (measured landing ADR 0264); the same shape Gap R.51 had, and the same two ways out",
+		pins: []lang.OraclePin{
+			{Backend: "interpreter", Missing: true, Err: "name 'pow' is not defined"},
+			{Backend: "aot", Missing: true, Err: `unsupported call "pow"`},
+		}},
+	"programs/probe_float_literal_with_exponent": {oracle: lang.OracleDebt,
+		reason: "the reference parses `1e18` as a float literal and prints 1e+18; here the exponent marker is not in the number lexer, so the `e18` is read as a name and both legs stop at the same parse error before either engine runs",
+		ref:    "roadmap Gap R.135 (measured landing ADR 0264); docs/language.md § Lexical structure → Numeric literals",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: `parse error at 1:8: expected ")"`}, {Backend: "aot", Missing: true, Err: `parse error at 1:8: expected ")"`}}},
+	"programs/non_finite_float_constant": {oracle: lang.OracleNA, reason: "the last two lines ask `sqrt`, which the reference keeps in the math module, so the CPython leg stops at a NameError there — the rows above them do match, and integration/math_names_test.go runs this file against `from math import floor, ceil, sqrt` on both engines",
+		ref:  "roadmap Gap R.134 (closed alongside Gap R.51 by ADR 0264)",
+		pins: []lang.OraclePin{{Backend: "interpreter", Stdout: "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"}, {Backend: "aot", Stdout: "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"}}},
 	"programs/for_int_count": {oracle: lang.OracleNA,
 		reason: "`for i in 4:` treats an integer as a repeat count; CPython raises TypeError ('int' object is not iterable), so the CPython leg stops at the first loop and never sees the rest of the file",
 		ref:    "docs/language.md § Control flow (integer repeat count) and roadmap Gap R.14 (ADR 0207)",

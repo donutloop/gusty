@@ -1,0 +1,17 @@
+# A name the checker was told about and the engines never learned (roadmap Gap R.136, ADR 0264's sweep).
+#
+# `predeclared.go` keeps one list of the names the checker is allowed to see. Ten of them are in that list
+# and callable on neither engine: `map`, `filter`, `isinstance`, `hash`, `id`, `getattr`, `callable`,
+# `pow`, `divmod`, `fabs`. The row this probe pins is the same shape `floor` / `ceil` / `sqrt` had until
+# ADR 0264 — the toolchain accepts a program, and then the engine refuses to run it — measured by walking
+# the predeclared table and calling every name in it.
+#
+# `pow` is the sharpest of the ten because CPython runs it in one line:
+#
+#     print(pow(2, 3))     # CPython 8 · --interp NameError, exit 3 · --aot exit 1 `unsupported call "pow"`
+#
+# so one leg spends a runtime trap and the other spends exit 1 — the contract's "your program has a
+# compile error" class — on a program the reference evaluates without complaint (ADR 0211, L11.8). The
+# fix is the one ADR 0264 made for the other three: implement it on both paths, or take the name out of
+# the table so the checker stops promising it.
+print(pow(2, 3))

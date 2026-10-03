@@ -125,8 +125,8 @@ interpreter-only today.
 
 Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,
 `float`, `str`, `sum`, `abs`, `sorted`, `reversed`, `enumerate`, `any`,
-`all`, `chr`, `ord`, `round`, and the string methods `upper`/`lower`/
-`capitalize`/`title`/`swapcase`. `any(iter)` is 1 if any element is truthy;
+`all`, `chr`, `ord`, `round`, `floor`, `ceil`, `sqrt`, and the string methods
+`upper`/`lower`/`capitalize`/`title`/`swapcase`. `any(iter)` is 1 if any element is truthy;
 `all(iter)` is 1 if all are; `chr(n)` makes the single-char string for a
 codepoint; `ord(s)` reads the first char's codepoint. In the AOT codegen, `chr(n)` folds a constant codepoint to a single-character string global and `ord(s)` folds a constant string to its first-byte codepoint (mirroring the interpreter's `sval[0]`), both as literal folds.
 
@@ -178,7 +178,55 @@ arrives.
 then-truncated float value in the AOT codegen (the backend represents floats
 as truncated ints, mirroring value()'s FloatLit handling).
 floats. See ADR 0090 — and Phase 2's L11.6 for the float paths still open (a float reaching an
-untyped function parameter, `/=` → float, `floor`/`ceil` → `int`).
+untyped function parameter, `/=` → float, stdlib constants keeping their type). The `floor`/`ceil` →
+`int` half of that list is closed: see the two paragraphs below (Gap R.51, ADR 0264).
+
+### `floor` and `ceil` answer a whole number; `sqrt` answers a float
+
+`floor(3.7)` is `2`-style: **a whole number, printed without a decimal point** — `floor(2.7)` is `2`,
+`floor(-2.7)` is `-3`, `ceil(2.2)` is `3`, `ceil(-2.2)` is `-2`, `ceil(-0.5)` is `0`, `floor(7)` is `7`,
+`floor(True)` is `1`. They are the reference's `math.floor` / `math.ceil`, which return an `int`, and a
+backend that prints `3.0` for `floor(3.7)` has shown the program a number it never wrote (Gap R.51,
+ADR 0264). `sqrt` is the other kind of question and keeps its fractional part: `sqrt(9)` is `3.0`,
+`sqrt(2.25)` is `1.5`, `sqrt(2)` is `1.4142135623730951`. The checker types the three the same way
+(`floor`/`ceil` → `TInt()`, `sqrt` → `TFlt()`), because a name the checker types one way and the codegen
+lowers another is exactly how this stayed invisible.
+
+A whole-number answer beside a float is **widened, never truncated**: `floor(2.7) + 1.5` is `3.5` and
+`floor(2.7) * 3` is `6` (an exact product of whole numbers stays a whole number), and the answer carries
+into a container (`[floor(2.7), ceil(2.2)]` is `[2, 3]`), into `str` (`str(floor(2.7))` is `2`), into an
+f-string (`f"{floor(2.7)}"` is `2`), into a comparison (`floor(3.7) == 3`, `sqrt(4) == 2`) and across a
+call boundary. Compiled, the pair is `llvm.floor.f64`/`llvm.ceil.f64` carried in the int word, and the
+float road lifts it back with `sitofp` — ADR 0243's (payload, widen) step for an element, for the same
+reason.
+
+**Every bad argument is a raise the reference wrote, on both backends** (exit 3, catchable by class):
+
+| program | both engines and CPython |
+|---|---|
+| `floor("a")`, `sqrt("a")` | `TypeError: must be real number, not str` |
+| `ceil(None)` | `TypeError: must be real number, not NoneType` |
+| `floor([1])`, `sqrt({"a": 1})`, `ceil({1})` | `TypeError: must be real number, not list` / `dict` / `set` |
+| `sqrt(-1)`, `sqrt(-1.0)`, `sqrt(-inf)` | `ValueError: math domain error` |
+| `floor(float("nan"))` | `ValueError: cannot convert float NaN to integer` |
+| `ceil(float("inf"))` | `OverflowError: cannot convert float infinity to integer` |
+
+The kind in `must be real number, not str` is **not** quoted, unlike this language's other `TypeError`
+family (`'str' object cannot be interpreted as an integer`, ADR 0263): the two sentences are CPython's own
+pair, and a program's `except` matches on the text a user reads. `sqrt` of a negative is a *run-time*
+raise, not a compile-time refusal — `try: sqrt(n) except ValueError:` has to stay writable — and
+`OverflowError` is in the exception table (tag 9) so `except OverflowError:` means the same thing on all
+three engines. `floor()`, `floor(1, 2)` and the like answer one shared arity sentence per name, exit 1
+compiled and exit 3 interpreted, and exit 2 nowhere (ADR 0211).
+
+Two walls stay open, both filed with a pin per leg rather than smoothed over. **Past the compiled int
+word** the engines disagree: `floor(3000000000.0)` is `3000000000` in the evaluator (whose ints are
+`int64`) and on the compiled leg an `OverflowError: floor: the whole number is beyond the word this
+backend's int holds (roadmap L12.12)` — catchable, and raised rather than letting `fptosi` answer poison,
+because a silently-wrong number is Gap R.64's existing complaint (Gap R.133, owned by L12.12). And a
+**loop variable off a literal list of doubles** has no kind for the call to follow: `for v in [3.7]:
+print(floor(v))` is `3` interpreted and `0` compiled (Gap R.130, the tagged-value word's, L11.1).
+Neither is asserted as correct anywhere; both are pinned where they are filed.
 
 ## Memory model
 
@@ -301,6 +349,22 @@ separators, mirroring Python's syntax:
 Misplaced separators (`1__0`, `1_`, `0x_`) are a lexical error. Hex/binary/
 octal literals are integer-only. Values are computed exactly at lex time, so
 the interpreter and the AOT backend agree on `0xFF + 0b101 + 0o17 + 1_000`.
+
+**The exponent form is not in the number lexer yet**: `1e18`, `1.5e-3` and `2E8` are a parse error on both
+engines (`parse error at 1:8: expected ")"`, exit 1) where CPython parses them as `1e+18`, `0.0015` and
+`2e+08` — the `e18` is read as a name after the number `1`. Write `1000000000000000000.0`, or
+`float("1e18")`, whose *string* is parsed. Filed as roadmap Gap R.135 with a probe
+(`programs/probe_float_literal_with_exponent`, an `oracle: debt` row) so the row cannot be forgotten while
+scientific-looking values are being typed into a program.
+
+**The two values with no decimal spelling are `float("inf")` and `float("nan")`** (with `-float("inf")`
+for the third). They print `inf`, `-inf` and `nan` on every engine, and they survive a binding, an
+arithmetic step and a `sqrt` (`sqrt(inf)` is `inf`, `sqrt(nan)` is `nan`, `sqrt(-inf)` raises
+`ValueError: math domain error`). A folded one used to reach the module as `inf.0e+00` — Go's spelling
+plus this emitter's exponent suffix — which LLVM 20's parser has no token for, so `llc` stopped and the
+program died with exit 2; the emitter now writes the IEEE bit pattern (`0x7FF0000000000000`,
+`0xFFF0000000000000`, `0x7FF8000000000000`), and both bad spellings are on the shared `forbiddenIR`
+blacklist every codegen test runs (Gap R.134, closed alongside `floor`/`ceil`/`sqrt` by ADR 0264).
 
 ## Statements
 
@@ -1055,7 +1119,10 @@ for i in range(n):
   AOT/codegen path; see ADR 0139.
 - `raise ValueError("msg")` raises a typed exception carrying a class name and an
   optional message. Built-in exception classes: `Exception`, `ValueError`, `TypeError`,
-  `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`. A bare
+  `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`,
+  `UnboundLocalError` (ADR 0228) and `OverflowError` (ADR 0264 — the class CPython uses for
+  `int(inf)`, which is what makes `except OverflowError:` around a `floor`/`ceil` of a huge double mean
+  the same thing on all three engines). A bare
   `raise` raises `Exception`. `raise IndexError` (the class itself, no call) raises that
   class with no message, and a class derived from an exception is raisable too:
   `class MyError(Exception):` then `raise MyError("x")` / `except MyError:`.

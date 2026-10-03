@@ -1656,12 +1656,20 @@ index) survived behind exactly that. Needed:
   string-parameter inference.
 
 <a id="gap-p-2"></a>
-### Gap P.2 — numeric builtins that Python types differently (OPEN)
-- `floor`/`ceil` return a float where Python's `math.floor` returns an `int`
-  (docs say "the largest double <=", so this is a deliberate-but-questionable
-  choice — settle it and update the golden expectations);
-- float `%` uses truncated (`math.Mod`) rather than Python's floored modulo
-  (`-3.5 % 2.0` is `-1.5`, Python `0.5`).
+### Gap P.2 — numeric builtins that Python types differently (CLOSED by ADR 0264, 2026-10-03)
+- ~~`floor`/`ceil` return a float where Python's `math.floor` returns an `int`~~ — closed by ADR 0264,
+  which also explains why the row's own wording ("docs say 'the largest double <=', so this is a
+  deliberate-but-questionable choice") was the problem rather than the answer: the phrase describes a
+  *value* and was being read as a *type*, by the compiler, by the language doc's reader and by the test
+  that pinned `2.0`. What the reference returns is an `int`, and `print(floor(2.7))` now prints `2`.
+- ~~float `%` uses truncated (`math.Mod`) rather than Python's floored modulo~~ — closed by ADR 0216.
+- ~~the `round` tie rule~~ (Gap R.50) — closed by ADR 0236.
+
+The row is closed because all three named defects were re-measured against CPython on both engines in the
+commit that closed it, not because the ledger said so: `-3.5 % 2.0` → `0.5`, `round(2.5)` → `2`,
+`round(3.5)` → `4`, `round(-0.5)` → `0`, `floor(2.7)` → `2`, `ceil(2.2)` → `3`, each identical on
+`--interp`, `-aot` and `python3`. What L11.6 still owes is elsewhere in its own row (`/=` → float, a float
+through an untyped parameter, stdlib constants keeping their type), not here.
 
 <a id="gap-q"></a>
 ## Gap Q — container-kind rebinding and a fixed 1024-slot heap (found 2026-09-28, L7.2)
@@ -3186,6 +3194,33 @@ with `unsupported call "<name>"` — a capability gap on both paths, tracked by 
 refusal needs a stable code) and by L11.2/L11.3/L11.7 where a value model would make the
 name real. What is not acceptable is the three-way split above: either lower a name on both
 paths, or refuse it on both, and say which in the diagnostic.
+
+**Closed 2026-10-03 by ADR 0264.** The three names are implemented on both paths, and the row's own
+definition of done — `print(floor(3.7))` prints an `int`-shaped `3` — was measured rather than asserted:
+
+```gusty
+print(floor(2.7))   # CPython 2 · --interp 2 · -aot 2      (was: NameError 3 / 2.0)
+print(ceil(-2.2))   # CPython -2 · --interp -2 · -aot -2   (was: NameError 3 / -2.0)
+print(floor(7))     # CPython 7 · --interp 7 · -aot 7      (was: NameError 3 / 7.0)
+print(sqrt(9))      # CPython 3.0 · --interp 3.0 · -aot 3.0 (the float answer, unchanged)
+print(floor(2.7) + 1.5)          # CPython 3.5 · 3.5 · 3.5
+print([floor(2.7), ceil(2.2)])   # CPython [2, 3] · [2, 3] · [2, 3]   (was [2.0, 3.0] compiled)
+print(str(floor(2.7)))           # CPython 2 · 2 · 2                  (was 2.0 compiled)
+print(sqrt(-1))     # ValueError: math domain error on all three, exit 3 where catchable
+print(floor("a"))   # TypeError: must be real number, not str on all three
+```
+
+The value table is 30 shapes wide (halves, both signs, whole floats, `True`/`False`, a container, an
+f-string, `str()`, an `==`, a comparison in an `if`, a variable, a function parameter, a product of two
+`sqrt`s) and both engines print CPython's bytes on 29 of them; the 30th is the already-filed loop-variable
+wall (Gap R.130), pinned not asserted. The trap half is twelve shapes, each with the reference's sentence
+and each catchable by class.
+
+Two things this row's closure discovered, filed as their own rows because they are not this row's
+question: a folded non-finite constant could not be emitted at all (Gap R.134, fixed in the same commit
+because `sqrt` needed it), and the predeclared table's other dead names, including one the reference runs
+(Gap R.136). And one thing it could not close: the answer past the compiled `int` word (Gap R.133), which
+is L12.12's decision to make.
 
 <a id="gap-r-52"></a>
 
@@ -5828,3 +5863,128 @@ here is the other twelve sites, and the fix is the same one-line idea applied to
 Recorded in `programs/probe_negative_zero_constant.gy`, whose four lines are chosen as the boundary rather
 than as a list of complaints: two lose the sign, two keep it, and the day all four keep it the row leaves the
 ledger.
+
+<a id="gap-r-133"></a>
+### Gap R.133 — the whole number past the compiled `int` word: the guard raises, and the two engines disagree (OPEN, owner L12.12, measured landing ADR 0264)
+
+```gusty
+print(floor(2147483647.0))   # CPython 2147483647 · --interp 2147483647 · -aot 2147483647
+print(ceil(-2147483648.0))   # CPython -2147483648 · --interp -2147483648 · -aot -2147483648
+print(floor(2147483648.0))   # CPython 2147483648 · --interp 2147483648 · -aot OverflowError, exit 3
+print(floor(-2147483649.0))  # CPython -2147483649 · --interp -2147483649 · -aot OverflowError, exit 3
+print(ceil(2147483647.1))    # CPython 2147483648 · --interp 2147483648 · -aot OverflowError, exit 3
+```
+
+The compiled backend's `int` is an `i32` (L12.12 has owned that sentence since it was written), and
+`fptosi double … to i32` outside the word is not a wrong number — it is *poison*: LLVM may answer anything,
+and on x86-64 `cvttsd2si` hands back `0x80000000`, i.e. `-2147483648`, for any double too large to fit. So
+`floorCeilValue` asks before it truncates — `fcmp uno` for NaN, `fcmp oge 2147483648.0`, `fcmp olt
+-2147483648.0` — and raises a catchable `OverflowError` naming the row that owns the decision:
+
+```
+OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)
+```
+
+The evaluator's ints are `int64`, so it answers CPython's number in every row above. **The two legs
+disagree, and this row is where that is recorded** rather than being averaged: the compiled expectation was
+not rewritten to `3000000000` (the compiler cannot deliver it), and the guard was not softened to print
+something (a plausible wrong answer is the one no test catches, and Gap R.64 is already the ledger's record
+of what silent overflow costs). The day the compiled leg answers the number, the probe
+(`programs/probe_whole_number_beyond_the_int_word`) leaves the ledger and this row closes with L12.12's.
+
+The boundary is the row's real content, and it nearly shipped broken. The lower bound was first written as
+`-2147483649.0` with `fcmp olt`, on the reasoning "one past the minimum is surely the first value out". It
+is not: the i32 holds −2147483648 … 2147483647, so `-2147483649.0` *is* out of range, `fcmp olt` does not
+catch it, and it went into the poison `fptosi` and came back as **`2147483647`** — a positive number, from
+a negative input, with exit 0. Walking the boundary found it; the middle of the range had nothing to say
+either way. The upper bound keeps the asymmetric shape deliberately (`oge 2^31`, because 2^31−1 fits), and
+both directions are asserted from both sides in `TestTheWholeNumberBuiltinsAnswerWholeNumbers` and the
+filed-not-fixed table beside it.
+
+<a id="gap-r-134"></a>
+### Gap R.134 — a folded non-finite constant could not be emitted at all (CLOSED alongside Gap R.51 by ADR 0264, 2026-10-03)
+
+```gusty
+x = float("inf")        # CPython prints inf · used to die in llc: exit 2
+print(x)
+print(sqrt(float("inf")))   # CPython inf · the fold route to the same broken spelling
+```
+
+Two routes, one spelling, and the worst exit code in the contract. `floatConst` rendered any folded float by
+taking Go's own text and gluing this emitter's exponent suffix on it; for the two values that have no
+decimal spelling that produced `inf.0e+00` and `nan.0e+00`, which LLVM 20's parser has no token for:
+
+```
+llc-20: error: … :163:40: error: expected value token
+  %t1 = call i8* @rt_fmt_double(double inf.0e+00)
+                                       ^
+```
+
+**Exit 2** — ADR 0166's "the compiler is broken" class — on `x = float("inf")`, a two-line program the
+reference prints, measured on the pre-change binary. It had simply never been tried: nothing in the corpus
+bound an `inf` to a name, and `print(float("inf"))` goes through the printer's constant path and never
+needs a double literal in the module, which is why it had always looked fine. The `sqrt` fold (`sqrt(inf)`
+→ `inf`) was the second route, found by running the sweep this feature's own values asked for.
+
+The fix is in the emitter, not at the call sites: `floatConst` writes the three values as their IEEE bit
+patterns — `0x7FF0000000000000`, `0xFFF0000000000000`, `0x7FF8000000000000` — which is the spelling LLVM's
+parser does accept, the same 64 bits the assembler would write, and free of the sign-loss that the
+`fadd double 0.0, …` fold idiom carries (Gap R.132). `inf.0e+00` and `nan.0e+00` were added to the shared
+`forbiddenIR` list in `pkg/lang/container_element_test.go`, so a module containing either is now rejected by
+the package's own tests rather than by a linker hours later. `programs/non_finite_float_constant.gy` is the
+regression net — nine lines, each of them CPython's bytes on both engines, and `sqrt(inf)` = `inf`,
+`sqrt(nan)` = `nan`, `sqrt(-inf)` raising `ValueError: math domain error`.
+
+<a id="gap-r-135"></a>
+### Gap R.135 — a float with an exponent does not lex (OPEN, measured landing ADR 0264)
+
+```gusty
+print(1e18)        # CPython 1e+18   · --interp and -aot: parse error at 1:8: expected ")"  · exit 1
+print(1.5e-3)      # CPython 0.0015  · same class of parse error                            · exit 1
+print(2E8)         # CPython 2e+08   · same                                                 · exit 1
+print(float("1e18"))   # 1e+18 — the string form parses and parses correctly, on both engines
+```
+
+The exponent marker is not in the number lexer, so `1e18` lexes as the number `1` followed by the *name*
+`e18`, and the parser — still inside the `print(` — reports `expected ")"`. Both engines agree, which is
+the only kind of agreement this row has: the reference evaluates all three lines, and the toolchain
+refuses to build any of them. Exit 1 is the right class only for a program the reference rejects, and
+CPython runs these, so until the lexer grows the form this is a divergence, pinned as
+`programs/probe_float_literal_with_exponent` (`oracle: debt`, one pin per leg with the parse error, `ref`
+this row).
+
+It surfaced while choosing values for `sqrt`: the interesting square roots to test are `1e154`, `1e-3`,
+`2E8`, and every one of them was a program that would not compile. A test-value choice that cannot be
+written down is a signal about the lexer, not an instruction to write smaller tests. Until it lands, the
+workaround is `float("1e18")`, whose argument is parsed by the conversion and is exact.
+
+<a id="gap-r-136"></a>
+### Gap R.136 — ten names the checker's own table advertises and neither engine can call (OPEN, owner L11.8, measured landing ADR 0264)
+
+```gusty
+print(pow(2, 3))            # CPython 8     · --interp NameError, exit 3 · -aot exit 1 `unsupported call "pow"`
+print(divmod(7, 2))         # CPython (3, 1) · same two answers
+print(hash(2))              # CPython 2      · same
+print(callable(print))      # CPython True   · same
+print(getattr([1], "x"))    # CPython <built-in method …> · same
+print(fabs(-3.5))           # CPython has no fabs either (it is math.fabs) — the table promises it anyway
+```
+
+Walking `pkg/lang/predeclared.go` and calling every name in it — the sweep that found `floor`, `ceil` and
+`sqrt` dead, in the cycle that implemented them — found ten more that are dead in the same way: **`map`,
+`filter`, `isinstance`, `hash`, `id`, `getattr`, `callable`, `pow`, `divmod`, `fabs`**. The checker calls a
+program that uses them well-typed, the evaluator traps `NameError` (exit 3), and codegen refuses with
+`unsupported call "<name>"` (**exit 1**).
+
+Two separate complaints, and the second is the one that matters for the contract. A capability gap is
+L11.8's and is honest work: the name is missing, both paths say so. But `print(pow(2, 3))` is a program
+CPython *evaluates*, and the compiled leg spends exit 1 — "your program has a compile error" — on it, which
+is exactly the class ADR 0211 and L11.8 exist to close (a refusal is a divergence, never a diagnosis).
+`fabs` is the mirror case: the reference has no such builtin, so the honest fix there is not an
+implementation but a removal from a table that promises what the language does not have.
+
+Pinned as `programs/probe_predeclared_name_not_callable` (`oracle: debt`, one line, `pow`, the sharpest of
+the ten, with the interpreted `name 'pow' is not defined` and the compiled `unsupported call "pow"` pinned
+leg by leg). The fix for each is the one ADR 0264 made for the other three names: lower it on both paths, or
+take it out of the table so the checker stops promising it — and the sweep that found them is worth
+re-running after any change to `predeclared.go`, because the table and the engines drift apart silently.
