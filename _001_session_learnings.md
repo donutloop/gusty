@@ -6190,3 +6190,28 @@ have gone green-forever-and-asserted-nothing. The unit test that pinned the same
 **A whole-program suite is how you find the fourth fixture.** Nothing in the files I edited said anything
 about `min_max_values_test.go`; only `go test ./...` surfaced a pinned divergence three directories away.
 Run the full suite before committing, not the tests near your change.
+
+## After the commit: two things the ledger was lying about (Gap R.125 follow-up, ADR 0261)
+
+**A leg you did not force is a leg you did not measure.** Auditing the two rows ADR 0261 filed, I re-ran
+`gustyc --file integration/programs/probe_minmax_candidate_unreadable.gy`, saw `True True`, concluded the
+filed divergence was a phantom, and started rewriting the row into a parity row. `--file` with no backend
+flag chooses per the auto policy (ADR 0171), and a four-line program is under the JIT threshold — so I had
+measured the *interpreter* twice and called the second reading the compiled one. Forcing the legs
+(`-aot`, `-interp`, or `--oracle-file`, which is what the harness runs) reproduced the recorded answers
+exactly: `1 True` compiled, `True True` in the JIT. Nothing was wrong with the row; the measurement method
+was. Every per-backend claim in this repository — a pin, a ledger reason, a roadmap row's Evidence cell, a
+program's own "what each engine answers" table — has to say which flag produced it, and the programs now
+say so in their headers. The cost of getting this wrong is not a bad commit: it is a parity row asserting
+an answer no engine ever printed, or a gap filed against a bug that does not exist.
+
+**An artifact that always diffs is an artifact nobody reads.** `conformance-matrix.json` quoted the
+reference leg's stderr verbatim, and CPython writes the script's absolute path into its warnings and
+tracebacks — so twenty lines of the committed ledger changed on every regeneration to name a directory that
+no longer existed, and the counters were the only stable part. The fix is one scrub at the source
+(`lang.PythonRun`, before the text becomes a row: `prog.py:4: SyntaxWarning: …` keeps the file, the line and
+the error class, and loses the run directory) plus the tripwire that keeps it
+(`TestMatrixArtifactCarriesNoRunDirectory`, which fails whoever regenerates the artifact into quoting a
+scratch path). The general shape: when a committed artifact diffs on every run, do not normalise the diff
+by hand each cycle — find the field that quotes something that is not a fact about the language, and stop
+quoting it there.

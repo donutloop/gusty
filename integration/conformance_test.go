@@ -294,3 +294,24 @@ func TestConformanceMatrixRecordsTheOracleLeg(t *testing.T) {
 		t.Errorf("oracle counters %d+%d+%d do not cover %d rows", m.OracleMatched, m.OracleDebt, m.OracleNA, len(m.Results))
 	}
 }
+
+// The artifact also has to stay *diffable*. The reference leg runs from a directory the harness made
+// for that one run, and CPython quotes that path into its warnings and tracebacks — which the row
+// quotes in turn (`python_error`, and the same text inside a debt row's notes). Quoted verbatim, every
+// regeneration rewrites the committed file on nothing but a random number, and an artifact whose diff
+// always means nothing is an artifact nobody reads: the parity failure that matters arrives wearing the
+// same diff as the noise. So the scrub lives in lang.PythonRun (docs/adr/0261), and this is the tripwire
+// that keeps it there — a committed matrix that quotes a scratch directory fails, whoever generated it.
+// Roadmap L11.9 owns the artifact (ADR 0175).
+func TestMatrixArtifactCarriesNoRunDirectory(t *testing.T) {
+	raw, err := os.ReadFile("conformance-matrix.json")
+	if err != nil {
+		t.Fatalf("read the matrix artifact: %v", err)
+	}
+	for _, needle := range []string{"gusty-oracle", "/tmp/go-build", `\/tmp\/gusty-oracle`} {
+		if strings.Contains(string(raw), needle) {
+			t.Errorf("matrix artifact quotes %q — the path of one run's scratch directory is not a fact about "+
+				"the language; lang.PythonRun scrubs it before it reaches a row", needle)
+		}
+	}
+}

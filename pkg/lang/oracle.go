@@ -159,6 +159,10 @@ func OracleTooOldHint(pythonErr string) string {
 // matrix artifact must be diffable between runs, and a set rendering that changes
 // order between two CI runs would look like a compiler regression. It does not
 // make Python's set order the contract (see RuleSetOrder); it makes it stable.
+//
+// The stderr comes back with the run directory scrubbed (scrubOracleRunDir): the
+// artifact this feeds is committed, and a path naming a directory that no longer
+// exists is not information.
 func PythonRun(src string) (stdout, stderr string, err error) {
 	dir, err := os.MkdirTemp("", "gusty-oracle")
 	if err != nil {
@@ -175,7 +179,33 @@ func PythonRun(src string) (stdout, stderr string, err error) {
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	runErr := cmd.Run()
-	return out.String(), errb.String(), runErr
+	return out.String(), scrubOracleRunDir(errb.String(), dir), runErr
+}
+
+// scrubOracleRunDir rewrites the temporary directory the reference script was run
+// out of its own diagnostics, leaving `prog.py` where the absolute path was.
+//
+// This is not cosmetics. The CPython leg's stderr is recorded verbatim into
+// `conformance-matrix.json` — as `python_error`, and again inside a debt row's notes — and
+// that file is committed. A row that reads
+// `/tmp/gusty-oracle3710782730/prog.py:4: SyntaxWarning: ...` differs from the same row
+// written by the next run on the same source by nothing but a number no one can look up,
+// so every regeneration of the artifact is a diff, and a diff that means nothing is how a
+// real one gets waved through. The recorded facts stay: which line, which error, which
+// warning — `prog.py:4: SyntaxWarning: ...` says all of it.
+//
+// Only the run directory is removed, and only the one this run made: a program that
+// reports a path of its own still reports it.
+func scrubOracleRunDir(s, dir string) string {
+	if dir == "" {
+		return s
+	}
+	if !strings.Contains(s, dir) {
+		return s
+	}
+	// `dir + "/"` first, so the script's own name survives: a traceback reads
+	// `File "prog.py", line 5` and a warning reads `prog.py:4: SyntaxWarning: ...`.
+	return strings.ReplaceAll(s, dir+string(filepath.Separator), "")
 }
 
 // OracleLeg is one observed leg: which engine produced it, whether it completed,

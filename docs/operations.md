@@ -744,6 +744,17 @@ below). Everything from 1.1 still stands: `python_stdout` / `python_ok` /
 `oracle_debt` / `oracle_not_applicable` / `oracle_drift` counters, and the `toolchain` block.
 `--schema` → `definitions.conformanceRow` documents the row shape.
 
+One field is quoted rather than computed, and quoting it has a rule attached. `python_error` is the
+reference leg's own stderr, and CPython writes the script's absolute path into its warnings and
+tracebacks — a path under a scratch directory the harness made for that one run. `lang.PythonRun`
+scrubs the run directory out before it reaches a row, so a traceback reads `File "prog.py", line 5` and
+a warning `prog.py:4: SyntaxWarning: …`: the file, the line and the error class are recorded, the
+throwaway path is not. Without that the committed artifact differs on every regeneration by nothing but
+a random number, and a ledger that always diffs is a ledger nobody reads — the parity failure that
+matters arrives wearing the same diff as the noise (roadmap Gap R.126, ADR 0261;
+`TestMatrixArtifactCarriesNoRunDirectory` fails whoever regenerates it into quoting a scratch
+directory).
+
 ### The ledger, and why absence means "must match"
 
 `integration/conformance_cases.go` declares each case's state. A case with **no ledger row is
