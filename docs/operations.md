@@ -948,7 +948,19 @@ Each literal becomes a dedicated global struct (dicts: `{i32 count, [n x i32]
 keys, [n x i32] vals}`; sets: `{i32 count, [n x i32] elems}`). Constant-key
 lookup folds at compile time; literals must be used inline (no assignment-to-
 variable indirection), matching the list-literal limitation. Interpreter
-indexes dicts/sets at runtime and is unchanged.
+indexes dicts/sets at runtime.
+
+**A repeated key is one entry on both paths** (ADR 0260, closing roadmap Gaps R.118 and R.120). The
+compiled fold has always deduplicated the keys it unrolls, and the interpreter now puts each entry
+through the dict's own key lookup (`Evaluator.dictPut`) instead of appending it, so
+`print({"a": 1, "a": 2})` is `{'a': 2}`, `{1: 2 for x in [1, 2]}` prints with a `len` of `1`, and the
+`1`/`True`/`1.0` spellings collapse to one entry because key equality asks the numbers (ADR 0259).
+Nothing in the JSON schemas changed — no new kind appeared — but this is where an agent can see it: the
+compiled fold's key dedup and the interpreter's `dictPut` are the same rule, and
+`integration/programs/dict_key_rule.gy` is the parity row that keeps them that way. What the compiled
+path still declines in words (exit 1, never a wrong answer) is a dict comprehension whose key it must
+spell itself as text — `comprehension key must be constant`, roadmap Gap R.123 — and a display
+unpacking (`{**d, "a": 2}`), which the parser rejects (Gap R.121, with Gap R.58).
 
 A container variable is a heap object, and since ADR 0232 its slots are
 `(payload, tag)` pairs: `d = {"a": 1, "b": "x", "c": None}` and `s = {1, "a",

@@ -698,6 +698,24 @@ xs[1] = 9           # a list replaces the element: [1, 9, 3]
 xs[9] = 0           # IndexError — item assignment never grows a list
 ```
 
+**A dict is a key → value mapping however it is built** (ADR 0260, closing roadmap Gaps R.118 and
+R.120). Item assignment has always put an entry; so do the literal, the dict comprehension and the
+`dict(d)` copy, through one door (`dictPut`) rather than four rules:
+
+```py
+print({"a": 1, "a": 2})              # {'a': 2}   — one entry, the last value
+print({"a": 1, "b": 2, "a": 3})      # {'a': 3, 'b': 2} — position is first insertion, not last write
+print({1: "a", True: "b"})           # {1: 'b'}   — one key, and the first spelling is what prints
+d = {1: 2 for x in [1, 2]}
+print(d, len(d))                     # {1: 2} 1   — the loop put the entry, it did not append one
+```
+
+The keys compare the way CPython's do, so `1`, `True` and `1.0` are one key (ADR 0259's key equality asks
+the numbers, not the handles) and the entry that survives keeps the key that was written first. The
+interpreter grew its dicts by appending instead, so `{"a": 1, "a": 2}` held two entries that both printed
+and both counted while the compiled backend — whose fold deduplicates keys — answered CPython's line: the
+two engines disagreed about an ordinary dictionary, and no program in the corpus had written one.
+
 Rules that both backends implement:
 
 - **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so

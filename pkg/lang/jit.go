@@ -289,14 +289,7 @@ func (e *Evaluator) storeIndex(ix *Index, val int64) error {
 		// and printed as what they are, and the key of an assignment is an expression the
 		// interpreter can still read (Gap R.112, ADR 0259).
 		key := e.slotVal(ix.Idx, idx)
-		for i, k := range o.elems {
-			if e.dictKeyEq(k, idx) {
-				o.dvals[i] = val
-				return nil
-			}
-		}
-		o.elems = append(o.elems, key)
-		o.dvals = append(o.dvals, val)
+		e.dictPut(o, key, val)
 		return nil
 	case "list":
 		i := normPosIndex(idx, int64(len(o.elems)))
@@ -2002,8 +1995,10 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			o.dvals = append(o.dvals, e.slotVal(n.Vals[i], vv))
-			o.elems = append(o.elems, e.slotVal(k, kv))
+			// A literal is built entry by entry through the dict's own key rule, not appended:
+			// `{"a": 1, "a": 2}` is one entry holding 2, as CPython and the compiled fold answer
+			// (roadmap Gap R.120, ADR 0260).
+			e.dictPut(o, e.slotVal(k, kv), e.slotVal(n.Vals[i], vv))
 		}
 		return h, nil
 	case *SetLit:
@@ -2144,8 +2139,10 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			ro.elems = append(ro.elems, e.slotVal(c.Keys[0], k))
-			ro.dvals = append(ro.dvals, e.slotVal(c.Vals[0], v))
+			// The comprehension writes through the same door as `d[k] = v`: a key the dict already
+			// holds keeps its place and takes the new value, so `{1: 2 for x in [1, 2]}` is one
+			// entry of length 1 (roadmap Gap R.118, ADR 0260).
+			e.dictPut(ro, e.slotVal(c.Keys[0], k), e.slotVal(c.Vals[0], v))
 		}
 	}
 	return rh, nil
@@ -3709,6 +3706,26 @@ func (e *Evaluator) dictKeyEq(k, idx int64) bool {
 	return k == idx
 }
 
+// dictPut writes one entry into a dict that is being built. A dict is a key → value mapping, so a
+// key the dict already holds keeps its place and takes the new value; only a key that is not there
+// yet extends the entry list — and the key that stays is the first one written, as CPython's does
+// ({1: 'a', True: 'b'} prints {1: 'b'}, not {True: 'b'}). The comparison is dictKeyEq's, which is
+// what makes 1, True and 1.0 one key (ADR 0259). Every builder that grows a dict walks this door:
+// the literal, the comprehension, item assignment and dict() — they used to append, which left
+// `{"a": 1, "a": 2}` holding two entries that both printed and both counted while the compiled
+// backend, whose fold deduplicates keys, answered CPython's line (roadmap Gaps R.118 and R.120,
+// ADR 0260).
+func (e *Evaluator) dictPut(o *obj, key, val int64) {
+	for i, k := range o.elems {
+		if e.dictKeyEq(k, key) {
+			o.dvals[i] = val
+			return
+		}
+	}
+	o.elems = append(o.elems, key)
+	o.dvals = append(o.dvals, val)
+}
+
 // lessVal reports whether boxed value a is less than b (ints by value, strings by content).
 func (e *Evaluator) lessVal(a, b int64) bool {
 	// False sorts as 0 and True as 1 — the order CPython's sort gives a list of bools — and the
@@ -4683,8 +4700,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return 0, exnError("TypeError", "dict() copies another dict")
 			}
 			dst := e.heap[h]
-			dst.elems = append(dst.elems, o.elems...)
-			dst.dvals = append(dst.dvals, o.dvals...)
+			// One rule for every dict builder: the copy puts each entry rather than splicing the
+			// two arrays, so a copy cannot be a container with two entries under one key.
+			for i := range o.elems {
+				e.dictPut(dst, o.elems[i], o.dvals[i])
+			}
 			return h, nil
 		}
 	}

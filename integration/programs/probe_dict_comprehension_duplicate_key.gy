@@ -1,15 +1,15 @@
-# A dict comprehension that writes the same key twice keeps both entries in the interpreter. This is
-# not about bools (nothing here is a verdict) — it is the dict-comp fold keeping a list of entries where
-# a dict needs a lookup, measured while separating the bool-in-a-container rows (roadmap Gap R.118).
+# What CPython prints for both lines here (python3, 3.12):
 #
-# What each engine answers today:
-#   --interp  {1: 2, 1: 2}   2
-#   --aot     {1: 2}         1
-#   python3   {1: 2}         1
+#   {1: 2}
+#   1
 #
-# A dict is a key → value mapping: rebinding a key that is already there replaces the value and leaves
-# the size alone, which is what the compiled fold and CPython both do. The interpreter appends, so the
-# container holds two entries under one key and `len` counts the pair.
+# A dict comprehension that writes the same key twice puts the entry: the second iteration replaces the
+# value and leaves the size alone. The interpreter grew the dict by appending, so it kept two entries
+# under one key and `len` counted the pair, while the compiled fold deduplicated keys and matched
+# CPython — the two engines disagreeing about an ordinary dictionary (roadmap Gap R.118, ADR 0260).
+#
+# Nothing in this program is a verdict. It was measured while separating the bool-in-a-container rows,
+# and it is the row where the *interpreter* was the diverging engine.
 d = {1: 2 for x in [1, 2]}
 print(d)
 print(len(d))

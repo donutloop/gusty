@@ -6086,3 +6086,52 @@ force-reset the tree, deleting an untracked file (a hand-written second ADR for 
 to be recovered from the committed filename). The recovery stands: work in `git worktree add -b <branch>
 /tmp/…  HEAD`, push with `git push origin HEAD:main`, and cite documents by the name they were committed
 under, not the one you drafted.
+
+## Cycle: a dict puts its entries, however the interpreter builds it (ADR 0260 — Gaps R.118 and R.120 closed; Gaps R.121–R.123 filed)
+
+**The interpreter was the diverging engine, and that is the finding.** Every instinct in this repository —
+the corpus, the matrix, the "two backends agree because they share a bug" reflex — is built on the compiled
+path being the suspicious one. `print({"a": 1, "a": 2})` printed `{'a': 1, 'a': 2}` interpreted and `{'a': 2}`
+compiled, with CPython standing beside the compiled answer, and `len` counted a pair. Nothing had ever written
+a dictionary with a repeated key: the least-interesting program (ADR 0190) was missing from the corpus, so the
+one shape that would have shown it never ran.
+
+**A row's own text can be the wrong diagnosis.** Gap R.118 said "the interpreter's dict *comprehension* keeps
+both entries", written from the single shape that happened to be probed. The comprehension was one of four
+builders — literal, comprehension, `dict(d)` copy, item assignment — and only the fourth, the one that already
+did a lookup, was correct. Fixing the row as written would have left three copies of the wrong rule in the
+tree, one of them a code path (`dict(d)`) that cannot currently be reached with a duplicate and so would have
+waited for its first caller. The commit is one helper, `Evaluator.dictPut`, and a tripwire
+(`TestEveryDictBuilderWalksTheOneDoor`) that counts `dvals = append`: three became four exactly the way a
+counting test notices.
+
+**Position and key are behaviours, not details.** Both rules had a wrong answer available: moving an updated
+entry to the end (`{"a": 1, "b": 2, "a": 3}` → `{'b': 2, 'a': 3}`) would break `for k in d`, whose insertion
+order is language surface (ADR 0188); keeping the *last* key object (`{1: 'a', True: 'b'}` → `{True: 'b'}`) is
+what "last write wins" naturally says, and CPython keeps the first. Both are pinned as rows, not reasoned
+about in a comment.
+
+**Some doors cannot be built before the last one is open.** The collision rows — `{1: 'a', True: 'b'}`,
+`{1.0: 'a', 1: 'b'}` — depend on key *equality*, which is ADR 0259's `dictKeyEq` unboxing a verdict and asking
+a float box for its number. With bools compared by handle, a `dictPut` on the old equality would have merged
+some pairs and silently not others: a fix that half-works is the failure mode this project has kept running
+into. Sequence by dependency, not by row order.
+
+**Measure the neighbours while writing a probe, and file what you find.** Writing ADR 0260's probe meant
+writing the shapes beside it, which is how the literal was found (Gap R.120, paid in the same commit) and how
+three things that are *not* fixed got rows: `{**d, "a": 2}` does not parse (Gap R.121, owned with Gap R.58 —
+nothing behind a parser can implement a form the parser rejects), `{k: v for k, v in pairs}` cannot unpack a
+pair (Gap R.122, owner L11.3), and `{"k": v for v in [1, 2, 3]}` refuses compiled while the interpreter and
+CPython print `{'k': 3}` (Gap R.123, an honest exit-1 refusal, pinned per leg with the interpreter leg asserted
+against CPython so that opening the builder cannot quietly change the answer).
+
+**A paid debt has to leave the pinned contract rows too.** `TestOracleStillCallsTheBoolNameLossShapes` listed
+four probes by exit code; one of them became `match` mid-cycle. Leaving it would have kept a green suite that
+asserts an exit class nobody owes — the same trap as a fixture pinned to a closed debt, one file over. The
+program moved to `conformanceStandalone`, its ledger row changed `OracleDebt`+pins to `OracleMatch`, and the
+contract row lost its entry with a comment saying why it is absent.
+
+**Toolchain note: a skip is not a verdict.** `negBuildRun` skips when `Build` fails, so a compiled *refusal*
+in a both-engines table reads as "toolchain unavailable" and passes. The text-key case above was a skip until
+it was moved into its own test that asserts the refusal's message and the interpreter's answer together. A skip
+hides both halves of a divergence; a refusal test keeps them on the record.

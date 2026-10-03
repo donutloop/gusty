@@ -155,6 +155,18 @@ stride its two-word entries need, so `[k for k in d]` over `{1: "x", 2: "y"}` is
 each entry as two `(payload, tag)` pairs with the tag its key really has, so `{k: 1 for k in d}` over a
 text-keyed dict prints `{'a': 1}` and `out["a"]` finds it instead of dying with `KeyError` (Gap R.78).
 
+A **dict is a key → value mapping however it is built** (ADR 0260, closing Gaps R.118 and R.120) — which is
+another way of saying the interpreter used to *append* entries. `print({"a": 1, "a": 2})` printed
+`{'a': 1, 'a': 2}` and `len` printed `2`; `{1: 2 for x in [1, 2]}` printed `{1: 2, 1: 2}` — the literal, the
+comprehension and the `dict(d)` copy each grew the entry arrays, and only item assignment asked the dict
+whether it already held the key. All four now walk one door, so the entry keeps its **position from first
+insertion** (`{"a": 1, "b": 2, "a": 3}` is `{'a': 3, 'b': 2}`, because `for k in d` walks insertion order)
+and takes its **value from the last write**, while the **key that survives is the first one written** —
+`{1: 'a', True: 'b'}` prints `{1: 'b'}` and `{True: 1, 1: 2}` prints `{True: 2}`, agreeing with CPython
+because `1`, `True` and `1.0` are one key (ADR 0259's key equality). This is the rare row where the
+*interpreter* was the diverging engine and the compiled answer was CPython's; the two engines had disagreed
+about an ordinary dictionary until a program wrote one.
+
 A container the program *built* rather than spelled out — appended to, assigned into, rebound — no longer
 has a literal behind it, so ADR 0241's compile-time promise has run out, and the read used to refuse. It
 asks the object instead, because every writer wrote payload and tag together (ADR 0187): `len(xs[0])` of a
@@ -296,8 +308,9 @@ paid: the slot now carries a bool tag, the container printer, the set dedup and 
 read `bool`, and `[True, 1]`, `{'k': True}` and `{True}` come out as CPython writes them while every
 numeric question about the same slot still answers as its number (ADR 0259, closing Gap R.112). What stays
 filed is the shape no tag can reach from the caller's side: a bool handed to a function prints the number it
-is stored as (Gap R.111), and the three comprehension and fold shapes this cycle measured are filed with
-their per-engine answers (Gaps R.116–R.119). `--json` names the
+is stored as (Gap R.111), and the comprehension and fold shapes that sweep measured are filed with
+their per-engine answers — Gaps R.116, R.117 and R.119, since R.118 turned out to be a dict story and was
+paid by ADR 0260 the same day. `--json` names the
 type `bool`, and `--eval '1 == 1'` echoes `True`.
 
 `str()` and `repr()` are **one pair over one renderer** (ADR 0258, closing Gap L.2). `print`, `str()`
@@ -846,10 +859,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **116 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — 94 rows asserting parity and 22 recorded without it (the probe and merged
+  `conformance-matrix.json`: **118 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — 96 rows asserting parity and 22 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
-  the oracle verdict being 80 `match`, 18 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
+  the oracle verdict being 82 `match`, 18 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its

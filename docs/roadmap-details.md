@@ -5296,7 +5296,7 @@ prints `1` there — the number is the *right answer*, so a "fix" that makes eve
 a verdict would break a line that is currently conformant. A closure has to move two rows and leave the
 third exactly where it is.
 
-### Gap R.118 — a dict comprehension that repeats a key keeps both entries (OPEN, found separating the bool rows)
+### Gap R.118 — closed by ADR 0260: a dict puts its entries, however it is built
 
 ```gusty
 d = {1: 2 for x in [1, 2]}
@@ -5312,6 +5312,103 @@ deduplicating keys as it unrolls. The comprehension loop appends an entry withou
 carries two slots under one key, both printed and both counted. It is the rare ledger row where the
 **interpreter** is the diverging leg and the compiled backend is the reference, and it reproduces on the
 commit before ADR 0259, so it is filed as a gap rather than treated as a regression.
+
+What it turned out to be, once the neighbours were measured (ADR 0260): not a comprehension bug but the
+interpreter's dict **builders**. The literal, the comprehension and the `dict(d)` copy each grew the entry
+arrays with `append`; only item assignment asked the dict whether the key was already there. Four builders,
+three rules, and one door now — `Evaluator.dictPut(o, key, val)`, which is the only place `dvals` grows:
+
+```go
+for i, k := range o.elems {
+    if e.dictKeyEq(k, key) { o.dvals[i] = val; return }   // the entry keeps its place, takes the value
+}
+o.elems = append(o.elems, key); o.dvals = append(o.dvals, val)  // a new key extends the walk
+```
+
+The compiled backend needed no change: its fold deduplicates keys as it unrolls and `rt_dict_put_tagged`
+updates in place. That is why this is the rare row where the interpreter is the diverging engine and the
+compiled answer is the reference — and why the ledger pins are per-leg, so a "fix" that had moved the
+*compiled* leg would have been caught. `TestEveryDictBuilderWalksTheOneDoor` is the structural half: the
+behaviour rows would pass again the day someone writes a fifth builder that appends, which is how three
+became four here.
+
+### Gap R.120 — closed by ADR 0260: a dict literal with a repeated key is one entry
+
+```gusty
+print({"a": 1, "a": 2})      # CPython {'a': 2}   · --interp {'a': 1, 'a': 2}   · --aot {'a': 2}
+print({1: "a", 1: "b"})      # CPython {1: 'b'}   · --interp {1: 'a', 1: 'b'}   · --aot {1: 'b'}
+print({1: "a", True: "b"})   # CPython {1: 'b'}   · --interp {1: 'a', True: 'b'}
+print({1.0: "a", 1: "b"})    # CPython {1.0: 'b'} · --interp {1.0: 'a', 1: 'b'}
+```
+
+Written the day Gap R.118 closed, because writing that probe meant writing the neighbours, and the literal
+had the same defect. Two rules the door had to get right, both load-bearing because dict order is language
+surface here too (`for k in d` walks entries in insertion order, ADR 0188):
+
+* the entry keeps the **position of its first write** — `{"a": 1, "b": 2, "a": 3}` is `{'a': 3, 'b': 2}`,
+  not `{'b': 2, 'a': 3}`;
+* the **key that survives is the first one written** — `{1: 'a', True: 'b'}` prints `{1: 'b'}` while
+  `{True: 1, 1: 2}` prints `{True: 2}`: value from the last write, key from the first.
+
+Key equality is ADR 0259's `dictKeyEq` — a verdict unboxes, a float box is asked for its number — so `1`,
+`True` and `1.0` are one key and all four collision spellings collapse to one entry. That dependency is why
+this could not have landed a cycle earlier: with a verdict compared by handle, a `dictPut` on the old
+equality would have merged some pairs and silently not others.
+
+### Gap R.121 — dict display unpacking does not parse (OPEN, measured landing ADR 0260)
+
+```gusty
+d = {"a": 1}
+print({**d, "a": 2})              # CPython {'a': 2} · both engines: parse error at 2:8: unexpected token
+print({**{"a": 1}, **{"a": 2}})   # CPython {'a': 2} · parse error at 1:8: unexpected token
+```
+
+`**expr` is not in the dict display, so the question the feature actually asks — does an unpacked key
+override a literal written before it, and where does the entry sit — has never been put to either backend.
+It belongs with Gap R.58 / L12.6 (`f(**d)`, `*args`, `**kwargs`): one parser boundary, and nothing behind a
+parser can implement a form the parser rejects. It is filed beside ADR 0260 rather than only there because
+the answer it owes is this ADR's: unpacking an entry means putting it through `dictPut`, so `{**d, "a": 2}`
+and `{"a": 1, **d}` differ exactly the way CPython says they do and in no other way.
+
+### Gap R.122 — a dict comprehension cannot unpack a pair (OPEN, measured landing ADR 0260)
+
+```gusty
+print({k: v for k, v in [(1, 2)]})   # CPython {1: 2}
+# --interp  NameError: name 'v' is not defined   (exit 3)
+# --aot     error at 1:20: undefined name "v"     (exit 1)
+```
+
+The `for` *statement* unpacks a pair today — `for k, v in [(1, 2)]` prints `1 2` interpreted — through
+`loopVarNames` handling a tuple target. A comprehension never reaches that door: its `ForVar` is a single
+name, so `k` binds the whole pair and `v` is never bound at all, which is why the program dies with a
+`NameError` about a variable it did declare. The compiled refusal (`undefined name "v"`) is the other half
+of the same missing feature, and behind it `TupleLit` has no lowering at all (L11.3), so the iterable cannot
+be built either. Owner L11.3 for that; the comprehension-target binding is the small fix that follows.
+
+### Gap R.123 — a dict comprehension with a text key refuses in the compiled backend (OPEN, measured landing ADR 0260)
+
+```gusty
+d = {"k": v for v in [1, 2, 3]}
+print(d)                # CPython {'k': 3} · --interp {'k': 3} · --aot comprehension key must be constant (exit 1)
+print(d["k"], len(d))   # CPython 3 1      · --interp 3 1
+```
+
+Three neighbours, measured side by side, say where the edge is:
+
+| program | interpreter / CPython | compiled |
+|---|---|---|
+| `{1: v for v in [1, 2, 3]}` | `{1: 3}` | `{1: 3}` |
+| `{"k": v for v in [1, 2, 3]}` | `{'k': 3}` | **refused** |
+| `{k: d[k] for k in d}` over `{"a": 1, "b": 2}` | `{'a': 1, 'b': 2}` | `{'a': 1, 'b': 2}` |
+
+So the shape that fails is a key the *program writes as text* in a comprehension the compiler cannot fold
+away: ADR 0234 lets a folded comprehension become the literal it denotes, and spelling an interned string
+into that literal's key array is the one thing its builder cannot do — while a key **read** out of a
+text-keyed dict comes through the tags ADR 0232 installed and compiles. This is not a wrong answer (exit 1,
+in words naming the key it wants, nothing reaching `llc`), which is why it is a row rather than a fire, and
+why the interpreter leg is asserted against CPython in the same test: the day someone opens the builder, the
+answer is already pinned. Owner L11.7 — ADR 0232's `rt_dict_put_tagged` already takes a tagged string key for
+item assignment, so the runtime comprehension builder owes that one argument.
 
 ### Gap R.119 — an ordering CPython refuses answers in the compiled backend inside a ternary (OPEN, pre-existing, found by the bool spelling)
 

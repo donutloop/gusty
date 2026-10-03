@@ -1,0 +1,40 @@
+# What CPython prints for every line here (python3, 3.12):
+#
+#   {'a': 2}
+#   {1: 'b'}
+#   {1: 2}
+#   {1.0: 'b'}
+#   {'a': 3, 'b': 2}
+#   2
+#   1
+#   1
+#   {'a': 2} 1
+#   {1: 2}
+#   1
+#
+# A dict is a key → value mapping, so writing a key it already holds replaces the value and leaves the
+# entry where it was: the order is first insertion, not last write, and the key that survives is the one
+# written first. The interpreter grew its dicts by appending instead — `{"a": 1, "a": 2}` kept two
+# entries, printed both and counted 2 — while the compiled backend's fold deduplicates keys and answered
+# correctly, so the two engines disagreed about an ordinary dictionary (roadmap Gaps R.118 and R.120,
+# ADR 0260).
+#
+# The `True`/`1`/`1.0` rows are the same rule with the comparison doing the work: those are one key, because
+# a bool and a float are the numbers they behave like (ADR 0259's `dictKeyEq`), and which spelling prints
+# is which entry was written first.
+print({"a": 1, "a": 2})
+print({1: "a", 1: "b"})
+print({1: 1, True: 2})
+print({1.0: "a", 1: "b"})
+print({"a": 1, "b": 2, "a": 3})
+d = {"a": 1, "a": 2}
+print(d["a"])
+print(len(d))
+for k in d:
+    print(k)
+e = {"a": 1}
+e["a"] = 2
+print(e, len(e))
+g = {1: 2 for x in [1, 2]}
+print(g)
+print(len(g))

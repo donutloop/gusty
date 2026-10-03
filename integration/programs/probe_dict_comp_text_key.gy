@@ -1,0 +1,17 @@
+# What CPython prints for both lines here (python3, 3.12):
+#
+#   {'k': 3}
+#   3 1
+#
+# A dict comprehension whose key is written text and whose value is computed by the loop: the
+# interpreter and CPython agree on every line, and the compiled backend dies with
+# `codegen: comprehension key must be constant` at exit 1.
+#
+# The key *is* constant — `{"k": …}` — so the message describes the shape the runtime dict builder
+# can walk (an integer key, as `{1: v for v in [1, 2, 3]}` compiles and prints `{1: 3}` on both
+# engines) rather than the shape the program wrote. Nothing here is wrong: it is a capability the
+# compiled path declines, recorded so it stays a gap and not a rumour (roadmap Gap R.123, measured
+# while writing ADR 0260's dict rows, which is the same family's other half — putting the entry).
+d = {"k": v for v in [1, 2, 3]}
+print(d)
+print(d["k"], len(d))

@@ -2157,6 +2157,52 @@
     },
     {
       "case": {
+        "id": "programs/dict_key_rule",
+        "name": "dict_key_rule.gy",
+        "source": "# What CPython prints for every line here (python3, 3.12):\n#\n#   {'a': 2}\n#   {1: 'b'}\n#   {1: 2}\n#   {1.0: 'b'}\n#   {'a': 3, 'b': 2}\n#   2\n#   1\n#   1\n#   {'a': 2} 1\n#   {1: 2}\n#   1\n#\n# A dict is a key → value mapping, so writing a key it already holds replaces the value and leaves the\n# entry where it was: the order is first insertion, not last write, and the key that survives is the one\n# written first. The interpreter grew its dicts by appending instead — `{\"a\": 1, \"a\": 2}` kept two\n# entries, printed both and counted 2 — while the compiled backend's fold deduplicates keys and answered\n# correctly, so the two engines disagreed about an ordinary dictionary (roadmap Gaps R.118 and R.120,\n# ADR 0260).\n#\n# The `True`/`1`/`1.0` rows are the same rule with the comparison doing the work: those are one key, because\n# a bool and a float are the numbers they behave like (ADR 0259's `dictKeyEq`), and which spelling prints\n# is which entry was written first.\nprint({\"a\": 1, \"a\": 2})\nprint({1: \"a\", 1: \"b\"})\nprint({1: 1, True: 2})\nprint({1.0: \"a\", 1: \"b\"})\nprint({\"a\": 1, \"b\": 2, \"a\": 3})\nd = {\"a\": 1, \"a\": 2}\nprint(d[\"a\"])\nprint(len(d))\nfor k in d:\n    print(k)\ne = {\"a\": 1}\ne[\"a\"] = 2\nprint(e, len(e))\ng = {1: 2 for x in [1, 2]}\nprint(g)\nprint(len(g))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "{'a': 2}\n{1: 'b'}\n{1: 2}\n{1.0: 'b'}\n{'a': 3, 'b': 2}\n2\n1\na\n{'a': 2} 1\n{1: 2}\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "{'a': 2}\n{1: 'b'}\n{1: 2}\n{1.0: 'b'}\n{'a': 3, 'b': 2}\n2\n1\na\n{'a': 2} 1\n{1: 2}\n1\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "{'a': 2}\n{1: 'b'}\n{1: 2}\n{1.0: 'b'}\n{'a': 3, 'b': 2}\n2\n1\na\n{'a': 2} 1\n{1: 2}\n1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_dict_comprehension_duplicate_key",
+        "name": "probe_dict_comprehension_duplicate_key.gy",
+        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   {1: 2}\n#   1\n#\n# A dict comprehension that writes the same key twice puts the entry: the second iteration replaces the\n# value and leaves the size alone. The interpreter grew the dict by appending, so it kept two entries\n# under one key and `len` counted the pair, while the compiled fold deduplicated keys and matched\n# CPython — the two engines disagreeing about an ordinary dictionary (roadmap Gap R.118, ADR 0260).\n#\n# Nothing in this program is a verdict. It was measured while separating the bool-in-a-container rows,\n# and it is the row where the *interpreter* was the diverging engine.\nd = {1: 2 for x in [1, 2]}\nprint(d)\nprint(len(d))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "{1: 2}\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "{1: 2}\n1\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "{1: 2}\n1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/slot_order_object",
         "name": "slot_order_object.gy",
         "source": "# The ordering of a slot no literal describes: the object says which pair it was\n# given (roadmap L11.1, ADR 0252, Gap R.93). The arms — two numbers, two texts, and\n# CPython's TypeError naming the kind the slot really holds — are chosen at run time\n# by the tag beside the payload, so no table of \"what xs can hold\" is consulted.\nxs = []\nxs.append(3)\nxs.append(\"b\")\nxs.append(1.5)\nxs.append(None)\nprint(1 if xs[0] \u003e 1 else 0)            # 1  — two numbers\nprint(1 if xs[0] \u003c 1 else 0)            # 0\nprint(1 if xs[2] \u003e 1 else 0)            # 1  — a float slot against an int\nprint(1 if xs[1] \u003e \"a\" else 0)          # 1  — two texts, by their characters\nprint(1 if xs[1] \u003e \"c\" else 0)          # 0\ni = 3\nprint(1 if xs[0] \u003e= i else 0)           # 1  — the index and the number may both move\nd = {}\nd[\"k\"] = 5\nd[\"j\"] = \"m\"\nprint(1 if d[\"k\"] \u003e= 5 else 0)          # 1  — the dict the program filled\nprint(1 if d[\"j\"] \u003e \"a\" else 0)         # 1\nys = []\nfor v in [2, 4]:\n    ys.append(v)\nprint(1 if ys[0] \u003e 3 else 0)            # 0  — a container a loop built\nprint(1 if ys[1] \u003e 3 else 0)            # 1\nnested = []\nnested.append([3, \"a\"])\nnested.append({\"k\": 7})\nprint(1 if nested[0][0] \u003e 1 else 0)     # 1  — one level below, through ADR 0251's read\nprint(1 if nested[0][1] \u003e \"A\" else 0)   # 1\nprint(1 if nested[1][\"k\"] \u003c 9 else 0)   # 1\ntry:\n    print(1 if xs[0] \u003e \"a\" else 0)      # TypeError: int against str — the slot's kind named\nexcept TypeError:\n    print(\"caught int/str\")\ntry:\n    print(1 if xs[3] \u003e 1 else 0)        # TypeError: NoneType against int\nexcept TypeError:\n    print(\"caught None/int\")\ntry:\n    print(1 if xs[1] \u003c 1 else 0)        # TypeError: str against int, left named first\nexcept TypeError:\n    print(\"caught str/int\")\n",
@@ -2546,42 +2592,44 @@
     },
     {
       "case": {
-        "id": "programs/probe_dict_comprehension_duplicate_key",
-        "name": "probe_dict_comprehension_duplicate_key.gy",
-        "source": "# A dict comprehension that writes the same key twice keeps both entries in the interpreter. This is\n# not about bools (nothing here is a verdict) — it is the dict-comp fold keeping a list of entries where\n# a dict needs a lookup, measured while separating the bool-in-a-container rows (roadmap Gap R.118).\n#\n# What each engine answers today:\n#   --interp  {1: 2, 1: 2}   2\n#   --aot     {1: 2}         1\n#   python3   {1: 2}         1\n#\n# A dict is a key → value mapping: rebinding a key that is already there replaces the value and leaves\n# the size alone, which is what the compiled fold and CPython both do. The interpreter appends, so the\n# container holds two entries under one key and `len` counts the pair.\nd = {1: 2 for x in [1, 2]}\nprint(d)\nprint(len(d))\n",
+        "id": "programs/probe_dict_comp_text_key",
+        "name": "probe_dict_comp_text_key.gy",
+        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   {'k': 3}\n#   3 1\n#\n# A dict comprehension whose key is written text and whose value is computed by the loop: the\n# interpreter and CPython agree on every line, and the compiled backend dies with\n# `codegen: comprehension key must be constant` at exit 1.\n#\n# The key *is* constant — `{\"k\": …}` — so the message describes the shape the runtime dict builder\n# can walk (an integer key, as `{1: v for v in [1, 2, 3]}` compiles and prints `{1: 3}` on both\n# engines) rather than the shape the program wrote. Nothing here is wrong: it is a capability the\n# compiled path declines, recorded so it stays a gap and not a rumour (roadmap Gap R.123, measured\n# while writing ADR 0260's dict rows, which is the same family's other half — putting the entry).\nd = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "a dict comprehension that writes the same key twice keeps both entries in the interpreter, so the container holds two slots under one key and len counts the pair; the compiled fold and CPython both replace the value and keep the size",
-        "ref": "roadmap Gap R.118 (measured while closing Gap R.112, ADR 0259)",
+        "reason": "a dict comprehension the compiler cannot fold spells its key through its runtime builder, which walks integer keys only, so a text key dies with `comprehension key must be constant` while the interpreter and CPython print the same dict; the int spelling of the identical program is parity",
+        "ref": "roadmap Gap R.123 (measured while closing Gaps R.118 and R.120, ADR 0260)",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "{1: 2, 1: 2}\n2\n"
+            "stdout": "{'k': 3}\n3 1\n"
           },
           {
             "backend": "aot",
-            "stdout": "{1: 2}\n1\n"
+            "error": "comprehension key must be constant",
+            "missing": true
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "{1: 2, 1: 2}\n2\n",
-      "aot_ok": true,
-      "aot_stdout": "{1: 2}\n1\n",
+      "interp_stdout": "{'k': 3}\n3 1\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: comprehension key must be constant",
       "parity": false,
       "python_ok": true,
-      "python_stdout": "{1: 2}\n1\n",
-      "interp_matches_python": false,
-      "aot_matches_python": true,
+      "python_stdout": "{'k': 3}\n3 1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "a dict comprehension that writes the same key twice keeps both entries in the interpreter, so the container holds two slots under one key and len counts the pair; the compiled fold and CPython both replace the value and keep the size",
-      "oracle_ref": "roadmap Gap R.118 (measured while closing Gap R.112, ADR 0259)",
+      "oracle_reason": "a dict comprehension the compiler cannot fold spells its key through its runtime builder, which walks integer keys only, so a text key dies with `comprehension key must be constant` while the interpreter and CPython print the same dict; the int spelling of the identical program is parity",
+      "oracle_ref": "roadmap Gap R.123 (measured while closing Gaps R.118 and R.120, ADR 0260)",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
-        "interpreter stdout differs from CPython"
+        "compiled leg failed: codegen: comprehension key must be constant"
       ]
     },
     {
@@ -3339,11 +3387,11 @@
       ]
     }
   ],
-  "rows": 116,
+  "rows": 118,
   "skipped": 22,
-  "pass": 94,
+  "pass": 96,
   "fail": 0,
-  "oracle_match": 80,
+  "oracle_match": 82,
   "oracle_debt": 18,
   "oracle_not_applicable": 18,
   "oracle_drift": 0
