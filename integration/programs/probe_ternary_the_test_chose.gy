@@ -1,0 +1,26 @@
+# A ternary hands back whichever arm its test selects, so the arm that runs should decide what prints.
+# ADR 0261 made that true whenever the test is a value the source wrote — `print(True if 1 else 2)` is
+# `True` on all three engines now. These four lines are the shape that rule cannot reach: the test is a
+# name or a slot the compiler has not read, so neither arm is known to run, and the language's
+# conservative rule (a ternary is a verdict only when *both* arms are, ADR 0257) prints the number
+# underneath.
+#
+# What each engine answers, line by line (python3, 3.12):
+#
+#   line  print(max([True, 0]) if c else 2)   print(True if xs else 2)   print(max([True, 0]) if xs[0] else 2)   print(True if c else 2)
+#   py    True                                True                       True                                    True
+#   --interp True                              1                          True                                    1
+#   --aot  1                                   1                          1                                       1
+#
+# The interpreter agrees with the reference on the two lines whose arm is a fold whose winner it can
+# name, and disagrees on the two where a *variable* holds the verdict — and the compiled backend
+# disagrees on all four. Two backends agreeing is not evidence (ADR 0259's lesson): lines 2 and 4 were
+# green in the two-engine matrix while CPython printed True. Owner roadmap L11.1: the answer needs the
+# tag on the value itself, not a second guess at which arm ran (roadmap Gap R.125, measured landing
+# ADR 0261).
+c = True
+print(max([True, 0]) if c else 2)
+xs = [1]
+print(True if xs else 2)
+print(max([True, 0]) if xs[0] else 2)
+print(True if c else 2)

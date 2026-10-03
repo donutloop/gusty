@@ -216,6 +216,24 @@ func TestMinMaxRaiseWhenCandidatesHaveNoOrder(t *testing.T) {
 			"print(max([1, \"a\"]))\n",
 			"TypeError", "'>' not supported between instances of 'str' and 'int'",
 		},
+		// A verdict candidate is a bool in the sentence, not an int: the fold settles the comparison
+		// as a number (True is 1) and names the kind the candidate has, which is what the interpreter's
+		// compareOrder and ADR 0259's element tag both say for the same operand (roadmap Gap R.117).
+		{
+			"a verdict candidate beside a text incumbent says 'bool'",
+			"print(max([\"a\", True]))\n",
+			"TypeError", "'>' not supported between instances of 'bool' and 'str'",
+		},
+		{
+			"a verdict incumbent says 'bool' the other way round",
+			"print(max([True, None]))\n",
+			"TypeError", "'>' not supported between instances of 'NoneType' and 'bool'",
+		},
+		{
+			"min's verdict candidate beside a text incumbent says 'bool'",
+			"print(min([\"a\", False]))\n",
+			"TypeError", "'<' not supported between instances of 'bool' and 'str'",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ee := trapRun(t, tc.src)
@@ -427,20 +445,28 @@ func TestMinMaxShapesStillFiledNotFixed(t *testing.T) {
 	}
 }
 
-// TestBoolCandidatesWaitForBoolToBeAValue records the one member of this family that both backends
-// answer identically and the oracle does not. A bool is an unboxed int until L11.1 gives it its own
-// ValueTag; until then `max(True, 1)` has no True to return.
-func TestBoolCandidatesWaitForBoolToBeAValue(t *testing.T) {
-	src := "print(min(True, 0), max(True, 1))\n"
-	res, err := Compile(src)
-	if err != nil {
-		t.Fatalf("refused: %v", err)
-	}
-	const want = "0 1\n" // CPython: 0 True. The bool rendering is roadmap L11.1's bool step.
-	if out := runIR(t, res.IR); out != want {
-		t.Errorf("AOT printed %q, want the recorded answer %q", out, want)
-	}
-	if out := captureStdout(t, src); out != want {
-		t.Errorf("interpreter printed %q, want the recorded answer %q", out, want)
+// TestBoolCandidatesPrintWhatTheChosenCandidateIs is the row that used to pin the wrong answer: this
+// family's one member both backends answered identically and the oracle did not. A verdict is a value
+// (ADR 0257) and a container slot may say so (ADR 0259); what was missing was the *chosen* candidate's
+// kind crossing out of the fold, which is roadmap Gap R.117 and ADR 0261. The tie rows are the point:
+// `max(True, 1)` keeps the verdict because the comparison is strict and the first candidate stays, and
+// `max(1, True)` keeps the number — a rule no “are the elements bools?“ answer can produce.
+func TestBoolCandidatesPrintWhatTheChosenCandidateIs(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"print(min(True, 0), max(True, 1))\n", "0 True\n"},                // CPython's own line
+		{"print(max(True, 1), max(1, True))\n", "True 1\n"},                // the tie, both ways round
+		{"print(min(False, 0), min(0, False))\n", "False 0\n"},             // …and the same for min
+		{"print(max([True, 0]) + 1, str(min([False, 1])))\n", "2 False\n"}, // the number is still there
+	} {
+		res, err := Compile(tc.src)
+		if err != nil {
+			t.Fatalf("%q refused: %v", tc.src, err)
+		}
+		if out := runIR(t, res.IR); out != tc.want {
+			t.Errorf("AOT %q printed %q, want %q", tc.src, out, tc.want)
+		}
+		if out := captureStdout(t, tc.src); out != tc.want {
+			t.Errorf("interpreter %q printed %q, want %q", tc.src, out, tc.want)
+		}
 	}
 }

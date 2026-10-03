@@ -58,21 +58,24 @@ func TestJSONCallsABoolElementABool(t *testing.T) {
 }
 
 // The shapes this cycle measured and filed rather than absorbed, pinned through the shipped binary so
-// that closing one has to change a verdict here as well as in the ledger. Two are debts the oracle can
-// judge (exit 6); the third is a program CPython itself refuses, so the honest answer is "no verdict"
+// that closing one has to change a verdict here as well as in the ledger. Three are debts the oracle can
+// judge (exit 6); the fourth is a program CPython itself refuses, so the honest answer is "no verdict"
 // (exit 7) — never success, and never a silent collapse into 1.
 //
-// The fourth row ADR 0259 filed is deliberately absent: the interpreter's dict comprehension keeping two
-// entries under one key was paid by ADR 0260 the same day, its program moved to the parity corpus, and a
-// contract row left here expecting exit 6 for a paid debt asserts nothing.
+// Two rows that used to be here are deliberately absent. The interpreter's dict comprehension keeping two
+// entries under one key was paid by ADR 0260 the same day ADR 0259 filed it. And
+// `probe_bool_chosen_by_an_operator` — the verdict a max/min fold chooses — became parity surface under
+// ADR 0261: its program moved to the parity corpus, and a contract row left here expecting exit 6 for a
+// paid debt passes forever without asserting anything.
 func TestOracleStillCallsTheBoolNameLossShapes(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		want int
 	}{
-		{"probe_bool_chosen_by_an_operator", 6}, // Gap R.117
-		{"probe_bool_in_a_comprehension", 6},    // Gap R.116
-		{"probe_slot_order_in_a_ternary", 7},    // Gap R.119 (CPython raises, so there is no opinion)
+		{"probe_bool_in_a_comprehension", 6},     // Gap R.116
+		{"probe_minmax_candidate_unreadable", 6}, // Gap R.124 (the compiled leg's leg)
+		{"probe_ternary_the_test_chose", 6},      // Gap R.125 (both engines, against CPython)
+		{"probe_slot_order_in_a_ternary", 7},     // Gap R.119 (CPython raises, so there is no opinion)
 	} {
 		src := readProgramSrc(tc.name)
 		out, code := cliRunCode(t, "--oracle", src)

@@ -2184,17 +2184,35 @@ Standard-library numeric builtins:
     max(1, 2.5)      # 2.5
     min("b", "a")    # a
     max([1, 2.5])    # 2.5
+    max([True, 0])   # True   — the chosen candidate decides what prints (ADR 0261)
+    max([True, 1])   # True   — the tie keeps the first candidate
+    max([1, True])   # 1      — …so this one keeps the number
     abs(-5)          # 5
 
 `min`/`max` accept one list or set, one scalar, or values written side by side; `abs` takes one number.
-- The varargs form chooses the **candidate**, not the comparison that found it, so the answer's kind is
-  the winner's own kind. `min(1.0, 2)` is the float `1.0`; `min(2.5, 1)` is the integer `1`, not `1.0`.
-  A tie keeps the first candidate (`min(1, 1.0)` is `1`). The rule holds whether the candidates are literals
-  or settled variables **of one kind**, and the same rule decides the one-container spelling (`max([1, 2.5])`
-  is `2.5`, `min([1, 2.5])` is `1`). Text candidates are ordered by their content through `rt_str_order`,
-  never by their position in the intern table (ADR 0248).
+- The call chooses the **candidate**, not the comparison that found it, so the answer's kind is the
+  winner's own kind — the rule ADR 0256 wrote for numbers and ADR 0261 finished for verdicts.
+  `min(1.0, 2)` is the float `1.0`; `min(2.5, 1)` is the integer `1`, not `1.0`.
+  A tie keeps the first candidate (`min(1, 1.0)` is `1`, `max([True, 1])` is `True`, `max([1, True])`
+  is `1`). The rule holds whether the candidates are literals or settled variables **of one kind**, and
+  the same rule decides the one-container spelling (`max([1, 2.5])` is `2.5`, `min([1, 2.5])` is `1`).
+  Text candidates are ordered by their content through `rt_str_order`, never by their position in the
+  intern table (ADR 0248).
+- **What the winner is, everything follows.** `print`, `str()`, `repr()`, an f-string, the tag a container
+  slot carries and `--json`'s `"type"` all ask the same question about the chosen candidate, so
+  `str(max([True, 0]))` is `True` and `print([max([True, 0])])` is `[True]` on both engines — while the
+  number stays underneath, because a verdict is the number every numeric path reads from it:
+  `max([True, 0]) + 1` is `2` and `max([True, 0]) == 1` is `True` (ADR 0259's int/bool/float family).
+  A candidate the compiler cannot read — a name it has not folded — leaves the winner to a run-time
+  `select` with nothing beside it to name its kind, and that line prints the number (roadmap Gap R.124).
+- **A ternary follows the same rule where the test is a value the source wrote**: `print(False if 1 else
+  2)` is `False`, `print(1 if 0 else False)` is `False`, `print(True if "" else 2)` is `2`. When the test
+  must be evaluated, neither arm is known to run and a ternary is a verdict only if *both* arms are
+  (ADR 0257) — the shape still printing the number underneath is roadmap Gap R.125.
 - A text candidate beside a number, and a `None` or container candidate beside a number, raises CPython's
-  `TypeError` with the operator that actually failed: `min` names `'<'` and `max` names `'>'`. The raise is
+  `TypeError` with the operator that actually failed: `min` names `'<'` and `max` names `'>'`. A verdict
+  candidate names `'bool'`, not `'int'` — `max(["a", True])` raises `'>' not supported between instances
+  of 'bool' and 'str'` on both engines (ADR 0261, matching ADR 0259's tag). The raise is
   catchable on both engines. Two containers side by side are CPython's element-wise ordering, which this
   language does not implement yet (roadmap Gaps R.86, R.97): the interpreter raises, the compiler refuses.
   Two runtime candidates whose kinds only the object can reconcile still wait

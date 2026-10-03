@@ -1,0 +1,20 @@
+# What CPython prints for both lines here (python3, 3.12):
+#
+#   True      (max chooses the verdict)
+#   True      (the same, with the candidate the source wrote into a list literal)
+#
+# A min/max fold can only say what the answer *is* if it can say which candidate won. The second line
+# is the shape this backend can read: `xs[0]` is the element a literal wrote, so the comparison is
+# settled by the source and the winner's kind travels with it — True on all three engines. The first
+# line hands the comparison a name the compiler has not folded to a constant, the winner is decided by
+# a run-time `select`, and nothing beside the chosen i32 says it came from `True`: the compiled leg
+# prints the number underneath, exit 0, while the interpreter — which really compares and really keeps
+# the winning object — prints CPython's answer (roadmap Gap R.124, measured landing ADR 0261).
+#
+# This is the row the fold cannot answer without the tagged value word: the candidate's kind has to
+# cross the comparison in the module, not be re-derived from it (owner roadmap L11.1, with Gaps
+# R.107–R.110). It is pinned per leg rather than skipped, so opening the door has to move the pin.
+i = 0
+print(max([True, i]))
+xs = [0]
+print(max([True, xs[0]]))

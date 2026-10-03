@@ -290,6 +290,24 @@ built (Gap R.107), a text container the program built (Gap R.108), two runtime c
 (Gap R.109) — and a callee whose winner was settled by one call site (`def choose(a, b): return max(a, b)` /
 `print(choose(2.0, 1))` printing `2` for `2.0`, Gap R.110).
 
+**The candidate the comparison chose decides what the answer is — and it is asked once** (ADR 0261,
+closing Gap R.117). `print(max([True, 0]))` printed `1` compiled where CPython and the interpreter print
+`True`; `print(max(True, 0))` printed `1` on **both** engines; `print(max([True, 1.5]))` printed `1`, which
+was not a rendering bug at all but the double underneath being truncated. One rule now covers all three:
+a verdict is a candidate like any other number (1 or 0 — ADR 0259's numeric family applied where it had
+not been), one strict comparison picks the winner, and the renderer asks **that candidate** what it is.
+So `max([True, 0])` prints `True` through `print`, `str()`, an f-string and a container slot
+(`[True]`), while the number stays underneath (`max([True, 0]) + 1` → `2`, `max([True, 1.5])` → `1.5`).
+The tie rows are what no element-level rule can produce, and both spellings are pinned:
+`max([True, 1])` is `True` and `max([1, True])` is `1`, because the comparison is strict and the first
+candidate stays — the same reason `min(1, 1.0)` is `1`. The fold's `TypeError` names the candidate's kind
+too: `max(["a", True])` raises `'>' not supported between instances of 'bool' and 'str'` on both engines.
+A ternary takes the same rule where the test is a value the source wrote (`print(False if 1 else 2)` →
+`False`). Two shapes are filed instead of guessed: a candidate the compiler cannot read — `i = 0` /
+`max([True, i])`, whose `select` keeps the payload with nothing beside it to name its kind (Gap R.124) —
+and a ternary whose test it cannot read, where the interpreter agrees with the compiled backend and
+neither agrees with CPython (Gap R.125).
+
 A verdict **is a value, and it prints its own name** (ADR 0257, L11.1's bool step). `print(True)` is `True`,
 `print(1 == 1)` is `True`, `print(0 == None)` is `False`, `str(True)` is `'True'` — an ordinary string with a
 working `.upper()` — and an f-string writes `flag: True` rather than `flag: 1`. None of that changed what a
@@ -297,7 +315,8 @@ bool *is*: it is still the untagged `0`/`1` in the word it always occupied, stil
 multiplies, negates (`-True` → `-1`) and sums (`sum([True, True, False])` → `2`), and a condition still tests
 it the way it always did. What changed is who answers "what is this?": the printer asks the **expression**,
 through one predicate both backends share, so `and`/`or` of two verdicts are verdicts while `1 and 2` is still
-`2` (Python yields the operand), a ternary is a verdict only when both arms are, `all`/`any` and a call whose
+`2` (Python yields the operand), a ternary is a verdict only when both arms are — unless its test is a value
+the source wrote, in which case the arm that runs decides (ADR 0261), `all`/`any` and a call whose
 every `return` is a verdict (ADR 0254's rule, read from the body) are verdicts, and a name is a verdict only
 until something that is not an expression rebinds it — `for flag in [1, 2]` prints `1` and `2`, because a loop
 binds elements. A comparison that reached a class's own `__lt__` is not a verdict at all: the program's method
@@ -859,10 +878,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **118 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — 96 rows asserting parity and 22 recorded without it (the probe and merged
+  `conformance-matrix.json`: **120 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — 97 rows asserting parity and 23 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
-  the oracle verdict being 82 `match`, 18 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
+  the oracle verdict being 83 `match`, 19 pinned `debt` and 18 `not_applicable`. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its

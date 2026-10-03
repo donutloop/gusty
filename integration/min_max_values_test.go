@@ -181,12 +181,11 @@ func TestMinMaxDivergencesPinnedWithEachEngine(t *testing.T) {
 			interp: "a\n", aot: "1\n",
 			gap: "Gap R.38",
 		},
-		{
-			name:   "a bool candidate is an int candidate",
-			src:    "print(min(True, 0), max(True, 1))\n",
-			interp: "0 1\n", aot: "0 1\n",
-			gap: "Gap R.35",
-		},
+		// The row that used to sit here — “a bool candidate is an int candidate“, pinning `0 1` on both
+		// legs for what ADR 0261 closed as Gap R.117 — is gone rather than re-pinned. A divergence table
+		// that keeps a paid debt is a green suite asserting nothing: `print(min(True, 0), max(True, 1))`
+		// answers CPython's `0 True` now, and `pkg/lang/min_max_values_test.go` pins that answer, with
+		// `programs/probe_bool_chosen_by_an_operator.gy` carrying it through the oracle as parity surface.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "min_max_divergence.gy", tc.src)

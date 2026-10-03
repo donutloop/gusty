@@ -5953,19 +5953,37 @@ func (g *irGen) numericFoldElems(elems []Expr) (vals []float64, isFloatElem []bo
 	vals = make([]float64, 0, len(elems))
 	isFloatElem = make([]bool, 0, len(elems))
 	for _, el := range elems {
-		if fv, isF := g.floatEval(el); isF {
-			vals = append(vals, fv)
-			isFloatElem = append(isFloatElem, true)
-			continue
-		}
-		if il, isI := el.(*IntLit); isI {
-			vals = append(vals, float64(il.Value))
-			isFloatElem = append(isFloatElem, false)
+		// One candidate rule for the fold and for the verdict question the print path asks, so the
+		// element the module selects and the element the renderer names cannot be chosen twice.
+		// A verdict is foldable as the number it compares to (1/0), which is also what lets
+		// max([True, 1.5]) see the double underneath it instead of truncating it to 1 (Gap R.117).
+		if v, isF, foldable := minMaxCandidateValue(el, g.foldableCandidate); foldable {
+			vals = append(vals, v)
+			isFloatElem = append(isFloatElem, isF)
 			continue
 		}
 		return nil, nil, false
 	}
 	return vals, isFloatElem, true
+}
+
+// foldableCandidate is the compiled backend's half of the candidate rule: everything the source
+// does not write as a literal but this backend can still read a number from — a constant-folded
+// name, an element a literal wrote into a slot. It is a hook on BoolEnv as well as a step of
+// numericFoldElems for exactly one reason: the two questions must not own two rules.
+func (g *irGen) foldableCandidate(e Expr) (float64, bool, bool) {
+	if fv, isF := g.floatEval(e); isF {
+		return fv, true, true
+	}
+	// An element the program wrote into a literal-backed container: reading the slot and reading
+	// the expression that filled it are the same number (ADR 0243), so the winner of a comparison
+	// over it is still settled by the source and the renderer may name its kind.
+	if ix, ok := e.(*Index); ok {
+		if el, ok2 := g.staticNumericElem(ix); ok2 {
+			return minMaxCandidateValue(el, nil)
+		}
+	}
+	return 0, false, false
 }
 
 // minMaxReturnsFloat answers whether min/max of these elements denotes a float — which is a question
@@ -5976,16 +5994,7 @@ func (g *irGen) minMaxReturnsFloat(elems []Expr, wantMin bool) (bool, bool) {
 	if !ok || len(vals) == 0 {
 		return false, false
 	}
-	best := 0
-	for i := 1; i < len(vals); i++ {
-		if wantMin && vals[i] < vals[best] {
-			best = i
-		}
-		if !wantMin && vals[i] > vals[best] {
-			best = i
-		}
-	}
-	return floats[best], true
+	return floats[numericWinner(vals, wantMin)], true
 }
 
 // minMaxFoldedWinner answers the varargs spelling of min/max (“min(a, b, ...)“) when every
@@ -5999,12 +6008,7 @@ func (g *irGen) minMaxFoldedWinner(args []Expr, wantMin bool) (float64, bool, bo
 	if !ok || len(vals) == 0 {
 		return 0, false, false
 	}
-	best := 0
-	for i := 1; i < len(vals); i++ {
-		if (wantMin && vals[i] < vals[best]) || (!wantMin && vals[i] > vals[best]) {
-			best = i
-		}
-	}
+	best := numericWinner(vals, wantMin)
 	return vals[best], isFloatElem[best], true
 }
 
@@ -6086,11 +6090,16 @@ func (g *irGen) minMaxKindTrap(b *strings.Builder, args []Expr, wantMin bool, sp
 		if !ok {
 			return "", false, nil
 		}
+		// The sentence names the kinds the *candidates* have, and a verdict's kind is bool: the
+		// family says “compare it as a number“, the name says what to print, and ADR 0259 settled
+		// that a slot holding a verdict raises a sentence that reads 'bool' (roadmap Gap R.117).
+		winnerName := g.minMaxKindName(args[0], bestKind)
+		candidateName := g.minMaxKindName(a, k)
 		if bestKind == "int" || bestKind == "float" {
 			if k == "int" || k == "float" {
 				continue
 			}
-			v, err := g.minMaxStaticOrderTrap(b, op, k, bestKind, sp)
+			v, err := g.minMaxStaticOrderTrap(b, op, candidateName, winnerName, sp)
 			if err != nil {
 				return "", true, err
 			}
@@ -6100,7 +6109,7 @@ func (g *irGen) minMaxKindTrap(b *strings.Builder, args []Expr, wantMin bool, sp
 			if k == "str" {
 				continue
 			}
-			v, err := g.minMaxStaticOrderTrap(b, op, k, bestKind, sp)
+			v, err := g.minMaxStaticOrderTrap(b, op, candidateName, winnerName, sp)
 			if err != nil {
 				return "", true, err
 			}
@@ -6109,13 +6118,24 @@ func (g *irGen) minMaxKindTrap(b *strings.Builder, args []Expr, wantMin bool, sp
 		if k == bestKind {
 			continue // two values of the same kind need the helper that kind has, not this trap
 		}
-		v, err := g.minMaxStaticOrderTrap(b, op, k, bestKind, sp)
+		v, err := g.minMaxStaticOrderTrap(b, op, candidateName, winnerName, sp)
 		if err != nil {
 			return "", true, err
 		}
 		return v, true, nil
 	}
 	return "", false, nil
+}
+
+// minMaxKindName is the word the TypeError sentence writes for a candidate whose comparison the
+// fold settles statically. The family is what the trap compares; the name is what the program
+// reads, and a verdict reads `bool` — the same word the interpreter's compareOrder and ADR 0259's
+// element tag use for the very same operand.
+func (g *irGen) minMaxKindName(e Expr, family string) string {
+	if family == "int" && g.printsAsBool(e) {
+		return "bool"
+	}
+	return family
 }
 
 // emitScalarMinMax lowers “min(a, b, ...)“ / “max(a, b, ...)“ when the arguments are values
@@ -6784,29 +6804,15 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 						fe = append(fe, fv)
 					}
 					if okAll && len(fe) > 0 {
-						bestf := fe[0]
-						for _, fv := range fe[1:] {
-							if id.Value == "min" && fv < bestf {
-								bestf = fv
-							}
-							if id.Value == "max" && fv > bestf {
-								bestf = fv
-							}
-						}
 						t := g.newTmp()
-						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(bestf))
+						fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(fe[numericWinner(fe, id.Value == "min")]))
 						return t
 					}
 					// The elements fold to numbers even when not every one of them is a float
 					// literal; the winner decides, and an integer winner is the i32 path's to
 					// answer (roadmap L11.1).
 					if vals, floats, foldable := g.numericFoldElems(lst.Elems); foldable && len(vals) > 0 {
-						best := 0
-						for i := 1; i < len(vals); i++ {
-							if (id.Value == "min" && vals[i] < vals[best]) || (id.Value == "max" && vals[i] > vals[best]) {
-								best = i
-							}
-						}
+						best := numericWinner(vals, id.Value == "min")
 						if !floats[best] {
 							return ""
 						}
@@ -12083,12 +12089,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// the answer is that element's own text. Comparing the i32 payloads instead truncated a
 		// float on the way past g.value, so max([1, 2.5]) answered 2 (roadmap L11.1).
 		if vals, floats, foldable := g.numericFoldElems(elems); foldable && len(vals) > 0 {
-			best := 0
-			for i := 1; i < len(vals); i++ {
-				if (fnName == "min" && vals[i] < vals[best]) || (fnName == "max" && vals[i] > vals[best]) {
-					best = i
-				}
-			}
+			best := numericWinner(vals, fnName == "min")
 			if floats[best] {
 				// The winner is a float, so this is the wrong domain to be asked in: the caller
 				// that prints or binds the value asks g.isFloat first, and that question answers
@@ -12823,7 +12824,7 @@ func (g *irGen) forgetVarBool(name string) {
 // pkg/lang/boolvalue.go, so the two engines cannot disagree about what is a bool
 // (roadmap L11.1 step 2, ADR 0257).
 func (g *irGen) printsAsBool(e Expr) bool {
-	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand})
+	return IsBoolExpr(e, BoolEnv{Vars: g.boolVars, Lookup: g.lookupFuncDef, Shadowed: g.builtinShadowed, Instance: g.instanceOperand, NumericCandidate: g.foldableCandidate})
 }
 
 // instanceOperand is the compiled side of the dunder question the bool predicate asks:

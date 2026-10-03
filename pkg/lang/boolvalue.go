@@ -86,6 +86,14 @@ type BoolEnv struct {
 	// Python prints 1 for dunder.gy's `print(a < 4)`; calling the operator a verdict here
 	// would print True and disagree with the oracle about an overloaded operator.
 	Instance func(Expr) bool
+	// NumericCandidate is the compiled backend's own numeric-fold question: what value a
+	// candidate has and whether it arrived as a double, for a candidate that is not a bare
+	// literal (a constant-folded name, an element the literal wrote). The min/max verdict
+	// question asks it so that the candidate the *module* selects and the candidate the
+	// renderer names are read from one rule; nil means “no fold to agree with“, and the
+	// question then answers from literals alone — which is what the interpreter needs,
+	// because its winner is chosen by real comparison at run time (roadmap Gap R.117).
+	NumericCandidate func(Expr) (val float64, isFloat bool, ok bool)
 }
 
 // IsBoolExpr reports whether an expression's value is a bool: a bool literal, a
@@ -125,8 +133,15 @@ func (env BoolEnv) of(e Expr, depth int) bool {
 	case *Name:
 		return env.Vars[t.Value]
 	case *CondExpr:
-		// `a if c else b` is whichever branch the test picks, so it is a bool only when
-		// both branches are — the same rule the ternary's own type question answers.
+		// `a if c else b` is whichever branch the test picks. When the test is a constant the
+		// compiler can read, that is the arm the program will run, and it is a verdict exactly when
+		// that arm is one — the same rule min/max follow, where the candidate the comparison chose
+		// decides what the answer is (roadmap Gap R.117, ADR 0261). When the test is not a constant,
+		// neither arm is known to run, and only an answer both arms agree on is honest: both must be
+		// verdicts, which is the rule ADR 0257 shipped and the ternary's own type question answers.
+		if taken, ok := constantTestArm(t); ok {
+			return env.of(taken, depth)
+		}
 		return env.of(t.If, depth) && env.of(t.Else, depth)
 	case *AssignExpr:
 		return env.of(t.Value, depth)
@@ -152,10 +167,157 @@ func (env BoolEnv) overloadedComparison(t *BinOp) bool {
 	return env.Instance(t.L) || env.Instance(t.R)
 }
 
+// constantTestArm reports the arm a ternary will run when its test is a value the source already
+// wrote — `True`, `0`, `None`, `""`, the empty container. Truthiness here is Python's, and it is the
+// same list the language’s own truth test uses: a verdict, a nonzero number, any non-empty value.
+// ok=false means the test is something the compiler has to evaluate, and the caller then needs both
+// arms to agree (roadmap Gap R.125 keeps that shape as the open half).
+func constantTestArm(t *CondExpr) (Expr, bool) {
+	truthy, ok := constantTruth(t.Cond)
+	if !ok {
+		return nil, false
+	}
+	if truthy {
+		return t.If, true
+	}
+	return t.Else, true
+}
+
+func constantTruth(e Expr) (bool, bool) {
+	switch t := e.(type) {
+	case *BoolLit:
+		return t.Value, true
+	case *IntLit:
+		return t.Value != 0, true
+	case *FloatLit:
+		return t.Value != 0, true
+	case *NoneLit:
+		return false, true
+	case *StrLit:
+		return t.Value != "", true
+	case *ListLit:
+		return len(t.Elems) > 0, true
+	case *SetLit:
+		return len(t.Elems) > 0, true
+	case *DictLit:
+		return len(t.Keys) > 0, true
+	case *UnOp:
+		if t.Op == "not" {
+			if inner, ok := constantTruth(t.X); ok {
+				return !inner, true
+			}
+		}
+	}
+	return false, false
+}
+
+// minMaxBuiltin names the two builtins that *choose* a candidate rather than compute a value.
+func minMaxBuiltin(name string) (wantMin bool, ok bool) {
+	switch name {
+	case "min":
+		return true, true
+	case "max":
+		return false, true
+	}
+	return false, false
+}
+
+// minMaxCandidates returns the candidates a min/max call compares: the elements of one inline
+// list/set argument, or the varargs. A single argument the program did not write out — a list
+// variable, a call — has no candidate the source can name, and the question declines: the winner
+// of a comparison over slots the compiler cannot see is the tagged-value-word rows (Gaps
+// R.107–R.110), not a guess to print from.
+func minMaxCandidates(c *Call) ([]Expr, bool) {
+	if len(c.Args) == 1 {
+		switch t := c.Args[0].(type) {
+		case *ListLit:
+			return t.Elems, len(t.Elems) > 0
+		case *SetLit:
+			return t.Elems, len(t.Elems) > 0
+		}
+	}
+	if len(c.Args) == 0 {
+		return nil, false
+	}
+	// The varargs spelling, and the scalar one (`max(True)` is the one-element collection the
+	// interpreter treats it as): the argument is the candidate.
+	return c.Args, true
+}
+
+// minMaxCandidateValue is the number a min/max comparison makes of a candidate, and whether that
+// number arrived as a double. A verdict is its number — 1 or 0 — because that is what every
+// numeric path reads from one (ADR 0259's int/bool/float family), and a candidate the source does
+// not write as a number is no candidate for these questions: the caller declines rather than
+// inventing which way the comparison went.
+func minMaxCandidateValue(e Expr, fold func(Expr) (float64, bool, bool)) (float64, bool, bool) {
+	switch t := e.(type) {
+	case *BoolLit:
+		if t.Value {
+			return 1, false, true
+		}
+		return 0, false, true
+	case *IntLit:
+		return float64(t.Value), false, true
+	case *FloatLit:
+		return t.Value, true, true
+	case *UnOp:
+		if t.Op != "-" {
+			return 0, false, false
+		}
+		v, isF, ok := minMaxCandidateValue(t.X, fold)
+		return -v, isF, ok
+	}
+	if fold != nil {
+		if v, isF, ok := fold(e); ok {
+			return v, isF, true
+		}
+	}
+	return 0, false, false
+}
+
+// numericWinner is the one comparison min/max make. It is strict, so a tie keeps the candidate
+// that came first — CPython returns the first maximal element, which is why max([True, 1]) is
+// True while max([1, True]) is 1 and why the two spellings cannot share a “the elements are
+// bools“ answer (roadmap Gap R.117).
+func numericWinner(vals []float64, wantMin bool) int {
+	best := 0
+	for i := 1; i < len(vals); i++ {
+		if (wantMin && vals[i] < vals[best]) || (!wantMin && vals[i] > vals[best]) {
+			best = i
+		}
+	}
+	return best
+}
+
+// minMaxChosenIsVerdict answers the operator that chooses: min/max hand back one of their
+// candidates, so the call is a verdict exactly when the candidate the comparison chose is one
+// (ADR 0256's rule that a fold returns the candidate it chose, read as a rendering rule).
+func (env BoolEnv) minMaxChosenIsVerdict(c *Call, wantMin bool, depth int) bool {
+	cands, ok := minMaxCandidates(c)
+	if !ok {
+		return false
+	}
+	vals := make([]float64, len(cands))
+	for i, cand := range cands {
+		v, _, foldable := minMaxCandidateValue(cand, env.NumericCandidate)
+		if !foldable {
+			return false // the winner is not statically known: the number is what is known
+		}
+		vals[i] = v
+	}
+	return env.of(cands[numericWinner(vals, wantMin)], depth)
+}
+
 func (env BoolEnv) callReturnsBool(c *Call, depth int) bool {
 	nm, ok := c.Fn.(*Name)
 	if !ok {
 		return false
+	}
+	// min/max choose a candidate, and the chosen candidate decides what the answer is: not a
+	// builtin that answers yes-or-no, so the question is asked of the winner rather than of the
+	// name (roadmap Gap R.117).
+	if wantMin, isMinMax := minMaxBuiltin(nm.Value); isMinMax && (env.Shadowed == nil || !env.Shadowed(nm.Value)) {
+		return env.minMaxChosenIsVerdict(c, wantMin, depth)
 	}
 	if boolReturningBuiltins[nm.Value] && (env.Shadowed == nil || !env.Shadowed(nm.Value)) {
 		return true

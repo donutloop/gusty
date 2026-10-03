@@ -2157,6 +2157,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_bool_chosen_by_an_operator",
+        "name": "probe_bool_chosen_by_an_operator.gy",
+        "source": "# What CPython prints for every line here (python3, 3.12):\n#\n#   True       (max chooses the verdict)\n#   False      (min chooses the verdict)\n#   True       (the tie keeps the FIRST candidate — `max([True, 1])`)\n#   1          (…and `max([1, True])` keeps the number, because the comparison is strict)\n#   0          (`min([0, False])`, the same tie the other way round)\n#   True       (the varargs spelling chooses the same candidate)\n#   False\n#   True       (str() of the chosen candidate — one renderer, one rule)\n#   [True]     (the chosen candidate stored in a container slot)\n#   2          (the number is still underneath: max([True, 0]) + 1)\n#   1.5        (a verdict beside a double: the double wins, and prints as a double)\n#   1          (`and` hands back the operand, and CPython prints its number — this row must NOT move)\n#\n# `min` and `max` choose one of their candidates, so the answer's kind is the chosen candidate's own\n# kind. ADR 0256 made the fold return the candidate rather than the comparison; ADR 0257/0259 made a\n# verdict printable as a value and as a slot; what was missing was the candidate's kind crossing the\n# comparison with it, and the compiled leg printed the 0/1 underneath — `1` where CPython prints `True`\n# (roadmap Gap R.117, ADR 0261).\n#\n# The tie rows are the ones no “are the elements bools?“ answer can produce, and the last row is the\n# constraint: an operand CPython prints as a number has to keep printing as a number.\nprint(max([True, 0]))\nprint(min([False, 1]))\nprint(max([True, 1]))\nprint(max([1, True]))\nprint(min([0, False]))\nprint(max(True, 0))\nprint(min(False, 1))\nprint(str(max([True, 0])))\nprint([max([True, 0])])\nprint(max([True, 0]) + 1)\nprint(max([True, 1.5]))\nys = [True, 1]\nprint(ys[0] and ys[1])\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "True\nFalse\nTrue\n1\n0\nTrue\nFalse\nTrue\n[True]\n2\n1.5\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "True\nFalse\nTrue\n1\n0\nTrue\nFalse\nTrue\n[True]\n2\n1.5\n1\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "True\nFalse\nTrue\n1\n0\nTrue\nFalse\nTrue\n[True]\n2\n1.5\n1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/dict_key_rule",
         "name": "dict_key_rule.gy",
         "source": "# What CPython prints for every line here (python3, 3.12):\n#\n#   {'a': 2}\n#   {1: 'b'}\n#   {1: 2}\n#   {1.0: 'b'}\n#   {'a': 3, 'b': 2}\n#   2\n#   1\n#   1\n#   {'a': 2} 1\n#   {1: 2}\n#   1\n#\n# A dict is a key → value mapping, so writing a key it already holds replaces the value and leaves the\n# entry where it was: the order is first insertion, not last write, and the key that survives is the one\n# written first. The interpreter grew its dicts by appending instead — `{\"a\": 1, \"a\": 2}` kept two\n# entries, printed both and counted 2 — while the compiled backend's fold deduplicates keys and answered\n# correctly, so the two engines disagreed about an ordinary dictionary (roadmap Gaps R.118 and R.120,\n# ADR 0260).\n#\n# The `True`/`1`/`1.0` rows are the same rule with the comparison doing the work: those are one key, because\n# a bool and a float are the numbers they behave like (ADR 0259's `dictKeyEq`), and which spelling prints\n# is which entry was written first.\nprint({\"a\": 1, \"a\": 2})\nprint({1: \"a\", 1: \"b\"})\nprint({1: 1, True: 2})\nprint({1.0: \"a\", 1: \"b\"})\nprint({\"a\": 1, \"b\": 2, \"a\": 3})\nd = {\"a\": 1, \"a\": 2}\nprint(d[\"a\"])\nprint(len(d))\nfor k in d:\n    print(k)\ne = {\"a\": 1}\ne[\"a\"] = 2\nprint(e, len(e))\ng = {1: 2 for x in [1, 2]}\nprint(g)\nprint(len(g))\n",
@@ -2510,41 +2533,82 @@
     },
     {
       "case": {
-        "id": "programs/probe_bool_chosen_by_an_operator",
-        "name": "probe_bool_chosen_by_an_operator.gy",
-        "source": "# An operator that *chooses* one of its operands hands back a verdict, and the compiled backend prints\n# the number that verdict is stored as while the interpreter prints the verdict (roadmap Gap R.117).\n#\n# What each engine answers today:\n#   --interp  True  False  0\n#   --aot     1     0      0\n#   python3   True  False  0\n#\n# ADR 0259 gave a container slot the right to say `bool`; these three are the places where a bool is\n# *chosen* rather than written, and the rendering follows the chosen operand's static type.\n#\n# `max([True, 0])` returns the slot, whose tag the compiled lowering never carries into the result. The\n# `and` row is the same question: CPython returns the operand itself, so `xs[0] and xs[1]` where both are\n# ints answers the number — the last row is the one that must NOT change, and it is why this probe keeps\n# its three rows together.\nxs = [True, 0]\nprint(max([True, 0]))\nprint(min([False, 1]))\nys = [True, 1]\nprint(ys[0] and ys[1])\n",
+        "id": "programs/probe_minmax_candidate_unreadable",
+        "name": "probe_minmax_candidate_unreadable.gy",
+        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   True      (max chooses the verdict)\n#   True      (the same, with the candidate the source wrote into a list literal)\n#\n# A min/max fold can only say what the answer *is* if it can say which candidate won. The second line\n# is the shape this backend can read: `xs[0]` is the element a literal wrote, so the comparison is\n# settled by the source and the winner's kind travels with it — True on all three engines. The first\n# line hands the comparison a name the compiler has not folded to a constant, the winner is decided by\n# a run-time `select`, and nothing beside the chosen i32 says it came from `True`: the compiled leg\n# prints the number underneath, exit 0, while the interpreter — which really compares and really keeps\n# the winning object — prints CPython's answer (roadmap Gap R.124, measured landing ADR 0261).\n#\n# This is the row the fold cannot answer without the tagged value word: the candidate's kind has to\n# cross the comparison in the module, not be re-derived from it (owner roadmap L11.1, with Gaps\n# R.107–R.110). It is pinned per leg rather than skipped, so opening the door has to move the pin.\ni = 0\nprint(max([True, i]))\nxs = [0]\nprint(max([True, xs[0]]))\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "the candidate a max/min fold returns is the 0/1 it was chosen from, with no tag travelling with it: the compiled leg answers 1 and 0 where CPython and the interpreter answer True and False; `ys[0] and ys[1]` is the row that must not move, because CPython hands back the operand and its number there too",
-        "ref": "roadmap Gap R.117 (measured while closing Gap R.112, ADR 0259)",
+        "reason": "a min/max fold can name the winner only when it can read every candidate: with a name the compiler has not folded, the run-time select keeps the payload and nothing says it came from a verdict, so the compiled leg prints 1 while the interpreter and CPython print True; the literal-backed candidate in the same program is parity",
+        "ref": "roadmap Gap R.124 (measured while closing Gap R.117, ADR 0261)",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "True\nFalse\n1\n"
+            "stdout": "True\nTrue\n"
           },
           {
             "backend": "aot",
-            "stdout": "1\n0\n1\n"
+            "stdout": "1\nTrue\n"
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "True\nFalse\n1\n",
+      "interp_stdout": "True\nTrue\n",
       "aot_ok": true,
-      "aot_stdout": "1\n0\n1\n",
+      "aot_stdout": "1\nTrue\n",
       "parity": false,
       "python_ok": true,
-      "python_stdout": "True\nFalse\n1\n",
+      "python_stdout": "True\nTrue\n",
       "interp_matches_python": true,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "the candidate a max/min fold returns is the 0/1 it was chosen from, with no tag travelling with it: the compiled leg answers 1 and 0 where CPython and the interpreter answer True and False; `ys[0] and ys[1]` is the row that must not move, because CPython hands back the operand and its number there too",
-      "oracle_ref": "roadmap Gap R.117 (measured while closing Gap R.112, ADR 0259)",
+      "oracle_reason": "a min/max fold can name the winner only when it can read every candidate: with a name the compiler has not folded, the run-time select keeps the payload and nothing says it came from a verdict, so the compiled leg prints 1 while the interpreter and CPython print True; the literal-backed candidate in the same program is parity",
+      "oracle_ref": "roadmap Gap R.124 (measured while closing Gap R.117, ADR 0261)",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
+        "compiled stdout differs from CPython"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_ternary_the_test_chose",
+        "name": "probe_ternary_the_test_chose.gy",
+        "source": "# A ternary hands back whichever arm its test selects, so the arm that runs should decide what prints.\n# ADR 0261 made that true whenever the test is a value the source wrote — `print(True if 1 else 2)` is\n# `True` on all three engines now. These four lines are the shape that rule cannot reach: the test is a\n# name or a slot the compiler has not read, so neither arm is known to run, and the language's\n# conservative rule (a ternary is a verdict only when *both* arms are, ADR 0257) prints the number\n# underneath.\n#\n# What each engine answers, line by line (python3, 3.12):\n#\n#   line  print(max([True, 0]) if c else 2)   print(True if xs else 2)   print(max([True, 0]) if xs[0] else 2)   print(True if c else 2)\n#   py    True                                True                       True                                    True\n#   --interp True                              1                          True                                    1\n#   --aot  1                                   1                          1                                       1\n#\n# The interpreter agrees with the reference on the two lines whose arm is a fold whose winner it can\n# name, and disagrees on the two where a *variable* holds the verdict — and the compiled backend\n# disagrees on all four. Two backends agreeing is not evidence (ADR 0259's lesson): lines 2 and 4 were\n# green in the two-engine matrix while CPython printed True. Owner roadmap L11.1: the answer needs the\n# tag on the value itself, not a second guess at which arm ran (roadmap Gap R.125, measured landing\n# ADR 0261).\nc = True\nprint(max([True, 0]) if c else 2)\nxs = [1]\nprint(True if xs else 2)\nprint(max([True, 0]) if xs[0] else 2)\nprint(True if c else 2)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "a ternary whose test the compiler cannot read has no arm known to run, so the conservative rule — a verdict only when both arms are — prints the number: the compiled leg prints 1 on all four lines and the interpreter on two of them, where CPython prints True on all four",
+        "ref": "roadmap Gap R.125 (measured while closing Gap R.117, ADR 0261)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "True\n1\nTrue\n1\n"
+          },
+          {
+            "backend": "aot",
+            "stdout": "1\n1\n1\n1\n"
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "True\n1\nTrue\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "1\n1\n1\n1\n",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "True\nTrue\nTrue\nTrue\n",
+      "interp_matches_python": false,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "a ternary whose test the compiler cannot read has no arm known to run, so the conservative rule — a verdict only when both arms are — prints the number: the compiled leg prints 1 on all four lines and the interpreter on two of them, where CPython prints True on all four",
+      "oracle_ref": "roadmap Gap R.125 (measured while closing Gap R.117, ADR 0261)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "interpreter stdout differs from CPython",
         "compiled stdout differs from CPython"
       ]
     },
@@ -3387,12 +3451,12 @@
       ]
     }
   ],
-  "rows": 118,
-  "skipped": 22,
-  "pass": 96,
+  "rows": 120,
+  "skipped": 23,
+  "pass": 97,
   "fail": 0,
-  "oracle_match": 82,
-  "oracle_debt": 18,
+  "oracle_match": 83,
+  "oracle_debt": 19,
   "oracle_not_applicable": 18,
   "oracle_drift": 0
 }

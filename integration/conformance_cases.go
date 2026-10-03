@@ -211,6 +211,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// d[True]) on every leg (roadmap Gap R.112, ADR 0259; the program left the debt ledger with
 		// that row, which is the promotion rule of ADR 0186).
 		"probe_bool_in_a_container",
+		// The operator that chooses an operand, three engines on one source: `max([True, 1])` is the
+		// verdict and `max([1, True])` is the number, because the strict comparison keeps the first
+		// candidate and the chosen candidate decides what prints — str(), a container slot, an f-string
+		// and the arithmetic all follow the same answer (roadmap Gap R.117, ADR 0261; the program left
+		// the debt ledger with that row, and the `and` row at the end is the line that had to stay a
+		// number while everything around it became a verdict).
+		"probe_bool_chosen_by_an_operator",
 		// A dictionary built with a key it already holds: the literal, the comprehension and item
 		// assignment all put the entry through the dict's own key rule, so `{"a": 1, "a": 2}` is one
 		// entry printing `{'a': 2}` — position from first insertion, value from last write, and the
@@ -305,11 +312,12 @@ func conformanceProbes() []lang.ConformanceCase {
 		// comparison produced and nothing says it was ever a verdict, so both backends print 1
 		// where CPython prints True (roadmap Gap R.111, filed by ADR 0257).
 		"probe_bool_through_a_call",
-		// The verdict an operator *picks* — max/min's chosen candidate — comes back as the 0/1 it was
-		// chosen from: CPython and the interpreter say True and False, the compiled backend 1 and 0.
-		// The `and` row in the same program is parity, because CPython hands back the operand there
-		// (roadmap Gap R.117, measured closing Gap R.112).
-		"probe_bool_chosen_by_an_operator",
+		// The verdict an operator *picks* — max/min's chosen candidate — is parity surface now: the
+		// program lives in conformanceStandalone (Gap R.117, ADR 0261). What stays filed is the shape
+		// whose candidate the compiler cannot read at all, and the ternary whose test it cannot read:
+		// both print the number underneath, one on the compiled leg and one on both.
+		"probe_minmax_candidate_unreadable",
+		"probe_ternary_the_test_chose",
 		// A list comprehension tags the slot it copies; a set or dict comprehension still folds to a
 		// compile-time global with no tag table, so those lines refuse rather than print the number
 		// (roadmap Gap R.116, measured closing Gap R.112).
@@ -486,11 +494,16 @@ var oracleLedger = map[string]oracleDecl{
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n"}, {Backend: "aot", Stdout: "1\n1\n"}}},
 	// A bool stored in a container is no longer a probe: it prints CPython's answer on both backends
 	// and lives in conformanceStandalone (roadmap Gap R.112, ADR 0259).
-	"programs/probe_bool_in_a_container": {oracle: lang.OracleMatch},
-	"programs/probe_bool_chosen_by_an_operator": {oracle: lang.OracleDebt,
-		reason: "the candidate a max/min fold returns is the 0/1 it was chosen from, with no tag travelling with it: the compiled leg answers 1 and 0 where CPython and the interpreter answer True and False; `ys[0] and ys[1]` is the row that must not move, because CPython hands back the operand and its number there too",
-		ref:    "roadmap Gap R.117 (measured while closing Gap R.112, ADR 0259)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "True\nFalse\n1\n"}, {Backend: "aot", Stdout: "1\n0\n1\n"}}},
+	"programs/probe_bool_in_a_container":        {oracle: lang.OracleMatch},
+	"programs/probe_bool_chosen_by_an_operator": {oracle: lang.OracleMatch},
+	"programs/probe_minmax_candidate_unreadable": {oracle: lang.OracleDebt,
+		reason: "a min/max fold can name the winner only when it can read every candidate: with a name the compiler has not folded, the run-time select keeps the payload and nothing says it came from a verdict, so the compiled leg prints 1 while the interpreter and CPython print True; the literal-backed candidate in the same program is parity",
+		ref:    "roadmap Gap R.124 (measured while closing Gap R.117, ADR 0261)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "True\nTrue\n"}, {Backend: "aot", Stdout: "1\nTrue\n"}}},
+	"programs/probe_ternary_the_test_chose": {oracle: lang.OracleDebt,
+		reason: "a ternary whose test the compiler cannot read has no arm known to run, so the conservative rule — a verdict only when both arms are — prints the number: the compiled leg prints 1 on all four lines and the interpreter on two of them, where CPython prints True on all four",
+		ref:    "roadmap Gap R.125 (measured while closing Gap R.117, ADR 0261)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "True\n1\nTrue\n1\n"}, {Backend: "aot", Stdout: "1\n1\n1\n1\n"}}},
 	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
 		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
 		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",

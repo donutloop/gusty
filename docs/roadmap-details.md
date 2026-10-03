@@ -5275,26 +5275,79 @@ by the code that was supposed to fix it. They now decline, and the refusal names
 — while the interpreter prints all four lines. A refusal that says what it lacks is a row the next cycle
 can start from; a number in a container that should say `True` is the row we just closed.
 
-### Gap R.117 — the verdict a fold chooses prints its number (OPEN, measured closing Gap R.112)
+### Gap R.117 — closed by ADR 0261: the operator that chooses an operand renders what the chosen candidate is
 
 ```gusty
-print(max([True, 0]))     # CPython True · --interp True · --aot 1
-print(min([False, 1]))    # CPython False · --interp False · --aot 0
+print(max([True, 0]))     # CPython True · --interp True · --aot was 1, now True
+print(min([False, 1]))    # CPython False · --interp False · --aot was 0, now False
+print(max(True, 0))       # CPython True · both engines used to print 1
+print(max([True, 1.5]))   # CPython 1.5 · --aot used to print 1 — the double, truncated
 ys = [True, 1]
-print(ys[0] and ys[1])    # 1 on all three — CPython hands back the operand, and its number
+print(ys[0] and ys[1])    # 1 on all three, before and after — CPython hands back the operand
 ```
 
-ADR 0256 fixed the *choice*: a fold returns the candidate it chose, not the comparison that found it, so
-an int winner among doubles stays `1` and text is ordered by its content. What it could not fix is the
-candidate's **kind** once the candidate is a container slot — the compiled fold compares two
-`(payload, tag)` pairs and then hands back the payload, because the value crossing a `select` is an `i32`.
-The printer follows the number. Same root as Gaps R.107–R.110 and Gap R.115: the value that travels is not
-a pair yet.
+ADR 0256 fixed the *choice*: a fold returns the candidate it chose, not the comparison that found it. What
+it left open was the candidate's **kind**, and the fix turned out not to need the tagged value word after
+all — for any candidate the source writes, the winner is decidable, and the answer was already in the
+renderer’s own file. Three doors had to agree on one rule rather than each keep a copy:
 
-The third line is why this probe keeps its rows together. `and` also hands back an operand, and CPython
-prints `1` there — the number is the *right answer*, so a "fix" that makes every chosen operand print like
-a verdict would break a line that is currently conformant. A closure has to move two rows and leave the
-third exactly where it is.
+* `minMaxCandidateValue` gives the number a candidate compares to — with `BoolLit` finally counting as the
+  1/0 it has always behaved as (ADR 0259’s numeric family). That single omission is why `max([True, 1.5])`
+  printed `1`: the fold declined the whole candidate list and the double fell through it.
+* `numericWinner` is the one strict comparison. Four hand-written copies of it — the float fold, the int
+  fold, `minMaxReturnsFloat`, `minMaxFoldedWinner` — collapsed into it, and a tripwire
+  (`TestTheFoldAndTheVerdictQuestionChooseFromOneDoor`) fails the build if `vals[i] < vals[best]` reappears.
+* `IsBoolExpr`’s `*Call` arm asks the *winner*. `print`, `str()`, `repr()`, an f-string, the container
+  element tag and `--json` needed no change at all: they already ask that one predicate, which is why the
+  whole rendering story moved with one arm.
+
+The interpreter had its own half, invisible to the row as filed: `min(a, b, …)` evaluated its argument
+expressions, and an argument written `True` arrived as the immediate `1`. Candidates now enter through
+`slotVal`, the literal builder’s own door, so `print(max(True, 0))` prints `True` on both engines.
+
+The tie rows are what no element-level rule can produce, and they are pinned both ways: `max([True, 1])`
+is `True`, `max([1, True])` is `1`, `min([0, False])` is `0`, `max([False, 0])` is `False`. And the `and`
+row has not moved — CPython hands that one back an operand *and* its number, which is the constraint that
+kept the fix from being “print every chosen operand like a verdict”.
+
+### Gap R.124 — a min/max candidate the compiler cannot read prints the number (OPEN, measured landing ADR 0261)
+
+```gusty
+i = 0
+print(max([True, i]))     # CPython True · --interp True · --aot 1
+xs = [0]
+print(max([True, xs[0]])) # True on all three — the candidate the source wrote
+```
+
+The pair is the boundary, stated exactly. A candidate the source writes — a literal, or the element a
+literal wrote into a slot — settles the comparison, so the renderer is told which candidate won and prints
+its kind. A name the compiler has not folded is evaluated by the run-time `select`, which keeps a payload
+and nothing else: the value is right, the kind is not there to be asked, and `1` walks out. This is the
+compiled leg diverging from an interpreter and a CPython that agree, which is the class of defect this
+project keeps coming back for; owner roadmap L11.1 with Gaps R.107–R.110, because the answer needs the tag
+on the travelling value rather than a static reading of it. Refusing was considered and rejected: the
+program prints the right *number* today, and a refusal would retire a working line to fix a rendering — the
+row and its per-leg pin (`programs/probe_minmax_candidate_unreadable.gy`) keep it visible instead.
+
+### Gap R.125 — a ternary whose test the compiler cannot read prints the number (OPEN, measured landing ADR 0261)
+
+```gusty
+c = True
+print(max([True, 0]) if c else 2)   # CPython True · --interp True · --aot 1
+xs = [1]
+print(True if xs else 2)            # CPython True · --interp 1 · --aot 1
+```
+
+ADR 0261 gave the ternary the same rule as min/max where it is decidable: if the test is a value the source
+wrote, the arm it selects is the arm that runs, and that arm decides what prints (`print(False if 1 else
+2)` is `False`, `print(1 if 0 else False)` is `False`, `print(True if "" else 2)` is `2`). These two lines
+are the rest of it. With a test that must be evaluated, neither arm is known to run, so the conservative
+rule stands — a ternary is a verdict only when both arms are (ADR 0257) — and the number underneath prints.
+Note the second line: the *interpreter* agrees with the compiled backend and neither agrees with CPython,
+since the verdict is held in a variable whose kind the print site cannot see either. Owner roadmap L11.1:
+the tag on the value is what closes both halves at once. Pinned per leg in
+`programs/probe_ternary_the_test_chose.gy`, where the compiled leg is wrong on all four lines and the
+interpreter on two.
 
 ### Gap R.118 — closed by ADR 0260: a dict puts its entries, however it is built
 

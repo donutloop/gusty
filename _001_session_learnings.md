@@ -6135,3 +6135,58 @@ contract row lost its entry with a comment saying why it is absent.
 in a both-engines table reads as "toolchain unavailable" and passes. The text-key case above was a skip until
 it was moved into its own test that asserts the refusal's message and the interpreter's answer together. A skip
 hides both halves of a divergence; a refusal test keeps them on the record.
+
+## Cycle: the operator that chooses an operand renders what the chosen candidate is (ADR 0261 — Gap R.117 closed; Gaps R.124, R.125 filed)
+
+**“Ask the elements“ is the wrong question, and the tie proves it.** `max([True, 1])` is `True` and
+`max([1, True])` is `1`. Any rule about the *candidate list* — “are they bools?“, “is any element a
+verdict?“, “are they all numbers?“ — gives the same answer twice and is wrong once. The comparison is
+strict, so the first maximal candidate stays, and only the chosen candidate knows which one that was.
+Writing the tie rows first, before touching code, is what kept the fix from being “print every chosen
+operand like a verdict“, which would have broken `ys[0] and ys[1]` (CPython prints `1` there — the number
+is the right answer, and the probe still carries that line for exactly this reason).
+
+**A rendering bug can be a fold declining.** `max([True, 1.5])` printed `1` compiled. That looked like the
+same missing tag as `max([True, 0])` printing `1`; it was worse — the candidate fold refused to see a
+verdict as a number, so the whole candidate list went un-folded and the double fell through as an `i32`.
+Counting `BoolLit` as the 1/0 it has always behaved as (ADR 0259's numeric family, applied where it had
+not been) fixed the value and the rendering together. Two defects in one line, and the row only named one.
+
+**Four copies of one comparison, and the tripwire that retires them.** The float fold, the int fold,
+`minMaxReturnsFloat` and `minMaxFoldedWinner` each carried their own `for i := 1 …; if vals[i] > vals[best]`
+loop, and the print path was about to grow a fifth when it asked “which one won?“ to decide what to render.
+Instead: `minMaxCandidateValue` + `numericWinner`, consulted by the fold *and* by `IsBoolExpr` (through a
+`NumericCandidate` hook, so the backend's own “what number is this candidate?“ question is shared rather than
+re-derived). `TestTheFoldAndTheVerdictQuestionChooseFromOneDoor` fails if a hand-written comparison reappears.
+This is the third cycle in a row this shape has shown up — `taggableMixedList`/`Set`/`Dict` (ADR 0259), the
+four dict builders (ADR 0260), the four winner loops here — so “how many places restate this rule?“ is now
+the first question, not the last.
+
+**The rendering doors cost nothing when they already ask one predicate.** Fixing the question in
+`IsBoolExpr` moved `print`, `str()`, `repr()`, f-strings, the container element tag and `--json`'s `"type"`
+at once — `print([max([True, 0])])` went from `[1]` to `[True]` with no change to the container printer.
+Where the codebase has one shared question, a semantics fix is one arm; where it has per-door guesses, the
+same fix is six edits and a drift test.
+
+**Both backends can be wrong on a line one ADR filed as “the compiled leg's“.** The gap as filed said
+“`1` compiled and `True` in the interpreter and CPython“, which was true of the list spelling. The varargs
+spelling, `print(max(True, 0))`, was `1` on **both** engines — the interpreter evaluated its argument
+expressions and an argument written `True` arrived as the immediate `1`. Measuring the neighbours of a
+filed row (the two-backends rule in AGENTS) is what found it; the fix was to route candidates through
+`slotVal`, the door a list literal already used.
+
+**Filed rather than fixed, with the answer each engine gives.** `i = 0` / `print(max([True, i]))` — the run-time
+`select` keeps the payload and nothing beside it names its kind — is Gap R.124; `print(True if xs else 2)` is
+Gap R.125, and the interesting half is that the *interpreter* agrees with the compiled backend there while
+CPython prints `True`. Refusing was considered for R.124 and rejected: the program prints the right *number*
+today, and retiring a working line to fix a rendering trades one divergence for the loss of a program.
+
+**A promoted program takes its contract rows with it.** `probe_bool_chosen_by_an_operator.gy` became parity
+surface, which meant deleting its ledger row, its entry in the CLI exit-class table, and the
+`integration/min_max_values_test.go` row that pinned `0 1` for both legs. Three fixtures, all of which would
+have gone green-forever-and-asserted-nothing. The unit test that pinned the same pair (`0 1` → CPython's
+`0 True`) is the one worth keeping: it now pins the answer it used to forbid.
+
+**A whole-program suite is how you find the fourth fixture.** Nothing in the files I edited said anything
+about `min_max_values_test.go`; only `go test ./...` surfaced a pinned divergence three directories away.
+Run the full suite before committing, not the tests near your change.

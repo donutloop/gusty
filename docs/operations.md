@@ -806,6 +806,15 @@ against its own ability to fail).
   (ADR 0259). An agent reading a container therefore gets the kind the object carries, not the number
   the verdict is stored under — and the number is still there for the questions CPython answers with it
   (`--json --eval "xs = [True, 1]\nxs[0] + 1"` is `{"result": "2", "type": "int", …}`).
+- `--json --eval "max([True, 0])"` → `{"result": "True", "type": "bool", …}`. `min`/`max` **choose** a
+  candidate, so the chosen candidate decides what the answer is and what it reports: the compiled fold and
+  the verdict question pick the winner with one shared comparison (a strict one, so a tie keeps the first
+  candidate — `max([True, 1])` is `True`, `max([1, True])` is `1`), and `print`, `str()`, `repr()`, an
+  f-string, a container slot and this report all ask that one question (roadmap Gap R.117, ADR 0261). The
+  number is still underneath: `--json --eval "max([True, 0]) + 1"` is `{"result": "2", "type": "int", …}`.
+  What the report cannot say is a winner the compiler could not see — a candidate that is a name it has not
+  folded prints and reports the number (roadmap Gap R.124), and so does a ternary whose test it cannot read
+  (Gap R.125).
 - `--json --eval "repr(\"hi\")"` → `{"result": "'hi'", "type": "str", "backend": "interpreter", "exit": 0}`,
   and `--json --eval "str([1, 2])"` → `{"result": "[1, 2]", "type": "str", …}`. `str()` and `repr()` are
   one pair over one renderer per backend — `print`, `str()` and a container element all ask the same

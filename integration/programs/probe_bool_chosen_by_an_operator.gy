@@ -1,20 +1,36 @@
-# An operator that *chooses* one of its operands hands back a verdict, and the compiled backend prints
-# the number that verdict is stored as while the interpreter prints the verdict (roadmap Gap R.117).
+# What CPython prints for every line here (python3, 3.12):
 #
-# What each engine answers today:
-#   --interp  True  False  0
-#   --aot     1     0      0
-#   python3   True  False  0
+#   True       (max chooses the verdict)
+#   False      (min chooses the verdict)
+#   True       (the tie keeps the FIRST candidate — `max([True, 1])`)
+#   1          (…and `max([1, True])` keeps the number, because the comparison is strict)
+#   0          (`min([0, False])`, the same tie the other way round)
+#   True       (the varargs spelling chooses the same candidate)
+#   False
+#   True       (str() of the chosen candidate — one renderer, one rule)
+#   [True]     (the chosen candidate stored in a container slot)
+#   2          (the number is still underneath: max([True, 0]) + 1)
+#   1.5        (a verdict beside a double: the double wins, and prints as a double)
+#   1          (`and` hands back the operand, and CPython prints its number — this row must NOT move)
 #
-# ADR 0259 gave a container slot the right to say `bool`; these three are the places where a bool is
-# *chosen* rather than written, and the rendering follows the chosen operand's static type.
+# `min` and `max` choose one of their candidates, so the answer's kind is the chosen candidate's own
+# kind. ADR 0256 made the fold return the candidate rather than the comparison; ADR 0257/0259 made a
+# verdict printable as a value and as a slot; what was missing was the candidate's kind crossing the
+# comparison with it, and the compiled leg printed the 0/1 underneath — `1` where CPython prints `True`
+# (roadmap Gap R.117, ADR 0261).
 #
-# `max([True, 0])` returns the slot, whose tag the compiled lowering never carries into the result. The
-# `and` row is the same question: CPython returns the operand itself, so `xs[0] and xs[1]` where both are
-# ints answers the number — the last row is the one that must NOT change, and it is why this probe keeps
-# its three rows together.
-xs = [True, 0]
+# The tie rows are the ones no “are the elements bools?“ answer can produce, and the last row is the
+# constraint: an operand CPython prints as a number has to keep printing as a number.
 print(max([True, 0]))
 print(min([False, 1]))
+print(max([True, 1]))
+print(max([1, True]))
+print(min([0, False]))
+print(max(True, 0))
+print(min(False, 1))
+print(str(max([True, 0])))
+print([max([True, 0])])
+print(max([True, 0]) + 1)
+print(max([True, 1.5]))
 ys = [True, 1]
 print(ys[0] and ys[1])

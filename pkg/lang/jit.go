@@ -4316,7 +4316,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				if o, ok := e.heap[lo]; ok && (o.kind == "list" || o.kind == "set") {
 					vals = append([]int64(nil), o.elems...)
 				} else {
-					vals = []int64{lo}
+					// A bare scalar is a one-element collection, and it is the *expression* that says
+					// what it holds: `max(True)` chose the verdict CPython prints, so the candidate
+					// enters as a slot does — boxed, with the number still underneath for every
+					// arithmetic question (roadmap Gap R.117, ADR 0261).
+					vals = []int64{e.slotVal(n.Args[0], lo)}
 				}
 			} else {
 				for _, a := range n.Args {
@@ -4324,7 +4328,11 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 					if err != nil {
 						return 0, err
 					}
-					vals = append(vals, v)
+					// The winner is one of these values, so a candidate enters with the kind its
+					// expression has: an argument written `True` is a verdict, and a verdict printed
+					// from the winning operand prints True (Gap R.117). A candidate the program
+					// computed keeps whatever it already is — a slot's bool box arrives boxed.
+					vals = append(vals, e.slotVal(a, v))
 				}
 			}
 			if len(vals) == 0 {
