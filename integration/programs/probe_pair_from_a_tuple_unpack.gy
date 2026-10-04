@@ -1,0 +1,8 @@
+# probe_pair_from_a_tuple_unpack.gy — the pair road stops at the plain assignment. CPython and the
+# interpreted leg print 8 for `a`; the compiled leg spends exit 1 on the unpacking, because the tuple
+# target binds its names through the ordinary road, which refuses the slot it cannot see into
+# (roadmap Gap R.144, measured landing ADR 0267).
+xs = []
+xs.append([7, 8])
+a, b = xs[0][0] + 1, xs[0][1] + 2
+print(a)

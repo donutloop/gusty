@@ -6527,3 +6527,67 @@ therefore had an asserted wrong answer, not an unasserted one — was the confor
 its job: a paid debt is supposed to break something. Deleting the row and the program in the same commit, and
 moving the shape into `conformanceStandalone` where *absence* of a ledger row means "must print what Python
 prints", is what makes the pay-off a measured claim.
+
+## Cycle: the arithmetic comes back with its kind when the *name* keeps it (ADR 0267 — Gap R.138 closed; Gaps R.142–R.145 filed)
+
+```
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n)          # 14 on three engines; exit 1 compiled before this commit
+```
+
+**A door that exists is not a door that is asked.** ADR 0265 had built the whole pair road — `taggedArithPair`
+asks the run time for the sum and hands back `(payload, tag)` — and wired it into exactly one caller, the print
+dispatch. The statement one line earlier, `n = xs[0][0] * 2`, still went down the numeric road, which refuses
+what it cannot see into, so the same expression answered `14` from `print` and exit 1 from an assignment. The
+fix was four lines at the caller: try the pair, and if it worked, bind with `bindTaggedVar` so the name gets
+`_n` *and* `_n_tag` — the shape the print dispatch already reads. The gate stayed untouched: a refusal is still
+a refusal, and the same program-wide numeric proof still decides who may take either path. When a lift looks
+"almost done", the question that finds the rest is *who else asks this question*, not *what else does the door
+do*.
+
+**A refusal is a diagnosis, and it can blame the wrong line.** With the pair road in place, a program that
+failed the proof still refused — but it refused citing a *mixed-list loop* and pointed at `xs.append(7)` two
+lines under the assignment. `lowerValue`'s old-index path saw `xs` as a plain name with no entry in the static
+tables and reached for the container message; the name's tag, which is what the position actually lacked, lives
+in `taggedVars`, and nobody asked it. `taggedVarErr` now runs first, and the message names the arithmetic and
+is reported at the assignment. Every refusal row in the new test files asserts the *citation and the line*, not
+just the exit code: `strings.Contains(out, "the answer of arithmetic over a slot the run time describes")` plus
+`strings.Contains(out, "3 | n = xs[0][0] * 2")`.
+
+**Every status a binding writes has to be retired by every binding that does not write it.** The bug that found
+me: `n = xs[0][0] * 2`, then `n = [1, 2]`, then `print(n)` printed `2` — the heap handle — at exit 0, with
+CPython and the interpreted leg printing `[1, 2]` beside it. The pair binding had recorded the name as
+pair-bound; the list binding stored a payload and left the record standing, so the read took the pair road
+against a container. A float rebind printed `0`. `forgetTaggedBinding` now sits at each of the nine roads that
+bind a payload alone (list/set/dict literal, comprehension, folded list, lambda, union store, global store,
+float store, int store, container store), and the retirement is one function because the tenth road will be
+written by the next cycle. Grepping the *other* writes to `taggedVars` was the whole fix; grepping the reads
+would have found nothing.
+
+**Two wrong answers were found by writing docs, not by testing.** `for v in [1, 2]` / `v = [1, 2]` / `print(v)`
+had printed `(null)` compiled since ADR 0185 gave loop variables tags — same omission, older, never probed. And
+`n = "text"` / `n = [1, 2]` / `print(n)` prints `text`: the interned-text record of the earlier binding survives
+the container that replaced it. I reproduced that one on the parent commit's binary (`git worktree add /tmp/base
+HEAD~1` → same `text`), which is how the cycle answers the tracker's second question — *was it already broken?*
+— instead of guessing: yes, so it is Gap R.145 and not a regression report, and it is pinned as a filed-not-fixed
+row rather than asserted as parity.
+
+**Pin what you would be sorry to change; assert everything else.** My first version of the CLI table asserted the
+overflow row's message and exit for `n = xs[0][0] * 1000000000`, which is a filed divergence, and my first
+version of the refusal table pinned `-xs[0][0] * -xs[0][1]` as an answer, which the `+`/`*` proof does not
+permit. Both were caught by running the row against the reference *first* (`cpythonPlainOut` is in the table's
+setup, not an afterthought: if Python disagrees with the row's `want`, the row is wrong and says so).
+
+**Check that the record points at things that exist.** The ADR and the details file cited three test names I had
+invented from memory. `docs_citations_test.go` guards `programs/*.gy`, and nothing guards `TestFoo`, so a
+one-line loop — every `Test[A-Za-z_]+` cited in `docs/`, matched against `func Test` in the tree — now runs
+before the commit; it found `TestThePairGateKeepsThePositionsItDoesNotReach` and two siblings, none of which had
+ever existed.
+
+**One carry-over for the next cycle.** The same citation sweep leaves four names in `roadmap.md` that resolve to
+no `func Test…` anywhere — `TestATernary`, `TestCLIBuild`,
+`TestPrintingAnElementOfAFreshComprehensionListIsPinned`, `TestStringLengthIsBytesForNow` — all of them already
+in the file at this commit's parent, so they are Gap Q.4's (docs rot) rather than this cycle's, and they are the
+kind that survives a `programs/*.gy` citation check precisely because no test guards `TestFoo` yet.

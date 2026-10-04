@@ -556,10 +556,18 @@ holding one can reach any container slot in the program (`ADR 0265`). A program 
 the refusal it has always had — exit 1, `index cannot reach into xs's slots`, naming the missing half —
 which means adding a string to a container can turn a working compiled arithmetic into a refusal. That is
 deliberate and coarse (the reference *answers* `"a" + "b"` and `[1] * 2`; this backend cannot, so the door
-must not open there), and the positions the door does not reach are filed rather than silent: an arithmetic
-result bound to a name (`Gap R.138`, `programs/probe_arith_result_bound_to_a_name`) and a slot read handed
-to a function (`Gap R.139`, `programs/probe_slot_read_handed_to_a_function`) are both CPython's and the
-interpreted leg's `14` against the compiled leg's exit 1. The negation of a text was worse and is now paid:
+must not open there), and the same gate serves the binding: `n = xs[0][0] * 2` / `print(n)` prints `14`
+compiled too, through the `_n`/`_n_tag` pair the print dispatch already reads, and a program that fails the
+proof keeps a refusal which now names the arithmetic itself — `the answer of arithmetic over a slot the run
+time describes cannot reach a binding: …`, reported at the assignment's own line — instead of the `index
+cannot reach into xs's slots` sentence blamed on the container-append two lines below. Binding the answer is
+parity surface (`programs/probe_arith_result_bound_to_a_name.gy`, three legs, including its rebinding rows,
+where `Gap R.142`'s wrong answer lived: a name the pair road had bound, rebound to a list, printed the heap
+handle); what stays filed beside it is the answer **handed to a function** (`Gap R.139`,
+`programs/probe_slot_read_handed_to_a_function`), the same name read back where the position asks for one
+static number (`Gap R.143`, `programs/probe_pair_bound_name_as_a_number`) and the tuple unpacking that has
+not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's and the
+interpreted leg's answer against the compiled leg's exit 1. The negation of a text was worse and is now paid:
 `print(-"hi")` used to answer `-281474976710658` interpreted and `0` compiled at exit 0, and both engines now
 raise the reference's `TypeError: bad operand type for unary -: 'str'` at **exit 3**, catchable by
 `except TypeError:` on each leg, for a text, `None`, a container literal, an instance (which names its own

@@ -230,17 +230,15 @@ func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 }
 
 // TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest is the door's edge, written down rather than
-// hoped away. The pair road is taken where the print dispatch asks for a value; the same expression bound
-// to a name, or handed to a function, is still the ordinary numeric road, which refuses the slot it
-// cannot see into. Both are exit 1 with the missing half named — the interpreter answers the reference in
-// each case, so each is a filed row (roadmap Gaps R.138 and R.139), not a parity claim.
+// hoped away. The pair road is taken where the print dispatch asks for a value *and*, since ADR 0267,
+// where an assignment binds the answer to a name; the one position left is a call argument, where a
+// parameter's kind would have to be settled where the caller cannot see the slot. That row is exit 1
+// with the missing half named, and the interpreter answers the reference in its place, so it is a filed
+// row (roadmap Gap R.139) rather than a parity claim.
 func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
+	// The answer bound to a name first is parity surface now (Gap R.138, ADR 0267): it runs beside
+	// the reference in the parity table above and in programs/probe_arith_result_bound_to_a_name.gy.
 	for _, tc := range []struct{ name, src, want string }{
-		{
-			"the answer bound to a name first",
-			"xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\n",
-			"cannot reach into",
-		},
 		{
 			"the answer handed to a function",
 			"def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\nprint(twice(xs[0][0]))\n",

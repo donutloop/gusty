@@ -1,0 +1,8 @@
+# probe_pair_bound_name_as_a_number.gy — the name the pair road binds is read back as one static number.
+# CPython and the interpreted leg print 15; the compiled leg spends exit 1 on the line, because the
+# binding carries the (payload, tag) pair and the plain-number road still asks for a payload alone
+# (roadmap Gap R.143, measured landing ADR 0267).
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n + 1)

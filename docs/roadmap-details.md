@@ -6054,7 +6054,7 @@ beside it — and closing them together is what the tracker's "one defect, one m
 compiled leg's `exit status 3`), and the shape is parity surface in `programs/negation_names_the_kind.gy`,
 where the raise is *caught* and the three engines print the same bytes.
 
-### Gap R.138 — the arithmetic the print position answers is refused one statement earlier (OPEN, owner L11.1, measured landing ADR 0265)
+### Gap R.138 — the arithmetic the print position answers was refused one statement earlier (closed by ADR 0267, owner L11.1, measured landing ADR 0265)
 
 ```
 xs = []
@@ -6073,10 +6073,32 @@ instead, and that road still insists on a static kind before it will emit an `ad
 the print dispatch reaches and stops one statement short of it, which is the definition of a half-lift and
 the reason it is recorded as a row rather than quietly left as a surprise.
 
-The way out is small and already built: an assignment whose value is arithmetic over a run-time-described
-slot stores the pair the printer reads — `_n` and `_n_tag`, the tagged-variable shape the print door and
-`arithOperandPair` already handle — and the name carries the tag the expression produced. The gate is the
-same proof; nothing about which programs may take the road changes.
+**Closed 2026-10-05 by ADR 0267.** The way out was the one already built: an assignment whose value is
+arithmetic over a run-time-described slot now stores the pair the printer reads — `_n` and `_n_tag` — and
+records in the symbol table that the name holds the pair, which is the shape the print door and
+`arithOperandPair` already handle. The gate is the same program-wide proof; nothing about *which* programs
+may take the road changed, only about who may ask. `programs/probe_arith_result_bound_to_a_name` left the
+debt ledger with that and became a parity program — slot arithmetic bound to a name, a slot that holds a
+float, a dict slot, a negative answer, and four rebindings of the same name — `match` on all three legs.
+
+The close was not only the call. Three things the measurement did not predict came with it:
+
+* the refusal the shape had been getting **blamed the wrong thing** — it cited a mixed-list loop and pointed
+  at the container append two lines below the binding, because `lowerValue`'s old-index path saw `xs` as a
+  plain name with no entry in the static-tables map. The refusal now asks `taggedVarErr` first, which names
+  the binding itself. A refusal is a user-facing diagnosis too: pointing at the statement that would have
+  fixed it is worth as much as naming the missing half.
+* a name the pair road bound **kept its tag when the program rebound it** through an ordinary road, and the
+  result was a wrong answer rather than a refusal — `n = xs[0][0] * 2` then `n = [1, 2]` printed `2`, the
+  heap handle, and `n = 2.5` printed `0`, both at exit 0. That is Gap R.142, and it is why the binding is
+  paired with `forgetTaggedBinding` at every road that stores a payload alone.
+* the binding is a new **kind of binding**, and the roads that read names back as one static number know
+  about none of the kinds: `print(n + 1)` refuses where `print(xs[0][0] * 2 + 1)` answers. That is Gap
+  R.143, and it is the same sentence as L11.1 — a value carries its tag, and every position that reads the
+  value has to read the tag with it. The reason it is a row and not a fix is that the plain-number road is
+  asked from binary operators, unary operators, call arguments, conditions, format fields and augmented
+  assignments, and each wants the same three-arm unbox-or-convert-or-raise that ADR 0249 built for an
+  operand; that is a shared helper, not a patch at six call sites.
 
 ### Gap R.139 — the same slot read as an argument is refused (OPEN, owner L11.1, measured landing ADR 0265)
 
@@ -6131,3 +6153,105 @@ message. It is booked here because the row has to exist before the test can stop
 `TestTheNegationOfATupleNamesWhatTheReferenceNames` asserts the compiled leg against the reference and pins
 the interpreted leg's `'list'` verbatim, so the day L11.3 lands, that pin fails with "paid" instead of the
 row quietly agreeing.
+
+### Gap R.142 — a tagged binding outlived the binding that gave it the tag (closed by ADR 0267, owner L11.1, measured landing ADR 0267)
+
+```
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+n = [1, 2]
+print(n)          # CPython [1, 2]; the first build of the fix printed 2 — the heap handle
+n = 2.5
+print(n)          # CPython 2.5; the same build printed 0
+```
+
+Both at exit 0, with CPython and the interpreted leg agreeing beside them. The road that stored the pair
+recorded the name as pair-bound; the roads that store a payload alone — a list literal, a float, a set, a
+dict, a comprehension, a lambda, a call's parameter, a container the compiler folded into globals — stored
+the value and left the record standing, so the next read took the pair road against a payload that was no
+longer a number.
+
+This was measured on the cycle's own first build, which is the class of bug the tracker's second question is
+for: *was it already broken?* — yes, on the pre-cycle binary, and the fix is in the same commit as the row.
+Every one of those roads now goes through `forgetTaggedBinding`, which retires the name's tag alongside the
+other per-binding statuses the symbol table holds. `TestARebindingRetiresTheTagAtTheCLI`
+asserts each rebind against CPython on both engines rather than pinning a number, and the rebinding rows are
+in `programs/probe_arith_result_bound_to_a_name` so the conformance corpus walks them too.
+
+The same omission, unseen, had been answering a rebound **loop variable** `(null)` since ADR 0185 bound it
+with a tag — `for v in [1, 2]` then `v = [1, 2]` then `print(v)`. That is the second reason the retirement
+belongs in one function rather than at each site: the sites are already nine, and the tenth will be written
+by the next cycle.
+
+### Gap R.143 — a pair-bound name is refused by every position that asks for one static number (OPEN, owner L11.1, measured landing ADR 0267)
+
+```
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n + 1)        # CPython 15 — compiled: exit 1
+print(-n)           # 15
+print(abs(n))       # 15
+print(bool(n))      # True
+print(f"{n}")       # 14
+print(str(n))       # 14
+while n > 0:        # the head refuses too
+    break
+n += 1              # so does the augmented assignment
+```
+
+Every one is CPython's answer and the interpreted leg's, and the compiled leg spends exit 1 on the line.
+The binding gave the name a payload and a tag; `print(n)` reads both, because the print dispatch is a mixed
+door and has always taken the pair. The positions above ask the numeric road for **one** `i64`, and that
+road knows only the bindings it made itself — what ADR 0249 called the three-arm decision, unbox-or-convert
+-or-raise, which it builds for an *operand expression* and not for a name that already holds one.
+
+The tag the name needs is provably `0` or `1` — the only road that ever writes a pair-bound tag is
+`rt_num_arith`, which stores `0` or `1` and has already decided the operand's kind — so the arm can be
+narrowed to unbox-or-convert, and the raise is the float path's. What makes it a row rather than a patch is
+the number of doors: binary operator, unary operator, call argument, condition, `while` head, format field,
+`str`, and the target of an augmented assignment each reach the numeric road separately, and all eight want
+the same helper. ADR 0249's `rt_lift_num` is the helper; the fix is to ask it with the name's stored payload
+and tag instead of rebuilding the operand from the container.
+
+`TestAPairBoundNameRefusesThePositionsThePairDoesNotReach` pins the family with the reference's answer beside each
+refusal, and `programs/probe_pair_bound_name_as_a_number` is the ledger's copy of the same shape.
+
+### Gap R.144 — a tuple-unpacking target does not take the pair road (OPEN, owner L11.1, measured landing ADR 0267)
+
+```
+xs = []
+xs.append([7, 8])
+a, b = xs[0][0] + 1, xs[0][1] + 2
+print(a)            # CPython 8 — compiled: exit 1, index cannot reach into xs's slots
+```
+
+The plain assignment has taken the pair since ADR 0267; the unpacking still binds each name through the
+ordinary numeric road, which refuses what it cannot see into. The awkward part is that the unpacking is the
+*easier* case in one respect and the harder one in another: it already builds each element as a (payload,
+tag) pair in order to hand it to the tuple constructor, so the pair the binding needs is in hand — and it
+binds the names in a different function from the one that owns the plain assignment, next to the for-loop
+targets, which will want the same door for the same reason (`for v in xs` where `xs` was built at run time).
+The fix is to walk the road once, from a helper both bindings call.
+
+### Gap R.145 — an interned-text binding survives the rebinding that replaced it (OPEN, owner L11.3 with Gap Q.1's table, measured landing ADR 0267)
+
+```
+n = "text"
+n = [1, 2]
+print(n)            # CPython [1, 2] · --interp [1, 2] · --aot text, at exit 0
+```
+
+Not brought in by ADR 0267 — reproduced on the pre-cycle binary, which is what makes it a row and not a
+regression report. The print dispatch reads the name's interned text before it looks at the heap object the
+assignment stored, and the container binding does not clear the text record. It is the same omission as Gap
+R.142 seen from the other status: a binding owns the *whole* description of the name it binds — payload,tag, interned text, `None`, bool, container kind — and any status a later binding does not retake is a lie
+the next read will believe.
+
+It belongs to Gap Q.1 ("One place decides what a name's status is") rather than to this cycle's door,
+because the fix is a table, not a call: the set of statuses each road retires has to be written down once
+and asserted, or every new status added to the symbol table will re-measure this. Until then
+`TestAContainerRebindingRetiresTheTextBindingToo` pins the wrong answer rather than let it pass as parity,
+and `TestAPairBoundNameRefusesThePositionsThePairDoesNotReachAtTheCLI` keeps the one row of the family that was already
+wrong-answer territory out of the parity class.

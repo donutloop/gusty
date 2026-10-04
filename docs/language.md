@@ -2053,12 +2053,35 @@ compiled 32-bit `int` word raises a catchable `OverflowError` naming `roadmap L1
 through the conversion into a silent negative; the interpreted leg, whose ints are 64-bit, answers the
 number, and the split is recorded rather than averaged.
 
+The answer of that arithmetic is a value, so it survives being **bound** before it is read
+(`programs/probe_arith_result_bound_to_a_name.gy`):
+
+```python
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n)              # 14
+n = [1, 2]
+print(n)              # [1, 2] — the rebinding retires the tag the arithmetic left
+```
+
+A binding of that shape stores the pair the printer reads — the value beside the tag the objects decided —
+and a binding that is *not* a pair retires it, so the name is read by the road its newest value deserves
+(`Gap R.142`). What follows the name is the same pair: `print(n)`, `print("n", n)` and a name bound inside an
+`if` or `while` arm answer like the expression itself. The positions that ask for one static number — `n + 1`,
+`-n`, `abs(n)`, `str(n)`, `f"{n}"`, `if n:`, a `while` head, `n += 1` — have not learned to read the tag the
+binding put there (`Gap R.143`), and neither has a tuple unpacking (`Gap R.144`).
+
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), a tagged element whose kind only the run time can tell used as a number by a road this
-backend does not open there — a loop variable over a mixed list, an arithmetic result **bound to a name**
-(`n = xs[0][0] * 2` then `print(n)`, Gap R.138) or **handed to a function** (`twice(xs[0][0])`, Gap R.139),
-**two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
+backend does not open there — a loop variable over a mixed list, the same arithmetic result **read back as
+one static number** after the binding took it (`n = xs[0][0] * 2` answers `print(n)` and refuses `n + 1`,
+`-n`, `abs(n)`, `str(n)`, `f"{n}"`, `if n:`, a `while` head and `n += 1`, Gap R.143 — the binding carries the
+(payload, tag) pair and the numeric road still asks for a payload alone; the shape arrives at the same wall
+from a **tuple unpacking**, which has not taken the pair at all: `a, b = xs[0][0] + 1, xs[0][1] + 2` refuses
+where the plain assignment answers, Gap R.144), or the answer **handed to a function** (`twice(xs[0][0])`,
+Gap R.139), **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
 CPython raises — one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a
 **membership** test or a **loop** whose haystack is such a slot (`7 in xs[0]`, `for v in xs[0]` after

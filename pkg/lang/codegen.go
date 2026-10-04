@@ -3984,6 +3984,11 @@ type irGen struct {
 	// and every other use refuses (roadmap L11.1, ADR 0185).
 	taggedVars map[string]bool
 
+	// taggedOrigin says which door bound each tagged variable's pair, so a refusal can name the
+	// shape that produced the tag instead of blaming a loop for a binding a statement made — the
+	// rule Gap R.38 states about what a refusal may claim (roadmap L11.1, Gap R.138).
+	taggedOrigin map[string]string
+
 	// loopElemTag is the unrolled-loop companion of taggedVars: `for v in [1.5, "a", None]` emits
 	// one body copy per element, and the body needs to know what *this* element's slot holds to
 	// print it. The value is the canonical ValueTag; the entry exists only while a body copy is
@@ -8070,7 +8075,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		if g.taggedVars[n.Value] {
 			// The value slot only means something together with its tag, and this
 			// context wants a number, not a (value, tag) pair (ADR 0185).
-			return "", mixedTaggedVarErr(n.Value)
+			return "", g.taggedVarErr(n.Value)
 		}
 		// String variables are compile-time constants (strVals); emit their
 		// global pointer so printf/assign via value() sees the real string.
@@ -14807,6 +14812,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					g.lambdas = map[string]string{}
 				}
 				g.lambdas[nm.Value] = name
+				g.forgetTaggedBinding(nm.Value) // a function is not a pair (Gap R.142)
 				return nil
 			}
 			// `ys = [f(x) for x in ...]` / `sa = {x for x in xs}` / `da = {k: v for k in xs}` bind a container
@@ -14889,6 +14895,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.gcStoreHandle(b, h, nm.Value)
 				delete(g.noneVars, nm.Value)
+				g.forgetTaggedBinding(nm.Value) // the container is the binding now (Gap R.142)
 				return nil
 			}
 			// `v = xs[i]` out of a tagged list binds a (value, tag) pair, not a bare i32:
@@ -14910,34 +14917,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
-						g.emitFreeOld(b, nm.Value)
-						if g.allocd[nm.Value] {
-							g.gcClearRoot(b, nm.Value)
-						}
-					}
-					g.listVars[nm.Value] = false
-					g.runtimeDicts[nm.Value] = false
-					g.runtimeSets[nm.Value] = false
-					g.mixedLists[nm.Value] = false
-					delete(g.strVals, nm.Value)
-					delete(g.internedVars, nm.Value)
-					delete(g.noneVars, nm.Value)
-					if g.floatVars != nil {
-						delete(g.floatVars, nm.Value)
-					}
-					if !g.allocd[nm.Value] {
-						b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+nm.Value))
-						g.allocd[nm.Value] = true
-					}
-					if !g.allocd[nm.Value+"_tag"] {
-						b.WriteString(fmt.Sprintf("  %%%s_tag = alloca i32\n", "_"+nm.Value))
-						g.allocd[nm.Value+"_tag"] = true
-					}
-					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, nm.Value))
-					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tag, nm.Value))
-					g.markBound(b, nm.Value)
-					g.taggedVars[nm.Value] = true
+					g.bindTaggedVar(b, nm.Value, val, tag)
 					return nil
 				}
 				if listName, mixed := g.mixedIndexRead(ix); mixed {
@@ -14945,36 +14925,31 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					if err != nil {
 						return err
 					}
-					// Rebinding over a container or a tagged value: free the old heap slot and
-					// mark the root dead, the way every other immediate binding does.
-					if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] {
-						g.emitFreeOld(b, nm.Value)
-						if g.allocd[nm.Value] {
-							g.gcClearRoot(b, nm.Value)
-						}
+					// Rebinding over a container or a tagged value: the door frees the old heap slot and
+					// marks the root dead, the way every other immediate binding does.
+					g.bindTaggedVar(b, nm.Value, val, tag) // the tagged slot is written too (ADR 0228)
+					return nil
+				}
+			}
+			// `n = xs[0][0] * 2` — the arithmetic the print position answers, refused one statement
+			// earlier. The print dispatch asks the pair door for exactly this expression (ADR 0265) and
+			// gets `14`; binding the same answer to a name asked the ordinary numeric road instead, which
+			// wants one i32 with no tag beside it and refuses the slot it cannot see into. The road is the
+			// same door, and the name becomes a tagged binding — the shape `print(n)` already reads —
+			// because a payload without its tag is a number wearing another object's bits (roadmap
+			// Gap R.138, ADR 0265's rule one statement earlier).
+			if g.arithWouldRefuse(n.Value) {
+				if v, t, okPair, perr := g.taggedArithPair(b, n.Value); perr != nil {
+					return perr
+				} else if okPair {
+					g.bindTaggedVar(b, nm.Value, v, t)
+					// Where the tag came from is part of the record: a refusal that blames a loop over
+					// a mixed list for a binding this statement made would say something false (Gap R.38's
+					// rule about what a message may claim).
+					if g.taggedOrigin == nil {
+						g.taggedOrigin = map[string]string{}
 					}
-					g.listVars[nm.Value] = false
-					g.runtimeDicts[nm.Value] = false
-					g.runtimeSets[nm.Value] = false
-					g.mixedLists[nm.Value] = false
-					delete(g.strVals, nm.Value)
-					delete(g.internedVars, nm.Value)
-					delete(g.noneVars, nm.Value)
-					if g.floatVars != nil {
-						delete(g.floatVars, nm.Value)
-					}
-					if !g.allocd[nm.Value] {
-						b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+nm.Value))
-						g.allocd[nm.Value] = true
-					}
-					if !g.allocd[nm.Value+"_tag"] {
-						b.WriteString(fmt.Sprintf("  %%%s_tag = alloca i32\n", "_"+nm.Value))
-						g.allocd[nm.Value+"_tag"] = true
-					}
-					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", val, nm.Value))
-					b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tag, nm.Value))
-					g.markBound(b, nm.Value) // the tagged slot is written too (ADR 0228)
-					g.taggedVars[nm.Value] = true
+					g.taggedOrigin[nm.Value] = taggedOriginArith
 					return nil
 				}
 			}
@@ -15054,6 +15029,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 %d)\n", hs, estrBits))
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
+				g.forgetTaggedBinding(nm.Value) // the container is the binding now (Gap R.142)
 				return nil
 			}
 			// list var rebound to a non-list value: free its heap slot (GC-correctness).
@@ -15122,6 +15098,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 8)\n", hs))
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
+				g.forgetTaggedBinding(nm.Value) // the container is the binding now (Gap R.142)
 				return nil
 			}
 			var v string
@@ -15234,10 +15211,12 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					b.WriteString(fmt.Sprintf("  call void @rt_mark_estr(i32 %%h%d, i32 8)\n", hs))
 				}
 				g.gcStoreHandle(b, fmt.Sprintf("%%h%d", hs), nm.Value)
+				g.forgetTaggedBinding(nm.Value) // the container is the binding now (Gap R.142)
 				return nil
 			}
 			if g.unionVars[nm.Value] {
 				g.emitUnionStore(b, nm.Value, n.Value)
+				g.forgetTaggedBinding(nm.Value) // the union's own tag word is the record now (Gap R.142)
 				return nil
 			}
 			if !g.inFunc {
@@ -15247,6 +15226,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// runs" means once a frame's allocas are gone (ADR 0220, implemented compiled-side
 					// by ADR 0227). A main-frame alloca could not do that.
 					b.WriteString(fmt.Sprintf("  store i32 %s, i32* @%s\n", v, sym))
+					g.forgetTaggedBinding(nm.Value) // the module global holds the value now (Gap R.142)
 					return nil
 				}
 			}
@@ -15262,6 +15242,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			if isFloat {
 				fv := g.floatValue(b, n.Value)
 				b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", fv, nm.Value))
+				// A float is a word of its own, not a payload waiting for a tag: the pair the
+				// last binding wrote has no reader left, and leaving it would have print ask
+				// the stale tag instead of the double in the slot (Gap R.142).
+				g.forgetTaggedBinding(nm.Value)
 				if g.floatVars == nil {
 					g.floatVars = map[string]bool{}
 				}
@@ -15331,6 +15315,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						return herr
 					}
 					g.gcStoreHandle(b, h, nm.Value)
+					g.forgetTaggedBinding(nm.Value) // the container is the binding now (Gap R.142)
 					return nil
 				}
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", v, nm.Value))
@@ -15340,7 +15325,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				if g.floatVars != nil {
 					delete(g.floatVars, nm.Value)
 				}
-				delete(g.taggedVars, nm.Value)
+				g.forgetTaggedBinding(nm.Value) // ADR 0172's latest-binding rule, tag and all (Gap R.142)
 			}
 		} else if attr, ok := n.Target.(*Attr); ok {
 			// Instance attribute write: `self.x = v` / `inst.x = v`.

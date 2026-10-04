@@ -367,6 +367,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_arith_result_bound_to_a_name",
+        "name": "probe_arith_result_bound_to_a_name.gy",
+        "source": "# probe_arith_result_bound_to_a_name.gy — the arithmetic the print position answers, one statement\n# earlier: the answer is bound to a name before anything asks to see it. CPython, the interpreted leg\n# and the compiled leg all print these numbers, because the binding takes the same (payload, tag) pair\n# road the print dispatch has taken since ADR 0265 and the name becomes a tagged binding with it\n# (roadmap Gap R.138, ADR 0267).\n#\n# The last three lines are the other half of the same road: a binding that is *not* a pair retires the\n# tag, so the name means what its latest binding says — ADR 0172's latest-binding rule carried to the\n# tagged variable (roadmap Gap R.142).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\nprint(xs[0][0] + 1)\nprint(-xs[0][0])\nm = xs[0][1] - 3\nprint(m)\nboth = xs[0][0] + xs[0][1]\nprint(both)\nys = []\nys.append([7.5, 8])\nf = ys[0][0] * 2\nprint(f)\nd = {}\nd[\"k\"] = 40\ne = d[\"k\"] + 2\nprint(e)\n# A plain number retires the pair…\nn = 3\nprint(n)\n# …and so does a container: print(n) stops asking the tag the arithmetic left behind.\nn = [1, 2]\nprint(n)\nn = {5, 6}\nprint(n)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "14\n8\n-7\n5\n15\n15.0\n42\n3\n[1, 2]\n{5, 6}\n",
+      "aot_ok": true,
+      "aot_stdout": "14\n8\n-7\n5\n15\n15.0\n42\n3\n[1, 2]\n{5, 6}\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "14\n8\n-7\n5\n15\n15.0\n42\n3\n[1, 2]\n{5, 6}\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/negation_names_the_kind",
         "name": "negation_names_the_kind.gy",
         "source": "# negation_names_the_kind.gy — the unary minus asks what kind its operand is before it asks the\n# number road for an instruction. The lines the reference stops on are raises this program catches, so\n# all three engines print the same words, and the `except` arm is the proof that each one is a language\n# event the program can reach rather than a stop it has to obey (roadmap Gap R.137, ADR 0266).\nxs = [7, 8]\nys = [\"a\"]\nbs = []\nbs.append(\"hi\")\nds = {\"k\": 4}\nwords = \"hi\"\n\n\nclass Token:\n    text = \"t\"\n\n\nprint(-7)\nprint(-1.5)\nprint(-True)\nprint(-xs[0])\nprint(-ds[\"k\"])\ntry:\n    print(-words)\nexcept TypeError:\n    print(\"a text has no sign\")\ntry:\n    print(-None)\nexcept TypeError:\n    print(\"none has no sign\")\ntry:\n    print(-[1, 2])\nexcept TypeError:\n    print(\"a list has no sign\")\ntry:\n    print(-{\"a\": 1})\nexcept TypeError:\n    print(\"a dict has no sign\")\ntry:\n    print(-{1, 2})\nexcept TypeError:\n    print(\"a set has no sign\")\ntry:\n    print(-ys[0])\nexcept TypeError:\n    print(\"a text slot has no sign\")\ntry:\n    print(-bs[0])\nexcept TypeError:\n    print(\"an appended text has no sign\")\ntry:\n    print(-Token())\nexcept TypeError:\n    print(\"an instance has no sign\")\n",
@@ -2849,17 +2872,59 @@
     },
     {
       "case": {
-        "id": "programs/probe_arith_result_bound_to_a_name",
-        "name": "probe_arith_result_bound_to_a_name.gy",
-        "source": "# probe_arith_result_bound_to_a_name.gy — the same arithmetic the print position answers, one statement\n# earlier. CPython and the interpreted leg print 14; the compiled leg declines to build it (roadmap Gap\n# R.138, measured landing ADR 0265), because the pair road is taken where the print dispatch asks for a\n# value and an ordinary numeric binding does not ask.\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n)\n",
+        "id": "programs/probe_pair_bound_name_as_a_number",
+        "name": "probe_pair_bound_name_as_a_number.gy",
+        "source": "# probe_pair_bound_name_as_a_number.gy — the name the pair road binds is read back as one static number.\n# CPython and the interpreted leg print 15; the compiled leg spends exit 1 on the line, because the\n# binding carries the (payload, tag) pair and the plain-number road still asks for a payload alone\n# (roadmap Gap R.143, measured landing ADR 0267).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n + 1)\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
-        "ref": "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
+        "reason": "CPython prints 15 and the interpreted leg prints 15; the compiled leg spends exit 1 on the line, because the pair road binds the name with its tag and the plain-number road still asks for a payload alone — print(n) asks the tag, n + 1 does not",
+        "ref": "roadmap Gap R.143 (measured landing ADR 0267); docs/adr/0267, Consequences",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "14\n"
+            "stdout": "15\n"
+          },
+          {
+            "backend": "aot",
+            "error": "holds the answer of arithmetic over a slot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "15\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and using it as one static number needs the same pair to reach this position (roadmap L11.1, Gap R.143)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "15\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython prints 15 and the interpreted leg prints 15; the compiled leg spends exit 1 on the line, because the pair road binds the name with its tag and the plain-number road still asks for a payload alone — print(n) asks the tag, n + 1 does not",
+      "oracle_ref": "roadmap Gap R.143 (measured landing ADR 0267); docs/adr/0267, Consequences",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and using it as one static number needs the same pair to reach this position (roadmap L11.1, Gap R.143)"
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_pair_from_a_tuple_unpack",
+        "name": "probe_pair_from_a_tuple_unpack.gy",
+        "source": "# probe_pair_from_a_tuple_unpack.gy — the pair road stops at the plain assignment. CPython and the\n# interpreted leg print 8 for `a`; the compiled leg spends exit 1 on the unpacking, because the tuple\n# target binds its names through the ordinary road, which refuses the slot it cannot see into\n# (roadmap Gap R.144, measured landing ADR 0267).\nxs = []\nxs.append([7, 8])\na, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
+        "ref": "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "8\n"
           },
           {
             "backend": "aot",
@@ -2869,19 +2934,19 @@
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "14\n",
+      "interp_stdout": "8\n",
       "aot_ok": false,
       "aot_stdout": "",
       "aot_error": "index cannot reach into xs's slots: the name was rebound, mutated, or handed to code this pass cannot see, so the literal it was bound to no longer says what the slots hold; print(...), ==, len and a further subscript are answered by asking the object, which carries the tags its writers left (roadmap L11.1, ADR 0241, ADR 0251)",
       "parity": false,
       "python_ok": true,
-      "python_stdout": "14\n",
+      "python_stdout": "8\n",
       "interp_matches_python": true,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 — index cannot reach into xs's slots — on the same arithmetic it answers one statement later, because the pair road is taken where the print dispatch asks for a value and an ordinary numeric binding does not ask",
-      "oracle_ref": "roadmap Gap R.138 (measured landing ADR 0265); docs/adr/0265, Consequences",
+      "oracle_reason": "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
+      "oracle_ref": "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
       "oracle_rules": [
         "set-order"
       ],
@@ -3252,7 +3317,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix848911539/112/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1937066638/113/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3266,7 +3331,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix848911539/112/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1937066638/113/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4108,12 +4173,12 @@
       ]
     }
   ],
-  "rows": 137,
-  "skipped": 36,
-  "pass": 101,
+  "rows": 139,
+  "skipped": 37,
+  "pass": 102,
   "fail": 0,
-  "oracle_match": 86,
-  "oracle_debt": 30,
+  "oracle_match": 87,
+  "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

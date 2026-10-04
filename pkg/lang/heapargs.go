@@ -1577,6 +1577,24 @@ func mixedTaggedVarErr(name string) error {
 	return fmt.Errorf("codegen: %s comes from a loop over a mixed list; print(%s) works, but using it as a number needs a tagged value (roadmap L11.1)", name, name)
 }
 
+// Where a tagged variable's (payload, tag) pair came from. The refusal a tagged name meets in a
+// plain-number context has to name its own origin — a binding this statement made is not a loop
+// variable, and a message that says it is has become the false claim Gap R.38 files (roadmap
+// L11.1, Gap R.138).
+const (
+	taggedOriginArith = "arithmetic over a slot the program built at run time"
+)
+
+// taggedVarErr is mixedTaggedVarErr in the honest voice: the same refusal, worded for the door that
+// bound the pair. Either way the program is refused and told that print asks the tag and this context
+// does not; what must never be invented is where the tag came from.
+func (g *irGen) taggedVarErr(name string) error {
+	if g.taggedOrigin[name] == taggedOriginArith {
+		return fmt.Errorf("%s holds the answer of %s, which travels as a (payload, tag) pair: print(%s) asks the tag, and using it as one static number needs the same pair to reach this position (roadmap L11.1, Gap R.143)", name, taggedOriginArith, name)
+	}
+	return mixedTaggedVarErr(name)
+}
+
 // mixedTaggedElemErr names the element that cannot be tagged, and why refusing is the only
 // honest answer: without a tag the slot reads back as whatever the tag array happened to hold,
 // which is how a stored string would print as its interned table index (ADR 0184/0187).
@@ -2626,6 +2644,20 @@ func (g *irGen) bindTaggedVar(b *strings.Builder, name, val, tag string) {
 	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tag, name))
 	g.markBound(b, name) // the tagged slot is written too (ADR 0228)
 	g.taggedVars[name] = true
+}
+
+// forgetTaggedBinding retires a name's tag: whatever binds the name next is not a pair, so the
+// value slot means what that statement says it means and nothing else. ADR 0172 states the rule for
+// the None and bool statuses — the variable's *latest* assignment decides how print, truthiness and
+// equality lower, and any other assignment clears the status — and ADR 0185/ADR 0187 carried it to
+// the tagged variable. What neither did was clear it at the container, comprehension, lambda, module
+// and float bindings, all of which return early with the record still in place: `n = xs[0][0] * 2`
+// followed by `n = [1, 2]` printed `2` — the heap handle — because the print dispatch was still
+// asking the tag the arithmetic had left behind, and `n = 2.5` printed `0` for the same reason
+// (roadmap Gap R.142, measured landing the pair road that makes the shape reachable).
+func (g *irGen) forgetTaggedBinding(name string) {
+	delete(g.taggedVars, name)
+	delete(g.taggedOrigin, name)
 }
 
 // taggedContainerRead reads the slot named by `ix` out of the container `ix.Obj` denotes.
