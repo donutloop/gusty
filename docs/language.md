@@ -1551,6 +1551,49 @@ the collector, for operator dispatch and for every kind test, so those cannot di
 value is. Real tagged values are roadmap L11.1; until then this is the boundary, and a program would
 have to compute an integer near 2.8×10^17 *and* land exactly on a live object id to cross it.
 
+### Unary minus asks its operand's kind (`-x`)
+
+`-` is an operator, and an operator is a question about a **kind**. A value that has no sign stops the
+program with the reference's own sentence — on both backends, catchably, at the runtime-error exit class
+(roadmap Gaps R.89, R.137, ADR 0266):
+
+```python
+print(-7)          # -7        — an int negates
+print(-1.5)        # -1.5      — a float negates
+print(-True)       # -1        — a bool is a number; the answer is an int
+xs = [3, 4]
+print(-xs[1])      # -4        — a slot read is a number if the slot holds one
+
+print(-"hi")       # TypeError: bad operand type for unary -: 'str'
+print(-None)       # TypeError: bad operand type for unary -: 'NoneType'
+print(-[1, 2])     # TypeError: bad operand type for unary -: 'list'
+print(-{"a": 1})   # TypeError: bad operand type for unary -: 'dict'
+print(-{1, 2})     # TypeError: bad operand type for unary -: 'set'
+print(-Token())    # TypeError: bad operand type for unary -: 'Token'   — an instance names its class
+```
+
+The kind inside the quotes is the operand's real kind, read from the same table the printer, the equality
+and the binary operators read, and the raise is a language event: `try: print(-"hi")
+except TypeError: …` runs the arm on both engines. The name is not a decoration — the reference writes a
+*different* sentence for a negation than for a binary minus, so `-x` is its own door rather than `0 - x`
+in a mask (ADR 0265 owns the sentence table).
+
+Two rules keep the door honest rather than merely loud:
+
+- **The constant folders do not answer it.** `-None`, `-[1]` and friends are not folded to a number, so a
+  shape the reference stops on is never printed (Gap R.37's rule, extended to the last operator that lacked
+  it).
+- **A slot is only raised on when the program can be shown to hold no number there.** `xs = ["a"]` /
+  `-xs[i]` raises `'str'` on both engines, because the literal says every slot is a text and the program
+  never stores anything else into `xs`. A container that can also hold a number is left to the tag door
+  (ADR 0265) or to the refusal that names the missing half — raising there would answer `TypeError` for
+  `xs = [1, "a"]` / `-xs[0]`, which the reference answers `-1`.
+
+What the compiler cannot see it does not claim: a parameter the caller fills with a text on one path and a
+number on another keeps the road it had, which is the tagged-value-word clause of roadmap L11.1 (and
+`abs("hi")`, which still answers instead of raising, is the sibling defect the same measurement filed as
+Gap R.140).
+
 ## FFI / C interop (`extern fn`)
 
 Gusty can call C library functions by declaring them with `extern fn`:

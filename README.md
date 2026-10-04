@@ -226,7 +226,7 @@ reason the module could not be written at all — the pair goes to the target, w
 and answers a pair back, so the tag that decides `8` from `8.0` is the one the object carries. `+` and `*`
 take that road only under a program-wide proof that the slots hold numbers, because CPython *answers*
 `"a" + "b"` and `[1] * 2` and this backend builds neither from a slot (`Gap R.82`); where the proof is
-absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.137`–`R.139`).
+absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.138`, `R.139`).
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a
@@ -247,6 +247,23 @@ each other** (`xs[0] > ys[0]`, filed as
 Gap R.97: one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing), and a comparison against an expression whose kind cannot be proven — which until ADR 0247 answered
 `1` where CPython answers `0` (Gap R.83, whose ordering side is measured by the same table).
+
+**Unary minus is an operator, so it asks the same question** (ADR 0266, closing `Gap R.89` and `Gap R.137`).
+`print(-"hi")` printed `-281474976710658` interpreted — the negation of the text's interned *index*, which is
+why the digits looked like an address — and `0` compiled, both at exit 0; `print(-[1, 2])` reached `llc` as
+`%t1 = sub i32 0, @.lst1`, spending the contract's exit 2 on a program CPython merely stops on. Both engines
+now stop too, with the reference's own `TypeError: bad operand type for unary -: 'str'` at exit 3 and
+reachable by `except TypeError:`: a text, `None`, a list/dict/set/tuple literal, a container variable, an
+instance (which names its own class), a character read out of a text, and a slot the literal says holds no
+number. The interpreter asks the **value** (`operandKind`, the table the binary operators and `len` already
+read); the compiled backend asks the **expression**, and for the text question it asks *the printer's own*
+predicate, so `print(x)` and `print(-x)` cannot disagree about what `x` holds (ADR 0229's rule, one operator
+further out). The constant folders were closed on the shape — a folded `-None` is a silent `0` with no
+instruction that could have disagreed (Gap R.37's rule, at its last operator) — and a slot is raised only
+where the literal says nothing it holds is a number *and* the program never stores anything else into it,
+because a raise where CPython answers `-1` would be the same bug wearing a class. `abs("hi")` still answers
+instead of raising, and the interpreter still calls a tuple `'list'`: both are pinned with their own rows
+(`Gap R.140`, `Gap R.141`) rather than hidden in this one.
 
 A function's **return word** is now read from what its body does rather than from the shape of its `return`
 line (ADR 0254, closing Gap R.3c). `def addf(x): x = x + 1.5` / `return x` / `print(addf(1.0))` printed the

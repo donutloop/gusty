@@ -367,6 +367,29 @@
     },
     {
       "case": {
+        "id": "programs/negation_names_the_kind",
+        "name": "negation_names_the_kind.gy",
+        "source": "# negation_names_the_kind.gy — the unary minus asks what kind its operand is before it asks the\n# number road for an instruction. The lines the reference stops on are raises this program catches, so\n# all three engines print the same words, and the `except` arm is the proof that each one is a language\n# event the program can reach rather than a stop it has to obey (roadmap Gap R.137, ADR 0266).\nxs = [7, 8]\nys = [\"a\"]\nbs = []\nbs.append(\"hi\")\nds = {\"k\": 4}\nwords = \"hi\"\n\n\nclass Token:\n    text = \"t\"\n\n\nprint(-7)\nprint(-1.5)\nprint(-True)\nprint(-xs[0])\nprint(-ds[\"k\"])\ntry:\n    print(-words)\nexcept TypeError:\n    print(\"a text has no sign\")\ntry:\n    print(-None)\nexcept TypeError:\n    print(\"none has no sign\")\ntry:\n    print(-[1, 2])\nexcept TypeError:\n    print(\"a list has no sign\")\ntry:\n    print(-{\"a\": 1})\nexcept TypeError:\n    print(\"a dict has no sign\")\ntry:\n    print(-{1, 2})\nexcept TypeError:\n    print(\"a set has no sign\")\ntry:\n    print(-ys[0])\nexcept TypeError:\n    print(\"a text slot has no sign\")\ntry:\n    print(-bs[0])\nexcept TypeError:\n    print(\"an appended text has no sign\")\ntry:\n    print(-Token())\nexcept TypeError:\n    print(\"an instance has no sign\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "-7\n-1.5\n-1\n-7\n-4\na text has no sign\nnone has no sign\na list has no sign\na dict has no sign\na set has no sign\na text slot has no sign\nan appended text has no sign\nan instance has no sign\n",
+      "aot_ok": true,
+      "aot_stdout": "-7\n-1.5\n-1\n-7\n-4\na text has no sign\nnone has no sign\na list has no sign\na dict has no sign\na set has no sign\na text slot has no sign\nan appended text has no sign\nan instance has no sign\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "-7\n-1.5\n-1\n-7\n-4\na text has no sign\nnone has no sign\na list has no sign\na dict has no sign\na set has no sign\na text slot has no sign\nan appended text has no sign\nan instance has no sign\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/features_a",
         "name": "features_a.gy",
         "source": "sumx = 0\nfor ia in range(5):\n    sumx = sumx + ia\nprint(\"sum\", sumx)\nprint(\"arith\", 10 // 3, 10 % 3, 10 / 2, 2 * 3, 2 - 3, 2 + 3)\nfval = 2.5 + 1.0\nprint(\"float\", fval) # codegen truncates float literals to int\nprint(\"str\", \"a\" + \"b\" + \"c\")\nprint(\"slen\", len(\"hello\"))\nprint(\"sidx\", \"abc\"[1])\nprint(\"sup\", \"abc\".upper())\nprint(\"slow\", \"ABC\".lower())\n",
@@ -2784,49 +2807,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_negated_text_slot",
-        "name": "probe_negated_text_slot.gy",
-        "source": "# probe_negated_text_slot.gy — the negation of a slot that turns out to hold text. CPython stops with\n# TypeError: bad operand type for unary -: 'str'. The compiled leg now names the kind the object\n# carries; the interpreted leg answers a number (roadmap Gap R.137, so this row is pinned, not averaged).\nxs = []\nxs.append(\"hi\")\nprint(-xs[0])\n",
-        "shared": false,
-        "oracle": "not_applicable",
-        "reason": "the reference stops with TypeError: bad operand type for unary -: 'str'; the compiled leg names the kind the object carries, and the interpreted leg answers -281474976710659 — a number, from a text, at exit 0. Pinning the split rather than averaging it is the rule (Gap R.37); the interpreted half is Gap R.137",
-        "ref": "roadmap Gap R.137 (measured landing ADR 0265); docs/adr/0265, Measurement",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "-281474976710659\n"
-          },
-          {
-            "backend": "aot",
-            "error": "exit status 3",
-            "missing": true
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "-281474976710659\n",
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "exit status 3",
-      "parity": false,
-      "python_ok": false,
-      "python_stdout": "",
-      "python_error": "exit status 1: Traceback (most recent call last):",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "not_applicable",
-      "oracle_declared": "not_applicable",
-      "oracle_reason": "the reference stops with TypeError: bad operand type for unary -: 'str'; the compiled leg names the kind the object carries, and the interpreted leg answers -281474976710659 — a number, from a text, at exit 0. Pinning the split rather than averaging it is the rule (Gap R.37); the interpreted half is Gap R.137",
-      "oracle_ref": "roadmap Gap R.137 (measured landing ADR 0265); docs/adr/0265, Measurement",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "the CPython leg did not complete: exit status 1: Traceback (most recent call last):"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_whole_number_slot_beyond_the_int_word",
         "name": "probe_whole_number_slot_beyond_the_int_word.gy",
         "source": "# probe_whole_number_slot_beyond_the_int_word.gy — the arithmetic whose answer will not fit the compiled\n# int word. CPython answers 7000000000; the interpreted leg answers it too (int64), and the compiled\n# leg raises a catchable OverflowError rather than truncate a double through an i32 into a silent\n# negative (ADR 0264's lesson, applied to the new door; roadmap L12.12 owns the word).\nxs = []\nxs.append([7, 8])\nprint(xs[0][0] * 1000000000)\n",
@@ -3272,7 +3252,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix866824181/112/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1786022191/112/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3286,7 +3266,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix866824181/112/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1786022191/112/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4129,11 +4109,11 @@
     }
   ],
   "rows": 137,
-  "skipped": 37,
-  "pass": 100,
+  "skipped": 36,
+  "pass": 101,
   "fail": 0,
-  "oracle_match": 85,
+  "oracle_match": 86,
   "oracle_debt": 30,
-  "oracle_not_applicable": 22,
+  "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

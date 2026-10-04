@@ -1,0 +1,53 @@
+# negation_names_the_kind.gy — the unary minus asks what kind its operand is before it asks the
+# number road for an instruction. The lines the reference stops on are raises this program catches, so
+# all three engines print the same words, and the `except` arm is the proof that each one is a language
+# event the program can reach rather than a stop it has to obey (roadmap Gap R.137, ADR 0266).
+xs = [7, 8]
+ys = ["a"]
+bs = []
+bs.append("hi")
+ds = {"k": 4}
+words = "hi"
+
+
+class Token:
+    text = "t"
+
+
+print(-7)
+print(-1.5)
+print(-True)
+print(-xs[0])
+print(-ds["k"])
+try:
+    print(-words)
+except TypeError:
+    print("a text has no sign")
+try:
+    print(-None)
+except TypeError:
+    print("none has no sign")
+try:
+    print(-[1, 2])
+except TypeError:
+    print("a list has no sign")
+try:
+    print(-{"a": 1})
+except TypeError:
+    print("a dict has no sign")
+try:
+    print(-{1, 2})
+except TypeError:
+    print("a set has no sign")
+try:
+    print(-ys[0])
+except TypeError:
+    print("a text slot has no sign")
+try:
+    print(-bs[0])
+except TypeError:
+    print("an appended text has no sign")
+try:
+    print(-Token())
+except TypeError:
+    print("an instance has no sign")

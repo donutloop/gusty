@@ -559,9 +559,16 @@ deliberate and coarse (the reference *answers* `"a" + "b"` and `[1] * 2`; this b
 must not open there), and the positions the door does not reach are filed rather than silent: an arithmetic
 result bound to a name (`Gap R.138`, `programs/probe_arith_result_bound_to_a_name`) and a slot read handed
 to a function (`Gap R.139`, `programs/probe_slot_read_handed_to_a_function`) are both CPython's and the
-interpreted leg's `14` against the compiled leg's exit 1. The negation of a text is worse and also filed:
-`print(-"hi")` answers `-281474976710658` interpreted and `0` compiled at exit 0, where the reference
-raises (`Gap R.137`). To reproduce any of these numbers, force the leg: `gustyc --file <path> --interp` and
+interpreted leg's `14` against the compiled leg's exit 1. The negation of a text was worse and is now paid:
+`print(-"hi")` used to answer `-281474976710658` interpreted and `0` compiled at exit 0, and both engines now
+raise the reference's `TypeError: bad operand type for unary -: 'str'` at **exit 3**, catchable by
+`except TypeError:` on each leg, for a text, `None`, a container literal, an instance (which names its own
+class) and a slot the literal says holds no number — the operator asks the operand's kind before it writes an
+instruction (`Gap R.89`, `Gap R.137`, ADR 0266; the three-engine program is
+`programs/negation_names_the_kind.gy`). What the same measurement found still answering quietly is filed
+rather than folded in: `abs("hi")` prints instead of raising `bad operand type for abs(): 'str'`
+(`Gap R.140`), and a tuple's operand-type sentence says `'list'` on the interpreted leg (`Gap R.141`,
+waiting on L11.3). To reproduce any of these numbers, force the leg: `gustyc --file <path> --interp` and
 `gustyc --file <path> -aot` — a bare `--file` is the interpreter's default, and `-aot` written after the
 path is parsed as that flag's value rather than as the compiled leg.
 

@@ -49,6 +49,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// The number use of a slot whose kind only the run time can describe: a list of lists, and
 		// arithmetic on what comes out of one (roadmap L11.1's last clause, ADR 0265).
 		"numeric_slot_arith",
+		// The unary minus names its operand's kind on both engines, and every shape the reference stops on
+		// is a raise this program catches (roadmap Gap R.137, ADR 0266).
+		"negation_names_the_kind",
 		"features_a", "features_b",
 		"stdlib", "dispatch_nested", "dispatch_gc", "dispatch_gc_stress", "match_baren", "match_literal", "match_classpat", "round_ties", "round_ndigits", "wrapping_decorator", "dunder",
 		"async_basic",
@@ -335,10 +338,9 @@ func conformanceProbes() []lang.ConformanceCase {
 		// compiled guard raises an OverflowError naming L12.12, rather than wrapping in silence
 		// (roadmap Gap R.133).
 		"probe_whole_number_beyond_the_int_word",
-		// The negation of a slot that turns out to hold text. The compiled leg now names the kind the object
-		// carries; the interpreted leg answers a number where CPython stops, which is Gap R.137 and a pin,
-		// not an average (roadmap L11.1, ADR 0265).
-		"probe_negated_text_slot",
+		// The negation of a text is answered by both engines the way the reference answers it — the shape
+		// this row filed (Gap R.137) is parity surface now, in programs/negation_names_the_kind.gy
+		// (roadmap L11.1, ADR 0266).
 		// Arithmetic whose whole-number answer will not fit the compiled int word: the evaluator's int64
 		// answers CPython's number, the compiled guard raises a catchable OverflowError naming L12.12
 		// rather than truncate a double through an i32 (ADR 0264's lesson at the new door).
@@ -499,10 +501,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
 		ref:    "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
-	"programs/probe_negated_text_slot": {oracle: lang.OracleNA,
-		reason: "the reference stops with TypeError: bad operand type for unary -: 'str'; the compiled leg names the kind the object carries, and the interpreted leg answers -281474976710659 — a number, from a text, at exit 0. Pinning the split rather than averaging it is the rule (Gap R.37); the interpreted half is Gap R.137",
-		ref:    "roadmap Gap R.137 (measured landing ADR 0265); docs/adr/0265, Measurement",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-281474976710659\n"}, {Backend: "aot", Missing: true, Err: "exit status 3"}}},
 	"programs/probe_whole_number_slot_beyond_the_int_word": {oracle: lang.OracleDebt,
 		reason: "CPython answers 7000000000 and so does the interpreted leg, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
 		ref:    "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",

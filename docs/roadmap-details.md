@@ -4679,7 +4679,7 @@ A refusal pin broke, as one is allowed to do when the work lands: `mixed_list_te
 program; both backends now raise the same sentence; the row moved to the trap table and the table checks
 both the interpreter and the compiled binary.
 
-### Gap R.89 — unary minus never asks a tag (measured 2026-10-02, left open)
+### Gap R.89 — unary minus never asks a tag (measured 2026-10-02, CLOSED by ADR 0266 on 2026-10-04)
 
     print(-"a")     # CPython TypeError: bad operand type for unary -: 'str'
                     # --interp -281474976710658   --aot 0
@@ -4695,6 +4695,19 @@ CPython's unary sentence on the compiled path, pinned in `tagged_numeric_test.go
 marked `aotOnly` rather than quietly dropped. The rest is unary minus's own work: it has to ask what kind
 its operand is, in both backends, and the literal cases must trap at run time rather than be folded into a
 compilation error (Gap R.37's rule, which this is another instance of).
+
+**Closed 2026-10-04 by ADR 0266.** `pkg/lang/negation.go` is the operator's own road: the interpreter's
+`negate` asks the value through `operandKind`, the compiled `negationOperandKind` asks the expression
+through the same records the print dispatch reads (`printsAsInternedStr` for the text question, so the two
+doors cannot disagree about what a name holds), and both raise the reference's sentence through the ordinary
+emitted store-and-branch. The `aotOnly` pins in `pkg/lang/tagged_numeric_test.go` and
+`integration/tagged_numeric_test.go` were flipped rather than deleted, so the interpreted half is now
+asserted instead of remembered. `-"a"`, `-[1]`, `-None`, `-{"a": 1}`, `-{1, 2}`, `-Token()`, `-xs[0]` and
+`-"hi" + 1.5` all stop at exit 3 on both engines, with 14 negations that still have to answer doing so;
+`programs/negation_names_the_kind.gy` is `match` on three engines. The list literal's `sub i32 0, @.lst1` —
+the exit-2 half — is gone, and an IR row fails if a global reaches an `i32` arithmetic instruction again.
+Two siblings the same measurement found are filed rather than absorbed: `abs` of a text (Gap R.140) and a
+tuple named `'list'` by the interpreter (Gap R.141).
 
 ### Gap R.90 — an out-of-range subscript names the wrong container (measured 2026-10-02, left open)
 
@@ -5989,7 +6002,7 @@ leg by leg). The fix for each is the one ADR 0264 made for the other three names
 take it out of the table so the checker stops promising it — and the sweep that found them is worth
 re-running after any change to `predeclared.go`, because the table and the engines drift apart silently.
 
-### Gap R.137 — the negation of a text answers a number on both engines (OPEN, owner L11.5, measured landing ADR 0265)
+### Gap R.137 — the negation of a text answers a number on both engines (CLOSED by ADR 0266 on 2026-10-04; the same defect as Gap R.89, measured twice)
 
 `print(-"hi")` and `x = "hi"` / `print(-x)` are stopped by CPython with
 `TypeError: bad operand type for unary -: 'str'`. Both of this compiler's engines answer a **number** and
@@ -6009,6 +6022,13 @@ written — `@rt_kind_name` and `@rt_num_bad` name the operand's kind and raise 
 a slot that turns out to hold text — and the same table has to be reachable from the static numeric road,
 where the compiler *does* know the operand is a text and can emit the raise directly. `probe_negated_text_slot`
 is the ledger row; it becomes a `match` when both engines stop.
+
+**Closed 2026-10-04 by ADR 0266**, which is the same commit roadmap booked as Gap R.89's: the two rows
+described one defect from two directions — R.89 from the operator, R.137 from the door that had just landed
+beside it — and closing them together is what the tracker's "one defect, one measurement" habit is for.
+`probe_negated_text_slot` left the ledger with its pins (the interpreted leg's `-281474976710659` and the
+compiled leg's `exit status 3`), and the shape is parity surface in `programs/negation_names_the_kind.gy`,
+where the raise is *caught* and the three engines print the same bytes.
 
 ### Gap R.138 — the arithmetic the print position answers is refused one statement earlier (OPEN, owner L11.1, measured landing ADR 0265)
 
@@ -6050,3 +6070,40 @@ R.138's fix: the caller has the pair in hand, and the parameter does not take it
 argument arrived as a pair has to be bound as a tagged parameter, so the body's `v * 2` sees the tag the
 caller saw — which is L11.1's own sentence, quoted again at the fourth door in a row: the kind belongs to
 the value, and every place a value crosses a boundary has to carry the tag across with it.
+
+### Gap R.140 — `abs` never asks a tag either (OPEN, owner L11.1, measured landing ADR 0266)
+
+```
+print(abs("hi"))    # CPython TypeError: bad operand type for abs(): 'str'
+                    # --interp hi   ·   --aot 0        (both exit 0)
+```
+
+Found by writing the negation sweep and asking whether the same road had other entrances: `abs` is spelled
+differently and reaches the same numeric lowering, and it raises a sentence of its own —
+`bad operand type for abs(): 'str'`, not the unary-minus one. Both engines answer, at exit 0, which is the
+class ADR 0166 does not allow; the compiled leg prints the interned index's neighbour and the interpreted
+leg prints the text itself, because its `abs` returns the argument unchanged for anything it cannot read as
+a number.
+
+The fix is the one ADR 0266 just made for `-`: name the operand's kind and raise it from the numeric road,
+on both engines, catchably — `pkg/lang/negation.go`'s `negate` and `negationOperandKind` are the two doors,
+and `abs` needs a third that asks the same question with the reference's own wording. Filed rather than
+fixed with the negation because the sentence is different, the door is different, and one commit per feature
+is the rule.
+
+### Gap R.141 — a tuple's operand-type sentence names the representation, not the value (OPEN, owner L11.3, measured landing ADR 0266)
+
+```
+print(-("a", 1))    # CPython TypeError: bad operand type for unary -: 'tuple'
+                    # --interp 'list'   ·   --aot 'tuple'      (both exit 3)
+```
+
+Both engines stop, which is the verdict the reference gives; they only disagree about the word inside the
+quotes. A tuple literal is built as a *list* object by the interpreter, so `operandKind` reports the
+representation it used. The compiled leg has a `Tuple` node in the AST and names `'tuple'`.
+
+This is not the negation's debt — it is L11.3's ("Tuples are values, not syntax sugar") arriving in a
+message. It is booked here because the row has to exist before the test can stop pinning it:
+`TestTheNegationOfATupleNamesWhatTheReferenceNames` asserts the compiled leg against the reference and pins
+the interpreted leg's `'list'` verbatim, so the day L11.3 lands, that pin fails with "paid" instead of the
+row quietly agreeing.

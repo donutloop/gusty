@@ -6467,3 +6467,63 @@ taken. And the door turns out to open in the print position only: the same arith
 (`Gap R.138`) or handed to a function (`Gap R.139`) is still the refusal. All three are rows with their exact
 per-engine numbers, filed before the commit that found them, because a half-lift that is written down is a
 half-lift and one that is not is a surprise.
+
+## The last operator that never asked what it was given (ADR 0266, roadmap Gaps R.89 + R.137)
+
+**A file named after a statement is not a file named after a rule.** `codegen.go`'s `*UnOp` case had been
+writing `sub i32 0, <the operand's storage>` since the beginning, and nothing looked at it, because every
+test in the suite arrives through a *program* and programs negate numbers. The fix is eight lines in one place
+— ask the operand's kind — but it took reading the operator's own lowering, not the print dispatch's or the
+binary operators', to find that the three doors which ask "is this a number?" (`isFloat`, the numeric door,
+the printer) had simply never been asked by `-`. When you close a value-model gap, list the constructs that
+touch a value and check each one asked the question; the answer is usually "the one nobody thought of".
+
+**Ask the printer the same question the printer asks.** `negationOperandKind` needed "is this expression a
+text?" and the tempting answer was to write a fourth predicate. The codebase already has a rule for this —
+ADR 0229: "the print path and the operation path ask this question of the same predicate, or one of them
+renders the interned index as a number" — so the compiled half now calls `printsAsInternedStr`, and gains its
+`str()`/`repr()` answers, its text-method answers, its slice-of-a-text answer and its character-of-a-text
+answer for free. Writing a local predicate would have produced a compiler where `print(s[1])` prints `b` and
+`print(-s[1])` prints `0`, which is exactly the bug class being closed, one construct later.
+
+**The raise is cheap; the *unreachable* raise is the part that needs care.** Every raise in this language is
+the emitted store-and-branch (`setExn` + `br` to the open handler), because a raise a runtime helper performed
+for itself is invisible to `except TypeError:` (ADR 0228). Emitting one from inside an *expression* means the
+block ends there while the caller still has instructions to write — so the emitters open a fresh label after
+the branch and hand back a dummy operand: the instructions survive, the path never runs, and `llc` is happy.
+The trap tests are what make that safe: `runIRMayTrap` runs the module through `llvm-as`/`lli` rather than
+matching a string, so "the raise is in the module" and "the raise happens" are different assertions and only
+the second one is interesting.
+
+**A gate that is a coin toss on the program's data is not a gate.** The first draft raised for any slot whose
+literal had a non-number in it. `xs = [1, "a"]` / `-xs[0]` is `-1` in CPython, and the draft raised
+`TypeError` for it, because the table was built from *some* element rather than from *every* element. What
+shipped requires `slotNumberFamily == "none"` (nothing the container can report is a number) **and** no store
+site anywhere for that name (`numericSlotChains.ok[name]` false), so the raise is a statement about the
+literal, not a guess about the data — and the float-family slot keeps ADR 0265's tag door, because that door
+can answer `-7` and a table of raises can't.
+
+**Two rows, one defect: close both, say so in both.** Gap R.89 ("unary minus never asks a tag", measured
+2026-10-02) and Gap R.137 ("the negation of a text answers a number", measured 2026-10-04 while writing
+ADR 0265's raise table) are the same line of code seen from two doors. Leaving one ⏳ `OPEN` after fixing the
+other would have left a green build contradicting its own tracker; both rows left the Open queue in this
+commit, and each row's record says which other row it shares a fix with. The `aotOnly` pins that had been
+holding up the interpreted half of R.89 in `tagged_numeric_test.go` (both copies) were flipped to full rows
+rather than deleted — a pin that becomes a parity row is the closure evidence, and a pin that disappears is
+just churn.
+
+**Sweep the neighbour, then file it before you fix it.** Writing the trap table produced `print(abs("hi"))`
+(prints `hi` interpreted, `0` compiled, exit 0; CPython `TypeError: bad operand type for abs(): 'str'`) and
+`print(-("a", 1))` (the interpreter says `'list'` because a tuple is a list object, the reference and the
+compiled leg say `'tuple'`). Neither is this commit's feature — different door, different sentence, different
+owner (L11.1 and L11.3) — so both went in as `Gap R.140` and `Gap R.141` with their per-engine numbers, and
+the tuple's interpreted answer is *pinned verbatim* in `TestTheNegationOfATupleNamesWhatTheReferenceNames` so
+that the day L11.3 lands, the pin fails with "paid" instead of the row quietly agreeing.
+
+**Trust the ledger's drift message over your own reading of the row.** The only thing that told me
+`probe_negated_text_slot` had been pinned with the interpreter's garbage number — and that the interpreter
+therefore had an asserted wrong answer, not an unasserted one — was the conformance harness failing with
+`pin says the interpreter leg prints "-281474976710659\n", but it failed`. That message is the tracker doing
+its job: a paid debt is supposed to break something. Deleting the row and the program in the same commit, and
+moving the shape into `conformanceStandalone` where *absence* of a ledger row means "must print what Python
+prints", is what makes the pay-off a measured claim.

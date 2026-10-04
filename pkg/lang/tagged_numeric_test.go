@@ -146,14 +146,14 @@ func TestTaggedNumericUseTrapsWherePythonTraps(t *testing.T) {
 			"TypeError", "'>' not supported between instances of 'int' and 'str'", false,
 		},
 		{
-			// Unary minus has its own sentence in CPython, which is why the negation is its own door
-			// rather than a binary minus in a mask. The compiled side raises it; the interpreter has
-			// never consulted a tag for a unary operator at all and answers a garbage number, which is
-			// roadmap Gap R.89 — pinned here on the compiled path only so the new door cannot regress
-			// and the interpreter's own defect stays visible.
+			// Unary minus has its own sentence in CPython, which is why the negation is its own door rather
+			// than a binary minus in a mask. Both halves now ask the question: the compiled one reads the
+			// kind off the expression and the literal, the interpreter reads it off the object. What this row
+			// pinned was Gap R.89's `aotOnly` — the interpreter answering a garbage number because `-` had
+			// never consulted a tag at all — and ADR 0266 paid it, so the row is no longer compiled-only.
 			"text in the slot negated",
 			"xs = [1.5, \"a\"]\ni = 1\nprint(-xs[i])\n",
-			"TypeError", "bad operand type for unary -: 'str'", true,
+			"TypeError", "bad operand type for unary -: 'str'", false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

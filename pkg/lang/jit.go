@@ -1728,10 +1728,10 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		}
 		switch n.Op {
 		case "-":
-			if fv, ok := e.floatOf(v); ok {
-				return e.allocFloat(-fv), nil
-			}
-			return -v, nil
+			// The negation asks the operand's kind before it asks the int evaluator: a text, None, a
+			// container or an instance used to reach `-` holding the heap id it is stored as, and the
+			// program printed -(2^48 + n) at exit 0 where the reference stops (roadmap Gap R.137, ADR 0266).
+			return e.negate(v)
 		case "not":
 			if !e.truthy(v) {
 				return 1, nil

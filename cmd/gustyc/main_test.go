@@ -62,6 +62,13 @@ func TestCLILang(t *testing.T) {
 	} else if !strings.Contains(got, "heap kinds (compiled runtime object headers): "+strings.Join(lang.HeapKindNames(), " ")) {
 		t.Errorf("--lang does not print the compiled heap kinds:\n%s", got)
 	}
+	// The operand-kind rule is part of the discoverable surface (ADR 0266): an agent planning a
+	// compilation must be able to learn that `-text` is a raise rather than a number without reading
+	// docs prose, and that the raise's class is the runtime-error exit class.
+	if got := cli(t, "--lang"); !strings.Contains(got, "operators:") ||
+		!strings.Contains(got, "bad operand type for unary -") {
+		t.Errorf("--lang does not print the operand-kind rule for the operators:\n%s", got)
+	}
 }
 
 func TestCLIVerify(t *testing.T) {

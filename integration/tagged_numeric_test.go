@@ -207,10 +207,11 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 			"'>' not supported between instances of 'int' and 'str'", false,
 		},
 		{
-			// The loop variable is the same read with the index computed by the loop.
+			// The loop variable is the same read with the index computed by the loop. Both engines raise:
+			// the interpreted half of this row was Gap R.89's `aotOnly` pin, and ADR 0266 paid it.
 			"text_in_the_slot_through_a_loop_index",
 			"xs = [1.5, \"a\"]\ni = 1\nprint(-xs[i])\n",
-			"bad operand type for unary -: 'str'", true,
+			"bad operand type for unary -: 'str'", false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

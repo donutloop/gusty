@@ -5224,6 +5224,11 @@ func constIntMemberVal(e Expr) (int64, bool) {
 		return 0, true
 	case *UnOp:
 		if c.Op == "-" {
+			if negationOperandIsLiterallyNotANumber(c.X) {
+				// `[-None]` is not a container of the constant 0: it is a program the reference stops on,
+				// and a fold that answers it here would print a number where the raise belongs (Gap R.137).
+				return 0, false
+			}
 			if v, ok := constIntMemberVal(c.X); ok {
 				return -v, true
 			}
@@ -6944,6 +6949,24 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		return t
 	case *UnOp:
 		if n.Op == "-" {
+			// The double domain asks the same question the i32 road asks before it writes an instruction:
+			// what kind is the operand? Lifting a text through `sitofp` here printed 1.5 for `-"hi" + 1.5`,
+			// a number for a program the reference stops on, so the raise is emitted here too and the
+			// unreachable double it leaves behind is never read (roadmap Gap R.137, ADR 0266).
+			if kind, bad := g.negationOperandKind(n.X); bad {
+				if kind == "" {
+					ix, isIdx := n.X.(*Index)
+					if !isIdx {
+						return ""
+					}
+					if _, ok := g.emitBadNegationOfSlot(b, ix, n.Span()); !ok {
+						return ""
+					}
+					return "0.000000e+00"
+				}
+				g.emitBadNegation(b, kind, n.Span())
+				return "0.000000e+00"
+			}
 			// A negated slot read whose kind only the object carries goes to the tag dispatch, which is
 			// the only place that can unbox a float slot rather than read its handle as a number.
 			if g.taggedNegationApplies(n) {
@@ -8836,6 +8859,25 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				return neg, nil
 			}
 		}
+		// The operand's own kind, asked before any instruction is written for it. A negated text, None,
+		// a container literal, an instance, or a slot the literal says holds no number, each reach the
+		// reference as a TypeError, and reached this road as `sub i32 0, <the value's storage>` — the
+		// interned index printed as a negative number, or llc rejecting the module. The raise is the
+		// ordinary emitted one, so an open except TypeError: still reaches it (roadmap Gap R.137, ADR 0266).
+		if n.Op == "-" {
+			if kind, bad := g.negationOperandKind(n.X); bad {
+				if kind != "" {
+					return g.emitBadNegation(b, kind, n.Span()), nil
+				}
+				// The slot can report more than one kind, so the raise is a table the object's tag
+				// walks — one branch per kind the literal says the slot holds, the last as the else.
+				if ix, isIdx := n.X.(*Index); isIdx {
+					if v, ok := g.emitBadNegationOfSlot(b, ix, n.Span()); ok {
+						return v, nil
+					}
+				}
+			}
+		}
 		x, err := g.value(b, n.X)
 		if err != nil {
 			return "", err
@@ -9415,6 +9457,12 @@ func (g *irGen) foldConstInt(e Expr) (int64, bool) {
 		}
 		return 0, false
 	case *UnOp:
+		if n.Op == "-" && negationOperandIsLiterallyNotANumber(n.X) {
+			// The fold may not answer a negation the reference stops on: the 0 it would print is the very
+			// silence this road replaces with a raise, so the shape is left un-folded and the caller walks
+			// the lowering that names the operand's kind (roadmap Gap R.137, ADR 0266).
+			return 0, false
+		}
 		xv, xok := g.foldConstInt(n.X)
 		if !xok {
 			return 0, false
