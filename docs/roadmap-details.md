@@ -1655,6 +1655,30 @@ index) survived behind exactly that. Needed:
   operator — it needs float-parameter inference in the same shape as ADR 0174's
   string-parameter inference.
 
+**Re-measured 2026-10-04**, three shapes, one program (`programs/probe_float_numeric`, which now carries
+all three), each leg pinned line by line by the oracle harness:
+
+| line | CPython | `--interp` | `--aot` |
+|---|---|---|---|
+| `print(-7 // 2)` | `-4` | `-4` | `-4` |
+| `print(-3.5 % 2.0)` | `0.5` | `0.5` | `0.5` |
+| `x = 8` / `x /= 2` / `print(x)` | `4.0` | `4.0` | **`4`** |
+| `def dbl(v): return v * 2` / `print(dbl(0.1))` | `0.2` | `0.2` | **`0`** |
+| `def bump(v): return v + 1` / `print(bump(1.5))` | `2.5` | `2.5` | **`2`** |
+
+The two flooring rows are the pair ADR 0216 paid, and they are the control: the same emitter, the same
+operator road, the right answer. What the three diverging rows have in common is that **the value is a
+double and the storage is not** — `/=` decides a variable's word at its first write and the first write
+was `x = 8`, and a parameter's word is decided by its declaration, which says nothing. Every one of them
+leaves at **exit 0** with a number-shaped answer, which is the outcome ADR 0166 ranks worst.
+
+The third row is new to the record and is why the probe grew it: `dbl(0.1)` → `0` could be explained away
+as a multiplication whose operand never got its double, but `bump(1.5)` → `2` is an *addition*, so the
+explanation cannot be about the operator; it is about the parameter. That is the difference between this
+row and Gap R.130 (a `for` binding over a literal container of doubles), and the reason the row stays open
+until both words — the variable's and the parameter's — come from what flows into them rather than from
+the first line that happened to mention them.
+
 <a id="gap-p-2"></a>
 ### Gap P.2 — numeric builtins that Python types differently (CLOSED by ADR 0264, 2026-10-03)
 - ~~`floor`/`ceil` return a float where Python's `math.floor` returns an `int`~~ — closed by ADR 0264,

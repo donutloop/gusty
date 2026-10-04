@@ -3252,7 +3252,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1786022191/112/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix848911539/112/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3266,7 +3266,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1786022191/112/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix848911539/112/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3779,35 +3779,35 @@
       "case": {
         "id": "programs/probe_float_numeric",
         "name": "probe_float_numeric.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — what is still untrue about float *state* in the compiled\n# backend (roadmap L11.6): `x /= 2` leaves x an int, and a float through an untyped parameter\n# arrives as 0. The two flooring lines used to be part of the divergence — `-7 // 2` compiled to\n# -3 and `-3.5 % 2.0` answered -1.5, C's truncated remainder — and are now right on both backends\n# (roadmap Gaps R.28, R.30, ADR 0216), so they stay here as the pair that keeps the identity\n# a == (a // b) * b + (a % b) honest rather than as a report of a current defect.\nprint(-7 // 2)\nprint(-3.5 % 2.0)\nx = 8\nx /= 2\nprint(x)\ndef dbl(v):\n    return v * 2\nprint(dbl(0.1))\n",
+        "source": "# Oracle probe (L11.9, ADR 0186) — what is still untrue about float *state* in the compiled\n# backend (roadmap L11.6): `x /= 2` leaves x an int, and a float handed to an untyped parameter keeps\n# the int word — `dbl(0.1)` answers 0 and `bump(1.5)` answers 2 where CPython answers 0.2 and 2.5,\n# every one of them at exit 0 (roadmap Gap P.1, re-measured 2026-10-04 with the third shape written\n# in). The two flooring lines used to be part of the divergence — `-7 // 2` compiled to -3 and\n# `-3.5 % 2.0` answered -1.5, C's truncated remainder — and are now right on both backends\n# (roadmap Gaps R.28, R.30, ADR 0216), so they stay here as the pair that keeps the identity\n# a == (a // b) * b + (a % b) honest rather than as a report of a current defect.\nprint(-7 // 2)\nprint(-3.5 % 2.0)\nx = 8\nx /= 2\nprint(x)\ndef dbl(v):\n    return v * 2\nprint(dbl(0.1))\ndef bump(v):\n    return v + 1\nprint(bump(1.5))\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216); what still diverges is float *state*: x /= 2 leaves an int in the compiled backend (prints 4 where CPython prints 4.0) and a float through an untyped parameter arrives as 0",
-        "ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2)",
+        "reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216); what still diverges is float *state*: x /= 2 leaves an int in the compiled backend (prints 4 where CPython prints 4.0), and an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, all at exit 0",
+        "ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-04 with the third shape written in",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "-4\n0.5\n4.0\n0.2\n"
+            "stdout": "-4\n0.5\n4.0\n0.2\n2.5\n"
           },
           {
             "backend": "aot",
-            "stdout": "-4\n0.5\n4\n0\n"
+            "stdout": "-4\n0.5\n4\n0\n2\n"
           }
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "-4\n0.5\n4.0\n0.2\n",
+      "interp_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
       "aot_ok": true,
-      "aot_stdout": "-4\n0.5\n4\n0\n",
+      "aot_stdout": "-4\n0.5\n4\n0\n2\n",
       "parity": false,
       "python_ok": true,
-      "python_stdout": "-4\n0.5\n4.0\n0.2\n",
+      "python_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
       "interp_matches_python": true,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216); what still diverges is float *state*: x /= 2 leaves an int in the compiled backend (prints 4 where CPython prints 4.0) and a float through an untyped parameter arrives as 0",
-      "oracle_ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2)",
+      "oracle_reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216); what still diverges is float *state*: x /= 2 leaves an int in the compiled backend (prints 4 where CPython prints 4.0), and an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, all at exit 0",
+      "oracle_ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-04 with the third shape written in",
       "oracle_rules": [
         "set-order"
       ],
