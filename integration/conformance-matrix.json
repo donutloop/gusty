@@ -390,6 +390,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_pair_bound_name_as_a_number",
+        "name": "probe_pair_bound_name_as_a_number.gy",
+        "source": "# probe_pair_bound_name_as_a_number.gy — a name the pair road bound is read as a number.\n#\n# The arithmetic a slot's answer takes travels to the binding as a (payload, tag) pair (ADR 0267), and\n# this program asks every position that wants one static number to read it: an operand of a sum, a\n# negation, an ordering, a condition's head, a `while` head, an `and`, `str`, an f-string field, and the\n# target of an augmented assignment. Each of them refused one commit ago with the missing pair named\n# (roadmap Gap R.143); every line now answers the same on CPython, `--interp` and `--aot`.\n#\n# A float is bound beside an int on purpose: the tag is what decides `17.5` from `17`, and a position\n# that read the payload alone would print the box handle underneath it. What this program does *not*\n# ask is a position that takes a whole value — a builtin's argument, a container's element, an `and`'s\n# operand — which is the next door over (Gap R.146, programs/probe_pair_bound_name_takes_a_value).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n + 1)\nprint(n - 1)\nprint(-n)\nprint(n \u003e 13)\nprint(13 \u003e n)\nprint(1 if n \u003e 1 else 0)\nif n:\n    print(\"truthy\")\ni = 0\nwhile n \u003e 0 and i \u003c 2:\n    print(n)\n    i = i + 1\n    n = n - 1\nprint(str(n))\nprint(f\"[{n}]\")\nq = xs[0][1] * 3\nq += 1\nprint(q)\nr = xs[0][0] * 2.5\nprint(str(r))\nprint(r \u003e 17)\nprint(f\"{r}\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "15\n13\n-14\nTrue\nFalse\n1\ntruthy\n14\n13\n12\n[12]\n25\n17.5\nTrue\n17.5\n",
+      "aot_ok": true,
+      "aot_stdout": "15\n13\n-14\nTrue\nFalse\n1\ntruthy\n14\n13\n12\n[12]\n25\n17.5\nTrue\n17.5\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "15\n13\n-14\nTrue\nFalse\n1\ntruthy\n14\n13\n12\n[12]\n25\n17.5\nTrue\n17.5\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/negation_names_the_kind",
         "name": "negation_names_the_kind.gy",
         "source": "# negation_names_the_kind.gy — the unary minus asks what kind its operand is before it asks the\n# number road for an instruction. The lines the reference stops on are raises this program catches, so\n# all three engines print the same words, and the `except` arm is the proof that each one is a language\n# event the program can reach rather than a stop it has to obey (roadmap Gap R.137, ADR 0266).\nxs = [7, 8]\nys = [\"a\"]\nbs = []\nbs.append(\"hi\")\nds = {\"k\": 4}\nwords = \"hi\"\n\n\nclass Token:\n    text = \"t\"\n\n\nprint(-7)\nprint(-1.5)\nprint(-True)\nprint(-xs[0])\nprint(-ds[\"k\"])\ntry:\n    print(-words)\nexcept TypeError:\n    print(\"a text has no sign\")\ntry:\n    print(-None)\nexcept TypeError:\n    print(\"none has no sign\")\ntry:\n    print(-[1, 2])\nexcept TypeError:\n    print(\"a list has no sign\")\ntry:\n    print(-{\"a\": 1})\nexcept TypeError:\n    print(\"a dict has no sign\")\ntry:\n    print(-{1, 2})\nexcept TypeError:\n    print(\"a set has no sign\")\ntry:\n    print(-ys[0])\nexcept TypeError:\n    print(\"a text slot has no sign\")\ntry:\n    print(-bs[0])\nexcept TypeError:\n    print(\"an appended text has no sign\")\ntry:\n    print(-Token())\nexcept TypeError:\n    print(\"an instance has no sign\")\n",
@@ -2872,17 +2895,17 @@
     },
     {
       "case": {
-        "id": "programs/probe_pair_bound_name_as_a_number",
-        "name": "probe_pair_bound_name_as_a_number.gy",
-        "source": "# probe_pair_bound_name_as_a_number.gy — the name the pair road binds is read back as one static number.\n# CPython and the interpreted leg print 15; the compiled leg spends exit 1 on the line, because the\n# binding carries the (payload, tag) pair and the plain-number road still asks for a payload alone\n# (roadmap Gap R.143, measured landing ADR 0267).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n + 1)\n",
+        "id": "programs/probe_pair_bound_name_takes_a_value",
+        "name": "probe_pair_bound_name_takes_a_value.gy",
+        "source": "# probe_pair_bound_name_takes_a_value.gy — where the pair still has nowhere to go.\n#\n# A name the arithmetic door bound carries its kind in the tag beside its payload (ADR 0267), and the\n# positions that ask for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number).\n# What is left is the positions that take a whole *value*: a builtin's argument, a container's element,\n# the operand of `and`. Each has one word for its operand, and the second word — the tag — has no place\n# to be stored, so the compiled leg declines rather than print the payload alone. CPython and the\n# interpreted leg answer all four lines (roadmap Gap R.146, the same missing word Gap R.139 names on the\n# calling side).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\nprint(min(n, 3))\nprint([n])\nprint(n and 3)\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "CPython prints 15 and the interpreted leg prints 15; the compiled leg spends exit 1 on the line, because the pair road binds the name with its tag and the plain-number road still asks for a payload alone — print(n) asks the tag, n + 1 does not",
-        "ref": "roadmap Gap R.143 (measured landing ADR 0267); docs/adr/0267, Consequences",
+        "reason": "CPython prints 14, 3, [14], 3 and the interpreted leg prints 14, 3, [14], 1 — its `and` answers the verdict rather than the operand the reference hands back (Gap R.147) — while the compiled leg spends exit 1 on the first line, because an argument, a list element and an `and`'s operand each keep one word for the value and have nowhere to put the tag the binding carried",
+        "ref": "roadmap Gap R.146 (measured landing ADR 0268) and Gap R.147 for the interpreted leg's `and`; docs/adr/0268, Consequences",
         "pins": [
           {
             "backend": "interpreter",
-            "stdout": "15\n"
+            "stdout": "14\n3\n[14]\n1\n"
           },
           {
             "backend": "aot",
@@ -2892,24 +2915,25 @@
         ]
       },
       "interp_ok": true,
-      "interp_stdout": "15\n",
+      "interp_stdout": "14\n3\n[14]\n1\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and using it as one static number needs the same pair to reach this position (roadmap L11.1, Gap R.143)",
+      "aot_error": "n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)",
       "parity": false,
       "python_ok": true,
-      "python_stdout": "15\n",
-      "interp_matches_python": true,
+      "python_stdout": "14\n3\n[14]\n3\n",
+      "interp_matches_python": false,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 15 and the interpreted leg prints 15; the compiled leg spends exit 1 on the line, because the pair road binds the name with its tag and the plain-number road still asks for a payload alone — print(n) asks the tag, n + 1 does not",
-      "oracle_ref": "roadmap Gap R.143 (measured landing ADR 0267); docs/adr/0267, Consequences",
+      "oracle_reason": "CPython prints 14, 3, [14], 3 and the interpreted leg prints 14, 3, [14], 1 — its `and` answers the verdict rather than the operand the reference hands back (Gap R.147) — while the compiled leg spends exit 1 on the first line, because an argument, a list element and an `and`'s operand each keep one word for the value and have nowhere to put the tag the binding carried",
+      "oracle_ref": "roadmap Gap R.146 (measured landing ADR 0268) and Gap R.147 for the interpreted leg's `and`; docs/adr/0268, Consequences",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and using it as one static number needs the same pair to reach this position (roadmap L11.1, Gap R.143)"
+        "interpreter stdout differs from CPython",
+        "compiled leg failed: n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)"
       ]
     },
     {
@@ -3317,7 +3341,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1937066638/113/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2446888440/114/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3331,7 +3355,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1937066638/113/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2446888440/114/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4173,11 +4197,11 @@
       ]
     }
   ],
-  "rows": 139,
+  "rows": 140,
   "skipped": 37,
-  "pass": 102,
+  "pass": 103,
   "fail": 0,
-  "oracle_match": 87,
+  "oracle_match": 88,
   "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

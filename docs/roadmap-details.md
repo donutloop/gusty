@@ -6184,7 +6184,7 @@ with a tag — `for v in [1, 2]` then `v = [1, 2]` then `print(v)`. That is the 
 belongs in one function rather than at each site: the sites are already nine, and the tenth will be written
 by the next cycle.
 
-### Gap R.143 — a pair-bound name is refused by every position that asks for one static number (OPEN, owner L11.1, measured landing ADR 0267)
+### Gap R.143 — a pair-bound name was refused by every position that asks for one static number (closed by ADR 0268, owner L11.1, measured landing ADR 0267)
 
 ```
 xs = []
@@ -6215,8 +6215,17 @@ the number of doors: binary operator, unary operator, call argument, condition, 
 the same helper. ADR 0249's `rt_lift_num` is the helper; the fix is to ask it with the name's stored payload
 and tag instead of rebuilding the operand from the container.
 
-`TestAPairBoundNameRefusesThePositionsThePairDoesNotReach` pins the family with the reference's answer beside each
-refusal, and `programs/probe_pair_bound_name_as_a_number` is the ledger's copy of the same shape.
+**Closed 2026-10-05 by ADR 0268**, which found the answer already in the module twice over: a name whose
+origin is `taggedOriginArith` is provably int-or-float, `@rt_lift_num` (ADR 0249's widening, reused by
+ADR 0253's division door) turns such a pair into the `double` that holds both families, and
+`@rt_str_of_value` (ADR 0258's renderer) renders a pair outright. Six doors asked: the sum's operand, the
+negation, the ordering, the condition head, the format field, and the augmented assignment. The gate is the
+origin record, not a table: ADR 0241's slot-read bindings and ADR 0185's loop variables keep their refusals,
+because their tags can say text or `None` and opening the `+`/`*` gate for them would raise where CPython
+answers `"a" + "b"` (Gap R.82). `programs/probe_pair_bound_name_as_a_number` walked out of the ledger with
+fifteen lines all three engines agree on, and the family's rows became parity rows.
+
+Three things came out of the same measurement and are rows, not fixes:
 
 ### Gap R.144 — a tuple-unpacking target does not take the pair road (OPEN, owner L11.1, measured landing ADR 0267)
 
@@ -6253,5 +6262,58 @@ It belongs to Gap Q.1 ("One place decides what a name's status is") rather than 
 because the fix is a table, not a call: the set of statuses each road retires has to be written down once
 and asserted, or every new status added to the symbol table will re-measure this. Until then
 `TestAContainerRebindingRetiresTheTextBindingToo` pins the wrong answer rather than let it pass as parity,
-and `TestAPairBoundNameRefusesThePositionsThePairDoesNotReachAtTheCLI` keeps the one row of the family that was already
-wrong-answer territory out of the parity class.
+and `TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI` (ADR 0268) keeps the positions that
+store a value out of the parity class until their door opens.
+
+### Gap R.146 — a pair-bound name has nowhere to go where the position keeps one word (OPEN, owner L11.1, measured landing ADR 0268)
+
+```
+print(abs(n))       # CPython 14 · --interp 14 · --aot exit 1
+print(min(n, 3))    # 3 / 3 / exit 1
+print([n])          # [14] / [14] / exit 1
+print(n and 3)      # 3 / 1 / exit 1   (see Gap R.147 for the interpreted leg)
+```
+
+The number positions could be served by a lift because they consume the number and throw it away. These four
+*store* the value: an argument slot, an element slot, the result register of a boolean expression. One `i32`
+each, and the tag has nowhere to live beside it — which is not a detail to paper over but the whole content
+of ADR 0187's rule: a payload read without its tag is a number wearing another object's bits. So they refuse,
+in a sentence that names the one-word operand, and `programs/probe_pair_bound_name_takes_a_value` is their
+ledger row. It is the same missing word Gap R.139 names one position over: an argument a *program* declares
+needs a parameter that takes the pair; an argument a *builtin* declares, and an element, need the same thing
+in the runtime's own signature.
+
+### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (OPEN, owner both engines, measured landing ADR 0268)
+
+```
+print(2 and 3)        # CPython 3   · both engines 1
+print(0 or 5)         # CPython 5   · both engines 1
+print("" or "d")      # CPython d   · both engines 1
+print([1] and [2])    # CPython [2] · both engines 1
+```
+
+Found by writing ADR 0268's probe, not by a failing test — which is worth saying out loud, because
+`and`/`or` were marked done long ago (Gap K.1) and every truthiness table since has asked them *whether* the
+test passed rather than *what the expression is*. Exit 0, digits wrong, on an operator every Python program
+uses; the compiled leg and the interpreted leg agree with each other and disagree with the reference, which
+is the configuration that parity alone cannot catch. Recorded here rather than fixed beside the pair road:
+nothing about it involves tags, and the fix is to lower `a and b` as *select the operand by the test* while
+keeping each operand's own representation — a truthiness-and-representation job with its own table.
+
+### Gap R.148 — a pair-bound name cannot enter the float domain (OPEN, owner aot, measured landing ADR 0268)
+
+```
+d = 2.5
+print(n / 4)          # CPython 3.5 · --interp 3.5 · --aot exit 1 (the float road declines)
+print(n > d)          # CPython True · --interp True · --aot exit 1
+```
+
+`/` is a float whatever arrives (ADR 0253), and a comparison against a variable the compiler compiled as a
+double lives in the float road — neither of which knows that a name can hold a pair. The tempting fix is one
+line: make `isFloat` answer true for a pair-bound name, and eight more shapes start working. It was built and
+measured, and it is wrong twice: `print(n)` picks the float formatter and prints `14.0`, and an assignment
+routes through the double road into the i32 slot the tagged binding allocated — `store double` into `i32*`,
+which is the module `llc` rejects and the exit class this line of work has to stay out of (ADR 0166). The row
+therefore records the hazard next to the refusal, and the two float rows in
+`TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI` are pinned to exit 1 with exit 2 failing the
+row, so the day someone routes them the tests name the class of failure instead of an `llc` dump.

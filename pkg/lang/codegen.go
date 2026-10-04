@@ -7515,6 +7515,25 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, g.floatValue(b, e))
 		return g.markI1(t), nil
 	}
+	// A name the arithmetic door bound is a number whose kind the objects decided at the moment the
+	// sum ran. `if n:` does not care which of the two families it is — zero is false, anything else is
+	// true — but the word the answer lives in does, so the pair is lifted to the one word that holds
+	// both and tested there (roadmap L11.1, Gap R.143).
+	if d := g.numericPairLift(b, e); d != "" {
+		t := g.newTmp()
+		fmt.Fprintf(b, "  %s = fcmp one double %s, 0.0\n", t, d)
+		return g.markI1(t), nil
+	}
+	// An ordering whose pair-bound side is a name the arithmetic door bound is the same question with
+	// one side still unlifted; it goes through the lift rather than the tag-dispatch door below
+	// because this tag cannot say anything but int or float (roadmap Gap R.143).
+	if n, ok := e.(*BinOp); ok && cmpI1Op(n.Op) != "" {
+		if i1, okPair, perr := g.pairOrder(b, n); perr != nil {
+			return "", perr
+		} else if okPair {
+			return i1, nil
+		}
+	}
 	// An ordering with a slot on one side is asked of the tag **before** anything reads the operands as
 	// numbers: which arm this pair is — two numbers, two texts, or CPython's TypeError — is a run-time
 	// question, and every path below this one has already committed to one of the answers. It sits above
@@ -8354,6 +8373,15 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if ook {
 				return res, nil
 			}
+		}
+		if i1, okPair, perr := g.pairOrder(b, n); perr != nil {
+			return "", perr
+		} else if okPair {
+			// A comparison is a *value* here (printable, storable), so the predicate is widened to the
+			// interpreter's i32 0/1 the same way the doors beside it do; the i1 stays internal.
+			res := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, i1))
+			return res, nil
 		}
 		l, err := g.value(b, n.L)
 		if err != nil {
@@ -11541,7 +11569,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						continue
 					}
 					if part.Expr != nil {
-						if g.isFloat(part.Expr) {
+						if nm, isName := part.Expr.(*Name); isName && g.numericPairVar(nm.Value) {
+							// An interpolated name the arithmetic door bound contributes the digits the
+							// printer writes for its (payload, tag) pair — the same helper str() calls,
+							// so the field, `str(n)` and `print(n)` agree on `14` versus `14.0`
+							// (roadmap L11.1, Gap R.143).
+							fmtLit += "%s"
+							p, t := g.numericPairRegs(b, nm.Value)
+							sv := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %s, i32 0)\n", sv, p, t))
+							sp := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, sv))
+							operands = append(operands, "i8* "+sp)
+						} else if g.isFloat(part.Expr) {
 							// %s of rt_fmt_double's text, not %.17g: Python's str(0.1) is
 							// "0.1" and str(2.0) is "2.0".
 							fmtLit += "%s"
@@ -14938,20 +14978,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// same door, and the name becomes a tagged binding — the shape `print(n)` already reads —
 			// because a payload without its tag is a number wearing another object's bits (roadmap
 			// Gap R.138, ADR 0265's rule one statement earlier).
-			if g.arithWouldRefuse(n.Value) {
-				if v, t, okPair, perr := g.taggedArithPair(b, n.Value); perr != nil {
-					return perr
-				} else if okPair {
-					g.bindTaggedVar(b, nm.Value, v, t)
-					// Where the tag came from is part of the record: a refusal that blames a loop over
-					// a mixed list for a binding this statement made would say something false (Gap R.38's
-					// rule about what a message may claim).
-					if g.taggedOrigin == nil {
-						g.taggedOrigin = map[string]string{}
-					}
-					g.taggedOrigin[nm.Value] = taggedOriginArith
-					return nil
-				}
+			if handled, aerr := g.bindArithmeticPair(b, nm.Value, n.Value); aerr != nil {
+				return aerr
+			} else if handled {
+				return nil
 			}
 			if lit, ok := n.Value.(*ListLit); ok {
 				g.heapUsed = true
@@ -15355,6 +15385,16 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// the status has to go with the value it replaces, here as in the interpreter
 			// (ADR 0172's rule, ADR 0257).
 			g.forgetVarBool(nm.Value)
+			// `n += 1` where n holds the answer of arithmetic over a slot: the left-hand side is a
+			// (payload, tag) pair, so the sum is asked of the objects and the name is rebound with the
+			// pair the answer arrived in — the same road the plain assignment takes, taken here
+			// because `n += 1` is the assignment a program writes once it has the answer (roadmap
+			// L11.1, Gap R.143).
+			if handled, aerr := g.bindArithmeticPair(b, nm.Value, binop); aerr != nil {
+				return aerr
+			} else if handled {
+				return nil
+			}
 			var v string
 			var err error
 			if g.isFloat(n.Target) || g.isFloat(n.Value) {

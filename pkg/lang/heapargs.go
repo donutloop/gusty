@@ -1590,7 +1590,7 @@ const (
 // does not; what must never be invented is where the tag came from.
 func (g *irGen) taggedVarErr(name string) error {
 	if g.taggedOrigin[name] == taggedOriginArith {
-		return fmt.Errorf("%s holds the answer of %s, which travels as a (payload, tag) pair: print(%s) asks the tag, and using it as one static number needs the same pair to reach this position (roadmap L11.1, Gap R.143)", name, taggedOriginArith, name)
+		return fmt.Errorf("%s holds the answer of %s, which travels as a (payload, tag) pair: print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)", name, taggedOriginArith, name)
 	}
 	return mixedTaggedVarErr(name)
 }
@@ -4882,8 +4882,179 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 		return n.Op == "-" && g.arithWouldRefuse(n.X)
 	case *Index:
 		return g.indexKindIsRuntimeObject(n)
+	case *Name:
+		// A name the arithmetic door bound carries its kind in the object, and the ordinary numeric
+		// road refuses it for exactly that reason — so the door is the road for it too.
+		return g.numericPairVar(n.Value)
 	}
 	return false
+}
+
+// numericPairVar reports that a name's (payload, tag) pair came from the arithmetic door, whose target
+// stores the int tag or the float tag and nothing else. That is a proof, not a guess: whatever the
+// program does next, the payload means a number and the tag says which — so the positions that ask for
+// one static number can be given the same door the expression itself was answered by, instead of the
+// refusal that blamed the missing pair (roadmap L11.1, Gap R.143).
+//
+// A tagged name from another door is not this: a slot read bound by ADR 0241 and a loop variable bound
+// by ADR 0185 can hold a text or None, and opening the `+`/`*` gate for them would raise where the
+// reference answers `"a" + "b"` (Gap R.82).
+func (g *irGen) numericPairVar(name string) bool {
+	if !g.taggedVars[name] || g.taggedOrigin == nil {
+		return false
+	}
+	return g.taggedOrigin[name] == taggedOriginArith
+}
+
+// numericPairRegs loads the two words a pair-bound name lives in.
+func (g *irGen) numericPairRegs(b *strings.Builder, name string) (string, string) {
+	p, t := g.newTmp(), g.newTmp()
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s\n", p, "_"+name)
+	fmt.Fprintf(b, "  %s = load i32, i32* %%%s_tag\n", t, "_"+name)
+	return p, t
+}
+
+// numericPairLift answers the question every plain-number position asks about a name the arithmetic
+// door bound: *give me the number*. The name holds a (payload, tag) pair, because the objects decided
+// its kind at the moment the arithmetic ran, and `@rt_lift_num` is the one place that turns such a pair
+// into the word that holds both families — unboxing a float payload, widening an int or a bool one.
+//
+// It returns "" when the expression is not such a name, which leaves the caller on the road it has
+// always taken, refusal included: this is an extra answer, not a substitute for one (roadmap L11.1,
+// Gap R.143).
+func (g *irGen) numericPairLift(b *strings.Builder, e Expr) string {
+	nm, ok := e.(*Name)
+	if !ok || !g.numericPairVar(nm.Value) {
+		return ""
+	}
+	p, t := g.numericPairRegs(b, nm.Value)
+	return g.liftPair(b, p, t)
+}
+
+// numericExprPair is the same answer for the slightly wider shape a position meets in the wild: the
+// name itself, or arithmetic over it. `print(n * 2 > 4)` asks an ordering about a product, and the
+// product is what the pair door already knows how to build.
+func (g *irGen) numericExprPair(b *strings.Builder, e Expr) (string, string, bool, error) {
+	if nm, ok := e.(*Name); ok && g.numericPairVar(nm.Value) {
+		p, t := g.numericPairRegs(b, nm.Value)
+		return p, t, true, nil
+	}
+	if g.arithWouldRefuse(e) {
+		return g.taggedArithPair(b, e)
+	}
+	return "", "", false, nil
+}
+
+// staticNumberDouble lowers the *other* side of an ordering against a pair-bound name: a number the
+// compiler can read is widened into the word the pair lifts into, and anything it cannot read (a text,
+// a container, a call whose kind it cannot settle) declines the door and keeps the road — and the
+// refusal — it has always had.
+func (g *irGen) staticNumberDouble(b *strings.Builder, e Expr) (string, bool) {
+	switch n := e.(type) {
+	case *IntLit:
+		r := g.newTmp()
+		fmt.Fprintf(b, "  %s = sitofp i32 %d to double\n", r, n.Value)
+		return r, true
+	case *BoolLit:
+		v := "0"
+		if n.Value {
+			v = "1"
+		}
+		r := g.newTmp()
+		fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", r, v)
+		return r, true
+	case *FloatLit:
+		return floatConst(n.Value), true
+	}
+	if g.isFloat(e) {
+		d := g.floatValue(b, e)
+		return d, d != ""
+	}
+	if nm, ok := e.(*Name); ok && !g.taggedVars[nm.Value] && !isStringExpr(e) && !g.isNoneExpr(e) && !g.isContainerExpr(e) {
+		v, err := g.value(b, e)
+		if err != nil || v == "" {
+			return "", false
+		}
+		r := g.newTmp()
+		fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", r, v)
+		return r, true
+	}
+	return "", false
+}
+
+// pairOrder is the ordering a pair-bound name takes part in: `while n > 0:`, `print(n >= 2)`,
+// `1 if n > 1 else 0`. The tag decides which family the name's side is, and both sides are lifted to
+// the word that holds both — an ordering of two numbers, never of two representations. The tag cannot
+// say anything else for this shape (the only door that wrote it raises before storing a non-numeric
+// tag), so there is no cross-kind sentence to write here and nothing to refuse a text: a text on the
+// other side is not an ordering the reference answers with a number either, and it stays with the door
+// that raises CPython's own words (roadmap L11.1, Gap R.143).
+func (g *irGen) pairOrder(b *strings.Builder, n *BinOp) (string, bool, error) {
+	op, ok := map[string]string{"<": "fcmp olt", "<=": "fcmp ole", ">": "fcmp ogt", ">=": "fcmp oge"}[n.Op]
+	if !ok {
+		return "", false, nil
+	}
+	lp, lt, lPair, err := g.numericExprPair(b, n.L)
+	if err != nil {
+		return "", false, err
+	}
+	rp, rt, rPair, err := g.numericExprPair(b, n.R)
+	if err != nil {
+		return "", false, err
+	}
+	if lPair == rPair { // both or neither: the ordinary road and the tagged-order door own it
+		return "", false, nil
+	}
+	var ld, rd string
+	if lPair {
+		ld = g.liftPair(b, lp, lt)
+		var okR bool
+		rd, okR = g.staticNumberDouble(b, n.R)
+		if !okR {
+			return "", false, nil
+		}
+	} else {
+		rd = g.liftPair(b, rp, rt)
+		var okL bool
+		ld, okL = g.staticNumberDouble(b, n.L)
+		if !okL {
+			return "", false, nil
+		}
+	}
+	cmp := g.newTmp()
+	fmt.Fprintf(b, "  %s = %s double %s, %s\n", cmp, op, ld, rd)
+	return g.markI1(cmp), true, nil
+}
+
+// liftPair is the one instruction every consumer of a pair needs and no position should reinvent.
+func (g *irGen) liftPair(b *strings.Builder, payload, tag string) string {
+	g.heapUsed = true
+	g.arithUsed = true
+	d := g.newTmp()
+	fmt.Fprintf(b, "  %s = call double @rt_lift_num(i32 %s, i32 %s)\n", d, payload, tag)
+	return d
+}
+
+// bindArithmeticPair is the pair road of an assignment, asked the same way from the plain statement and
+// from an augmented one: when the ordinary numeric road would refuse the expression, ask the objects and
+// bind the name with the pair the answer arrived in (roadmap L11.1, ADR 0267).
+func (g *irGen) bindArithmeticPair(b *strings.Builder, name string, e Expr) (bool, error) {
+	if !g.arithWouldRefuse(e) {
+		return false, nil
+	}
+	v, t, okPair, err := g.taggedArithPair(b, e)
+	if err != nil {
+		return false, err
+	}
+	if !okPair {
+		return false, nil
+	}
+	g.bindTaggedVar(b, name, v, t)
+	if g.taggedOrigin == nil {
+		g.taggedOrigin = map[string]string{}
+	}
+	g.taggedOrigin[name] = taggedOriginArith
+	return true, nil
 }
 
 // indexKindIsRuntimeObject walks a chained subscript back to the name it reads through and asks whether
@@ -5013,6 +5184,11 @@ func slotLiteralMayBeNumber(e Expr) bool {
 func (g *irGen) slotArithmeticIsProven(e Expr) bool {
 	if !g.operandMayNeedPair(e) {
 		// Not a slot read at all: the road this operand always took is the one it takes now.
+		return true
+	}
+	if nm, ok := e.(*Name); ok && g.numericPairVar(nm.Value) {
+		// The operand is a name the arithmetic door bound, so its kind was decided by the objects that
+		// produced it and there is no container left to prove anything about.
 		return true
 	}
 	nm, depth := chainDepth(e)

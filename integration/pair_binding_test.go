@@ -221,29 +221,72 @@ func TestTheWholeNumberBeyondTheCompiledIntWordIsFiledNotFixed(t *testing.T) {
 	}
 }
 
-// TestAPairBoundNameRefusesThePositionsThePairDoesNotReachAtTheCLI is the half the row does not pay yet.
-// Every row here is a program the reference answers and the interpreted leg answers too; the compiled
-// leg declines it with the missing half named (exit 1), which is the honest class — and exit 2, the
-// compiler's own code, is forbidden (ADR 0166). These are roadmap Gaps R.143 and R.144, and each row
-// fails the day the position opens.
-func TestAPairBoundNameRefusesThePositionsThePairDoesNotReachAtTheCLI(t *testing.T) {
+// TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI is roadmap Gap R.143 paid at the CLI: the
+// positions that ask for one static number — an operand, a condition's head, a format field, the target
+// of an augmented assignment — now ask the pair, on both engines, against the reference.
+func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"used as a number", built + "n = xs[0][0] * 2\nprint(n + 1)\n", "holds the answer of arithmetic over a slot"},
-		{"negated", built + "n = xs[0][0] * 2\nprint(-n)\n", "holds the answer of arithmetic over a slot"},
-		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "holds the answer of arithmetic over a slot"},
-		{"asked for its truth", built + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n", "holds the answer of arithmetic over a slot"},
-		{"as a while head", built + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n", "holds the answer of arithmetic over a slot"},
-		{"interpolated", built + "n = xs[0][0] * 2\nprint(f\"{n}\")\n", "holds the answer of arithmetic over a slot"},
-		{"str() of it", built + "n = xs[0][0] * 2\nprint(str(n))\n", "holds the answer of arithmetic over a slot"},
-		{"augmented assignment onto it", built + "n = xs[0][0] * 2\nn += 1\nprint(n)\n", "holds the answer of arithmetic over a slot"},
-		{"unpacked from a tuple", built + "a, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n", "cannot reach into"},
-		{"a sum of two names, each bound from a slot", built + "a = xs[0][0] + 1\nb = xs[0][1] + 1\nprint(a + b)\n", "holds the answer of arithmetic over a slot"},
+		{"an operand of a sum", built + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
+		{"the sum of two pair-bound names", built + "a = xs[0][0] + 1\nb = xs[0][1] + 1\nprint(a + b)\n", "17\n"},
+		{"negated", built + "n = xs[0][0] * 2\nprint(-n)\n", "-14\n"},
+		{"asked for its truth", built + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n", "yes\n"},
+		{"a zero answers false", built + "n = xs[0][0] * 0\nif n:\n    print(\"yes\")\nelse:\n    print(\"no\")\n", "no\n"},
+		{"a while head", built + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n", "14\n"},
+		{"ordered against a number", built + "n = xs[0][0] * 2\nprint(n > 13)\nprint(13 > n)\n", "True\nFalse\n"},
+		{"ordered against an int variable", built + "n = xs[0][0] * 2\nk = 3\nprint(n > k)\n", "True\n"},
+		{"a compound condition", built + "n = xs[0][0] * 2\nif n > 1 and n < 20:\n    print(\"mid\")\n", "mid\n"},
+		{"a condition's head", built + "n = xs[0][0] * 2\nprint(1 if n > 1 else 0)\n", "1\n"},
+		{"interpolated", built + "n = xs[0][0] * 2\nprint(f\"{n}\")\n", "14\n"},
+		{"interpolated with text around it", built + "n = xs[0][0] * 2\nprint(f\"v={n}!\")\n", "v=14!\n"},
+		{"str() of it", built + "n = xs[0][0] * 2\nprint(str(n))\n", "14\n"},
+		{"repr() of it", built + "n = xs[0][0] * 2\nprint(repr(n))\n", "14\n"},
+		{"str() joins another text", built + "n = xs[0][0] * 2\nprint(str(n) + \"!\")\n", "14!\n"},
+		{"the float family keeps its digits", built + "n = xs[0][0] * 2.5\nprint(str(n))\nprint(n > 17)\n", "17.5\nTrue\n"},
+		{"augmented assignment onto it", built + "n = xs[0][0] * 2\nn += 1\nprint(n)\n", "15\n"},
+		{"augmented product onto it", built + "n = xs[0][0] * 2\nn *= 2\nprint(n)\n", "28\n"},
+		{"augmented with a double", built + "n = xs[0][0] * 2\nn += 0.5\nprint(n)\n", "14.5\n"},
+		{"read again after the rebinding", built + "n = xs[0][0] * 2\nn += 1\nprint(n > 14)\n", "True\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			gy := writeSrc(t, dir, "pair_refusal.gy", tc.src)
-			// The reference and the interpreted leg answer the program; only the compiled leg reads
-			// the pair door, so that is the leg whose refusal is pinned.
+			gy := writeSrc(t, dir, "pair_number.gy", tc.src)
+			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
+				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, "--file", gy)
+				if code == 2 {
+					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
+				}
+				if code != 0 || out != tc.want {
+					t.Errorf("%s: exit %d, stdout %q, want the reference's %q\nsrc: %s", engine, code, out, tc.want, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI files what this cycle did not open, with
+// each engine's answer written into the row. Two shapes are owed and are named here rather than answered
+// wrongly: a position that takes a whole *value* — a builtin's argument, a container's element, an `and`'s
+// operand — has nowhere to put the tag (that is the same missing word Gap R.139 names on the calling
+// side); and a pair-bound name that enters the float domain beside a variable, or against a text, or
+// through `/`, is refused by the road it takes rather than answered by the pair. A tuple unpacking is the
+// third family and is Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road
+// stores a double into the i32 slot a tagged name owns, which is the module `llc` rejects, so these
+// shapes must stay refusals until the pair reaches them.
+func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "holds the answer of arithmetic over a slot"},
+		{"handed to min", built + "n = xs[0][0] * 2\nprint(min(n, 3))\n", "holds the answer of arithmetic over a slot"},
+		{"an element of a list", built + "n = xs[0][0] * 2\nprint([n])\n", "holds the answer of arithmetic over a slot"},
+		{"divided by a literal", built + "n = xs[0][0] * 2\nprint(n / 4)\n", "cannot be compiled"},
+		{"ordered against a float variable", built + "n = xs[0][0] * 2\nd = 2.5\nprint(n > d)\n", "cannot be compiled"},
+		{"unpacked from a tuple", built + "a, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n", "cannot reach into"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			gy := writeSrc(t, dir, "pair_value_position.gy", tc.src)
 			if _, ok := cpythonPlainOut(t, dir, tc.src); !ok {
 				t.Fatalf("the reference was expected to answer this program\nsrc: %s", tc.src)
 			}

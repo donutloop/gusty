@@ -176,27 +176,93 @@ func TestABoundAnswerSurvivesACollection(t *testing.T) {
 	}
 }
 
-// TestAPairBoundNameRefusesThePositionsThePairDoesNotReach keeps the road honest: the binding carries
-// the pair, and the contexts that ask for one static number still decline rather than read the payload
-// alone — a number wearing another object's bits is the answer this language refuses everywhere.
-func TestAPairBoundNameRefusesThePositionsThePairDoesNotReach(t *testing.T) {
-	for _, tc := range []struct{ name, src string }{
-		{"used as a number", builtList + "n = xs[0][0] * 2\nprint(n + 1)\n"},
-		{"negated", builtList + "n = xs[0][0] * 2\nprint(-n)\n"},
-		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n"},
-		{"asked for its truth", builtList + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n"},
-		{"as a while head", builtList + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n"},
-		{"interpolated", builtList + "n = xs[0][0] * 2\nprint(f\"{n}\")\n"},
-		{"str() of it", builtList + "n = xs[0][0] * 2\nprint(str(n))\n"},
-		{"augmented assignment onto it", builtList + "n = xs[0][0] * 2\nn += 1\nprint(n)\n"},
+// TestAPairBoundNameIsReadWhereverANumberIsAsked is roadmap Gap R.143 paid: the positions that ask for
+// one static number now ask the pair. A name the arithmetic door bound is provably int-or-float — the
+// only road that wrote it either raised or stored one of those two tags — so a position can lift it into
+// the word that holds both families (@rt_lift_num) or hand the pair to the printer (@rt_str_of_value),
+// which is the same helper print and str already agree on. Reading the payload alone would still be a
+// number wearing another object's bits, which is what the refusal below is for.
+func TestAPairBoundNameIsReadWhereverANumberIsAsked(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"an operand of a sum", builtList + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
+		{"the sum of two of them", builtList + "n = xs[0][0] * 2\nm = n + n\nprint(m)\n", "28\n"},
+		{"negated", builtList + "n = xs[0][0] * 2\nprint(-n)\n", "-14\n"},
+		{"asked for its truth", builtList + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n", "yes\n"},
+		{"a zero answers false", builtList + "n = xs[0][0] * 0\nif n:\n    print(\"yes\")\nelse:\n    print(\"no\")\n", "no\n"},
+		{"a while head", builtList + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n", "14\n"},
+		{"ordered against a number", builtList + "n = xs[0][0] * 2\nprint(n > 13)\nprint(13 > n)\n", "True\nFalse\n"},
+		{"a condition's head", builtList + "n = xs[0][0] * 2\nprint(1 if n > 1 else 0)\n", "1\n"},
+		{"interpolated", builtList + "n = xs[0][0] * 2\nprint(f\"{n}\")\n", "14\n"},
+		{"interpolated with text around it", builtList + "n = xs[0][0] * 2\nprint(f\"v={n}!\")\n", "v=14!\n"},
+		{"str() of it", builtList + "n = xs[0][0] * 2\nprint(str(n))\n", "14\n"},
+		{"repr() of it", builtList + "n = xs[0][0] * 2\nprint(repr(n))\n", "14\n"},
+		{"str() of the float family", builtList + "n = xs[0][0] * 2.5\nprint(str(n))\n", "17.5\n"},
+		{"augmented assignment onto it", builtList + "n = xs[0][0] * 2\nn += 1\nprint(n)\n", "15\n"},
+		{"augmented product onto it", builtList + "n = xs[0][0] * 2\nn *= 2\nprint(n)\n", "28\n"},
+		{"the float family keeps its digits", builtList + "n = xs[0][0] * 2.5\nprint(n)\nprint(n > 17)\n", "17.5\nTrue\n"},
 	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if out := captureStdout(t, tc.src); out != tc.want {
+				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
+			}
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("compiled leg refused a program the reference answers: %v\nsrc: %s", err, tc.src)
+			}
+			if got := runIR(t, res.IR); got != tc.want {
+				t.Errorf("compiled: stdout %q, want %q\nsrc: %s", got, tc.want, tc.src)
+			}
+		})
+	}
+}
+
+// TestThePairRoadCarriesTheLiftAndTheRenderer asks the module rather than the answer: those positions are
+// answered by two runtime doors and nothing else, and a program that binds no pair must not pay for
+// either (the same argument numeric_slot_arith_test.go makes about @rt_num_arith).
+func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
+	asked := builtList + "n = xs[0][0] * 2\nif n:\n    print(1)\nprint(f\"{n}\")\nprint(n > 1)\n"
+	res, err := Compile(asked)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	for _, want := range []string{"@rt_lift_num", "@rt_str_of_value", "fcmp one double", "fcmp ogt double"} {
+		if !strings.Contains(res.IR, want) {
+			t.Errorf("the module does not carry %s; the position was answered without the pair's own door",
+				want)
+		}
+	}
+	plain := "v = 1\nprint(v)\n"
+	res2, err := Compile(plain)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	for _, absent := range []string{"@rt_lift_num", "@rt_str_of_value"} {
+		if strings.Contains(res2.IR, absent) {
+			t.Errorf("a program that binds no pair carries %s", absent)
+		}
+	}
+}
+
+// TestThePairRoadStillRefusesThePositionsThatTakeAValue keeps the remaining road honest: a position that
+// takes a whole *value* — a builtin's argument, a container's element, an `and`'s operand — has nowhere
+// to put a tag, and says so in words rather than reading the payload alone (roadmap Gap R.146, the same
+// missing word Gap R.139 names on the calling side).
+func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n"},
+		{"handed to min", builtList + "n = xs[0][0] * 2\nprint(min(n, 3))\n"},
+		{"an element of a list", builtList + "n = xs[0][0] * 2\nprint([n])\n"},
+		{"the operand of and", builtList + "n = xs[0][0] * 2\nprint(n and 3)\n"},
+	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Compile(tc.src)
 			if err == nil {
-				t.Fatalf("%q compiled; the position needs the pair door too (roadmap Gap R.143)", tc.src)
+				t.Fatalf("%q compiled; this position takes a value, not a pair (roadmap Gap R.146)", tc.src)
 			}
 			msg := err.Error()
-			for _, want := range []string{"holds the answer of arithmetic over a slot", "roadmap L11.1, Gap R.143"} {
+			for _, want := range []string{"holds the answer of arithmetic over a slot", "roadmap L11.1"} {
 				if !strings.Contains(msg, want) {
 					t.Errorf("refused without naming the shape: %q does not mention %q", msg, want)
 				}

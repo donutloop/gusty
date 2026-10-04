@@ -61,6 +61,17 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 		quote = 1
 	}
 
+	// A name the arithmetic door bound is a number whose family the objects chose, and it is asked
+	// first — ahead of the container question, whose probe lowers the name as a number and would
+	// refuse before this arm could speak. It is rendered by the printer every other form goes
+	// through: the (payload, tag) pair is what that printer reads, so `str(n)`, `repr(n)` and
+	// `print(n)` cannot disagree about `14` versus `14.0` the way the two number formatters used to
+	// disagree about a container (ADR 0258's rule, one statement later; roadmap L11.1, Gap R.143).
+	if nm, isName := e.(*Name); isName && g.numericPairVar(nm.Value) {
+		p, t := g.numericPairRegs(b, nm.Value)
+		return g.rtStrCall(b, "rt_str_of_value", "i32 "+p, "i32 "+t, "i32 "+strconv.Itoa(quote)), true, nil
+	}
+
 	// A container asks its own object to render itself.
 	h, isContainer, cerr := g.renderPairContainer(b, e)
 	if isContainer {

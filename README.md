@@ -229,7 +229,12 @@ take that road only under a program-wide proof that the slots hold numbers, beca
 absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.139`, `R.143`, `R.144`).
 The answer is a value, so it survives being named before it is read: `n = xs[0][0] * 2` / `print(n)` is `14`
 compiled too, and the rebinding `n = [1, 2]` behind it prints `[1, 2]`, because a binding that is not a pair
-retires the tag the arithmetic left behind (`Gap R.142`, ADR 0267).
+retires the tag the arithmetic left behind (`Gap R.142`, ADR 0267). Every position that asks that name for a
+*number* now asks the pair: `n + 1`, `-n`, `n > 13`, `if n:`, a `while` head, `f"{n}"`, `str(n)`, `n += 1`
+(ADR 0268) — a name the arithmetic door bound is provably a whole number or a float, so the position lifts it
+into the one word that holds both families rather than guessing. What still refuses is a position that keeps
+**one word** for a whole value — a builtin's argument, a list element, an `and`'s operand (`Gap R.146`) — and
+the float road the pair has not entered yet (`n / 4`, `Gap R.148`).
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a

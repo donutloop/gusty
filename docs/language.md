@@ -2067,21 +2067,26 @@ print(n)              # [1, 2] — the rebinding retires the tag the arithmetic 
 
 A binding of that shape stores the pair the printer reads — the value beside the tag the objects decided —
 and a binding that is *not* a pair retires it, so the name is read by the road its newest value deserves
-(`Gap R.142`). What follows the name is the same pair: `print(n)`, `print("n", n)` and a name bound inside an
-`if` or `while` arm answer like the expression itself. The positions that ask for one static number — `n + 1`,
-`-n`, `abs(n)`, `str(n)`, `f"{n}"`, `if n:`, a `while` head, `n += 1` — have not learned to read the tag the
-binding put there (`Gap R.143`), and neither has a tuple unpacking (`Gap R.144`).
+(`Gap R.142`). Every position that asks for a **number** then reads the pair too (`Gap R.143`, ADR 0268):
+`print(n)` and `print("n", n)`, `n + 1` and `-n`, an ordering (`print(n > 13)`, `13 > n`), a condition's head
+(`if n:`, `while n > 0:`, `if n > 1 and n < 20:`), a format field (`f"{n}"`, `str(n)`, `repr(n)`), and the
+target of an augmented assignment (`n += 1`). A name the arithmetic door bound is provably a whole number or a
+float — the door raised on everything else — so those positions lift the pair into the one word that holds both
+families, and a float keeps its digits where an int keeps its `True`/`False`/`14`.
+
+What still refuses, in words: a **value** position — a builtin's argument, a container's element, an `and`'s
+operand — keeps one word for what it stores and has nowhere to put the tag (`Gap R.146`, beside the call
+argument of `Gap R.139`), a pair-bound name cannot enter the float road (`n / 4`, `n > d` with `d = 2.5`,
+`Gap R.148`), and a tuple unpacking has not taken the pair at all (`a, b = xs[0][0] + 1, xs[0][1] + 2`,
+`Gap R.144`).
 
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), a tagged element whose kind only the run time can tell used as a number by a road this
-backend does not open there — a loop variable over a mixed list, the same arithmetic result **read back as
-one static number** after the binding took it (`n = xs[0][0] * 2` answers `print(n)` and refuses `n + 1`,
-`-n`, `abs(n)`, `str(n)`, `f"{n}"`, `if n:`, a `while` head and `n += 1`, Gap R.143 — the binding carries the
-(payload, tag) pair and the numeric road still asks for a payload alone; the shape arrives at the same wall
-from a **tuple unpacking**, which has not taken the pair at all: `a, b = xs[0][0] + 1, xs[0][1] + 2` refuses
-where the plain assignment answers, Gap R.144), or the answer **handed to a function** (`twice(xs[0][0])`,
-Gap R.139), **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
+backend does not open there — a loop variable over a mixed list, the same answer handed to a **function**
+(`twice(xs[0][0])`, Gap R.139) or to a position that stores one word for it (`abs(n)`, `min(n, 3)`, `[n]`,
+`n and 3`, Gap R.146), or a **tuple unpacking**, which has not taken the pair at all:
+`a, b = xs[0][0] + 1, xs[0][1] + 2` refuses where the plain assignment answers (Gap R.144), **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
 CPython raises — one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a
 **membership** test or a **loop** whose haystack is such a slot (`7 in xs[0]`, `for v in xs[0]` after

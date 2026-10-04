@@ -1,0 +1,16 @@
+# probe_pair_bound_name_takes_a_value.gy — where the pair still has nowhere to go.
+#
+# A name the arithmetic door bound carries its kind in the tag beside its payload (ADR 0267), and the
+# positions that ask for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number).
+# What is left is the positions that take a whole *value*: a builtin's argument, a container's element,
+# the operand of `and`. Each has one word for its operand, and the second word — the tag — has no place
+# to be stored, so the compiled leg declines rather than print the payload alone. CPython and the
+# interpreted leg answer all four lines (roadmap Gap R.146, the same missing word Gap R.139 names on the
+# calling side).
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(abs(n))
+print(min(n, 3))
+print([n])
+print(n and 3)

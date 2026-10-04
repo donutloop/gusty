@@ -133,7 +133,9 @@ two-slot IR shape (both stores named, and its mirror row proving an ordinary lit
 dict, comprehension, a second tagged binding replacing the first, an integer rebinding, and the loop-variable
 case ADR 0185 left open), 8 refusal rows, the gate asked one statement later than the print road asks it, and
 the raise leaving through the statement's `rt_raise_buffer`.
-`integration/pair_binding_test.go` — 8 tests, 41 rows: 17 three-engine parity rows, 8 retirement rows, 2
+`integration/pair_binding_test.go` — 8 tests, 41 rows at this commit (ADR 0268 has since promoted the
+number-position refusals in it to parity rows, so the file now stands at 9 tests and the counts below are the
+ones this cycle measured): 17 three-engine parity rows, 8 retirement rows, 2
 traps × both engines, 2 catchable-by-`except` rows, 10 refusal rows, the filed `int`-word overflow row, the
 Gap R.145 row, and the promoted corpus program. The conformance corpus stands at **102/139 parity-asserted,
 0 failures, 0 oracle drift**, oracle 87 `match` / 31 `debt` / 21 `not_applicable` over 139 rows (37 recorded),
@@ -195,7 +197,8 @@ follow from the shape above.
   can already read a tagged name's two slots, so it is tempting; but `slotArithmeticIsProven` takes the
   `+`/`*` gate from the container's literal kind tree, and a name bound by arithmetic has no entry there.
   Answering would mean *assuming* the slots hold numbers, which is the assumption the gate exists to
-  refuse. Filed as Gap R.143 with its ten refusal rows so the day it opens, the tests fail.
+  refuse. Filed as Gap R.143 with its ten refusal rows so the day it opens, the tests fail — which is what
+ADR 0268 did: those rows are parity rows now.
 * **Clear the record at the top of the assignment instead of at each store.** One call, and it breaks
   `n = n + 1`: the right-hand side reads the name *before* the binding replaces it, and clearing early
   makes that read the payload alone — a silently wrong number instead of a refusal. The rule belongs where

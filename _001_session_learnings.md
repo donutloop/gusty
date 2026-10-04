@@ -6591,3 +6591,52 @@ no `func Test…` anywhere — `TestATernary`, `TestCLIBuild`,
 `TestPrintingAnElementOfAFreshComprehensionListIsPinned`, `TestStringLengthIsBytesForNow` — all of them already
 in the file at this commit's parent, so they are Gap Q.4's (docs rot) rather than this cycle's, and they are the
 kind that survives a `programs/*.gy` citation check precisely because no test guards `TestFoo` yet.
+
+## Cycle: the number positions ask the pair too (ADR 0268 — Gap R.143 closed; Gaps R.146–R.148 filed)
+
+```
+xs = []
+xs.append([7, 8])
+n = xs[0][0] * 2
+print(n + 1)   # 15 on three engines; exit 1 compiled before this commit
+```
+
+**The record a previous cycle wrote for a *message* turned out to be a fact the compiler could dispatch on.**
+ADR 0267 stored `taggedOrigin[name] = taggedOriginArith` so a refusal could name where a tag came from. This
+cycle read that field as a premise: the only door that writes it is `@rt_num_arith`, and that helper has
+already raised before storing any tag but the int and float ones. So `numericPairVar(name)` is a proof, not a
+heuristics, and it is the whole gate for eight new positions — operand of a sum, negation, ordering, condition
+head, format field, `str`/`repr`, augmented assignment. A tagged name from another door (ADR 0241's slot read,
+ADR 0185's loop variable) is *not* admitted, because its tag can say `str`, and `+` opening for a tag that can
+say `str` is how you raise where CPython answers `"a" + "b"` (Gap R.82). Writing the origin in the first place
+cost four lines; it paid for a whole cycle.
+
+**Look for the helper before writing one.** `@rt_lift_num` (ADR 0249's widening, already reused by ADR 0253's
+division door) turns `(payload, tag)` into the `double` that holds both families. `@rt_str_of_value`
+(ADR 0258's capture-buffer renderer) renders a pair outright. Truthiness, orderings and the string forms all
+came from those two, with no new runtime code at all. The tempting alternative — `isFloat` returns true for a
+pair-bound name, one line, eight more shapes work — was built and measured, and is wrong twice: `print(n)`
+picks the float formatter and answers `14.0`, and an augmented assignment routes through the double road and
+emits `store double` into the `i32*` slot the tagged binding allocated, which is `llc` refusing the module.
+That is Gap R.148 with a hazard note instead of a TODO, and the two float rows are pinned to exit 1 with exit 2
+failing the row (ADR 0166).
+
+**Arm order is a real bug class in a chain of predicates.** `renderPair` grew a pair arm and `str(n)` still
+refused: the *container* probe above it lowers its argument as a number to decide whether it is a container,
+so for a pair-bound name the probe is the refusal and the new arm never runs. Same story as ADR 0250's ordering
+door having to be hoisted above `isFloat`. A new arm has to be placed against the arms that would have
+misread the shape, not merely added to the list.
+
+**Writing the probe found a wrong answer no test was looking for.** `print(2 and 3)` prints `1` on **both**
+backends; CPython prints `3`. Same for `0 or 5`, `"" or "d"`, `[1] and [2]`: the engines answer the *verdict*
+where the reference returns the operand, at exit 0, on an operator every Python program uses. `and`/`or` were
+closed under Gap K.1 years ago and every truthiness table since has asked *whether the test passed*, never
+*what the expression is*. Filed as Gap R.147 with its numbers, and the probe line is in the corpus with the
+interpreted leg's `1` pinned — the ledger's per-leg pins are what make an answer this wrong visible as debt
+instead of as parity.
+
+**The harness did the bookkeeping again.** Promoting `probe_pair_bound_name_as_a_number` produced four failures
+in one run — *"oracle debt is paid: both backends now print CPython's answer — update the registry"*, plus a
+stale pin, a `debt`/`match` mismatch and a matrix row — all naming the exact edit each one wanted. Registering
+the replacement probe with its two divergences took one pass afterwards. This is the ratchet earning its keep:
+the debt list stays true because paid debt *breaks the build*.
