@@ -550,6 +550,23 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A builtin called with **no argument** is asked which kind of call it is, before its operand is reached
+(ADR 0287, closing `Gap R.131`). `print(int())` died with a Go stack trace and **exit 2** — the code the
+exit-code contract reserves for a compiler bug — and so did `float()`, `bool()`, `str()`, `ord()`, `chr()`,
+`abs()` and `repr()`; `chr()` panicked the **compiler** too. They are two rules the single dispatch had
+never separated: `int()`/`float()`/`bool()`/`str()` are **constructors** the reference answers (`0`, `0.0`,
+`False`, the empty text), while `ord()`/`chr()`/`abs()`/`repr()` convert a required value and the reference
+raises `TypeError: <name>() takes exactly one argument (0 given)` — so the first four now answer and the
+other four raise that sentence, at exit 3, in the reference's own words rather than ours (ADR 0215 makes trap
+wording observable). Two wrong answers were produced on the way there and both are pinned as tests:
+selecting between the interned `"True"`/`"False"` strings made `rt_print_bool` print **inverted** verdicts
+(it asks only whether its word is zero), and answering `float()` with a textual double made the print road
+widen a value that already was one — `sitofp i32 0.0 to double`, which llc-20 rejects. `bool("")`/`bool("x")`
+measure a text by its length rather than its interned index, and `bool([1])` **refuses** on the compiled leg
+rather than reporting "non-empty" for every allocated handle — which is also what `bool([])` would have
+gotten wrong. `repr()` is not `str()`: it has no default, and the asymmetry is pinned because the pair shares
+one renderer and one table.
+
 A text the body rendered **into a name** is a text-returning function (ADR 0286, closing `Gap R.170`).
 `def f(v): s = str(v); return s` printed `0` for `f(3)` on the compiled leg at exit 0 — and `2` for
 `s = "x" + str(v)` where the reference prints `x3` — because ADR 0281 taught the compiler that

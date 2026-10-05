@@ -1836,6 +1836,13 @@ The rule is ADR 0224's (a method's string answer is known to its callers) one do
 respects Gap R.6's: a program that defines `str` itself gets its own function, so
 `def str(x): return x + 7` beside that same body answers `49`.
 
+A builtin called with **no argument** is first asked which kind of call it is (ADR 0287). `int()`, `float()`,
+`bool()` and `str()` are constructors and answer `0`, `0.0`, `False` and the empty text on both engines;
+`ord()`, `chr()`, `abs()` and `repr()` convert a required value and raise the reference's own
+`TypeError: <name>() takes exactly one argument (0 given)` (exit 3). They are two rules, not one: the eight
+names share a dispatch, and the reference splits them. `bool(x)` asks the truthiness question — a number by
+its word, a text by its length, and a container declines until the object can be asked its size.
+
 A text the body **rendered into a name** is a text-returning function (ADR 0286). `def f(v): s = str(v);
 return s` answers `3` for `f(3)` and `hi` for `f("hi")` on both engines; before this the compiled leg printed
 the interned index through `%d` — `0`, and `2` for `s = "x" + str(v)` where the reference prints `x3` — at

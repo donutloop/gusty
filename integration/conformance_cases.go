@@ -103,6 +103,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `return s`, `repr` through a name, and `"x" + str(v)` all printed the interned index (`0`, `0`, `2`)
 		// at exit 0 where the reference and the interpreter print `3`, `3`, `x3` (roadmap Gap R.170, ADR 0286).
 		"probe_a_rendering_bound_to_a_name",
+		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
+		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
+		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both
+		// engines; the interpreter used to die with a Go index-out-of-range and exit 2, and the compiler
+		// refused a program the reference runs (roadmap Gap R.131, ADR 0287 — promoted from a recorded
+		// debt the day the three legs agreed).
 		// `%` is the remainder for numbers on both engines — ints, negatives, doubles, the same body over a
 		// pair-marked parameter, and a float compared to a text — thirteen lines pinned beside the refusal
 		// that keeps the *text*-left spelling from answering a number (roadmap Gap R.165, ADR 0282).
@@ -459,10 +465,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// constant is materialised with `fadd double 0.0, …`), while one the program computed keeps
 		// it (roadmap Gap R.132, ADR 0263).
 		"probe_negative_zero_constant",
-		// A builtin called with no argument: the interpreter indexes `Args[0]` before asking whether
-		// there is one and dies with a Go panic and exit 2, while the compiler refuses a program
-		// CPython runs (roadmap Gap R.131, ADR 0263 — `round` itself is paid).
-		"probe_builtin_without_arguments",
 		// The ternary's *number* half is paid (ADR 0262 emitted the double `select`). What stays
 		// filed is the same question asked of the other two kinds of arm: text arms print the
 		// interned index (`0`) on the compiled leg, and container arms put `@.lstN` in an operand
@@ -727,10 +729,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, <const>` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
 		ref:    "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-0.0\n-0.0\n-0.0\n-0.0\n"}, {Backend: "aot", Stdout: "0.0\n0.0\n-0.0\n-0.0\n"}}},
-	"programs/probe_builtin_without_arguments": {oracle: lang.OracleDebt,
-		reason: "int() and float() with no argument are the conversions of zero in CPython; the interpreter reaches for Args[0] before asking whether there is one and dies with a Go panic and exit 2 — the contract's compiler-bug code — while the compiled backend refuses with an arity message and exit 1, the code for a program the reference rejects",
-		ref:    "roadmap Gap R.131 (measured landing ADR 0263, which pays round's half of it)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "index out of range [0] with length 0"}, {Backend: "aot", Missing: true, Err: "int expects one argument"}}},
 	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
 		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
 		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",

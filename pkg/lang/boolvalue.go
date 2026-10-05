@@ -352,6 +352,14 @@ func (env BoolEnv) callReturnsBool(c *Call, depth int) bool {
 	if boolReturningBuiltins[nm.Value] && (env.Shadowed == nil || !env.Shadowed(nm.Value)) {
 		return true
 	}
+	// bool(x) is the constructor that ANSWERS a verdict — `print(bool(1))` is `True`, not `1` —
+	// so the print road must pick rt_print_bool for it, exactly as it does for a literal verdict.
+	// It is not in the table above because it is the only builtin whose answer is a verdict of its
+	// ARGUMENT's truthiness rather than a yes-or-no question of its own, and it takes no argument
+	// at all in the `bool()` spelling (roadmap Gap R.131, ADR 0287).
+	if nm.Value == "bool" && len(c.Args) <= 1 && (env.Shadowed == nil || !env.Shadowed(nm.Value)) {
+		return true
+	}
 	if env.Lookup == nil || depth >= boolCallDepth {
 		return false
 	}

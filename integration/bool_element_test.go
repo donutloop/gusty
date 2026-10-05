@@ -80,8 +80,12 @@ func TestOracleStillCallsTheBoolNameLossShapes(t *testing.T) {
 		{"probe_round_digit_count_kind_unseen", 6}, // Gap R.129 (the compiled leg's leg)
 		{"probe_float_loop_variable_as_number", 6}, // Gap R.130 (the compiled leg's leg)
 		{"probe_negative_zero_constant", 6},        // Gap R.132 (the compiled renderer)
-		{"probe_builtin_without_arguments", 6},     // Gap R.131 (panic leg, panic caught by the harness)
-		{"probe_slot_order_in_a_ternary", 7},       // Gap R.119 (CPython raises, so there is no opinion)
+		// probe_builtin_without_arguments left this table when ADR 0287 paid it: int(), float(), bool()
+		// and str() are constructors answering 0, 0.0, False and the empty text on all three legs, so the
+		// program is parity surface now (conformanceStandalone). A contract row left here expecting exit 6
+		// for a paid debt passes forever without asserting anything — the rule ADR 0261 wrote for
+		// probe_bool_chosen_an_operator and ADR 0260 for the dict comprehension.
+		{"probe_slot_order_in_a_ternary", 7}, // Gap R.119 (CPython raises, so there is no opinion)
 	} {
 		src := readProgramSrc(tc.name)
 		out, code := cliRunCode(t, "--oracle", src)

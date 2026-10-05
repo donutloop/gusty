@@ -3577,51 +3577,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_builtin_without_arguments",
-        "name": "probe_builtin_without_arguments.gy",
-        "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   0\n#   0.0\n#\n# `int()` and `float()` with no argument are the conversions of zero, which is what the reference\n# answers — and neither engine gets there. The interpreter reaches for `Args[0]` before it has asked\n# whether there is one, so the program dies with a Go runtime panic and **exit 2**, the code the\n# exit-code contract reserves for a compiler bug (ADR 0166). The compiled backend refuses with\n# `int expects one argument` and exit 1, which is the code for \"your program has a compile error\" —\n# issued here for a program CPython runs in one line (roadmap L11.8's complaint exactly).\n#\n# `round()` was the fifth member of this family and answers an arity error on both engines now\n# (ADR 0263). `ord()` and `chr()` panic the same way on programs CPython itself rejects, and `chr()`\n# panics the compiler as well. Owner: the same arity check in front of every builtin that takes an\n# argument (roadmap Gap R.131).\nprint(int())\nprint(float())\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "int() and float() with no argument are the conversions of zero in CPython; the interpreter reaches for Args[0] before asking whether there is one and dies with a Go panic and exit 2 — the contract's compiler-bug code — while the compiled backend refuses with an arity message and exit 1, the code for a program the reference rejects",
-        "ref": "roadmap Gap R.131 (measured landing ADR 0263, which pays round's half of it)",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "error": "index out of range [0] with length 0",
-            "missing": true
-          },
-          {
-            "backend": "aot",
-            "error": "int expects one argument",
-            "missing": true
-          }
-        ]
-      },
-      "interp_ok": false,
-      "interp_stdout": "",
-      "interp_error": "compiler panic: runtime error: index out of range [0] with length 0",
-      "aot_ok": false,
-      "aot_stdout": "",
-      "aot_error": "int expects one argument",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "0\n0.0\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "int() and float() with no argument are the conversions of zero in CPython; the interpreter reaches for Args[0] before asking whether there is one and dies with a Go panic and exit 2 — the contract's compiler-bug code — while the compiled backend refuses with an arity message and exit 1, the code for a program the reference rejects",
-      "oracle_ref": "roadmap Gap R.131 (measured landing ADR 0263, which pays round's half of it)",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter leg failed: compiler panic: runtime error: index out of range [0] with length 0",
-        "compiled leg failed: int expects one argument"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -3685,7 +3640,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2465393808/129/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3624699405/129/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3699,7 +3654,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2465393808/129/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3624699405/129/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4540,12 +4495,12 @@
       ]
     }
   ],
-  "rows": 155,
-  "skipped": 37,
+  "rows": 154,
+  "skipped": 36,
   "pass": 118,
   "fail": 0,
   "oracle_match": 103,
-  "oracle_debt": 31,
+  "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

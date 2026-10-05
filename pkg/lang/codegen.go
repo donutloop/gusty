@@ -6082,7 +6082,10 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 				return pyFloatRepr(fv), true
 			}
 		}
-		if name, ok := n.Fn.(*Name); ok && name.Value == "chr" && !g.builtinShadowed(name.Value) {
+		if name, ok := n.Fn.(*Name); ok && name.Value == "chr" && len(n.Args) == 1 && !g.builtinShadowed(name.Value) {
+			// The `str` fold beside this one already asked how many arguments there were; this one reached
+			// n.Args[0] on the strength of the name alone, so `print(chr())` panicked with a Go index-out-
+			// of-range trace and exit 2 (roadmap Gap R.131, ADR 0287).
 			if il, ok := n.Args[0].(*IntLit); ok {
 				return string(rune(il.Value)), true
 			}
@@ -7406,6 +7409,16 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", rt, iv)
 				return rt
 			}
+			// float() with no argument is the constructor that answers 0.0. It needs an ARM here, not
+			// just the fold: this road is asked before floatEval is, and falling through made the print
+			// road widen an i32 that was never one — `%t1 = sitofp i32 0.0e+00 to double`, which llc-20
+			// rejects (roadmap Gap R.131, ADR 0287). The emitted shape is the one a literal 0.0 takes,
+			// so nothing downstream can tell the two apart.
+			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 0 && !g.builtinShadowed(id.Value) {
+				t := g.newTmp()
+				fmt.Fprintf(b, "  %s = fadd double 0.0, %s\n", t, floatConst(0))
+				return t
+			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
 				arg := n.Args[0]
 				if g.isFloat(arg) {
@@ -7613,6 +7626,15 @@ func (g *irGen) floatEval(e Expr) (float64, bool) {
 		if n.Fn != nil {
 			if id, ok := n.Fn.(*Name); ok && g.builtinShadowed(id.Value) && !g.floatFuncs[id.Value] {
 				return 0, false
+			}
+			// float() with no argument IS the literal 0.0 — a constructor, not a conversion of a
+			// missing operand — and the answer belongs HERE, with the other folds, so that every road
+			// which already folds a double takes this call unchanged: the print road, the comparison
+			// road, the arithmetic road (roadmap Gap R.131, ADR 0287). Answering it only at the call
+			// site handed those roads an i32 they then widened — `%t1 = sitofp i32 0.0 to double`,
+			// which llc-20 rejects with "floating point constant invalid for type".
+			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 0 && !g.builtinShadowed(id.Value) {
+				return 0, true
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "float" && len(n.Args) == 1 {
 				switch a := n.Args[0].(type) {
@@ -12947,6 +12969,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// digits. What none of those rules covers is refused by naming the half that is missing,
 		// because a missing rendering must not become the number underneath the value: `str([1, 2])`
 		// used to answer `0` and `str(None)` answered `0`, both with exit 0.
+		if len(c.Args) == 0 && calleeName(c) == "str" {
+			// str() is a constructor answering the empty text, and the compiler can name it: the
+			// same @str_tab index the literal "" interned to. repr() has NO default and keeps
+			// refusing, because the reference raises for `repr()` (Gap R.131's asymmetry).
+			return g.internStr(b, ""), nil
+		}
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("%s expects one argument", calleeName(c))
 		}
@@ -13035,9 +13063,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
 		return g.internStr(b, fmt.Sprintf("%d", n)), nil
 	case "int":
-		// int(x) folds to a constant on literal args: int(str) parses the
-		// decimal string, int(int) is the identity. float() stays
-		// interpreter-only: the AOT codegen has no float representation.
+		// int() with no argument is a CONSTRUCTOR and answers 0 — a constant the compiler can emit
+		// without asking anything of an operand that does not exist. It used to answer
+		// "int expects one argument" at exit 1 for a program the reference prints `0`, which ADR 0166
+		// reserves exit 1 for the program's own missing features, not the compiler's untouched shapes
+		// (roadmap Gap R.131, ADR 0287). Too many arguments still refuse; there is no honest 0-arg
+		// answer to a 2-argument call.
+		if len(c.Args) == 0 {
+			return "0", nil
+		}
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("int expects one argument")
 		}
@@ -13265,6 +13299,24 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// as truncated ints (value() truncates FloatLit to int64), so
 		// float(int) folds to itself and float(str) parses the string to a
 		// float then truncates, mirroring the interpreter's allocFloat.
+		// float() is a CONSTRUCTOR answering 0.0, and it is exactly the literal `0.0`: returning a
+		// folded FloatLit lets every road that already knows how to print a double take this one
+		// unchanged. My first version emitted `g.floatValue(b, &FloatLit{Value: 0})` from the call
+		// site, which handed the print road a double it then widened AGAIN — `%t2 = fadd double ...`
+		// followed by `%t1 = sitofp i32 %t2 to double`, LLVM's verifier happy, the program printing
+		// an empty line at exit 0 (roadmap Gap R.131, ADR 0287). A shape the compiler can express as
+		// a literal should BE one, not a hand-rolled sequence with the same meaning.
+		// float() is a CONSTRUCTOR answering 0.0. It is answered as a DOUBLE ROAD below like any
+		// other float-returning expression; see isFloat's *Call arm, which already answers "yes" for
+		// this name so print picks rt_fmt_double rather than %d (roadmap Gap R.131, ADR 0287).
+		if len(c.Args) == 0 {
+			// Folded like a literal: see floatEval's *Call arm for why the answer must come from
+			// there rather than from a textual double handed back here.
+			if fv, ok := g.floatEval(c); ok {
+				return floatConst(fv), nil
+			}
+			return "", fmt.Errorf("float expects one argument")
+		}
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("float expects one argument")
 		}
@@ -13286,6 +13338,56 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			return "", fmt.Errorf("float: unsupported argument")
 		}
 		return v, nil
+	case "bool":
+		// bool() is a constructor answering False, and bool(x) asks the same question the `if` road
+		// asks, answered by the select the `str()` road beside it already emits for a verdict (ADR
+		// 0257: a verdict writes its own name, not the 1 the slot holds). The name reached the
+		// `unsupported call` fall-through, which is ADR 0166's exit 1 vocabulary for a feature the
+		// PROGRAM lacks — and `print(bool())` is a program the reference prints `False`
+		// (roadmap Gap R.131, ADR 0287).
+		// bool() answers a VERDICT, and a verdict in this backend is the WORD 1 or 0 that
+		// rt_print_bool turns into True/False — not an interned "True"/"False" text. My first
+		// version selected between the two interned strings, so `print(bool(1))` handed the index
+		// of "True" to a printer that asks only whether the word is zero and answered `False`, and
+		// `print(bool(0))` answered `True`: the pair of answers was INVERTED, which no amount of
+		// reading the select would reveal (roadmap Gap R.131, ADR 0287).
+		if len(c.Args) == 0 {
+			return "0", nil
+		}
+		if len(c.Args) != 1 {
+			return "", fmt.Errorf("bool expects one argument")
+		}
+		// A CONTAINER's truthiness is whether it has any elements, which is a question about its
+		// length and therefore about the object, not about the word the slot holds. Comparing that word
+		// against zero is what my first version did, and it failed twice over: for a list literal the
+		// word is a GLOBAL and llc-20 rejects the module (`icmp ne i32 @.lst1, 0` — "global variable
+		// reference must have pointer type"), and for a container the answer would have been "non-empty"
+		// for every handle ever allocated, `bool([])` included. Refusing is the honest answer until the
+		// tagged value word lets the object be asked (roadmap Gap R.131, ADR 0287, L11.1).
+		if g.nameIsContainerRecorded(c.Args[0]) {
+			return "", fmt.Errorf("codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); the interpreter answers it (roadmap Gap R.131, ADR 0166)")
+		}
+		// A TEXT asks a different question than a number: `bool("")` is False and `bool("x")` is
+		// True, and a text's word is its interned INDEX, whose being non-zero says nothing about
+		// whether it has any characters. So the text road measures it (rt_str_len), and only the
+		// number road gets to use "the word is not zero" (roadmap Gap R.131, ADR 0287).
+		bv, err := g.value(b, c.Args[0])
+		if err != nil {
+			return "", err
+		}
+		probe := bv
+		if g.exprIsString(c.Args[0]) || isStringExpr(c.Args[0]) {
+			ln := g.newTmp()
+			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_len(i32 %s)\n", ln, bv))
+			probe = ln
+		}
+		// The verdict word itself: 1 when the probe is non-zero, 0 otherwise. This is the same
+		// shape rt_print_bool asks, with the printer's own test hoisted into the caller.
+		bit := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = icmp ne i32 %s, 0\n", bit, probe))
+		val := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", val, bit))
+		return val, nil
 	default:
 		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
 	}

@@ -968,6 +968,12 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- **a builtin called with no argument never crashes the compiler**: `int()`, `float()`, `bool()` and
+  `str()` answer the reference's `0`/`0.0`/`False`/empty text on both engines, and `ord()`, `chr()`, `abs()`
+  and `repr()` raise the reference's own `TypeError` sentence at exit 3 (`Gap R.131` / ADR 0287). Before
+  this all eight reached `Args[0]` first and died with a Go stack trace at **exit 2** — the code the contract
+  reserves for a compiler bug — so a harness could not tell its own bad program from a broken toolchain. An
+  integration table walks 21 spellings asserting exit 2 is unreachable; `--json` is unchanged.
 - **a rendering the body bound to a name is not counted** on the compiled path: `def f(v): s = str(v);
   return s` printed `0` for `f(3)` at exit 0 (and `2` for `"x" + str(v)` where the reference prints `x3`)
   while the reference and the interpreter printed the text (`Gap R.170` / ADR 0286). Exit 0 covers that

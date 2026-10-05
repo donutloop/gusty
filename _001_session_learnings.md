@@ -7557,3 +7557,68 @@ arriving by call; fresh ID (`Gap R.171`), own evidence, not a clause of this rec
 
 **Instruments.** Suite green; 164-file sweep against the pre-cycle binary moved **nothing** except the
 intended probe. Matrix 154 → 155 rows, 117 → 118 parity, 102 → 103 `match`, 0 fail, 0 drift.
+
+---
+
+## Cycle: a builtin with no argument is asked which kind of call it is (Gap R.131 closed; ADR 0287)
+
+**What shipped.** Eight programs that died with a Go stack trace at **exit 2** now behave like the
+reference. `int()`, `float()`, `bool()`, `str()` are constructors answering `0`, `0.0`, `False`, `''`;
+`ord()`, `chr()`, `abs()`, `repr()` are conversions of a required value and raise CPython's
+`TypeError: <n>() takes exactly one argument (0 given)` at exit 3. `chr()` had been an exit 2 on **both**
+engines — the missing check was in codegen too.
+
+**One missing question, two answers, and the reason it survived.** Nobody asked "is there an argument?"
+before `n.Args[0]`, and the arity checks that existed tested `!= 1` *after* the read, which cannot help. But
+the deeper reason: the eight names need two different answers and the dispatch had one slot. Refusing the
+constructors would have been ADR 0166's misuse of exit 1 (`print(int())` is a program CPython runs in one
+line), and answering the conversions would have invented values the reference refuses to give. A rule that
+"builtins with no argument" is one class is the trap; the reference splits it and only measurement says where.
+
+**The sharpest bug was a symmetric one.** `bool()` first selected between the interned `"True"`/`"False"`
+texts and handed the result to `rt_print_bool` — which only asks `%v != 0`. So it read the *index* of `"True"`
+as truthy and printed the wrong half of every pair: `bool(1)` → `False`, `bool(0)` → `True`. **Inverted
+answers are the worst class to review**: the code reads correct, and each individual output is a legal verdict
+— there is no odd digit to spot, only a diff against the reference. Caught by writing the table with CPython's
+answers in it before writing the code, which is the whole reason to do it that way.
+
+**Truthiness is keyed differently than arithmetic.** A text's word is its interned index, so "index ≠ 0" says
+nothing about emptiness; the text road must call `rt_str_len`. A container's truthiness is its **length**, so
+comparing the slot's word broke twice — a literal's word is a GLOBAL (`icmp ne i32 @.lst1, 0`, rejected by
+llc-20 outright) and an allocated handle answers non-empty for `[]` as well. The compiled leg now **declines**
+a container operand in words while the interpreter answers it. Lesson worth generalising: a wrong verdict is
+worse than no verdict, and "the guard exists elsewhere" (ADR 0174 refusing text arguments at the call site,
+cycle 13) is the fact that tells you whether a road can be narrowed or only asked.
+
+**The LLVM verifier is not a safety net.** `float()` answered from the call road with a textual double, the
+print road widened what was already a double, and llc-20 rejected
+`sitofp i32 0.0 to double` — "floating point constant invalid for type". The verifier never saw that module;
+llc failed first. So "the module verifies" is not evidence the emitted shape is right, and the test now pins
+that `print(float())` and `print(0.0)` are indistinguishable (`rt_fmt_double` on both, no `sitofp i32 0.0`).
+
+**Errors I made, all named.**
+- **Three wrong fixes before the right one for `float()`**: a sentinel error string (my own invention, and a
+  bad idea I caught before committing), a bare `"0.0"` returned as if it were an i32, then
+  `g.floatValue(b, &FloatLit{})` at the call site. The answer was the fold — `floatEval` plus a `floatValue`
+  arm — because the roads that already handle doubles are the ones that should take this one.
+- **Duplicate `case *Call` twice** (`isFloat` and `floatEval` both already had one); and my line-index deletion
+  left an orphaned empty `case *Call:` that only the compiler caught. Locate, verify, then delete — and read
+  what the file looks like afterwards.
+- **Invented five APIs** in one pass: `g.boundNumbers`, `g.varBoundValues`, `g.prog`, `g.strUsed`,
+  `cmpBit(b, bv)`, plus `g.isStringExpr` (a free function, not a method). Each became a real record or a real
+  helper. The pattern behind the misses: writing the predicate before reading the struct.
+- **Two test-helper errors:** `captureStdout(t, src)` takes source, not a closure, and there was no
+  `runCompiledOut` — I wrote `compiledOut`/`compiledOutOrRefusal` over the real `Compile(...).IR` + `runIR`.
+- **A row I had to remove from my own table:** `bool([1])` belongs to the refused half, not the answering half.
+  Moving it to `TestBoolOfAContainerRefusesRatherThanComparingAHandle` keeps the container rows pinned as
+  refusals instead of quietly dropped.
+
+**Promotion done the honest way.** The existing `probe_builtin_without_arguments.gy` now matches CPython, so it
+moved from the debt ledger to `conformanceStandalone()` **and** its exit-6 pin was moved out of
+`bool_element_test.go`. The suite caught that for me: the oracle test failed with `want 6` and a leg report
+showing all three legs agreeing. ADR 0261's rule — a contract row left behind expecting a debt code asserts
+nothing forever — is now enforced by a test that fails when someone forgets.
+
+**Instruments.** Suite green; the new table fails against the stashed baseline with the real
+`index out of range [0] with length 0`; 164-file sweep moved nothing except the promoted probe; exit-2
+reachability is now a 21-spelling integration table rather than an assumption.

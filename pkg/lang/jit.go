@@ -4621,8 +4621,15 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return itotal, nil
 		case "abs":
+			// The reference's own sentence, not ours: `abs()` raises
+			// `TypeError: abs() takes exactly one argument (0 given)` (roadmap Gap R.131, ADR 0287).
+			// A bare "abs expects 1 argument" is exit-3 output no traceback of the reference produces,
+			// and ADR 0215 makes trap wording a contract.
+			if len(n.Args) == 0 {
+				return 0, exnError("TypeError", "abs() takes exactly one argument (0 given)")
+			}
 			if len(n.Args) != 1 {
-				return 0, &EvalError{Msg: "abs expects 1 argument"}
+				return 0, exnError("TypeError", fmt.Sprintf("abs() takes exactly one argument (%d given)", len(n.Args)))
 			}
 			av, err := e.eval(n.Args[0])
 			if err != nil {
@@ -4665,7 +4672,39 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return 0, werr
 			}
 			return whole, nil
+		case "bool":
+			// bool() is a constructor answering False, and bool(x) asks the question the `if` road
+			// already asks — one predicate, two callers (roadmap Gap R.131, ADR 0287). The name was
+			// bound nowhere in the builtin dispatch, so `print(bool())` reported
+			// `NameError: name 'bool' is not defined` at exit 3 for a program the reference prints
+			// `False` — a missing feature reported as the program's own error.
+			if len(n.Args) == 0 {
+				return e.allocBool(0), nil
+			}
+			if len(n.Args) > 1 {
+				return 0, exnError("TypeError", fmt.Sprintf("bool() takes at most 1 argument (%d given)", len(n.Args)))
+			}
+			bv, err := e.eval(n.Args[0])
+			if err != nil {
+				return 0, err
+			}
+			// A boxed bool, not a bare 1: printing a verdict is how the reference spells True/False,
+			// and Gap R.42's rule is that a verdict writes its own name (ADR 0257).
+			if e.truthy(bv) {
+				return e.allocBool(1), nil
+			}
+			return e.allocBool(0), nil
 		case "int":
+			// int() with no argument is a CONSTRUCTOR and answers 0; int(x) converts. The case used to
+			// reach n.Args[0] before asking whether there was one, so `print(int())` died with a Go
+			// stack trace and exit 2 — the compiler's bug, which ADR 0166 reserves for exactly this
+			// (roadmap Gap R.131, ADR 0287). The same missing check sat in float(), ord() and chr().
+			if len(n.Args) == 0 {
+				return 0, nil
+			}
+			if len(n.Args) > 1 {
+				return 0, exnError("TypeError", fmt.Sprintf("int() takes at most 2 arguments (%d given)", len(n.Args)))
+			}
 			av, err := e.eval(n.Args[0])
 			if err != nil {
 				return 0, err
@@ -4682,6 +4721,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return av, nil
 		case "float":
+			if len(n.Args) == 0 {
+				return e.allocFloat(0), nil
+			}
 			av, err := e.eval(n.Args[0])
 			if err != nil {
 				return 0, err
@@ -4734,7 +4776,14 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			return 1, nil
 		case "chr":
-			// chr(n) returns the single-character string for codepoint n.
+			// chr(n) returns the single-character string for codepoint n. With no argument it is
+			// neither: the reference raises, and a raised program exits 3 here (Gap R.131).
+			if len(n.Args) == 0 {
+				return 0, exnError("TypeError", "chr() takes exactly one argument (0 given)")
+			}
+			if len(n.Args) > 1 {
+				return 0, exnError("TypeError", fmt.Sprintf("chr() takes exactly one argument (%d given)", len(n.Args)))
+			}
 			cn, err := e.eval(n.Args[0])
 			if err != nil {
 				return 0, err
@@ -4742,6 +4791,12 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			return e.allocStr(string(rune(cn))), nil
 		case "ord":
 			// ord(s) returns the codepoint of the first character of s.
+			if len(n.Args) == 0 {
+				return 0, exnError("TypeError", "ord() takes exactly one argument (0 given)")
+			}
+			if len(n.Args) > 1 {
+				return 0, exnError("TypeError", fmt.Sprintf("ord() takes exactly one argument (%d given)", len(n.Args)))
+			}
 			arg, err := e.eval(n.Args[0])
 			if err != nil {
 				return 0, err
@@ -4794,8 +4849,20 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 
 		case "str", "repr":
 			called := n.Fn.(*Name).Value
-			if len(n.Args) != 1 {
-				return 0, &EvalError{Msg: called + " expects 1 argument"}
+			// str() with no argument is a constructor answering the empty text, the same shape as
+			// int() and float() (roadmap Gap R.131, ADR 0287). It used to answer a bare "expects 1
+			// argument" EvalError, which is not a sentence the reference produces for this program.
+			// repr() is NOT the same shape: `repr()` has no default and raises, so the two halves of
+			// the pair keep their own arity even though one rendering serves both (Gap R.131's
+			// asymmetry, measured against the reference rather than assumed from str()).
+			if len(n.Args) == 0 {
+				if called == "repr" {
+					return 0, exnError("TypeError", "repr() takes exactly one argument (0 given)")
+				}
+				return e.allocStr(""), nil
+			}
+			if len(n.Args) > 1 {
+				return 0, exnError("TypeError", fmt.Sprintf("%s() takes exactly one argument (%d given)", called, len(n.Args)))
 			}
 			av, err := e.eval(n.Args[0])
 			if err != nil {
@@ -5370,8 +5437,13 @@ func (e *Evaluator) callExtern(ed *ExternDecl, args []Expr) (int64, error) {
 	}
 	switch ed.Name {
 	case "abs":
+		// The method road asks the same question with the same sentence as the builtin above
+		// (roadmap Gap R.131, ADR 0287).
+		if len(vals) == 0 {
+			return 0, fmt.Errorf("abs() takes exactly one argument (0 given)")
+		}
 		if len(vals) != 1 {
-			return 0, fmt.Errorf("abs expects 1 argument")
+			return 0, fmt.Errorf("abs() takes exactly one argument (%d given)", len(vals))
 		}
 		x := vals[0]
 		if x < 0 {

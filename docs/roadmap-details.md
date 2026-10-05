@@ -5850,7 +5850,7 @@ Owner: L11.1, and the shape to copy is ADR 0245's — bind the element from the 
 literal's spelling.
 
 <a id="gap-r-131"></a>
-### Gap R.131 — a built-in called with no argument: four still reach for `Args[0]` first (OPEN, measured landing ADR 0263)
+### Gap R.131 — a built-in called with no argument: four still reach for `Args[0]` first (CLOSED by ADR 0287; measured landing ADR 0263)
 
 ```gusty
 print(int())      # CPython 0     · --interp Go panic (index out of range), exit 2 · --aot exit 1
@@ -5875,6 +5875,58 @@ compiled leg as a refusal, plus an exit-code-class row in `integration/bool_elem
 turned into a clean exit 2, or an exit 2 that quietly became an answer, both move the pin.
 
 <a id="gap-r-132"></a>
+
+**Closed by ADR 0287 (2026-07-05).** The eight cases are two rules, and the single dispatch had only ever
+expressed one of them:
+
+```
+constructors   int()  float()  bool()  str()     CPython answers 0 · 0.0 · False · ''
+conversions    ord()  chr()    abs()   repr()    CPython raises TypeError: <n>() takes exactly one argument (0 given)
+```
+
+All eight reached `n.Args[0]` first, so both classes arrived identically: a Go
+`index out of range [0] with length 0`, a stack trace, **exit 2**. `chr()` did it in codegen as well, making it
+an exit 2 on both engines. The template already existed — ADR 0263's `round()` asks its arity before
+evaluating, one sentence, raised by the evaluator and refused by codegen, exit 2 nowhere — and what this cycle
+added was the half that measuring, not copying, decides: the constructors do not want the sentence at all.
+Refusing `int()` at exit 1 is ADR 0166's misuse of exit 1, because zero arguments *is* a call that answers.
+
+**`bool()` taught the sharpest lesson, because its bug was symmetric.** Selecting between the interned
+`"True"`/`"False"` texts and handing the result to `rt_print_bool` looks fine — the printer takes an `i32` and
+chooses a string. But `rt_print_bool` asks only `%v != 0`, so it read the *index* of `"True"` as "truthy" and
+printed the wrong half of every pair: `bool(1)` → `False`, `bool(0)` → `True`. Inverted answers are the worst
+possible class to review, because the code reads correct and each individual output is a legal verdict. A
+verdict in this backend is the word 1 or 0; the spelling is the printer's business (ADR 0257).
+
+**Truthiness is typed, and by a different key than arithmetic.** A text's word is its interned index, so
+"index ≠ 0" says nothing about emptiness: `bool("")` is False and `bool("x")` is True, and the text road has to
+call `rt_str_len`. A container's truthiness is its length, which is the object's business — my first version
+compared the slot's word and broke twice: a list literal's word is a GLOBAL (`icmp ne i32 @.lst1, 0`, which
+llc-20 rejects outright), and for an allocated handle it answers non-empty for `[]` too. So the compiled leg
+**declines** a container operand in words and the interpreter answers it. That is a refusal with a reason, not a
+stub: a wrong verdict is worse than no verdict.
+
+**`float()` is a fold, not a call site.** Answering it from the `call` road with a textual double put the print
+road on the i32 path, which widened what it was handed: `%t1 = sitofp i32 0.0 to double`, rejected with
+*"floating point constant invalid for type"*. The answer belongs in `floatEval` beside the other folds plus an
+arm in `floatValue`; the test then asserts the emitted module is indistinguishable from `print(0.0)`'s. Note
+what did *not* save me: the LLVM verifier never saw that module, because llc rejected it first — a verifier
+pass is not a substitute for pinning the emitted shape.
+
+**`repr()` is not `str()`.** The pair shares a renderer, a table and a refusal message (ADR 0258), so the
+one-line change would have given `repr()` a default it does not have. Measured against the reference rather than
+inferred from the shared code, and pinned in its own test, because nothing in the code's structure keeps that
+difference visible.
+
+**The promotion, done properly.** `probe_builtin_without_arguments.gy` now prints `0`, `0.0`, `False`, `` on all
+three legs, so it moved from the debt ledger into `conformanceStandalone()`, and its **exit-6 row was moved out
+of `integration/bool_element_test.go`** rather than left behind. ADR 0261 wrote the rule for exactly this: a
+contract row still expecting exit 6 for a paid debt passes forever while asserting nothing.
+
+**Instruments.** The new unit table was run against the stashed baseline first and failed there with the genuine
+`panic: runtime error: index out of range [0] with length 0`. Suite green; 164-file sweep against the pre-cycle
+binary moved nothing except the promoted probe; exit-2 coverage is now a 21-spelling integration table rather
+than a hope.
 ### Gap R.132 — a negative zero the compiler wrote has no sign (OPEN, measured landing ADR 0263)
 
 ```gusty
