@@ -67,6 +67,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `str`, an f-string field, the target of `+=`. Fifteen lines, three engines, the same bytes
 		// (roadmap Gap R.143, ADR 0268).
 		"probe_pair_bound_name_as_a_number",
+		// The same slot read handed to a function: the argument arrives as the (payload, tag) pair and the
+		// answer's kind comes back in the word the callee stored beside its own return, so
+		// `print(twice(xs[0][0]))` is `14` on all three engines (roadmap Gap R.139, ADR 0273).
+		"probe_slot_read_handed_to_a_function",
 		// The unary minus names its operand's kind on both engines, and every shape the reference stops on
 		// is a raise this program catches (roadmap Gap R.137, ADR 0266).
 		"negation_names_the_kind",
@@ -373,13 +377,10 @@ func conformanceProbes() []lang.ConformanceCase {
 		// The arithmetic the print position answers, one statement earlier, and the number positions that
 		// read the bound name back, are parity surface: both programs live in conformanceStandalone
 		// (roadmap Gaps R.138 and R.143, ADRs 0267 and 0268). What stays filed beside them is the same
-		// value handed to a function, the same value handed to a position that keeps one word for it, and
-		// the unpacking that has not taken the pair (Gaps R.139, R.146, R.144).
+		// value handed to a position that keeps one word for it, and the unpacking that has not taken the
+		// pair (Gaps R.146, R.144); the same value handed to a function is parity surface since ADR 0273.
 		"probe_pair_bound_name_takes_a_value",
 		"probe_pair_from_a_tuple_unpack",
-		// The same slot read as an argument. Again the reference and the interpreted leg answer, and the
-		// compiled leg declines — a parameter's kind settled where the caller cannot see it (Gap R.139).
-		"probe_slot_read_handed_to_a_function",
 		// A double written with an exponent — the spelling a scientific value arrives in — does not lex:
 		// both engines stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
 		// R.135). Filed while measuring `sqrt`, whose natural test values are 1e18 and 1e-3.
@@ -545,10 +546,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
 		ref:    "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "8\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
-	"programs/probe_slot_read_handed_to_a_function": {oracle: lang.OracleDebt,
-		reason: "CPython prints 14 and the interpreted leg prints 14; the compiled leg spends exit 1 on it, because the parameter's kind would have to be settled where the caller cannot see the slot — the same missing word as Gap R.138, on the calling side",
-		ref:    "roadmap Gap R.139 (measured landing ADR 0265); docs/adr/0265, Consequences",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
 	"programs/probe_whole_number_slot_beyond_the_int_word": {oracle: lang.OracleDebt,
 		reason: "CPython answers 7000000000 and so does the interpreted leg, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
 		ref:    "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",

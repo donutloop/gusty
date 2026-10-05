@@ -20,11 +20,11 @@ used for codegen; the AOT backend emits textual IR verified by the external `llc
 |------|---------|
 | `--file <path>` | run a source file (with the interpreter unless `--aot`/`--jit` is given; the payload says which) |
 | `--eval <src>` | compile-and-run source from argv |
-| `--aot` | run through the compiled LLVM backend (alias of `--jit`) |
+| `--aot` | run through the compiled LLVM backend (alias of `--jit`); **`--file` alone is the interpreter's**, so a measurement of the compiled leg that does not say `--aot` measured the other engine |
 | `--interp` | run through the AST interpreter explicitly; conflicts with `--aot`/`--jit` (usage error, exit 4) |
 | `--show-backend` | print `gustyc: backend <interpreter\|aot>` on stderr (stdout stays the program's) |
 | `--gc-stats` | report what the garbage collector did while the program ran (`collections`, `roots`, `skipped`, `marked`, `freed`, `live`, and for the compiled backend `top`), on stderr for either backend; with `--json` the same numbers arrive as a `gc` member of the payload (L7.2, ADR 0181) |
-| `--emit-llvm` | print the emitted LLVM IR |
+| `--emit-llvm` | print the emitted LLVM IR, from a **source string** (`--emit-llvm "$(cat prog.gy)"`); a path is parsed as source and answers a parse error |
 | `--emit-ast` | print the JSON AST dump |
 | `--verify <src>` | run the front end (lex + parse + semantic analysis) and report diagnostics, without executing |
 | `--oracle <src>` | run `<src>` through **three** engines — AST interpreter, compiled backend, CPython — and report whether gusty behaves like Python (`--json` for the leg-by-leg report; exit 6 divergence, 7 no verdict) (L11.9, ADR 0186) |
@@ -563,11 +563,17 @@ time describes cannot reach a binding: …`, reported at the assignment's own li
 cannot reach into xs's slots` sentence blamed on the container-append two lines below. Binding the answer is
 parity surface (`programs/probe_arith_result_bound_to_a_name.gy`, three legs, including its rebinding rows,
 where `Gap R.142`'s wrong answer lived: a name the pair road had bound, rebound to a list, printed the heap
-handle); what stays filed beside it is the answer **handed to a function** (`Gap R.139`,
-`programs/probe_slot_read_handed_to_a_function`), the same name read back where the position asks for one
-static number (`Gap R.143`, `programs/probe_pair_bound_name_as_a_number`) and the tuple unpacking that has
-not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's and the
-interpreted leg's answer against the compiled leg's exit 1. The negation of a text was worse and is now paid:
+handle); the answer **handed to a function** is parity surface since
+(`programs/probe_slot_read_handed_to_a_function.gy`, eight lines, three legs — the argument arrives as the
+`(payload, tag)` pair and the answer's kind comes back in the word the callee stores beside its own `return`,
+`Gap R.139`, ADR 0273); what stays filed beside them is the same name read back where the position asks for one
+static number (`Gap R.143`, `programs/probe_pair_bound_name_as_a_number`), a pair-shaped value handed to a
+position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes_a_value`), and the tuple
+unpacking that has not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's
+and the interpreted leg's answer against the compiled leg's exit 1. The same door is the reason a program must
+say which engine it wants: `--file` alone runs the interpreter, so the compiled leg of any of these shapes is
+`--aot --file <path>`, and `--json`'s `backend` member (or `--show-backend`) is how a measurement proves which
+engine produced it. The negation of a text was worse and is now paid:
 `print(-"hi")` used to answer `-281474976710658` interpreted and `0` compiled at exit 0, and both engines now
 raise the reference's `TypeError: bad operand type for unary -: 'str'` at **exit 3**, catchable by
 `except TypeError:` on each leg, for a text, `None`, a container literal, an instance (which names its own

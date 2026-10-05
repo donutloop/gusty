@@ -3472,6 +3472,12 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
 		boolVars:    map[string]bool{},
 		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), strFuncs: strReturningFuncs(prog), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
+	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
+	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
+	g.pairSpecs = pairCallSpecs(prog)
+	g.pairRetDone = map[string]bool{}
+	g.pairCallAsked = map[string]bool{}
 	// What a compiled function body may know about its module: literal bindings the module never
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
@@ -4004,12 +4010,24 @@ type irGen struct {
 	// with strings; a call site transfers that onto the caller's own variable so printing an
 	// element later does not show a raw @str_tab index (Gap J.5).
 	strFillOf map[string]map[int]int
-	funcs     map[string]bool
-	funcBind  map[string]string
-	externs   map[string]*ExternDecl // user-defined function names
-	fds       map[string]*FuncDef    // function definitions by name (for call arg binding)
-	imports   *ImportInfo            // folded module globals for `import mod`
-	params    map[string]string      // current function params: name -> register
+	// pairSpecs is the call-boundary decision of the (payload, tag) pair: which parameters of which
+	// functions arrive as two words, and which bodies answer with a pair whose kind the callee stores
+	// beside its return. It is a pure scan of the AST (paircall.go) because the `define` of a function
+	// written after its first call must agree with that call about the arity (roadmap L11.1, ADR 0273).
+	pairSpecs map[string]*pairFnSpec
+	// pairRetDone is the subset of pairSpecs whose answer direction the emitted body actually carries —
+	// a float- or string-returning function keeps its own convention, so no caller may read a tag for it.
+	pairRetDone map[string]bool
+	// pairCallAsked is the permission a pair-aware position holds while it emits such a call: the
+	// ordinary road refuses these calls, because a payload used as though it were the whole value is the
+	// float-box-handle-printed-as-an-int class of wrong answer (roadmap L11.1, ADR 0273).
+	pairCallAsked map[string]bool
+	funcs         map[string]bool
+	funcBind      map[string]string
+	externs       map[string]*ExternDecl // user-defined function names
+	fds           map[string]*FuncDef    // function definitions by name (for call arg binding)
+	imports       *ImportInfo            // folded module globals for `import mod`
+	params        map[string]string      // current function params: name -> register
 	// paramSlot names the parameters whose body rebinds them: their slot (`%_name`),
 	// not the incoming argument register, is what reads load (Gap R.3, ADR 0196).
 	paramSlot map[string]bool
@@ -11311,6 +11329,17 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		n := len(fd.Params)
 		isFloat := g.floatFuncs[fnName]
 		vals := make([]string, n)
+		// tagWords is the second word of the arguments the pair crosses with, pre-filled from the same
+		// scan the `define` read: a parameter the scan marked always gets its tag word, whether the pair
+		// road answered the payload or the ordinary road did, because a `call` and its `define` that
+		// disagree about the arity is the module verifier's problem (roadmap L11.1, ADR 0273).
+		tagWords := make([]string, n)
+		for i := range fd.Params {
+			tagWords[i] = g.pairArityTag(fnName, i)
+		}
+		// pairArg is the pair road in front of the ordinary one; it is filled in below `argVal`, whose
+		// refusal it keeps for an argument the pair cannot name (ADR 0273).
+		var pairArg func(a Expr, idx int) (string, error)
 		// A container literal argument is materialised into the runtime heap and
 		// passed by handle; the callee declares the matching parameter as a
 		// container (see declareHeapParams / heapargs.go).
@@ -11367,6 +11396,30 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			return v, nil
 		}
+		// pairArg is tried before the ordinary road for a marked parameter: the argument's kind may live in
+		// an object the caller can read and the callee cannot, and the two words are what carry it over.
+		// It is written after `argVal` because the fallback is that road, refusal and all (ADR 0273).
+		pairArg = func(a Expr, idx int) (string, error) {
+			if p, t, handled, err := g.pairArgWords(b, fnName, idx, a); err != nil {
+				return "", err
+			} else if handled {
+				tagWords[idx] = t
+				return p, nil
+			}
+			return argVal(a, idx)
+		}
+		// callArgWords is the one place the arity is spelled: every parameter's word, plus the tag word
+		// where the scan says the pair crosses.
+		callArgWords := func() []string {
+			out := make([]string, 0, len(vals)+len(tagWords))
+			for i := range vals {
+				out = append(out, vals[i])
+				if tagWords[i] != "" {
+					out = append(out, "i32 "+tagWords[i])
+				}
+			}
+			return out
+		}
 		// A helper that fills a container it was handed tells the caller what its elements are:
 		// `def fill(out, v): out.append(v)` called as `fill(names, "one")` is what makes
 		// `print(names[1])` render text instead of the raw string-table index (Gap J.5).
@@ -11385,6 +11438,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fillPos++
 			}
 		}
+		// A call whose answer is a pair is emitted by the pair door alone (pairCallPair): the ordinary
+		// numeric road would take the payload as though it were the whole value and print an int box
+		// handle as a number, which is the wrong answer this line of work exists to eliminate. The
+		// permission is this call's, and it is off while the arguments are lowered, so a nested call of
+		// the same shape inside an argument keeps its own honest refusal (roadmap L11.1, ADR 0273).
+		if g.pairRetDone[fnName] && !g.pairCallAsked[fnName] {
+			return "", fmt.Errorf("codegen: %s hands back the (payload, tag) pair its answer arrived in: print(...), a binding, and the positions that read one number ask the tag, and this position keeps one word for the value, so the tag has nowhere to go (roadmap L11.1, Gap R.146, ADR 0273)", fnName)
+		}
+		asked := g.pairCallAsked
+		g.pairCallAsked = map[string]bool{}
 		provided := make([]bool, n)
 		pos := 0
 		seenKw := false
@@ -11408,7 +11471,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					fv := g.floatValue(b, kw.Value)
 					vals[idx] = "double " + fv
 				} else {
-					av, err := argVal(kw.Value, idx)
+					av, err := pairArg(kw.Value, idx)
 					if err != nil {
 						return "", err
 					}
@@ -11430,7 +11493,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fv := g.floatValue(b, a)
 				vals[pos] = "double " + fv
 			} else {
-				av, err := argVal(a, pos)
+				av, err := pairArg(a, pos)
 				if err != nil {
 					return "", err
 				}
@@ -11451,28 +11514,29 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				fv := g.floatValue(b, fd.Params[i].Default)
 				vals[i] = "double " + fv
 			} else {
-				dv, err := argVal(fd.Params[i].Default, i)
+				dv, err := pairArg(fd.Params[i].Default, i)
 				if err != nil {
 					return "", err
 				}
 				vals[i] = "i32 " + dv
 			}
 		}
+		g.pairCallAsked = asked
 		t := g.newTmp()
 		if _, ok := g.closures[fnName]; ok {
 			env := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = load i32, i32* @%s_slot\n", env, fnName))
-			callArgs := append([]string{"i32 " + env}, vals...)
+			callArgs := append([]string{"i32 " + env}, callArgWords()...)
 			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_env(%s)\n", t, fnName, strings.Join(callArgs, ", ")))
 			g.checkExn(b)
 		} else if g.decorated[fnName] {
 			// The decorated body is emitted through funcDef, which defines program-owned
 			// names under irSymbolPrefix, so the reference must carry it too (Gap R.4).
-			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, irSymbol(fnName), strings.Join(vals, ", ")))
+			b.WriteString(fmt.Sprintf("  %s = call i32 @%s_impl(%s)\n", t, irSymbol(fnName), strings.Join(callArgWords(), ", ")))
 			g.checkExn(b)
 		} else {
 			if isFloat {
-				b.WriteString(fmt.Sprintf("  %s = call double @%s(%s)\n", t, irSymbol(fnName), strings.Join(vals, ", ")))
+				b.WriteString(fmt.Sprintf("  %s = call double @%s(%s)\n", t, irSymbol(fnName), strings.Join(callArgWords(), ", ")))
 				if g.floatTemps == nil {
 					g.floatTemps = map[string]bool{}
 				}
@@ -11515,7 +11579,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					b.WriteString(fmt.Sprintf("  %s = call %s @%s(%s)\n", t, ret, irSymbol(fnName), strings.Join(callArgs, ", ")))
 					return t, nil
 				}
-				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, irSymbol(fnName), strings.Join(vals, ", ")))
+				b.WriteString(fmt.Sprintf("  %s = call i32 @%s(%s)\n", t, irSymbol(fnName), strings.Join(callArgWords(), ", ")))
 			}
 			g.checkExn(b)
 			// a generator function returns a runtime heap list handle
@@ -11786,6 +11850,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// the (payload, tag) pair the answer arrives with (roadmap L11.1, ADR 0265). It is taken only
 			// where the ordinary road would have refused, so no program that was answered before is now
 			// routed through here.
+			// print(twice(xs[0][0])) — the answer of a function whose body did the arithmetic over a slot the
+			// literal never described. The callee's tag word says what the objects said, and the one printer
+			// that takes a value *and* its kind renders it, which is the same door ADR 0265 opened for the
+			// expression itself and ADR 0269 for an operand a test chose (roadmap L11.1, ADR 0273).
+			if printed, perr := g.pairCallPrint(b, a); perr != nil {
+				return "", perr
+			} else if printed {
+				continue
+			}
 			if g.arithWouldRefuse(a) {
 				if val, tg, okPair, perr := g.taggedArithPair(b, a); perr != nil {
 					return "", perr
@@ -14384,6 +14457,14 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		retVal = "0.0"
 		paramTy = "double"
 	}
+	// Which of this body's parameters arrive as a (payload, tag) pair, and whether its answer carries a
+	// tag too. The arity is the scan's decision, so a call site emitted before this `define` agrees with
+	// it; only the binding half is narrowed by the convention this body is emitted under (ADR 0273).
+	pairSpec := g.pairSpecFor(fd, floatRet, g.strFuncs[g.fnName(fd)])
+	if pairSpec != nil && pairSpec.returnsPair && !g.pairRetDone[g.fnName(fd)] {
+		g.pairRetDone[g.fnName(fd)] = true
+		g.globals.WriteString(pairTagGlobalIR(g.fnName(fd)))
+	}
 	// The program's own functions carry the irSymbolPrefix; see irSymbol.
 	g.dbgDefine(b, irSymbol(g.fnName(fd)), g.fnName(fd), fd.Src)
 	fmt.Fprintf(b, "define %s @%s(", retTy, irSymbol(g.fnName(fd)))
@@ -14392,6 +14473,11 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 			fmt.Fprintf(b, ", ")
 		}
 		fmt.Fprintf(b, "%s %%p%d", paramTy, i)
+		if pairSpec != nil && pairSpec.params[i] {
+			// The kind word beside the payload: the caller read it off the object, and the body asks it
+			// the same arithmetic question the caller would have asked (roadmap L11.1, ADR 0273).
+			fmt.Fprintf(b, ", i32 %s", pairParamReg(i))
+		}
 	}
 	fmt.Fprintf(b, ") {\n")
 	// The written-flags for this body's possibly-unwritten locals, immediately inside the brace:
@@ -14418,6 +14504,11 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 			g.allocd[p.Name] = true
 		}
 	}
+	// A parameter whose argument the pair road answered is bound through the tagged door, with the
+	// arithmetic origin recorded so the body asks the same door the caller asked; the undo is because
+	// the tag records are keyed by name and the next body's parameter of the same name must not read
+	// this one's binding (roadmap L11.1, ADR 0273).
+	defer g.bindPairParams(b, fd, pairSpec)()
 	// A parameter that receives a list/dict/set handle must be treated as a
 	// runtime container inside the body (see heapargs.go). The registration is
 	// scoped to this body: undo it when the body is done.
@@ -14481,6 +14572,10 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
 	} else {
+		// A body that reaches its end without a `return` answers None, and a pair-returning one says so
+		// in the tag word too — otherwise the next caller reads whatever the previous answer left there
+		// (ADR 0273; the same "no invented default" rule ADR 0269 took out of `logicOperandKind`).
+		g.storePairTag(b, pairTagNone)
 		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret %s %s\n", retTy, retVal)
 	}
@@ -14491,6 +14586,7 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret i32 %s\n", g.genHandle)
 	} else {
+		g.storePairTag(b, pairTagNone) // the unwinding answer: no value, and the tag says so
 		g.gcCloseFrame(b)
 		fmt.Fprintf(b, "  ret %s %s\n", retTy, retVal)
 	}
@@ -15061,6 +15157,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			// same door, and the name becomes a tagged binding — the shape `print(n)` already reads —
 			// because a payload without its tag is a number wearing another object's bits (roadmap
 			// Gap R.138, ADR 0265's rule one statement earlier).
+			if handled, aerr := g.bindPairCallResult(b, nm.Value, n.Value); aerr != nil {
+				return aerr
+			} else if handled {
+				return nil
+			}
 			if handled, aerr := g.bindArithmeticPair(b, nm.Value, n.Value); aerr != nil {
 				return aerr
 			} else if handled {
@@ -16175,11 +16276,29 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				return nil
 			}
 		}
+		if g.pairRetDone[g.curFunc] {
+			// The body's answer already is a (payload, tag) pair — the arithmetic door decided its kind from
+			// the objects the caller read — so the tag travels beside the return and the payload keeps the
+			// word this function always returned (roadmap L11.1, Gap R.139, ADR 0273).
+			p, t, rerr := g.pairReturnWords(b, n.Expr)
+			if rerr != nil {
+				return rerr
+			}
+			g.storePairTag(b, t)
+			// The value is computed before the deferred bodies run, as Python's `return` in a `try` does
+			// (Gap R.23, ADR 0222) — and the tag is stored before them for the same reason: a `finally` that
+			// calls this function again would otherwise leave its own answer's kind in the word.
+			if err := g.runDeferred(b); err != nil {
+				return err
+			}
+			g.gcCloseFrame(b)
+			b.WriteString(fmt.Sprintf("  ret i32 %s\n", p))
+			return nil
+		}
 		v, err := g.value(b, n.Expr)
 		if err != nil {
 			return err
 		}
-		// The return value is computed by the `return` statement, and only then do the
 		// deferred bodies run -- which is why `return n` in a `try` hands back the `n` from
 		// before the `finally` reassigned it, as it does in Python (Gap R.23, ADR 0222).
 		if err := g.runDeferred(b); err != nil {

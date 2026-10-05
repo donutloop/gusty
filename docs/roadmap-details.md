@@ -6100,7 +6100,7 @@ The close was not only the call. Three things the measurement did not predict ca
   assignments, and each wants the same three-arm unbox-or-convert-or-raise that ADR 0249 built for an
   operand; that is a shared helper, not a patch at six call sites.
 
-### Gap R.139 — the same slot read as an argument is refused (OPEN, owner L11.1, measured landing ADR 0265)
+### Gap R.139 — the same slot read as an argument is refused (CLOSED by ADR 0273 on 2026-10-05; owner L11.1, measured landing ADR 0265)
 
 ```
 def twice(v):
@@ -6116,6 +6116,53 @@ R.138's fix: the caller has the pair in hand, and the parameter does not take it
 argument arrived as a pair has to be bound as a tagged parameter, so the body's `v * 2` sees the tag the
 caller saw — which is L11.1's own sentence, quoted again at the fourth door in a row: the kind belongs to
 the value, and every place a value crosses a boundary has to carry the tag across with it.
+
+**Closed 2026-10-05 by ADR 0273.** Two words, one each way. A pair-carrying parameter is declared with a
+second `i32` beside its payload and bound inside the callee through `bindTaggedVar` (ADR 0187) with the
+arithmetic origin recorded, so `v * 2` is the same `@rt_num_arith` call every other slot arithmetic makes;
+and because the answer *is* a pair whose kind only the helper knows, the callee stores that tag beside its
+own `return` in one `internal global i32` named off the function's symbol, which a pair-aware caller loads
+immediately after the `call`. `ret` keeps its type — the return convention ADR 0196 / ADR 0254 built is
+untouched, and no function's shape changes unless the scan opened it. `programs/probe_slot_read_handed_to_a_function`
+left the debt ledger and became a parity program — an int slot, a float slot, the keyword form, an argument
+that is itself arithmetic over a slot, a plain literal at the second call site, an answer bound to a name,
+two parameters where only one needed the pair — eight lines, `match` on all three legs.
+
+Three things the measurement did not predict came with it:
+
+* **the arity has to be decided before any IR exists.** The first version asked the gate at the emitting
+  site, so a `def` written *below* its first call emitted a one-word `define` and a two-word `call`, and
+  `llc` answered *mismatched type* — **exit 2**, ADR 0166's compiler-bug class, spent on a file layout. The
+  decision therefore moved to a pure function of the AST (`pairCallSpecs`), walked once over calls, bindings
+  and container mutations, and read at both ends; the emitting side may only narrow it. The regression row is
+  `TestThePairScanIsAskedOfTheProgramNotTheEmittingOrder`, and it asserts the scan's answer for both file
+  orderings as well as the compiled module, because the interpreter leg of that program is CPython's
+  `NameError` and cannot be the witness.
+* **the gate needs a body half, and a benchmark found it before the tests did.** Marking a parameter because
+  its body mentions it in arithmetic is enough to make `twice` work and enough to break the `function_calls`
+  benchmark: its body is `(a * 31 + b * 17) % 100003`, and `%` is not a pair door — the tag arrived at a body
+  with nothing to read it with and the module stopped compiling. Hence `pairUsesServed`, and its operand rule
+  (`pairOperandServed`): beside the pair, a number literal is served and nothing else is. A body the doors
+  cannot serve keeps the convention it has always had, which is the road — and the refusal — the program had
+  before this commit; the benchmark now has a row asserting its module carries no `.anst` and no `%q0`.
+* **measuring the compiled leg is a CLI claim, not a guess.** `--file` runs the interpreter unless `--aot` is
+  given, so a first pass of "compiled" measurements in this cycle were the interpreted leg, and a scratch
+  binary deleted by a tmp-cleaner made a missing program look like a silent refusal. The compiled leg of every
+  number in ADR 0273's table came again from `--aot --file`, with the *before* column from a second binary
+  built off `3c0f59a` in a `git worktree`, and `docs/operations.md` now says so in the flag table beside
+  `--aot` and `--emit-llvm` (which takes a source string, not a path — a path answers `parse error at 1:1`).
+
+What the close filed rather than fixed: **Gap R.154**, a pair-carrying parameter beside an ordinary one
+(`def shift(a, b=100): return a + b`) — the shared arithmetic door has a kind for every value it can see and
+none for a parameter no caller tagged, so widening it is a corpus-wide measurement, not a tweak at this scan;
+and the answer-side neighbours of **Gap R.146**, measured again from the callee's side — `twice(xs[0][0]) + 1`,
+`[twice(xs[0][0])]`, `show(twice(xs[0][0]))`, `twice(twice(xs[0][0]))` — each refused with the sentence that
+names a position keeping one word, rather than answered with the payload alone.
+
+One observation is recorded without being claimed as paid: when a parameter receives a pair at one call site
+and a plain `True` at another, `print(v)` inside the callee prints `True` on all three legs, because the tag
+the caller passed is the bool's own. Gap R.111's *own* shape — `show(True)` as the only call — is unchanged
+and still prints `1`, because nothing there needs a pair and the scan opens nothing.
 
 ### Gap R.140 — `abs` never asks a tag either (CLOSED by ADR 0271 on 2026-10-05; owner L11.1, measured landing ADR 0266)
 
@@ -6311,8 +6358,8 @@ The number positions could be served by a lift because they consume the number a
 each, and the tag has nowhere to live beside it — which is not a detail to paper over but the whole content
 of ADR 0187's rule: a payload read without its tag is a number wearing another object's bits. So they refuse,
 in a sentence that names the one-word operand, and `programs/probe_pair_bound_name_takes_a_value` is their
-ledger row. It is the same missing word Gap R.139 names one position over: an argument a *program* declares
-needs a parameter that takes the pair; an argument a *builtin* declares, and an element, need the same thing
+ledger row. It is the same missing word Gap R.139 named one position over (paid by ADR 0273: a *program*'s
+argument now takes the pair across the call): an argument a *builtin* declares, and an element, need the same thing
 in the runtime's own signature.
 
 ### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (CLOSED by ADR 0269 on 2026-10-05; owner both engines, measured landing ADR 0268)
@@ -6437,3 +6484,41 @@ both engines, which parity cannot see. `BoolEnv` already carries the hooks for e
 `Lookup`, `Shadowed`, `Instance`, `NumericCandidate` — and the fifth is the module read ADR 0272 put in
 `pkg/lang/module_const.go`, supplied per backend so the two legs cannot answer differently.
 
+
+### Gap R.154 — a pair-carrying parameter beside an ordinary one is refused (OPEN, owner L11.1, measured landing ADR 0273)
+
+```
+def shift(a, b=100):
+    return a + b
+
+xs = []
+xs.append([7, 8])
+print(shift(xs[0][1]))    # CPython 108 · --interp 108 · --aot exit 1
+```
+
+The row ADR 0273 measured and deliberately did not fix. `twice(v)` takes the pair because its body is `v * 2`
+and the pair door answers that; `shift(a, b)` cannot, because its body is `a + b` and the second operand is
+not a value any caller handed over — it is a parameter. The shared door (`arithOperandPair`) has a kind for a
+literal, a tagged name, a slot, and a plain name it can prove numeric through the ordinary kind tables, and
+`slotArithmeticIsProven` — the guard that keeps `"a" + "b"` and `[1] * 2` out of the door, because the
+reference *answers* those and this backend cannot build them — has no entry for a parameter at all.
+
+Three ways were looked at and one taken:
+
+* **answer tag `0` for any parameter**, the way `arithOperandPair`'s `*Name` fallback already does for a plain
+  name. Cheapest, and it silently assumes a kind for a value the compiler cannot see — a parameter that holds
+  a text at run time would enter the arithmetic door as an int and answer a number where the reference raises.
+  The guard exists precisely to keep that class of answer out, so changing it needs a measurement over the
+  corpus, not a diff at one door.
+* **teach the scan to prove the ordinary parameter from its call sites** (every argument numberish, the
+  default numberish too) and pass a third word for `b`. That is a second pair road inside the arithmetic
+  helper, duplicating the gate the scan already has, and it would still have to answer for the parameters a
+  call site cannot read.
+* **take what the scan can prove about *pair* parameters only, and decline the rest.** Shipped: the body gate
+  (`pairExprServed`/`pairOperandServed`) allows a number literal beside the pair and nothing else, so a body
+  like `a + b` is not served, `a` is never opened, and the program prints the same `index cannot reach into
+  xs's slots` refusal it printed before ADR 0273 existed. Same words, same exit class, no wrong answer.
+
+The last is the ladder rule applied to a door's own gate: a program that refused before may keep refusing, a
+program that answered may not start refusing, and nothing may print digits it cannot name. The row closes
+when the shared door can name an unpaired parameter's kind with the corpus measured behind that claim.

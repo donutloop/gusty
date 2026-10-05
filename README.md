@@ -278,6 +278,27 @@ where the literal says nothing it holds is a number *and* the program never stor
 because a raise where CPython answers `-1` would be the same bug wearing a class. The interpreter still
 calls a tuple `'list'`, which is pinned with its own row (`Gap R.141`) rather than hidden in this one.
 
+**A slot read reaches a function, in both directions** (ADR 0273, closing `Gap R.139`).
+`def twice(v): return v * 2` with `xs = []` / `xs.append([7, 8])` / `print(twice(xs[0][0]))` is CPython's
+`14` and the interpreted leg's `14`; the compiled leg spent **exit 1** on `index cannot reach into xs's
+slots`, because the value has two words and the parameter had one — and the code that consumes it lives in
+the callee, which has never seen `xs`. The argument now arrives as payload **and** tag (a second `i32` on
+the `define`, bound through the door every tagged value uses) and the answer's kind comes back in a word the
+callee stores beside its own `return`, read by the caller immediately after the call — so the same file
+prints a float slot's `3.0`, the keyword form's `16`, an argument that is itself arithmetic's `16`, an answer
+bound to a name's `14`, and `None` for a callee that falls off its end. Three return roads store the tag, and
+the two that give no value — fall-off-the-end and the raise — store `None`, because a stale kind read by the
+next caller is a number-shaped lie; `except TypeError:` in the caller reaches a trap the callee's operator
+threw. Which parameters carry the pair is decided by one pure scan of the AST, before any IR exists, so the
+`define` and every `call` agree about the arity (**exit 2** was the first version's answer to a `def` written
+below its call), and a parameter is opened only where every call site can supply a pair from its own spelling
+and the body reads it back somewhere a pair door answers — the rule the `function_calls` benchmark taught the
+day this landed, when `(a * 31 + b * 17) % 100003` was handed a tag it had nothing to read. Refusals moved
+none of their words: `twice(twice(xs[0][0]))`, `twice(xs[0][0]) + 1`, `[twice(xs[0][0])]` and
+`show(twice(xs[0][0]))` still exit 1 naming the one-word position (`Gap R.146`), and a pair parameter beside
+an ordinary one (`def shift(a, b=100): return a + b`) is filed as `Gap R.154` rather than answered by an
+assumed kind.
+
 **A data module's constant keeps the type the module declares** (ADR 0272, closing L11.6's typed stdlib
 constants). `import math` / `print(math.PI)` printed `3` compiled at exit 0 — the census table's own row —
 while the interpreter beside it printed `3.141592653589793` and a hand-written `pi = 3.141592653589793` was

@@ -2190,18 +2190,47 @@ target of an augmented assignment (`n += 1`). A name the arithmetic door bound i
 float — the door raised on everything else — so those positions lift the pair into the one word that holds both
 families, and a float keeps its digits where an int keeps its `True`/`False`/`14`.
 
+The same value reaches a **function**, in both directions (`Gap R.139`, ADR 0273). The argument arrives as
+the pair — a parameter whose argument the arithmetic door answers is declared with a second `i32` beside its
+payload and bound inside the callee through the door every tagged value uses — and the answer's kind comes
+back in a word the callee stores beside its own `return`, read by the caller immediately after the call:
+
+```python
+def twice(v):
+    return v * 2
+
+xs = []
+xs.append([7, 8])
+xs.append([1.5, 2])
+print(twice(xs[0][0]))        # 14
+print(twice(xs[1][0]))        # 3.0 — the slot's own kind, chosen by the objects, not by the compiler
+print(twice(v=xs[0][1]))      # 16 — the keyword form lands on the same position
+print(twice(3))               # 6  — one `define`, both call sites
+n = twice(xs[0][0])
+print(n)                      # 14 — the answer is a value, so it survives being bound
+```
+
+A body that hands its parameter to `print`, to a comparison, or to arithmetic reads the tag it was handed; a
+body that can reach its end without a `return` answers `None` and says so in that same word, and so does the
+road where its arithmetic raises — `except TypeError:` in the *caller* reaches a trap the *callee's* operator
+threw. What the pair crosses is settled by one scan of the whole program, before any IR exists, so the
+`define` and every `call` agree about the arity; and a parameter is opened only where every call site can
+supply a pair from its own spelling and the body reads it back somewhere a pair door answers.
+
 What still refuses, in words: a **value** position — a builtin's argument, a container's element, an `and`'s
-operand — keeps one word for what it stores and has nowhere to put the tag (`Gap R.146`, beside the call
-argument of `Gap R.139`), a pair-bound name cannot enter the float road (`n / 4`, `n > d` with `d = 2.5`,
+operand, or a second function's parameter — keeps one word for what it stores and has nowhere to put the tag
+(`Gap R.146`); an argument that is *itself* such an answer (`twice(twice(xs[0][0]))`) is refused rather than
+half-read; a pair-bound name cannot enter the float road (`n / 4`, `n > d` with `d = 2.5`,
 `Gap R.148`), and a tuple unpacking has not taken the pair at all (`a, b = xs[0][0] + 1, xs[0][1] + 2`,
-`Gap R.144`).
+`Gap R.144`). A function that takes a pair-carrying parameter *and* an ordinary one (`def shift(a, b=100):
+return a + b`) keeps the convention it has always had, because the shared arithmetic door has no kind to name
+for a parameter no caller tagged (`Gap R.154`).
 
 What still reports, with the mechanism it is missing named: a **dict keyed by a container** (Python
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), a tagged element whose kind only the run time can tell used as a number by a road this
-backend does not open there — a loop variable over a mixed list, the same answer handed to a **function**
-(`twice(xs[0][0])`, Gap R.139) or to a position that stores one word for it (`abs(n)`, `min(n, 3)`, `[n]`,
-`n and 3`, Gap R.146), or a **tuple unpacking**, which has not taken the pair at all:
+backend does not open there — a loop variable over a mixed list, or a position that stores one word for it
+(`abs(n)`, `min(n, 3)`, `[n]`, `n and 3`, Gap R.146), or a **tuple unpacking**, which has not taken the pair at all:
 `a, b = xs[0][0] + 1, xs[0][1] + 2` refuses where the plain assignment answers (Gap R.144), **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
 CPython raises — one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a

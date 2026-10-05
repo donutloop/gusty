@@ -6784,3 +6784,65 @@ knows is a bug with better manners.
 from walking `mod.NAME` over "every kind a word can hold" — bool and container-slot cases I would not have
 found by reading the original defect. Each was checked against the pre-change binary first, so the row can say
 "pre-existing, both spellings" instead of leaving the next agent to guess whether ADR 0272 caused it.
+
+## Cycle: a slot read reaches a function, in both directions (ADR 0273 — Gap R.139 closed; Gap R.154 filed)
+
+**A "compiled leg" is a claim the command has to make, not one I get to assume.** The first sweep of this
+cycle's measurements came back looking like a ladder: fourteen shapes refusing at exit 1, and the same
+fourteen printing CPython's answer one flag later. They were the *same engine*. `--file` runs the interpreter
+unless `--aot` is given, so every "compiled" row I had written down was the interpreted leg, and the ladder I
+was proud of was the interpreter agreeing with itself. Three rules came out of that, now in the way I measure
+anything here: build the binary into the repo (`go build -tags=llvm20 -o build/pyre ./cmd/gustyc`) rather than
+`/tmp`, where a tmp-cleaner deleted a scratch compiler once and made a missing program look like a silent
+refusal; assert the binary exists before trusting an empty output; and say the engine out loud —
+`--aot --file`, `--interp --file`, never a bare `--file`. `docs/operations.md`'s flag table now says it too,
+and `--json`'s `backend` member is the machine's version of the same confession.
+
+**Before/after needs two binaries, not one binary and a memory.** The `--before` column of ADR 0273's table
+came from `git worktree add /tmp/gybase HEAD` plus a second build, so "this refusal did not move" is a
+measured sentence rather than a hope. It paid for itself immediately: the dict-slot row (`twice(d["k"])`)
+looked like a new answer and was not — the pre-change binary printed `80` too, because the dict's own literal
+still described the slot. Filing that as a win would have written a false row into the tracker.
+
+**Decide arity from the AST, or spend the compiler-bug exit code on a file layout.** Asking the gate at the
+emitting site produced `define i32 @gy_twice(i32 %p0)` beside a two-word `call`, and `llc` answered
+*mismatched type* — exit 2, ADR 0166's "the compiler is broken" class — for a program whose only sin was
+writing its `def` below its first call. The scan is now a pure function of the parsed program, read at both
+ends, and the emitting side may only narrow what it says. The regression row asserts the scan's *decision* for
+both file orderings, because that is the thing that must not depend on order.
+
+**A benchmark is a gate test wearing a stopwatch.** Marking a parameter because its body mentions it in
+arithmetic made every probe pass and broke `function_calls`: its body is `(a * 31 + b * 17) % 100003`, `%` is
+not one of the pair doors, and the tag arrived at a function with nothing that could read it. The lesson is
+not "widen the gate carefully" — it is that a feature that adds a word to a `define` owes an **absence**
+assertion for the programs it has no business in: the benchmark now has a row that fails if its module
+carries `.anst` or `%q0` at all. Presence tests prove the door opens; absence tests are what prove it closes.
+
+**Assert the message the road actually prints.** Three refusal rows of my own new test failed on wording, not
+behaviour: I had written `"codegen:"` into the expectation because the CLI prints `gustyc: jit: codegen: …`,
+and `Compile`'s error has no such prefix — the CLI adds it. Two more failed because I predicted which door
+would refuse (the callee's arithmetic) when the gate closed earlier than that (the caller's ordinary numeric
+road, `index cannot reach into`). A refusal assertion that names an imagined sentence is a test of my model;
+run the program, take the sentence, then pin it.
+
+**The ledger tells you when a refusal dies, and its instructions are the procedure.** Four conformance tests
+lit up the moment the probe started answering — *oracle debt is paid: both backends now print CPython's
+answer — update the registry*, *pin says the aot leg fails, but it ran and printed `"14\n"`*, *promote the
+program to conformanceStandalone and delete its ledger row*. Following them literally (move the name, delete
+the row, rewrite the probe's header and grow it to eight lines, regenerate `conformance-matrix.json`) is the
+promotion workflow; the tests then re-check the claim from the corpus side, which is the only reason a
+promoted row cannot be wishful.
+
+**The interpreter leg is not always available as a witness.** The purity row wanted `print(twice(xs[0][0]))`
+written before the `def`, and the interpreter answers CPython's `NameError` there — correctly. The claim
+("the scan does not read the emitting order") is about the compiled module, so the row asks the scan directly
+for both orderings and compiles the well-ordered one; the def-last file stays in the test as the honest
+refusal it is, with its exit class named. A test that asserts an engine prints something it cannot print is
+just a bug with a `t.Errorf` on it.
+
+**The tree can change underneath a cycle.** Mid-session, `integration/conformance_cases.go` reverted to HEAD
+and my ledger edits with it (the loop driver runs with `--force-reset`); the only reason it was caught is that
+a test I had already seen fail stopped appearing in the log. After that I re-checked `git status --short`
+before every commit and kept the number of files a cycle touches small enough to re-read. Untracked new files
+survive; modified tracked files are the exposure, so the tracked-file edits go in the same commit as the code
+that needs them, not "later, once the suite is green".

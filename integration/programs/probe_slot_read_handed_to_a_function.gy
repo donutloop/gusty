@@ -1,9 +1,28 @@
-# probe_slot_read_handed_to_a_function.gy — a slot read as an argument. CPython and the interpreted leg
-# print 14; the compiled leg declines (roadmap Gap R.139, measured landing ADR 0265): the parameter's kind
-# would have to be settled where the caller cannot see it.
+# probe_slot_read_handed_to_a_function.gy — a slot of a container the program *built*, handed to a
+# function. The expression the print position answers (ADR 0265) is the same expression a call hands to
+# a parameter: the argument arrives as the (payload, tag) pair and the answer's kind comes back in the
+# word the callee stored beside its own return, so all three engines print these numbers (roadmap Gap
+# R.139, ADR 0273).
+#
+# The lines cover the four things the door has to agree on: the slot's own kind (an int, a float, a
+# keyword argument, an argument that is itself arithmetic over a slot), the call site that hands a plain
+# literal to the same `define`, an answer bound to a name, and a second parameter that never needed the
+# pair at all.
 def twice(v):
     return v * 2
 
+def add(a, b):
+    return a + b
+
 xs = []
 xs.append([7, 8])
+xs.append([1.5, 2])
 print(twice(xs[0][0]))
+print(twice(3))
+print(twice(xs[1][0]))
+print(twice(v=xs[0][1]))
+print(twice(xs[0][0] + 1))
+n = twice(xs[0][0])
+print(n)
+print(add(xs[0][0], xs[0][1]))
+print(add(xs[0][1], 1))
