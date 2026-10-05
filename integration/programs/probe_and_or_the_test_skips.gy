@@ -1,0 +1,27 @@
+# probe_and_or_the_test_skips.gy — the operand the test did not choose still runs.
+#
+# The reference short-circuits: `x and boom()` never calls boom when x is false, and `x or (1 // 0)` never
+# divides when x is true. This language does not make that promise yet — both engines evaluate both
+# operands, exactly as the compiled `select` needs them and exactly as a ternary's arms are evaluated
+# (ADR 0262). The two backends agree with each other on every line and both disagree with the reference,
+# which is why this is one row and not two (roadmap Gap R.149, measured landing ADR 0269).
+#
+# The first two lines show the effects the reference never performs; the last two show what an operand that
+# *traps* does when the test has already decided it cannot be the answer — the trap runs, and the raise is
+# the ordinary catchable one, which is what makes the difference from the reference observable rather than
+# merely a difference in speed.
+def boom():
+    print("boom")
+    return 9
+x = 0
+y = 1
+print(x and boom())
+print(y or boom())
+try:
+    print(x and (1 // 0))
+except ZeroDivisionError:
+    print("the skipped operand raised")
+try:
+    print(y or (1 // 0))
+except ZeroDivisionError:
+    print("the skipped operand raised again")

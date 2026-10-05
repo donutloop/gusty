@@ -709,6 +709,42 @@ the same rule, and both backends implement it identically:
 | `[]`, `{}`, an empty set | false |
 | anything else (including any other number, string, container or object) | true |
 
+### `and` and `or` answer an **operand**, not a verdict (Gap R.147, ADR 0269)
+
+The two operators test one operand and hand back whichever operand the test chose, unconverted — the
+operand keeps its own representation, its own rendering and its own type:
+
+```gy
+print(2 and 3)          # 3, not 1
+print(0 or 5)           # 5
+print("" or "d")        # d
+print([1] and [2])      # [2]
+print(True or 1)        # True   — the operand the test chose is the verdict
+print(1 or True)        # 1      — and the other choice is the number
+```
+
+A **condition** asks only the verdict, and `truth(a and b)` is `truth(a) and truth(b)`, so an `if`, an
+`elif`, a `while` head, a ternary test or a `match` guard branches on any two operands whatever they are:
+`if x or "d":` works even though the *value* of `x or "d"` has nowhere to live. A **value** position — a
+binding, an argument, an element, an arithmetic operand — needs the answer to fit in a word, and three
+roads carry it: a test the source wrote picks its operand at compile time (and the operand the test
+rejects is not in the program at all); two operands that share a word are picked by one `select`, in the
+`i32` door or the `double` door; and the print door selects the payload *and* its tag, because the module
+has one printer that reads a kind. A shape none of the three roads can state is refused by naming both
+operands and the missing tag (`roadmap L11.1 … Gap R.147`) rather than answered with the `1` that stood
+here before — which is Gap R.146's one-word position and L11.1's tagged value word, not a syntax problem.
+
+Both engines evaluate **both** operands when the test is a run-time fact, so the effects and traps of the
+operand the test rejected still run (`x and boom()` calls `boom`, `x and (1 // 0)` raises) — while a test the
+source wrote is fully lazy on both legs (`print(0 and boom())` prints `0`, and `boom` is not called at all).
+CPython's shortcut for the run-time test is owed in one row for both backends rather than implemented in one
+of them (Gap R.149).
+
+The answer's type follows the same rule: the checker types `a and b` as the operand's type when both
+operands agree and leaves it dynamic when they do not, so `x: int = 2 and 3` checks and `x: bool = 2 and 3`
+is the mismatch it always should have been. `--json --eval` reports the same pair the printer does:
+`"type": "bool"` with `True or 1`, `"type": "int"` with `1 or True`.
+
 ## None
 
 `None` is a real value — a singleton with its own dynamic type (`None`, value tag
@@ -1439,10 +1475,10 @@ match p:
 - `BinOp` arithmetic (`+`, `-`, `*`, `/`, `//`, `%`) and comparisons (`<`, `==`, ...).
   An operator is a question about two runtime **kinds**, and a pair it has no rule for is a
   `TypeError`, never a number (see *Operand kinds* below).
-- `and` / `or` are boolean operators: both operands are evaluated and the
-  result is a `0`/`1` integer (`and` is 1 iff both are non-zero, `or` is 1 iff
-  either is non-zero). Lowered in the AOT codegen to i1 logic zero-extended to
-  `i32`, mirroring the interpreter.
+- `and` / `or` are the two operators that hand back an **operand**: the test picks one of them and that
+  one answers, in its own representation — `print(2 and 3)` is `3`, `print("" or "d")` is `d`
+  (see *Truthiness*, ADR 0269). They are not a `0`/`1` verdict; only a *condition* that uses them asks for
+  a verdict, and that road composes the two operands' truths.
 
   **`//` and `%` floor; they are one rule, not two operators.** Go's `/` and `%` truncate
   toward zero, so with mixed signs the answers differ: Python's `-7 // 2` is `-4` and `-7 % 2`

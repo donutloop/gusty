@@ -6640,3 +6640,69 @@ in one run — *"oracle debt is paid: both backends now print CPython's answer �
 stale pin, a `debt`/`match` mismatch and a matrix row — all naming the exact edit each one wanted. Registering
 the replacement probe with its two divergences took one pass afterwards. This is the ratchet earning its keep:
 the debt list stays true because paid debt *breaks the build*.
+
+## Cycle: `and` and `or` answer the **operand** the test chose (ADR 0269 — Gap R.147 closed; Gap R.149 filed)
+
+**Two backends agreeing is not evidence of correctness — it is evidence of a shared bug.** `print(2 and 3)`
+printed `1` on the interpreter *and* compiled leg, `print("" or "d")` printed `1`, `print([1] and [2])`
+printed `1`, all at exit 0, all green in the suite. The corpus had three uses of `and`/`or` and two of them
+were `if`/`while` heads, where a verdict genuinely is the answer; the third was `print(ys[0] and ys[1])`
+over `[True, 1]`, whose `1` is CPython's answer for the wrong reason. A cross-backend parity test cannot see
+this class at all — only the CPython leg can, which is the argument for the oracle being a *third* engine in
+every table rather than a lint.
+
+**One question, asked once: *which operand does this test choose*.** `constantLogicArm` (in `boolvalue.go`,
+beside ADR 0261's `constantTestArm`) is now consulted by the interpreter, both compiled doors, the print
+door, the renderer's verdict predicate, and *both* constant folders. The polarity of `and` versus `or` is
+written in exactly one place, and `True or 1` → `True` beside `1 or True` → `1` is the pair no predicate over
+the *operator* can produce — which is how ADR 0261's untouchable row fell out for free instead of being
+specially preserved. The two engines had previously drifted precisely because each kept its own copy of the
+verdict logic (`if e.truthy(l) && e.truthy(r) { return 1 }` vs an `and i1` + `zext`).
+
+**A condition and a value ask different questions, so they need different doors.** `truth(a and b)` is
+`truth(a) and truth(b)`: an `if`/`while` head can branch on `x or "d"` even though the *value* of that
+expression has nowhere to live. Splitting `logicCondition` from `logicValue` is what kept every existing
+condition green while the value road was rewritten — and the tripwire test is a *negative* one
+(`TestAConditionAsksOnlyWhetherTheAnswerIsTrue` fails if the value door's refusal ever leaks into a head).
+The general lesson: when a lowering serves two consumer kinds, refuse to let the strict one answer for both,
+or the day it gets stricter it breaks programs that were working.
+
+**Reuse the printer that already takes a kind.** The print door did not need a new formatting path or the
+tagged value word: `rt_print_mixed_value(i32 %v, i32 %t, i32 %quote)` already exists (ADR 0187/0232/0259) and
+its tag is an ordinary `i32`, so two `select`s over one test — payload *and* kind — buy
+`print(x or "d")` → `d`, `print(x or 2.5)` → `2.5`, `print(xs or "empty")` → `[1, 2]`. Tags come from
+`value.go`'s own vocabulary, so a pair built here and a pair a container slot carries cannot disagree. The
+allocation budget came from ADR 0181's rooting rule: at most one arm may *build* a heap object, because a
+handle in a register across a second allocation is a GC bug waiting for its schedule.
+
+**Take away an unearned default and watch two silent wrong answers become refusals.** `logicOperandKind`
+used to fall through to `int` for anything it did not recognise; that default had `print(x or math.PI)`
+printing `3` (the truncated double) and `[x or "b"]` printing `[0]` (an interned index where a text
+belongs). Making the default *refuse* moved both into the capability exit class with both operands named.
+This loop keeps finding the same shape: a predicate's `default: return <plausible>` is where exit-0 wrong
+answers live (ADR 0225's swallowed errors, ADR 0226's `sitofp i32 to double`, ADR 0266's fold guards).
+
+**Both engines evaluate both operands — on purpose.** A first draft short-circuited the interpreter only,
+which is *more* CPython-like and *less* correct here: one engine dropping the effects the other keeps is a
+two-backend split, and AGENTS' two-engines rule is the contract this cycle had to obey. So `x and boom()`
+calls `boom` on both legs and `x and (1 // 0)` raises on both, pinned as one probe whose two legs are byte-
+identical (`probe_and_or_the_test_skips.gy`), with the reference's silence filed as Gap R.149 for one commit
+that fixes both roads together. Honest debt, in one row, with both legs pinned — rather than a half-fixed
+interpreter and a hidden divergence.
+
+**The checker was checking a type the operator never returns.** `inferBinOp` answered `TBool()` for `and`/
+`or`, so `x: int = 2 and 3` was validated against `bool`. Now the type follows the operand when both agree
+and is dynamic when they do not — and `--json --eval` needed no schema change to report `"type": "bool"` for
+`True or 1` and `"type": "int"` for `1 or True`, because the printer, the checker and the JSON report all ask
+the one predicate. Machine paths follow when the predicate is single; they drift when it is copied.
+
+**A pin that stops refusing has to move, not vanish.** `TestThePairRoadStillRefusesThePositionsThatTakeAValue`
+pinned `print(n and 3)` as a Gap R.146 refusal; the row now *answers* `14`, so it moved up into the parity
+table and the probe `probe_pair_bound_name_takes_a_value` lost its `and` line. The conformance harness failed
+the build until the per-leg pins and the registry agreed — the ratchet working as designed (ADR 0166's
+discipline: a probe records, a parity row asserts, and neither is allowed to go stale quietly).
+
+**Process lesson, keep it: do not `gofmt -w` a whole package.** Formatting an untouched file (`ast.go`,
+`parser.go`, `escape.go`, `fmt.go`, `imports.go`, four test files) turned a one-feature commit into 400 lines
+of unrelated churn and nearly hid the real diff. gofmt the files the feature touches; the rest of the
+repository is not this cycle's business.

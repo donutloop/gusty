@@ -6064,6 +6064,13 @@ func (g *irGen) isFloat(e Expr) bool {
 		if n.Op == "/" {
 			return true
 		}
+		if n.Op == "and" || n.Op == "or" {
+			// What the operator answers with is what the operand it chooses answers with — ADR 0262's rule
+			// for a ternary's arms read for the two operators that hand back an operand (roadmap Gap R.147,
+			// ADR 0269). Without this the print formatter and the arithmetic each picked their own answer for
+			// `print(1.5 and 2.5)`, which is how a float came to be printed through `%d`.
+			return g.logicAnswerIsFloat(n)
+		}
 		// The numeric door answers an arithmetic use of a slot whose kind the object carries through
 		// the float arms — unboxing a float slot rather than reading its handle as a count — so the
 		// result of such an expression *is* a float, and print has to pick the float formatter for it
@@ -6996,6 +7003,12 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 			return t
 		}
 	case *BinOp:
+		if n.Op == "and" || n.Op == "or" {
+			// The double domain's `and`/`or`: `select i1 %c, double %a, double %b`, the instruction ADR 0262
+			// wrote for a ternary's arms and the door a float answer reaches from an arithmetic context
+			// (roadmap Gap R.147, ADR 0269).
+			return g.logicDouble(b, n)
+		}
 		return g.floatBinOp(b, n)
 	case *Call:
 		if n.Fn != nil {
@@ -7477,6 +7490,16 @@ func (g *irGen) truthOperand(b *strings.Builder, e Expr) string {
 }
 
 func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
+	// `if a and b:` and `while a or b:` ask only whether the answer is true, and the truth of the operand
+	// the operator chooses is the composition of the two operands' truths. That question never needs the
+	// operands to agree on a word, so it is answered here rather than by the value door — which is
+	// entitled to refuse the shapes this one can still branch on (roadmap Gap R.147, ADR 0269).
+	if n, ok := e.(*BinOp); ok && (n.Op == "and" || n.Op == "or") {
+		if chosen, decided := constantLogicArm(n); decided {
+			return g.truthyValue(b, chosen)
+		}
+		return g.logicCondition(b, n)
+	}
 	// `if x == "a":` where x carries a runtime tag — a loop variable over a container that
 	// mixes kinds. An `if` condition is lowered here, not through the expression path, so the
 	// tagged comparison gets its hook in both places (ADR 0232).
@@ -8549,16 +8572,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 						}
 						folded = true
 					}
-				case "and":
+				case "and", "or":
+					// The folder used to answer the verdict — `2 and 3` became the 1 the operator never
+					// returns — so every index, repeat count and constant argument built from `and`/`or`
+					// was computed from a number the language does not have. One door for both backends and
+					// both folders: logicFoldConst (roadmap Gap R.147, ADR 0269).
 					folded = true
-					if lv != 0 && rv != 0 {
-						res = 1
-					}
-				case "or":
-					folded = true
-					if lv != 0 || rv != 0 {
-						res = 1
-					}
+					res = logicFoldConst(lv, n.Op, rv)
 				case "==":
 					folded = true
 					if lv == rv {
@@ -8591,24 +8611,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 		}
 		t := g.newTmp()
-		// `and`/`or` lower to boolean comparisons combined with i1 logic, then
-		// zero-extended back to an i32 0/1 — mirroring the interpreter (which
-		// evaluates both operands and returns a boolean).
+		// `and`/`or` are not operators here: they are the two operators that choose an operand and hand it
+		// back unconverted, so the question is *which value*, never *what verdict* (roadmap Gap R.147,
+		// ADR 0269). The door folds a test the source wrote, selects between two operands that share a
+		// word, and refuses the shapes whose answer would need the tag that L11.1 still owes — it may not
+		// answer with the 1 that stood here, which is the exit-0 wrong answer the row was filed for.
 		if n.Op == "and" || n.Op == "or" {
-			// `and`/`or` test the *truth* of each operand — which may be an integer,
-			// a float, or the i1 result of a comparison — then combine the two
-			// predicates and zero-extend back to the interpreter's i32 0/1 boolean.
-			lt := g.truthOperand(b, n.L)
-			rt := g.truthOperand(b, n.R)
-			if n.Op == "and" {
-				b.WriteString(fmt.Sprintf("  %s = and i1 %s, %s\n", t, lt, rt))
-			} else {
-				b.WriteString(fmt.Sprintf("  %s = or i1 %s, %s\n", t, lt, rt))
-			}
-			g.markI1(t)
-			res := g.newTmp()
-			b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", res, t))
-			return res, nil
+			return g.logicValue(b, n)
 		}
 		// Membership tests need runtime container access, so handle them
 		// separately from the i32 arithmetic/comparison ops.
@@ -9477,16 +9486,10 @@ func (g *irGen) foldConstInt(e Expr) (int64, bool) {
 				return 1, true
 			}
 			return 0, true
-		case "and":
-			if lv != 0 && rv != 0 {
-				return 1, true
-			}
-			return 0, true
-		case "or":
-			if lv != 0 || rv != 0 {
-				return 1, true
-			}
-			return 0, true
+		case "and", "or":
+			// The answer is an operand, not a verdict (roadmap Gap R.147, ADR 0269): a folder that returns
+			// 1 here is the silent wrong answer one statement further out cannot undo.
+			return logicFoldConst(lv, n.Op, rv), true
 		}
 		return 0, false
 	case *UnOp:
@@ -11538,6 +11541,33 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		for i, a := range args {
 			if i > 0 {
 				emitText(sep)
+			}
+			// `print(a or b)` prints an **operand**, and the operand it prints is the one the test chooses —
+			// a fact about a value, not about a verdict, so the printer is asked of the operand rather than
+			// of the operator (ADR 0261's rule, roadmap Gap R.147, ADR 0269). Two roads: when the source
+			// wrote the test, the chosen operand is the whole expression and every arm below gets to render
+			// it as it would render that operand alone; otherwise the answer is one operand or the other and
+			// only the run time knows which, so the pair is selected and given to the one printer in the
+			// module that reads a tag. A shape neither road can state is refused, never answered with the 1
+			// that used to come out here (ADR 0166).
+			if ln, isLogic := a.(*BinOp); isLogic && (ln.Op == "and" || ln.Op == "or") {
+				if chosen, decided := constantLogicArm(ln); decided {
+					a = chosen
+				} else if g.logicAnswerIsFloat(ln) {
+					// Both operands answer with a double, so the answer does too, and the chain's float arm
+					// below renders it from the double door (`select i1 …, double …`) exactly as it renders
+					// any other float expression. No box, no tag, no second formatter.
+				} else {
+					payload, tag, handled, lerr := g.logicPrintPair(b, ln)
+					if lerr != nil {
+						return "", lerr
+					}
+					if !handled {
+						return "", logicWordErr(ln)
+					}
+					fmt.Fprintf(b, "  call void @rt_print_mixed_value(i32 %s, i32 %s, i32 0)\n", payload, tag)
+					continue
+				}
 			}
 			if nm, ok := a.(*Name); ok && g.unionVars[nm.Value] {
 				g.emitUnionPrint(b, nm.Value, "")

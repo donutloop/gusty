@@ -233,8 +233,10 @@ retires the tag the arithmetic left behind (`Gap R.142`, ADR 0267). Every positi
 *number* now asks the pair: `n + 1`, `-n`, `n > 13`, `if n:`, a `while` head, `f"{n}"`, `str(n)`, `n += 1`
 (ADR 0268) — a name the arithmetic door bound is provably a whole number or a float, so the position lifts it
 into the one word that holds both families rather than guessing. What still refuses is a position that keeps
-**one word** for a whole value — a builtin's argument, a list element, an `and`'s operand (`Gap R.146`) — and
-the float road the pair has not entered yet (`n / 4`, `Gap R.148`).
+**one word** for a whole value — a builtin's argument, a list element (`Gap R.146`) — and
+the float road the pair has not entered yet (`n / 4`, `Gap R.148`). An `and`'s operand is not one of those
+positions any more: the operator that chooses an operand can ask the pair directly, so `print(n and 3)` prints
+CPython's `3` and `print(n or 3)` its `14`, on all three legs (`Gap R.147`, ADR 0269).
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
 the program runs (`xs = [1, 2.5]`, ints here and floats there — answering it would print `2.0` for `2`), a
 slot used as a number on a container this pass cannot see (`xs.append(1.5)`, or a container handed to a
@@ -363,6 +365,22 @@ is stored as (Gap R.111), and the comprehension and fold shapes that sweep measu
 their per-engine answers — Gaps R.116, R.117 and R.119, since R.118 turned out to be a dict story and was
 paid by ADR 0260 the same day. `--json` names the
 type `bool`, and `--eval '1 == 1'` echoes `True`.
+
+**`and` and `or` hand back the operand the test chose** (ADR 0269, closing Gap R.147). They are the two
+operators that are not operators: `print(2 and 3)` is `3`, `print(0 or 5)` is `5`, `print("" or "d")` is the
+text `d`, `print([1] and [2])` is `[2]`, and the pair that proves the rule is `print(True or 1)` → `True`
+beside `print(1 or True)` → `1`. Both engines printed `1` for all four — exit 0, digits wrong, no
+refusal, on an operator every Python program uses — because the lowering composed two predicates and
+zero-extended the verdict, and the truthiness table asked whether the *test* passed rather than what the
+*expression* is. A condition still wants only a verdict, and `truth(a and b)` is `truth(a) and truth(b)`,
+so `if x or "d":` branches on operands that could never share a word; a value position needs one, and
+the compiled backend picks it with a `select` — in the `i32` word, in the `double` word, or as the
+(payload, tag) pair the module's one tag-reading printer takes, which is what lets `print(x or "d")`
+print a word instead of the interned index underneath it. A shape none of those roads can state names both
+operands and the missing tag at the capability exit instead of answering `1`, and the checker types the
+expression by its operand, not by a bool it never returns. What the two backends still owe together is the
+operand the test rejected: both evaluate it, so `x and boom()` calls `boom` where CPython is silent
+(Gap R.149).
 
 `str()` and `repr()` are **one pair over one renderer** (ADR 0258, closing Gap L.2). `print`, `str()`
 and a container element ask the same table: in the compiled backend the value printers no longer call
@@ -961,10 +979,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **132 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — 99 rows asserting parity and 33 recorded without it (the probe and merged
+  `conformance-matrix.json`: **143 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — 104 rows asserting parity and 39 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
-  the oracle verdict being 84 `match`, 27 pinned `debt` and 21 `not_applicable`. Parity (interpreter ==
+  the oracle verdict being 89 `match`, 33 pinned `debt` and 21 `not_applicable`. Parity (interpreter ==
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its

@@ -887,7 +887,9 @@ func TestEvalFloatLiteral(t *testing.T) {
 }
 
 func TestEvalAndOrFloorDiv(t *testing.T) {
-	// and/or return a boolean 0/1 (both operands evaluated).
+	// `and`/`or` hand back an **operand**, not a verdict (roadmap Gap R.147, ADR 0269): the reference
+	// evaluates the left, tests it, and returns whichever operand the test chose. The verdict these used
+	// to answer — `1 and 2` as the 1 — is the exit-0 wrong answer the row was filed for.
 	v, _, err := EvalExpr("1 and 0")
 	if err != nil {
 		t.Fatalf("and err: %v", err)
@@ -899,15 +901,29 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("and err: %v", err)
 	}
-	if v != 1 {
-		t.Fatalf("1 and 2 got %d, want 1", v)
+	if v != 2 {
+		t.Fatalf("1 and 2 got %d, want 2 (the operand the test chose, not the verdict)", v)
 	}
 	v, _, err = EvalExpr("0 or 7")
 	if err != nil {
 		t.Fatalf("or err: %v", err)
 	}
-	if v != 1 {
-		t.Fatalf("0 or 7 got %d, want 1", v)
+	if v != 7 {
+		t.Fatalf("0 or 7 got %d, want 7", v)
+	}
+	v, _, err = EvalExpr("7 or 0")
+	if err != nil {
+		t.Fatalf("or err: %v", err)
+	}
+	if v != 7 {
+		t.Fatalf("7 or 0 got %d, want 7 — the operand the test keeps is the answer", v)
+	}
+	v, _, err = EvalExpr("0 and 7")
+	if err != nil {
+		t.Fatalf("and err: %v", err)
+	}
+	if v != 0 {
+		t.Fatalf("0 and 7 got %d, want 0", v)
 	}
 	// floor division mirrors integer division in the interpreter.
 	v, _, err = EvalExpr("9 // 2")

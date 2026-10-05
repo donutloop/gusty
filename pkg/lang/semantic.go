@@ -1388,7 +1388,15 @@ func (an *SemanticAnalyzer) inferBinOp(n *BinOp) *Type {
 	case "==", "!=", "<", "<=", ">", ">=", "in", "not in", "is", "is not":
 		return TBool()
 	case "and", "or":
-		return TBool()
+		// `a and b` hands back one of its **operands**, so the answer's type is the operand's type: when
+		// both operands infer the same type the answer has it, and when they do not, which one the test
+		// chooses is a run-time fact and the honest answer is dynamic. The checker used to call every one
+		// of them a bool, which is what `x: int = 2 and 3` was being checked against (roadmap Gap R.147,
+		// ADR 0269).
+		if lt != nil && rt != nil && lt.Name() == rt.Name() {
+			return lt
+		}
+		return TDyn()
 	default:
 		return TDyn()
 	}

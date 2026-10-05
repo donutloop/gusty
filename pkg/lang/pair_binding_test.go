@@ -200,6 +200,12 @@ func TestAPairBoundNameIsReadWhereverANumberIsAsked(t *testing.T) {
 		{"augmented assignment onto it", builtList + "n = xs[0][0] * 2\nn += 1\nprint(n)\n", "15\n"},
 		{"augmented product onto it", builtList + "n = xs[0][0] * 2\nn *= 2\nprint(n)\n", "28\n"},
 		{"the float family keeps its digits", builtList + "n = xs[0][0] * 2.5\nprint(n)\nprint(n > 17)\n", "17.5\nTrue\n"},
+		// `and` hands back an operand, and a pair-bound name is an operand the run time just described:
+		// the print door selects the (payload, tag) pair and the tag says which rendering runs, so this
+		// line is CPython's `3` on all three engines (roadmap Gap R.147, ADR 0269 — it used to be the
+		// refusal in the table below, and before that the verdict `1`).
+		{"the operand of and", builtList + "n = xs[0][0] * 2\nprint(n and 3)\nprint(1 and n)\n", "3\n14\n"},
+		{"the operand of or", builtList + "n = xs[0][0] * 0\nprint(n or 9)\n", "9\n"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -245,15 +251,15 @@ func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
 }
 
 // TestThePairRoadStillRefusesThePositionsThatTakeAValue keeps the remaining road honest: a position that
-// takes a whole *value* — a builtin's argument, a container's element, an `and`'s operand — has nowhere
-// to put a tag, and says so in words rather than reading the payload alone (roadmap Gap R.146, the same
-// missing word Gap R.139 names on the calling side).
+// takes a whole *value* — a builtin's argument, a container's element — has nowhere to put a tag, and says
+// so in words rather than reading the payload alone (roadmap Gap R.146, the same missing word Gap R.139
+// names on the calling side). The `and` row that used to be here answers since ADR 0269 and moved up to the
+// parity table; a row that stops refusing has to move, not disappear.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n"},
 		{"handed to min", builtList + "n = xs[0][0] * 2\nprint(min(n, 3))\n"},
 		{"an element of a list", builtList + "n = xs[0][0] * 2\nprint([n])\n"},
-		{"the operand of and", builtList + "n = xs[0][0] * 2\nprint(n and 3)\n"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

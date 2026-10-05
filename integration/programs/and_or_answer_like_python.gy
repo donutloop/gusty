@@ -1,0 +1,56 @@
+# and_or_answer_like_python.gy — `and`/`or` choose an operand, not a verdict.
+#
+# The reference tests the left operand and hands back whichever operand the test chose, unconverted:
+# `2 and 3` is `3`, `0 or 5` is `5`, `"" or "d"` is the text `d`, `[1] and [2]` is `[2]`. Both engines
+# answered all four with the verdict — `1`, printed at exit 0, no diagnostic — on an operator every
+# Python program uses (roadmap Gap R.147, ADR 0269).
+#
+# The rows are the whole rule, not just the four numbers above: the operand that answers keeps its own
+# representation (a float stays a float, a verdict stays a verdict, a container prints its own elements),
+# a run-time test selects rather than branches, the *condition* positions still take a verdict because a
+# condition asks only whether the answer is true, and `1 or True` stays the number `1` — the pair ADR 0261
+# refuses to break, asked here of the operator that made it.
+print(2 and 3)
+print(0 and 3)
+print(0 or 5)
+print(7 or 0)
+print("" or "d")
+print("a" or "d")
+print("a" and "b" and "c")
+print(0 or "" or "x")
+print([1] and [2])
+print([] or [1, 2])
+print(1 and 0)
+print(1.5 and 2.5)
+print(0.0 or 2.5)
+print(True and False)
+print(False or True)
+print(True or 1)
+print(1 or True)
+print(None or 3)
+print(0 or None)
+x = 3
+print(x or "d")
+print(x and 2.5)
+y = 0
+print(y or 2.5)
+print(y and 0)
+xs = [1, 2]
+print(xs or "empty")
+d = {}
+print(d or "empty")
+print((2 and 3) + 1)
+print((0 or 2) * 3)
+print(1 if 2 and 0 else 0)
+if "" or "d":
+    print("truthy text")
+if x and xs:
+    print("both filled")
+i = 0
+while i and x:
+    print("never")
+    i = i + 1
+print("loop ended")
+ys = [True, 1]
+print(ys[0] and ys[1])
+print(2 and 3, "" or "d", [1] and [2])

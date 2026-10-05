@@ -224,12 +224,17 @@ func TestExecMultiplePrints(t *testing.T) {
 }
 
 func TestExecAndOrBool(t *testing.T) {
-	// and/or evaluate both operands and return a boolean 0/1.
+	// `and`/`or` hand back the operand the test chose — `2 and 3` is `3`, not the verdict `1` the compiled
+	// backend used to print (roadmap Gap R.147, ADR 0269). Both engines read one rule: the test picks, the
+	// picked operand answers, in its own representation.
 	assertOutput(t, "print(1 and 0)", "0\n")
-	assertOutput(t, "print(1 and 2)", "1\n")
+	assertOutput(t, "print(1 and 2)", "2\n")
 	assertOutput(t, "print(1 or 0)", "1\n")
 	assertOutput(t, "print(0 or 0)", "0\n")
-	assertOutput(t, "print(0 or 7)", "1\n")
+	assertOutput(t, "print(0 or 7)", "7\n")
+	assertOutput(t, "print(2 and 3)", "3\n")
+	assertOutput(t, "print(\"\" or \"d\")", "d\n")
+	assertOutput(t, "print([1] and [2])", "[2]\n")
 	// and/or on runtime values.
 	assertOutput(t, "x = 1\ny = 0\nprint(x and y)\nprint(x or y)", "0\n1\n")
 	// floor division lowers to sdiv (mirrors the interpreter).

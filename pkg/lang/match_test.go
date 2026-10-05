@@ -116,10 +116,18 @@ func TestMatchBareNameCapture(t *testing.T) {
 }
 
 // TestMatchBareNameCaptureString verifies the captured name works in a string
-// context inside the matched branch.
+// context inside the matched branch. The `and` of two verdicts hands back an
+// operand (roadmap Gap R.147, ADR 0269) and a verdict renders True/False, so the
+// parity is asserted through the renderer the program itself uses: the value word
+// underneath a verdict is not something the language promises.
 func TestMatchBareNameCaptureString(t *testing.T) {
-	src := "def classify(v):\n    match v:\n        case 1:\n            return \"one\"\n        case x:\n            return \"other:\" + str(x)\nclassify(1) == \"one\" and classify(5) == \"other:5\""
-	if got := evalStr(t, src); got != 1 {
-		t.Fatalf("bare-name capture string parity = %d, want 1", got)
+	src := "def classify(v):\n    match v:\n        case 1:\n            return \"one\"\n        case x:\n            return \"other:\" + str(x)\nprint(classify(1) == \"one\" and classify(5) == \"other:5\")"
+	if out := captureStdout(t, src); out != "True\n" {
+		t.Fatalf("bare-name capture string parity = %q, want \"True\\n\"", out)
+	}
+	// The same `and` taken as a condition chooses the branch the reference chooses.
+	cond := "def classify(v):\n    match v:\n        case 1:\n            return \"one\"\n        case x:\n            return \"other:\" + str(x)\nif classify(1) == \"one\" and classify(5) == \"other:5\":\n    1\nelse:\n    0"
+	if got := evalStr(t, cond); got != 1 {
+		t.Fatalf("bare-name capture as a condition = %d, want 1", got)
 	}
 }

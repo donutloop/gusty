@@ -125,8 +125,15 @@ func (env BoolEnv) of(e Expr, depth int) bool {
 			return !env.overloadedComparison(t)
 		}
 		if t.Op == "and" || t.Op == "or" {
-			// Python's and/or yield an operand, not a verdict: `1 and 2` is 2. The result
-			// is a bool only when whichever operand it yields is one.
+			// Python's and/or yield an operand, not a verdict: `1 and 2` is 2, `True or 1` is True and
+			// `1 or True` is 1. So the answer's kind is a fact about the operand the test chooses, which
+			// is the same question a ternary's arms answer and min/max ask of their winner (ADR 0261).
+			// When the test is a value the source wrote, that operand is known and only its own boolness
+			// matters; when it is not, only an answer both operands agree on is honest (roadmap Gap R.147,
+			// ADR 0269).
+			if chosen, ok := constantLogicArm(t); ok {
+				return env.of(chosen, depth)
+			}
 			return env.of(t.L, depth) && env.of(t.R, depth)
 		}
 		return false
@@ -181,6 +188,29 @@ func constantTestArm(t *CondExpr) (Expr, bool) {
 		return t.If, true
 	}
 	return t.Else, true
+}
+
+// constantLogicArm reports the operand an `and`/`or` will hand back when the left operand's truth is a
+// value the source already wrote. `print(True or 1)` prints True because the operand the test chooses is
+// the BoolLit, and `print(1 or True)` prints 1 because the same test chooses the other one — the pair is
+// the reason this is asked of the chosen operand and never of the operator (roadmap Gap R.147, ADR 0269,
+// and the same rule ADR 0261 shipped for a ternary's arms).
+func constantLogicArm(n *BinOp) (Expr, bool) {
+	if n == nil || (n.Op != "and" && n.Op != "or") {
+		return nil, false
+	}
+	truthy, ok := constantTruth(n.L)
+	if !ok {
+		return nil, false
+	}
+	takesRight := truthy
+	if n.Op == "or" {
+		takesRight = !truthy
+	}
+	if takesRight {
+		return n.R, true
+	}
+	return n.L, true
 }
 
 func constantTruth(e Expr) (bool, bool) {

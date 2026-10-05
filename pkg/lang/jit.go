@@ -2412,6 +2412,44 @@ func (e *Evaluator) dunderCall(self int64, name string, args ...int64) (int64, b
 }
 
 func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
+	// `and` and `or` are the two operators that are not operators: they test one operand and hand back
+	// whichever operand the test chose, unconverted. `print(2 and 3)` is `3`, not `1`, and `print("" or "d")`
+	// is the text `d`. Both engines used to answer the verdict — exit 0, digits wrong, on an operator every
+	// Python program uses — and the row is roadmap Gap R.147, ADR 0269.
+	if n.Op == "and" || n.Op == "or" {
+		// A test the source wrote is not a run-time question: the operand the test chooses is the answer,
+		// and the other operand is not in the program — the same rule ADR 0261 shipped for a constant
+		// ternary test, and the reason the compiled `select` never emits the arm it cannot take either.
+		if chosen, decided := constantLogicArm(n); decided {
+			cv, cerr := e.eval(chosen)
+			if cerr != nil {
+				return 0, cerr
+			}
+			return e.logicChosen(chosen, cv), nil
+		}
+		// Both operands are evaluated, exactly as they are by the compiled `select`: leaving the un-chosen
+		// operand unevaluated is CPython's promise and this language does not make it yet — one engine
+		// dropping the effects while the other keeps them is the two-engine split AGENTS forbids, so the
+		// owed half is recorded whole in one row (roadmap Gap R.149, ADR 0269).
+		l, err := e.eval(n.L)
+		if err != nil {
+			return 0, err
+		}
+		r, err := e.eval(n.R)
+		if err != nil {
+			return 0, err
+		}
+		if n.Op == "and" {
+			if e.truthy(l) {
+				return e.logicChosen(n.R, r), nil
+			}
+			return e.logicChosen(n.L, l), nil
+		}
+		if e.truthy(l) {
+			return e.logicChosen(n.L, l), nil
+		}
+		return e.logicChosen(n.R, r), nil
+	}
 	l, err := e.eval(n.L)
 	if err != nil {
 		return 0, err
@@ -2635,16 +2673,6 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			return 0, err
 		}
 		return boolVal(orderedBy(n.Op, ord)), nil
-	case "and":
-		if e.truthy(l) && e.truthy(r) {
-			return 1, nil
-		}
-		return 0, nil
-	case "or":
-		if e.truthy(l) || e.truthy(r) {
-			return 1, nil
-		}
-		return 0, nil
 	case "**":
 		if lf, ok := e.floatOf(l); ok {
 			rf, rfok := e.floatOf(r)

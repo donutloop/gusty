@@ -49,6 +49,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// The number use of a slot whose kind only the run time can describe: a list of lists, and
 		// arithmetic on what comes out of one (roadmap L11.1's last clause, ADR 0265).
 		"numeric_slot_arith",
+		// `and`/`or` hand back the operand the test chose, on both backends: `2 and 3` is `3`, `"" or "d"`
+		// is the text `d`, `[1] and [2]` is `[2]`, and `1 or True` stays the number `1` (roadmap Gap R.147,
+		// ADR 0269). The shapes whose answer needs the kind to travel with it are filed beside it.
+		"and_or_answer_like_python",
 		// The same arithmetic one statement earlier — bound to a name before it is printed. The pair
 		// the print door already took now travels through the binding, so `n = xs[0][0] * 2` and
 		// `print(n)` answer 14 on all three engines (roadmap Gap R.138, ADR 0267).
@@ -330,6 +334,13 @@ func conformanceProbes() []lang.ConformanceCase {
 		// comparison produced and nothing says it was ever a verdict, so both backends print 1
 		// where CPython prints True (roadmap Gap R.111, filed by ADR 0257).
 		"probe_bool_through_a_call",
+		// The same value's *kind*, chosen by `and`/`or`: the print door renders a chosen operand by its tag,
+		// and the positions that keep one word for a value still decline (roadmap Gap R.147's owed half,
+		// owned by L11.1 and Gap R.146, ADR 0269).
+		"probe_and_or_shapes_the_word_carry",
+		// The operand the test did not choose still runs: both engines evaluate both, so the effects and the
+		// traps of an operand the reference never evaluates are performed here (roadmap Gap R.149, ADR 0269).
+		"probe_and_or_the_test_skips",
 		// The verdict an operator *picks* — max/min's chosen candidate — is parity surface now: the
 		// program lives in conformanceStandalone (Gap R.117, ADR 0261). What stays filed is the shape
 		// whose candidate the compiler cannot read at all, and the ternary whose test it cannot read:
@@ -506,9 +517,24 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}, {Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
 	"programs/probe_pair_bound_name_takes_a_value": {oracle: lang.OracleDebt,
-		reason: "CPython prints 14, 3, [14], 3 and the interpreted leg prints 14, 3, [14], 1 — its `and` answers the verdict rather than the operand the reference hands back (Gap R.147) — while the compiled leg spends exit 1 on the first line, because an argument, a list element and an `and`'s operand each keep one word for the value and have nowhere to put the tag the binding carried",
-		ref:    "roadmap Gap R.146 (measured landing ADR 0268) and Gap R.147 for the interpreted leg's `and`; docs/adr/0268, Consequences",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n3\n[14]\n1\n"}, {Backend: "aot", Missing: true, Err: "holds the answer of arithmetic over a slot"}}},
+		reason: "CPython prints 14, 3, [14], 3 and the interpreted leg now prints the same four — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because an argument, a list element and a builtin's argument each keep one word for the value and have nowhere to put the tag the binding carried",
+		ref:    "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n3\n[14]\n3\n"}, {Backend: "aot", Missing: true, Err: "holds the answer of arithmetic over a slot"}}},
+	// `and`/`or` choose an operand (Gap R.147, ADR 0269). The print door can render the choice because the
+	// module has one printer that takes a value *and* its kind; the positions that keep one word for a value
+	// — `len`'s argument, a binding, a container element, an arithmetic operand — refuse instead of reading
+	// the payload alone, which is Gap R.146's missing pair one operator further out.
+	"programs/probe_and_or_shapes_the_word_carry": {oracle: lang.OracleDebt,
+		reason: "CPython and the interpreted leg print 3, d, ['b'], 5.0 and [[1, 2]]; the compiled leg spends exit 1 on the first of them, because a chosen operand that is not a number has no word to travel in outside the print door, where the tag can travel beside the payload",
+		ref:    "roadmap Gap R.147 (owed half, owned by L11.1's tagged value word) and Gap R.146; docs/adr/0269, Consequences",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\nd\n['b']\n5.0\n[[1, 2]]\n"}, {Backend: "aot", Missing: true, Err: "requires an inline list/dict/set literal"}}},
+	// The other half of the same operator: the operand the test did not choose is still evaluated, on both
+	// engines. The two backends agree with each other line for line, which is what makes this one row (the
+	// AGENTS two-backends rule) rather than two divergences.
+	"programs/probe_and_or_the_test_skips": {oracle: lang.OracleDebt,
+		reason: "CPython prints 0, 1, 0, 1 — the operand the test rejected is never evaluated, so boom() never runs and the division never traps; both gusty legs print boom, 0, boom, 1 and then the two ZeroDivisionError arms, because `and`/`or` evaluate both operands here exactly as a ternary evaluates both of its arms",
+		ref:    "roadmap Gap R.149 (measured landing ADR 0269); docs/adr/0269, Consequences",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n"}, {Backend: "aot", Stdout: "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n"}}},
 	"programs/probe_pair_from_a_tuple_unpack": {oracle: lang.OracleDebt,
 		reason: "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
 		ref:    "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",

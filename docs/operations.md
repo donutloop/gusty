@@ -979,6 +979,7 @@ Match these messages rather than scraping diagnostics prose:
 | `returns a ternary arm of "x", which its own body binds to a float` | `return x if cond else 0.0` of such a parameter: the answer's word is the arm's and there is no number-typed `select` to choose two doubles with (roadmap Gap R.102, ADR 0254) | take the branch with `if`/`else` and `return` the number on each arm, or add it to `0.0` on the arm |
 | `winner's own kind needs the tagged value word` | `min` / `max` over runtime candidates whose static kinds mix `int` and `double`: the comparison is decidable, but the winner's kind is not, and forcing the double domain answers `min(2.5, 1)` as `1.0` (roadmap Gap R.109, ADR 0256) | keep candidates literal, use the interpreter, or wait for L11.1's tagged value word |
 | `takes values side by side or one container, not a container among values` | a `min` / `max` argument is a container literal beside another candidate; comparing containers by their handle words would answer with heap addresses (roadmap Gap R.107, ADR 0256) | flatten the candidates, or use the interpreter's element-wise ordering |
+| `chooses between two values whose kinds this pass cannot state in one word` | `a and b` / `a or b` hand back the **operand** the test chose (ADR 0269), and the position that holds the answer keeps one `i32` word while the two operands do not agree on what lives in it — a text among numbers, a float beside an int, a container among either | `print` it (the print door selects the payload *and* its tag and asks the module's tag-reading printer), take the branch with `if`/`else` and bind the operand on each arm, or run the interpreter; the row the missing tag belongs to is L11.1 with Gap R.146 beside it |
 
 Every container that crosses a function boundary is passed as a runtime heap
 handle (see `docs/language.md` § Containers across function boundaries); the
@@ -991,15 +992,32 @@ The codegen folds integer-literal binary expressions at compile time:
 
     x = 1 + 2        # emits store i32 3 (no add instruction)
 
-Folded ops: `+ - * / // %`, boolean `and`/`or`, and comparisons `== < <= > >=`.
+Folded ops: `+ - * / // %`, boolean `and`/`or` (folded to the **operand** the test chooses, never to a
+verdict — ADR 0269), and comparisons `== < <= > >=`.
 Division/modulo by a literal zero is left to runtime. Verify with
 `gustyc --emit-llvm`.
 
 ## Boolean `and` / `or` and floor division (AOT codegen)
 
-`and` / `or` lower to i1 boolean logic (`icmp ne` each operand, combine with
-`and`/`or i1`, `zext` to `i32` 0/1), mirroring the interpreter's evaluate-both-
-then-combine semantics. `//` floor division lowers to `sdiv`, also mirroring
+`and` / `or` are the two operators that hand back an **operand**, and the lowering is a choice between two
+values, not a verdict (`Gap R.147`, ADR 0269). Three roads, asked in `pkg/lang/logic_value.go`:
+
+- a test the source wrote picks its operand at compile time — `print(True or 1)` is `True` and
+  `print(1 or True)` is `1`, and the operand the test rejects is not in the module at all;
+- two operands that share a word are picked by one `select` — `select i1 %c, i32 …` in the number door,
+  `select i1 %c, double …` in the double door (ADR 0262's instruction, reused);
+- the print door selects the payload **and** the tag over one test and hands the pair to
+  `rt_print_mixed_value`, which is why `print(x or "d")` prints `d` and not the `@str_tab` index
+  underneath it, and `print(xs or "empty")` prints `[1, 2]`.
+
+A condition asks only for a verdict, and `truth(a and b)` is `truth(a) and truth(b)`, so `if`/`elif`/`while`
+heads and ternary tests compose two predicates and keep working on operands that share no word. A value
+position whose operands the pass cannot state is refused by naming both operands and the missing tag
+(the table above), never answered with the `0`/`1` that stood here while the whole expression was an
+`and i1` plus a `zext`. Both engines evaluate both operands, so the un-chosen operand's effects and traps
+still run (`Gap R.149`).
+
+`//` floor division lowers to `sdiv`, also mirroring
 the interpreter. Literal operands are constant-folded.
 
 ## Builtins: sum / min / max / abs (AOT codegen)
