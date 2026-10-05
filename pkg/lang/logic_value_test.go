@@ -40,6 +40,8 @@ func TestAndOrAnswerWithTheOperandTheTestChose(t *testing.T) {
 		{"chained and", "print(\"a\" and \"b\" and \"c\")\n", "c\n"},
 		{"chained or", "print(0 or \"\" or \"x\")\n", "x\n"},
 		{"a float answer keeps the double", "print(1.5 and 2.5)\n", "2.5\n"},
+		{"the double a data import declares", "import math\nx = 0\nprint(x or math.PI)\n", "3.141592653589793\n"},
+		{"a module constant as the operand a test keeps", "import math\nx = 1\nprint(x and math.E)\n", "2.718281828459045\n"},
 		{"a falsy float takes the float fallback", "print(0.0 or 2.5)\n", "2.5\n"},
 		{"a float chosen by an int operand", "print(2 and 0.0)\n", "0.0\n"},
 		{"a list literal picks the right container", "print([1] and [2])\n", "[2]\n"},
@@ -189,7 +191,9 @@ func TestTheShapesWhoseAnswerHasNoWordRefuseThemInWords(t *testing.T) {
 		{"a float among integers", "x = 0\nprint((x or 2.5) * 2)\n", "`x or 2.5` chooses between two values"},
 		{"a container bound to a name", "x = 0\nys = x or [[1, 2]]\nprint(ys)\n", "chooses between two values"},
 		{"two containers in a value position", "xs = [1]\nys = [2]\nc = xs and ys\nprint(c)\n", "chooses between two values"},
-		{"a kind the pass cannot name", "import math\nx = 0\nprint(x or math.PI)\n", "chooses between two values"},
+		// `math.PI` used to sit in the refusal table below: the pass could not name its kind, so
+		// `x or math.PI` had no word to hold. It can now — a data import declares the type
+		// (roadmap L11.6, ADR 0272) — and the answer is the reference's own number.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Compile(tc.src)

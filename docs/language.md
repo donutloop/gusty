@@ -1081,6 +1081,26 @@ interpreter and the AOT compiler fold as top-level constants:
 Reads like `math.PI` resolve to the folded constant in both backends. The interpreter
 also supports importing function-bearing modules (module functions dispatch at runtime);
 AOT module-function emission is supported: imported modules that define functions are lowered as mangled defines (`mod$fn`), and `mod.fn(args)` calls plus sibling-module calls and bare-name module-global capture are handled by the AOT compiler.
+
+**A data module's constant keeps the type the module declares** (roadmap L11.6, ADR 0272). The value behind
+`mod.NAME` is a literal the importing program never wrote, so every question about it — is this a double,
+does it have a sign, is it a text — is asked of that literal, through the one read in `pkg/lang/module_const.go`:
+
+```python
+import math
+print(math.PI)         # 3.141592653589793   — every engine
+print(math.PI * 2)     # 6.283185307179586
+print(-math.PI)        # -3.141592653589793
+x = math.PI
+print(x > 3.14)        # True
+print(abs(""))         # 0                   — and a text the module declares raises, naming 'str'
+```
+
+Before that read the compiled backend printed `3`, `6`, `-3` and `False` — the double poured into the integer
+word — while the same numbers written by hand were right, because `value()` resolved the name through the fold
+and the predicates that decide *how* to write the value saw an attribute they could not read. A name the
+program binds itself (`math = 3`) is the program's, not the module's; an attribute the module does not declare
+is answered by neither backend's imagination.
 ### Functions
 
 Lambda is an anonymous single-expression function: `lambda x: int: x + 1`.

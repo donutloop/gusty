@@ -6755,3 +6755,32 @@ baseline from "HEAD as of when I started" — build it from a commit ID, and if 
 (`git worktree add /tmp/base-abs 7f6b109`). Cross-check the numbers too: the conformance snapshot in
 `roadmap.md` had drifted (152 programs / 143 rows / 89 `match` against the artifact's 153 / 144 / 90) and the
 harness's own log line — not a remembered count — is the thing to quote.
+
+## Cycle: a data module's constant keeps the type the module declares (ADR 0272 — L11.6's typed stdlib constants; Gaps R.152, R.153 filed)
+
+**Half-fixed is a new wrong answer, not a smaller one.** The first cut of this fix taught it again: `print(math.PI)`
+asked the print formatter and printed `3.0` — still wrong, newly confusing, because the *value* still came from
+`sitofp i32 <truncated word>`. The formatter, the arithmetic, the binding's slot word and the double road all
+ask "is this a double?", and a fix that reaches one of them is a commit that changes the bug rather than
+removing it. The test table is written over **positions** (print, `* 2`, `/ 2`, `// 1`, a binding then a
+comparison, `str`, an f-string, a container element, `round`), not over operators, precisely so the next
+partial fix fails something.
+
+**When the store and the read ask the same question in two places, fix the question, not one answer.** The
+temptation was to widen `isFloat` and let the read claim a double; measured, `xs[0] = 3.14159` / `print(xs[0])`
+then printed `1` — the tag said float, the payload was an unboxed int, and the mixed printer followed a box
+handle that was never a box. The same program with a hand-written literal printed `1` too, which is the proof
+the disagreement predated the change: filed as Gap R.152 with both spellings, rather than hidden behind a
+diff. (`ys.append(f)` answers correctly — ADR 0232/0233's promotion path is the model for the fix.)
+
+**The interpreter being right is not a pass, it is a warning.** Every row here had the interpreter agreeing
+with CPython and the compiled leg answering at exit 0 — `3`, `6`, `-3`, `False`, `0` — and the two-backend
+matrix stayed green, which is the standing argument for the CPython leg in every table. It is also why
+`x = 0` / `print(x or math.PI)` had to *leave* ADR 0269's refusal table rather than stay in it: the refusal
+existed only because the pass could not name the kind, and a capability claim about something the compiler now
+knows is a bug with better manners.
+
+**Process, again from the same well: measure the neighbour before filing it as yours.** Both new rows came
+from walking `mod.NAME` over "every kind a word can hold" — bool and container-slot cases I would not have
+found by reading the original defect. Each was checked against the pre-change binary first, so the row can say
+"pre-existing, both spellings" instead of leaving the next agent to guess whether ADR 0272 caused it.

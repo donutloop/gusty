@@ -691,7 +691,7 @@ backends to *each other*; the CPython oracle exists in only two files
 | `def f(x): return x*2` / `print(f(0.1))` | `0.2` | `0.2` | `0` (Gap P.1) |
 | `print(-7 // 2)` / `x=8; x/=2; print(x)` | `-4` / `4.0` | ✅ | `-3` / `4` (Gap P.1) |
 | `print(-3.5 % 2.0)` | `0.5` | `-1.5` | `-1.5` (Gap P.2 — **both** backends) |
-| `import math; print(math.PI)` | `3.141592653589793` | ✅ | `3` (stdlib constants fold to int) |
+| `import math; print(math.PI)` | `3.141592653589793` | ✅ | ~~`3` (stdlib constants fold to int)~~ — ✅ **paid by ADR 0272** 2026-10-05: the kind is read from the module (`L11.6`) |
 | `def apply(f, xs): … f(x)` | works | works | `unsupported call "f"` (ADR 0161 note) |
 | `class B(A)` / `A.__init__(self, x)` | `3` | `3` | **SIGSEGV** in the JIT (cgo) |
 | `def m(self): return "hi"` (called) | `hi` | `hi` | **invalid IR**: `ret i32 @.str1` |
@@ -6402,3 +6402,38 @@ sentence, and widen `runtime_ir_test.go`'s module-wide "no global in a value pos
 `i32 @.(str|lst|dict|set)`) to the `lambda_N` globals. The interpreted legs already say the right sentence,
 which is the usual signal that the compiled leg is the one holding the wrong belief. Reproduces at
 `be1ea45`.
+
+
+### Gap R.152 — a float written into a container slot the program recorded as ints reads back as garbage (OPEN, owner L11.1, measured landing ADR 0272)
+
+```
+xs = [0]
+xs[0] = 3.14159
+print(xs[0])   # CPython 3.14159 · --interp 3.14159 · --aot 1
+print(xs)      # CPython [3.14159] · --interp [3.14159] · --aot [1]
+```
+
+Measured beside the data-import row, and deliberately left open there: the same program with the double
+written by hand behaves identically, which is the evidence that the store and the read were disagreeing
+before ADR 0272 rather than because of it. Item assignment writes the payload through the container's integer
+road and writes the *tag* as `float`, so the mixed printer follows a box handle that was never a box — the
+compiled answer is not a truncation but a different number entirely. The `append` sibling (`ys.append(f)` on a
+list that had no floats, then `print(ys[0])`) answers correctly, because ADR 0232/0233's contradiction rule
+promotes the container and boxes the double; item assignment has no such step. One question, asked in two
+places, is the fix — and `ys.append` is the shape to copy.
+
+### Gap R.153 — a verdict a data module declares prints its number (OPEN, owner L11.1/L11.6, measured landing ADR 0272)
+
+```
+# flags.gy: ON = True
+import flags
+print(flags.ON)    # CPython True · both engines: 1
+```
+
+ADR 0257's rule is one AST question (`IsBoolExpr`) consulted by `print`, `str()`, `repr()`, f-strings,
+container tags and `--json` — and `*Attr` is not in it. The stdlib's own vocabulary (`json.TRUE`,
+`collections.ONE`, a module's `ON = True`) therefore falls outside the table that decides `True` from `1` on
+both engines, which parity cannot see. `BoolEnv` already carries the hooks for exactly this kind of reach —
+`Lookup`, `Shadowed`, `Instance`, `NumericCandidate` — and the fifth is the module read ADR 0272 put in
+`pkg/lang/module_const.go`, supplied per backend so the two legs cannot answer differently.
+

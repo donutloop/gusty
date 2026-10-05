@@ -278,6 +278,20 @@ where the literal says nothing it holds is a number *and* the program never stor
 because a raise where CPython answers `-1` would be the same bug wearing a class. The interpreter still
 calls a tuple `'list'`, which is pinned with its own row (`Gap R.141`) rather than hidden in this one.
 
+**A data module's constant keeps the type the module declares** (ADR 0272, closing L11.6's typed stdlib
+constants). `import math` / `print(math.PI)` printed `3` compiled at exit 0 — the census table's own row —
+while the interpreter beside it printed `3.141592653589793` and a hand-written `pi = 3.141592653589793` was
+right on both legs. The value behind `mod.NAME` is a literal the importing program never wrote, and only
+`value()` knew it: every predicate that decides *how* to write the value saw an attribute with no kind and
+took the integer word, so `math.PI * 2` was `6`, `-math.PI` was `-3`, and `x = math.PI` / `print(x > 3.14)`
+was `False`. One read (`pkg/lang/module_const.go`) now answers the kind questions the print formatter, the
+arithmetic, the binding, the double road and ADR 0271's signless door ask — and the same read that turned
+`print(abs(NAME))` on a module text from `0` into CPython's sentence is what proves it is a kind rule and not
+a stdlib patch. Half-fixing it is a trap the tests now hold: formatter-only printed `3.0`, because the value
+still came from `sitofp` of the truncated word. What the probe found and this did not fix is filed: a float
+written into a container slot the program recorded as ints (`Gap R.152`), and a verdict the module declares
+printing `1` on both engines (`Gap R.153`).
+
 **`abs` is the other operator that needs the answer** (ADR 0271, closing `Gap R.140`). CPython stops on the
 absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this
 compiler answered every one of them: `print(abs("hi"))` printed `hi` (the text reached the print door holding

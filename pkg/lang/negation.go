@@ -133,6 +133,13 @@ func (g *irGen) negationOperandKind(e Expr) (string, bool) {
 	if g == nil || e == nil {
 		return "", false
 	}
+	// `mod.NAME` for a data import spells its kind in the module rather than in the importing program, so
+	// the question is asked of the literal the fold carries: `abs(consts.NAME)` had `llc` handed a subtract
+	// of a text's interned index and answered `0`, where the reference stops with
+	// `bad operand type for abs(): 'str'` (roadmap L11.6's typed stdlib constants, through ADR 0271's door).
+	if lit, folded := g.foldedModuleAttr(e); folded {
+		return g.negationOperandKind(lit)
+	}
 	// The printer's own question, asked once: is this value an index into @str_tab? A text is a text for
 	// the print door and for the numeric road, or `print(x)` and `print(-x)` disagree about what x holds
 	// — ADR 0229's rule ("the print path and the operation path ask this question of the same predicate")

@@ -3469,7 +3469,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1129250491/117/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1202919578/117/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3483,7 +3483,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1129250491/117/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1202919578/117/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3955,11 +3955,11 @@
       "case": {
         "id": "programs/probe_math_const",
         "name": "probe_math_const.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — a stdlib constant keeps its type through the\n# on-disk fold: print(math.PI) is 3.141592653589793, and 3 compiled (L11.6).\nimport math\n\nprint(math.PI)\nprint(math.E)\n",
+        "source": "# Oracle probe (L11.9, ADR 0186) — a stdlib constant keeps its type through the\n# on-disk fold: print(math.PI) is 3.141592653589793 on every engine now, where the\n# compiled leg printed the integer underneath the double — 3 — at exit 0 (L11.6,\n# ADR 0272). The reference spells the same two numbers math.pi and math.e.\nimport math\n\nprint(math.PI)\nprint(math.E)\n",
         "shared": false,
         "oracle": "not_applicable",
-        "reason": "Python spells these math.pi / math.e, so the source is not a CPython program; what the row pins is that the on-disk data-only fold loses the float type",
-        "ref": "roadmap L11.6 (a stdlib constant keeps its type)",
+        "reason": "Python spells these math.pi / math.e, so the source is not a CPython program — the row stays not-applicable for the spelling alone: what the twin asserts is the two numbers below, and integration/module_const_test.go asks the reference for its own spelling beside them. The fold's lost float type — the answer this row pinned at 3 and 2 compiled — is paid (roadmap L11.6, ADR 0272)",
+        "ref": "roadmap L11.6 (a stdlib constant keeps its type); closed 2026-10-05",
         "pins": [
           {
             "backend": "interpreter",
@@ -3967,15 +3967,15 @@
           },
           {
             "backend": "aot",
-            "stdout": "3\n2\n"
+            "stdout": "3.141592653589793\n2.718281828459045\n"
           }
         ]
       },
       "interp_ok": true,
       "interp_stdout": "3.141592653589793\n2.718281828459045\n",
       "aot_ok": true,
-      "aot_stdout": "3\n2\n",
-      "parity": false,
+      "aot_stdout": "3.141592653589793\n2.718281828459045\n",
+      "parity": true,
       "python_ok": false,
       "python_stdout": "",
       "python_error": "exit status 1: Traceback (most recent call last):",
@@ -3983,8 +3983,8 @@
       "aot_matches_python": false,
       "oracle": "not_applicable",
       "oracle_declared": "not_applicable",
-      "oracle_reason": "Python spells these math.pi / math.e, so the source is not a CPython program; what the row pins is that the on-disk data-only fold loses the float type",
-      "oracle_ref": "roadmap L11.6 (a stdlib constant keeps its type)",
+      "oracle_reason": "Python spells these math.pi / math.e, so the source is not a CPython program — the row stays not-applicable for the spelling alone: what the twin asserts is the two numbers below, and integration/module_const_test.go asks the reference for its own spelling beside them. The fold's lost float type — the answer this row pinned at 3 and 2 compiled — is paid (roadmap L11.6, ADR 0272)",
+      "oracle_ref": "roadmap L11.6 (a stdlib constant keeps its type); closed 2026-10-05",
       "oracle_rules": [
         "set-order"
       ],

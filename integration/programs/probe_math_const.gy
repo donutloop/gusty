@@ -1,5 +1,7 @@
 # Oracle probe (L11.9, ADR 0186) — a stdlib constant keeps its type through the
-# on-disk fold: print(math.PI) is 3.141592653589793, and 3 compiled (L11.6).
+# on-disk fold: print(math.PI) is 3.141592653589793 on every engine now, where the
+# compiled leg printed the integer underneath the double — 3 — at exit 0 (L11.6,
+# ADR 0272). The reference spells the same two numbers math.pi and math.e.
 import math
 
 print(math.PI)

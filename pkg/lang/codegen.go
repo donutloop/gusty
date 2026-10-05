@@ -6109,6 +6109,13 @@ func (g *irGen) isFloat(e Expr) bool {
 			return g.floatVars[n.Value]
 		}
 		return false
+	case *Attr:
+		// `mod.NAME` for a data import: the value is a literal the program never wrote, and the only
+		// reason the compiler knows `math.PI` is a double is that the module declares it as one.
+		// Without this read the whole float family was answered by the integer road — `print(math.PI)`
+		// printed `3`, `math.PI * 2` printed `6`, and a hand-written literal beside it was right
+		// (roadmap L11.6, the typed stdlib constants; `probe_math_const`).
+		return g.foldedModuleFloat(e)
 	case *ListLit, *DictLit, *SetLit:
 		// A container is not a float, whatever its elements are — `[1.5, "a"] == [1.5, "a"]` is a
 		// structural comparison of two containers, not an fcmp of two doubles. This arm used to
@@ -6917,6 +6924,13 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 	// that can produce the double its caller wants (roadmap Gap R.88).
 	g.doubleDomain++
 	defer func() { g.doubleDomain-- }()
+	// `mod.NAME` for a data import carries its own double: the value is the literal the module declares,
+	// and the generic path below would lower the attribute through `value()` — the integer road — and
+	// `sitofp` the truncated word, so `print(math.PI)` came out `3.0` beside the interpreter's
+	// `3.141592653589793` (roadmap L11.6, the typed stdlib constants).
+	if lit, folded := g.foldedModuleAttr(e); folded {
+		return g.floatValue(b, lit)
+	}
 	switch n := e.(type) {
 	case *FloatLit:
 		t := g.newTmp()
