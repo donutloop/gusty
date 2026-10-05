@@ -6901,3 +6901,63 @@ naming them precisely is what makes the next cycle short. The temptation was to 
 was all green; the reason I didn't is the same reason `Gap P.1`'s untyped-parameter half stays in the debt
 ledger with its `0` and `2` pinned per line: a door opened by a guess about a kind is how this repo got
 `1074003968` in the first place.
+
+## Cycle: `and` and `or` run only the operand their test reaches (ADR 0275 — Gap R.149 closed)
+
+**An instruction cannot decline to run, so a value-position `select` is not a short-circuit.** ADR 0269 made
+`and`/`or` answer an operand and chose it with `select i1 %c, i32 %r, i32 %l`, which is a correct answer to
+*which value* and an impossible answer to *which value, computed when* — `%r` has to exist before the
+selection, so the excluded operand's call, its print and its division all happened on every path. The row's
+own text had predicted this ("a `select` cannot raise, so the compiled half needs a real `br` + `phi`"), and
+the interpreter was doing the identical thing one level up by evaluating both operands and then asking which
+one it wanted. What I had not understood is that the *condition* door had the same defect with none of the
+pair machinery: `logicCondition` composed two predicates with `and i1`, so `if x and boom():` called `boom`
+with `x` false. Four doors needed the branch, not one, and the cheapest of the four — the one whose answer is
+only an `i1` — was the one I'd have been tempted to leave alone.
+
+**Ask the register, not the AST.** The compiled leg evaluated the operand it was *testing* twice, and it took
+two sweeps to find both causes. The first was visible in the IR of a two-line program: each door asked
+`truthyValue(b, n.L)` for the test and `value(b, n.L)` for the answer — two full lowerings of one expression,
+each with its own calls. The second was invisible in the IR, because the two emissions were *identical*:
+`value()`'s `case *BinOp:` reached the `and`/`or` dispatch only after the generic operand lowering above it
+had already emitted both operands. Only a count gave it away, and I found it by printing a Go stack trace
+from inside the emitter and looking at who had asked for `boom()`. `case *BinOp:` already keeps its "checked
+before the operands are lowered" doors at its top, with comments saying so; `and`/`or` were simply not among
+them. The lesson is a shape to check on every new door: **is there code above me that assumes I was already
+asked?** — and that a wrong count of a correct instruction is a real bug class, so probes should count
+effects, not just observe values.
+
+**A `phi`'s incoming block must be a real predecessor; its incoming value only has to dominate it.** I went
+looking for `irGen`'s block tracking and there isn't any — the generator appends one linear text and knows no
+block names, so a merge with two predecessors nobody can name is a dead end. The rule that gets around it is
+older than this repo: emit one-instruction forwarding blocks (`logic.lhs`, `logic.rhsfwd`) so the `phi` has
+two names it is allowed to use, and carry values that were defined earlier on the paths that reach them.
+`simplifycfg` deletes both blocks the same day. Four rules I had to hold at once — evaluate once, ask the
+object when only the object knows (`@rt_pair_truth`, the same tag vocabulary the printer reads, `rt_lift_num`
+for the numeric arms), name legal predecessors, and build into a scratch buffer so a door that changes its
+mind cannot leave instructions after a terminator (ADR 0166's exit-2 class, `mixedTaggedCompare`'s existing
+rule, now applied to a door emitting control flow for the first time).
+
+**An absence is the only thing that proves a branch closes.** Presence tests — "the module contains `phi`" —
+pass as happily for the old `select` code as the new one. The rows that would have failed before this commit
+count calls (`boom` 1 where the program writes one, 2 where the program writes two), assert that the excluded
+call's `call` appears only *after* the `logic.rhs` label that guards it, and assert that the function holding
+an `and`/`or` contains **no `select i1` at all**. The traps are pinned in both directions for the same
+reason: `x and (1 // 0)` must not raise, and `y and (1 // 0)` must still raise with the reference's message
+on both legs — a branch that swallowed a raise and returned the right number would have looked like success
+otherwise. Same instinct as the `except` row (`TestTheTrapTheTestSkippedIsNotRaised`): assert the handler does
+not run, not just that the answer is right.
+
+**A bug both engines share is invisible to the parity harness, and only the oracle can see it.** Every line of
+this row had `--interp` agreeing with `--aot` — they were wrong together, at exit 0, on an operator every
+Python program uses for guard idioms (`if xs and xs[0] > 0:`). The parity tests were green the whole time. The
+only instrument that ever saw it was a `python3` subprocess comparing stdout bytes, which is why
+`programs/probe_and_or_the_test_skips.gy` growing from six statements to nineteen and moving from the debt
+ledger to `conformanceStandalone()` is the actual closing event of this cycle. The ledger punished it
+correctly: deleting the paid row and leaving the program registered as a probe fails the build, and the two
+float-shaped cases I had pinned as refusals had to be moved out of that test into the refusal-pinning table,
+which is the pin moving as the compiler moves rather than the test being edited until it passes. **No new debt
+row this cycle** — the refusals beside the row (`probe_and_or_shapes_the_word_carry.gy`) refuse with the same
+message and the same exit class as before, because the skeleton declines exactly where the doors declined, and
+the only shape I deliberately left alone is `print(x and boom(), x and boom())`, where the source really does
+write the expression twice.

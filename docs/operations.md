@@ -1023,22 +1023,35 @@ Division/modulo by a literal zero is left to runtime. Verify with
 ## Boolean `and` / `or` and floor division (AOT codegen)
 
 `and` / `or` are the two operators that hand back an **operand**, and the lowering is a choice between two
-values, not a verdict (`Gap R.147`, ADR 0269). Three roads, asked in `pkg/lang/logic_value.go`:
+values, not a verdict (`Gap R.147`, ADR 0269) — made in a branch, so the operand the test rejected never
+runs (`Gap R.149`, ADR 0275). Three roads, asked in `pkg/lang/logic_value.go`:
 
 - a test the source wrote picks its operand at compile time — `print(True or 1)` is `True` and
   `print(1 or True)` is `1`, and the operand the test rejects is not in the module at all;
-- two operands that share a word are picked by one `select` — `select i1 %c, i32 …` in the number door,
-  `select i1 %c, double …` in the double door (ADR 0262's instruction, reused);
-- the print door selects the payload **and** the tag over one test and hands the pair to
-  `rt_print_mixed_value`, which is why `print(x or "d")` prints `d` and not the `@str_tab` index
-  underneath it, and `print(xs or "empty")` prints `[1, 2]`.
+- two operands that share a word are merged from the two arms — the left operand is evaluated once in the
+  block the expression starts in, `br i1` decides whether the right operand's block is entered at all, and
+  the arms meet in `phi i32` (number door) or `phi double` (double door). The instruction that used to sit
+  here was `select i1 %c, i32 …` (ADR 0262's), and a `select` has no way to not run the operand it is not
+  choosing: `x and boom()` called `boom`, `x and (1 // 0)` raised, and `boom() and 2` called `boom` twice,
+  because the truth and the value of the tested operand were each lowered separately;
+- the print door merges the payload **and** the tag over one test (`phi i32` beside `phi i32`) and hands the
+  pair to `rt_print_mixed_value`, which is why `print(x or "d")` prints `d` and not the `@str_tab` index
+  underneath it, and `print(xs or "empty")` prints `[1, 2]`. The truth of that arm is the object's fact, so
+  the branch asks `@rt_pair_truth(payload, tag)` — the same tag vocabulary (`value.go`'s `ValueTag`) the
+  printer and the comparison read: a number in either family is true when it is not zero (a float slot is
+  unboxed, not read as a handle), an empty text or an empty container is false, `None` is false, an object
+  is true.
+
+The two forwarding blocks the merge needs (`logic.lhs` → `logic.merge`, `logic.rhsfwd` → `logic.merge`) are
+what let the `phi` name a real predecessor without the generator tracking which block it is emitting into;
+`simplifycfg` folds them. Each road builds into a scratch builder and commits only when both arms answered,
+so a door that changed its mind halfway cannot leave instructions after a terminator (`ADR 0166`).
 
 A condition asks only for a verdict, and `truth(a and b)` is `truth(a) and truth(b)`, so `if`/`elif`/`while`
-heads and ternary tests compose two predicates and keep working on operands that share no word. A value
-position whose operands the pass cannot state is refused by naming both operands and the missing tag
-(the table above), never answered with the `0`/`1` that stood here while the whole expression was an
-`and i1` plus a `zext`. Both engines evaluate both operands, so the un-chosen operand's effects and traps
-still run (`Gap R.149`).
+heads and ternary tests compose two predicates — by branching on the first, so `if x and boom():` with x
+false never evaluates `boom()` — and keep working on operands that share no word. A value position whose
+operands the pass cannot state is refused by naming both operands and the missing tag (the table above),
+never answered with the `0`/`1` that stood here while the whole expression was an `and i1` plus a `zext`.
 
 `//` floor division lowers to `sdiv`, also mirroring
 the interpreter. Literal operands are constant-folded.

@@ -709,7 +709,7 @@ the same rule, and both backends implement it identically:
 | `[]`, `{}`, an empty set | false |
 | anything else (including any other number, string, container or object) | true |
 
-### `and` and `or` answer an **operand**, not a verdict (Gap R.147, ADR 0269)
+### `and` and `or` answer an **operand**, not a verdict, and skip what the test rejected (Gap R.147, ADR 0269; Gap R.149, ADR 0275)
 
 The two operators test one operand and hand back whichever operand the test chose, unconverted — the
 operand keeps its own representation, its own rendering and its own type:
@@ -727,18 +727,40 @@ A **condition** asks only the verdict, and `truth(a and b)` is `truth(a) and tru
 `elif`, a `while` head, a ternary test or a `match` guard branches on any two operands whatever they are:
 `if x or "d":` works even though the *value* of `x or "d"` has nowhere to live. A **value** position — a
 binding, an argument, an element, an arithmetic operand — needs the answer to fit in a word, and three
-roads carry it: a test the source wrote picks its operand at compile time (and the operand the test
-rejects is not in the program at all); two operands that share a word are picked by one `select`, in the
-`i32` door or the `double` door; and the print door selects the payload *and* its tag, because the module
-has one printer that reads a kind. A shape none of the three roads can state is refused by naming both
-operands and the missing tag (`roadmap L11.1 … Gap R.147`) rather than answered with the `1` that stood
-here before — which is Gap R.146's one-word position and L11.1's tagged value word, not a syntax problem.
+roads carry it: a test the source wrote picks its operand at compile time; two operands that share a word
+are merged from the left operand's block and the right operand's block, in the `i32` door or the `double`
+door; and the print door merges the payload *and* its tag, because the module has one printer that reads a
+kind. A shape none of the three roads can state is refused by naming both operands and the missing tag
+(`roadmap L11.1 … Gap R.147`) rather than answered with the `1` that stood here before — which is Gap
+R.146's one-word position and L11.1's tagged value word, not a syntax problem.
 
-Both engines evaluate **both** operands when the test is a run-time fact, so the effects and traps of the
-operand the test rejected still run (`x and boom()` calls `boom`, `x and (1 // 0)` raises) — while a test the
-source wrote is fully lazy on both legs (`print(0 and boom())` prints `0`, and `boom` is not called at all).
-CPython's shortcut for the run-time test is owed in one row for both backends rather than implemented in one
-of them (Gap R.149).
+**The test decides whether the other operand runs at all** — on both engines, and this is a promise a
+program may rely on:
+
+```gy
+def boom():
+    print("boom")
+    return 9
+x = 0
+y = 1
+print(x and boom())   # 0        — boom is never called
+print(y or boom())    # 1        — boom is never called
+print(x and (1 // 0)) # 0        — the division the test excluded never traps
+print(y and (1 // 0)) # ZeroDivisionError — the operand it reached still raises, catchably
+if x and boom():      # the body's test is never evaluated
+    print("then")
+print(boom() and 2)   # boom, then 2 — the operand the test reached runs exactly once
+```
+
+The compiled lowering is a branch and a merge, not a `select`: the left operand is evaluated once, its truth
+is the only thing the branch reads, the operand the test excluded has no instructions on that path, and the
+two arms meet in a `phi` (one for the payload, and a second one beside it when the answer is a pair). The
+truth of an operand whose kind only the object carries — a container slot, a loop variable over a mixed list
+— is asked of `@rt_pair_truth`, the same tag table the printer and the comparison read, so an empty text, an
+empty container and `None` are false in a branch exactly as they are in a print. A test the source wrote
+never emits the other operand at all (`constantLogicArm`). What the operators do *not* promise is that an
+operand the test reached is free: it runs, it prints, and a trap inside it raises the error the program's
+`except` catches.
 
 The answer's type follows the same rule: the checker types `a and b` as the operand's type when both
 operands agree and leaves it dynamic when they do not, so `x: int = 2 and 3` checks and `x: bool = 2 and 3`

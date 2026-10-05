@@ -147,30 +147,109 @@ func TestTheParityProgramPrintsTheSameOnEveryLeg(t *testing.T) {
 	}
 }
 
-// TestTheOwedHalvesArePinnedAsTheyMeasure keeps the two rows this cycle filed rather than fixed honest: the
-// legs are what the ledger says they are, and neither is exit 2.
+// TestTheOwedHalvesArePinnedAsTheyMeasure keeps the rows this family filed rather than fixed honest: the legs
+// are what the ledger says they are, and neither is exit 2. The operand the test skipped is not one of them
+// any more — that program is promoted parity surface (`TestTheShortCircuitProgramPrintsTheSameOnEveryLeg`),
+// and the ledger row that pinned both engines evaluating it is gone with ADR 0275.
 func TestTheOwedHalvesArePinnedAsTheyMeasure(t *testing.T) {
-	skips := readProgram(t, "probe_and_or_the_test_skips.gy")
-	dir := t.TempDir()
-	gy := writeSrc(t, dir, "probe_and_or_the_test_skips.gy", skips)
-	want := "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n"
-	for _, engine := range []string{"--interp", "--aot"} {
-		out, code := cliReport(t, engine, "--file", gy)
-		if code != 0 {
-			t.Fatalf("%s: exit %d\n%s", engine, code, out)
-		}
-		if out != want {
-			t.Errorf("%s: the engines disagree with each other about the operand the test skipped:\n got %q\nwant %q", engine, out, want)
-		}
-	}
-	py, ok := cpythonPlainOut(t, dir, skips)
-	if ok && py == want {
-		t.Errorf("the reference now behaves like both engines — Gap R.149 is paid and this row has to move to the parity table")
-	}
-
 	carry := readProgram(t, "probe_and_or_shapes_the_word_carry.gy")
+	dir := t.TempDir()
 	gy2 := writeSrc(t, dir, "probe_and_or_shapes_the_word_carry.gy", carry)
 	if out, code := cliReport(t, "--aot", "--file", gy2); code != 1 {
 		t.Fatalf("the compiled leg was expected to refuse the one-word positions (exit 1), got %d:\n%s", code, out)
+	}
+}
+
+// TestTheShortCircuitProgramPrintsTheSameOnEveryLeg runs the promoted program: the operand the test did not
+// choose is not in the program, so `boom` is printed only for the operand the test reached, the division the
+// test skipped never traps, and the operand it does reach runs exactly once (roadmap Gap R.149, ADR 0275).
+func TestTheShortCircuitProgramPrintsTheSameOnEveryLeg(t *testing.T) {
+	src := readProgram(t, "probe_and_or_the_test_skips.gy")
+	dir := t.TempDir()
+	gy := writeSrc(t, dir, "probe_and_or_the_test_skips.gy", src)
+	py, ok := cpythonPlainOut(t, dir, src)
+	if !ok {
+		t.Skipf("no python3 to act as the oracle")
+	}
+	// The bytes the reference prints are the whole claim, and they name the absence: exactly two `boom`
+	// lines, for the two operands the tests reached, and no `then`, no `loop`, no traceback.
+	if want := "0\n1\n0\n1\nor-then\nloop ended\n0\n1\nthe chosen operand raised\nthe other chosen operand raised\nboom\n2\nboom\n9\n"; py != want {
+		t.Fatalf("the reference said %q, want %q", py, want)
+	}
+	for _, engine := range []string{"--interp", "--aot"} {
+		out, code := cliReport(t, engine, "--file", gy)
+		if code == 2 {
+			t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
+		}
+		if code != 0 {
+			t.Fatalf("%s: exit %d\n%s", engine, code, out)
+		}
+		if out != py {
+			t.Errorf("%s disagrees with the reference:\n got %q\nwant %q", engine, out, py)
+		}
+		if strings.Count(out, "boom\n") != 2 {
+			t.Errorf("%s ran the operand the test skipped: %q", engine, out)
+		}
+		if strings.Contains(out, "then\n") && !strings.Contains(out, "or-then") {
+			t.Errorf("%s entered the branch the test refused: %q", engine, out)
+		}
+	}
+}
+
+// shortCircuitParity is the family asked one shape at a time, so a regression names the shape rather than
+// the program.
+func shortCircuitParity() []struct{ name, src, want string } {
+	const boom = "def boom():\n    print(\"boom\")\n    return 9\n\n"
+	return []struct{ name, src, want string }{
+		{"a falsy test skips a call", boom + "x = 0\nprint(x and boom())\n", "0\n"},
+		{"a truthy test skips the fallback", boom + "y = 1\nprint(y or boom())\n", "1\n"},
+		{"a skipped division does not trap", "x = 0\nprint(x and (1 // 0))\n", "0\n"},
+		{"a skipped division on the other side", "y = 1\nprint(y or (1 // 0))\n", "1\n"},
+		{"a binding skips too", boom + "x = 0\nv = x and boom()\nprint(v)\n", "0\n"},
+		{"a binding keeps what the test chose", boom + "y = 1\nw = y or boom()\nprint(w)\n", "1\n"},
+		{"an if head does not run the skipped operand", boom + "x = 0\nif x and boom():\n    print(\"then\")\nprint(\"done\")\n", "done\n"},
+		{"an or head does not run the skipped operand", boom + "y = 1\nif y or boom():\n    print(\"taken\")\n", "taken\n"},
+		{"a while head never enters", boom + "x = 0\nwhile x and boom():\n    print(\"loop\")\nprint(\"ended\")\n", "ended\n"},
+		{"the operand the test reaches runs once", boom + "print(boom() and 2)\n", "boom\n2\n"},
+		{"the tested operand runs once", boom + "print(boom() or 2)\n", "boom\n9\n"},
+		{"twice in one line, twice in the module", boom + "x = 0\nprint(x and boom(), x and boom())\n", "0 0\n"},
+		{"a chain runs only what it reaches", boom + "x = 0\ny = 0\nprint(x or y or boom())\n", "boom\n9\n"},
+		{"a chain stops at the first answer", boom + "y = 2\nprint(y or boom() or 3)\n", "2\n"},
+		{"a condition chain skips the second test", boom + "x = 0\ny = 1\nif x and boom() and y:\n    print(\"y\")\nelse:\n    print(\"n\")\n", "n\n"},
+		{"a skipped print inside the skipped operand", boom + "x = 0\nprint(x and (boom() + 1))\n", "0\n"},
+		{"a truthy text skips the fallback", boom + "s = \"x\"\nprint(s or boom())\n", "x\n"},
+		{"a truthy container skips the fallback", boom + "xs = [1]\nprint(xs or boom())\n", "[1]\n"},
+		{"None skips the fallback", boom + "print(None and boom())\n", "None\n"},
+		{"a call's own arguments still run", boom + "def pick(a, b):\n    return a and b\n\nprint(pick(0, boom()))\n", "boom\n0\n"},
+	}
+}
+
+// TestTheReferenceShortCircuitsAndSoDoBothEngines is the three-engine row: one source, the reference's bytes,
+// the interpreted leg and the compiled leg (roadmap Gap R.149, ADR 0275). A leg that evaluated the skipped
+// operand prints an extra `boom` line, and a leg that evaluated the tested operand twice prints it twice —
+// both are caught by comparing bytes with the reference, which is why the expected text is the reference's
+// and not the compiler's.
+func TestTheReferenceShortCircuitsAndSoDoBothEngines(t *testing.T) {
+	for _, tc := range shortCircuitParity() {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			gy := writeSrc(t, dir, "logic_shortcircuit.gy", tc.src)
+			py, ok := cpythonPlainOut(t, dir, tc.src)
+			if !ok || py != tc.want {
+				t.Fatalf("the reference said %q (ok %v), want %q\nsrc: %s", py, ok, tc.want, tc.src)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliReport(t, engine, "--file", gy)
+				if code == 2 {
+					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
+				}
+				if code != 0 {
+					t.Fatalf("%s: exit %d, want 0\n%s", engine, code, out)
+				}
+				if out != tc.want {
+					t.Errorf("%s: stdout %q, want %q\nsrc: %s", engine, out, tc.want, tc.src)
+				}
+			}
+		})
 	}
 }

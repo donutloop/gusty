@@ -1,15 +1,17 @@
-# probe_and_or_the_test_skips.gy — the operand the test did not choose still runs.
+# probe_and_or_the_test_skips.gy — the operand the test did not choose never runs.
 #
-# The reference short-circuits: `x and boom()` never calls boom when x is false, and `x or (1 // 0)` never
-# divides when x is true. This language does not make that promise yet — both engines evaluate both
-# operands, exactly as the compiled `select` needs them and exactly as a ternary's arms are evaluated
-# (ADR 0262). The two backends agree with each other on every line and both disagree with the reference,
-# which is why this is one row and not two (roadmap Gap R.149, measured landing ADR 0269).
+# The reference short-circuits: `x and boom()` never calls boom when x is false, `y or (1 // 0)` never
+# divides when y is true, and `if xs and xs[0] > 0:` never subscript the empty list. Both engines used to
+# evaluate both operands and choose afterwards — which is all a `select` can do — so the skipped operand's
+# print ran, its division raised, and a call on the left of the operator ran twice on the compiled leg
+# because its truth and its value each evaluated it. The row is roadmap Gap R.149, ADR 0275; the operator
+# answering with an *operand* rather than a verdict is the ADR 0269 half beside it.
 #
-# The first two lines show the effects the reference never performs; the last two show what an operand that
-# *traps* does when the test has already decided it cannot be the answer — the trap runs, and the raise is
-# the ordinary catchable one, which is what makes the difference from the reference observable rather than
-# merely a difference in speed.
+# Three things are pinned in one program, because they are one promise: the effects the reference never
+# performs do not happen (the boom lines below are printed only for the operand the test reached), a
+# trap inside the operand the test skipped is never raised, and a trap inside the operand it *did* choose
+# still raises the ordinary catchable error. The last two lines are the other half of the same rule: the
+# operand the test reaches runs exactly once, whatever it is.
 def boom():
     print("boom")
     return 9
@@ -17,11 +19,27 @@ x = 0
 y = 1
 print(x and boom())
 print(y or boom())
+v = x and boom()
+print(v)
+w = y or boom()
+print(w)
+if x and boom():
+    print("then")
+if y or boom():
+    print("or-then")
+while x and boom():
+    print("loop")
+    break
+print("loop ended")
+print(x and (1 // 0))
+print(y or (1 // 0))
 try:
-    print(x and (1 // 0))
+    print(y and (1 // 0))
 except ZeroDivisionError:
-    print("the skipped operand raised")
+    print("the chosen operand raised")
 try:
-    print(y or (1 // 0))
+    print(x or (1 // 0))
 except ZeroDivisionError:
-    print("the skipped operand raised again")
+    print("the other chosen operand raised")
+print(boom() and 2)
+print(boom() or 2)

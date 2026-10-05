@@ -390,6 +390,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_and_or_the_test_skips",
+        "name": "probe_and_or_the_test_skips.gy",
+        "source": "# probe_and_or_the_test_skips.gy — the operand the test did not choose never runs.\n#\n# The reference short-circuits: `x and boom()` never calls boom when x is false, `y or (1 // 0)` never\n# divides when y is true, and `if xs and xs[0] \u003e 0:` never subscript the empty list. Both engines used to\n# evaluate both operands and choose afterwards — which is all a `select` can do — so the skipped operand's\n# print ran, its division raised, and a call on the left of the operator ran twice on the compiled leg\n# because its truth and its value each evaluated it. The row is roadmap Gap R.149, ADR 0275; the operator\n# answering with an *operand* rather than a verdict is the ADR 0269 half beside it.\n#\n# Three things are pinned in one program, because they are one promise: the effects the reference never\n# performs do not happen (the boom lines below are printed only for the operand the test reached), a\n# trap inside the operand the test skipped is never raised, and a trap inside the operand it *did* choose\n# still raises the ordinary catchable error. The last two lines are the other half of the same rule: the\n# operand the test reaches runs exactly once, whatever it is.\ndef boom():\n    print(\"boom\")\n    return 9\nx = 0\ny = 1\nprint(x and boom())\nprint(y or boom())\nv = x and boom()\nprint(v)\nw = y or boom()\nprint(w)\nif x and boom():\n    print(\"then\")\nif y or boom():\n    print(\"or-then\")\nwhile x and boom():\n    print(\"loop\")\n    break\nprint(\"loop ended\")\nprint(x and (1 // 0))\nprint(y or (1 // 0))\ntry:\n    print(y and (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the chosen operand raised\")\ntry:\n    print(x or (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the other chosen operand raised\")\nprint(boom() and 2)\nprint(boom() or 2)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "0\n1\n0\n1\nor-then\nloop ended\n0\n1\nthe chosen operand raised\nthe other chosen operand raised\nboom\n2\nboom\n9\n",
+      "aot_ok": true,
+      "aot_stdout": "0\n1\n0\n1\nor-then\nloop ended\n0\n1\nthe chosen operand raised\nthe other chosen operand raised\nboom\n2\nboom\n9\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "0\n1\n0\n1\nor-then\nloop ended\n0\n1\nthe chosen operand raised\nthe other chosen operand raised\nboom\n2\nboom\n9\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/abs_names_its_kind",
         "name": "abs_names_its_kind.gy",
         "source": "# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.\n#\n# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the\n# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this\n# toolchain answered all of them: a text reached the print door holding the interned index it is stored\n# as, so `print(abs(\"hi\"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and\n# `abs([1])`, `abs({\"a\": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's\n# \"the compiler is broken\" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).\n#\n# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that\n# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises\n# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the\n# last lines are the rebinding the door reads, where a name's latest binding decides the kind.\nprint(abs(-10))\nprint(abs(10))\nprint(abs(-3.5))\nprint(abs(True))\nprint(abs(0))\ntry:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"trap str\")\ntry:\n    print(abs(None))\nexcept TypeError:\n    print(\"trap NoneType\")\ntry:\n    print(abs([1, 2]))\nexcept TypeError:\n    print(\"trap list\")\ntry:\n    print(abs({\"a\": 1}))\nexcept TypeError:\n    print(\"trap dict\")\ntry:\n    print(abs({1, 2}))\nexcept TypeError:\n    print(\"trap set\")\nclass Thing:\n    pass\n\ntry:\n    print(abs(Thing()))\nexcept TypeError:\n    print(\"trap Thing\")\nx = \"text\"\nx = -7\nprint(abs(x))\nprint(-x)\nprint(abs(x) + 1)\n",
@@ -2823,47 +2846,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_and_or_the_test_skips",
-        "name": "probe_and_or_the_test_skips.gy",
-        "source": "# probe_and_or_the_test_skips.gy — the operand the test did not choose still runs.\n#\n# The reference short-circuits: `x and boom()` never calls boom when x is false, and `x or (1 // 0)` never\n# divides when x is true. This language does not make that promise yet — both engines evaluate both\n# operands, exactly as the compiled `select` needs them and exactly as a ternary's arms are evaluated\n# (ADR 0262). The two backends agree with each other on every line and both disagree with the reference,\n# which is why this is one row and not two (roadmap Gap R.149, measured landing ADR 0269).\n#\n# The first two lines show the effects the reference never performs; the last two show what an operand that\n# *traps* does when the test has already decided it cannot be the answer — the trap runs, and the raise is\n# the ordinary catchable one, which is what makes the difference from the reference observable rather than\n# merely a difference in speed.\ndef boom():\n    print(\"boom\")\n    return 9\nx = 0\ny = 1\nprint(x and boom())\nprint(y or boom())\ntry:\n    print(x and (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the skipped operand raised\")\ntry:\n    print(y or (1 // 0))\nexcept ZeroDivisionError:\n    print(\"the skipped operand raised again\")\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "CPython prints 0, 1, 0, 1 — the operand the test rejected is never evaluated, so boom() never runs and the division never traps; both gusty legs print boom, 0, boom, 1 and then the two ZeroDivisionError arms, because `and`/`or` evaluate both operands here exactly as a ternary evaluates both of its arms",
-        "ref": "roadmap Gap R.149 (measured landing ADR 0269); docs/adr/0269, Consequences",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n"
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n",
-      "aot_ok": true,
-      "aot_stdout": "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n",
-      "parity": true,
-      "python_ok": true,
-      "python_stdout": "0\n1\n0\n1\n",
-      "interp_matches_python": false,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 0, 1, 0, 1 — the operand the test rejected is never evaluated, so boom() never runs and the division never traps; both gusty legs print boom, 0, boom, 1 and then the two ZeroDivisionError arms, because `and`/`or` evaluate both operands here exactly as a ternary evaluates both of its arms",
-      "oracle_ref": "roadmap Gap R.149 (measured landing ADR 0269); docs/adr/0269, Consequences",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "interpreter stdout differs from CPython",
-        "compiled stdout differs from CPython"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_minmax_candidate_unreadable",
         "name": "probe_minmax_candidate_unreadable.gy",
         "source": "# What CPython prints for both lines here (python3, 3.12):\n#\n#   True      (max chooses the verdict)\n#   True      (the same, with the candidate the source wrote into a list literal)\n#\n# A min/max fold can only say what the answer *is* if it can say which candidate won. The second line\n# is the shape this backend can read: `xs[0]` is the element a literal wrote, so the comparison is\n# settled by the source and the winner's kind travels with it — True on all three engines. The first\n# line hands the comparison a name the compiler has not folded to a constant, the winner is decided by\n# a run-time `select`, and nothing beside the chosen i32 says it came from `True`: the compiled leg\n# prints the number underneath, exit 0, while the interpreter — which really compares and really keeps\n# the winning object — prints CPython's answer (roadmap Gap R.124, measured landing ADR 0261).\n#\n# This is the row the fold cannot answer without the tagged value word: the candidate's kind has to\n# cross the comparison in the module, not be re-derived from it (owner roadmap L11.1, with Gaps\n# R.107–R.110). It is pinned per leg rather than skipped, so opening the door has to move the pin.\ni = 0\nprint(max([True, i]))\nxs = [0]\nprint(max([True, xs[0]]))\n",
@@ -3473,7 +3455,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1169946448/119/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4034497717/119/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3487,7 +3469,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1169946448/119/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4034497717/119/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4330,11 +4312,11 @@
     }
   ],
   "rows": 145,
-  "skipped": 38,
-  "pass": 107,
+  "skipped": 37,
+  "pass": 108,
   "fail": 0,
-  "oracle_match": 92,
-  "oracle_debt": 32,
+  "oracle_match": 93,
+  "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

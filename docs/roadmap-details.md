@@ -6397,22 +6397,77 @@ therefore records the hazard next to the refusal, and the two float rows in
 `TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI` are pinned to exit 1 with exit 2 failing the
 row, so the day someone routes them the tests name the class of failure instead of an `llc` dump.
 
-### Gap R.149 — the operand the test did not choose is still evaluated (OPEN, owner both engines, measured landing ADR 0269)
+### Gap R.149 — the operand the test did not choose is still evaluated (CLOSED by ADR 0275, owner both engines, measured landing ADR 0269)
 
 ```
 def boom():
     print("boom")
-
-print(0 and boom())     # CPython 0, silent · both engines: boom, then 0
-print(0 and (1 // 0))   # CPython 0 · both engines: ZeroDivisionError
+x = 0
+y = 1
+print(x and boom())        # CPython 0, silent              · before, both engines: boom, then 0
+print(x and (1 // 0))      # CPython 0                      · before, both engines: ZeroDivisionError, exit 3
+if x and boom():           # CPython silent                 · before, both engines: boom
+    print("then")
+print(boom() and 2)        # CPython boom, 2 — one call     · before, --aot: boom, boom, 2 — two calls
 ```
 
-ADR 0269 lowered a value position to a `select`, which chooses a value but evaluates both arms, and the
-interpreter evaluates both operands before it asks which one it wanted. Both engines print CPython's answer
-when the rejected operand is pure, so this is one row for the two backends rather than a divergence — and it
-is the row that decides *when* the fix may land: a `select` cannot raise, so the compiled half needs a real
-`br` + `phi`, and the two roads that own exception flow (the store-and-branch of ADR 0228 and the zero guard
-of ADR 0253) must reach the merge together. One commit, both legs, or neither.
+The row ADR 0269 filed, and it predicted its own cure: a `select` chooses a value and cannot decline to
+compute one, so the compiled half needed a real `br` + `phi`, and the interpreter — which evaluated both
+operands and then asked which one it wanted — needed the same three lines the compiled leg had always needed.
+Both engines agreed on every line, which is what made it one row for the two backends instead of a
+divergence, and what made it invisible to the parity harness: only the oracle could see it.
+
+Three measurements turned "the skipped operand runs" into a family rather than one missing optimisation:
+
+| shape | CPython | before · interpreter | before · compiled |
+|---|---|---|---|
+| `x = 0` / `print(x and boom())` | `0` | `boom`, `0` | `boom`, `0` |
+| `y = 1` / `print(y or boom())` | `1` | `boom`, `1` | `boom`, `1` |
+| `x = 0` / `print(x and (1 // 0))` | `0` | `ZeroDivisionError`, exit 3 | `ZeroDivisionError`, exit 3 |
+| `y = 1` / `if y or boom(): print("t")` | `t` | `boom`, `t` | `boom`, `t` |
+| `x = 0` / `while x and boom(): …` | silent | `boom` | `boom` |
+| `print(boom() and 2)` | `boom`, `2` | ✅ | `boom`, `boom`, `2` |
+
+That last row is why the commit is bigger than the row's title. The compiled leg evaluated the operand it
+*was testing* twice, from two causes found a sweep apart: each road asked `truthyValue(b, n.L)` for the test
+and `value(b, n.L)` for the answer — two lowerings of one expression — and, underneath that, `value()`'s
+`case *BinOp:` reached the `and`/`or` door only after the generic operand lowering above it had already
+emitted both operands. The first cause was visible in the IR of a two-line program; the second was found
+only by printing a Go stack trace from the emitter, because the two emissions were identical and only the
+count gave it away. `case *BinOp:` already keeps its "checked before the operands are lowered" doors at the
+top with comments saying so; `and`/`or` were simply not among them.
+
+The condition door had the defect with none of the pair machinery — `logicCondition` composed two predicates
+with `and i1`, so the second test always ran — which is why the fix is four doors rather than one, and why
+its merge is a `phi i1`.
+
+How the merge is written without a block-tracking pass is the part worth recording, because it looks like a
+trick and is only a rule: a phi's incoming **block** has to be an actual predecessor of the merge, but its
+incoming **value** only has to dominate that block. `irGen` appends one linear text and knows no block names,
+so the skeleton emits two one-instruction forwarding blocks (`logic.lhs` and `logic.rhsfwd`, each just `br
+label %logic.merge`) purely so the phi has two predecessors it can name; the values they carry were defined
+several instructions earlier on the paths that reach them. `simplifycfg` folds both the same day the module
+is built, and every corpus module still passes `opt -passes=verify`.
+
+The truth of an operand whose kind lives in the object is a run-time question, and the branch has to ask the
+same table the printer and the comparison ask: `@rt_pair_truth(payload, tag)`, in the tagged-arithmetic block
+beside `rt_lift_num`, whose arms it reuses for the numeric family. The alternative — the print door computing
+the truth of a constant-tag arm at emit time and calling the helper only for a register tag — is two doors
+answering one question, which is the class ADR 0236 named. A float slot is unboxed before the test rather
+than read as a handle, so `ys = [0.0, 1]` / `print(ys[0] or "d")` answers `d`, and an empty text or an empty
+container in a slot is false in a branch exactly as it is in a print.
+
+Two doors (`logicDouble`, `logicPrintPair`) answer "I cannot serve this" and let the caller fall through.
+Both therefore build into a scratch builder and commit only when both arms answered: a door that emitted its
+branch and then declined would leave instructions after a terminator in the caller's block, and `llc`'s error
+would be charged to the program (ADR 0166). It is `mixedTaggedCompare`'s existing rule, applied to a door
+that emits control flow for the first time.
+
+Pinned by `pkg/lang/logic_value_test.go` (24 parity rows × both engines, 5 IR-shape rows with call counts and
+the call sitting behind the branch, 3 traps that must still raise, 3 skipped traps that must not) and by
+`integration/logic_value_test.go` (20 rows × CPython/`--interp`/`--aot`). `programs/probe_and_or_the_test_skips.gy`
+grew from six statements to nineteen and moved from the debt ledger to `conformanceStandalone()`, recorded
+`oracle: match` on all three legs.
 
 ### Gap R.150 — a built-in or an imported module used as a value has no word (OPEN, owner aot, measured landing ADR 0271)
 

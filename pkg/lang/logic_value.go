@@ -32,11 +32,18 @@ import (
 //     `logicPrintPair` builds the (payload, tag) pair per operand, selects the pair, and hands it to
 //     `rt_print_mixed_value` — which is why `print(x or "d")` prints a word and not a `1`.
 //
-// What this file deliberately does *not* do is skip the operand the test did not choose **when the test is a
-// run-time fact**. Both engines evaluate both operands in that case, and they will keep doing it in step: one
-// engine dropping the effects the other keeps is the split AGENTS forbids. (A test the source wrote is fully
-// lazy on both legs already: `print(0 and boom())` prints `0`, and the compiled leg no longer even calls
-// `boom` — it used to call it twice.) That half is measured and owed in one row (roadmap Gap R.149, ADR 0269).
+// What the two operators *are* — and what both engines used to fail at — is that the test decides whether the
+// other operand exists at all. `x and boom()` does not call `boom` when x is false, `y or (1 // 0)` does not
+// divide when y is true, and `if xs and xs[0] > 0:` does not subscript an empty list. Both engines used to
+// evaluate both operands and choose afterwards — which is what a `select` is, and all the roads below used
+// one — so the skipped operand's print ran, its division raised, and its call ran twice on the compiled leg
+// because its truth and its value each evaluated it. Every road now emits the three-block shape of
+// `logicSkeleton`: the left operand once, a branch on its truth, and the right operand's instructions on the
+// one path that can reach them (roadmap Gap R.149, ADR 0275; the row's ADR 0269 half is the *operand* being
+// the answer, which is what the roads below still decide).
+//
+// A test the source wrote stays the trivial case of the same rule: the operand the test chooses is the answer,
+// the other one is not in the program, and nothing is emitted for it at all (`constantLogicArm`).
 
 const (
 	logicKindInt   = "int"
@@ -241,25 +248,135 @@ func (g *irGen) logicAnswerIsFloat(n *BinOp) bool {
 	return g.isFloat(n.L) && g.isFloat(n.R)
 }
 
+// --- the short-circuit skeleton (roadmap Gap R.149, ADR 0275) ----------------
+//
+// `a and b` tests a and only then looks at b; `a or b` tests a and only then looks at b. Choosing with a
+// `select` cannot honour that — an instruction has no way to not run — so the answer is three blocks:
+//
+//	<where the expression starts>  …the left operand, once…   %c = <its truth>
+//	                               br i1 %c, label %logic.rhs, label %logic.lhs
+//	logic.rhs                  …the right operand, emitted only here…
+//	                               br label %logic.rhsfwd
+//	logic.lhs                      br label %logic.merge
+//	logic.rhsfwd                   br label %logic.merge
+//	logic.merge              %ans = phi <ty> [ %l, %logic.lhs ], [ %r, %logic.rhsfwd ]
+//
+// The two one-instruction forwarding blocks are not decoration. A phi's incoming block has to be an actual
+// predecessor of the merge, and this generator tracks no current-block state, so it cannot name the block it
+// is writing into; naming a block it emitted itself is enough, because the incoming *value* only has to
+// dominate that block — which the left operand's register does, being two instructions earlier on that very
+// path. simplifycfg folds both the same day the module is built.
+//
+// Everything is built into a scratch builder and committed to `b` only when both arms answered: a door that
+// changed its mind halfway through would leave the caller's block holding instructions after a terminator,
+// and `llc` would report the compiler's mistake as the program's (ADR 0166; the same reason
+// `mixedTaggedCompare` buffers, and the same class of bug that made the compiled leg evaluate a call twice).
+//
+// `right` is asked inside the rhs block; returning ok=false declines the whole shape (nothing is committed),
+// returning an error fails the module. `left`/`types` are the arm already emitted — one register per word,
+// which for the print door is the pair: payload and tag merged together, the only way a chosen operand that
+// *is* a pair reaches the module's one tag-reading printer.
+func (g *irGen) logicSkeleton(b *strings.Builder, op, cond string, left []string, types []string, right func(*strings.Builder) ([]string, bool, error)) ([]string, bool, error) {
+	if cond == "" || len(left) != len(types) || (op != "and" && op != "or") {
+		return nil, false, nil
+	}
+	lhsArm := g.newLabel("logic.lhs")
+	rhsBlock := g.newLabel("logic.rhs")
+	rhsArm := g.newLabel("logic.rhsfwd")
+	merge := g.newLabel("logic.merge")
+	var body strings.Builder
+	// The test is what decides whether the right operand is in the program at all. `and` continues when the
+	// left operand is true, `or` when it is false; the other path jumps straight to the merge.
+	if op == "and" {
+		fmt.Fprintf(&body, "  br i1 %s, label %%%s, label %%%s\n", cond, rhsBlock, lhsArm)
+	} else {
+		fmt.Fprintf(&body, "  br i1 %s, label %%%s, label %%%s\n", cond, lhsArm, rhsBlock)
+	}
+	fmt.Fprintf(&body, "%s:\n", rhsBlock)
+	rregs, ok, err := right(&body)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok || len(rregs) != len(types) {
+		return nil, false, nil
+	}
+	for _, r := range rregs {
+		if r == "" {
+			return nil, false, nil
+		}
+	}
+	fmt.Fprintf(&body, "  br label %%%s\n", rhsArm)
+	fmt.Fprintf(&body, "%s:\n  br label %%%s\n", lhsArm, merge)
+	fmt.Fprintf(&body, "%s:\n  br label %%%s\n", rhsArm, merge)
+	fmt.Fprintf(&body, "%s:\n", merge)
+	out := make([]string, len(types))
+	for i, ty := range types {
+		t := g.newTmp()
+		fmt.Fprintf(&body, "  %s = phi %s [ %s, %%%s ], [ %s, %%%s ]\n", t, ty, left[i], lhsArm, rregs[i], rhsArm)
+		out[i] = t
+	}
+	b.WriteString(body.String())
+	return out, true, nil
+}
+
+// pairTruth is the truth of a (payload, tag) pair, asked of the runtime: which arm answers — a number in
+// either family, an empty text, an empty container, None, an object — is the object's fact, and the branch
+// that decides whether the second operand exists has to ask the same table the printer and the comparison do.
+func (g *irGen) pairTruth(b *strings.Builder, payload, tag string) string {
+	g.heapUsed = true
+	g.arithUsed = true
+	r := g.newTmp()
+	fmt.Fprintf(b, "  %s = call i32 @rt_pair_truth(i32 %s, i32 %s)\n", r, payload, tag)
+	return g.asI1(b, r)
+}
+
+// numericTruthOf is the truth of an operand the value door has already evaluated, read from the register the
+// evaluation left behind. It is the reason the left operand is now evaluated once: the old road asked
+// truthyValue for the test and value for the answer, which ran `boom() and 2`'s call twice.
+func (g *irGen) numericTruthOf(b *strings.Builder, kind, reg string) string {
+	if kind == logicKindNone {
+		// None is false and has no word to test; the value is still emitted, because an operand the program
+		// wrote runs for its effects even when the test cannot choose it (print(f() or None) owes f's output).
+		return "false"
+	}
+	return g.asI1(b, reg)
+}
+
 // logicCondition is the condition door: `if a and b:` and `while a or b:` ask only whether the answer is
 // true, and the truth of a chosen operand is the composition of the operands' truths — so the condition
 // never needs the word the answer would travel in, and no pair, tag or agreement is asked of the operands.
+// It is also the door that used to evaluate the operand a condition never reaches: `if x and boom():` called
+// `boom` with x bound to 0, and `if y or boom():` called it with y true, on both engines (Gap R.149).
 func (g *irGen) logicCondition(b *strings.Builder, n *BinOp) (string, error) {
-	l, err := g.truthyValue(b, n.L)
+	var scratch strings.Builder
+	l, err := g.truthyValue(&scratch, n.L)
 	if err != nil {
 		return "", err
 	}
-	r, err := g.truthyValue(b, n.R)
-	if err != nil {
-		return "", err
+	// The answer the test settles without asking the right operand: `and` with a false left is false, `or`
+	// with a true one is true.
+	settled := "false"
+	if n.Op == "or" {
+		settled = "true"
 	}
-	t := g.newTmp()
-	if n.Op == "and" {
-		fmt.Fprintf(b, "  %s = and i1 %s, %s\n", t, l, r)
-	} else {
-		fmt.Fprintf(b, "  %s = or i1 %s, %s\n", t, l, r)
+	out, ok, serr := g.logicSkeleton(&scratch, n.Op, l, []string{settled}, []string{"i1"}, func(bb *strings.Builder) ([]string, bool, error) {
+		r, rerr := g.truthOperandErr(bb, n.R)
+		if rerr != nil {
+			return nil, false, rerr
+		}
+		if r == "" {
+			return nil, false, nil
+		}
+		return []string{r}, true, nil
+	})
+	if serr != nil {
+		return "", serr
 	}
-	return g.markI1(t), nil
+	if !ok {
+		return "", fmt.Errorf("`%s %s %s` cannot lower the operand its test reaches", exprSurface(n.L), n.Op, exprSurface(n.R))
+	}
+	b.WriteString(scratch.String())
+	return g.markI1(out[0]), nil
 }
 
 // logicValue lowers `a and b` / `a or b` where the caller can only store an i32.
@@ -275,10 +392,10 @@ func (g *irGen) logicValue(b *strings.Builder, n *BinOp) (string, error) {
 	if !lok || !rok {
 		return "", logicWordErr(n)
 	}
-	// One word for both operands is what an i32 `select` needs, and a verdict and an int already share it:
-	// ADR 0259's numeric family answers `True + 1` with 2 because the payload speaks, and the same payload
-	// is what a select may carry. What is refused below is a pair whose answer could belong to a different
-	// family — a double, a text, a container, None, or a kind this pass cannot name at all.
+	// One word for both operands is still what the merge needs — a phi has one type — and a verdict and an int
+	// already share it: ADR 0259's numeric family answers `True + 1` with 2 because the payload speaks, and the
+	// same payload is what the merge carries. What is refused below is an answer that could belong to a
+	// different family — a double, a text, a container, None, or a kind this pass cannot name at all.
 	if lk != rk && !(logicIsNumberWord(lk) && logicIsNumberWord(rk)) {
 		return "", logicWordErr(n)
 	}
@@ -302,30 +419,41 @@ func (g *irGen) logicValue(b *strings.Builder, n *BinOp) (string, error) {
 		// carries the textness is the tag, and printing the number underneath is what ADR 0166 counts as ours.
 		return "", logicWordErr(n)
 	}
-	cond, err := g.truthyValue(b, n.L)
+	// The left operand is evaluated once, and the test is read from the word that evaluation left behind:
+	// asking truthyValue *and* value used to run a call on the left of the operator twice (Gap R.149).
+	var scratch strings.Builder
+	l, err := g.value(&scratch, n.L)
 	if err != nil {
 		return "", err
 	}
-	l, err := g.value(b, n.L)
-	if err != nil {
-		return "", err
+	if l == "" {
+		return "", logicWordErr(n)
 	}
-	r, err := g.value(b, n.R)
-	if err != nil {
-		return "", err
+	cond := g.numericTruthOf(&scratch, lk, l)
+	out, ok, serr := g.logicSkeleton(&scratch, n.Op, cond, []string{l}, []string{"i32"}, func(bb *strings.Builder) ([]string, bool, error) {
+		r, rerr := g.value(bb, n.R)
+		if rerr != nil {
+			return nil, false, rerr
+		}
+		if r == "" {
+			return nil, false, nil
+		}
+		return []string{r}, true, nil
+	})
+	if serr != nil {
+		return "", serr
 	}
-	t := g.newTmp()
-	if n.Op == "and" {
-		fmt.Fprintf(b, "  %s = select i1 %s, i32 %s, i32 %s\n", t, cond, r, l)
-	} else {
-		fmt.Fprintf(b, "  %s = select i1 %s, i32 %s, i32 %s\n", t, cond, l, r)
+	if !ok {
+		return "", logicWordErr(n)
 	}
-	return t, nil
+	b.WriteString(scratch.String())
+	return out[0], nil
 }
 
-// logicDouble is the double door, and the and/or counterpart of ADR 0262's `select i1 …, double …`. The
-// caller asked for a double, so an operand that is not one converts — that conversion *is* the reference's
-// own promotion inside `(1 and 2.5) * 2`.
+// logicDouble is the double door: the answer is a double, so the merge is a `phi double` and each operand is
+// lowered through floatValue first — converting an int operand to the double word, which conversion *is* the
+// reference's own promotion inside `(1 and 2.5) * 2` (ADR 0262's rule for a ternary's arms, read for the two
+// operators that hand back an operand).
 func (g *irGen) logicDouble(b *strings.Builder, n *BinOp) string {
 	if chosen, ok := constantLogicArm(n); ok {
 		return g.floatValue(b, chosen)
@@ -347,22 +475,28 @@ func (g *irGen) logicDouble(b *strings.Builder, n *BinOp) string {
 			return ""
 		}
 	}
-	cond, err := g.truthyValue(b, n.L)
-	if err != nil || cond == "" {
+	cond := g.newTmp()
+	var scratch strings.Builder
+	l := g.floatValue(&scratch, n.L)
+	if l == "" {
 		return ""
 	}
-	l := g.floatValue(b, n.L)
-	r := g.floatValue(b, n.R)
-	if l == "" || r == "" {
+	// The same truth the float condition door uses — the double the operand answered with, tested against
+	// zero — but read from the value the road already computed rather than from a second evaluation.
+	fmt.Fprintf(&scratch, "  %s = fcmp one double %s, 0.0\n", cond, l)
+	g.markI1(cond)
+	out, ok, serr := g.logicSkeleton(&scratch, n.Op, cond, []string{l}, []string{"double"}, func(bb *strings.Builder) ([]string, bool, error) {
+		r := g.floatValue(bb, n.R)
+		if r == "" {
+			return nil, false, nil
+		}
+		return []string{r}, true, nil
+	})
+	if serr != nil || !ok {
 		return ""
 	}
-	t := g.newTmp()
-	if n.Op == "and" {
-		fmt.Fprintf(b, "  %s = select i1 %s, double %s, double %s\n", t, cond, r, l)
-	} else {
-		fmt.Fprintf(b, "  %s = select i1 %s, double %s, double %s\n", t, cond, l, r)
-	}
-	return t
+	b.WriteString(scratch.String())
+	return out[0]
 }
 
 // logicBudget counts the heap objects an answer builds. The module has no way to keep a handle alive in a
@@ -384,14 +518,17 @@ type logicForm struct {
 // logicPrintPair builds the (payload, tag) pair the answer travels in for the one printer in the module that
 // can read a tag. handled=false is the door's honest "I cannot state both kinds", and the caller refuses
 // rather than print the verdict the operator does not return.
+//
+// The whole expression is one call to logicFormOf, because that is the door that knows how to answer a pair
+// for any operand — including an `and`/`or` nested inside it — and the pair it answers is built the same way
+// the answer itself is: the left operand's pair, the test read off it with @rt_pair_truth, and the right
+// operand's pair built only on the path that reaches it (Gap R.149: `print(boom() or "d")` used to evaluate
+// the left operand twice and the right one even when the test had already chosen it).
 func (g *irGen) logicPrintPair(b *strings.Builder, n *BinOp) (string, string, bool, error) {
 	bud := &logicBudget{}
-	lf, err := g.logicFormOf(b, n.L, bud)
-	if err != nil || lf.payload == "" {
-		return "", "", false, err
-	}
-	rf, err := g.logicFormOf(b, n.R, bud)
-	if err != nil || rf.payload == "" {
+	var scratch strings.Builder
+	f, err := g.logicFormOf(&scratch, n, bud)
+	if err != nil || f.payload == "" {
 		return "", "", false, err
 	}
 	if bud.builds > 1 {
@@ -400,61 +537,57 @@ func (g *irGen) logicPrintPair(b *strings.Builder, n *BinOp) (string, string, bo
 		// operand, which is one object and not two.
 		return "", "", false, nil
 	}
-	cond, err := g.truthyValue(b, n.L)
-	if err != nil || cond == "" {
-		return "", "", false, err
-	}
-	val, tag := g.logicSelectPair(b, n.Op, cond, lf, rf)
-	return val, tag, true, nil
-}
-
-// logicSelectPair is the pair the printer is handed: two `select`s over the same test, one for the payload
-// and one for the kind, so the answer arrives as (value, tag) whatever the run time decided. It is also the
-// pair one level up in a nested `and`/`or`, which is what lets `print("a" and "b" and "c")` render the text
-// the two tests choose instead of refusing it.
-func (g *irGen) logicSelectPair(b *strings.Builder, op, cond string, lf, rf logicForm) (string, string) {
-	if lf.floaty || rf.floaty {
+	if f.floaty {
 		g.floatFmtUsed = true
 	}
 	g.heapUsed = true
-	val := g.newTmp()
-	tag := g.newTmp()
-	if op == "and" {
-		fmt.Fprintf(b, "  %s = select i1 %s, i32 %s, i32 %s\n", val, cond, rf.payload, lf.payload)
-		fmt.Fprintf(b, "  %s = select i1 %s, i32 %s, i32 %s\n", tag, cond, rf.tag, lf.tag)
-	} else {
-		fmt.Fprintf(b, "  %s = select i1 %s, i32 %s, i32 %s\n", val, cond, lf.payload, rf.payload)
-		fmt.Fprintf(b, "  %s = select i1 %s, i32 %s, i32 %s\n", tag, cond, lf.tag, rf.tag)
-	}
-	return val, tag
+	b.WriteString(scratch.String())
+	return f.payload, f.tag, true, nil
 }
 
 // logicFormOf answers how one operand of `and`/`or` is rendered, as a (payload, tag) pair. The
 // pair-providers come first — an `and`/`or` of its own, a name the arithmetic door bound, a tagged loop
 // variable, a slot the object describes — because their tag is already a register the run time wrote, and a
-// `select` over two tag registers is exactly as legal as one over two constants. An empty payload means "I
-// cannot state this operand's kind", which is the caller's signal to refuse rather than guess.
+// phi over two tag registers is exactly as legal as one over two constants. An empty payload means "I cannot
+// state this operand's kind", which is the caller's signal to refuse rather than guess.
 func (g *irGen) logicFormOf(b *strings.Builder, e Expr, bud *logicBudget) (logicForm, error) {
-	// A nested `and`/`or` is an operand like any other, and its answer is a pair too: build the pairs of
-	// *its* two operands and select over its own test.
+	// A nested `and`/`or` is an operand like any other, and its answer is a pair too: the left operand's pair,
+	// the test read off that pair, and the right operand's pair built inside the block only the taken path
+	// reaches — which is what lets `print("a" and "b" and "c")` render the text the two tests choose without
+	// either operand running twice.
 	if n, ok := e.(*BinOp); ok && (n.Op == "and" || n.Op == "or") {
 		if chosen, decided := constantLogicArm(n); decided {
 			return g.logicFormOf(b, chosen, bud)
 		}
-		lf, err := g.logicFormOf(b, n.L, bud)
+		var scratch strings.Builder
+		lf, err := g.logicFormOf(&scratch, n.L, bud)
 		if err != nil || lf.payload == "" {
 			return logicForm{}, err
 		}
-		rf, err := g.logicFormOf(b, n.R, bud)
-		if err != nil || rf.payload == "" || bud.builds > 1 {
-			return logicForm{}, err
+		cond := g.pairTruth(&scratch, lf.payload, lf.tag)
+		var rightFloaty bool
+		out, ok, serr := g.logicSkeleton(&scratch, n.Op, cond, []string{lf.payload, lf.tag}, []string{"i32", "i32"}, func(bb *strings.Builder) ([]string, bool, error) {
+			rf, rerr := g.logicFormOf(bb, n.R, bud)
+			if rerr != nil {
+				return nil, false, rerr
+			}
+			if rf.payload == "" || bud.builds > 1 {
+				return nil, false, nil
+			}
+			rightFloaty = rf.floaty
+			return []string{rf.payload, rf.tag}, true, nil
+		})
+		if serr != nil {
+			return logicForm{}, serr
 		}
-		cond, cerr := g.truthyValue(b, n.L)
-		if cerr != nil || cond == "" {
-			return logicForm{}, cerr
+		if !ok {
+			return logicForm{}, nil
 		}
-		val, tag := g.logicSelectPair(b, n.Op, cond, lf, rf)
-		return logicForm{payload: val, tag: tag}, nil
+		if lf.floaty || rightFloaty {
+			g.floatFmtUsed = true
+		}
+		b.WriteString(scratch.String())
+		return logicForm{payload: out[0], tag: out[1], floaty: lf.floaty || rightFloaty}, nil
 	}
 	if nm, ok := e.(*Name); ok {
 		if g.numericPairVar(nm.Value) {

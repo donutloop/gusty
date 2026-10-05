@@ -448,14 +448,17 @@ beside `print(1 or True)` → `1`. Both engines printed `1` for all four — exi
 refusal, on an operator every Python program uses — because the lowering composed two predicates and
 zero-extended the verdict, and the truthiness table asked whether the *test* passed rather than what the
 *expression* is. A condition still wants only a verdict, and `truth(a and b)` is `truth(a) and truth(b)`,
-so `if x or "d":` branches on operands that could never share a word; a value position needs one, and
-the compiled backend picks it with a `select` — in the `i32` word, in the `double` word, or as the
+so `if x or "d":` branches on operands that could never share a word; a value position needs one, and the
+compiled backend merges it from the two arms — in the `i32` word, in the `double` word, or as the
 (payload, tag) pair the module's one tag-reading printer takes, which is what lets `print(x or "d")`
 print a word instead of the interned index underneath it. A shape none of those roads can state names both
 operands and the missing tag at the capability exit instead of answering `1`, and the checker types the
-expression by its operand, not by a bool it never returns. What the two backends still owe together is the
-operand the test rejected: both evaluate it, so `x and boom()` calls `boom` where CPython is silent
-(Gap R.149).
+expression by its operand, not by a bool it never returns. The operators also **short-circuit, on both
+engines** (ADR 0275, closing Gap R.149): the test decides whether the other operand is in the program at
+all, so `x and boom()` with x false is silent, `x and (1 // 0)` answers `0` without trapping, and the operand
+the test does reach runs exactly once — which the compiled leg had been getting wrong twice over, once by
+running the excluded operand and once by evaluating the tested one twice, because a `select` between two
+operands evaluates both and the truth and the value were each lowered on their own.
 
 `str()` and `repr()` are **one pair over one renderer** (ADR 0258, closing Gap L.2). `print`, `str()`
 and a container element ask the same table: in the compiled backend the value printers no longer call

@@ -2427,26 +2427,25 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 			}
 			return e.logicChosen(chosen, cv), nil
 		}
-		// Both operands are evaluated, exactly as they are by the compiled `select`: leaving the un-chosen
-		// operand unevaluated is CPython's promise and this language does not make it yet — one engine
-		// dropping the effects while the other keeps them is the two-engine split AGENTS forbids, so the
-		// owed half is recorded whole in one row (roadmap Gap R.149, ADR 0269).
+		// The test decides whether the other operand is in the program at all: `x and boom()` with x bound to 0
+		// never calls boom, `y or (1 // 0)` with y true never divides, and a trap inside the operand the test
+		// skipped never raises. Both engines used to evaluate both operands and choose afterwards, which is what
+		// a `select` compiles to and what made `if xs and xs[0] > 0:` subscript an empty list; the compiled leg
+		// answers with the same three blocks this branch skips (roadmap Gap R.149, ADR 0275).
 		l, err := e.eval(n.L)
 		if err != nil {
 			return 0, err
 		}
+		takesRight := e.truthy(l)
+		if n.Op == "or" {
+			takesRight = !takesRight
+		}
+		if !takesRight {
+			return e.logicChosen(n.L, l), nil
+		}
 		r, err := e.eval(n.R)
 		if err != nil {
 			return 0, err
-		}
-		if n.Op == "and" {
-			if e.truthy(l) {
-				return e.logicChosen(n.R, r), nil
-			}
-			return e.logicChosen(n.L, l), nil
-		}
-		if e.truthy(l) {
-			return e.logicChosen(n.L, l), nil
 		}
 		return e.logicChosen(n.R, r), nil
 	}

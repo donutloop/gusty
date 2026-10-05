@@ -53,6 +53,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// is the text `d`, `[1] and [2]` is `[2]`, and `1 or True` stays the number `1` (roadmap Gap R.147,
 		// ADR 0269). The shapes whose answer needs the kind to travel with it are filed beside it.
 		"and_or_answer_like_python",
+		// …and the half of the same operator the print door cannot answer: the operand the test did not choose
+		// is not in the program at all. `x and boom()` with x false does not call boom, `y or (1 // 0)` with y
+		// true does not divide, `if x and boom():` branches without running boom, and the operand the test
+		// *does* reach runs exactly once — which the compiled leg used to get wrong twice over, once by running
+		// the skipped operand and once by evaluating the tested one twice (roadmap Gap R.149, ADR 0275).
+		"probe_and_or_the_test_skips",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap
@@ -354,9 +360,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		// and the positions that keep one word for a value still decline (roadmap Gap R.147's owed half,
 		// owned by L11.1 and Gap R.146, ADR 0269).
 		"probe_and_or_shapes_the_word_carry",
-		// The operand the test did not choose still runs: both engines evaluate both, so the effects and the
-		// traps of an operand the reference never evaluates are performed here (roadmap Gap R.149, ADR 0269).
-		"probe_and_or_the_test_skips",
 		// The verdict an operator *picks* — max/min's chosen candidate — is parity surface now: the
 		// program lives in conformanceStandalone (Gap R.117, ADR 0261). What stays filed is the shape
 		// whose candidate the compiler cannot read at all, and the ternary whose test it cannot read:
@@ -541,13 +544,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython and the interpreted leg print 3, d, ['b'], 5.0 and [[1, 2]]; the compiled leg spends exit 1 on the first of them, because a chosen operand that is not a number has no word to travel in outside the print door, where the tag can travel beside the payload",
 		ref:    "roadmap Gap R.147 (owed half, owned by L11.1's tagged value word) and Gap R.146; docs/adr/0269, Consequences",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\nd\n['b']\n5.0\n[[1, 2]]\n"}, {Backend: "aot", Missing: true, Err: "requires an inline list/dict/set literal"}}},
-	// The other half of the same operator: the operand the test did not choose is still evaluated, on both
-	// engines. The two backends agree with each other line for line, which is what makes this one row (the
-	// AGENTS two-backends rule) rather than two divergences.
-	"programs/probe_and_or_the_test_skips": {oracle: lang.OracleDebt,
-		reason: "CPython prints 0, 1, 0, 1 — the operand the test rejected is never evaluated, so boom() never runs and the division never traps; both gusty legs print boom, 0, boom, 1 and then the two ZeroDivisionError arms, because `and`/`or` evaluate both operands here exactly as a ternary evaluates both of its arms",
-		ref:    "roadmap Gap R.149 (measured landing ADR 0269); docs/adr/0269, Consequences",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n"}, {Backend: "aot", Stdout: "boom\n0\nboom\n1\nthe skipped operand raised\nthe skipped operand raised again\n"}}},
 	"programs/probe_pair_from_a_tuple_unpack": {oracle: lang.OracleDebt,
 		reason: "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
 		ref:    "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",

@@ -3162,6 +3162,49 @@ lifted:
   ret double %v
 }
 
+; rt_pair_truth answers the question and/or have to ask of the operand they test when that operand's
+; kind is the run time's fact and not the compiler's: is the value the pair describes true or false. The tag
+; is the module's own vocabulary (value.go's ValueTag) and the answer is the interpreter's truthy for the
+; same object — a number in either family is true when it is not zero (so a float slot is unboxed by
+; rt_lift_num rather than read as a handle, which is what made a float box always true), an empty text or an
+; empty container is false, None is false, and any other heap object is true. It is the door that lets the
+; operand the test did not choose stay out of the program entirely (roadmap Gap R.149, ADR 0275).
+define internal i32 @rt_pair_truth(i32 %p, i32 %t) {
+entry:
+  %isnum = icmp ult i32 %t, 3
+  br i1 %isnum, label %num, label %rest
+num:
+  %d = call double @rt_lift_num(i32 %p, i32 %t)
+  %nz = fcmp one double %d, 0.0
+  %rn = zext i1 %nz to i32
+  ret i32 %rn
+rest:
+  %isnone = icmp eq i32 %t, 3
+  br i1 %isnone, label %zero, label %checktext
+checktext:
+  %istext = icmp eq i32 %t, 4
+  br i1 %istext, label %textlen, label %checkcont
+checkcont:
+  ; 5, 6, 7 are list, dict and set, and the heap record's length word is the entry count for all three,
+  ; so one read answers emptiness for each. Anything above is an object, and an object is true.
+  %iscont = icmp ult i32 %t, 8
+  br i1 %iscont, label %contlen, label %one
+textlen:
+  %n = call i32 @rt_str_len(i32 %p)
+  %rt = icmp ne i32 %n, 0
+  %rti = zext i1 %rt to i32
+  ret i32 %rti
+contlen:
+  %l = call i32 @rt_heap_len(i32 %p)
+  %rc = icmp ne i32 %l, 0
+  %rci = zext i1 %rc to i32
+  ret i32 %rci
+one:
+  ret i32 1
+zero:
+  ret i32 0
+}
+
 ; rt_num_arith answers the pair question. 0 means "the payload and the tag are written"; 1 means "the
 ; operands do not add" and leaves CPython's sentence in *outmsg; 2 means the int answer would not fit
 ; this backend's int word. The caller — not this helper — turns a status into a raise, because only the
@@ -8292,6 +8335,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		return "", fmt.Errorf("codegen: unsupported attr expression")
 
 	case *BinOp:
+		// `and`/`or` are not operators here: they are the two operators that choose an operand and hand it
+		// back unconverted, so the question is *which value*, never *what verdict* (roadmap Gap R.147,
+		// ADR 0269). The door folds a test the source wrote, branches on the operand the program wrote, and
+		// merges the two arms in a phi (Gap R.149, ADR 0275) — and it has to be asked **before the operands
+		// are lowered**, exactly like the membership and tagged-equality doors below it. Sitting down here
+		// meant the generic lowering had already emitted both operands — which is why `boom() and 2` called
+		// `boom` twice on the compiled leg and `x and boom()` called it once with `x` false: an operand the
+		// test had already excluded was in the module, and the module ran it.
+		if n.Op == "and" || n.Op == "or" {
+			return g.logicValue(b, n)
+		}
 		// Membership in a container whose slots describe themselves is decided by (payload,
 		// tag): comparing payloads alone would answer `0 in {"0": 1}` from the interned index
 		// the key's word happens to hold (ADR 0232's soundness rule). This is checked before
@@ -8667,14 +8721,6 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			}
 		}
 		t := g.newTmp()
-		// `and`/`or` are not operators here: they are the two operators that choose an operand and hand it
-		// back unconverted, so the question is *which value*, never *what verdict* (roadmap Gap R.147,
-		// ADR 0269). The door folds a test the source wrote, selects between two operands that share a
-		// word, and refuses the shapes whose answer would need the tag that L11.1 still owes — it may not
-		// answer with the 1 that stood here, which is the exit-0 wrong answer the row was filed for.
-		if n.Op == "and" || n.Op == "or" {
-			return g.logicValue(b, n)
-		}
 		// Membership tests need runtime container access, so handle them
 		// separately from the i32 arithmetic/comparison ops.
 		if n.Op == "in" || n.Op == "not in" {
