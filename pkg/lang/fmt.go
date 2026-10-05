@@ -340,7 +340,7 @@ func writeExpr(sb *strings.Builder, e Expr, prec int) {
 	case *NoneLit:
 		sb.WriteString("None")
 	case *StrLit:
-			sb.WriteString(fmtStrLit(x))
+		sb.WriteString(fmtStrLit(x))
 	case *KeywordArg:
 		sb.WriteString(x.Name)
 		sb.WriteString(" = ")

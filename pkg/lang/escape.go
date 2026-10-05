@@ -142,8 +142,8 @@ func deadListAssignments(prog []Stmt) map[string]bool {
 				// loop var is an assignment target (value is an element,
 				// not a list literal) so the variable must keep its slot.
 				for _, nm := range loopVarNames(n.Var) {
-				nonListAssign[nm] = true
-			}
+					nonListAssign[nm] = true
+				}
 			}
 			walkExpr(n.Iter)
 			for _, st := range n.Body {

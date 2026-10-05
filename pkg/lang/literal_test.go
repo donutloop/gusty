@@ -77,7 +77,6 @@ func TestLiteralMatchExhaustiveUncovered(t *testing.T) {
 	}
 }
 
-
 func TestLiteralUnionMatchExhaustiveCovered(t *testing.T) {
 	src := "def f(x: Literal[1, 2]):\n    match x:\n        case 1:\n            print(x)\n        case 2:\n            print(x)\n"
 	prog, err := Parse(src)

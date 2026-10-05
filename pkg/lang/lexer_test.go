@@ -181,12 +181,12 @@ func TestLexLineContinuation(t *testing.T) {
 
 	// a lone backslash not before a newline is rejected
 	toks2, err2 := Lex("x = \\ 1\n")
-		if err2 != nil {
-			t.Fatalf("Lex: misplaced backslash should recover, got %v", err2)
-		}
-		if !hasTokError(toks2) {
-			t.Fatalf("Lex: misplaced backslash should emit a TokError token")
-		}
+	if err2 != nil {
+		t.Fatalf("Lex: misplaced backslash should recover, got %v", err2)
+	}
+	if !hasTokError(toks2) {
+		t.Fatalf("Lex: misplaced backslash should emit a TokError token")
+	}
 }
 
 // TestParseLineContinuation verifies the parser consumes a continued logical
@@ -285,12 +285,12 @@ func TestRichTokenSpans(t *testing.T) {
 // XID_Continue characters (letters, marks, digits, connector punctuation).
 func TestLexUnicodeIdentifiers(t *testing.T) {
 	cases := []struct{ src, want string }{
-		{"café = 1", "café"},     // Latin-1 Supplement (U+00E9)
-		{"你好 = 2", "你好"},      // CJK ideographs (Lo)
-		{"αβγ = 3", "αβγ"},        // Greek letters
-		{"变量 = 4", "变量"},       // CJK ideographs
-		{"num١ = 5", "num١"},     // ASCII start + Arabic-Indic digit continue
-		{"naïve", "naïve"},        // U+00EF i with diaeresis
+		{"café = 1", "café"}, // Latin-1 Supplement (U+00E9)
+		{"你好 = 2", "你好"},     // CJK ideographs (Lo)
+		{"αβγ = 3", "αβγ"},   // Greek letters
+		{"变量 = 4", "变量"},     // CJK ideographs
+		{"num١ = 5", "num١"}, // ASCII start + Arabic-Indic digit continue
+		{"naïve", "naïve"},   // U+00EF i with diaeresis
 	}
 	for _, c := range cases {
 		toks, err := Lex(c.src)

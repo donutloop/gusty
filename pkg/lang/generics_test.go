@@ -85,11 +85,11 @@ func TestSequenceProtocolAssign(t *testing.T) {
 		src      string
 		wantErrs bool
 	}{
-		{`x: Sequence[int] = [1, 2]`, false},      // list[int] ok
-		{`x: Sequence[int] = [1, "a"]`, false},    // element mismatch tolerated? list[int] vs Sequence[int] ok
-		{`x: Sequence[str] = [1, 2]`, true},       // list[int] not Sequence[str]
-		{`x: Sequence[int] = "hi"`, true},         // str is Sequence[str], not Sequence[int]
-		{`x: Sequence[int] = (1, 2)`, false},      // tuple[int, int] ok
+		{`x: Sequence[int] = [1, 2]`, false},   // list[int] ok
+		{`x: Sequence[int] = [1, "a"]`, false}, // element mismatch tolerated? list[int] vs Sequence[int] ok
+		{`x: Sequence[str] = [1, 2]`, true},    // list[int] not Sequence[str]
+		{`x: Sequence[int] = "hi"`, true},      // str is Sequence[str], not Sequence[int]
+		{`x: Sequence[int] = (1, 2)`, false},   // tuple[int, int] ok
 	}
 	for _, c := range cases {
 		diags := Analyze(parseOrFatal(t, c.src))
@@ -128,8 +128,6 @@ func TestCallableProtocolAssign(t *testing.T) {
 		t.Errorf("int must not satisfy a Callable bound")
 	}
 }
-
-
 
 // TestProtocolName verifies Name() rendering for protocol types.
 func TestProtocolName(t *testing.T) {

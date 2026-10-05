@@ -202,7 +202,6 @@ func TestGCFullGCBoundsOldGen(t *testing.T) {
 	}
 }
 
-
 func runIR(t *testing.T, ir string) string {
 	tmp, err := os.CreateTemp("", "gc-*.ll")
 	if err != nil {

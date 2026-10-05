@@ -117,4 +117,3 @@ print(f(3))
 		t.Fatalf("wrapping decorator output %q, want 7", res.Output)
 	}
 }
-

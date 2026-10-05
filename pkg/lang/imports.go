@@ -1,16 +1,16 @@
 package lang
 
 import (
-	"strings"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // ImportInfo carries the compile-time-folded module globals for the AOT
 // compiler. Each imported module's top-level global variables are folded to
 // constant AST literals (data imports); module function dispatch is deferred.
 type ImportInfo struct {
-	Globals map[string]map[string]Expr // module name -> global name -> folded constant
+	Globals map[string]map[string]Expr     // module name -> global name -> folded constant
 	Funcs   map[string]map[string]*FuncDef // module name -> fn name -> module function
 }
 

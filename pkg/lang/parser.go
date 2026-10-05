@@ -189,7 +189,6 @@ func parseProgram(src string) (*Program, error) {
 	return prog, nil
 }
 
-
 // recoverStmt performs panic-mode error recovery: it skips tokens until the
 // parser can resume at a top-level statement boundary. It tracks INDENT/DEDENT
 // nesting (seeded from p.nest, which counts blocks whose INDENT was already
@@ -630,6 +629,7 @@ func (p *parser) parseImport() (Stmt, error) {
 	p.skipNewlines()
 	return &ImportStmt{Module: name, Src: im.Span}, nil
 }
+
 // parseTypeAlias parses `type NAME = <type-annotation>` (L5.7). The alias is
 // compile-time and structural: it binds NAME to a structural copy of the
 // annotation type so later annotations can reference it. It has no runtime
@@ -656,7 +656,6 @@ func (p *parser) parseTypeAlias() (Stmt, error) {
 	p.typeAliases[name] = an
 	return &TypeAliasStmt{Name: name, Annot: an, Src: st.Span}, nil
 }
-
 
 func (p *parser) parseReturn() (Stmt, error) {
 	rt := p.next() // 'return'
@@ -1425,17 +1424,17 @@ func cloneType(t *Type) *Type {
 type prec int
 
 const (
-	precWalrus prec = iota + 1
-	precTernary // a if b else c
-	precOr                      // or
-	precAnd                     // and
-	precNot                     // prefix not
-	precCompare                 // == != < <= > >= in not in is is not
-	precAdd                     // + -
-	precMul                     // * / // %
-	precUnary                   // prefix -
-	precPower                   // ** (right-associative)
-	precPostfix                 // call ( ) index [ ] attr .
+	precWalrus  prec = iota + 1
+	precTernary      // a if b else c
+	precOr           // or
+	precAnd          // and
+	precNot          // prefix not
+	precCompare      // == != < <= > >= in not in is is not
+	precAdd          // + -
+	precMul          // * / // %
+	precUnary        // prefix -
+	precPower        // ** (right-associative)
+	precPostfix      // call ( ) index [ ] attr .
 )
 
 // parseExpr parses a full expression using the precedence-climbing algorithm.
