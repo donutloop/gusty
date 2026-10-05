@@ -550,6 +550,17 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A function that **renders** its answer is a string-returning function, and its callers are told (ADR
+0281, closing `Gap R.163`). `def g(): return str(42)` / `print(g())` was `0` at **exit 0** on the
+compiled leg — and `0` for `str(x)` of a name, `str(2.5)`, `repr(42)`, `str([1, 2])` and `str(None)`
+too. The body was never wrong: it asked the rendering door and returned the interned index. The
+caller printed that index with `%d`, because the program-wide predicate that decides which functions
+yield text counted literals, f-strings, string parameters and concats, and had never been told about
+a `str()` call — ADR 0224's bug class (`print(Dog().sound())` printed `0`) one door earlier. One case
+in that predicate, with Gap R.6's guard still standing: `def str(x): return x + 7` beside that body
+answers `49`, because a program that took the name owns it. `programs/probe_return_str.gy` is ten
+lines, three legs, one answer.
+
 `str()` and `repr()` are **one pair over one renderer** (ADR 0258, closing Gap L.2). `print`, `str()`
 and a container element ask the same table: in the compiled backend the value printers no longer call
 `printf` — every write goes through a sink that is either stdout or, while the pair renders, a capture

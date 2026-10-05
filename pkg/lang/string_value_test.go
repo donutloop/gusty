@@ -76,6 +76,81 @@ func TestMethodStringResultIsKnownToItsCallers(t *testing.T) {
 	}
 }
 
+// A function whose answer is `str(…)` is a string-returning function too, and its callers must be told.
+// The callee already asked the statement-level rendering door and returned the interned index, so nothing
+// about the body was wrong: `print(g())` asked `printf` with `%d` and answered `0` — the index — where
+// CPython and the interpreter answer `42` (roadmap L11.2, Gap R.163, ADR 0281). It is
+// TestMethodStringResultIsKnownToItsCallers' rule, one door earlier: the same index, reached through a
+// builtin call instead of a literal.
+func TestStrResultOfAFuncIsKnownToItsCallers(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, want, irWant string
+	}{
+		{
+			"the row itself: return str(42)",
+			"def g():\n    return str(42)\n\nprint(g())\n", "42\n", "rt_str_ptr",
+		},
+		{
+			"a name the body cannot read at compile time",
+			"x = 7\n\ndef g():\n    return str(x)\n\nprint(g())\n", "7\n", "rt_str_ptr",
+		},
+		{
+			"a double keeps the round-tripping form print would use",
+			"def g():\n    return str(2.5)\n\nprint(g())\n", "2.5\n", "rt_str_ptr",
+		},
+		{
+			"repr is the same pair, quoted",
+			"def g():\n    return repr(42)\n\nprint(g())\n", "42\n", "rt_str_ptr",
+		},
+		{
+			// A container is the shape ADR 0258 refused rather than rendered: `str([1, 2])` used to answer
+			// `0`, and a function returning it must not answer the index either.
+			"a container asks its own object",
+			"def g():\n    return str([1, 2])\n\nprint(g())\n", "[1, 2]\n", "rt_str_ptr",
+		},
+		{
+			"None writes None, not 0",
+			"def g():\n    return str(None)\n\nprint(g())\n", "None\n", "rt_str_ptr",
+		},
+		{
+			// The answer is a text in the *value* positions too, not only under `print`: this is what makes
+			// the verdict worth having, and each line is a different consumer of the same index.
+			"bound, measured, and asked for a method",
+			"def g():\n    return str(42)\n\ns = g()\nprint(s)\nprint(len(g()))\nprint(g().upper())\n",
+			"42\n2\n42\n", "rt_str_ptr",
+		},
+		{
+			// Gap R.6's rule survives the widening: a program that defines `str` itself gets its own
+			// function, not the builtin's meaning, and the answer stays a number.
+			"a program that took the name `str` is not the builtin",
+			"def str(x):\n    return x + 7\n\ndef g():\n    return str(42)\n\nprint(g())\n", "49\n", "",
+		},
+		{
+			"a number-returning function keeps its number answer",
+			"def n():\n    return 42\n\nprint(n())\n", "42\n", "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if out := captureStdout(t, tc.src); out != tc.want {
+				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
+			}
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("compiled leg refused a program the oracle prints (%v):\n%s", err, tc.src)
+			}
+			if _, verr := VerifyModuleIR(res.IR, 0); verr != nil {
+				t.Fatalf("the emitted module does not verify: %v", verr)
+			}
+			if tc.irWant != "" && !strings.Contains(res.IR, tc.irWant) {
+				t.Fatalf("printing the answer did not go through the text lookup (%q); printf's %%d would print the index:\n%s", tc.irWant, res.IR)
+			}
+			if got := runIR(t, res.IR); got != tc.want {
+				t.Errorf("compiled: stdout %q, want %q\nsrc: %s", got, tc.want, tc.src)
+			}
+		})
+	}
+}
+
 func TestCallArgumentInterningDoesNotSplitAnInstruction(t *testing.T) {
 	// The interning call is an instruction of its own; it must be emitted before the call line it
 	// feeds, or the operand list is torn in half (`call i32 @f(i32 %x  %t = call ...`).

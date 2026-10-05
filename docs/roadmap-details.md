@@ -7049,3 +7049,70 @@ Owed by the neighbours, unchanged by this row: Gap R.146's one-word positions (`
 pair answer as a call's argument) and Gap R.143's augmented read of a pair-bound name — both still refuse, both
 still name the missing half. The whole-corpus sweep's corpus diff for this change is empty: of the 160+ programs
 swept, only the four probe files this row is about moved, two refusal → parity and two wrong-number → refusal.
+
+### Gap R.163 — a function that returns `str(…)` prints the interned index (CLOSED by ADR 0281, owner L11.2, found by ADR 0276's sweep)
+
+```
+def g():
+    return str(42)
+
+print(g())     # CPython 42 · --interp 42 · --aot 0 at exit 0 (before ADR 0281)
+```
+
+The wrong answer was always the same digit — `0` — which is not a rendering of anything but the
+**index** of the interned string, handed to `printf` with `%d`. Reading the emitted module said where
+the two halves parted: the callee was right (`%t1 = call i32 @rt_str_intern2(...)`, `ret i32 %t1`),
+and the caller printed that index as a number, because the print dispatch chooses the text path by
+asking `callReturnsStr` → `strFuncs`, and `strReturningFuncs` — the program-wide predicate — never
+counted a `str()` call. It counted a literal, an f-string, a string parameter, a concat and a call to
+an already-known string-returning function. This is ADR 0224's bug class (`print(Dog().sound())`
+printed `0` until the method's verdict was registered) reappearing one door earlier: a predicate that
+grew one spelling at a time, and a caller that silently prints whatever it is not told about.
+
+The fix is one case in that predicate, with the two guards that make it safe:
+
+```go
+if !defines[nm.Value] && (nm.Value == "str" || nm.Value == "repr") && len(v.Args) == 1 {
+    return true
+}
+```
+
+`!defines` is Gap R.6's rule from ADR 0199 — a program that took the name `str` for itself gets its
+own function, and `def str(x): return x + 7` beside `def g(): return str(42)` answers `49`, a number.
+`len(v.Args) == 1` is the door's own arity: a call the rendering door would refuse must not be
+classified as a text either, because a wrong classification costs as much as a wrong number — it
+moves the value onto the other road. The existing six-round fixed point then does the rest for free:
+`def a(): return str(1)` / `def b(): return a()` is marked by the callee-of-known-callee rule that was
+already there, so no second pass and no new state.
+
+The answers, three legs, CPython beside each:
+
+```
+print(num())      # 42      · 42      · 42         (return str(42) — 0 before)
+print(name())     # 7       · 7       · 7          (str(x) of a module name)
+print(dbl())      # 2.5     · 2.5     · 2.5        (the round-tripping double form)
+print(quoted())   # 42      · 42      · 42         (repr is the same pair, quoted)
+print(lst())      # [1, 2]  · [1, 2]  · [1, 2]     (a container asks its own object)
+print(void())     # None    · None    · None       (not 0, the ADR 0183 rule one statement out)
+s = num()
+print(s)          # 42      · 42      · 42         (bound, then printed)
+print(len(num())) # 2       · 2       · 2          (exit 1 before: "len requires an inline …")
+print(num().upper())  # 42  · 42      · 42         (a method on the answer)
+print("joined: " + num())   # joined: 42 · ·        (a concat whose operand is a call's text)
+```
+
+The value positions are the reason the verdict is worth having rather than patching `print`: a
+binding, a `len`, a method and a concat are four different consumers of the same index, and only one
+of them is the printer. The pre-cycle binary refused the `len` line outright and printed `0` for the
+rest, which is what makes this a promotion on both axes — refusal → answer and wrong-number → answer.
+
+Rejected: intercepting in the print dispatch (its whole design is that it asks one table, and a
+second source of truth about a value's kind is exactly how `print` and `str()` came to disagree about
+a container in ADR 0258's telling); returning the string's **address** instead of its index (ADR 0224
+removed `ret i32 @.strN` from this road because a global in an `i32` slot made `llc` reject the module
+— exit 2 on an ordinary program); widening the rule to *any* call in a return (an unknown callee is
+what the predicate must not guess); and, on first contact, special-casing `0` in `print`.
+
+The sweep for this change moved one file in each direction it could move: the new
+`programs/probe_return_str.gy` (ten lines, three legs, one answer) went refusal → parity, and nothing
+else in 166 swept files changed on either engine.

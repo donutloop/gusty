@@ -1827,6 +1827,15 @@ interned string (`rt_str_of_container` asks the object to render itself; `rt_str
 value by its tag). A form added for `print` is therefore a form the pair has; the module fails its own
 test (`TestRenderPairIsOneTableNotTwo`) the day a second value renderer appears.
 
+A function whose `return` renders a value **is a string-returning function**, and its callers are told
+so: `def g(): return str(42)` / `print(g())` writes `42` on both backends, and so do `str(x)` of a name,
+`repr(42)`, `str([1, 2])` and `str(None)`, with the answer usable as a binding, an argument to `len`, a
+method receiver and a concat operand (`Gap R.163`, ADR 0281). Before it was, the callee returned the
+interned **index** and the caller printed it with `%d` — `0`, at exit 0, for every one of those shapes.
+The rule is ADR 0224's (a method's string answer is known to its callers) one door earlier, and it
+respects Gap R.6's: a program that defines `str` itself gets its own function, so
+`def str(x): return x + 7` beside that same body answers `49`.
+
 A value is rendered by the form its **expression names**, not by the slot that happens to hold it:
 
 ```python

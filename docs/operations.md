@@ -961,6 +961,13 @@ against its own ability to fail).
   container. Where an expression names no form at all the call is **refused** — exit 1, `"error"` in
   the JSON, the missing half named — and never answered with the decimal form of the handle, which is
   what `str([1, 2])` used to be: `0`, exit 0, on both backends.
+- the same table answers a **function's** answer: `def g(): return str(42)` / `print(g())` is
+  `{"result": "42", "type": "str", …}` on both backends, where the compiled leg reported `0` of type
+  `int` at exit 0 — the callee interned the rendering correctly and the caller printed its `@str_tab`
+  index with `%d`, because the program-wide "which functions return text" predicate did not count a
+  `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
+  `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
+  program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
 - every execution result carries `"backend"`: `"interpreter"` or `"aot"`. It is a fact
   about the run, not something to infer from the flag list — `--file` without
   `--aot` reports `"backend": "interpreter"` (roadmap Gap M.2). Captured-output

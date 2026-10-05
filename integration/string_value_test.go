@@ -29,6 +29,26 @@ func TestStringValuesMatchCPythonOnBothEngines(t *testing.T) {
 		{"string_dict_membership", "d = {\"k\": 1}\nprint(1 if \"k\" in d else 0)\n", "1\n"},
 		{"string_parameter_compare_in_function", "def ok(s: str) -> int:\n    if s == \"yes\":\n        return 1\n    return 0\n\nprint(ok(\"yes\"))\nprint(ok(\"no\"))\n", "1\n0\n"},
 		{"method_returns_string", "class Dog:\n    def sound(self) -> str:\n        return \"woof\"\n\nprint(Dog().sound())\n", "woof\n"},
+		{
+			// Gap R.163 / ADR 0281: a function whose answer is `str(…)` hands back a text, and its callers
+			// have to be told. The body was always right — it asks the statement-level rendering door and
+			// returns the interned index — but `print(g())` fed that index to `printf` with `%d` and answered
+			// `0` where CPython answers `42`. Same rule as `method_returns_string` above, one door earlier.
+			"func_returns_str_of_a_literal", "def g():\n    return str(42)\n\nprint(g())\n", "42\n"},
+		{"func_returns_str_of_a_module_name", "x = 7\n\ndef g():\n    return str(x)\n\nprint(g())\n", "7\n"},
+		{"func_returns_str_of_a_double", "def g():\n    return str(2.5)\n\nprint(g())\n", "2.5\n"},
+		{"func_returns_repr", "def g():\n    return repr(42)\n\nprint(g())\n", "42\n"},
+		{"func_returns_str_of_a_container", "def g():\n    return str([1, 2])\n\nprint(g())\n", "[1, 2]\n"},
+		{"func_returns_str_of_none", "def g():\n    return str(None)\n\nprint(g())\n", "None\n"},
+		{
+			"func_str_answer_bound_measured_and_upcased",
+			"def g():\n    return str(42)\n\ns = g()\nprint(s)\nprint(len(g()))\nprint(g().upper())\n", "42\n2\n42\n",
+		},
+		{
+			// Gap R.6's rule, kept by the widening: taking a builtin's name for oneself means the program's
+			// own function answers, and the answer is a number, not a rendering.
+			"program_defined_str_is_not_the_builtin", "def str(x):\n    return x + 7\n\ndef g():\n    return str(42)\n\nprint(g())\n", "49\n"},
+		{"func_returning_a_number_is_unaffected", "def n():\n    return 42\n\nprint(n())\n", "42\n"},
 		{"method_returns_folded_local", "class D:\n    def say(self) -> str:\n        w = \"yo\"\n        return w\n\nprint(D().say())\n", "yo\n"},
 		{"instance_string_attribute", "class C:\n    def __init__(self):\n        self.w = \"hi\"\n\nprint(C().w)\n", "hi\n"},
 		{"method_with_string_argument", "class G:\n    def greet(self, who: str) -> str:\n        return \"hello\"\n\nprint(G().greet(\"x\"))\n", "hello\n"},

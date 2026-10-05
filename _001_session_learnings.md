@@ -7233,3 +7233,52 @@ this cycle is about: two refusal → parity promotions, two wrong-number → ref
 rows, 112 → 113 parity, 97 → 98 oracle `match`, 0 fail, 0 drift, with
 `programs/probe_bind_a_pair_call_answer.gy` (eleven lines, three legs, one answer) registered in
 `conformanceStandalone()`. Snapshot: 272 ADRs / highest `0280`, 158 programs, 99 of 110 queue rows owed.
+
+## Cycle: a function that renders its answer is a string-returning function (ADR 0281, Gap R.163)
+
+**A digit that is always the same digit is a missing kind, not a wrong computation.** Every shape in
+this family — `return str(42)`, `str(x)`, `str(2.5)`, `repr(42)`, `str([1, 2])`, `str(None)` — printed
+`0` at exit 0. A wrong computation varies; a missing classification collapses to whatever the
+representation's zero happens to be, and here a text is an index into `@str_tab`, so the index `0`
+printed as the number `0`. Reading one emitted module confirmed it in two lines: the callee's
+`rt_str_intern2` + `ret i32 %t1` was correct and the caller's `printf` with `%d` was not asking the
+text path at all. The lesson to keep: when a family of divergences shares one constant, stop looking
+for the bug in the computation and go find who was supposed to be told about the kind.
+
+**Predicates that grow one spelling at a time are a standing hazard.** `strReturningFuncs` answers
+"which functions return text?" and had accumulated `StrLit`, `FString`, a string parameter, a concat,
+and a call to an already-known string-returning function — each added when someone hit it. `str(…)`
+was the hole, and it is the same hole ADR 0224 filled for methods (`print(Dog().sound())` → `0`).
+When a scan-like predicate gates a *presentation* decision, every new expression form needs to be
+asked of it, and the cheapest place to find the missing ones is the list of forms the renderer itself
+supports: the pair serves container/verdict/void/float/text/number, so anything whose *answer* is one
+of those six has to be countable by the predicate. Worth a follow-up audit of the sibling tables
+(`floatFuncs`, `strParamOf`, `strFillOf`) for the same shape of omission.
+
+**Two guards made a one-line widening safe.** `!defines[nm.Value]` keeps Gap R.6's rule (a program
+that defines `str` itself gets its own function — the control row answers `49`, a number), and
+`len(v.Args) == 1` mirrors the rendering door's own arity, because a call the door would refuse must
+not be classified as a text either: a wrong *classification* moves the value onto another road, which
+costs as much as a wrong number. A predicate change that gates output should carry the shadowing guard
+and the arity guard from the first draft, not acquire them after a regression.
+
+**Fix the caller's knowledge, not the caller's printer.** The tempting patch was to make `print`
+handle this case, and it is the patch ADR 0258 exists to forbid: the print dispatch asks one table,
+and a second source of truth about a value's kind is exactly how `print` and `str()` came to disagree
+about a container. Also rejected, on sight: returning the string's *address* (ADR 0224 deleted
+`ret i32 @.strN` because a global in an `i32` slot had `llc` rejecting the module — exit 2 on an
+ordinary program), and, first contact, special-casing `0` in `print`.
+
+**Value positions are where a kind verdict pays.** `print(g())` is one consumer; the probe also
+binds the answer, takes its `len`, calls `.upper()` on it and concatenates it — four more consumers of
+the same index, and one of them (`len`) used to exit 1 outright while the rest printed `0`. Test the
+positions, not just the printer.
+
+**The loop's instruments kept earning their keep.** `go test -tags=llvm20 ./...` green and `gofmt`
+clean; matrix 149 → 150 rows, 113 → 114 parity, 98 → 99 oracle `match`, 0 fail, 0 drift; and the
+166-file, both-engine sweep against the pre-cycle binary moved **one** file — the new
+`programs/probe_return_str.gy`, refusal → ten lines of CPython. Two process notes worth repeating: an
+edit that deleted a comment instead of inserting a test was caught by `git checkout` of that file
+rather than by hand-patching, and the missing `})` in a new `t.Run` block was a reminder to build
+between a test's prose and its first run. Snapshot: 273 ADRs / highest `0281`, 159 programs,
+98 of 110 queue rows owed.

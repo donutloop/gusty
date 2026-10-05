@@ -528,6 +528,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_return_str",
+        "name": "probe_return_str.gy",
+        "source": "# A function whose answer is str()/repr() hands back a text, and its callers are told:\n# CPython's answers, on both engines (roadmap Gap R.163, ADR 0281).\nx = 7\n\ndef num():\n    return str(42)\n\ndef name():\n    return str(x)\n\ndef dbl():\n    return str(2.5)\n\ndef quoted():\n    return repr(42)\n\ndef lst():\n    return str([1, 2])\n\ndef void():\n    return str(None)\n\nprint(num())\nprint(name())\nprint(dbl())\nprint(quoted())\nprint(lst())\nprint(void())\ns = num()\nprint(s)\nprint(len(num()))\nprint(num().upper())\nprint(\"joined: \" + num())\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "42\n7\n2.5\n42\n[1, 2]\nNone\n42\n2\n42\njoined: 42\n",
+      "aot_ok": true,
+      "aot_stdout": "42\n7\n2.5\n42\n[1, 2]\nNone\n42\n2\n42\njoined: 42\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "42\n7\n2.5\n42\n[1, 2]\nNone\n42\n2\n42\njoined: 42\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/abs_names_its_kind",
         "name": "abs_names_its_kind.gy",
         "source": "# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.\n#\n# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the\n# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this\n# toolchain answered all of them: a text reached the print door holding the interned index it is stored\n# as, so `print(abs(\"hi\"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and\n# `abs([1])`, `abs({\"a\": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's\n# \"the compiler is broken\" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).\n#\n# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that\n# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises\n# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the\n# last lines are the rebinding the door reads, where a name's latest binding decides the kind.\nprint(abs(-10))\nprint(abs(10))\nprint(abs(-3.5))\nprint(abs(True))\nprint(abs(0))\ntry:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"trap str\")\ntry:\n    print(abs(None))\nexcept TypeError:\n    print(\"trap NoneType\")\ntry:\n    print(abs([1, 2]))\nexcept TypeError:\n    print(\"trap list\")\ntry:\n    print(abs({\"a\": 1}))\nexcept TypeError:\n    print(\"trap dict\")\ntry:\n    print(abs({1, 2}))\nexcept TypeError:\n    print(\"trap set\")\nclass Thing:\n    pass\n\ntry:\n    print(abs(Thing()))\nexcept TypeError:\n    print(\"trap Thing\")\nx = \"text\"\nx = -7\nprint(abs(x))\nprint(-x)\nprint(abs(x) + 1)\n",
@@ -3570,7 +3593,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3938986903/124/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3572416122/125/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3584,7 +3607,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3938986903/124/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3572416122/125/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4386,11 +4409,11 @@
       ]
     }
   ],
-  "rows": 149,
+  "rows": 150,
   "skipped": 36,
-  "pass": 113,
+  "pass": 114,
   "fail": 0,
-  "oracle_match": 98,
+  "oracle_match": 99,
   "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

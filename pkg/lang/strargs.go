@@ -250,6 +250,15 @@ func strReturningFuncs(prog *Program) map[string]bool {
 	}
 	// A string parameter makes `return s` a string return without any literal involved.
 	strParams := strArgKinds(prog)
+	// The names the program defines for itself, so a program's own `def str(x): return x + 7` is not
+	// read as the builtin (Gap R.6's rule, ADR 0199: a fold through a builtin's meaning is only allowed
+	// where the program did not take the name).
+	defines := map[string]bool{}
+	for _, st := range prog.Stmts {
+		if fd, ok := st.(*FuncDef); ok {
+			defines[fd.Name] = true
+		}
+	}
 	isStrExprIn := func(fd *FuncDef, e Expr) bool {
 		if e == nil || isStringExpr(e) {
 			return e != nil && isStringExpr(e)
@@ -263,8 +272,19 @@ func strReturningFuncs(prog *Program) map[string]bool {
 			}
 		case *Call:
 			if nm, ok := v.Fn.(*Name); ok {
+				// `return str(42)` renders a value to text. The body already asks the statement-level
+				// rendering door for it and returns the interned index (ADR 0258's `rt_str_intern2`), so the
+				// callee's half was right and only this verdict was missing: the caller did not know the
+				// answer is a text, and `print(g())` passed the index to `printf` with `%d` — `0` at exit 0
+				// where CPython and the interpreter print `42` (roadmap L11.2, Gap R.163, ADR 0281).
+				if !defines[nm.Value] && (nm.Value == "str" || nm.Value == "repr") && len(v.Args) == 1 {
+					return true
+				}
 				return out[nm.Value]
 			}
+			// A method's `return str(...)` is the same verdict: the callee emits the same door, and the
+			// caller's print dispatch asks `callReturnsStr`, which reads this table.
+			return false
 		case *BinOp:
 			// "a" + x  /  x + "a" is a string; the codegen refuses it until the runtime can
 			// allocate, but the *intent* is a string, so the caller must not treat it as an int.

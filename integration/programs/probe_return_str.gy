@@ -1,0 +1,33 @@
+# A function whose answer is str()/repr() hands back a text, and its callers are told:
+# CPython's answers, on both engines (roadmap Gap R.163, ADR 0281).
+x = 7
+
+def num():
+    return str(42)
+
+def name():
+    return str(x)
+
+def dbl():
+    return str(2.5)
+
+def quoted():
+    return repr(42)
+
+def lst():
+    return str([1, 2])
+
+def void():
+    return str(None)
+
+print(num())
+print(name())
+print(dbl())
+print(quoted())
+print(lst())
+print(void())
+s = num()
+print(s)
+print(len(num()))
+print(num().upper())
+print("joined: " + num())
