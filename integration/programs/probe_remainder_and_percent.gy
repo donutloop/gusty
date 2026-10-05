@@ -1,0 +1,21 @@
+# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting
+# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).
+def f(v):
+    return v % 2
+
+def g(v):
+    return v % 3
+
+print(7 % 3)
+print(-7 % 3)
+print(7.5 % 2)
+print(-7.5 % 2)
+print(7.5 % 2.5)
+print(f(7.5))
+print(f(7))
+print(g(7.5))
+print(g(7))
+print(1 if 1.0 == "a" else 0)
+print(1 if "a" == 1.0 else 0)
+print(1.5 + 2)
+print(7 / 2)

@@ -968,6 +968,14 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- a feature this backend does not build is refused at **exit 1 with the reference's answer quoted**,
+  which is what makes "not implemented" distinguishable from "wrong" without reading the IR:
+  `--aot --file` on `print("%.2f" % 3.5)` reports
+  `codegen: a string is a text, which has no double to widen from: printf-style formatting — the
+  reference's `"%.2f" % 3.5` answers `3.50`, … (roadmap L11.2, Gap R.165)` where it once exited **0**
+  having printed `0.0`. The three states an agent can branch on are therefore: exit 0 prints what
+  CPython prints, exit 1 names a missing feature (and quotes what it should have been), exit 3 is a
+  program that raised (roadmap L11.8, ADR 0166's exit-code contract, `Gap R.165` / ADR 0282).
 - every execution result carries `"backend"`: `"interpreter"` or `"aot"`. It is a fact
   about the run, not something to infer from the flag list — `--file` without
   `--aot` reports `"backend": "interpreter"` (roadmap Gap M.2). Captured-output

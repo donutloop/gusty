@@ -7116,3 +7116,70 @@ what the predicate must not guess); and, on first contact, special-casing `0` in
 The sweep for this change moved one file in each direction it could move: the new
 `programs/probe_return_str.gy` (ten lines, three legs, one answer) went refusal → parity, and nothing
 else in 166 swept files changed on either engine.
+
+### Gap R.165 — printf-style `%` on a text answers `0.0` at exit 0 (CLOSED by ADR 0282 for the wrong number, owner L11.2, found by ADR 0278's probes)
+
+```
+print("%.2f" % 3.5)     # CPython 3.50 · --interp TypeError · --aot 0.0 at exit 0 (before ADR 0282)
+print("%.1f" % 3.14159) # CPython 3.1  · --interp TypeError · --aot 0.0
+print("%f"   % 3.5)     # CPython 3.000000 · --interp TypeError · --aot 0.0
+```
+
+The emitted module said the whole story: the format string was interned, and its `@str_tab` **index**
+was widened into the double domain and used as a remainder's dividend.
+
+```llvm
+  %t2 = call i32 @rt_str_intern2(i8* @.str1, i8* @.str2)
+  %t1 = sitofp i32 %t2 to double        ; a text widened from its interned index
+  %t3 = fadd double 0.0, 3.5e+00
+  %t6 = frem double %t1, %t3            ; prints 0.0
+```
+
+Why only these three spellings? A text on the left of `%` was already refused — `"%d items" % 3`,
+`"%s!" % "hi"`, `"%x" % 255` all exit 1 with Gap R.82's sentence — because with no float operand the
+program stays on the i32 road, whose `isStringExpr` guard is the refusal. A `%f`/`%.2f` conversion
+makes the right operand a float, which moves the expression onto the **double** road, and
+`floatValue` ends in a fall-through that widens whatever the generic lowering produced without asking
+what kind it was. ADR 0278 had already put `%` (op 5) in the tagged door's guarded list beside `+` and
+`*` for exactly this reason; the hole was one road away, which is the shape of bug a "one guard per
+road" design keeps producing.
+
+The fix is the record-then-refuse convention ADR 0249 established for `fdiv double , %t1`: a text has
+no double to widen from, so the lift records the cause and returns empty, and the caller refuses at
+exit 1. The message the program gets:
+
+```
+codegen: a string is a text, which has no double to widen from: printf-style formatting — the
+reference's `"%.2f" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a
+format string (roadmap L11.2, Gap R.165)
+```
+
+Two narrowings came out of measurement rather than design. **A comparison is not a numeric use**: the
+equality road lowers *both* operands through the same lift, and `1.0 == "a"` answers `False` in the
+reference and `0` here, so the first draft's guard turned three pinned rows
+(`float_eq_str`, `str_eq_float`, `number_eq_container`) from working answers into refusals; the guard
+now asks the operator before it asks the kind. **A record that knows its own cause is quoted, not
+re-diagnosed**: the generic wrapper wrapped everything in the slot sentence — "a slot whose kind only
+the object knows … needs the run-time tag" — which for a literal format string is a false statement
+about a program that contains no container, and would send a reader looking for one.
+
+The controls are the other half of the tests, because `%` is still the remainder:
+
+```
+print(7 % 3)      # 1    · 1    · 1
+print(-7 % 3)     # 2    · 2    · 2        (floor semantics, ADR 0216)
+print(7.5 % 2)    # 1.5  · 1.5  · 1.5
+print(-7.5 % 2)   # 0.5  · 0.5  · 0.5
+print(7.5 % 2.5)  # 0.0  · 0.0  · 0.0
+print(f(7.5))     # 1.5  · 1.5  · 1.5      (def f(v): return v % 2 — the pair-marked parameter, ADR 0278)
+print(f(7))       # 1    · 1    · 1
+print(1 if 1.0 == "a" else 0)   # 0 · 0 · 0   (the narrowing above; refused for a moment by the first draft)
+```
+
+What stays open on this row is the *positive* half: implementing printf-style formatting itself, for
+which the natural door is ADR 0258's renderer — the format string selects a form, the right operand is
+rendered by the one renderer `print` already uses, and the bytes come back interned. Answering it at
+the checker for literal-only cases was rejected: it would answer the probe and leave every computed
+format string printing `0.0`, moving the divergence rather than removing it. The acceptance row is
+already written in the tests above: `print("%.2f" % 3.5)` prints `3.50` on three legs, and until then
+the shape exits 1 quoting that number back at the reader.

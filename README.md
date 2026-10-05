@@ -550,6 +550,20 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A text on the left of `%` **refuses instead of answering** (ADR 0282, closing `Gap R.165`'s wrong
+number). `print("%.2f" % 3.5)` is CPython's `3.50`, a `TypeError` in the interpreter, and `0.0` on the
+compiled leg at **exit 0** — the format string was interned, and its `@str_tab` index was widened with
+`sitofp` and used as a remainder's dividend. The sibling spellings already refused (`"%d items" % 3`,
+`"%s!" % "hi"`, `"%x" % 255`) because with no float operand the program stays on the integer road, whose
+text guard was the refusal; a `%.2f` conversion is what moved an expression onto the double road, and
+that road's lift asked no question about kind. `floatValue` now refuses a text the way ADR 0249 refuses
+an unlift-able operand — record, return empty, let the caller name the missing feature — and the refusal
+quotes the reference's own `3.50`, so "not implemented" is readable without the IR. `%` is still the
+remainder, and that is the other half of the tests: `7 % 3` is `1`, `-7 % 3` is `2`, `7.5 % 2` is `1.5`,
+`-7.5 % 2` is `0.5`, `7.5 % 2.5` is `0.0`, `v % 2` over a pair-marked parameter is `1.5` and `1`, and
+`1.0 == "a"` still answers `0` — the last of those is a narrowing the first draft broke, because the
+equality road lifts both of its operands too.
+
 A function that **renders** its answer is a string-returning function, and its callers are told (ADR
 0281, closing `Gap R.163`). `def g(): return str(42)` / `print(g())` was `0` at **exit 0** on the
 compiled leg — and `0` for `str(x)` of a name, `str(2.5)`, `repr(42)`, `str([1, 2])` and `str(None)`

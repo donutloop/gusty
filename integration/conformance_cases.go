@@ -89,6 +89,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the interned index to `printf` with `%d` — `0` at exit 0 where the reference prints `42`
 		// (roadmap Gap R.163, ADR 0281).
 		"probe_return_str",
+		// `%` is the remainder for numbers on both engines — ints, negatives, doubles, the same body over a
+		// pair-marked parameter, and a float compared to a text — thirteen lines pinned beside the refusal
+		// that keeps the *text*-left spelling from answering a number (roadmap Gap R.165, ADR 0282).
+		"probe_remainder_and_percent",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap

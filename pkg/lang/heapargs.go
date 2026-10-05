@@ -4009,6 +4009,12 @@ func (g *irGen) floatOperandRefusal(e Expr) error {
 	if why == "" {
 		why = g.exprSummary(e)
 	}
+	// See floatLoweringRefusal: a record that names its own cause is quoted, not re-diagnosed. The
+	// slot sentence below is true of a container the object must be asked about and false of a format
+	// string, and `print("%.2f" % 3.5)` reached this line wearing it (roadmap L11.2, Gap R.165, ADR 0282).
+	if strings.HasPrefix(why, floatLowerCompleteMarker) {
+		return fmt.Errorf("codegen: %s", strings.TrimPrefix(why, floatLowerCompleteMarker))
+	}
 	return fmt.Errorf("codegen: %s has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)", why)
 }
 
@@ -4061,8 +4067,21 @@ func (g *irGen) slotReadFromObject(ix *Index) bool {
 func (g *irGen) floatLoweringRefusal(n *BinOp) error {
 	why := g.floatUnlowerable
 	g.floatUnlowerable = ""
+	// A record that already names its own cause is passed through. The slot sentence below is the
+	// right diagnosis for "a slot whose kind only the object knows", and the wrong one for every
+	// other unlift-able operand: `print("%.2f" % 3.5)` reached it saying the *format string* needed
+	// the run-time tag, which is not true of a literal and would send a reader looking for a
+	// container (roadmap L11.2, Gap R.165, ADR 0282). The marker is the record's own, set where the
+	// cause is known.
+	if strings.HasPrefix(why, floatLowerCompleteMarker) {
+		return fmt.Errorf("codegen: %s", strings.TrimPrefix(why, floatLowerCompleteMarker))
+	}
 	return fmt.Errorf("codegen: %s of %q has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and using it as a number needs the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)", why, n.Op)
 }
+
+// floatLowerCompleteMarker prefixes a `floatUnlowerable` record that is already a full sentence, so
+// floatLoweringRefusal quotes it rather than diagnosing it again.
+const floatLowerCompleteMarker = "complete: "
 
 // doubleDomainRefusal is what an int-domain sink says when the numeric use underneath it belongs to
 // the double domain: printing, a float comparison, an `if`/`while` head and a float assignment all ask

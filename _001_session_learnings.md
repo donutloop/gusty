@@ -7282,3 +7282,60 @@ edit that deleted a comment instead of inserting a test was caught by `git check
 rather than by hand-patching, and the missing `})` in a new `t.Run` block was a reminder to build
 between a test's prose and its first run. Snapshot: 273 ADRs / highest `0281`, 159 programs,
 98 of 110 queue rows owed.
+
+---
+
+## Cycle: a text is never widened — printf-style `%` refuses instead of answering `0.0` (Gap R.165, ADR 0282)
+
+**What shipped.** `print("%.2f" % 3.5)` printed `0.0` at exit 0 on the compiled leg. It now exits 1,
+naming printf-style formatting and quoting the reference's own `3.50`. The mechanism: `floatValue`'s
+final fall-through widened whatever the generic lowering produced, and for a text that is its
+**interned index** — `sitofp i32 %t2 to double` fed straight into `frem`. The guard asks the kind before
+the widening, and records its own cause so the refusal says "this is a format string" rather than
+borrowing the slot story.
+
+**What the measure showed.** The three rows that printed `0.0` were the *only* `%`-on-text shapes on the
+double road; `"%d items" % 3`, `"%s!" % "hi"` and `"%x" % 255` already refused, because with no float
+operand the program stays on the integer road where `isStringExpr` is the gate. One conversion in the
+literal — `%.2f`, `%f`, `%e` — makes the right operand a float and moves the whole expression, and the
+road that receives it had no equivalent gate. ADR 0278 had already put `%` in the tagged **door**'s
+guarded list; the hole was one road away. Per-road guards keep producing this bug shape: the fix for a
+guard is a sweep over roads, not one more guard.
+
+**The regression that taught the narrowing.** The first draft refused any text reaching the double lift,
+and three pinned rows failed: `print(1 if 1.0 == "a" else 0)` and friends answered `0` (CPython's
+`False`) and became refusals. A comparison is not a numeric use — the equality road lowers **both**
+operands through the same helper — so the guard asks the operator before the kind. This is the ladder
+rule doing its job: the pinned rows were written before the change and were the only thing that caught
+it inside the suite rather than in the sweep.
+
+**The wording bug, which is a different bug from the wrong number.** Because `floatUnlowerable` held a
+fragment and the two callers composed the sentence, the refusal for a literal format string claimed "a
+slot whose kind only the object knows … needs the run-time tag" — true of a container read, false of a
+program with no container in it, and actively misleading to whoever follows the row. Records may now
+carry a complete, marked sentence which the callers quote verbatim; unmarked records keep the old
+wording byte-identical (verified by a corpus sweep that compares wording, not just numbers).
+
+**Test-expectation errors I made, and what they mean.** Two rows of my own were wrong, not the code: I
+put `-"hi" + 1.5` and `"hi" + 1.5` in the compile-time refusal table when they are *run-time* raises
+(ADR 0266's, exit 3 with CPython's sentence), and I expected `"%f" % 3` (int right operand) to carry the
+printf wording when it never leaves the integer road and correctly answers Gap R.82's. A refusal table
+must be a table of one exit class and one cause-family; mixing exit 1 with exit 3, or one road's wording
+with another's, makes the test teach the wrong lesson. The probe file, the CLI helper (`cliRunMerged`,
+`cpythonPlainOut`) and the `exec` import were three more small fictions corrected against the tree.
+
+**Why refusal is the deliverable, again.** Implementing the formatting was the obvious move and is
+still owed. Doing it half-way — conversion types, width, precision, tuple/mapping right operands — would
+leave every shape it missed answering from an interned index, which is this bug with more coverage. So
+the row closed for its acceptance's negative half ("no text-left `%` answers a number at exit 0") and
+keeps the positive half as an explicit row, with the acceptance line already written in the tests: the
+day `print("%.2f" % 3.5)` prints `3.50` on three legs, these refusal pins must fail.
+
+**Instruments.** 168-file corpus sweep against the pre-cycle binary: only the `%` probe moved, `0.0` →
+refusal. The control probe `probe_remainder_and_percent.gy` (13 lines: negative ints, doubles, `%` over
+a pair-marked parameter, float/text equality) matches CPython on both engines and is registered; the
+matrix 150 → 151 rows, 114 → 115 parity, 99 → 100 `match`, 0 fail, 0 drift.
+
+**Next.** L11.8's `while`-at-1000-lines row — the ladder has a *working* answer that becomes a hang,
+which is a third failure class (besides wrong number and wrong refusal) and the first one that needs a
+timeout to measure.

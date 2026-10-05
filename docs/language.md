@@ -1836,6 +1836,13 @@ The rule is ADR 0224's (a method's string answer is known to its callers) one do
 respects Gap R.6's: a program that defines `str` itself gets its own function, so
 `def str(x): return x + 7` beside that same body answers `49`.
 
+Printf-style `%` on a text is **not implemented**, and says so: `print("%.2f" % 3.5)` exits 1 naming
+printf-style formatting and quoting the reference's own `3.50` (`Gap R.165`, ADR 0282). It used to print
+`0.0` at exit 0, because the format string's `@str_tab` index was widened into the double domain and used
+as a remainder's dividend. `%` itself is the remainder and answers on both engines — `7 % 3` is `1`,
+`-7 % 3` is `2`, `7.5 % 2` is `1.5`, `-7.5 % 2` is `0.5`, `7.5 % 2.5` is `0.0` — and a comparison is not a
+numeric use, so `1.0 == "a"` still answers `False`/`0` rather than being refused with the format string.
+
 A value is rendered by the form its **expression names**, not by the slot that happens to hold it:
 
 ```python

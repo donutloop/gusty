@@ -7064,6 +7064,22 @@ func (g *irGen) noteUnlowered(where any, err error) {
 	}
 }
 
+// comparisonOpForTextGuard reports that the BinOp now being lowered into the float arms compares
+// rather than computes. `==`, `!=` and the orderings answer a verdict for a pair of unlike kinds —
+// CPython answers `1.0 == "a"` with False, and this backend answers 0 — so their operands may be
+// texts and the equality road lowers both sides through the double lift. Only arithmetic may refuse
+// a text (roadmap L11.2, Gap R.165, ADR 0282).
+func comparisonOpForTextGuard(n *BinOp) bool {
+	if n == nil {
+		return false
+	}
+	switch n.Op {
+	case "==", "!=", "<", "<=", ">", ">=", "in", "not in", "is", "is not":
+		return true
+	}
+	return false
+}
+
 // floatValue emits a double IR operand for a float-typed expression e.
 func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 	// Asking for a double is what licenses the numeric door: everything lowered underneath this call
@@ -7405,6 +7421,23 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 			}
 		}
 	}
+	// A text is not a number waiting to be widened. The fall-through below converts the i32 the
+	// expression lowers to, and for a text that i32 is its index in `@str_tab` — so `print("%.2f" % 3.5)`,
+	// whose left operand is a format string this backend does not implement, emitted
+	// `sitofp i32 %t2 to double` and `frem`'d it against 3.5, answering `0.0` at exit 0 where CPython
+	// answers `3.50` and the interpreter raises TypeError (roadmap L11.2, Gap R.165, ADR 0282). Refusing
+	// here is the same judgement the sibling shapes already make — `"%d items" % 3` and `"%s!" % "hi"`
+	// exit 1 naming the operator and both kinds — reached one road earlier: those arrive with a left
+	// operand the checker types as text, and a `%`-conversion in the literal kept this one off that path.
+	// The record-then-refuse convention is ADR 0166's: a substitute digit is the compiler's bug.
+	// A comparison is not a numeric use: `1.0 == "a"` answers `False` in the reference and `0` here,
+	// and the equality road reaches this lift for both of its operands. Only the arithmetic operators
+	// — the ones that answer a number or raise — refuse a text operand (roadmap L11.2, Gap R.165).
+	if (isStringExpr(e) || g.exprIsString(e)) && !comparisonOpForTextGuard(g.numCtx) {
+		g.floatUnlowerable = floatLowerCompleteMarker + fmt.Sprintf("%s is a text, which has no double to widen from: printf-style formatting — the reference's `\"%%.2f\" %% 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)", g.exprSummary(e))
+		g.noteUnlowered(e, fmt.Errorf("codegen: %s cannot be lifted to a double: it is a text, and the only text-to-number roads this backend builds are int(), float() and round(); printf-style %% formatting is owed (roadmap L11.2, Gap R.165, ADR 0166)", g.exprSummary(e)))
+		return ""
+	}
 	t := g.newTmp()
 	fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, e))
 	return t
@@ -7434,7 +7467,13 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 		if l != "" {
 			missing, which = n.R, "right"
 		}
-		g.floatUnlowerable = fmt.Sprintf("the %s operand %s of %q", which, g.exprSummary(missing), n.Op)
+		// A record the lift itself wrote may already name the true cause (a text has no double to
+		// widen from, which is not the slot story the generic sentence below tells); only when nothing
+		// was recorded does the BinOp compose the operand-and-operator form (roadmap L11.2, Gap R.165,
+		// ADR 0282).
+		if !strings.HasPrefix(g.floatUnlowerable, floatLowerCompleteMarker) {
+			g.floatUnlowerable = fmt.Sprintf("the %s operand %s of %q", which, g.exprSummary(missing), n.Op)
+		}
 		// Sticky as well as returned: the callers that check the record refuse with the good message, and
 		// the ones that do not are caught here rather than emitting `fadd double , %t1` for `llc` to
 		// reject — which ADR 0166 counts as the compiler's own bug, exit 2 (roadmap Gap R.96).
