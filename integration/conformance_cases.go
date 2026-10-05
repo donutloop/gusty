@@ -94,6 +94,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// a name — whole on both engines. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
 		// (roadmap Gap R.168, ADR 0284).
 		"probe_asked_how_many_arguments",
+		// A number the body computed out of its own parameter keeps the kind the argument arrived with:
+		// eight lines — add-one, double over a float and an int, an expression with arithmetic arms, and a
+		// float default — whole on both engines. Each printed a truncated integer at exit 0 before ADR 0285
+		// (`1` for `1.1`, `0` for `0.2`, `-1` for `-0.9`, `3` for `5.0` — roadmap Gap R.169).
+		"probe_a_number_bound_from_a_parameter",
 		// `%` is the remainder for numbers on both engines — ints, negatives, doubles, the same body over a
 		// pair-marked parameter, and a float compared to a text — thirteen lines pinned beside the refusal
 		// that keeps the *text*-left spelling from answering a number (roadmap Gap R.165, ADR 0282).

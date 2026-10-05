@@ -968,6 +968,13 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- **a number bound from a parameter is not truncated** on the compiled path: `def f(x): y = x + 1; return y`
+  printed `1` for `f(0.1)` at exit 0 (and `0`, `-1`, `5` for its siblings) while the reference and the
+  interpreter answered `1.1`/`0.2`/`-0.9`/`5.0` — four believable digits from the AOT engine (`Gap R.169` /
+  ADR 0285). Exit 0 now means the reference's answer through a bound name too; the three shapes that still
+  need a tagged return word exit **1** and name the value they are stuck on and where it came from
+  (`a parameter the call site handed a double`), so a harness can tell "rewrite this" from "the compiler
+  cannot carry it yet" without reading IR.
 - a **wrong-arity call stops the program on both engines**, and never answers a number: `--interp` printed
   `2` at exit 0 for `g = lambda x: x * 2` / `print(g(1, 2))` and `0` for `print(g())` — values computed from
   arguments that were never passed — while the reference raises and `--aot` already refused. Exit 0 now means

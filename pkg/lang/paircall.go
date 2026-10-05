@@ -896,6 +896,75 @@ func (s *pairScan) recordCall(caller, fn string, args []Expr) {
 // `return` of a text, including one built by str()/repr(). It is asked conservatively — a body that only
 // *might* take one of those roads keeps its old convention — because the pair road is an extra answer,
 // never a replacement for a road that already worked.
+// pairParamSeen names a function's own parameters to the numberish question, as *proven* numbers rather
+// than as unproven names. A parameter is written by the CALLER, so it is bound by no assignment in this
+// body and the binding table has no entry for it — the same documented hole Gap R.161 records for a float
+// forwarded across two frames. Here it is not a forwarding question but a return-word one: `y = x + 1` /
+// `return y` reads `y`'s leaf `x`, the answer comes back "not a number", the ordinary return road claims
+// the body, the parameter is emitted one-word, and the double the door computed is truncated at the `ret` —
+// `y = x + 1` printed `1` for CPython's `1.1`, `y = x` printed `0` for `0.1`, `y = x * 2` printed `0` for
+// `0.2`, `y = x - 1` printed `-1` for `-0.9`, each at exit 0 (roadmap L11.6, Gap R.169, ADR 0285).
+//
+// The mark is scoped to the one function being asked, so a differently-typed name in another body keeps
+// its own answer: `seen` is read as "in progress, nothing worse than proven", which is the weaker of the
+// two answers a fixed point can give and cannot invent a number for a name that has none.
+// bindsNameToPairArithmeticAnswer reports that a returned name's value is arithmetic reaching a
+// parameter of its own function through the body's bindings — the two-bindings-deep case Gap R.169
+// measured (`y = x + 1` / `z = y * 2` / `return z`), where the leaf the return convention reads is a plain
+// local and the evidence for its kind is two assignments away.
+func bindsNameToPairArithmeticAnswer(fd *FuncDef, val Expr) bool {
+	if fd == nil || val == nil {
+		return false
+	}
+	params := map[string]bool{}
+	for _, p := range fd.Params {
+		params[p.Name] = true
+	}
+	bindings := map[string][]Expr{}
+	scanRebinds(fd.Body, bindings)
+	var reaches func(Expr, map[string]bool) bool
+	reaches = func(e Expr, through map[string]bool) bool {
+		switch n := e.(type) {
+		case *Name:
+			if params[n.Value] {
+				return true
+			}
+			if through[n.Value] {
+				return false
+			}
+			through[n.Value] = true
+			for _, v := range bindings[n.Value] {
+				if reaches(v, through) {
+					return true
+				}
+			}
+			return false
+		case *BinOp:
+			switch n.Op {
+			case "+", "-", "*", "/", "//", "%":
+			default:
+				return false
+			}
+			return reaches(n.L, through) || reaches(n.R, through)
+		case *UnOp:
+			return n.Op == "-" && reaches(n.X, through)
+		}
+		return false
+	}
+	return reaches(val, map[string]bool{})
+}
+
+func pairParamSeen(fd *FuncDef) map[string]bool {
+	seen := map[string]bool{}
+	if fd == nil {
+		return seen
+	}
+	for _, p := range fd.Params {
+		seen[p.Name] = true
+	}
+	return seen
+}
+
 func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
 	// The return side may ask what a callee hands back (see pairScan.readsCallAnswers); the argument gate
 	// below in this file may not, and the two asks are the only ones that differ.
@@ -974,7 +1043,17 @@ func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
 				// `return s` is ADR 0174's string index and a container is the container road's answer:
 				// carrying a pair over those printed a handle as a number, which is Gap P.1's wrong
 				// number one return further in.
-				if v == nil || !s.exprNumberish(v, map[string]bool{}) {
+				if v == nil || !s.exprNumberish(v, pairParamSeen(fd)) {
+					// A name the body bound from a parameter is a number the spelling cannot show — `z`
+					// in `y = x + 1` / `z = y * 2` reads its value through `y`, which reads it through
+					// the argument — and the ordinary return road answering it one word truncates the
+					// double the door computed: that program printed `3` for CPython's `3.0` at exit 0
+					// (roadmap Gap R.169, ADR 0285). Decline, and let the pair road answer or refuse.
+					if bindsNameToPairArithmeticAnswer(fd, v) {
+						// `false` here is the predicate's own "the ordinary road does not own this
+						// return" answer — the pair road takes the body and answers it or refuses it.
+						return false
+					}
 					return true
 				}
 				if s.exprCarriesDouble(v) {
@@ -1626,6 +1705,61 @@ func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) boo
 // A name the body writes two ways is not trusted: any other write to a name that had earned the pair —
 // another value, an augmented assignment — retires it, because one tag word cannot travel with a name the
 // body fills in two different ways (the rule `scanRebinds` enforces for forwarding, applied to a local).
+// pairValueHoldsThePair reports that a bound value is computed from a pair-carrying parameter by an
+// operator the tagged door serves — the same operator set `pairAnswerShape` walks for a returned
+// expression, asked here of a bound one. Comparison and boolean operators are out: they answer a verdict
+// or hand back an operand, not a number the return word has to carry (roadmap L11.6, Gap R.169, ADR 0285).
+func pairValueHoldsThePair(e Expr, pairParams map[string]bool, callees map[string]bool, trusted ...map[string]bool) bool {
+	switch n := e.(type) {
+	case *BinOp:
+		switch n.Op {
+		case "+", "-", "*", "/", "//", "%":
+		default:
+			return false
+		}
+		return pairExprMentionsPairOperand(n, pairParams, callees)
+	case *UnOp:
+		return n.Op == "-" && pairValueHoldsThePair(n.X, pairParams, callees)
+	case *Name:
+		if pairParams[n.Value] {
+			return true
+		}
+		// A chain: `y = x + 1` then `z = y * 2` holds the pair through `y`, which holds it through the
+		// parameter. Asked of the set the caller is building, so the second binding is trusted exactly
+		// when the first one is (roadmap Gap R.169, ADR 0285).
+		for _, t := range trusted {
+			if t[n.Value] {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// pairExprMentionsPairOperand asks either arm of an arithmetic expression, through the shapes the answer
+// direction already recognises, so a nested `(x - 1) * 2` is read the same way in both places.
+func pairExprMentionsPairOperand(n *BinOp, pairParams map[string]bool, callees map[string]bool, trusted ...map[string]bool) bool {
+	mentions := func(e Expr) bool {
+		switch t := e.(type) {
+		case *Name:
+			return pairParams[t.Value]
+		case *BinOp:
+			return pairValueHoldsThePair(t, pairParams, callees, trusted...)
+		case *UnOp:
+			return pairValueHoldsThePair(t, pairParams, callees, trusted...)
+		case *Index:
+			return false
+		}
+		return false
+	}
+	return mentions(n.L) || mentions(n.R)
+}
+
+// pairCalleesOf is the identity the helpers above read as an argument, kept separate so the two uses of
+// the callee set (`pairBoundCallNames` and the shape questions) stay one map.
+func pairCalleesOf(callees map[string]bool) map[string]bool { return callees }
+
 func pairBoundCallNames(body []Stmt, callees map[string]bool, pairParams map[string]bool) map[string]bool {
 	bound := map[string]bool{}
 	untrusted := map[string]bool{}
@@ -1649,6 +1783,20 @@ func pairBoundCallNames(body []Stmt, callees map[string]bool, pairParams map[str
 					if cf, isFn := c.Fn.(*Name); isFn && callees[cf.Value] && pairMentions(c, pairParams) {
 						handsBackAPair = true
 					}
+				}
+				// A binding can also hold the pair directly: `y = x + 1` where `x` arrived as a pair
+				// computes its answer through the tagged door, which writes the payload and the tag, and
+				// `return y` on the next line hands both words on. Without this the returned name is
+				// neither a pair parameter nor a name bound by a call, the answer direction closes the
+				// body, the emission falls back to the one-word return, and the double the door computed
+				// is truncated one statement before the `ret` — `y = x + 1` / `return y` printed `1` for
+				// CPython's `1.1`, `y = x` printed `0` for `0.1`, `y = x * 2` printed `0` for `0.2`, and
+				// `y = x - 1` printed `-1` for `-0.9`, every one at exit 0 (roadmap L11.6, Gap R.169,
+				// ADR 0285). Asked of the same predicate the answer direction asks, so the decision about
+				// the word and the decision about the pair cannot drift apart; a value that mentions no
+				// pair parameter proves nothing and stays untrusted.
+				if !handsBackAPair && pairValueHoldsThePair(n.Value, pairParams, pairCalleesOf(callees), bound) {
+					handsBackAPair = true
 				}
 				if handsBackAPair {
 					if !untrusted[nm.Value] {
@@ -1981,7 +2129,10 @@ func (g *irGen) bindPairParams(b *strings.Builder, fd *FuncDef, spec *pairFnSpec
 		if g.taggedOrigin == nil {
 			g.taggedOrigin = map[string]string{}
 		}
-		g.taggedOrigin[p.Name] = taggedOriginArith
+		// The pair a parameter holds came from the CALL SITE, not from arithmetic over a container the
+		// program built: naming the true origin is what makes the refusal navigable (roadmap Gap R.38,
+		// ADR 0285).
+		g.taggedOrigin[p.Name] = taggedOriginParam
 		// The payload may be a float box, which is a heap object, and the body may collect while it
 		// holds the parameter: the slot is a root for the frame's life, exactly as an argument copied
 		// into `%_param<i>` is (ADR 0181). An int payload is skipped by the collector's own range test.

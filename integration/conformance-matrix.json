@@ -574,6 +574,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_number_bound_from_a_parameter",
+        "name": "probe_a_number_bound_from_a_parameter.gy",
+        "source": "# A number the body computed out of its own parameter keeps the kind the argument arrived with\n# (Gap R.169, ADR 0285). Each of these printed a truncated integer at exit 0 on the compiled leg:\n# `1` for `1.1`, `0` for `0.2`, `-1` for `-0.9`, `3` for `5.0`.\ndef add_one(x):\n    y = x + 1\n    return y\n\ndef double(x):\n    y = x * 2\n    return y\n\ndef shift(v):\n    y = (v - 1) * 2\n    return y\n\ndef with_default(x=2.5):\n    y = x * 2\n    return y\n\nprint(add_one(0.1))\nprint(add_one(2))\nprint(double(0.1))\nprint(double(2.5))\nprint(double(3))\nprint(shift(2.5))\nprint(shift(3))\nprint(with_default())\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "1.1\n3\n0.2\n5.0\n6\n3.0\n4\n5.0\n",
+      "aot_ok": true,
+      "aot_stdout": "1.1\n3\n0.2\n5.0\n6\n3.0\n4\n5.0\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "1.1\n3\n0.2\n5.0\n6\n3.0\n4\n5.0\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3639,7 +3662,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3583021348/127/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1650738850/128/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3653,7 +3676,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3583021348/127/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1650738850/128/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4494,11 +4517,11 @@
       ]
     }
   ],
-  "rows": 153,
+  "rows": 154,
   "skipped": 37,
-  "pass": 116,
+  "pass": 117,
   "fail": 0,
-  "oracle_match": 101,
+  "oracle_match": 102,
   "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

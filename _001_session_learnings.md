@@ -7443,3 +7443,58 @@ difference except the pre-existing `int()`/`float()` panic's stack addresses.
 **Next.** Top of the Open queue again — L11.6's remaining half, or L11.3/L11.5; and `Gap R.167` (a function
 has no value to be) is now the natural sequel, since the interpreter can hold a callable and the compiled
 backend cannot.
+
+---
+
+## Cycle: a number bound from a parameter keeps its kind (Gap R.169 partial, Gap R.170 filed; ADR 0285)
+
+**What shipped.** Four wrong numbers at exit 0 on the compiled engine became CPython-exact answers:
+`y = x + 1; return y` printed `1` for `f(0.1)` (CPython `1.1`), `y = x * 2` printed `0` for `0.2`,
+`y = x - 1` printed `-1` for `-0.9`, a float default printed `5` for `5.0`. The int side of every body was
+already right, which is how four digits survived a green suite. Three shapes now refuse honestly instead.
+
+**The root, in the predicate's own comment.** `exprNumberish` said *"a parameter of an enclosing function is
+bound by no assignment and so is not here"* — true, because a parameter is written by the **caller**. So the
+returned leaf `y` read as "not a number", `pairReturnRoadOwns` handed the body to the one-word return road,
+and `define i32 @gy_f(i32 %p0)` truncated the double the tagged door had computed. The IR tells you which
+road won: an answered body emits `@gy_f.anst` and `define double`, the truncated one does not. I assert on
+that shape rather than trusting the message, because this row's failure mode is a digit.
+
+**My first fix targeted the wrong site.** I extended `pairBoundCallNames` (the *answer* direction) — no
+change, because truncation happens earlier, where the *return road* is chosen. Lesson: when a scan has two
+directions, say which one decides the thing that broke; "the scan knows about bindings" is not a location.
+
+**Errors I made, all named.**
+- **Real compile errors (3):** `params[n.Value]` used as a bool when `params` is `map[string]string`
+  (register names, not a set); a free function reaching for `g.bindings` that didn't exist — the record is
+  `scanRebinds`, built per-body, so the helper had to become a method reading `g.fds[g.curFunc]`; and a bare
+  `return` inside a `bool`-returning walk closure ("not enough return values"), where the correct answer was
+  `return false` — the predicate's own "the ordinary road does not own this".
+- **A test expectation I invented:** I asserted the refusal contained `codegen:`, but `Compile` returns the
+  message and the CLI adds the prefix. Fixed by asserting the part the unit can actually see (`roadmap`
+  citation, no `llc`). Also a leftover dead `if … && false` branch I deleted.
+- **A silent edit miss:** a `str.replace` to delete a table row didn't match (escaping), so the row stayed in
+  the *answering* table while I also added it to the refusal table — caught by the test failing on the shape
+  I thought I'd moved. Deleting by located line index, not by reconstructed text, is the reliable route.
+- **Instrumentation:** I ran three probes with `tail -1` and misread "the answer is missing a line" when only
+  the last line was being displayed. A cheap reading error that briefly looked like a regression; the fix was
+  to print the whole output, not more of my interpretation.
+
+**The refusals were a second defect, not a consolation prize.** One blamed "arithmetic over a slot the
+program built at run time" for a value that arrived through a call site (no container in the file); my own
+replacement invented "another arm returns a plain integer" for a function with no other arm. Both are Gap
+R.38 — a refusal the reader cannot check against their own source. Now `taggedOriginParam` /
+`taggedOriginParamArith` are chosen from what the arithmetic actually read, followed through the bindings; a
+test bans the phrases and a companion test keeps the container sentence alive for the container that earned
+it.
+
+**Refused, on the record, rather than guessed:** `y = x` / `return y`, a binding under a condition beside an
+int arm, and `z = y * 2` two levels deep all exit 1 — they need L11.1's tagged value word. The refusal pin
+*skips with a promote-me note* if one ever compiles, so a permanent refusal can't rot in unnoticed.
+
+**Filed, not absorbed:** `s = str(v); return s` prints `0` compiled (`Gap R.170`) — checked as pre-existing
+on the pre-cycle binary before assigning an ID, which is the difference between a fresh row and burying an
+instance in someone else's record.
+
+**Instruments.** Suite green; 162-program sweep against the cycle-11 binary moved **nothing** (no number, no
+wording). Matrix 153 → 154, parity 116 → 117, match 101 → 102, 0 fail, 0 drift.

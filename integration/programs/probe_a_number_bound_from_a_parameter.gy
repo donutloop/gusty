@@ -1,0 +1,27 @@
+# A number the body computed out of its own parameter keeps the kind the argument arrived with
+# (Gap R.169, ADR 0285). Each of these printed a truncated integer at exit 0 on the compiled leg:
+# `1` for `1.1`, `0` for `0.2`, `-1` for `-0.9`, `3` for `5.0`.
+def add_one(x):
+    y = x + 1
+    return y
+
+def double(x):
+    y = x * 2
+    return y
+
+def shift(v):
+    y = (v - 1) * 2
+    return y
+
+def with_default(x=2.5):
+    y = x * 2
+    return y
+
+print(add_one(0.1))
+print(add_one(2))
+print(double(0.1))
+print(double(2.5))
+print(double(3))
+print(shift(2.5))
+print(shift(3))
+print(with_default())

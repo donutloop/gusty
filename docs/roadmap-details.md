@@ -7309,3 +7309,75 @@ function of the same file. Two rounds of that test, not my judgement, decided wh
 artifact (153 rows, 116 parity, 101 `match`, 0 fail, 0 drift) is the record. Sweep against the ADR 0283
 binary: **161 files, zero difference** but the pre-existing `int()`/`float()` panic's stack addresses
 (`Gap R.131`, still open, still a panic).
+
+### Gap R.169 — a number the body computed out of its own parameter was truncated at the return (PARTIAL by ADR 0285, owner L11.6)
+
+The reference's answer, `--interp`'s answer, and four different digits from `--aot` at exit 0:
+
+```
+def f(x):
+    y = x + 1          # CPython 1.1 · --interp 1.1 · --aot 1     (was)
+    return y
+print(f(0.1))
+
+y = x * 2              # CPython 0.2 · --aot 0
+y = x - 1              # CPython -0.9 · --aot -1
+y = (v - 1) * 2        # CPython 3.0 · --aot 3
+def f(x=2.5): …        # CPython 5.0 · --aot 5
+```
+
+Every body also has an int side, and the int side was *right* — `f(2)` → `3`, `f(3)` → `6`, `f(10)` → `11`
+— which is what made the family survive a suite: the same function answered correctly for the argument
+that happened to be an int.
+
+The two modules, side by side, from `--emit-llvm`:
+
+```llvm
+; def f(x): return x + 1                    ; def f(x): y = x + 1; return y
+@gy_f.anst = internal global i32 0            define i32 @gy_f(i32 %p0) {   ; one word in, one out
+  …                                            ; no @gy_f.anst, no tag, no double
+define double @gy_f(double %p0) {
+```
+
+The scan asks a body what its answer must travel in. `return x + 1` shows its leaves in the expression, the
+answer direction opens, the body is emitted double-returning. `return y` reaches the leaf `y` — a plain
+local — and `exprNumberish` found nothing, because of a clause in its own comment: *"a parameter of an
+enclosing function is bound by no assignment and so is not here"*, true because **a parameter is written by
+the caller**. The predicate answered "not a number", `pairReturnRoadOwns` let the one-word road take the
+body, and the `ret` truncated the double the tagged door had already computed.
+
+Three positions away, the same question was already asked and answered: ADR 0276 for an argument, ADR 0277
+for a forwarded name, ADR 0280 for a name bound by a **call**. Bound by *arithmetic* was the missing
+sibling, and it was missing in the one place that decides the return word — my first attempt extended
+`pairBoundCallNames` (the answer direction) and nothing changed, because truncation happens earlier.
+
+**The narrowing, not the widening, is the part that kept the suite green.** `pairParamSeen(fd)` marks the
+parameters of *the function being asked*, and it marks them into `seen` — the fixed point's "in progress:
+says nothing worse than *not proven*" set — which can stop a wrong negative but cannot invent a number for a
+name that has none. A module-wide pool was the tempting version and it is wrong for the reason ADR 0280
+pinned with an either-order test: `f(x)` and `g(x)` are different programs. Measured, not assumed: after the
+change `f(2)` still prints `3`, `f(3)` still prints `6`, `f(10)` still prints `11`, and the 162-program
+sweep moved no number and no wording anywhere in the corpus.
+
+**The refusals were lying, which is a second defect in the same commit.** A name bound straight from a
+parameter (`y = x` / `return y`) was refused with *"the answer of arithmetic over a slot the program built at
+run time"* — a container story, and there is no container in the file. And my first parameter sentence added
+*"another arm of this function returns a plain integer"*, which is true of
+`if x > 1: return 100 / return x` and false of `y = x / return y`, which has no other arm. Both removed; two
+new origins (`a parameter the call site handed a double`, `arithmetic over a parameter the caller supplied`)
+are chosen from what the arithmetic actually read, followed through the body's bindings. A test fails if a
+banned phrase returns, and a companion test keeps the container sentence alive for the container that earned
+it — otherwise the new origins quietly swallow the diagnosis that was already correct.
+
+**What is still owed, and why it is refused rather than answered.** `y = x` / `return y`, a binding under a
+condition whose sibling arm returns an int, and `y = x + 1` / `z = y * 2` / `return z` all exit 1. Each needs
+the return to carry a tag beside its value — L11.1's tagged value word — and guessing a word is exactly how
+this row produced four plausible digits. `TestABoundAnswerStillRefusedIsTheHonestHalf` is written to
+*skip* with a promote-me note the day one of them compiles, so the row cannot quietly rot into a permanent
+refusal nobody notices.
+
+**Found beside it, filed rather than absorbed:** `def f(v): s = str(v); return s` prints `0` compiled at exit
+0 (`Gap R.170`) — ADR 0281 taught the compiler that `return str(...)` makes a function string-returning, but
+a body that binds the rendering to a name first still prints the interned index through `%d`. Verified
+pre-existing on the pre-cycle binary before giving it an ID, which is the difference between a fresh row and
+hiding an instance inside this one.

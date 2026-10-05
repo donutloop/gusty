@@ -1836,6 +1836,15 @@ The rule is ADR 0224's (a method's string answer is known to its callers) one do
 respects Gap R.6's: a program that defines `str` itself gets its own function, so
 `def str(x): return x + 7` beside that same body answers `49`.
 
+A number the body **computed out of its own parameter** keeps the kind the argument arrived with (ADR 0285).
+`def f(x): y = x + 1; return y` answers `1.1` for `f(0.1)` and `3` for `f(2)` on both engines; before this
+the compiled leg printed the truncated `1`, and `y = x * 2`, `y = x - 1` and a float default printed `0`,
+`-1` and `5` at exit 0. A parameter is written by the caller, so no assignment in the body records it — the
+scan now asks that question knowing the body's own parameter names. Three shapes still refuse rather than
+guess (`y = x` / `return y`, a binding under a condition beside an int-returning arm, and two bindings deep),
+each naming what the arithmetic was over (`a parameter the call site handed a double`, not a container) —
+`Gap R.169` keeps them open until the return can carry a tag.
+
 A call is **asked how many arguments there were**, once, on the road every caller shares (ADR 0284). A
 callable read out of a variable used to be called without being asked: `g = lambda x: x * 2` then
 `print(g(1, 2))` printed `2` and `print(g())` printed `0`, both at exit 0 — arithmetic on arguments that

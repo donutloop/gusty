@@ -1588,6 +1588,16 @@ const (
 	// says so, which is the (payload, tag) pair standing where a `store double` into an `i32` slot would
 	// have overflowed into the neighbouring slot (roadmap L11.6, Gap R.155).
 	taggedOriginFloat = "a double the variable's own binding boxed"
+	// taggedOriginParam is the pair a *parameter* takes when a call site hands it a double: the value
+	// arrived from the caller as two words, and nothing in the body built it. The two origins above both
+	// blame a slot the program made at run time, which a parameter is not -- there is no container, no
+	// arithmetic and no binding in the body to look for -- and a reader following that sentence ends up
+	// hunting for an `xs[...]` that was never written (roadmap L11.1, Gap R.38: a refusal that claims
+	// something false about the program is its own defect; ADR 0285).
+	taggedOriginParam = "a number its caller handed it, which arrived as two words"
+	// taggedOriginParamArith is the pair a name holds when the body computed it out of a PARAMETER
+	// (`y = x + 1` / `return y`): arithmetic yes, run-time container no.
+	taggedOriginParamArith = "arithmetic over a parameter the caller supplied"
 )
 
 // taggedVarErr is mixedTaggedVarErr in the honest voice: the same refusal, worded for the door that
@@ -1597,6 +1607,14 @@ func (g *irGen) taggedVarErr(name string) error {
 	switch g.taggedOrigin[name] {
 	case taggedOriginArith:
 		return fmt.Errorf("%s holds the answer of %s, which travels as a (payload, tag) pair: print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)", name, taggedOriginArith, name)
+	case taggedOriginParamArith:
+		return fmt.Errorf("%s holds the answer of %s, which travels as a (payload, tag) pair: the kind of the answer is the kind the argument arrived as, print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146, Gap R.38)", name, taggedOriginParamArith, name)
+	case taggedOriginParam:
+		// The sentence names only what is true of this shape: the value came in through a call site, and
+		// no slot was ever involved. An earlier draft added "another arm of this function returns a plain
+		// integer", which is a story about a different program — `y = x` / `return y` has no other arm at
+		// all — and a refusal that describes a program the reader cannot find is Gap R.38's own defect.
+		return fmt.Errorf("%s is a parameter the call site handed a double, so it arrives as a (payload, tag) pair and its kind lives beside it, not in the value: print(%s), a binding and the positions that read one number ask the tag, and this position keeps one word for its operand, so the tag has nowhere to go — the answer's kind is what the argument was, which is a run-time question this position cannot ask (roadmap L11.1, Gap R.146, Gap R.38)", name, name)
 	case taggedOriginFloat:
 		return fmt.Errorf("%s holds %s: the variable was bound to a number and rebound to a double, so its value travels as a (payload, tag) pair whose payload is a float box, print(%s) asks the tag, and this position keeps one word for its operand (roadmap L11.6, Gap R.155)", name, taggedOriginFloat, name)
 	}
@@ -5015,7 +5033,7 @@ func (g *irGen) numericPairVar(name string) bool {
 		return false
 	}
 	switch g.taggedOrigin[name] {
-	case taggedOriginArith, taggedOriginFloat:
+	case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith:
 		return true
 	}
 	return false
@@ -5169,7 +5187,65 @@ func (g *irGen) bindArithmeticPair(b *strings.Builder, name string, e Expr) (boo
 		g.taggedOrigin = map[string]string{}
 	}
 	g.taggedOrigin[name] = taggedOriginArith
+	// The sentence has to name what the arithmetic was *over*. `xs = [1]; xs.append(2.5)` really is a slot
+	// the program built at run time; `y = x + 1` inside a function is arithmetic over a value the caller
+	// handed in, and telling the reader to look for a container they never wrote is Gap R.38's own defect
+	// (roadmap L11.1, Gap R.38, ADR 0285).
+	if g.arithReadsAParameter(e, g.params) {
+		g.taggedOrigin[name] = taggedOriginParamArith
+	}
 	return true, nil
+}
+
+// arithReadsAParameter reports that an expression reaches its number through a parameter rather than
+// through a container: the same walk the pair road asks its operands with, looking for a name the frame
+// received. Parameters only — a name the body assigned is that body's own story, and the sentence for it
+// already exists above.
+func (g *irGen) arithReadsAParameter(e Expr, params map[string]string) bool {
+	if len(params) == 0 {
+		return false
+	}
+	// The body's own bindings, so the chain below can leave a name and ask what wrote it. Built the same
+	// way ADR 0274's return convention builds it, from the function being emitted.
+	bindings := map[string][]Expr{}
+	if fd := g.fds[g.curFunc]; fd != nil {
+		scanRebinds(fd.Body, bindings)
+	}
+	// The chain matters: `y = x + 1` / `z = y * 2` reads its number through `y`, which the body bound, and
+	// `y` reads it through the parameter. Stopping at the first name reports the second binding as a
+	// run-time container — which is the false claim Gap R.38 files, in a program whose only source is an
+	// argument. `through` is the set of names already being asked about, so a `y = y + 1` cannot spin.
+	var seen func(Expr, map[string]bool) bool
+	seen = func(x Expr, through map[string]bool) bool {
+		switch n := x.(type) {
+		case *Name:
+			if _, isParam := params[n.Value]; isParam {
+				return true
+			}
+			if through[n.Value] {
+				return false
+			}
+			through[n.Value] = true
+			vals, ok := bindings[n.Value]
+			if !ok {
+				return false
+			}
+			for _, v := range vals {
+				if seen(v, through) {
+					return true
+				}
+			}
+			return false
+		case *BinOp:
+			return seen(n.L, through) || seen(n.R, through)
+		case *UnOp:
+			return seen(n.X, through)
+		case *CondExpr:
+			return seen(n.If, through) || seen(n.Else, through)
+		}
+		return false
+	}
+	return seen(e, map[string]bool{})
 }
 
 // indexKindIsRuntimeObject walks a chained subscript back to the name it reads through and asks whether

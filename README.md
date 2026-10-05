@@ -550,6 +550,22 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A number the body computed **out of its own parameter** keeps the kind the argument arrived with (ADR 0285,
+opening `Gap R.169`). `def f(x): y = x + 1; return y` printed `1` for `f(0.1)` on the compiled leg at exit 0 —
+and `0` for `y = x * 2`, `-1` for `y = x - 1`, `3` for `y = (v - 1) * 2`, `5` for a float default — four
+believable truncated digits, all from the AOT engine while the interpreter and the reference answered `1.1`,
+`0.2`, `-0.9`, `3.0`, `5.0`. The scan's own comment named the hole: a parameter is written by the **caller**,
+so no assignment in the body records it, `exprNumberish` answered the returned leaf "not a number", the
+ordinary return road claimed the body, and `define i32 @gy_f(i32 %p0)` truncated the double the tagged door
+had computed. The question is now asked knowing the function's own parameter names — scoped to the one body
+being asked, because cycles 0280 and 0281 both measured what a module-wide widening costs. Three shapes
+refuse rather than guess (`y = x` / `return y`, a binding under a condition beside an int arm, two bindings
+deep), and two of their refusals were themselves **false about the program** — blaming "arithmetic over a
+slot the program built at run time" for a value that came in through a call site, and claiming an integer arm
+in a function that had none. Both now say what the arithmetic actually read (`Gap R.38`: a refusal the reader
+cannot check against their own source is a defect of its own), and a test keeps the original container
+sentence alive for the container that earned it.
+
 A wrong-arity call **stops the program on both engines** (ADR 0284, closing `Gap R.168`). A callable read
 out of a variable was called without being asked how many arguments there were: `g = lambda x: x * 2` then
 `print(g(1, 2))` printed `2`, `print(g())` printed `0`, and `g = lambda x, y: x - y` / `print(g(3))` printed
