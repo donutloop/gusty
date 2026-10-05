@@ -16348,6 +16348,24 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return nil
 		}
 		if g.floatFuncs[g.curFunc] {
+			// A pair-returning callee under a double return: the callee answered (payload, tag) beside its
+			// own return, and the one place a tagged value becomes a double is @rt_lift_num — the same door a
+			// float slot's arithmetic lifts through. `def g(y): return y * 2` under
+			// `def f(x): x = x + 1.5; return g(x)` is this shape: the callee's parameter has to arrive as a
+			// pair for the multiply to keep the half, and the answer the caller reads is that pair lifted to
+			// the double this function's convention already promised (roadmap L11.1, Gap R.139's return half).
+			if p, t, okPair, pairErr := g.pairCallPair(b, n.Expr); pairErr != nil {
+				return pairErr
+			} else if okPair {
+				lift := g.newTmp()
+				b.WriteString(fmt.Sprintf("  %s = call double @rt_lift_num(i32 %s, i32 %s)\n", lift, p, t))
+				if err := g.runDeferred(b); err != nil {
+					return err
+				}
+				g.gcCloseFrame(b)
+				b.WriteString(fmt.Sprintf("  ret double %s\n", lift))
+				return nil
+			}
 			fv := g.floatValue(b, n.Expr)
 			if err := g.runDeferred(b); err != nil {
 				return err

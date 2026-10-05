@@ -190,22 +190,6 @@ func TestAFloatStateVariableStillRefusesHonestlyInAOneWordPosition(t *testing.T)
 			"x = 8\nx = 2.5\nprint([x, 1])\n",
 			"this position keeps one word",
 		},
-		{
-			// The second change of state is the row Gap R.156 files: the first binding already took the
-			// pair, and the arithmetic door that would re-answer the sum reads slots, not a name whose
-			// pair came from a box. An accumulator written as `t += i / 2` inside a loop is refused
-			// rather than guessed at.
-			"the state changed twice in the same variable",
-			"t = 0\nfor i in [4, 9]:\n    t += i / 2\nprint(t)\n",
-			"this position keeps one word",
-		},
-		{
-			// A float-state variable handed to a function is ADR 0273's pair crossing the call with the
-			// float's tag — a door the scan does not open for a rebinding yet (Gap R.157).
-			"the float-state variable a call is handed",
-			"def twice(v):\n    return v * 2\n\nx = 8\nx = 2.5\nprint(twice(x))\n",
-			"this position keeps one word",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "float_state_refuse.gy", tc.src)

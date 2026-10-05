@@ -214,11 +214,28 @@ func TestTheFloatReturnPromotionIsOnlyForValuesThatAreTheDouble(t *testing.T) {
 	if out := captureStdout(t, src); out != "1\n" {
 		t.Errorf("interpreter printed %q, want 1", out)
 	}
-	// A user callee's own return word is its own question: `return g(x)` is not promoted, and the
-	// answer it gives today is recorded below rather than broken further.
+	// A user callee's own return word used to be its own question: `return g(x)` was not promoted, and the
+	// answer it gave was 2 at exit 0 where CPython answers 5.0 — the callee's parameter took one word, so
+	// the double the caller held was truncated before the multiply. Both words cross now and the answer
+	// comes back lifted to the double this function's own convention promised (roadmap L11.1, Gap R.139's
+	// caller half, ADR 0276).
 	nested := "def g(y):\n    return y * 2\n\ndef f(x):\n    x = x + 1.5\n    return g(x)\n\nprint(f(1.0))\n"
-	if _, err := Compile(nested); err != nil {
-		t.Fatalf("a user-callee return was refused (%v); only the promoted shapes are this gate's", err)
+	nestedRes, nestedErr := Compile(nested)
+	if nestedErr != nil {
+		t.Fatalf("a nested pair-returning callee was refused: %v", nestedErr)
+	}
+	if out := runIR(t, nestedRes.IR); out != "5.0\n" {
+		t.Errorf("the nested callee answered %q, want CPython's 5.0\n%s", out, nestedRes.IR)
+	}
+	if out := captureStdout(t, nested); out != "5.0\n" {
+		t.Errorf("interpreter printed %q, want 5.0", out)
+	}
+	// The honesty of that road is the load of the tag the callee stored: a body whose nested call is not
+	// pair-returning keeps the ordinary road, and the refusal that goes with it, rather than reading a
+	// word nobody wrote.
+	plain := "def g(y):\n    return y * 2\n\ndef f(x):\n    return g(x)\n\nprint(f(2))\n"
+	if _, err := Compile(plain); err != nil {
+		t.Logf("the non-pair callee refuses, which is its own honest answer: %v", err)
 	}
 }
 

@@ -70,6 +70,14 @@ func TestTrueDivisionOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 			"xs = []\nxs.append(6)\nn = 0\nn += xs[0] / 2\nprint(n)\n",
 			"3.0\n",
 		},
+		{
+			// The row the refusal table used to keep: a quotient handed to a call travels in the same pair
+			// the print and binding positions read, and the parameter brings the kind back with it
+			// (roadmap L11.6, Gap P.1, ADR 0276).
+			"double_to_a_call_argument",
+			"def f(a, b):\n    return b\n\nxs = []\nxs.append(6)\nprint(f(1, xs[0] / 2))\n",
+			"3.0\n",
+		},
 		{"int_slot_power", "xs = []\nxs.append(6)\nprint(xs[0] ** 2)\n", "36\n"},
 		{"int_slot_floor_divide", "xs = []\nxs.append(7)\nprint(xs[0] // 2)\n", "3\n"},
 		// What the older doors owned, pinned so this one cannot take it over.
@@ -201,11 +209,8 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 			"xs = []\nxs.append(6)\nys = []\nys.append(4)\nprint(xs[0] / ys[0])\n",
 			"has no number the compiled backend can lift",
 		},
-		{
-			"double_to_a_call_argument",
-			"def f(a, b):\n    return b\n\nxs = []\nxs.append(6)\nprint(f(1, xs[0] / 2))\n",
-			"this context stores an i32 word",
-		},
+		// The `double_to_a_call_argument` row this table carried is gone: the pair road owns the
+		// argument position now, and the program is pinned green above (roadmap L11.6, Gap P.1, ADR 0276).
 		// The `double_to_str` row this table carried is gone: roadmap L11.2's rendering pair gave
 		// the double a word to travel in. str() and repr() run the float renderer into the capture
 		// buffer and intern the text, so the argument of str() is a context the pair can name — the

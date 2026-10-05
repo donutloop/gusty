@@ -1647,13 +1647,12 @@ index) survived behind exactly that. Needed:
   answer and today's wrong one.
 
 <a id="gap-p-1"></a>
-### Gap P.1 — compiled division shapes still wrong (OPEN)
-- `//` on negative **ints** truncates in AOT (`-7 // 2` → `-3`, Python `-4`);
-- `x /= 2` keeps the integer representation (prints `4`, Python `4.0`);
-- a **float through an untyped parameter** truncates: `def f(x): return x * 2`
-  with `f(0.1)` prints `0`. This is the static float-typing model, not the
-  operator — it needs float-parameter inference in the same shape as ADR 0174's
-  string-parameter inference.
+### Gap P.1 — compiled division shapes still wrong (CLOSED by ADR 0216, ADR 0274 and ADR 0276)
+- ~~`//` on negative **ints** truncates in AOT (`-7 // 2` → `-3`, Python `-4`)~~ — closed by ADR 0216;
+- ~~`x /= 2` keeps the integer representation (prints `4`, Python `4.0`)~~ — closed by ADR 0274;
+- ~~a **float through an untyped parameter** truncates: `def f(x): return x * 2`
+  with `f(0.1)` prints `0`~~ — closed by ADR 0276: the argument's kind is carried across the call as the
+  (payload, tag) pair ADR 0273 opened, so the answer comes back in the kind the argument arrived in.
 
 **Re-measured 2026-10-04**, three shapes, one program (`programs/probe_float_numeric`, which now carries
 all three), each leg pinned line by line by the oracle harness:
@@ -1678,6 +1677,14 @@ explanation cannot be about the operator; it is about the parameter. That is the
 row and Gap R.130 (a `for` binding over a literal container of doubles), and the reason the row stays open
 until both words — the variable's and the parameter's — come from what flows into them rather than from
 the first line that happened to mention them.
+
+**Closed 2026-10-05 by ADR 0276**, which took the parameter's word from what flows into it. The row's own
+diagnosis was right — *the static float-typing model, not the operator* — and the cure is not a float-typed
+parameter, because CPython's answer kind follows the argument: `twice(2)` is `4` and `twice(2.5)` is `5.0`, so
+one `double` convention cannot state this function. The argument arrives as the (payload, tag) pair and the
+body's arithmetic asks the tag. The five rows above read `-4`, `0.5`, `4.0`, `0.2`, `2.5` on both engines, the
+probe that pinned them is promoted out of the debt ledger, and the two shapes this closure exposed instead of
+removing are filed beside it as Gaps R.161, R.162 and R.163.
 
 <a id="gap-p-2"></a>
 ### Gap P.2 — numeric builtins that Python types differently (CLOSED by ADR 0264, 2026-10-03)
@@ -6601,7 +6608,7 @@ the `return` and lets a pair-aware caller load it — but the scan that decides 
 honest refusal is the correct interim answer: the alternative is a payload answering for a value, which is
 the float-box-handle-printed-as-an-int class Gap R.132 files.
 
-### Gap R.157 — the state changes twice in one variable (OPEN, owner L11.6, measured landing ADR 0274)
+### Gap R.157 — the state changes twice in one variable (CLOSED by ADR 0276, owner L11.6, measured landing ADR 0274)
 
 ```
 t = 0
@@ -6616,7 +6623,15 @@ the ordinary float road then wants one word for the left operand. `numericPairVa
 float-origin pair, so the *read* is close: what is missing is `taggedArithPair` accepting a payload that is a
 box handle rather than a slot, which is its gate to widen and not a new representation.
 
-### Gap R.158 — a float-state variable handed to a function is refused (OPEN, owner L11.6, measured landing ADR 0274)
+**Closed 2026-10-05 by ADR 0276**, at the operand door rather than the rebinding one: `arithOperandPair` now
+answers an arithmetic operand that is itself a `*BinOp` by asking the one tagged door first, boxing a double
+it cannot otherwise carry (`@rt_float_new`, tag `1`), and only then falling back to the ordinary road's word
+with tag `0`. `t += i / 2` is exactly that shape — the left half is a pair the rebinding already owns, the
+right half is a quotient the ordinary road answers as a double — and the accumulator prints CPython's `6.5`
+where it used to exit 1. `TestAFloatRebindingBindsThePairRatherThanWideningTheStore` holds the row on both
+engines, and the CLI twin is `TestTheReferenceAndBothEnginesHandTheSameNumber`.
+
+### Gap R.158 — a float-state variable handed to a function is refused (CLOSED by ADR 0276, owner L11.6, measured landing ADR 0274)
 
 ```
 def twice(v):
@@ -6634,6 +6649,14 @@ the call site declines. Keeping the gate closed is not caution for its own sake:
 whose caller cannot supply two words is a `define`/`call` arity disagreement, which is `mismatched type` from
 `llc` and ADR 0166's exit 2. Note the float-from-birth twin of this program (`x = 2.5` with no rebinding): it
 is not a refusal but Gap P.1's remaining half, and it answers `0` at exit 0.
+
+**Closed 2026-10-05 by ADR 0276**, which asked the scan the question it had never asked: not *would the
+ordinary road refuse this argument* but *would it refuse it, or answer a double it cannot carry*. A name's
+recorded bindings are that evidence — `x = 8` then `x = 2.5` is a variable the pair road binds (ADR 0274) —
+and handing it over is the same missing word one position further out. `5.0` on both engines, pinned by
+`TestAFloatRebindingBindsThePairRatherThanWideningTheStore` and at the CLI by
+`TestTheReferenceAndBothEnginesHandTheSameNumber`; the float-from-birth twin closed in the same commit, as
+Gap P.1's last line.
 
 ### Gap R.159 — a float-state variable as a container element is refused (OPEN, owner L11.6, measured landing ADR 0274)
 
@@ -6663,7 +6686,7 @@ ordering against an `int` literal picks the integer domain the pair can serve. A
 of a pair leaves the ordering road with one word, because it chooses its domain from the written operand
 rather than from the tag the left operand carries.
 
-### Gap R.154 — a pair-carrying parameter beside an ordinary one is refused (OPEN, owner L11.1, measured landing ADR 0273)
+### Gap R.154 — a pair-carrying parameter beside an ordinary one (CLOSED by ADR 0276, owner L11.1, measured landing ADR 0273)
 
 ```
 def shift(a, b=100):
@@ -6700,3 +6723,78 @@ Three ways were looked at and one taken:
 The last is the ladder rule applied to a door's own gate: a program that refused before may keep refusing, a
 program that answered may not start refusing, and nothing may print digits it cannot name. The row closes
 when the shared door can name an unpaired parameter's kind with the corpus measured behind that claim.
+
+**Closed 2026-10-05 by ADR 0276**, by the second of the three ways this record listed — the one it called a
+second pair road inside the arithmetic helper. What made it cheap rather than duplicative is that the proof
+already lived in the scan: `knownIntParams` asks, for each parameter the pair does *not* carry, whether every
+argument its call sites were written with — its default included — is provably an integer, and records the
+answer in `pairFnSpec.intParams`. The body gate then reads `w * h` as served: the pair operand carries its tag,
+the proven one is a number the door tags itself, and `pairLeavesAreInts` refuses the shape if any leaf names a
+parameter nobody proved. `print(shift(xs[0][1]))` is `108` and `print(shift(xs[0][1], 2))` is `10` on three
+legs; the two refusal rows this row owned — one in `pkg/lang/pair_call_test.go`, one through the CLI — became
+parity rows rather than being deleted.
+
+### Gap R.161 — a double forwarded through another function's parameter truncates (OPEN, owner L11.6, measured landing ADR 0276)
+
+```
+def twice(v):
+    return v * 2
+
+def outer(x):
+    return twice(x)
+
+print(outer(2.5))  # CPython 5.0 · --interp 5.0 · --aot 4, exit 0
+```
+
+The same truncation as Gap P.1, one boundary deeper, and the one shape this cycle's widened gate cannot see.
+`exprCarriesDouble` asks a name's recorded *bindings*, and an enclosing parameter has none: `x` is written by
+no assignment, only by the call site of `outer`, which the walk files under `twice`/`outer`'s callee entries and
+not under the name. So `twice`'s parameter is never marked, and the argument that had a pair one frame earlier
+is read as one `i32`.
+
+The cure is the call graph, not another predicate: record the enclosing function of each call site, and let a
+parameter's evidence be the arguments its own call sites were written with — which is the question
+`knownIntParams` already answers for the integer side, asked of the double side instead. It cannot be done by
+consulting `s.calls[name]` from `exprCarriesDouble`, as this cycle first tried: that reads *`x` is called as a
+function somewhere*, which is a different question and marks the wrong parameters. Until then this answers a
+wrong number at exit 0, which is why it is a row and not a footnote.
+
+### Gap R.162 — `//` and `%` over a parameter that carries a double answer the integer domain (OPEN, owner L11.6, measured landing ADR 0276)
+
+```
+def floorit(v):
+    return v // 2
+
+def modit(v):
+    return v % 2
+
+print(floorit(5.0))  # CPython 2.0 · --interp 2.0 · --aot 2, exit 0
+print(modit(5.0))    # CPython 1.0 · --interp 1.0 · --aot 1, exit 0
+print(floorit(5))    # 2 everywhere — the control
+```
+
+ADR 0216 chose the flooring rules by the operator and the operand's written kind, and the pair road serves
+`+ - *` (and the condition doors serve the comparisons) — `//` and `%` are in neither list, so the parameter is
+left on the ordinary road and the double is truncated before the floor. The identity ADR 0216 pins,
+`a == (a // b) * b + (a % b)`, survives here only because both halves are truncated together, which is what
+makes the row easy to miss: the two lines are consistent with each other and both wrong. The tag is the cure —
+floor of a lifted double, printed as the double CPython prints — and the shape is the same one Gap R.148 names
+for `/` on a pair-bound name.
+
+### Gap R.163 — a function that returns `str(…)` prints the interned index (OPEN, owner L11.2, measured landing ADR 0276)
+
+```
+def g():
+    return str(42)
+
+print(g())          # CPython 42 · --interp 42 · --aot 0, exit 0
+```
+
+Not a float defect and not this cycle's doing: found by the whole-corpus sweep that compared the pre-cycle
+binary with the new one line by line, and unchanged by ADR 0276 — which is why it is filed here rather than
+buried. ADR 0174 made a string-returning function hand back its `@str_tab` index and taught `print` to read
+that index; what it did not cover is the index built at run time by `str()` of a value the module cannot read
+— `rt_str_of_int`'s answer is an interned index already, but the caller's road reads the register as a plain
+`i32` and prints the bucket number. `def fmt(v): return str(v)` is refused outright (`str on non-integer`), so
+the pair road stays out of this shape entirely (`pairReturnRoadOwns`' string half, which ADR 0276 added to keep
+it out). What is owed is the read: the same door `print(str(42))` uses at statement level, asked of a `return`.

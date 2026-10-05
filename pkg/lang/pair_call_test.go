@@ -71,6 +71,43 @@ func TestASlotReadHandedToAFunctionAnswersOnBothBackends(t *testing.T) {
 			"def twice(v):\n    return v * 2\n\nd = {}\nd[\"k\"] = 40\nprint(twice(d[\"k\"]))\n", "80\n",
 		},
 		{
+			// The argument the ordinary road truncated: `twice(2.5)` printed 4 at exit 0, because the
+			// parameter took one i32 for a value that has two words. The kind the argument arrived in is the
+			// kind the answer comes back in — which is what the two lines below pin together (roadmap
+			// L11.6, Gap P.1's argument half, ADR 0276).
+			"a double is handed to a function, an int to the same one",
+			"def twice(v):\n    return v * 2\n\nprint(twice(2.5))\nprint(twice(2))\nprint(twice(True))\n", "5.0\n4\n2\n",
+		},
+		{
+			// The parameter the call sites hand nothing but integers needs no pair of its own: the
+			// arithmetic door tags the literal it can see and reads `h` as the plain number it is.
+			"a parameter beside a provably-integer one",
+			"def area(w, h):\n    return w * h\n\nprint(area(2.5, 2))\nprint(area(3, 4))\n", "5.0\n12\n",
+		},
+		{
+			// A default is an argument the caller did not have to write, and carries the same pair: no
+			// call site mentions `times` at all, so an arity-only scan would never open it.
+			"a default is an argument too",
+			"def greet(name, times=1.5):\n    return times\n\nprint(greet(\"a\"))\nprint(greet(\"a\", 2))\n", "1.5\n2\n",
+		},
+		{
+			"a slot of a literal list that holds a double",
+			"def twice(v):\n    return v * 2\n\nys = [1, 2.5]\nprint(twice(ys[1]))\nprint(twice(ys[0]))\n", "5.0\n2\n",
+		},
+		{
+			// Gap R.154's shape, answered: the pair-carrying parameter and the ordinary one share a body,
+			// and `a + b` needs a kind for both — `b` is proven by the two call sites that write it.
+			"a pair parameter beside an ordinary parameter",
+			"def shift(a, b=100):\n    return a + b\n\nxs = []\nxs.append([7, 8])\nprint(shift(xs[0][1]))\nprint(shift(xs[0][1], 2))\n",
+			"108\n10\n",
+		},
+		{
+			// The answer direction: the callee's own answer is a pair, and the caller hands it on in the
+			// word its convention already promised (roadmap L11.1, Gap R.139's caller half).
+			"a pair answer handed through another function",
+			"def g(y):\n    return y * 2\n\ndef f(x):\n    x = x + 1.5\n    return g(x)\n\nprint(f(1.0))\n", "5.0\n",
+		},
+		{
 			// Python's bool is a number, and the tag the caller passed is the bool's own: the pair
 			// road (ADR 0233's rule at the arithmetic door) is what makes it answer 2 and not raise.
 			"a bool slot is a number",
@@ -223,17 +260,6 @@ func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
 		{
 			"a container argument closes the parameter",
 			"def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\nprint(twice(xs[0][0]))\nprint(twice([1, 2]))\n",
-			"cannot reach into",
-		},
-		{
-			// A pair-carrying parameter beside an ordinary one: the body's `a + b` asks the shared
-			// arithmetic door for a second operand, and that door has no kind to name for a parameter the
-			// caller never tagged (`slotArithmeticIsProven` answers numbers it can see, not parameters).
-			// The scan therefore does not open `a` at all, the argument goes down the ordinary numeric road
-			// exactly as it did before this door, and the program prints the refusal it always printed.
-			// Filed as roadmap Gap R.154 rather than half-answered.
-			"a default parameter beside a pair-carrying one is refused, not half-paired",
-			"def shift(a, b=100):\n    return a + b\n\nxs = []\nxs.append([7, 8])\nprint(shift(xs[0][1]))\nprint(shift(xs[0][1], 2))\n",
 			"cannot reach into",
 		},
 		{

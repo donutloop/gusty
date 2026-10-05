@@ -55,6 +55,37 @@ func TestASlotReadHandedToAFunctionAnswersAtTheCLI(t *testing.T) {
 			"def twice(v):\n    return v * 2\n\nd = {}\nd[\"k\"] = 40\nprint(twice(d[\"k\"]))\n", "80\n",
 		},
 		{
+			// Gap P.1's argument half at the interface a person and an agent both use: the double keeps its
+			// half across the call, and the same function called with an integer keeps answering an integer
+			// (roadmap L11.6, ADR 0276).
+			"a double is handed to a function, an int to the same one",
+			"def twice(v):\n    return v * 2\n\nprint(twice(2.5))\nprint(twice(2))\n", "5.0\n4\n",
+		},
+		{
+			"a parameter beside a provably-integer one",
+			"def area(w, h):\n    return w * h\n\nprint(area(2.5, 2))\nprint(area(3, 4))\n", "5.0\n12\n",
+		},
+		{
+			"a default is an argument too",
+			"def greet(name, times=1.5):\n    return times\n\nprint(greet(\"a\"))\nprint(greet(\"a\", 2))\n", "1.5\n2\n",
+		},
+		{
+			"a slot of a literal list that holds a double",
+			"def twice(v):\n    return v * 2\n\nys = [1, 2.5]\nprint(twice(ys[1]))\n", "5.0\n",
+		},
+		{
+			// Gap R.154, answered: a pair-carrying parameter beside an ordinary one whose kind the other
+			// call sites prove (roadmap L11.6, ADR 0276).
+			"a pair parameter beside an ordinary parameter",
+			"def shift(a, b=100):\n    return a + b\n\nxs = []\nxs.append([7, 8])\nprint(shift(xs[0][1]))\nprint(shift(xs[0][1], 2))\n",
+			"108\n10\n",
+		},
+		{
+			// The answer direction, at the CLI: the callee's pair handed on through the caller's word.
+			"a pair answer handed through another function",
+			"def g(y):\n    return y * 2\n\ndef f(x):\n    x = x + 1.5\n    return g(x)\n\nprint(f(1.0))\n", "5.0\n",
+		},
+		{
 			// Python's bool is a number; the tag the caller handed over is the bool's own (ADR 0233's
 			// rule, answered at this door by the same `@rt_num_arith`).
 			"a bool slot is a number",
@@ -230,13 +261,6 @@ func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
 			"the answer handed to another function",
 			"def twice(v):\n    return v * 2\n\ndef show(w):\n    return w\n\nxs = []\nxs.append([7, 8])\nprint(show(twice(xs[0][0])))\n",
 			"14\n", "hands back the (payload, tag) pair",
-		},
-		{
-			// Gap R.154: a pair-carrying parameter beside an ordinary one. The body's `a + b` asks the
-			// shared door for a kind for `b`, which is a parameter and not a value the caller tagged.
-			"a pair parameter beside an ordinary parameter",
-			"def shift(a, b=100):\n    return a + b\n\nxs = []\nxs.append([7, 8])\nprint(shift(xs[0][1]))\n",
-			"108\n", "cannot reach into",
 		},
 		{
 			// Gap R.82's shape seen from this door: one call site hands a text, whose repetition this

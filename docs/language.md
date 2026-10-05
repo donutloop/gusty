@@ -2273,6 +2273,50 @@ threw. What the pair crosses is settled by one scan of the whole program, before
 `define` and every `call` agree about the arity; and a parameter is opened only where every call site can
 supply a pair from its own spelling and the body reads it back somewhere a pair door answers.
 
+The argument does not have to be a slot read for the pair to be the right shape: **a number handed to a
+function keeps the kind its argument had** (`Gap P.1`, `Gap R.154`, `Gap R.157`, `Gap R.158`, ADR 0276). A
+parameter whose argument can end on a double — a float literal, a variable the program rebound to one, a
+quotient, a slot of a literal list that holds one, a default no call site mentions — arrives as the same two
+words, because the ordinary road would answer it with one and print a truncated number at exit 0:
+
+```python
+def twice(v):
+    return v * 2
+
+print(twice(2.5))               # 5.0 — where the compiled leg printed 4
+print(twice(2))                 # 4   — the same `define`, the answer's kind follows the argument
+x = 8
+x = 2.5
+print(twice(x))                 # 5.0 — the state the pair already carries crosses too
+
+ys = [1, 2.5]
+print(twice(ys[1]))             # 5.0 — a slot of a literal the scan can read
+
+def area(w, h):
+    return w * h
+
+print(area(2.5, 2))             # 5.0 — `w` carries the tag; `h` is proven an integer by its call sites
+
+def greet(name, times=1.5):
+    return times
+
+print(greet("a"))               # 1.5 — a default is an argument the caller did not have to write
+```
+
+The answer travels back the same way when it is a pair: `def g(y): return y * 2` under
+`def f(x): x = x + 1.5; return g(x)` hands the caller the pair the callee stored, and where the caller's own
+convention is a `double` the pair is lifted at `@rt_lift_num` — `f(1.0)` is `5.0`, where the module used to read
+the double as an `i32` and answer `2`. Two rules keep the answers that already worked, both of them answered by
+the same scan rather than by the order the module happens to be emitted in. A function whose body is written
+under a convention that owns its return word — ADR 0274's `double`, ADR 0174's string index — keeps its
+parameter words too, so `def f(x): x = x + 1.5; return x` still compiles to `define double @gy_f(double %p0)`
+with no tag word beside it and `def fmt(v): return str(v)` keeps the refusal rather than printing an interned
+index. And a **condition** is a different position from a **value**: `if v > 10:` asks an operand's truth, which
+the truth doors answer a pair for, while `return v > 1.5` asks for a value in a road that takes one word — so the
+first is served and the second leaves the parameter on the ordinary road, printing the `True`/`False` it always
+printed instead of refusing one it never needed (`Gap R.161`'s comparison half names what is owed).
+
+
 What still refuses, in words: a **value** position — a builtin's argument, a container's element, an `and`'s
 operand, or a second function's parameter — keeps one word for what it stores and has nowhere to put the tag
 (`Gap R.146`); an argument that is *itself* such an answer (`twice(twice(xs[0][0]))`) is refused rather than

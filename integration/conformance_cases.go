@@ -59,6 +59,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// *does* reach runs exactly once — which the compiled leg used to get wrong twice over, once by running
 		// the skipped operand and once by evaluating the tested one twice (roadmap Gap R.149, ADR 0275).
 		"probe_and_or_the_test_skips",
+		// The four numeric-truth rules the compiled backend used to answer wrong at exit 0: the flooring
+		// identity, `x /= 2` rebinding an int variable to a double, and a number handed to a function keeping
+		// the kind its argument had — `dbl(0.1)` is 0.2 and `bump(1.5)` is 2.5, the answers CPython and the
+		// interpreter always gave (roadmap L11.6, Gap P.1's argument half, ADR 0276).
+		"probe_float_numeric",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap
@@ -449,7 +454,6 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_global_statement", // Gap R.48 — no `global` statement; all three engines differ
 		"unwritten_slot_trap",    // Gap R.36 + R.39 — an unwritten local traps with the right class (ADR 0228)
 		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
-		"probe_float_numeric",    // L11.6 — //, /=, float % and float params
 		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
 		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
 		"probe_fn_name",          // L11.7 — a def'd name is not a value at all
@@ -742,10 +746,6 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "Python spells these math.pi / math.e, so the source is not a CPython program — the row stays not-applicable for the spelling alone: what the twin asserts is the two numbers below, and integration/module_const_test.go asks the reference for its own spelling beside them. The fold's lost float type — the answer this row pinned at 3 and 2 compiled — is paid (roadmap L11.6, ADR 0272)",
 		ref:    "roadmap L11.6 (a stdlib constant keeps its type); closed 2026-10-05",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3.141592653589793\n2.718281828459045\n"}, {Backend: "aot", Stdout: "3.141592653589793\n2.718281828459045\n"}}},
-	"programs/probe_float_numeric": {oracle: lang.OracleDebt,
-		reason: "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216), and so is `x /= 2` — the compiled leg prints 4.0 since ADR 0274 chose the double domain by the operator and rebound the int variable as the (payload, tag) pair (Gap R.155). What still diverges is the other half of float *state*: an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, both at exit 0",
-		ref:    "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-05 after ADR 0274 — the `x /= 2` line joined the reference, the two untyped-parameter lines did not",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-4\n0.5\n4.0\n0.2\n2.5\n"}, {Backend: "aot", Stdout: "-4\n0.5\n4.0\n0\n2\n"}}},
 	"programs/probe_enumerate": {oracle: lang.OracleDebt,
 		reason: "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(<container>) copies are refused in AOT",
 		ref:    "roadmap L11.7 + L11.3 (tuples are values)",

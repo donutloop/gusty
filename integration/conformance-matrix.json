@@ -413,6 +413,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_float_numeric",
+        "name": "probe_float_numeric.gy",
+        "source": "# Numeric state, on both backends (roadmap L11.6, ADR 0276) — the four rules this program pins are the\n# ones the compiled backend used to answer wrong at exit 0. `x /= 2` rebinds an int variable to a double\n# (ADR 0274 chose the double domain by the operator), and a number handed to a function keeps the kind the\n# argument had: `dbl(0.1)` answers 0.2 and `bump(1.5)` answers 2.5, which is what CPython and the\n# interpreter always answered (Gap P.1's argument half, closed with the (payload, tag) pair crossing the\n# call). The two flooring lines are the identity `a == (a // b) * b + (a % b)` kept honest — `-7 // 2` is\n# -4 and `-3.5 % 2.0` is 0.5 (Gaps R.28, R.30, ADR 0216) — and stay here so a future floor change has to\n# answer them too.\nprint(-7 // 2)\nprint(-3.5 % 2.0)\nx = 8\nx /= 2\nprint(x)\ndef dbl(v):\n    return v * 2\nprint(dbl(0.1))\ndef bump(v):\n    return v + 1\nprint(bump(1.5))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
+      "aot_ok": true,
+      "aot_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/abs_names_its_kind",
         "name": "abs_names_its_kind.gy",
         "source": "# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.\n#\n# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the\n# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this\n# toolchain answered all of them: a text reached the print door holding the interned index it is stored\n# as, so `print(abs(\"hi\"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and\n# `abs([1])`, `abs({\"a\": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's\n# \"the compiler is broken\" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).\n#\n# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that\n# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises\n# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the\n# last lines are the rebinding the door reads, where a name's latest binding decides the kind.\nprint(abs(-10))\nprint(abs(10))\nprint(abs(-3.5))\nprint(abs(True))\nprint(abs(0))\ntry:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"trap str\")\ntry:\n    print(abs(None))\nexcept TypeError:\n    print(\"trap NoneType\")\ntry:\n    print(abs([1, 2]))\nexcept TypeError:\n    print(\"trap list\")\ntry:\n    print(abs({\"a\": 1}))\nexcept TypeError:\n    print(\"trap dict\")\ntry:\n    print(abs({1, 2}))\nexcept TypeError:\n    print(\"trap set\")\nclass Thing:\n    pass\n\ntry:\n    print(abs(Thing()))\nexcept TypeError:\n    print(\"trap Thing\")\nx = \"text\"\nx = -7\nprint(abs(x))\nprint(-x)\nprint(abs(x) + 1)\n",
@@ -3455,7 +3478,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4034497717/119/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3887354007/120/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3469,7 +3492,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4034497717/119/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3887354007/120/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3980,46 +4003,6 @@
     },
     {
       "case": {
-        "id": "programs/probe_float_numeric",
-        "name": "probe_float_numeric.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — what is still untrue about float *state* in the compiled\n# backend (roadmap L11.6): `x /= 2` leaves x an int, and a float handed to an untyped parameter keeps\n# the int word — `dbl(0.1)` answers 0 and `bump(1.5)` answers 2 where CPython answers 0.2 and 2.5,\n# every one of them at exit 0 (roadmap Gap P.1, re-measured 2026-10-04 with the third shape written\n# in). The two flooring lines used to be part of the divergence — `-7 // 2` compiled to -3 and\n# `-3.5 % 2.0` answered -1.5, C's truncated remainder — and are now right on both backends\n# (roadmap Gaps R.28, R.30, ADR 0216), so they stay here as the pair that keeps the identity\n# a == (a // b) * b + (a % b) honest rather than as a report of a current defect.\nprint(-7 // 2)\nprint(-3.5 % 2.0)\nx = 8\nx /= 2\nprint(x)\ndef dbl(v):\n    return v * 2\nprint(dbl(0.1))\ndef bump(v):\n    return v + 1\nprint(bump(1.5))\n",
-        "shared": false,
-        "oracle": "debt",
-        "reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216), and so is `x /= 2` — the compiled leg prints 4.0 since ADR 0274 chose the double domain by the operator and rebound the int variable as the (payload, tag) pair (Gap R.155). What still diverges is the other half of float *state*: an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, both at exit 0",
-        "ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-05 after ADR 0274 — the `x /= 2` line joined the reference, the two untyped-parameter lines did not",
-        "pins": [
-          {
-            "backend": "interpreter",
-            "stdout": "-4\n0.5\n4.0\n0.2\n2.5\n"
-          },
-          {
-            "backend": "aot",
-            "stdout": "-4\n0.5\n4.0\n0\n2\n"
-          }
-        ]
-      },
-      "interp_ok": true,
-      "interp_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
-      "aot_ok": true,
-      "aot_stdout": "-4\n0.5\n4.0\n0\n2\n",
-      "parity": false,
-      "python_ok": true,
-      "python_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
-      "interp_matches_python": true,
-      "aot_matches_python": false,
-      "oracle": "debt",
-      "oracle_declared": "debt",
-      "oracle_reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216), and so is `x /= 2` — the compiled leg prints 4.0 since ADR 0274 chose the double domain by the operator and rebound the int variable as the (payload, tag) pair (Gap R.155). What still diverges is the other half of float *state*: an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, both at exit 0",
-      "oracle_ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-05 after ADR 0274 — the `x /= 2` line joined the reference, the two untyped-parameter lines did not",
-      "oracle_rules": [
-        "set-order"
-      ],
-      "oracle_notes": [
-        "compiled stdout differs from CPython"
-      ]
-    },
-    {
-      "case": {
         "id": "programs/probe_enumerate",
         "name": "probe_enumerate.gy",
         "source": "# Oracle probe (L11.9, ADR 0186) — enumerate/zip/reversed produce tuples, so they need\n# L11.3 (tuples are values) before they can be language surface; the interpreter\n# renders their pairs as lists and the compiled backend refuses `list(\u003ccontainer\u003e)`.\nprint(list(enumerate([\"a\", \"b\"])))\nprint(list(zip([1, 2], [3, 4])))\nprint(list(reversed([1, 2, 3])))\n",
@@ -4312,11 +4295,11 @@
     }
   ],
   "rows": 145,
-  "skipped": 37,
-  "pass": 108,
+  "skipped": 36,
+  "pass": 109,
   "fail": 0,
-  "oracle_match": 93,
-  "oracle_debt": 31,
+  "oracle_match": 94,
+  "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

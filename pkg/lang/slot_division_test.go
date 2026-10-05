@@ -50,6 +50,13 @@ func TestTrueDivisionOfAnUnliteralisedSlotAnswersInBothEngines(t *testing.T) {
 		{"the slot divided by a settled variable", "xs = []\nxs.append(6)\nd = 4.0\nprint(xs[0] / d)\n", "1.5\n"},
 		{"a settled variable over the slot", "xs = []\nxs.append(4)\nd = 6.0\nprint(d / xs[0])\n", "1.5\n"},
 		{"a bool literal as the divisor", "xs = []\nxs.append(4)\nprint(xs[0] / True)\n", "4.0\n"},
+		{
+			// The row the refusal table used to keep: a quotient handed to a function is carried by the
+			// same pair the print and binding positions read, so `f(1, xs[0] / 2)` answers 3.0 and the
+			// parameter brings the kind back with it (roadmap L11.6, Gap P.1, ADR 0276).
+			"the double has a word to travel in to a call",
+			"def f(a, b):\n    return b\n\nxs = []\nxs.append(6)\nprint(f(1, xs[0] / 2))\n", "3.0\n",
+		},
 		// ---- one container, several kinds: the arm that runs is a run-time question per slot.
 		{
 			"an int slot and a float slot in one built container",
@@ -287,11 +294,9 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 			"xs = []\nxs.append(1.5)\nprint(xs[0] ** 2)\n",
 			"needs a single static kind",
 		},
-		{
-			"the double has no word to travel in to a call",
-			"def f(a, b):\n    return b\n\nxs = []\nxs.append(6)\nprint(f(1, xs[0] / 2))\n",
-			"this context stores an i32 word",
-		},
+		// The row this table used to keep for a quotient handed to a call — 「the double has no word
+		// to travel in to a call」 — is gone too: that is the pair road's argument half, pinned green
+		// above (roadmap L11.6, Gap P.1, ADR 0276).
 		// The row this table used to keep for str() — 「the double has no word to travel in to
 		// str()」 — is gone, because roadmap L11.2's pair gave it one. str() and repr() now run
 		// the float renderer (rt_fmt_double) into the capture buffer and intern the text, so the

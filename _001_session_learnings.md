@@ -6961,3 +6961,66 @@ row this cycle** — the refusals beside the row (`probe_and_or_shapes_the_word_
 message and the same exit class as before, because the skeleton declines exactly where the doors declined, and
 the only shape I deliberately left alone is `print(x and boom(), x and boom())`, where the source really does
 write the expression twice.
+
+---
+
+## Cycle: a number handed to a function keeps the kind its argument had (ADR 0276, Gap P.1 / R.154 / R.157 / R.158)
+
+**The gate asked one question and the defect lived in the answer it never needed.** ADR 0273 marks a parameter
+pair-carrying when the ordinary numeric road would *refuse* the argument. `twice(2.5)` was never refused — the
+road *answered* it, with an `i32` — so it never reached the door and printed `4` at exit 0. Widening one
+predicate (`exprNeedsWord`) to "refuses **or** answers a double it cannot carry" paid four roadmap rows at once:
+`Gap P.1`'s remaining half, `Gap R.154`, `Gap R.157`, `Gap R.158`. The lesson is to distrust a gate whose
+condition is written as the failure of another road: a road that answers *wrongly* is invisible to a test for
+"would this road refuse".
+
+**A conservative gate is a measured gate, and the corpus is the meter.** Three widenings looked obviously right
+and each broke a program that already answered: serving comparisons in a *value* position turned
+`def cmpf(v): return v > 1.5` from `True`/`False` into a refusal; marking a function whose return word belongs to
+ADR 0274's `double` grew a tag parameter on `define double @gy_f(double %p0)` and broke a pinned IR shape; marking
+a function returning `str(…)` printed `0` where the program had printed an honest refusal. What caught all three
+was a sweep that ran the 154-program corpus and every fixture through the *pre-cycle binary* and the new one and
+diffed the outputs — thirty seconds of `bash`, against a test suite that takes three minutes and was green
+throughout, because those shapes had no rows yet. Ladder rule, operationalised: an answer may only move
+refusal→answer or wrong→right; answer→refusal and answer→wrong-number are both failures even when the new
+refusal is "honest".
+
+**Condition and value are different positions, and only measurement said so.** `if v > 10:` asks an operand's
+*truth* — ADR 0269 and ADR 0275 already answer a tagged operand there — while `return v > 1.5` asks for a *value*
+from a road that reads one word. One predicate (`pairGate.expr`) with a sibling for conditions (`pairGate.cond`)
+keeps both true; the first version had them merged and the tests that proved it were the ones I wrote *before*
+widening, which is the only reason I noticed.
+
+**Scan-side, always.** Every decision here is a pure function of the AST: the arity, the integer-proof
+(`knownIntParams`), the withheld roads (`pairReturnRoadOwns`), the answer direction. The temptation to ask
+`g.floatFuncs[name]` at the call site is real and wrong — the `define` and every `call` have to agree, and a
+function defined after its first call makes that a question about emission order. Same reason the two
+interdependent questions (is this body served? does that callee answer a pair?) are settled in bounded rounds
+rather than in one pass: `return g(x)` is only served once `g`'s answer is decided, and both answers only ever
+*remove*, so the marking shrinks monotonically and a fixpoint is reachable.
+
+**Two failures worth remembering.** (1) An unbounded recursion in the scan: `x = x + 1.5` reads the name it
+writes, and `exprCarriesDouble` followed it forever — a Go `stack overflow` on a six-line program, exit 2 on the
+compiler's own bug, caught only because I ran the fixture immediately after writing the predicate rather than
+after writing the suite. The `seen` guard is `exprNumberish`'s existing rule; reading the neighbours first would
+have cost nothing. (2) A whole day lost to `git checkout pkg/lang/paircall.go` while chasing a debug print —
+five hundred lines of scan work gone, rebuilt in one scripted pass from the pristine file. The habit that saved
+it: every edit already went through a script with an exact-match assertion and a counter, so rebuilding meant
+re-running the script, not re-inventing the code. `git checkout` on a file you have uncommitted work in is the
+same class of action as `rm`: read the cost before typing it.
+
+**A promotion is the closing event, not the code.** `programs/probe_float_numeric.gy` carried two lines pinned
+wrong in the debt ledger; the day both legs matched CPython the build itself complained in four different tests
+("a probe that now matches CPython is a paid debt"). Moving it to `conformanceStandalone()` and deleting the row
+is the event that closes `Gap P.1`, and the Snapshot's counts (268 ADRs, 145 matrix rows → 109 parity, 94
+oracle `match` · 30 `debt`, 100 of 107 rows owed) are re-measured from the artifacts, not from memory.
+
+**Three new rows, filed where found rather than buried.** `Gap R.161` (a double forwarded through another
+function's parameter still prints `4`) is the shape this cycle's own first attempt exposed: consulting
+`s.calls[name]` from the expression question asks whether the name is *called* somewhere, which is a different
+question and marks the wrong parameters. `Gap R.162` (`//` and `%` over a pair truncate) is nasty in the specific
+way ADR 0216 guards against: `a == (a // b) * b + (a % b)` still holds when both halves are truncated together,
+so the two wrong lines are mutually consistent. `Gap R.163` (`def g(): return str(42)` prints the interned index
+`0`) is pre-existing, unrelated to floats, and only visible because the sweep compared binaries line by line —
+which is the argument for keeping that sweep, and for the AGENTS rule that a measured defect gets a fresh row and
+a fresh ID rather than a paragraph in someone else's record.

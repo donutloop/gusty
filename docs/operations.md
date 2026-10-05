@@ -577,10 +577,22 @@ variable box the double and bind the name to the `(payload, tag)` pair, `Gap P.1
 before it, the compiled leg printed `3` for `7 /= 2` and printed the *neighbour* of a rebound variable as a
 different number (`y = 12345` beside `x = 2.5` answered `1074003968`), both at **exit 0**, because the module
 stored a double into the four-byte slot the first binding chose and an opaque pointer hides that from the
-verifier. What that row leaves filed is the state travelling further: returned from a function (`Gap R.156`),
-changed twice in one variable (`Gap R.157`), handed to a function (`Gap R.158`), stored as a container element
-(`Gap R.159`), ordered against a float literal (`Gap R.160`) — each exit 1 naming the position that keeps one
-word, and each pinned with its exit class in `integration/float_state_test.go`. The same door is the reason a program must
+verifier. The state travelling further is parity surface since
+(`pkg/lang/float_arg_test.go`, `integration/float_argument_test.go`, and the promoted
+`programs/probe_float_numeric.gy` — the argument that can end on a double arrives as the pair, so
+`twice(2.5)` prints `5.0` where the module wrote one `i32` into the parameter and printed `4`, and the answer of
+a pair-returning callee handed through a `double`-returning caller is lifted at `@rt_lift_num` instead of
+reading `2` for CPython's `5.0`: `Gap P.1`'s last line, `Gap R.154`, `Gap R.157`, `Gap R.158`, ADR 0276).
+Before that door the same family answered a truncated number at **exit 0** — `dbl(0.1)` was `0`, `bump(1.5)` was
+`2`, `area(2.5, 2)` was `4`, `greet("a")` over a `times=1.5` default was `1` — and a float-state name handed to
+a call was an exit-1 refusal, which is the outcome a widened gate must never produce for a program that already
+answered: the body gate serves a *condition* over a pair (`if v > 10:`) and declines a *comparison as a value*
+(`return v > 1.5`, `True`/`False` unchanged), and a function whose return word belongs to ADR 0274's `double` or
+ADR 0174's string index keeps its parameter words too. What that row still leaves filed is the state travelling
+further still: returned from a function (`Gap R.156`), stored as a container element (`Gap R.159`), ordered
+against a float literal (`Gap R.160`), forwarded through a second function's parameter (`Gap R.161`, still an
+exit-0 `4`), and floored or remaindared (`Gap R.162`, `floorit(5.0)` is `2` where CPython answers `2.0`) — each
+pinned with its exit class in `integration/float_state_test.go` and `integration/float_argument_test.go`. The same door is the reason a program must
 say which engine it wants: `--file` alone runs the interpreter, so the compiled leg of any of these shapes is
 `--aot --file <path>`, and `--json`'s `backend` member (or `--show-backend`) is how a measurement proves which
 engine produced it. The negation of a text was worse and is now paid:

@@ -47,6 +47,15 @@ import (
 type pairFnSpec struct {
 	// params are the parameter indices that arrive as (payload, tag) — two i32 words.
 	params map[int]bool
+	// wants is the same set as the scan first marked it, kept so the body half can be re-asked while the
+	// answer half is still settling (see pairCallSpecs' rounds).
+	wants map[int]bool
+	// intParams names the parameters the call sites hand nothing but integers — a literal, or a name the
+	// scan can see is numberish. The body may read those as plain numbers, which is what lets
+	// `def area(w, h): return w * h` keep `h` on the ordinary road while `w` carries the tag: the shared
+	// arithmetic door needs a kind for *both* operands, and this is the evidence that says what `h` is
+	// (roadmap L11.6, Gap P.1's `area(2.5, 2)`).
+	intParams map[string]bool
 	// returnsPair says every `return` in the body answers a pair, so the callee stores the answer's tag
 	// beside the return and a pair-aware caller reads it back.
 	returnsPair bool
@@ -368,7 +377,21 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 			continue
 		}
 		needs := map[int]bool{}
-		for _, i := range pairIndexList(byIndex) {
+		// Every parameter position the program writes an argument to — at a call site or in the
+		// signature. A default *is* an argument the caller did not have to write: `def greet(name,
+		// times=1.5)` called as `greet("a")` hands `times` the double the call site never mentions, and
+		// a position only a default describes is the one an arity-only scan would miss (roadmap L11.6,
+		// Gap P.1).
+		present := map[int]bool{}
+		for i := range pairIndexList(byIndex) {
+			present[i] = true
+		}
+		for i := range fd.Params {
+			if fd.Params[i].Default != nil {
+				present[i] = true
+			}
+		}
+		for _, i := range sortedPairPositions(present) {
 			if i >= len(fd.Params) {
 				continue
 			}
@@ -376,9 +399,20 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 			if d := fd.Params[i].Default; d != nil {
 				args = append(args, d)
 			}
-			if s.anyNeedsWord(args) {
+			// The ordinary numeric road refuses the first kind outright and answers the second with an
+			// i32 — which is the wrong number rather than a refusal — so both are the pair road's
+			// business (roadmap L11.6, Gap P.1: `twice(2.5)` printed 4 at exit 0).
+			if s.anyNeedsWord(args) || s.anyCarriesDouble(args) {
 				needs[i] = true
 			}
+		}
+		// A body emitted under a convention that already owns its return word owns its parameter words
+		// with it: ADR 0274's float return hands back a name the body bound to a double, and ADR 0174's
+		// string return hands back a text. Neither has a word a pair's tag could live beside, so the
+		// whole function keeps the convention — and the answer or refusal — it had before this door
+		// (answering a pair into a word that cannot hold one is Gap P.1's wrong number).
+		if pairReturnRoadOwns(fd, s) {
+			continue
 		}
 		if len(needs) == 0 {
 			continue
@@ -404,23 +438,72 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 		for i := range needs {
 			spec.params[i] = true
 		}
-		// The body half of the gate: a parameter is only worth tagging if the body can read it back.
-		// A use the pair doors do not serve keeps the whole function on its ordinary convention, which
-		// is the road — and the refusal — the program has always had.
-		if !pairUsesServed(fd, spec) {
-			for i := range needs {
-				delete(spec.params, i)
+		spec.wants = map[int]bool{}
+		for i := range needs {
+			spec.wants[i] = true
+		}
+		// The parameters the pair does not carry, and what the body may therefore read them as. Asked
+		// before the body half, because that half is the question `def area(w, h): return w * h` called
+		// with `area(2.5, 2)` turns on: `w` needs the tag and `h` needs only to be provably the integer
+		// its call sites write.
+		spec.intParams = s.knownIntParams(fd, spec, s.calls[fnName])
+	}
+	// The body half of the gate, settled together with the answer half, in rounds. A parameter is only
+	// worth tagging if the body can read it back, and whether a body can read `return g(x)` back depends
+	// on whether g hands its own answer back as a pair — which in turn depends on g's body being served.
+	// Both questions only ever remove things (a parameter, a callee), so the marking shrinks
+	// monotonically and a bounded number of rounds reaches the answer; nothing here grows a pair road the
+	// call sites did not ask for. A self-call is out — the inner frame would write the tag word the outer
+	// caller has not read yet — so it keeps its ordinary single-word answer, and the pair-needing caller
+	// keeps its refusal (ADR 0273).
+	answerable := map[string]bool{}
+	for round := 0; round < 4; round++ {
+		for fnName, spec := range specs {
+			fd := fds[fnName]
+			if fd == nil {
+				continue
 			}
+			// Re-asked from the marking rather than narrowed from the last round: a body whose
+			// `return g(x)` is served only once g is answerable must not be closed down by the round
+			// that ran before g got there.
+			spec.params = map[int]bool{}
+			for i := range spec.wants {
+				spec.params[i] = true
+			}
+			if len(spec.params) > 0 && !pairUsesServed(fd, spec, answerable) {
+				spec.params = map[int]bool{}
+			}
+		}
+		next := map[string]bool{}
+		for fnName, spec := range specs {
+			fd := fds[fnName]
+			if fd == nil || len(spec.params) == 0 || containsCallToFn(fnName, fd.Body) {
+				continue
+			}
+			if pairBodyAnswers(fd, spec, answerable) {
+				next[fnName] = true
+			}
+		}
+		stable := len(next) == len(answerable)
+		if stable {
+			for fn := range next {
+				if !answerable[fn] {
+					stable = false
+					break
+				}
+			}
+		}
+		answerable = next
+		if stable {
+			break
 		}
 	}
 	for fnName, spec := range specs {
-		fd := fds[fnName]
-		// A self-call would have the inner frame write the tag word the outer caller has not read yet;
-		// such a function keeps its ordinary single-word answer and the pair-needing caller its refusal.
-		if fd == nil || containsCallToFn(fnName, fd.Body) || !pairBodyAnswers(fd, spec) {
+		if len(spec.params) == 0 {
+			delete(specs, fnName)
 			continue
 		}
-		spec.returnsPair = true
+		spec.returnsPair = answerable[fnName]
 	}
 	if len(specs) == 0 {
 		return nil
@@ -455,6 +538,106 @@ func (s *pairScan) recordCall(fn string, args []Expr) {
 		}
 		pos++
 	}
+}
+
+// pairReturnRoadOwns reports whether the body is one the float- or string-return road emits: a `return`
+// of a name the body bound to a double (ADR 0274's promotion, which writes a `double` return word), or a
+// `return` of a text, including one built by str()/repr(). It is asked conservatively — a body that only
+// *might* take one of those roads keeps its old convention — because the pair road is an extra answer,
+// never a replacement for a road that already worked.
+func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
+	returned := []Expr{}
+	var walk func(ss []Stmt)
+	handled := false
+	walk = func(ss []Stmt) {
+		for _, st := range ss {
+			switch n := st.(type) {
+			case nil:
+			case *ReturnStmt:
+				if n.Expr == nil {
+					continue
+				}
+				if pairTextReturnExpr(n.Expr) {
+					handled = true
+					return
+				}
+				returned = append(returned, n.Expr)
+			case *IfStmt:
+				walk(n.Then)
+				walk(n.Else)
+				for _, e := range n.Elifs {
+					walk([]Stmt{e})
+				}
+			case *WhileStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *ForStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *TryStmt:
+				walk(n.Body)
+				for _, e := range n.Excepts {
+					walk(e.Body)
+				}
+				walk(n.Finally)
+			}
+			if handled {
+				return
+			}
+		}
+	}
+	walk(fd.Body)
+	if handled {
+		return true
+	}
+	bindings := map[string][]Expr{}
+	scanRebinds(fd.Body, bindings)
+	for _, e := range returned {
+		// The same leaves ADR 0274's promotion reads the return through (params.go's
+		// namedNumericLeaves): `return -x` of a name the body rebound to a double is the float-return
+		// road's own shape, and that road hands back a `double` word a pair's tag has no place beside.
+		for _, name := range namedNumericLeaves(e) {
+			for _, v := range bindings[name] {
+				// Only the kinds the pair road speaks are the pair road's business. `s = str(v)` /
+				// `return s` is ADR 0174's string index and a container is the container road's answer:
+				// carrying a pair over those printed a handle as a number, which is Gap P.1's wrong
+				// number one return further in.
+				if v == nil || !s.exprNumberish(v, map[string]bool{}) {
+					return true
+				}
+				if s.exprCarriesDouble(v) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// pairTextReturnExpr is the string-return road's shape: a text, or the call that builds one.
+func pairTextReturnExpr(e Expr) bool {
+	switch n := e.(type) {
+	case *StrLit:
+		return true
+	case *Call:
+		if nm, isName := n.Fn.(*Name); isName {
+			switch nm.Value {
+			case "str", "repr", "ascii", "f", "format":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sortedPairPositions orders a set of parameter positions so the scan answers the same way twice.
+func sortedPairPositions(present map[int]bool) []int {
+	out := make([]int, 0, len(present))
+	for i := range present {
+		out = append(out, i)
+	}
+	sort.Ints(out)
+	return out
 }
 
 // pairIndexList orders the recorded parameter indices so the scan answers the same way twice.
@@ -543,9 +726,183 @@ func (s *pairScan) exprNumberish(e Expr, seen map[string]bool) bool {
 		}
 	case *Index:
 		nm, depth := chainDepth(e)
-		return depth > 0 && nm != nil && s.built[nm.Value]
+		if nm == nil || depth == 0 {
+			return false
+		}
+		if s.built[nm.Value] {
+			return true
+		}
+		// A slot of a container the literal describes is numberish when the literal's elements are:
+		// `ys = [1, 2.5]` / `twice(ys[1])` reaches the door ADR 0265's slot arithmetic answers, and the
+		// pair is what travels. One text or container among the elements closes it, because that slot is
+		// not a number to box (roadmap L11.6, Gap P.1).
+		for _, v := range s.bound[nm.Value] {
+			if ll, isList := v.(*ListLit); isList && s.litElementsAreNumberish(ll.Elems, seen) {
+				return true
+			}
+		}
+		return false
 	}
 	return false
+}
+
+// anyCarriesDouble is the scan's copy of the question the argument road asks: could evaluating this
+// expression end in a value whose kind the pair has to carry because it is a double? The ordinary numeric
+// road answers those with an i32, which truncates — Gap P.1's `twice(2.5)` printing 4 at exit 0 — so they
+// are exactly the arguments this door must own rather than the one that refuses.
+func (s *pairScan) anyCarriesDouble(es []Expr) bool {
+	return s.anyCarriesDoubleSeen(es, map[string]bool{})
+}
+
+func (s *pairScan) anyCarriesDoubleSeen(es []Expr, seen map[string]bool) bool {
+	for _, e := range es {
+		if s.exprCarriesDoubleSeen(e, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// exprCarriesDouble asks whether evaluating an expression can end on a value the pair has to carry
+// because it is a double. `seen` walks a name's own bindings once: `x = x + 1.5` is a binding that reads
+// the name it writes, and the answer for it is settled by the round the fixed point is in, not by
+// following it forever (the same rule exprNumberish answers with).
+func (s *pairScan) exprCarriesDouble(e Expr) bool {
+	return s.exprCarriesDoubleSeen(e, map[string]bool{})
+}
+
+func (s *pairScan) exprCarriesDoubleSeen(e Expr, seen map[string]bool) bool {
+	switch n := e.(type) {
+	case *FloatLit:
+		return true
+	case *BinOp:
+		switch n.Op {
+		case "/":
+			return true // true division answers a double whatever the operands were
+		case "+", "-", "*":
+			return s.anyCarriesDoubleSeen([]Expr{n.L, n.R}, seen)
+		}
+	case *UnOp:
+		return (n.Op == "-" || n.Op == "+") && s.exprCarriesDoubleSeen(n.X, seen)
+	case *Name:
+		// The name's own bindings are the evidence: `x = 8` then `x = 2.5` is a variable the pair road
+		// binds (ADR 0274), and handing it to a function is the same missing word one position further
+		// out. A parameter of an enclosing function is bound by no assignment and so is not here: a
+		// float forwarded through two function boundaries stays roadmap Gap R.161.
+		if seen[n.Value] {
+			return false // in progress: the fixed point says nothing worse than "not proven"
+		}
+		seen[n.Value] = true
+		defer delete(seen, n.Value)
+		for _, v := range s.bound[n.Value] {
+			if v != nil && s.exprCarriesDoubleSeen(v, seen) {
+				return true
+			}
+		}
+		return false
+	case *Index:
+		nm, depth := chainDepth(e)
+		if nm == nil || depth == 0 {
+			return false
+		}
+		for _, v := range s.bound[nm.Value] {
+			if v != nil && s.litCarriesDouble(v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// argsAreInts is the supply half of the *other* question: are the arguments this position is ever handed
+// provably integers? Then the parameter needs no pair of its own and the body may read it as a plain
+// number, which is what an `int`-typed parameter means to the arithmetic door.
+func (s *pairScan) argsAreInts(es []Expr) bool {
+	for _, e := range es {
+		if !s.exprIsIntShaped(e) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *pairScan) exprIsIntShaped(e Expr) bool {
+	switch n := e.(type) {
+	case *IntLit:
+		return true
+	case *Name:
+		vals, ok := s.bound[n.Value]
+		if !ok || len(vals) == 0 {
+			return false
+		}
+		return s.argsAreInts(vals)
+	case *UnOp:
+		return (n.Op == "-" || n.Op == "+") && s.exprIsIntShaped(n.X)
+	case *BinOp:
+		switch n.Op {
+		case "+", "-", "*":
+			return s.exprIsIntShaped(n.L) && s.exprIsIntShaped(n.R)
+		}
+	}
+	return false
+}
+
+// litCarriesDouble asks a container literal whether one of the values it spells out is a double — the
+// only evidence available for a slot read whose base was written as a literal.
+func (s *pairScan) litCarriesDouble(e Expr) bool {
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if s.exprCarriesDouble(el) {
+				return true
+			}
+		}
+	case *Tuple:
+		for _, el := range n.Elems {
+			if s.exprCarriesDouble(el) {
+				return true
+			}
+		}
+	case *DictLit:
+		for _, v := range n.Vals {
+			if s.exprCarriesDouble(v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *pairScan) litElementsAreNumberish(es []Expr, seen map[string]bool) bool {
+	for _, e := range es {
+		if !s.exprNumberish(e, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+// knownIntParams names the parameters that carry no pair and may be read as plain numbers: those whose
+// every recorded argument — and whose default, which is an argument the call site did not have to write —
+// is provably an integer.
+func (s *pairScan) knownIntParams(fd *FuncDef, spec *pairFnSpec, byIndex map[int][]Expr) map[string]bool {
+	out := map[string]bool{}
+	for i, p := range fd.Params {
+		if spec.params[i] {
+			continue
+		}
+		args := append([]Expr{}, byIndex[i]...)
+		if d := fd.Params[i].Default; d != nil {
+			args = append(args, d)
+		}
+		// A parameter no call site writes and no default describes is nobody's evidence: the body reads
+		// it the way it always has, and the arithmetic door keeps its own answer or refusal.
+		if len(args) == 0 || !s.argsAreInts(args) {
+			continue
+		}
+		out[p.Name] = true
+	}
+	return out
 }
 
 // containsCallToFn reports whether the body calls the named function anywhere — the recursion a single
@@ -563,7 +920,7 @@ func containsCallToFn(fn string, body []Stmt) bool {
 
 // pairBodyAnswers reports whether every `return` in the body answers a pair over the pair-carrying
 // parameters: the shape where the callee, and not the caller, knows the answer's kind.
-func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec) bool {
+func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) bool {
 	pairParams := map[string]bool{}
 	for i, p := range fd.Params {
 		if spec.params[i] {
@@ -576,7 +933,7 @@ func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec) bool {
 	answers, ok := false, true
 	var walk func(ss []Stmt)
 	check := func(e Expr) {
-		mentions, shaped := pairAnswerShape(e, pairParams)
+		mentions, shaped := pairAnswerShape(e, pairParams, spec.intParams, callees)
 		if !shaped || !mentions {
 			ok = false
 		} else {
@@ -636,7 +993,17 @@ func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec) bool {
 // `-`, `*` over those). The other operators are not here because they have their own doors already
 // (ADR 0253's `/`, ADR 0264's `//`/`%**`), and a second answer to the same question is how three
 // truthiness tables happened.
-func pairAnswerShape(e Expr, pairParams map[string]bool) (mentions, shaped bool) {
+func pairAnswerShape(e Expr, pairParams, intParams, pairCallees map[string]bool) (mentions, shaped bool) {
+	if c, isCall := e.(*Call); isCall {
+		// `return g(x)` where g hands back a pair: the callee stored the tag beside its own return and
+		// this body passes both words on beside its own. It is shaped because the pair is what the door
+		// reads, and it mentions a pair-carrying parameter only if the arguments do (roadmap L11.1's
+		// return direction, Gap R.139's caller half).
+		if nm, isName := c.Fn.(*Name); isName && pairCallees[nm.Value] {
+			return pairMentions(c, pairParams), true
+		}
+		return false, false
+	}
 	switch n := e.(type) {
 	case *Name:
 		return pairParams[n.Value], pairParams[n.Value]
@@ -646,17 +1013,27 @@ func pairAnswerShape(e Expr, pairParams map[string]bool) (mentions, shaped bool)
 		if n.Op != "-" {
 			return false, false
 		}
-		m, sh := pairAnswerShape(n.X, pairParams)
+		m, sh := pairAnswerShape(n.X, pairParams, intParams, pairCallees)
 		return m, sh && m
 	case *BinOp:
 		switch n.Op {
 		case "+", "-", "*":
-			lm, ls := pairAnswerShape(n.L, pairParams)
-			rm, rs := pairAnswerShape(n.R, pairParams)
+			lm, ls := pairOperandShape(n.L, pairParams, intParams, pairCallees)
+			rm, rs := pairOperandShape(n.R, pairParams, intParams, pairCallees)
 			return lm || rm, ls && rs
 		}
 	}
 	return false, false
+}
+
+// pairOperandShape is one arm of the answer's arithmetic: an arm that mentions no pair-carrying parameter
+// is shaped only when it is a number the door can tag itself.
+func pairOperandShape(e Expr, pairParams, intParams, pairCallees map[string]bool) (mentions, shaped bool) {
+	m, sh := pairAnswerShape(e, pairParams, intParams, pairCallees)
+	if m {
+		return m, sh
+	}
+	return false, pairLeavesAreInts(e, intParams)
 }
 
 // ---- the emitting side: the two doors that move the pair over the boundary ----------------------
@@ -687,7 +1064,7 @@ func (g *irGen) pairArgWords(b *strings.Builder, fnName string, idx int, a Expr)
 		return p, t, true, nil
 	}
 	if g.isFloat(a) {
-		return "", "", true, fmt.Errorf("codegen: %s is a float the pair road cannot box, and parameter %d of %s arrives as a (payload, tag) pair whose payload is an i32 (roadmap L11.1, ADR 0273)", exprSurface(a), idx, fnName)
+		return "", "", true, fmt.Errorf("codegen: %s is a float the pair road cannot box, and parameter %d of %s arrives as a (payload, tag) pair whose payload is an i32: the ordinary road would truncate the double to that word, which is a wrong number rather than a refusal (roadmap L11.6, Gap P.1, ADR 0273)", exprSurface(a), idx, fnName)
 	}
 	if isStringExpr(a) || g.isNoneExpr(a) || g.isContainerExpr(a) {
 		return "", "", true, fmt.Errorf("codegen: %s is not a number, and parameter %d of %s carries the (payload, tag) pair the arithmetic door answers: this pass will not hand over a payload wearing another kind's bits (roadmap L11.1, ADR 0273)", exprSurface(a), idx, fnName)
@@ -777,6 +1154,14 @@ func (g *irGen) pairReturnWords(b *strings.Builder, e Expr) (payload, tag string
 	}
 	if nm, isName := e.(*Name); isName && g.numericPairVar(nm.Value) {
 		p, t := g.numericPairRegs(b, nm.Value)
+		return p, t, nil
+	}
+	// `return g(x)`: the callee answered a pair and stored its tag beside its own return, so the pair
+	// this body hands back is that one, read with the same door a print or a binding reads it with
+	// (roadmap L11.1, Gap R.139's caller half).
+	if p, t, okPair, pairErr := g.pairCallPair(b, e); pairErr != nil {
+		return "", "", pairErr
+	} else if okPair {
 		return p, t, nil
 	}
 	return "", "", fmt.Errorf("codegen: %q returns %s, which the pair road cannot answer: the parameter's kind arrived from the caller and this body's answer has no tag to travel with (roadmap L11.1, ADR 0273)", g.curFunc, exprSurface(e))
@@ -905,19 +1290,27 @@ func (g *irGen) pairArityTag(fnName string, idx int) string {
 
 // pairUsesServed reports whether every mention of a pair-carrying parameter in the body sits in a
 // position the pair doors answer.
-func pairUsesServed(fd *FuncDef, spec *pairFnSpec) bool {
-	pp := map[string]bool{}
+func pairUsesServed(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) bool {
+	gate := pairGate{pp: map[string]bool{}, ip: spec.intParams, callees: callees}
 	for i, p := range fd.Params {
 		if spec.params[i] {
-			pp[p.Name] = true
+			gate.pp[p.Name] = true
 		}
 	}
-	if len(pp) == 0 {
+	if len(gate.pp) == 0 {
 		return true
 	}
 	served := true
 	check := func(e Expr) {
-		if !pairExprServed(e, pp) {
+		if !gate.expr(e) {
+			served = false
+		}
+	}
+	// A condition is a position the truth door reads — `if v > 10:` asks an operand's truth, not its
+	// value, and ADR 0269's chosen operands and ADR 0275's and/or already answer a (payload, tag). A
+	// value position is the narrower question above, where a comparison has no door yet.
+	checkCond := func(e Expr) {
+		if !gate.cond(e) {
 			served = false
 		}
 	}
@@ -942,23 +1335,23 @@ func pairUsesServed(fd *FuncDef, spec *pairFnSpec) bool {
 			case *RaiseStmt:
 				check(n.Expr)
 			case *IfStmt:
-				check(n.Cond)
+				checkCond(n.Cond)
 				for _, e := range n.Elifs {
 					walk([]Stmt{e})
 				}
 				walk(n.Then)
 				walk(n.Else)
 			case *WhileStmt:
-				check(n.Cond)
+				checkCond(n.Cond)
 				walk(n.Body)
 				walk(n.Else)
 			case *ForStmt:
-				check(n.Iter)
+				checkCond(n.Iter)
 				check(n.Var)
 				walk(n.Body)
 				walk(n.Else)
 			case *MatchStmt:
-				check(n.Subject) // a pattern over a value whose kind only the tag says is not served
+				checkCond(n.Subject) // a pattern over a value whose kind only the tag says is not served
 				for _, c := range n.Cases {
 					check(c.Guard)
 					walk(c.Body)
@@ -990,62 +1383,130 @@ func pairUsesServed(fd *FuncDef, spec *pairFnSpec) bool {
 // pairExprServed answers one question about an expression that mentions a pair-carrying parameter: is
 // it built only out of positions the pair doors answer? An expression that mentions none of them is the
 // body's own business and is answered true without looking.
-func pairExprServed(e Expr, pp map[string]bool) bool {
-	if !pairMentions(e, pp) {
+// pairGate is the body half of the scan's decision, asked with one set of names: which parameters the
+// pair carries, which of the rest the call sites have shown to be integers, and which callees hand back
+// a pair themselves — so that a call to one is a position the pair doors read rather than a position that
+// keeps one word for the value.
+type pairGate struct {
+	pp      map[string]bool
+	ip      map[string]bool
+	callees map[string]bool
+}
+
+// expr answers one question about an expression that mentions a pair-carrying parameter: is it built
+// only out of positions the pair doors answer? An expression that mentions none of them is the ordinary
+// road's own business and is answered true without looking.
+func (g *pairGate) expr(e Expr) bool {
+	if !pairMentions(e, g.pp) {
 		return true
 	}
 	switch n := e.(type) {
 	case *Name:
-		return pp[n.Value]
+		return g.pp[n.Value]
 	case *IntLit, *FloatLit, *BoolLit:
 		return true
 	case *UnOp:
-		return n.Op == "-" && pairExprServed(n.X, pp)
+		return n.Op == "-" && g.expr(n.X)
 	case *BinOp:
 		switch n.Op {
-		case "+", "-", "*", "<", "<=", ">", ">=", "and", "or":
-			return pairOperandServed(n.L, pp) && pairOperandServed(n.R, pp)
+		case "+", "-", "*", "and", "or":
+			return g.operand(n.L) && g.operand(n.R)
+			// A comparison is absent here on purpose: as a *value* it is read by a road that takes one
+			// word for its operand, and has no door for a pair-carrying parameter. Asked as a
+			// *condition* — the position `cond` answers for — the truth door does read the tag
+			// (ADR 0269, ADR 0275), and `def big(v): if v > 10: return v * 2` is served (roadmap
+			// Gap R.161's comparison half names the value position still owed one).
 		}
 	case *Call:
 		// print and str are the two positions a pair is rendered from (ADR 0268's renderer road and the
-		// tag-reading printer); anything else is a position that keeps one word for the value.
+		// tag-reading printer); a call to a function whose own answer is a pair is the third, because the
+		// callee stored the kind beside its return and the caller loads it back. Anything else is a
+		// position that keeps one word for the value.
 		nm, ok := n.Fn.(*Name)
 		if !ok {
 			return false
 		}
+		pairReturning := g.callees[nm.Value]
 		switch nm.Value {
 		case "print", "printf", "str":
-			for _, a := range n.Args {
-				if kw, isKw := a.(*KeywordArg); isKw {
-					if !pairExprServed(kw.Value, pp) {
-						return false
-					}
-					continue
-				}
-				if !pairExprServed(a, pp) {
+		default:
+			if !pairReturning {
+				return false
+			}
+		}
+		for _, a := range n.Args {
+			if kw, isKw := a.(*KeywordArg); isKw {
+				if !g.expr(kw.Value) {
 					return false
 				}
+				continue
 			}
-			return true
+			if !g.expr(a) {
+				return false
+			}
 		}
+		return true
 	}
 	return false
 }
 
-// pairOperandServed answers one operand of an expression that mentions a pair-carrying parameter. An
-// operand that mentions none is the ordinary road's own business, but only where that road is a number:
-// `v * 2` is served, while `"v" + v` is the concatenation road's question and `[v]` the container road's,
-// and neither has a word for a tag. Such a body keeps the convention it has always had — which is the
-// road, and the refusal, the program had before this door.
-func pairOperandServed(e Expr, pp map[string]bool) bool {
-	if !pairMentions(e, pp) {
-		switch e.(type) {
-		case *IntLit, *FloatLit, *BoolLit:
-			return true
-		}
-		return false
+// cond answers the same question where the expression's value is a verdict the truth door reads rather
+// than a number a position has to carry: a comparison over a pair-carrying parameter is served here,
+// because `if v > 10:` asks an operand's truth and ADR 0269's operands and ADR 0275's short-circuit
+// operators both answer a (payload, tag).
+func (g *pairGate) cond(e Expr) bool {
+	if !pairMentions(e, g.pp) {
+		return true
 	}
-	return pairExprServed(e, pp)
+	if n, isBin := e.(*BinOp); isBin {
+		switch n.Op {
+		case "<", "<=", ">", ">=", "==", "!=", "and", "or":
+			return g.condOperand(n.L) && g.condOperand(n.R)
+		}
+	}
+	return g.expr(e)
+}
+
+// condOperand is cond's arm: a comparison's operand is read by the truth door, so a number the pair
+// carries and a number the call sites proved are both asked the same way.
+func (g *pairGate) condOperand(e Expr) bool {
+	if !pairMentions(e, g.pp) {
+		return pairLeavesAreInts(e, g.ip)
+	}
+	return g.cond(e)
+}
+
+// operand answers one operand of an expression that mentions a pair-carrying parameter. An operand that
+// mentions none still has to be one the arithmetic door can pair with a tag of its own: a number, an
+// integer-shaped parameter the call sites have proven, or nothing else. `"a" + v` is the concatenation
+// road's question and `[v]` the container road's, and neither has a word for a tag — such a body keeps
+// the convention, and the refusal, it had before this door.
+func (g *pairGate) operand(e Expr) bool {
+	if !pairMentions(e, g.pp) {
+		return pairLeavesAreInts(e, g.ip)
+	}
+	return g.expr(e)
+}
+
+// pairLeavesAreInts walks an arithmetic-shaped operand and asks every leaf that names a parameter whether
+// the call sites have proven it an integer. Leaves naming no parameter are literals and answer true;
+// anything else — a text, a container, a call — is not a number this door tags.
+func pairLeavesAreInts(e Expr, ip map[string]bool) bool {
+	switch n := e.(type) {
+	case nil:
+		return true
+	case *IntLit, *FloatLit, *BoolLit:
+		return true
+	case *Name:
+		return ip[n.Value]
+	case *UnOp:
+		return pairLeavesAreInts(n.X, ip)
+	case *BinOp:
+		return pairLeavesAreInts(n.L, ip) && pairLeavesAreInts(n.R, ip)
+	case *CondExpr:
+		return pairLeavesAreInts(n.Cond, ip) && pairLeavesAreInts(n.If, ip) && pairLeavesAreInts(n.Else, ip)
+	}
+	return false
 }
 
 // pairMentions asks whether an expression reads one of the named parameters anywhere inside it.

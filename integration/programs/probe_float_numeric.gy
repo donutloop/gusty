@@ -1,11 +1,11 @@
-# Oracle probe (L11.9, ADR 0186) — what is still untrue about float *state* in the compiled
-# backend (roadmap L11.6): `x /= 2` leaves x an int, and a float handed to an untyped parameter keeps
-# the int word — `dbl(0.1)` answers 0 and `bump(1.5)` answers 2 where CPython answers 0.2 and 2.5,
-# every one of them at exit 0 (roadmap Gap P.1, re-measured 2026-10-04 with the third shape written
-# in). The two flooring lines used to be part of the divergence — `-7 // 2` compiled to -3 and
-# `-3.5 % 2.0` answered -1.5, C's truncated remainder — and are now right on both backends
-# (roadmap Gaps R.28, R.30, ADR 0216), so they stay here as the pair that keeps the identity
-# a == (a // b) * b + (a % b) honest rather than as a report of a current defect.
+# Numeric state, on both backends (roadmap L11.6, ADR 0276) — the four rules this program pins are the
+# ones the compiled backend used to answer wrong at exit 0. `x /= 2` rebinds an int variable to a double
+# (ADR 0274 chose the double domain by the operator), and a number handed to a function keeps the kind the
+# argument had: `dbl(0.1)` answers 0.2 and `bump(1.5)` answers 2.5, which is what CPython and the
+# interpreter always answered (Gap P.1's argument half, closed with the (payload, tag) pair crossing the
+# call). The two flooring lines are the identity `a == (a // b) * b + (a % b)` kept honest — `-7 // 2` is
+# -4 and `-3.5 % 2.0` is 0.5 (Gaps R.28, R.30, ADR 0216) — and stay here so a future floor change has to
+# answer them too.
 print(-7 // 2)
 print(-3.5 % 2.0)
 x = 8

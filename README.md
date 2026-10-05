@@ -295,9 +295,30 @@ below its call), and a parameter is opened only where every call site can supply
 and the body reads it back somewhere a pair door answers — the rule the `function_calls` benchmark taught the
 day this landed, when `(a * 31 + b * 17) % 100003` was handed a tag it had nothing to read. Refusals moved
 none of their words: `twice(twice(xs[0][0]))`, `twice(xs[0][0]) + 1`, `[twice(xs[0][0])]` and
-`show(twice(xs[0][0]))` still exit 1 naming the one-word position (`Gap R.146`), and a pair parameter beside
-an ordinary one (`def shift(a, b=100): return a + b`) is filed as `Gap R.154` rather than answered by an
-assumed kind.
+`show(twice(xs[0][0]))` still exit 1 naming the one-word position (`Gap R.146`).
+
+**A number handed to a function keeps the kind its argument had** (ADR 0276, closing `Gap P.1`'s remaining
+half, `Gap R.154`, `Gap R.157`, `Gap R.158`).
+`def twice(v): return v * 2` / `print(twice(2.5))` is CPython's `5.0` and the interpreted leg's `5.0`; the
+compiled leg printed `4`, and `print(twice(1.5))` printed `2`, `print(area(2.5, 2))` printed `4`, a
+`greet(name, times=1.5)` called without `times` printed `1` — every one at **exit 0**, because the parameter had
+one word and the argument had two. One `double` convention cannot express the function: CPython's answer kind
+follows the argument, so `twice(2)` must stay `4` while `twice(2.5)` is `5.0`. The pair crosses now, and the
+scan asks the question ADR 0273 never asked — not *would the ordinary road refuse this argument* but *would it
+refuse it, or answer a double it cannot carry* — so a float literal, a variable the program rebound to a double,
+a quotient, a slot of a literal list holding one, and a default no call site mentions all take the two words,
+while the parameters every call site hands integers are named (`knownIntParams`) so `w * h` has a kind for both
+operands. The answer direction came with it: `def g(y): return y * 2` under
+`def f(x): x = x + 1.5; return g(x)` used to print `2` for CPython's `5.0` and now hands the callee's pair on,
+lifted by `@rt_lift_num` where the caller's own word is a `double`. Two rules keep the ladder honest, both of
+them scan answers rather than emission-order answers: a body written under ADR 0274's `double` return or
+ADR 0174's string index keeps its parameter words (`define double @gy_f(double %p0)` stays exactly that spelling,
+and `def fmt(v): return str(v)` keeps its refusal instead of printing an interned index), and a **condition** is
+served where a **value** is not — `if v > 10:` asks an operand's truth and takes the pair, `return v > 1.5` asks
+a road that has one word and keeps the `True`/`False` it always printed. What still owes an answer is filed
+rather than guessed: a double forwarded through a second function's parameter prints `4` (`Gap R.161`), `//` and
+`%` over a pair truncate (`Gap R.162`), and `def g(): return str(42)` prints the interned index (`Gap R.163`,
+pre-existing, found by this cycle's whole-corpus sweep).
 
 **An int that meets `/=` becomes a float** (ADR 0274, closing `Gap P.1`'s `/=` half and `Gap R.155`).
 `x = 7` / `x /= 2` / `print(x)` is CPython's `3.5` and the interpreted leg's `3.5`; the compiled leg printed
@@ -314,10 +335,11 @@ allocation into its neighbour, and the module verified because an opaque pointer
 `ptr` points at. Measured, not predicted: with the variable's GC root missing, `h = 1` / `h /= 3` answered
 `print(h + 1)` correctly and `print(h * 2)` with the first print's answer — the collector had recycled the
 box under a slot it was told held no handle. What still exits 1 naming the position that keeps one word is
-the state travelling further: returned from a function (`Gap R.156`), changed twice in one variable — the
-`t += i / 2` accumulator (`Gap R.157`), handed to a function (`Gap R.158`), stored as a container element
-(`Gap R.159`), ordered against a float literal (`Gap R.160`). `Gap P.1` stays open for its other half: an
-untyped parameter that receives a double keeps the int word, and prints `0`.
+the state travelling further: returned from a function (`Gap R.156`), stored as a container element
+(`Gap R.159`), ordered against a float literal (`Gap R.160`). The two rows this line used to carry — the
+`t += i / 2` accumulator (`Gap R.157`) and a float-state name handed to a call (`Gap R.158`) — answer `6.5`
+and `5.0` now, and `Gap P.1`'s other half, an untyped parameter that receives a double, closed with ADR 0276
+above.
 
 **A data module's constant keeps the type the module declares** (ADR 0272, closing L11.6's typed stdlib
 constants). `import math` / `print(math.PI)` printed `3` compiled at exit 0 — the census table's own row —

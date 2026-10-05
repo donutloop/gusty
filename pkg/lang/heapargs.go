@@ -5205,6 +5205,31 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 			return "", "", false, verr
 		}
 		return v, "0", true, nil
+	case *BinOp:
+		// An arithmetic operand is either the pair the one door answers, or a plain number the ordinary
+		// numeric road already values and which needs no tag beyond 0: `(a + b) + c` over
+		// `total(1, 2, 3.5)` is that shape, where the left half is entirely the ordinary road's business
+		// and only the outer operation has to ask a tag (roadmap L11.6, Gap P.1).
+		if p, t, okPair, pairErr := g.taggedArithPair(b, e); pairErr != nil {
+			return "", "", false, pairErr
+		} else if okPair {
+			return p, t, true, nil
+		}
+		if g.isFloat(e) || g.isFloatNumericOperand(e) {
+			d := g.floatValue(b, e)
+			if d == "" {
+				return "", "", false, nil
+			}
+			g.heapUsed = true
+			hb := g.newTmp()
+			fmt.Fprintf(b, "  %s = call i32 @rt_float_new(double %s)\n", hb, d)
+			return hb, "1", true, nil
+		}
+		if v, verr := g.value(b, e); verr == nil && v != "" && !g.isFloat(e) {
+			return v, "0", true, nil
+		} else if verr != nil {
+			return "", "", false, verr
+		}
 	case *Index:
 		if v, t, okPair := g.runtimeSlotPairDeep(b, e); okPair {
 			return v, t, true, nil

@@ -43,6 +43,17 @@ func TestAFloatRebindingBindsThePairRatherThanWideningTheStore(t *testing.T) {
 		{"the remainder keeps its kind", "x = 7\nx %= 2\nprint(x)\n", "1\n"},
 		{"a sum keeps its kind", "x = 2\nx += 3\nprint(x)\n", "5\n"},
 		{"a variable born a float is unchanged", "y = 12345\nx = 8.0\nx = 2.5\nprint(x, y)\n", "2.5 12345\n"},
+		{
+			// A float-state variable handed to a function is the same pair, one boundary further out:
+			// the argument arrives as (payload, tag) and the callee's arithmetic lifts the box back
+			// (roadmap L11.6, Gap P.1's argument half and Gap R.157's accumulator).
+			"a call handed the float-state name",
+			"def twice(v):\n    return v * 2\n\nx = 8\nx = 2.5\nprint(twice(x))\n", "5.0\n",
+		},
+		{
+			"the state changed twice in the same variable",
+			"t = 0\nfor i in [4, 9]:\n    t += i / 2\nprint(t)\n", "6.5\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := Compile(tc.src)
@@ -121,16 +132,6 @@ func TestAFloatStateVariableRefusesWhereAPositionKeepsOneWord(t *testing.T) {
 		{
 			"a container element",
 			"x = 8\nx = 2.5\nprint([x, 1])\n",
-			"this position keeps one word",
-		},
-		{
-			"the state changed twice in the same variable",
-			"t = 0\nfor i in [4, 9]:\n    t += i / 2\nprint(t)\n",
-			"this position keeps one word",
-		},
-		{
-			"a call handed the float-state name",
-			"def twice(v):\n    return v * 2\n\nx = 8\nx = 2.5\nprint(twice(x))\n",
 			"this position keeps one word",
 		},
 	} {
