@@ -4548,16 +4548,10 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
-			if o, ok := e.heap[av]; ok && o.kind == "float" {
-				if o.fval < 0 {
-					return e.allocFloat(-o.fval), nil
-				}
-				return av, nil
-			}
-			if av < 0 {
-				return -av, nil
-			}
-			return av, nil
+			// The door asks the operand what it is before it writes a number: `abs("hi")` used to hand the
+			// interned index to the int evaluator, so the program printed `hi` at exit 0 where the reference
+			// raises `TypeError: bad operand type for abs(): 'str'` (roadmap Gap R.140, ADR 0270).
+			return e.absolute(av)
 		case "floor", "ceil", "sqrt":
 			// The three names `predeclared.go` has always advertised and the checker has always
 			// typed, and that the evaluator has never answered: `print(floor(3.7))` trapped

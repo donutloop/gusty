@@ -7161,6 +7161,21 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 				}
 			}
 			if id, ok := n.Fn.(*Name); ok && id.Value == "abs" && len(n.Args) == 1 {
+				// The double door asks the same question the i32 door asks. Landing here with an operand that
+				// has no number in it is what made `print(abs("hi") * 2.5)` answer `0.0` at exit 0: the operand
+				// lowered to nothing, and the intrinsic took an empty operand (roadmap Gap R.140, ADR 0270).
+				if kind, bad := g.absOperandKind(n.Args[0]); bad {
+					raised := false
+					if ix, isIdx := n.Args[0].(*Index); isIdx {
+						_, raised = g.emitBadAbsOfSlot(b, ix, n.Span())
+					}
+					if !raised {
+						// One kind, or a slot the literal does not describe: the same raise, from the name the
+						// door already has.
+						g.emitBadAbs(b, kind, n.Span())
+					}
+					return "0.0"
+				}
 				t := g.newTmp()
 				fmt.Fprintf(b, "  %s = call double @llvm.fabs.f64(double %s)\n", t, g.floatValue(b, n.Args[0]))
 				return t
@@ -12526,6 +12541,25 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			return fmt.Sprintf("%d", il.Value), nil
 		}
+		// `abs` is a numeric use, so it asks the unary minus's question of an operand whose kind the source
+		// spells (ADR 0266's door, one table, one wording): a text, `None`, a container or an instance has no
+		// number in it, and negating the word the value happens to be stored as is the answer this door used
+		// to give — `abs("hi")` printed `0`, `abs([1])` wrote `sub i32 0, @.lst1` and spent the contract's
+		// "the compiler is broken" code on a program the reference merely stops on
+		// (roadmap Gap R.140, ADR 0270).
+		if kind, bad := g.absOperandKind(c.Args[0]); bad {
+			raised := false
+			if ix, isIdx := c.Args[0].(*Index); isIdx {
+				_, raised = g.emitBadAbsOfSlot(b, ix, c.Span())
+			}
+			if !raised {
+				// One kind, or a slot the literal does not fully describe: the same raise, from the name the
+				// door already has. Falling through to the numeric road here is the answer this door used to
+				// give, and it is the one ADR 0166 forbids.
+				g.emitBadAbs(b, kind, c.Span())
+			}
+			return "0", nil
+		}
 		v, err := g.value(b, c.Args[0])
 		if err != nil {
 			return "", err
@@ -14779,6 +14813,11 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			return nil
 		}
 		if nm, ok := n.Target.(*Name); ok {
+			// Whatever this statement binds, the records the *previous* binding left behind stop applying.
+			// ADR 0172 states the rule and ADR 0267 built the door for the tag; the interned-text record has
+			// been missed, which is why `x = "text"` then `x = [1, 2]` printed `text` compiled at exit 0
+			// (roadmap Gap R.145, ADR 0270). Asked before anything below records the new kind.
+			g.retireVarStatuses(nm.Value, n.Value)
 			// union-annotated scalar variable: tag its slot for runtime dispatch
 			if g.unionVars == nil {
 				g.unionVars = map[string]bool{}

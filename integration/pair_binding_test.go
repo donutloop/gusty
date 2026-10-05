@@ -101,31 +101,38 @@ func TestARebindingRetiresTheTagAtTheCLI(t *testing.T) {
 	}
 }
 
-// TestAContainerRebindingRetiresTheTextBindingToo pins the sibling of Gap R.142 that this cycle
-// did not bring in: an interned-text binding that outlives the binding which replaced it. Measured
-// on the pre-cycle binary, so it is a row rather than a regression — see docs/roadmap-details.md.
-// TestAContainerRebindingRetiresTheTextBindingToo is the filed-not-fixed sibling of Gap R.142 that this
-// cycle did not bring in: an interned-text binding that outlives the binding which replaced it, measured
-// on the pre-cycle binary and so a row rather than a regression. The assignment stores a container and
-// leaves the earlier binding's interned text where the print dispatch reads it, at exit 0. The row is
-// written to fail the day Gap Q.1's status table retires it. See docs/roadmap-details.md.
+// TestAContainerRebindingRetiresTheTextBindingToo is the row Gap R.145 filed and ADR 0270 paid. It used to
+// be a filed-not-fixed table pinning the compiled leg's `text` — the print dispatch reading the
+// interned-text record the earlier binding left behind, at exit 0, beside the interpreter and CPython
+// printing `[1, 2]`. It now asserts the reference's answer on both legs, and fails the day a binding path
+// starts leaving a status behind again (roadmap Gap R.145, ADR 0270).
 func TestAContainerRebindingRetiresTheTextBindingToo(t *testing.T) {
-	src := "n = \"text\"\nn = [1, 2]\nprint(n)\n"
-	dir := t.TempDir()
-	gy := writeSrc(t, dir, "rebinding_of_text_with_a_container.gy", src)
-	if py, ok := cpythonPlainOut(t, dir, src); !ok || py != "[1, 2]\n" {
-		t.Fatalf("the reference is expected to print [1, 2], said %q (ok %v)", py, ok)
-	}
-	if out, code := cliRunCode(t, "--interp", "--file", gy); code != 0 || out != "[1, 2]\n" {
-		t.Errorf("--interp: exit %d, stdout %q, want the reference's [1, 2]", code, out)
-	}
-	out, code := cliRunCode(t, "--aot", "--file", gy)
-	if code == 2 {
-		t.Fatalf("--aot: exit 2 (ADR 0166):\n%s", out)
-	}
-	if code != 0 || out != "text\n" {
-		t.Errorf("--aot: exit %d, stdout %q, expected the filed Gap R.145 answer — the print dispatch's "+
-			"interned-text record of the earlier binding, at exit 0", code, out)
+	for _, tc := range []struct{ name, src, want string }{
+		{"a container over a text", "n = \"text\"\nn = [1, 2]\nprint(n)\n", "[1, 2]\n"},
+		{"a dict over a text", "n = \"text\"\nn = {\"a\": 1}\nprint(n)\n", "{'a': 1}\n"},
+		{"a number over a text", "n = \"text\"\nn = 5\nprint(n)\n", "5\n"},
+		{"None over a text", "n = \"text\"\nn = None\nprint(n)\n", "None\n"},
+		{"a text over a number", "n = 5\nn = \"hi\"\nprint(n)\n", "hi\n"},
+		{"a text keeps what it needs", "n = \"a\"\nn = \"abc\"\nprint(len(n))\n", "3\n"},
+		{"the arithmetic asks the new value", "n = \"text\"\nn = 5\nprint(n * 2)\n", "10\n"},
+		{"the method asks the new value", "n = 5\nn = \"abc\"\nprint(n.upper())\n", "ABC\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			gy := writeSrc(t, dir, "rebinding.gy", tc.src)
+			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
+				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, "--file", gy)
+				if code == 2 {
+					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
+				}
+				if code != 0 || out != tc.want {
+					t.Errorf("%s: exit %d, stdout %q, want the reference's %q — a status outlived its binding\nsrc: %s", engine, code, out, tc.want, tc.src)
+				}
+			}
+		})
 	}
 }
 

@@ -42,6 +42,55 @@ func negationOperandIsLiterallyNotANumber(e Expr) bool {
 	return false
 }
 
+// signlessOperandKind is ADR 0266's question — *what kind is this operand?* — asked for the other door that
+// has no meaning for a value without a sign: `abs`. `abs("hi")` answered `hi` interpreted (the interned index
+// rode on as the value) and `0` compiled, both at exit 0, and `abs([1])` had `llc` reject the module — exit 2,
+// spent on a program the reference merely stops on (roadmap Gap R.140, ADR 0270).
+//
+// It is the same question and the same table, not a copy: one predicate names a value for the unary minus,
+// for `abs`, for the printer and for the raise's wording, which is what keeps `-x` and `abs(x)` from
+// disagreeing about what `x` holds. `negationOperandKind` is the delegation, kept under its own name because
+// ADR 0266's tests ask it directly.
+func (g *irGen) signlessOperandKind(e Expr) (string, bool) { return g.negationOperandKind(e) }
+
+// absOperandKind is the door `abs` asks.
+func (g *irGen) absOperandKind(e Expr) (string, bool) { return g.signlessOperandKind(e) }
+
+// absolute is the interpreter's `abs`, and it asks the unary minus's question of its operand: a float box and
+// a bool box answer with their payloads, an unboxed int is its own number, and every other object the heap
+// can hand back stops the program with the reference's sentence — `bad operand type for abs(): 'str'`, named
+// by the same `operandKind` the negation, the binary operators and `len` already read (roadmap Gap R.140,
+// ADR 0270). Until this door the interpreter negated the handle: `abs("hi")` returned the interned index, so
+// `print(abs("hi"))` printed `hi` at exit 0 while CPython stops.
+func (e *Evaluator) absolute(v int64) (int64, error) {
+	if fv, ok := e.floatOf(v); ok {
+		if fv < 0 {
+			return e.allocFloat(-fv), nil
+		}
+		return v, nil
+	}
+	if bv, ok := e.boolOf(v); ok {
+		// abs(True) is 1: a verdict is a number to this language, and the payload answers, exactly as it
+		// does for `True + 1` (ADR 0259).
+		if bv < 0 {
+			return -bv, nil
+		}
+		return bv, nil
+	}
+	if o, ok := e.heap[v]; ok && o != nil && e.isHandle(v) {
+		switch o.kind {
+		case "float", "bool":
+		default:
+			class, msg := unsupportedNumberOp("abs", e.operandKind(v), "")
+			return 0, exnError(class, msg)
+		}
+	}
+	if v < 0 {
+		return -v, nil
+	}
+	return v, nil
+}
+
 // negate is the interpreter's unary minus. A float box and a bool box answer with their payloads, an
 // unboxed int is its own number, and every other object the heap can hand back stops the program with the
 // reference's sentence — named by the same `operandKind` the binary operators and `len` already read, so one
@@ -242,6 +291,55 @@ func (g *irGen) negationSlotKinds(ix *Index) ([]struct {
 		return nil, false
 	}
 	return others, true
+}
+
+// emitBadSignless is the raise for a signless operation on a value that has no sign: the reference's own
+// sentence, named by the operation so `abs` and the unary minus cannot borrow each other's wording
+// (`bad operand type for abs(): 'str'` is not `bad operand type for unary -: 'str'`).
+func (g *irGen) emitBadSignless(b *strings.Builder, op, kindName string, sp Span) string {
+	class, msg := unsupportedNumberOp(op, kindName, "")
+	g.raiseTo(b, exnCode(class), class, msg, sp)
+	cont := g.newLabel(op + "raise")
+	b.WriteString(cont + ":\n")
+	return "0"
+}
+
+// emitBadAbs is the raise `abs` writes when its operand denotes something without a number in it.
+func (g *irGen) emitBadAbs(b *strings.Builder, kindName string, sp Span) string {
+	return g.emitBadSignless(b, "abs", kindName, sp)
+}
+
+// emitBadSignlessOfSlot is the same raise read off the object, one branch per kind the literal says the slot
+// can report, so every path out of the read raises.
+func (g *irGen) emitBadSignlessOfSlot(b *strings.Builder, ix *Index, op string, sp Span) (string, bool) {
+	kinds, ok := g.negationSlotKinds(ix)
+	if !ok {
+		return "", false
+	}
+	_, tag, pairOk := g.runtimeSlotPair(b, ix)
+	if !pairOk || tag == "" {
+		return "", false
+	}
+	g.heapUsed = true
+	for i, k := range kinds {
+		class, msg := unsupportedNumberOp(op, k.name, "")
+		if i == len(kinds)-1 {
+			g.raiseTo(b, exnCode(class), class, msg, sp)
+			break
+		}
+		cmp := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", cmp, tag, k.tg)
+		g.markI1(cmp)
+		g.branchRaise(b, cmp, class, msg, sp, op+"slot")
+	}
+	cont := g.newLabel(op + "raise")
+	b.WriteString(cont + ":\n")
+	return "0", true
+}
+
+// emitBadAbsOfSlot is `abs` of a slot the literal says holds no number.
+func (g *irGen) emitBadAbsOfSlot(b *strings.Builder, ix *Index, sp Span) (string, bool) {
+	return g.emitBadSignlessOfSlot(b, ix, "abs", sp)
 }
 
 // emitBadNegation writes the raise the reference raises for `-x` when x denotes something without a sign,

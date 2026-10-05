@@ -2660,6 +2660,48 @@ func (g *irGen) forgetTaggedBinding(name string) {
 	delete(g.taggedOrigin, name)
 }
 
+// retireVarStatuses is ADR 0172's latest-binding rule for the records that are not the tag and not the
+// container kind — the interned text and the class an instance came from. The rule has always been stated
+// ("the variable's latest assignment decides how print lowers, and any other assignment clears the
+// status"); what was missing is one place that applies it to *every* status. `boolVars` and `noneVars` each
+// have their own forget helper and their own call, and the interned-text pair has none: `x = "text"` then
+// `x = [1, 2]` left `internedVars[x]` standing, and the compiled `print(x)` answered `text` at exit 0 while
+// CPython and the interpreter answered `[1, 2]` (roadmap Gap R.145, measured again while landing the signless
+// doors of ADR 0270, which read the same records and would have raised on `x = "text"` / `x = 5` / `abs(x)`).
+//
+// It clears only what the new binding contradicts, and it is called before the binding records its own
+// kinds, so a program that rebinds a name to the same family keeps the record it needs.
+func (g *irGen) retireVarStatuses(name string, rhs Expr) {
+	if name == "" || rhs == nil {
+		return
+	}
+	if !g.bindingIsText(rhs) {
+		delete(g.strVals, name)
+		delete(g.internedVars, name)
+	}
+	if _, isCall := rhs.(*Call); !isCall {
+		// Only a construction can bind an instance; anything else retires the class the print
+		// dispatch and the method call would otherwise keep reading.
+		delete(g.varClasses, name)
+	}
+}
+
+// bindingIsText asks whether this right-hand side leaves the name holding an @str_tab index — the same
+// question the print dispatch asks, asked of the expression that is about to be stored (ADR 0229's one
+// predicate, read at the binding).
+func (g *irGen) bindingIsText(e Expr) bool {
+	if _, ok := g.stringVal(e); ok {
+		return true
+	}
+	if g.exprIsString(e) || g.printsAsInternedStr(e) {
+		return true
+	}
+	if c, ok := e.(*Call); ok {
+		return g.callReturnsStr(c)
+	}
+	return false
+}
+
 // taggedContainerRead reads the slot named by `ix` out of the container `ix.Obj` denotes.
 // It applies where the ordinary read path cannot: the object being subscripted is itself a read (`xs[0][1]`,
 // `d["a"][0]`, `m[0][1]`, `t[0][0][0]`), so the compiler has no literal to look at and no static
@@ -4140,6 +4182,11 @@ func unsupportedNumberOp(op, kind, other string) (string, string) {
 		// `-xs[i]` is its own operator to CPython, with its own sentence. Spelling the negation as
 		// `0 - xs[i]` would have raised the binary one, which is a different program's error.
 		return "TypeError", fmt.Sprintf("bad operand type for unary -: '%s'", kind)
+	case "abs":
+		// `abs("hi")` is CPython's own sentence, and it is *not* the negation's: the reference names the
+		// call, not an operator. One table, one wording per operation, so the interpreter, the emitted
+		// raise and the tests cannot disagree (roadmap Gap R.140, ADR 0270).
+		return "TypeError", fmt.Sprintf("bad operand type for abs(): '%s'", kind)
 	default:
 		if op == "+" && kind == "str" {
 			return "TypeError", fmt.Sprintf("can only concatenate str (not %q) to str", other)

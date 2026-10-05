@@ -745,6 +745,29 @@ operands agree and leaves it dynamic when they do not, so `x: int = 2 and 3` che
 is the mismatch it always should have been. `--json --eval` reports the same pair the printer does:
 `"type": "bool"` with `True or 1`, `"type": "int"` with `1 or True`.
 
+### A name answers with its **latest binding** (ADR 0172's rule, Gap R.145, ADR 0270)
+
+What a name *is* — a text, `None`, a verdict, a container, an instance, a tagged pair — is decided by the
+last statement that bound it, and every earlier record is retired at that binding:
+
+```gy
+x = "text"
+x = [1, 2]
+print(x)        # [1, 2]
+x = 5
+print(x, x * 2) # 5 10
+x = "abc"
+print(x.upper())# ABC
+```
+
+The compiled backend keeps a notebook of these statuses because an untagged `i32` cannot carry a kind, and
+the notebook used to be retired one status at a time — the verdict, `None` and the tag each had their own
+clear-on-rebind, and the interned-text record had none. That is why `x = "text"` followed by `x = [1, 2]`
+printed `text` at exit 0, why the same program refused `x * 2`, and why `-x` raised
+`TypeError: bad operand type for unary -: 'str'` for a program CPython answers with `-5`. The door is now
+one function called at the binding, and it asks the print dispatch's own predicate about the right-hand
+side, so the notebook and the printer cannot disagree about what the name holds.
+
 ## None
 
 `None` is a real value — a singleton with its own dynamic type (`None`, value tag

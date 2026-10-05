@@ -229,7 +229,11 @@ take that road only under a program-wide proof that the slots hold numbers, beca
 absent the old refusal stands, and the positions the door does not reach are filed (`Gaps R.139`, `R.143`, `R.144`).
 The answer is a value, so it survives being named before it is read: `n = xs[0][0] * 2` / `print(n)` is `14`
 compiled too, and the rebinding `n = [1, 2]` behind it prints `[1, 2]`, because a binding that is not a pair
-retires the tag the arithmetic left behind (`Gap R.142`, ADR 0267). Every position that asks that name for a
+retires the tag the arithmetic left behind (`Gap R.142`, ADR 0267) — and a binding retires *every* other
+status the same way now (`Gap R.145`, ADR 0270): `x = "text"` then `x = [1, 2]` used to print `text`
+compiled at exit 0, because the interned-text record of the first binding was still where the print dispatch
+reads it, and the compiled leg still refused `x * 2` and *raised* `bad operand type for unary -: 'str'` for a
+program whose answer is `-5`. A name answers with what its latest binding gave it, on both engines. Every position that asks that name for a
 *number* now asks the pair: `n + 1`, `-n`, `n > 13`, `if n:`, a `while` head, `f"{n}"`, `str(n)`, `n += 1`
 (ADR 0268) — a name the arithmetic door bound is provably a whole number or a float, so the position lifts it
 into the one word that holds both families rather than guessing. What still refuses is a position that keeps
