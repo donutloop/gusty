@@ -105,17 +105,17 @@ func TestBuildDebugReportsDWARF(t *testing.T) {
 	}
 	var doc struct {
 		Debug *struct {
-			Tagged      int  `json:"tagged"`
-			Instructions int  `json:"instructions"`
-			Subprograms int  `json:"subprograms"`
-			Defect      string `json:"defect"`
+			Tagged       int    `json:"tagged"`
+			Instructions int    `json:"instructions"`
+			Subprograms  int    `json:"subprograms"`
+			Defect       string `json:"defect"`
 		} `json:"debug"`
 		DWARF *struct {
-			Skipped bool  `json:"skipped"`
-			Ran     bool  `json:"ran"`
-			OK      bool  `json:"ok"`
-			Rows    int   `json:"line_rows"`
-			Source  []int `json:"source_lines"`
+			Skipped bool   `json:"skipped"`
+			Ran     bool   `json:"ran"`
+			OK      bool   `json:"ok"`
+			Rows    int    `json:"line_rows"`
+			Source  []int  `json:"source_lines"`
 			Note    string `json:"note"`
 		} `json:"dwarf"`
 	}
