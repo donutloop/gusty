@@ -1,0 +1,26 @@
+# A declared name is not a variable, and a function is not a number (Gap R.150, Gap R.151, Gap R.153,
+# ADR 0283). Reading a def'd name is no longer a NameError, so a function flows through a parameter on
+# the interpreter; the numeric door raises CPython's sentence rather than reaching the arithmetic that
+# used to hand llc a load of a slot no `def` allocated.
+def twice(v):
+    return v + v
+
+def apply(f, xs):
+    out = []
+    for x in xs:
+        out.append(f(x))
+    return out
+
+g = twice
+print(g(21))
+print(apply(twice, [1, 2, 3]))
+h = lambda x: x * 3
+print(h(4))
+try:
+    print(abs(twice))
+except TypeError:
+    print('caught the function operand')
+try:
+    print(-twice)
+except TypeError:
+    print('caught the negation')

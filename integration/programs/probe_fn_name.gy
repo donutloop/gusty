@@ -1,7 +1,8 @@
-# Oracle probe (L11.9, ADR 0186) — a def'd function used as a *value* (passed as an
-# argument) is not resolvable on either backend: the interpreter reports
-# `undefined name twice`, so a name and a lambda are two different things today
-# (L11.7). Python treats them alike.
+# Oracle probe (L11.9, ADR 0186; ADR 0283) — a def'd function used as a *value* (passed as an
+# argument). The interpreter answers CPython's `[2, 4]` now that a top-level `def` binds its own
+# name, the way a `lambda` bound to a name always has; before ADR 0283 it reported
+# `undefined name twice`. The compiled leg still refuses, because the body calls a *parameter*
+# (`f(x)`), which is the higher-order limit L11.7 records rather than this row's name lookup.
 def twice(v):
     return v + v
 

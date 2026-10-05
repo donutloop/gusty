@@ -7339,3 +7339,57 @@ matrix 150 → 151 rows, 114 → 115 parity, 99 → 100 `match`, 0 fail, 0 drift
 **Next.** L11.8's `while`-at-1000-lines row — the ladder has a *working* answer that becomes a hang,
 which is a third failure class (besides wrong number and wrong refusal) and the first one that needs a
 timeout to measure.
+
+---
+
+## Cycle: a declared name is not a variable (Gap R.150/R.151 exit-2 half closed; Gap R.167, Gap R.168 filed; ADR 0283)
+
+**What shipped.** Seven program shapes left `--aot` through **exit 2** — `llc` rejecting the module for an
+ordinary program. `print(f)`, `f + 1`, `xs = [f]`, `str(f)`, `print(math + 1)`, `print(lambda x: x)`, and
+the `abs`/negation family. All are exit 1 (naming the missing value) or exit 3 (raising CPython's exact
+sentence) now, and the interpreter reads a `def`'d name instead of reporting `NameError` for a name the
+program declared one line earlier.
+
+**The one mistake with two faces.** `nameIsBound` answered yes for `g.funcs[nm]` — the map that makes a
+*call* legal — so the value road loaded `%_f`, a slot a `def` never allocates; and `value()`'s `*Lambda`
+case returned the generated function name as if it were an `i32`, putting a `define`'s label in a `printf`
+operand. Same root as Gap R.150's `%_len`/`%_math`: **a name that is not a variable was read as one**.
+
+**The lesson about *where* a guard goes.** My first draft guarded the arithmetic roads. `f + 1` exited 2
+anyway, because the float/pair road lowers both operands through `value()` *before* the operator is
+consulted — by the time any operator-level guard ran, the bad load was already emitted. A guard belongs at
+the choke point (the read), not beside the consumer. That is the same shape as cycle 8's "one guard per road
+keeps producing this bug", discovered from the other side.
+
+**The trade I nearly made, caught by a test I wrote for a different reason.** Binding a `def`'d name in the
+interpreter made `f(1, 2)` print `2` at exit 0: the call road asks `e.Vars` before `e.funcs`, and the closure
+road pads and drops arguments without asking. That is the ladder's forbidden direction — a working answer
+becoming a wrong number — and the fix was a **reordering**, not an undo. The pin fails on *silence*: if the
+program produces any output at all, the row is red. Tests that fail on a wrong value would have passed here,
+because there is no wrong value to compare against — the reference's behaviour is to raise.
+
+**Errors I made, all named.**
+- **Real compile errors (3):** an invented `g.importedModule`; a duplicate `case *Name` in one type switch
+  (Go rejects it, correctly — the two `*Name` arms had to be merged, which was also the better design); an
+  invented `lambdaIsACallableValue`/`callChecked`/`closureShadowSuffix` triple in the call road, dropped in
+  favour of the plain reordering the file already supported.
+- **Missing imports, twice:** `undefined: exec` in a new integration file — the package's `cliRunMerged` is
+  in another file, so a new file needs its own `os/exec`.
+- **Test-expectation errors (4), each teaching a fact:** I asserted a runtime `NameError` for `print(nope)`
+  when the checker refuses it first (`verify: undefined name "nope"`); I asserted `too many arguments` for
+  `f(1, 2)` when the *checker* answers with `expects 1 argument, got 0` — two stages, **two arity
+  vocabularies**, which is now a fact in Gap R.168's row; I asserted a non-existent `captureStdoutErr` and
+  had to adopt `trapRun`/`runIRMayTrap`; and my full-traceback string expectations were replaced by
+  class+message comparisons once I found ADR 0271's own test file as the sibling.
+- **A shell-quoting error in my sweep script** (an unmatched apostrophe in the `norm` sed) — instrumentation,
+  not the compiler, and worth separating because a broken instrument reads as "nothing changed".
+
+**Instruments.** 161-file sweep against `/tmp/new7/pyre`: only the two intended probes moved (both
+refusal→answer); nothing else in the corpus changed number *or* wording. The `int()`/`float()` panic row
+(`Gap R.131`) is byte-identical on both binaries — checked, since my sweep flagged it as a "diff" purely
+because of the addresses in the stack trace. Matrix 151 → 152 rows, 100 `match`, 0 fail, 0 drift;
+`probe_fn_name.gy` promoted from *both legs fail* to the interpreter answering `[2, 4]`.
+
+**Next.** The queue's next eligible row. Two candidates I measured on the way and filed properly rather than
+silently fixing: `Gap R.167` (a function has no value to be — the feature) and `Gap R.168` (the closure road
+drops arity — a wrong number at exit 0, which is the class that always outranks a refusal).

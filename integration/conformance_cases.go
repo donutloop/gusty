@@ -485,8 +485,13 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_math_const",       // L11.6 — a stdlib float constant folds to int
 		"probe_enumerate",        // L11.7 + L11.3 — enumerate/zip/reversed yield tuples
 		"probe_fn_value",         // L11.7 — a lambda cannot be called through a parameter
-		"probe_fn_name",          // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",     // Gap L.5 — print writes while it evaluates
+		"probe_fn_name",
+		// A declared name is not a variable, and a function is not a number: reading a `def`'d name is no
+		// longer a NameError, so a function flows through a parameter on the interpreter, and the numeric
+		// door raises CPython's `'function'`/`'module'` sentence instead of handing `llc` a load of a slot
+		// no `def` allocated (roadmap Gap R.150, Gap R.151, Gap R.153, ADR 0283).
+		"probe_a_function_as_a_value", // L11.7 — a def'd name is not a value at all
+		"probe_print_atomic",          // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 
@@ -783,10 +788,23 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "calling a function through a parameter is `unsupported call \"f\"` in AOT: no fnptr operand, no indirect call lowering",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[3, 6]\n"}, {Backend: "aot", Missing: true}}},
+	// The interpreter leg closed with ADR 0283: a top-level `def` now binds its own name to the same
+	// closure handle a `lambda` gets, so `apply(twice, [1, 2])` maps the function and answers CPython's
+	// `[2, 4]` instead of `undefined name twice`. Only the compiled leg still owes it — its body calls a
+	// *parameter*, which is the higher-order limit L11.7 records — so this stays a debt row with one pin
+	// answered and one still missing (roadmap Gap R.150, Gap R.151, ADR 0283).
 	"programs/probe_fn_name": {oracle: lang.OracleDebt,
-		reason: "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
+		reason: "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
 		ref:    "roadmap L11.7 (functions are values that compile)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[2, 4]\n"}, {Backend: "aot", Missing: true}}},
+	// Five lines of CPython parity on the interpreter. The compiled leg answers the two trap lines
+	// (`abs(twice)`, `-twice`) byte-for-byte and refuses only the higher-order body — `apply` calls a
+	// *parameter* — which is L11.7's limit rather than this row's name lookup, so the row is a debt with
+	// one leg whole and one leg refused (roadmap Gap R.150, Gap R.151, ADR 0283).
+	"programs/probe_a_function_as_a_value": {oracle: lang.OracleDebt,
+		reason: "the interpreter answers CPython's five lines; the compiled leg refuses the body that calls a parameter (`unsupported call \"f\"`), the higher-order limit L11.7 records",
+		ref:    "roadmap L11.7 (functions are values that compile); Gap R.150, Gap R.151, Gap R.153 (ADR 0283)",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "42\n[2, 4, 6]\n12\ncaught the function operand\ncaught the negation\n"}, {Backend: "aot", Missing: true}}},
 	"programs/probe_comp_runtime_reduce": {oracle: lang.OracleDebt,
 		reason: "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
 		ref:    "roadmap L11.7 (functions are values that compile)",

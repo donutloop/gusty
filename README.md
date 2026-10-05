@@ -550,6 +550,24 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A declared name is **not a variable**, and a function is **not a number** (ADR 0283, closing the exit-2
+half of `Gap R.150` and `Gap R.151`). `print(f)`, `f + 1`, `xs = [f]`, `str(f)`, `print(math + 1)` and
+`print(lambda x: x)` all left `--aot` through **exit 2** — `llc-20` rejecting a module that emitted
+`load i32, i32* %_f` for a slot no `def` ever allocated (a `def` writes a global `@gy_f` and allocates
+nothing), or writing the closure's function global into an operand: `printf(…, i32 lambda_0)`,
+`sub i32 0, lambda_0`. The guard sits at the **read**, in `value()`'s `*Name` case, because the first draft
+put it in the arithmetic roads and `f + 1` exited 2 anyway — the float road lowers its operands before the
+operator asks anything, so by the time the guard ran, the load was already in the module. In the numeric
+door the answer is a **raise**, not a refusal: `abs(f)`, `-f`, `abs(math)`, `-(lambda x: x)` print CPython's
+`bad operand type for abs(): 'function'` / `'module'` byte-for-byte on both engines and are catchable.
+A *binding* is a different thing and still works: `g = f` / `g(21)` is `42` interpreted, a lambda through a
+parameter is `12` on both engines — `nameIsAValueWithNoSign` asks `params` first so the fix is not a ban on
+functions as arguments. Binding the `def`'d name in the interpreter is what made reading it stop being a
+`NameError` for a name the program had just declared, and it briefly routed `f(1, 2)` into the closure road,
+which pads and drops arguments without asking: it printed `2` at exit 0. That trade is the one the ladder
+forbids, so the declared road is consulted **before** the closure value, and the pin fails on silence
+(`Gap R.168` records the road's own remaining defect).
+
 A text on the left of `%` **refuses instead of answering** (ADR 0282, closing `Gap R.165`'s wrong
 number). `print("%.2f" % 3.5)` is CPython's `3.50`, a `TypeError` in the interpreter, and `0.0` on the
 compiled leg at **exit 0** — the format string was interned, and its `@str_tab` index was widened with

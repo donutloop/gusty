@@ -186,12 +186,28 @@ func (g *irGen) negationOperandKind(e Expr) (string, bool) {
 		if cls := g.varClasses[n.Value]; cls != "" {
 			return cls, true
 		}
+		// A function's *name* and an imported module are values with no sign: `abs(f)`, `-f`,
+		// `abs(math)`. CPython stops on each — `bad operand type for abs(): 'function'`,
+		// `'module'` — and until this line the compiled leg reached `llc` with a load of a slot nothing
+		// allocated (`%_f`, `%_math`) and left through exit 2, the contract's unforgivable code
+		// (roadmap Gap R.150, Gap R.151, ADR 0283).
+		if kind, isValue := g.nameIsAValueWithNoSign(n.Value); isValue {
+			return kind, true
+		}
 	case *Attr:
 		// `self.w = "hi"` in the class, `-c.w` outside it: the slot holds an @str_tab index, which is the
 		// same value the printer renders as text (Gap R.42, ADR 0224).
 		if cls := g.receiverClass(n.Obj); cls != "" && g.strAttrs[cls+"."+n.Name.Value] {
 			return kindStr, true
 		}
+	case *Lambda:
+		// A `lambda` in a numeric position is the family ADR 0271 deleted for containers, under a
+		// different name: `print(-(lambda x: x))` reached `llc` as `%t4 = sub i32 0, lambda_0` — the
+		// closure's function *global* written into an arithmetic operand — and exit 2 was spent on a
+		// program the reference merely stops on. The name CPython puts in the quotes is `function`,
+		// which is what the interpreter's `operandKind` already answers for a `closure`, `method` or
+		// `function` heap object, so both engines quote one word (roadmap Gap R.151, ADR 0283).
+		return "function", true
 	case *Call:
 		// A call the module knows answers text: `def f(): return "hi"` / `-f()`.
 		if g.callReturnsStr(n) {
@@ -218,6 +234,60 @@ func (g *irGen) negationOperandKind(e Expr) (string, bool) {
 			return kindStr, true
 		}
 		return g.negationSlotKind(n)
+	}
+	return "", false
+}
+
+// nameIsAValueWithNoSign names the two kinds a program can put in a numeric position that have no
+// payload, no slot and no sign: a function the program defined, and an imported module. Both are read
+// today as if they were variables — `load i32, i32* %_f` for a slot nothing ever allocated, and
+// `use of undefined value '%_math'` from `llc-20` — which spends the exit-code contract's "the compiler
+// is broken" code on a program the reference answers or stops on in one line (roadmap Gap R.150,
+// Gap R.151, ADR 0283).
+//
+// The question is asked of the *declaration*, not of any value: the interpreter's `operandKind` names
+// the same two words (`function` for a closure/method/function heap object, `module` for the module it
+// binds), so `-f`, `abs(f)`, `abs(math)` and their siblings quote one word on both engines.
+func (g *irGen) nameIsAValueWithNoSign(name string) (string, bool) {
+	if name == "" || g == nil {
+		return "", false
+	}
+	// A parameter that holds a callable is the program's own value, not the function's name: a body
+	// that receives functions keeps whatever meaning it gave them.
+	if _, isParam := g.params[name]; isParam {
+		return "", false
+	}
+	if g.funcs[name] || (g.fds != nil && g.fds[name] != nil) {
+		return "function", true
+	}
+	if g.imports != nil {
+		if _, isModule := g.imports.Globals[name]; isModule {
+			return "module", true
+		}
+		if _, isModule := g.imports.Funcs[name]; isModule {
+			return "module", true
+		}
+	}
+	return "", false
+}
+
+// otherOperand is the operand opposite the one being named, for the binary sentence CPython writes in
+// source order: `f + 1` quotes 'function' and 'int', `1 + f` quotes them the other way round.
+func otherOperand(n *BinOp, side Expr) Expr {
+	if n.L == side {
+		return n.R
+	}
+	return n.L
+}
+
+// valueWithNoSign is the binary road's form of nameIsAValueWithNoSign: it also accepts a `lambda`
+// written inline, which is the shape Gap R.151 measured (`(lambda x: x) + 1`).
+func (g *irGen) valueWithNoSign(e Expr) (string, bool) {
+	if _, isLambda := e.(*Lambda); isLambda {
+		return "function", true
+	}
+	if nm, isName := e.(*Name); isName {
+		return g.nameIsAValueWithNoSign(nm.Value)
 	}
 	return "", false
 }

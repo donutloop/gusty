@@ -1836,6 +1836,17 @@ The rule is ADR 0224's (a method's string answer is known to its callers) one do
 respects Gap R.6's: a program that defines `str` itself gets its own function, so
 `def str(x): return x + 7` beside that same body answers `49`.
 
+A `def`'d name is a **declaration, not a variable**, and says so (ADR 0283). Reading one where a value
+is asked — `print(f)`, `f + 1`, `xs = [f]`, `str(f)` — is a front-end refusal at exit 1, because a `def`
+allocates no slot to read; an earlier build emitted `load i32, i32* %_f` for that nonexistent slot and left
+through exit 2. A function in a **numeric** position raises instead of refusing, in the reference's words
+on both engines: `abs(f)` → `TypeError: bad operand type for abs(): 'function'`, `-f` →
+`bad operand type for unary -: 'function'`, and an imported module answers `'module'`; each is catchable by
+`except TypeError:`. A name the program *assigned* is a different matter and keeps working — `g = f` then
+`g(21)` answers `42` on the interpreter, `g = lambda x: x * 3` then `g(4)` answers `12` on both engines —
+and a body that calls a **parameter** is still refused compiled (`unsupported call "f"`), which is L11.7's
+higher-order limit (`Gap R.167`), as is printing a function object.
+
 Printf-style `%` on a text is **not implemented**, and says so: `print("%.2f" % 3.5)` exits 1 naming
 printf-style formatting and quoting the reference's own `3.50` (`Gap R.165`, ADR 0282). It used to print
 `0.0` at exit 0, because the format string's `@str_tab` index was widened into the double domain and used

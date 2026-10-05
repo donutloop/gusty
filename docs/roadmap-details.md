@@ -7183,3 +7183,66 @@ the checker for literal-only cases was rejected: it would answer the probe and l
 format string printing `0.0`, moving the divergence rather than removing it. The acceptance row is
 already written in the tests above: `print("%.2f" % 3.5)` prints `3.50` on three legs, and until then
 the shape exits 1 quoting that number back at the reader.
+
+### Gap R.150 / Gap R.151 — a declared name is not a variable: seven shapes left through exit 2 (exit-2 half CLOSED by ADR 0283, owner L11.7/L11.8)
+
+`def f(x): return x * 2` at module level, then:
+
+```
+print(f + 1)          # CPython TypeError 'function' and 'int'  · --interp NameError · --aot exit 2
+xs = [f]; print(len(xs))   # CPython 1        · --interp NameError · --aot exit 2
+print(str(f))         # CPython <function f at …>              · --interp NameError · --aot exit 2
+print(f)              # CPython <function f at …>              · --interp NameError · --aot exit 2
+print(math + 1)       # CPython TypeError 'module'             · --interp NameError · --aot exit 2
+print(lambda x: x)    # CPython <function <lambda> …>          · --interp <closure> · --aot exit 2
+print(abs(f)); print(-f)   # CPython TypeError 'function'      · --interp NameError (wrong class) · --aot exit 2
+```
+
+What `llc-20` said, twice:
+
+```
+%_f.ld1 = load i32, i32* %_f          error: use of undefined value '%_f'
+%t4 = call i32 (i8*, ...) @printf(i8* …, i32 lambda_0)   error: expected value token
+%t4 = sub i32 0, lambda_0             error: expected value token
+```
+
+One mistake, two faces. `nameIsBound` answers *yes* for `g.funcs[nm]` — the same map that makes a call
+legal — so `value()`'s `*Name` case fell through to loading a slot a `def` never allocated; and
+`value()`'s `*Lambda` case returned `emitLambda`'s generated name as though it were an `i32`, putting a
+`define`'s label in an operand slot. Gap R.150 had the identical mechanism for `%_len` and `%_math`; a
+function's name is the third name that is not a variable, and Gap R.151's arithmetic half is ADR 0271's
+deleted instruction family re-appearing under a lambda.
+
+**Where the guard goes matters more than that it exists.** The first draft guarded the arithmetic roads.
+`f + 1` exited 2 anyway: the float/pair road lowers both operands through `value()` *before* the operator
+is consulted, so the load was in the module before any guard could run. The choke point is the read.
+`nameIsAValueWithNoSign` is asked in `value()`'s `*Name` case, and asks `params` **first** — a parameter
+holding a callable is the program's own value, and without that the "fix" would be a ban on functions as
+arguments (`twice(lambda x: x * 3, 2)` still answers `12` on both engines).
+
+**In the door, raise.** `-*` and `abs` already ask *what kind is this?* (ADR 0266/0271), so `*Lambda` and a
+declared name answer `"function"`/`"module"` there and the existing emitters produce the reference's
+sentence — exit 3, catchable, one word per engine (`operandKind` has named a closure object `function` all
+along). A refusal there would be a different verdict from the reference's and would run the wrong arm of
+`except TypeError:` (ADR 0211). The binary roads raise too, source-ordered.
+
+**What binding the name cost, and how it was caught.** The interpreter also needed fixing: reading a name
+the program had just declared was `NameError: name 'f' is not defined` — the wrong class, catching nowhere.
+A top-level `def` now binds the same closure handle a `lambda` bound to a name always produced, and
+`apply(twice, [1, 2])` answers CPython's `[2, 4]`. But the call road consulted `e.Vars` before `e.funcs`,
+so every `def` call dropped into `callClosure`, which pads or drops arguments without asking — and
+`print(f(1, 2))` printed **`2` at exit 0**, where CPython raises `takes 1 positional argument but 2 were
+given`. A working answer becoming a wrong number is the ladder's forbidden trade; the fix was to reorder
+the roads (declared first, closure value after — which is where `g = f` and `g = lambda …` live), not to
+undo the binding. `TestACalledDefNameKeepsTheCheckedRoadIsTheLadderRule` fails on *silence*: if either
+program produces output at all, the row is red.
+
+The un-checked `callClosure` road stays, and is **Gap R.168**: `g = lambda x: x * 2` / `print(g(1, 2))`
+answers `2` on both the pre-cycle binary and this one — verified, not assumed, so it is a fresh ID rather
+than an instance hidden inside this record. The feature — a callable you can read, store and print — is
+**Gap R.167**, and the exit-2 removal is precisely what makes building it safe: the road now refuses where
+it cannot answer, so a partial value cannot sneak a silent load back in.
+
+The matrix caught the promotion for me: `probe_fn_name.gy` had been pinned *both legs fail* and the
+interpreter started answering `[2, 4]`, which is `oracle drift` until the row is updated — the drift is the
+evidence that the fix was real rather than cosmetic.

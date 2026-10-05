@@ -1170,6 +1170,17 @@ func (e *Evaluator) runStatements(stmts []Stmt, safe bool) (int64, error) {
 				e.Vars[s.Name] = e.allocClosure(s, e.Vars)
 			} else {
 				e.funcs[s.Name] = s
+				// A top-level `def` also **binds its name**, the way a `lambda` bound to a name does:
+				// the reference has a function object for `f`, and reading the name is not a NameError
+				// for a program that just declared it. Until this line `abs(f)` stopped the program with
+				// `NameError: name 'f' is not defined` where CPython raises
+				// `TypeError: bad operand type for abs(): 'function'` — the wrong class, which is the
+				// catchability defect ADR 0211 and ADR 0228 count as a misclassing: `except TypeError:`
+				// ran neither arm. The handle is the same shape a lambda gets, and `operandKind` already
+				// names a `closure` object `function`, so the raise quotes one word on both engines
+				// (roadmap Gap R.150, Gap R.151, ADR 0283). Calls are unaffected: the call road looks
+				// `e.funcs` up first.
+				e.Vars[s.Name] = e.allocClosure(s, e.Vars)
 			}
 			continue
 		case *IfStmt:
@@ -4107,15 +4118,23 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 		}
 	}
 	if name, ok := n.Fn.(*Name); ok {
-		// closure value in the current scope?
-		if cid, ok2 := e.Vars[name.Value]; ok2 {
-			if o := e.heap[cid]; o != nil && o.kind == "closure" {
-				return e.callClosure(o, n)
-			}
+		// A name the program *declared* with `def` calls through the checked road, which is the one
+		// that counts arguments. `e.Vars` now holds a closure handle for a top-level `def` too (so
+		// reading the name is no longer a NameError — Gap R.150, ADR 0283), and this road is consulted
+		// first, so `f(1, 2)` used to fall into `callClosure`, which evaluates its arguments and pads
+		// or ignores them without asking: `print(f(1, 2))` answered `2` and `print(f())` answered `0`,
+		// both at exit 0, where CPython raises `takes 1 positional argument but 2 were given` /
+		// `missing 1 required positional argument`. A wrong number is the one thing this ladder never
+		// trades away, so `funcs` is asked before `Vars` here — and a name the program *assigned*
+		// (`g = lambda x: x`, `g = f`) still takes the closure road below.
+		if ed, ok2 := e.externs[name.Value]; ok2 {
+			return e.callExtern(ed, n.Args)
 		}
 		if ed, ok2 := e.externs[name.Value]; ok2 {
 			return e.callExtern(ed, n.Args)
 		}
+		// A name the program declared with `def` calls the checked road, which counts arguments. It is
+		// consulted BEFORE the closure value above for exactly that reason (roadmap Gap R.168, ADR 0283).
 		if fd, ok2 := e.funcs[name.Value]; ok2 {
 			argVals := make([]int64, len(fd.Params))
 			argSet := make([]bool, len(fd.Params))
@@ -4233,6 +4252,20 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				return e.noneVal, nil
 			}
 			return rv, e.recordCall(err, fd.Name, caller, callSite)
+		}
+
+		// closure value in the current scope? A name the program *assigned* (`g = lambda x: x`, and
+		// `g = f`) takes this road. It is asked only after the declared-function road below, because
+		// `e.Vars` now also holds a closure handle for a top-level `def` (so reading the name is no
+		// longer a NameError — Gap R.150, ADR 0283); if it were asked first, `f(1, 2)` would fall into
+		// `callClosure`, which evaluates its arguments and pads or drops them without asking:
+		// `print(f(1, 2))` answered `2` and `print(f())` answered `0`, both at exit 0, where CPython
+		// raises `takes 1 positional argument but 2 were given` / `missing 1 required positional
+		// argument`. A wrong number is the one thing this ladder never trades away (roadmap Gap R.168).
+		if cid, ok2 := e.Vars[name.Value]; ok2 {
+			if o := e.heap[cid]; o != nil && o.kind == "closure" {
+				return e.callClosure(o, n)
+			}
 		}
 		// built-in exception constructor: ValueError("msg") etc.
 		if isExnClass(name.Value) {

@@ -8338,6 +8338,20 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// context wants a number, not a (value, tag) pair (ADR 0185).
 			return "", g.taggedVarErr(n.Value)
 		}
+		// A function's name and an imported module are not variables: a `def` declares a global
+		// `@gy_f` and allocates no slot, so reading the name as a value emitted
+		// `load i32, i32* %_f` for a slot nothing ever wrote and `llc-20` rejected the module with
+		// "use of undefined value" — exit 2, the exit-code contract's "the compiler is broken" code,
+		// spent on `f + 1`, on `xs = [f]`, on `str(f)` (roadmap Gap R.150, Gap R.151, ADR 0283).
+		//
+		// Refusing here, at the read, is the one place that covers every road: the arithmetic roads ask
+		// the operand later, and by then the load is already in the module. A callable the program put
+		// in a *variable* is untouched — `params`, `boundFlags` and the container records all answer
+		// before this line, so a name the program assigned keeps its meaning, and only a name that is
+		// purely a declaration is refused.
+		if kindName, isValue := g.nameIsAValueWithNoSign(n.Value); isValue {
+			return "", fmt.Errorf("codegen: %q names %s, which the compiled backend has no value for: a %s is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `%s` with a %s object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)", n.Value, kindName, kindName, n.Value, kindName)
+		}
 		// String variables are compile-time constants (strVals); emit their
 		// global pointer so printf/assign via value() sees the real string.
 		if sv, ok := g.strVals[n.Value]; ok {
@@ -8661,6 +8675,31 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// interpreter raises TypeError). Refuse it as a compile diagnostic instead (Gap J.5).
 		switch n.Op {
 		case "+", "-", "*", "/", "//", "%", "**", "<", ">", "<=", ">=":
+			// A function's name, an imported module, or an inline `lambda` in an arithmetic operand is
+			// the same class of mistake as a text there, and was worse: `f + 1` emitted
+			// `load i32, i32* %_f` — a slot nothing allocated, because a function is declared rather than
+			// assigned — and `llc-20` answered "use of undefined value", spending the contract's exit 2 on
+			// a program the reference stops with one sentence. The raise names the operand's kind in
+			// CPython's wording, source-ordered, so the program can catch what it actually did
+			// (`except TypeError:` runs on both engines). (roadmap Gap R.150, Gap R.151, ADR 0283)
+			for _, side := range []Expr{n.L, n.R} {
+				kindName, isValue := g.valueWithNoSign(side)
+				if !isValue {
+					continue
+				}
+				other := "int"
+				if k := g.numericUseKind(otherOperand(n, side)); k != "" {
+					other = k
+				}
+				var class, msg string
+				if n.L == side {
+					class, msg = unsupportedNumberOp(n.Op, kindName, other)
+				} else {
+					class, msg = unsupportedNumberOp(n.Op, other, kindName)
+				}
+				g.raiseTo(b, exnCode(class), class, msg, n.Span())
+				return "0", nil
+			}
 			isStrOperand := func(e Expr) bool {
 				if _, ok := g.stringVal(e); ok {
 					return true
@@ -9623,13 +9662,16 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *KeywordArg:
 		return g.value(b, n.Value)
 	case *Lambda:
-		// a lambda used as a value: register its anonymous FuncDef and
-		// return the generated name as a closure reference.
-		name, err := g.emitLambda(b, n)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%s", name), nil
+		// A `lambda` in the same position as a function's name: `print(lambda x: x)` emitted
+		// `printf(…, i32 lambda_0)` — the closure's function *global* used as a number, the instruction
+		// family ADR 0271 deleted for containers and Gap R.151 measured for `-(lambda x: x)`. A lambda
+		// has no value to read until a call site binds it, and only a call site can supply one, so the
+		// read refuses rather than handing out the address-like name. A lambda that is *called* —
+		// `g = lambda x: x * 3` then `g(4)`, and a lambda passed as an argument — never reaches this
+		// line, and both engines answer those (roadmap Gap R.150, Gap R.151, ADR 0283).
+		// (The callable positions — a lambda called directly, bound as a decorator, or handed to the
+		// closure road — register their FuncDef at their own sites and never come through here.)
+		return "", fmt.Errorf("codegen: a lambda used as a value has no compiled representation: it is declared, not assigned, so there is no slot to read and no number, text or container to be — the reference answers `print(lambda x: x)` with a function object and the interpreter prints `<closure>`, while a lambda that is called (`g = lambda x: x * 3` / `g(4)`, or passed to a function) is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)")
 	default:
 		return "", fmt.Errorf("codegen: unsupported expression %T", e)
 	}

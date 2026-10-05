@@ -968,6 +968,14 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- a **declared** name read as a value is refused at **exit 1**, never at exit 2: `print(f)`, `f + 1`,
+  `xs = [f]` and `print(lambda x: x)` all reached `llc-20` and came back "use of undefined value
+  `%_f`"/`printf(…, i32 lambda_0)` — the exit-code contract's compiler-bug code spent on a program the
+  reference answers (ADR 0283, closing the exit-2 half of `Gap R.150` / `Gap R.151`). A function in a
+  *numeric* position is a trap at **exit 3** carrying CPython's sentence verbatim
+  (`TypeError: bad operand type for abs(): 'function'`), so a harness can match on message text and
+  `except TypeError:` runs the arm the reference runs; a wrong-arity call is refused by either stage and
+  must never produce a number (`Gap R.168` guards that).
 - a feature this backend does not build is refused at **exit 1 with the reference's answer quoted**,
   which is what makes "not implemented" distinguishable from "wrong" without reading the IR:
   `--aot --file` on `print("%.2f" % 3.5)` reports

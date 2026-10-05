@@ -3616,7 +3616,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4129502353/126/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix437246657/126/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3630,7 +3630,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4129502353/126/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix437246657/126/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4226,15 +4226,15 @@
       "case": {
         "id": "programs/probe_fn_name",
         "name": "probe_fn_name.gy",
-        "source": "# Oracle probe (L11.9, ADR 0186) — a def'd function used as a *value* (passed as an\n# argument) is not resolvable on either backend: the interpreter reports\n# `undefined name twice`, so a name and a lambda are two different things today\n# (L11.7). Python treats them alike.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(twice, [1, 2]))\n",
+        "source": "# Oracle probe (L11.9, ADR 0186; ADR 0283) — a def'd function used as a *value* (passed as an\n# argument). The interpreter answers CPython's `[2, 4]` now that a top-level `def` binds its own\n# name, the way a `lambda` bound to a name always has; before ADR 0283 it reported\n# `undefined name twice`. The compiled leg still refuses, because the body calls a *parameter*\n# (`f(x)`), which is the higher-order limit L11.7 records rather than this row's name lookup.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\nprint(apply(twice, [1, 2]))\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
+        "reason": "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
         "ref": "roadmap L11.7 (functions are values that compile)",
         "pins": [
           {
             "backend": "interpreter",
-            "missing": true
+            "stdout": "[2, 4]\n"
           },
           {
             "backend": "aot",
@@ -4242,26 +4242,65 @@
           }
         ]
       },
-      "interp_ok": false,
-      "interp_stdout": "",
-      "interp_error": "eval error: name 'twice' is not defined",
+      "interp_ok": true,
+      "interp_stdout": "[2, 4]\n",
       "aot_ok": false,
       "aot_stdout": "",
       "aot_error": "codegen: unsupported call \"f\"",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[2, 4]\n",
-      "interp_matches_python": false,
+      "interp_matches_python": true,
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "a def'd function name is not a value on either backend: the interpreter reports `undefined name twice` where Python maps the function happily",
+      "oracle_reason": "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
       "oracle_ref": "roadmap L11.7 (functions are values that compile)",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
-        "interpreter leg failed: eval error: name 'twice' is not defined",
+        "compiled leg failed: codegen: unsupported call \"f\""
+      ]
+    },
+    {
+      "case": {
+        "id": "programs/probe_a_function_as_a_value",
+        "name": "probe_a_function_as_a_value.gy",
+        "source": "# A declared name is not a variable, and a function is not a number (Gap R.150, Gap R.151, Gap R.153,\n# ADR 0283). Reading a def'd name is no longer a NameError, so a function flows through a parameter on\n# the interpreter; the numeric door raises CPython's sentence rather than reaching the arithmetic that\n# used to hand llc a load of a slot no `def` allocated.\ndef twice(v):\n    return v + v\n\ndef apply(f, xs):\n    out = []\n    for x in xs:\n        out.append(f(x))\n    return out\n\ng = twice\nprint(g(21))\nprint(apply(twice, [1, 2, 3]))\nh = lambda x: x * 3\nprint(h(4))\ntry:\n    print(abs(twice))\nexcept TypeError:\n    print('caught the function operand')\ntry:\n    print(-twice)\nexcept TypeError:\n    print('caught the negation')\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "the interpreter answers CPython's five lines; the compiled leg refuses the body that calls a parameter (`unsupported call \"f\"`), the higher-order limit L11.7 records",
+        "ref": "roadmap L11.7 (functions are values that compile); Gap R.150, Gap R.151, Gap R.153 (ADR 0283)",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "42\n[2, 4, 6]\n12\ncaught the function operand\ncaught the negation\n"
+          },
+          {
+            "backend": "aot",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "42\n[2, 4, 6]\n12\ncaught the function operand\ncaught the negation\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: unsupported call \"f\"",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "42\n[2, 4, 6]\n12\ncaught the function operand\ncaught the negation\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "the interpreter answers CPython's five lines; the compiled leg refuses the body that calls a parameter (`unsupported call \"f\"`), the higher-order limit L11.7 records",
+      "oracle_ref": "roadmap L11.7 (functions are values that compile); Gap R.150, Gap R.151, Gap R.153 (ADR 0283)",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
         "compiled leg failed: codegen: unsupported call \"f\""
       ]
     },
@@ -4432,12 +4471,12 @@
       ]
     }
   ],
-  "rows": 151,
-  "skipped": 36,
+  "rows": 152,
+  "skipped": 37,
   "pass": 115,
   "fail": 0,
   "oracle_match": 100,
-  "oracle_debt": 30,
+  "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }
