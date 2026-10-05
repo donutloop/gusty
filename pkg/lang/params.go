@@ -364,6 +364,14 @@ func scanRebinds(list []Stmt, into map[string][]Expr) {
 					}
 				}
 			case *AugAssignStmt:
+				if s.Op == "/" {
+					// `/=` is true division: the answer is a float whatever the operands were (ADR 0253's rule
+					// for `/`), so the name's newest value is a double and the function that returns it needs
+					// the double's return word — a fact the operator states and the written value (`2`) does not
+					// (roadmap L11.6, Gap P.1).
+					rec(s.Target, &BinOp{Op: "/", L: s.Target, R: s.Value, Src: s.Src})
+					continue
+				}
 				rec(s.Target, s.Value)
 			case *ForStmt:
 				rec(s.Var, nil)

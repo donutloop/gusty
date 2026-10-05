@@ -60,6 +60,16 @@ func TestTrueDivisionOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 		{"under_a_builtin", "xs = []\nxs.append(-6)\nprint(abs(xs[0] / 4))\n", "1.5\n"},
 		{"negated", "xs = []\nxs.append(4)\nprint(-(xs[0] / 2))\n", "-2.0\n"},
 		{"stored_in_a_container", "xs = []\nxs.append(3)\nys = []\nys.append(xs[0] / 2)\nprint(ys[0])\n", "1.5\n"},
+		// The assignment that changes a variable's state from int to float (roadmap L11.6, ADR 0274):
+		// the double goes into a float box and the name is rebound as the (payload, tag) pair. The row sat
+		// in the refusal table below as `double_to_an_int_variable`, where the compiler asked for a
+		// `store double` into the four-byte slot the variable's first binding chose — a write that verified
+		// and corrupted the neighbouring variable instead of refusing (Gap R.155).
+		{
+			"double_to_an_int_variable",
+			"xs = []\nxs.append(6)\nn = 0\nn += xs[0] / 2\nprint(n)\n",
+			"3.0\n",
+		},
 		{"int_slot_power", "xs = []\nxs.append(6)\nprint(xs[0] ** 2)\n", "36\n"},
 		{"int_slot_floor_divide", "xs = []\nxs.append(7)\nprint(xs[0] // 2)\n", "3\n"},
 		// What the older doors owned, pinned so this one cannot take it over.
@@ -206,11 +216,9 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 			"xs = []\nxs.append(6)\nd = {}\nd[\"k\"] = xs[0] / 2\nprint(d[\"k\"])\n",
 			"this context stores an i32 word",
 		},
-		{
-			"double_to_an_int_variable",
-			"xs = []\nxs.append(6)\nn = 0\nn += xs[0] / 2\nprint(n)\n",
-			"writes a double into the i32 slot",
-		},
+		// The `double_to_an_int_variable` row this table carried is gone: `n += xs[0] / 2` is an
+		// assignment that changes the variable's state from int to float, and the pair is what carries it
+		// (floatbind.go, ADR 0274). The program is pinned green above instead.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "slot_division_refuse.gy", tc.src)

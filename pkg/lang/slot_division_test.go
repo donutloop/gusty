@@ -65,6 +65,16 @@ func TestTrueDivisionOfAnUnliteralisedSlotAnswersInBothEngines(t *testing.T) {
 		{"a slot one level below", "xs = []\nxs.append([4])\nprint(xs[0][0] / 2)\n", "2.0\n"},
 		{"three levels down", "xs = []\nxs.append([[4]])\nprint(xs[0][0][0] / 2)\n", "2.0\n"},
 		{"a dict slot of a built container, by key", "xs = []\nxs.append({\"k\": 5})\nprint(xs[0][\"k\"] / 2)\n", "2.5\n"},
+		// ---- the assignment that changes a variable's state from int to float (roadmap L11.6, ADR 0274).
+		// `n += xs[0] / 2` is true division into an `i32` variable: the double goes into a float box and the
+		// name is rebound as the (payload, tag) pair, which is also what retired the refusal this row used
+		// to make (`writes a double into the i32 slot`) — that refusal was a `store double` into the
+		// four-byte allocation the first binding chose, and the neighbour paid for it (Gap R.155).
+		{
+			"true division into an int variable rebinds it as a float",
+			"xs = []\nxs.append(6)\nn = 0\nn += xs[0] / 2\nprint(n)\n",
+			"3.0\n",
+		},
 		{"a nested dict read twice", "d = {}\nd[\"a\"] = {\"k\": 4}\nprint(d[\"a\"][\"k\"] / 2)\n", "2.0\n"},
 		// ---- the positions a division is used in.
 		{"bound to a name and printed twice", "xs = []\nxs.append(6)\ny = xs[0] / 4\nprint(y)\nprint(y * 2)\n", "1.5\n3.0\n"},
@@ -293,11 +303,6 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 			"the double has no word to travel in to a dict slot",
 			"xs = []\nxs.append(6)\nd = {}\nd[\"k\"] = xs[0] / 2\nprint(d[\"k\"])\n",
 			"this context stores an i32 word",
-		},
-		{
-			"the double has no word to travel in to an int variable",
-			"xs = []\nxs.append(6)\nn = 0\nn += xs[0] / 2\nprint(n)\n",
-			"writes a double into the i32 slot",
 		},
 		{
 			"the loop variable of a list whose slots are floats, used as a number",

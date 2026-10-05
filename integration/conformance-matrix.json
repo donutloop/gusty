@@ -482,6 +482,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_int_state_becomes_float",
+        "name": "probe_int_state_becomes_float.gy",
+        "source": "y = 12345\nx = 8\nx = 2.5\nprint(x, y)\na = 7\na /= 2\nprint(a)\nb = 1\nb /= 3\nprint(b)\nprint(b + 1, b * 2)\nprint(b \u003c 1, b == 0.3333333333333333)\nc = 0\nc += 1.5\nprint(c)\nd = 6\nd /= 3\nprint(d)\ne = 2.5\ne /= 2\nprint(e)\ng = 3\ng /= 2\nif g \u003e 1:\n    print(\"big\")\nelse:\n    print(\"small\")\nh = 2\nh /= 4\ni = 0\nwhile h \u003e 0:\n    print(h)\n    i += 1\n    if i \u003e 1:\n        break\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "2.5 12345\n3.5\n0.3333333333333333\n1.3333333333333333 0.6666666666666666\nTrue True\n1.5\n2.0\n1.25\nbig\n0.5\n0.5\n",
+      "aot_ok": true,
+      "aot_stdout": "2.5 12345\n3.5\n0.3333333333333333\n1.3333333333333333 0.6666666666666666\nTrue True\n1.5\n2.0\n1.25\nbig\n0.5\n0.5\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "2.5 12345\n3.5\n0.3333333333333333\n1.3333333333333333 0.6666666666666666\nTrue True\n1.5\n2.0\n1.25\nbig\n0.5\n0.5\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/negation_names_the_kind",
         "name": "negation_names_the_kind.gy",
         "source": "# negation_names_the_kind.gy — the unary minus asks what kind its operand is before it asks the\n# number road for an instruction. The lines the reference stops on are raises this program catches, so\n# all three engines print the same words, and the `except` arm is the proof that each one is a language\n# event the program can reach rather than a stop it has to obey (roadmap Gap R.137, ADR 0266).\nxs = [7, 8]\nys = [\"a\"]\nbs = []\nbs.append(\"hi\")\nds = {\"k\": 4}\nwords = \"hi\"\n\n\nclass Token:\n    text = \"t\"\n\n\nprint(-7)\nprint(-1.5)\nprint(-True)\nprint(-xs[0])\nprint(-ds[\"k\"])\ntry:\n    print(-words)\nexcept TypeError:\n    print(\"a text has no sign\")\ntry:\n    print(-None)\nexcept TypeError:\n    print(\"none has no sign\")\ntry:\n    print(-[1, 2])\nexcept TypeError:\n    print(\"a list has no sign\")\ntry:\n    print(-{\"a\": 1})\nexcept TypeError:\n    print(\"a dict has no sign\")\ntry:\n    print(-{1, 2})\nexcept TypeError:\n    print(\"a set has no sign\")\ntry:\n    print(-ys[0])\nexcept TypeError:\n    print(\"a text slot has no sign\")\ntry:\n    print(-bs[0])\nexcept TypeError:\n    print(\"an appended text has no sign\")\ntry:\n    print(-Token())\nexcept TypeError:\n    print(\"an instance has no sign\")\n",
@@ -3450,7 +3473,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1969206964/118/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1169946448/119/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3464,7 +3487,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1969206964/118/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1169946448/119/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3980,8 +4003,8 @@
         "source": "# Oracle probe (L11.9, ADR 0186) — what is still untrue about float *state* in the compiled\n# backend (roadmap L11.6): `x /= 2` leaves x an int, and a float handed to an untyped parameter keeps\n# the int word — `dbl(0.1)` answers 0 and `bump(1.5)` answers 2 where CPython answers 0.2 and 2.5,\n# every one of them at exit 0 (roadmap Gap P.1, re-measured 2026-10-04 with the third shape written\n# in). The two flooring lines used to be part of the divergence — `-7 // 2` compiled to -3 and\n# `-3.5 % 2.0` answered -1.5, C's truncated remainder — and are now right on both backends\n# (roadmap Gaps R.28, R.30, ADR 0216), so they stay here as the pair that keeps the identity\n# a == (a // b) * b + (a % b) honest rather than as a report of a current defect.\nprint(-7 // 2)\nprint(-3.5 % 2.0)\nx = 8\nx /= 2\nprint(x)\ndef dbl(v):\n    return v * 2\nprint(dbl(0.1))\ndef bump(v):\n    return v + 1\nprint(bump(1.5))\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216); what still diverges is float *state*: x /= 2 leaves an int in the compiled backend (prints 4 where CPython prints 4.0), and an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, all at exit 0",
-        "ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-04 with the third shape written in",
+        "reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216), and so is `x /= 2` — the compiled leg prints 4.0 since ADR 0274 chose the double domain by the operator and rebound the int variable as the (payload, tag) pair (Gap R.155). What still diverges is the other half of float *state*: an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, both at exit 0",
+        "ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-05 after ADR 0274 — the `x /= 2` line joined the reference, the two untyped-parameter lines did not",
         "pins": [
           {
             "backend": "interpreter",
@@ -3989,14 +4012,14 @@
           },
           {
             "backend": "aot",
-            "stdout": "-4\n0.5\n4\n0\n2\n"
+            "stdout": "-4\n0.5\n4.0\n0\n2\n"
           }
         ]
       },
       "interp_ok": true,
       "interp_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
       "aot_ok": true,
-      "aot_stdout": "-4\n0.5\n4\n0\n2\n",
+      "aot_stdout": "-4\n0.5\n4.0\n0\n2\n",
       "parity": false,
       "python_ok": true,
       "python_stdout": "-4\n0.5\n4.0\n0.2\n2.5\n",
@@ -4004,8 +4027,8 @@
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216); what still diverges is float *state*: x /= 2 leaves an int in the compiled backend (prints 4 where CPython prints 4.0), and an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, all at exit 0",
-      "oracle_ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-04 with the third shape written in",
+      "oracle_reason": "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216), and so is `x /= 2` — the compiled leg prints 4.0 since ADR 0274 chose the double domain by the operator and rebound the int variable as the (payload, tag) pair (Gap R.155). What still diverges is the other half of float *state*: an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, both at exit 0",
+      "oracle_ref": "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-05 after ADR 0274 — the `x /= 2` line joined the reference, the two untyped-parameter lines did not",
       "oracle_rules": [
         "set-order"
       ],
@@ -4306,11 +4329,11 @@
       ]
     }
   ],
-  "rows": 144,
+  "rows": 145,
   "skipped": 38,
-  "pass": 106,
+  "pass": 107,
   "fail": 0,
-  "oracle_match": 91,
+  "oracle_match": 92,
   "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

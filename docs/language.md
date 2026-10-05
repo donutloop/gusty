@@ -1532,6 +1532,40 @@ match p:
   adjustment in the module, `frem` plus `fadd` for floats), constant folding uses the same pair,
   and the whole sign grid is checked against CPython on both backends (roadmap Gaps R.28, R.30,
   ADR 0216). An exact float remainder keeps the divisor's sign — `7.5 % -0.5` prints `-0.0`.
+
+  **`/=` is true division, so the operator — not the operands — decides the domain** (roadmap Gap P.1,
+  ADR 0274). `x = 8` then `x /= 2` leaves `x` holding `4.0`, and `x = 1` then `x /= 3` leaves
+  `0.3333333333333333`; `//=` and `%=` keep answering an `int` for two `int`s, because those operators do.
+  The same is true of a double handed to the variable by any other assignment: the reference keeps a value
+  and its kind together, so a variable's *newest* binding is what says whether it is an int or a float,
+  and this backend now follows it across the change of state:
+
+  ```python
+  y = 12345
+  x = 8
+  x = 2.5
+  print(x, y)      # 2.5 12345 — the neighbour keeps the number the program wrote
+
+  a = 7
+  a /= 2
+  print(a)         # 3.5
+  print(a + 1)     # 4.5   an ordering, a condition, str(a) and an f-string field ask the same tag
+  ```
+
+  What carries the change of mind is the `(payload, tag)` pair the rest of the family already uses: the
+  double goes into a float box, the name is bound to the pair with the float's tag, and every later read
+  asks the tag — the print dispatch, an operation, a comparison, a condition, `str`, an f-string field and
+  a `while` head (ADR 0166, ADR 0265, ADR 0267). Storing the double into the four-byte slot the variable's
+  first binding chose was the shape before this: it verified, `llc` accepted it, and the variable beside it
+  answered a different number (`y` printed `1074003968`, exit 0), which is what roadmap **Gap R.155** files
+  and why the pair — not a wider store — is the cure. A variable that never changes state is untouched: it
+  keeps the plain slot and the plain load it had.
+
+  What still refuses is the neighbour that needs the state to travel further: returning it from a function
+  (`Gap R.156`), changing it twice in the same variable — the `t += i / 2` accumulator (`Gap R.157`),
+  handing it to a function (`Gap R.158`), using it as a container element (`Gap R.159`), or ordering it
+  against a float literal (`Gap R.160`). Each says which position keeps one word, and none of them answers
+  a number the program did not write.
 - `Call` to user functions or builtins (`print`, `range`).
 - Attribute access (`obj.attr`) and indexing are parsed for future features.
 

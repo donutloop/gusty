@@ -1583,14 +1583,22 @@ func mixedTaggedVarErr(name string) error {
 // L11.1, Gap R.138).
 const (
 	taggedOriginArith = "arithmetic over a slot the program built at run time"
+	// taggedOriginFloat is the pair a variable takes when a *later* binding gives it a double and its
+	// slot is the `i32` the first binding chose: the value is boxed through `@rt_float_new` and the tag
+	// says so, which is the (payload, tag) pair standing where a `store double` into an `i32` slot would
+	// have overflowed into the neighbouring slot (roadmap L11.6, Gap R.155).
+	taggedOriginFloat = "a double the variable's own binding boxed"
 )
 
 // taggedVarErr is mixedTaggedVarErr in the honest voice: the same refusal, worded for the door that
 // bound the pair. Either way the program is refused and told that print asks the tag and this context
 // does not; what must never be invented is where the tag came from.
 func (g *irGen) taggedVarErr(name string) error {
-	if g.taggedOrigin[name] == taggedOriginArith {
+	switch g.taggedOrigin[name] {
+	case taggedOriginArith:
 		return fmt.Errorf("%s holds the answer of %s, which travels as a (payload, tag) pair: print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)", name, taggedOriginArith, name)
+	case taggedOriginFloat:
+		return fmt.Errorf("%s holds %s: the variable was bound to a number and rebound to a double, so its value travels as a (payload, tag) pair whose payload is a float box, print(%s) asks the tag, and this position keeps one word for its operand (roadmap L11.6, Gap R.155)", name, taggedOriginFloat, name)
 	}
 	return mixedTaggedVarErr(name)
 }
@@ -2632,6 +2640,10 @@ func (g *irGen) bindTaggedVar(b *strings.Builder, name, val, tag string) {
 	if g.floatVars != nil {
 		delete(g.floatVars, name)
 	}
+	// The pair road's payload is an `i32` (a box handle for a float), so the record of a `double`
+	// allocation must go with the float status: leaving it would let a later double binding store eight
+	// bytes into the slot this door took over (roadmap L11.6, Gap R.155, ADR 0274).
+	delete(g.doubleSlot, name)
 	if !g.allocd[name] {
 		b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+name))
 		g.allocd[name] = true
@@ -4950,7 +4962,11 @@ func (g *irGen) numericPairVar(name string) bool {
 	if !g.taggedVars[name] || g.taggedOrigin == nil {
 		return false
 	}
-	return g.taggedOrigin[name] == taggedOriginArith
+	switch g.taggedOrigin[name] {
+	case taggedOriginArith, taggedOriginFloat:
+		return true
+	}
+	return false
 }
 
 // numericPairRegs loads the two words a pair-bound name lives in.

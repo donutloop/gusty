@@ -6846,3 +6846,58 @@ a test I had already seen fail stopped appearing in the log. After that I re-che
 before every commit and kept the number of files a cycle touches small enough to re-read. Untracked new files
 survive; modified tracked files are the exposure, so the tracked-file edits go in the same commit as the code
 that needs them, not "later, once the suite is green".
+
+## Cycle: an int that meets `/=` becomes a float (ADR 0274 — Gap P.1's `/=` half + Gap R.155 closed; Gaps R.156–R.160 filed)
+
+**A wrong answer with exit 0 can hide inside the *neighbour* of the variable you are fixing.** The row I came
+for was `/=`: `x = 7` / `x /= 2` printed `3` compiled and `3.5` everywhere else. My first change made the
+operator name the double domain, which is the honest half of the fix, and the probe I wrote to check it
+printed `3` still. What it *also* contained was `y = 12345` / `x = 8` / `x = 2.5`, and `y` answered
+`1074003968`. That number is not a coincidence: it is the top of a `double`'s bit pattern leaking out of the
+four-byte `alloca` the first binding gave `x`, into the stack word that belongs to `y`. The module verified,
+`llc` accepted it, the exit code was 0, and the only thing in the whole toolchain that disagreed with me was
+a digit. Two lessons, both now in how I probe: **a numeric row is not one variable wide** — every probe that
+re-binds a name now puts an unrelated variable with a recognisable value next to it — and *a probe whose
+expected output I typed from what the compiler printed is not a probe*. I wrote these programs' expected
+bytes from `python3` first this cycle, and the third version of the probe caught the box-recycling bug below
+only because the expected text predated the implementation.
+
+**Opaque pointers move a type error out of the verifier and into the program.** `store double %t, double* %x`
+where `%x` is `alloca i32` is exactly the kind of thing a verifier is for, and textual LLVM no longer checks
+it: `ptr` erases the pointee, so the mismatch is only visible in what the running program prints. That means
+"the module verifies" has stopped being evidence about a store's width, and the cure cannot be a wider store
+into a slot whose width was decided two statements earlier. The pair — box the value, bind `(payload, tag)`,
+let the read ask the tag — is the cure the roadmap had already named for this family (`Gap R.88`: "the tagged
+value word the rebinding still owes"), and it is the same one ADR 0166 / ADR 0265 / ADR 0267 / ADR 0273 built.
+Nothing new in the runtime was needed: `@rt_float_new` existed, `@rt_num_arith` existed, `bindTaggedVar`
+existed; what was missing was the one statement that says *this variable changed kind*.
+
+**A slot that changes what it holds has to re-declare itself to the collector.** With the rebinding in and
+the GC untouched, `print(h + 1)` answered correctly and `print(h * 2)` answered with the *first print's*
+answer — because the float box the first answer allocated had been freed and handed out again, and the
+collector had never been told that `%_h`, which used to hold an immediate, now holds a handle. ADR 0181's
+rule ("every slot holding a handle says so") is not a performance rule you can skip for a value you just
+created two instructions ago; `g.gcReg` beside the tagged store is one line, and its absence was three
+plausible-looking digits in a row. When a binding stores a heap handle into a slot that used to hold a
+word, ask who roots it — and check by *reading the same variable twice in two different ways*, which is the
+shape that makes a recycled box show up.
+
+**The gate has to be negative, or the row quietly rewrites rows that were already right.** My first version of
+`bindFloatRebinding` asked only "is there a slot?"; it took `f = 2.5` / `f /= 2` too — a name that was born a
+float — and turned a green row into a refusal, and `t = 0.0` / `t += 1.5` into `3.0`, because the name's slot
+already held a box handle and I boxed it again. `floatVars` says what the newest binding *is*; it does not say
+how the slot is allocated, which is the question a `store double` asks, so the codegen now records
+`doubleSlot` at the two places that allocate one and `bindTaggedVar` deletes it when it takes a name over. The
+gate refuses parameters (the `define` owns that slot), containers, instances, verdicts and names that are
+already pairs; and everything it declines walks the old road with the old message — the `+=` refusal from
+`Gap R.88` is still reachable and still asserted, which is how I know the new door did not swallow it.
+
+**Filing the refusals I did not fix is part of the commit, not a follow-up.** Five shapes came out of the same
+sweep — returned from a function, changed twice in one variable, handed to a function, used as a container
+element, ordered against a float literal — and each is a row with its ID, its program, its CPython answer and
+its compiled exit class (`Gap R.156`–`Gap R.160`). Two of them are one-line widenings of doors that already
+exist (ADR 0273's answer-tag beside the `return`; ADR 0267's `taggedArithPair` accepting a boxed payload), so
+naming them precisely is what makes the next cycle short. The temptation was to widen the gate until the probe
+was all green; the reason I didn't is the same reason `Gap P.1`'s untyped-parameter half stays in the debt
+ledger with its `0` and `2` pinned per line: a door opened by a guess about a kind is how this repo got
+`1074003968` in the first place.

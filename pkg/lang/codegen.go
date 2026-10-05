@@ -4022,12 +4022,17 @@ type irGen struct {
 	// ordinary road refuses these calls, because a payload used as though it were the whole value is the
 	// float-box-handle-printed-as-an-int class of wrong answer (roadmap L11.1, ADR 0273).
 	pairCallAsked map[string]bool
-	funcs         map[string]bool
-	funcBind      map[string]string
-	externs       map[string]*ExternDecl // user-defined function names
-	fds           map[string]*FuncDef    // function definitions by name (for call arg binding)
-	imports       *ImportInfo            // folded module globals for `import mod`
-	params        map[string]string      // current function params: name -> register
+	// doubleSlot records the names whose stack slot was allocated as a `double`, which is the one fact
+	// that says whether a later `store double` fits: `floatVars` says what the newest binding *is*, and a
+	// tagged rebinding deletes that record while the allocation stays behind. Read by the pair road that
+	// boxes a double bound to an `i32` slot (roadmap L11.6, Gap R.155, ADR 0274).
+	doubleSlot map[string]bool
+	funcs      map[string]bool
+	funcBind   map[string]string
+	externs    map[string]*ExternDecl // user-defined function names
+	fds        map[string]*FuncDef    // function definitions by name (for call arg binding)
+	imports    *ImportInfo            // folded module globals for `import mod`
+	params     map[string]string      // current function params: name -> register
 	// paramSlot names the parameters whose body rebinds them: their slot (`%_name`),
 	// not the incoming argument register, is what reads load (Gap R.3, ADR 0196).
 	paramSlot map[string]bool
@@ -8142,6 +8147,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if !g.allocd[name] {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca double\n", name))
 				g.allocd[name] = true
+				if g.doubleSlot == nil {
+					g.doubleSlot = map[string]bool{}
+				}
+				g.doubleSlot[name] = true
 			}
 			b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", v, name))
 		} else {
@@ -14496,6 +14505,10 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 			g.floatVars[p.Name] = true
 			g.forgetVarBool(p.Name)
 			fmt.Fprintf(b, "  %%_%s = alloca double\n", p.Name)
+			if g.doubleSlot == nil {
+				g.doubleSlot = map[string]bool{}
+			}
+			g.doubleSlot[p.Name] = true
 			fmt.Fprintf(b, "  store double %%p%d, double* %%_%s\n", i, p.Name)
 			// The slot exists now, so the body's assignment to this name must reuse
 			// it: without the registration the assignment emitted a second alloca of
@@ -15445,6 +15458,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 			}
 			isFloat := g.isFloat(n.Value)
+			// Whether the name had a slot before this statement is what separates the float that arrives
+			// at an `i32` from the float that opens the variable: the second may choose a double slot, the
+			// first cannot (roadmap L11.6, Gap R.155).
+			hadSlot := g.allocd[nm.Value]
 			if !g.allocd[nm.Value] {
 				slotTy := "i32"
 				if isFloat {
@@ -15455,6 +15472,17 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			if isFloat {
 				fv := g.floatValue(b, n.Value)
+				// The variable was bound to a number and is being rebound to a double: the slot is the
+				// `i32` that first binding chose, and a `store double` into it is an eight-byte write into
+				// a four-byte allocation — which LLVM's opaque-pointer verifier cannot see, and which the
+				// neighbour pays for (roadmap L11.6, Gap R.155, ADR 0274). The pair is the answer.
+				if hadSlot && g.bindFloatRebinding(b, nm.Value, fv) {
+					return nil
+				}
+				if g.doubleSlot == nil {
+					g.doubleSlot = map[string]bool{}
+				}
+				g.doubleSlot[nm.Value] = true
 				b.WriteString(fmt.Sprintf("  store double %s, double* %%_%s\n", fv, nm.Value))
 				// A float is a word of its own, not a payload waiting for a tag: the pair the
 				// last binding wrote has no reader left, and leaving it would have print ask
@@ -15581,7 +15609,15 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			var v string
 			var err error
-			if g.isFloat(n.Target) || g.isFloat(n.Value) {
+			// `/=` is true division: the reference answers a float whatever arrives, so the double domain
+			// is chosen by the operator and not by the two operands' kinds — `x = 8` / `x /= 2` is CPython's
+			// `4.0`, and asking the integer road made it `4` with the exit code of success (roadmap L11.6,
+			// Gap P.1; the same rule `/` takes in ADR 0253). Every other operator keeps the kinds it has
+			// always read, because `//`, `%` and `*` answer an `int` for two `int`s — and a target that was
+			// already a float was served by the double road before this row, which stays untouched.
+			divToInt := n.Op == "/" && !g.isFloat(n.Target) && !g.isFloat(n.Value)
+			floatResult := divToInt || g.isFloat(n.Target) || g.isFloat(n.Value)
+			if floatResult {
 				// The same rule as the plain assignment below: a float result belongs to the double
 				// domain, so it is asked for there and not lowered twice — once into a dead `add i32`
 				// and once into the `fadd` that stores it (roadmap Gap R.88, measured beside Gap R.96).
@@ -15600,7 +15636,22 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					return err
 				}
 			}
-			if g.isFloat(n.Target) || g.isFloat(n.Value) {
+			if floatResult {
+				// The answer is a double and the slot may be the `i32` the variable's first binding chose.
+				// The pair is the answer there (floatbind.go, roadmap Gap R.155), which is also what retires
+				// the refusal this road used to give: `t = 0` / `t += 1.5` asked for the tagged value word by
+				// name, and the tagged value word is what it now gets (roadmap Gap R.88, Gap R.98's `+=` sink).
+				// A name that was already a float took this road before the row landed and still does: the
+				// rebinding below is asked only of a variable whose slot was made for an `i32`.
+				if divToInt || g.allocd[nm.Value] {
+					if g.bindFloatRebinding(b, nm.Value, v) {
+						return nil
+					}
+				}
+				if g.doubleSlot == nil {
+					g.doubleSlot = map[string]bool{}
+				}
+				g.doubleSlot[nm.Value] = true
 				if g.allocd[nm.Value] && !g.floatVars[nm.Value] && !g.unionVars[nm.Value] && !g.taggedVars[nm.Value] {
 					// The variable's slot is an i32 and `+=` produced a double: `t = 0` then
 					// `t += 1.5` is the assignment that changes a variable's kind, which needs the

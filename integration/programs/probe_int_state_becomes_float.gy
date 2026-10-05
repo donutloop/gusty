@@ -1,0 +1,35 @@
+y = 12345
+x = 8
+x = 2.5
+print(x, y)
+a = 7
+a /= 2
+print(a)
+b = 1
+b /= 3
+print(b)
+print(b + 1, b * 2)
+print(b < 1, b == 0.3333333333333333)
+c = 0
+c += 1.5
+print(c)
+d = 6
+d /= 3
+print(d)
+e = 2.5
+e /= 2
+print(e)
+g = 3
+g /= 2
+if g > 1:
+    print("big")
+else:
+    print("small")
+h = 2
+h /= 4
+i = 0
+while h > 0:
+    print(h)
+    i += 1
+    if i > 1:
+        break

@@ -299,6 +299,26 @@ none of their words: `twice(twice(xs[0][0]))`, `twice(xs[0][0]) + 1`, `[twice(xs
 an ordinary one (`def shift(a, b=100): return a + b`) is filed as `Gap R.154` rather than answered by an
 assumed kind.
 
+**An int that meets `/=` becomes a float** (ADR 0274, closing `Gap P.1`'s `/=` half and `Gap R.155`).
+`x = 7` / `x /= 2` / `print(x)` is CPython's `3.5` and the interpreted leg's `3.5`; the compiled leg printed
+`3`, and `x = 1` / `x /= 3` printed `0` where the reference prints `0.3333333333333333` — both at **exit 0**,
+because the operator asked the integer road. The operator now names the domain, the way `/` always did, and
+where that leaves a double standing in a slot the variable's first binding made for an `i32` the rebinding
+takes the statement: the double goes into a float box, the name is bound to the **`(payload, tag)` pair** with
+the float's tag, and every later read asks the tag — the same pair print, a number position, an ordering, a
+condition, `str` and a `while` head already ask (ADR 0166, ADR 0265, ADR 0267), so no read road needed a new
+case and a variable that never changes state still emits the plain slot and the plain load it always had.
+The corruption the row was hiding is the reason a wider store was not the answer: `y = 12345` / `x = 8` /
+`x = 2.5` / `print(x, y)` printed **`1074003968`** for `y`, a `store double` reaching four bytes past the
+allocation into its neighbour, and the module verified because an opaque pointer hides the width of what a
+`ptr` points at. Measured, not predicted: with the variable's GC root missing, `h = 1` / `h /= 3` answered
+`print(h + 1)` correctly and `print(h * 2)` with the first print's answer — the collector had recycled the
+box under a slot it was told held no handle. What still exits 1 naming the position that keeps one word is
+the state travelling further: returned from a function (`Gap R.156`), changed twice in one variable — the
+`t += i / 2` accumulator (`Gap R.157`), handed to a function (`Gap R.158`), stored as a container element
+(`Gap R.159`), ordered against a float literal (`Gap R.160`). `Gap P.1` stays open for its other half: an
+untyped parameter that receives a double keeps the int word, and prints `0`.
+
 **A data module's constant keeps the type the module declares** (ADR 0272, closing L11.6's typed stdlib
 constants). `import math` / `print(math.PI)` printed `3` compiled at exit 0 — the census table's own row —
 while the interpreter beside it printed `3.141592653589793` and a hand-written `pi = 3.141592653589793` was

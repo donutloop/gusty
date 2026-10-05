@@ -6485,6 +6485,129 @@ both engines, which parity cannot see. `BoolEnv` already carries the hooks for e
 `pkg/lang/module_const.go`, supplied per backend so the two legs cannot answer differently.
 
 
+### Gap R.155 — a variable's float state was written over its neighbour (CLOSED by ADR 0274, owner L11.6)
+
+```
+y = 12345
+x = 8
+x = 2.5
+print(x, y)      # CPython 2.5 12345 · --interp the same · --aot before: 2.5 1074003968, exit 0
+```
+
+Found while closing Gap P.1's `/=` half, and a worse defect than the row that surfaced it. The compiled
+backend keeps a variable's kind in the width of its stack slot: `x = 8` emits `%_x = alloca i32`, and the
+statement that later hands the same name a double emitted `store double %t, double* %_x` — an eight-byte
+write into a four-byte allocation. LLVM's verifier cannot object, because in textual IR an `alloca i32`
+decays to an opaque `ptr` and the pointee type written at the store is the compiler's own claim. The module
+verified, `llc` accepted it, the program ran, and the digits that came out of `y` were the high half of a
+`double`'s bit pattern.
+
+`x /= 2` over an int reached the same instruction by another road: the augmented-assignment path asked
+`isFloat(target) || isFloat(value)` to choose its domain, and neither operand is a float when both were
+written as ints — so it took the integer road, truncated, and printed `3` for `7 /= 2`. Choosing the double
+domain alone (the obvious one-line fix) is what exposed the corruption: with the operator fixed, the same
+probe printed `3.5` **and** `1074003968`, which is the measurement that made this a row of its own rather
+than a footnote in P.1.
+
+Why the pair and not a wider store: the slot's width was decided by a statement that had not seen this one,
+and re-planning the frame from a mid-block statement is the same mistake one level up. Box the double
+(`@rt_float_new`, ADR 0172's float box), bind the name to the `(payload, tag)` pair with the float's tag
+through `bindTaggedVar` (ADR 0166), record the origin so a refusal can name where its tag came from
+(ADR 0267's rule), and let the read roads ask the tag exactly as they ask it for a slot's arithmetic. A
+variable whose state never changes is untouched — no box, no tag word, no extra load — which is why the
+`fibonacci` and `function_calls` benchmarks emit the same module before and after.
+
+The GC is part of this row and not a footnote to it: the slot used to hold an immediate and now holds a
+handle, and an unrooted handle is a freed handle. Measured with the root missing, `h = 1` / `h /= 3` then
+`print(h + 1)` / `print(h * 2)` answered `1.3333333333333333` and `2.6666666666666665` — the second print
+reading the first one's answer, because the collector had freed the box and `@rt_float_new` handed the same
+index back. One `rt_root_put` (ADR 0181) closes it.
+
+Pinned by `integration/float_state_test.go` (`TestAFloatRebindingDoesNotReachIntoItsNeighbour`, four rows
+with a recognisable value parked beside the rebound name) and by the twelve lines of
+`programs/probe_int_state_becomes_float.gy`, which the ledger records `oracle: match`.
+
+### Gap R.156 — a float-state variable returned from a function is refused (OPEN, owner L11.6, measured landing ADR 0274)
+
+```
+def f():
+    x = 7
+    x /= 2
+    return x
+
+print(f())         # CPython 3.5 · --interp 3.5 · --aot exit 1
+```
+
+The rebinding is a statement-level door, and the `return` is not one of the positions it opens: the body's
+answer is a double and the return road has one word, so the callee asks the pair for a slot and the position
+keeps one. The cure already exists in the family — ADR 0273 stores the answer's tag in `@<fn>.anst` beside
+the `return` and lets a pair-aware caller load it — but the scan that decides which bodies carry it reads the
+`return` expression, and a name whose *state* changed while the body ran is not visible from `return x`. The
+honest refusal is the correct interim answer: the alternative is a payload answering for a value, which is
+the float-box-handle-printed-as-an-int class Gap R.132 files.
+
+### Gap R.157 — the state changes twice in one variable (OPEN, owner L11.6, measured landing ADR 0274)
+
+```
+t = 0
+for i in [4, 9]:
+    t += i / 2
+print(t)           # CPython 6.5 · --interp 6.5 · --aot exit 1
+```
+
+The accumulator, which is the shape a real program writes. The first `+=` takes the pair; the second finds
+the name already tagged, `bindFloatRebinding` declines (a name that is already a pair has its own road), and
+the ordinary float road then wants one word for the left operand. `numericPairVar` already vouches for a
+float-origin pair, so the *read* is close: what is missing is `taggedArithPair` accepting a payload that is a
+box handle rather than a slot, which is its gate to widen and not a new representation.
+
+### Gap R.158 — a float-state variable handed to a function is refused (OPEN, owner L11.6, measured landing ADR 0274)
+
+```
+def twice(v):
+    return v * 2
+
+x = 8
+x = 2.5
+print(twice(x))    # CPython 5.0 · --interp 5.0 · --aot exit 1
+```
+
+ADR 0273's pair crossing the call is the cure, asked of the rebinding instead of the literal. Its scan
+classifies a plain local from what the assignment *writes* — an `IntLit`, an arithmetic over literals — and a
+variable that later receives a double is not in that evidence, so the callee keeps one word per parameter and
+the call site declines. Keeping the gate closed is not caution for its own sake: a callee marked pair-taking
+whose caller cannot supply two words is a `define`/`call` arity disagreement, which is `mismatched type` from
+`llc` and ADR 0166's exit 2. Note the float-from-birth twin of this program (`x = 2.5` with no rebinding): it
+is not a refusal but Gap P.1's remaining half, and it answers `0` at exit 0.
+
+### Gap R.159 — a float-state variable as a container element is refused (OPEN, owner L11.6, measured landing ADR 0274)
+
+```
+x = 8
+x = 2.5
+print([x, 1])      # CPython [2.5, 1] · --interp the same · --aot exit 1
+```
+
+The element door writes a payload and a tag, and the tags it can write come from the value it can name in one
+word; the pair a float-state name carries is not among them. The container's own tag table already
+distinguishes a float box from an immediate for equality (ADR 0233), so this is the element door taking the
+pair rather than demanding the word.
+
+### Gap R.160 — an ordering against a float literal is refused for a float-state variable (OPEN, owner L11.6, measured landing ADR 0274)
+
+```
+h = 2
+h /= 4
+print(h > 0)       # True on all three
+print(h > 0.1)     # CPython True · --aot exit 1
+print(h == 0.5)    # True on all three
+```
+
+Equality asks the objects — ADR 0233's one answer to payload equality lifts the box on both sides — and
+ordering against an `int` literal picks the integer domain the pair can serve. A double literal on the right
+of a pair leaves the ordering road with one word, because it chooses its domain from the written operand
+rather than from the tag the left operand carries.
+
 ### Gap R.154 — a pair-carrying parameter beside an ordinary one is refused (OPEN, owner L11.1, measured landing ADR 0273)
 
 ```

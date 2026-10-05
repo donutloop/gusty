@@ -570,7 +570,17 @@ handle); the answer **handed to a function** is parity surface since
 static number (`Gap R.143`, `programs/probe_pair_bound_name_as_a_number`), a pair-shaped value handed to a
 position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes_a_value`), and the tuple
 unpacking that has not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's
-and the interpreted leg's answer against the compiled leg's exit 1. The same door is the reason a program must
+and the interpreted leg's answer against the compiled leg's exit 1. The same shape one statement earlier — the
+assignment that changes a variable's state from int to float — is parity surface since
+(`programs/probe_int_state_becomes_float.gy`, twelve lines, three legs: `x /= 2` and `x = 2.5` over an int
+variable box the double and bind the name to the `(payload, tag)` pair, `Gap P.1`, `Gap R.155`, ADR 0274);
+before it, the compiled leg printed `3` for `7 /= 2` and printed the *neighbour* of a rebound variable as a
+different number (`y = 12345` beside `x = 2.5` answered `1074003968`), both at **exit 0**, because the module
+stored a double into the four-byte slot the first binding chose and an opaque pointer hides that from the
+verifier. What that row leaves filed is the state travelling further: returned from a function (`Gap R.156`),
+changed twice in one variable (`Gap R.157`), handed to a function (`Gap R.158`), stored as a container element
+(`Gap R.159`), ordered against a float literal (`Gap R.160`) — each exit 1 naming the position that keeps one
+word, and each pinned with its exit class in `integration/float_state_test.go`. The same door is the reason a program must
 say which engine it wants: `--file` alone runs the interpreter, so the compiled leg of any of these shapes is
 `--aot --file <path>`, and `--json`'s `backend` member (or `--show-backend`) is how a measurement proves which
 engine produced it. The negation of a text was worse and is now paid:

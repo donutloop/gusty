@@ -71,6 +71,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// answer's kind comes back in the word the callee stored beside its own return, so
 		// `print(twice(xs[0][0]))` is `14` on all three engines (roadmap Gap R.139, ADR 0273).
 		"probe_slot_read_handed_to_a_function",
+		// An int that meets `/=`, and an int handed a double by a later assignment, leave the variable
+		// holding a float: the double goes into a float box and the name is bound to the (payload, tag)
+		// pair, so print, an operation, a comparison, a condition, `str` and a `while` head all ask the
+		// tag — and the variable beside it keeps its own number, which the `store double` into the
+		// four-byte slot could not promise (roadmap L11.6, Gap P.1, Gap R.155, ADR 0274).
+		"probe_int_state_becomes_float",
 		// The unary minus names its operand's kind on both engines, and every shape the reference stops on
 		// is a raise this program catches (roadmap Gap R.137, ADR 0266).
 		"negation_names_the_kind",
@@ -741,9 +747,9 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.6 (a stdlib constant keeps its type); closed 2026-10-05",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3.141592653589793\n2.718281828459045\n"}, {Backend: "aot", Stdout: "3.141592653589793\n2.718281828459045\n"}}},
 	"programs/probe_float_numeric": {oracle: lang.OracleDebt,
-		reason: "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216); what still diverges is float *state*: x /= 2 leaves an int in the compiled backend (prints 4 where CPython prints 4.0), and an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, all at exit 0",
-		ref:    "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-04 with the third shape written in",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-4\n0.5\n4.0\n0.2\n2.5\n"}, {Backend: "aot", Stdout: "-4\n0.5\n4\n0\n2\n"}}},
+		reason: "the floor rules are right on both backends now (-7 // 2 is -4, -3.5 % 2.0 is 0.5 — Gaps R.28 and R.30, ADR 0216), and so is `x /= 2` — the compiled leg prints 4.0 since ADR 0274 chose the double domain by the operator and rebound the int variable as the (payload, tag) pair (Gap R.155). What still diverges is the other half of float *state*: an untyped parameter that receives a double keeps the int word — `dbl(0.1)` prints 0 and `bump(1.5)` prints 2 where CPython prints 0.2 and 2.5, both at exit 0",
+		ref:    "roadmap L11.6 (numeric truth in the compiled backend, closes Gaps P.1 + P.2); re-measured 2026-10-05 after ADR 0274 — the `x /= 2` line joined the reference, the two untyped-parameter lines did not",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-4\n0.5\n4.0\n0.2\n2.5\n"}, {Backend: "aot", Stdout: "-4\n0.5\n4.0\n0\n2\n"}}},
 	"programs/probe_enumerate": {oracle: lang.OracleDebt,
 		reason: "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(<container>) copies are refused in AOT",
 		ref:    "roadmap L11.7 + L11.3 (tuples are values)",
