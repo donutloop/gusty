@@ -6706,3 +6706,52 @@ discipline: a probe records, a parity row asserts, and neither is allowed to go 
 `parser.go`, `escape.go`, `fmt.go`, `imports.go`, four test files) turned a one-feature commit into 400 lines
 of unrelated churn and nearly hid the real diff. gofmt the files the feature touches; the rest of the
 repository is not this cycle's business.
+
+## Cycle: `abs` asks the operand the same question the negation asks (ADR 0271 — Gap R.140 closed; Gaps R.150, R.151 filed)
+
+**A second door is a second truth.** The tempting shape for `abs` was "copy the negation's door, change the
+sentence" — which is how three truthiness tables and two `HeapKind` vocabularies happened. What shipped is one
+predicate (`signlessOperandKind`) with two callers, so `-x` and `abs(x)` cannot report different kinds for the
+same operand, plus a test (`TestAbsAsksTheSameQuestionTheNegationAsks`) that asks both doors about one operand
+and fails if the quoted kind differs. The row's cheapest insurance: the failure mode it prevents is invisible
+to any single-engine test, because each door is individually "right" until the two are compared.
+
+**A builtin is not one lowering, it is every road that reaches it.** `abs` has an `i32` door *and* a `double`
+road whose operand `floatValue` builds. Fixing the first left `print(abs("hi") * 2.5)` answering `0.0` at exit
+0 — and, on the interpreter, raising the *multiplication's* sentence for the same source, which is the kind of
+detail only a three-engine table shows. The lesson generalizes: when opening a door for an operation, ask how
+many lowering roads reach the operation, and make each one fall back to the shared raise rather than to an
+empty operand. ADR 0253's `fdiv double ,` blacklist was the same discovery wearing a different operator.
+
+**A door is only as truthful as the notebook it reads.** `abs(x)` asks the per-name records the print dispatch
+asks (`strVals`/`internedVars`), so with `x = "text"` rebound to `5` the new door *raised* `'str'` on a program
+whose answer is `5`: a correct mechanism reading an untruthful record produces a confidently wrong verdict.
+The reflex fix — decline to answer for any name bound twice — was built, measured (`print(abs(x))` → `0`,
+exit 0: the wrong *answer*, which this line of work exists to eliminate) and deleted. ADR 0270's
+retire-at-the-binding door is the fix, and shipping the door ahead of it would have meant committing a defect
+the same commit's own table can see. Precedent: ADR 0267 fixed Gap R.142 in the commit that made it reachable.
+
+**Raise versus refuse is an exit-code decision, so decide it like one.** Every trap row here was measured as
+exit 3 on both legs, catchable by `except TypeError:`, with the module checked through
+`gustyc --verify-llvm-file` so the container kinds can't creep back to `sub i32 0, <heap global>` (the two
+exit-2 shapes this row removed). The test table asserts the class *and* the message per kind, per engine, and
+a "module that never abses a non-number carries no sentence" row keeps the raises paid-for. Meanwhile the
+mixed-kind slot read keeps a refusal (exit 1, naming the missing tag and L11.1) — the boundary is CPython's
+own: what the reference stops on raises, what this pass cannot state refuses.
+
+**Probe a door's edges and you inherit the neighbours' bugs — measure them against a named commit.** Walking
+`abs` over "values that are not values" found two compiled-leg exit-2 classes (`print(len)` / `print(math)`
+loading a slot nothing allocated; `-(lambda x: x)` writing `sub i32 0, lambda_0`) and one already-filed hole
+(`except TypeError as e:` does not parse — Gap R.113, no new row). Both exit-2 defects were re-run against a
+binary built from `be1ea45` before being filed, so the rows can say "pre-existing, measured here" instead of
+leaving the next agent to wonder whether ADR 0271 caused them. Same habit, other direction: the ADR's
+before-column is a re-measurement from a worktree, not a memory of what the defect looked like when it was
+filed.
+
+**Process lesson, keep it: this working tree has more than one writer.** Mid-cycle the tree was committed
+under the agent identity (`7f6b109`, ADR 0270) with my uncommitted `abs` work inside it. Two rules make that
+survivable: (1) re-check `git log`/`git status` before assuming what HEAD is, and (2) never build a "before"
+baseline from "HEAD as of when I started" — build it from a commit ID, and if HEAD has moved, rebuild
+(`git worktree add /tmp/base-abs 7f6b109`). Cross-check the numbers too: the conformance snapshot in
+`roadmap.md` had drifted (152 programs / 143 rows / 89 `match` against the artifact's 153 / 144 / 90) and the
+harness's own log line — not a remembered count — is the thing to quote.

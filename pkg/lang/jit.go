@@ -4550,7 +4550,7 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 			}
 			// The door asks the operand what it is before it writes a number: `abs("hi")` used to hand the
 			// interned index to the int evaluator, so the program printed `hi` at exit 0 where the reference
-			// raises `TypeError: bad operand type for abs(): 'str'` (roadmap Gap R.140, ADR 0270).
+			// raises `TypeError: bad operand type for abs(): 'str'` (roadmap Gap R.140, ADR 0271).
 			return e.absolute(av)
 		case "floor", "ceil", "sqrt":
 			// The three names `predeclared.go` has always advertised and the checker has always

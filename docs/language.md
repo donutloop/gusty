@@ -1649,9 +1649,46 @@ Two rules keep the door honest rather than merely loud:
   `xs = [1, "a"]` / `-xs[0]`, which the reference answers `-1`.
 
 What the compiler cannot see it does not claim: a parameter the caller fills with a text on one path and a
-number on another keeps the road it had, which is the tagged-value-word clause of roadmap L11.1 (and
-`abs("hi")`, which still answers instead of raising, is the sibling defect the same measurement filed as
-Gap R.140).
+number on another keeps the road it had, which is the tagged-value-word clause of roadmap L11.1.
+
+### `abs` asks the same question (`abs(x)`)
+
+The absolute value is the other operation that cannot be written without knowing what arrived: a sign is a
+property of a number, and the reference stops on everything else. One predicate answers the kind for both
+operators — `-{1}` and `abs({1})` read the same slot through the same door, so the two sentences can never
+disagree about what the operand is (roadmap Gap R.140, ADR 0271):
+
+```python
+print(abs(-5))        # 5         — an int
+print(abs(-2.5))      # 2.5       — a float keeps its kind
+print(abs(True))      # 1         — a verdict is a number
+print(abs(3 - 10))    # 7         — whatever the expression answers
+print(abs("hi"))      # TypeError: bad operand type for abs(): 'str'
+print(abs(None))      # TypeError: bad operand type for abs(): 'NoneType'
+print(abs([1, 2]))    # TypeError: bad operand type for abs(): 'list'
+print(abs({"a": 1}))  # TypeError: bad operand type for abs(): 'dict'
+print(abs({1, 2}))    # TypeError: bad operand type for abs(): 'set'
+print(abs(Token()))   # TypeError: bad operand type for abs(): 'Token'  — an instance names its class
+```
+
+Three things the first draft of this door had to get right:
+
+- **The wording is the reference's own, and it is not the negation's.** CPython writes
+  `bad operand type for abs(): 'str'` — the *call* named, with nothing between the colon and the operand —
+  where the same value under `-` earns `bad operand type for unary -: 'str'`. One sentence table owns both
+  (ADR 0265), with `abs` spelled as its own operation rather than borrowed from `unary -`.
+- **A raise, not a refusal.** A program the reference stops on must reach the runtime error exit class, so
+  `try: print(abs("hi")) except TypeError:` runs the handler on both engines. A front-end refusal would be
+  a compile-time verdict that escapes the arm (ADR 0166's exit-code contract).
+- **Both roads lower the call.** The `i32` road and the `double` road each reach `abs`; the second one
+  produces the operand through the float lift, which yields nothing for a text, so `print(abs("hi") * 2.5)`
+  had been answering `0.0` at exit 0. Each road asks the door and falls back to the raise the other one uses.
+
+What a *name* in the operand holds is the latest binding's answer, not the first one's: `x = "text"` then
+`x = [1, 2]` retires the earlier kind, so `abs(x)` raises `'list'` and `print(x)` prints the container
+(roadmap Gap R.145, ADR 0270). A slot whose kind only the run time can describe — a list the program grew
+from numbers into text — still refuses, naming the missing tag and roadmap L11.1, which is the same open
+clause that owns `abs(n)` for a pair-bound name (Gap R.143).
 
 ## FFI / C interop (`extern fn`)
 
@@ -2464,8 +2501,12 @@ Standard-library numeric builtins:
     max([True, 1])   # True   — the tie keeps the first candidate
     max([1, True])   # 1      — …so this one keeps the number
     abs(-5)          # 5
+    abs(-2.5)        # 2.5    — a float keeps its kind
+    abs(True)        # 1      — a verdict is a number
+    abs("hi")        # TypeError: bad operand type for abs(): 'str'   — no sign to take (ADR 0271)
 
-`min`/`max` accept one list or set, one scalar, or values written side by side; `abs` takes one number.
+`min`/`max` accept one list or set, one scalar, or values written side by side; `abs` takes one number, and
+names its operand's kind when it is not one. 
 - The call chooses the **candidate**, not the comparison that found it, so the answer's kind is the
   winner's own kind — the rule ADR 0256 wrote for numbers and ADR 0261 finished for verdicts.
   `min(1.0, 2)` is the float `1.0`; `min(2.5, 1)` is the integer `1`, not `1.0`.

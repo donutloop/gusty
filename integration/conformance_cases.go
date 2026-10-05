@@ -53,6 +53,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// is the text `d`, `[1] and [2]` is `[2]`, and `1 or True` stays the number `1` (roadmap Gap R.147,
 		// ADR 0269). The shapes whose answer needs the kind to travel with it are filed beside it.
 		"and_or_answer_like_python",
+		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
+		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
+		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap
+		// R.140, ADR 0271). The last two lines are the rebinding the door depends on: a name's *latest*
+		// binding decides the kind the raise names (Gap R.145, ADR 0270).
+		"abs_names_its_kind",
 		// The same arithmetic one statement earlier — bound to a name before it is printed. The pair
 		// the print door already took now travels through the binding, so `n = xs[0][0] * 2` and
 		// `print(n)` answer 14 on all three engines (roadmap Gap R.138, ADR 0267).

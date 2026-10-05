@@ -275,9 +275,25 @@ predicate, so `print(x)` and `print(-x)` cannot disagree about what `x` holds (A
 further out). The constant folders were closed on the shape — a folded `-None` is a silent `0` with no
 instruction that could have disagreed (Gap R.37's rule, at its last operator) — and a slot is raised only
 where the literal says nothing it holds is a number *and* the program never stores anything else into it,
-because a raise where CPython answers `-1` would be the same bug wearing a class. `abs("hi")` still answers
-instead of raising, and the interpreter still calls a tuple `'list'`: both are pinned with their own rows
-(`Gap R.140`, `Gap R.141`) rather than hidden in this one.
+because a raise where CPython answers `-1` would be the same bug wearing a class. The interpreter still
+calls a tuple `'list'`, which is pinned with its own row (`Gap R.141`) rather than hidden in this one.
+
+**`abs` is the other operator that needs the answer** (ADR 0271, closing `Gap R.140`). CPython stops on the
+absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this
+compiler answered every one of them: `print(abs("hi"))` printed `hi` (the text reached the print door holding
+the interned *index* it is stored as), `abs(None)` and an instance printed the number `0`, and `abs([1])`,
+`abs({"a": 1})`, `abs({1})` each handed `llc` a `sub i32 0, <heap global>` and came back **exit 2**. It is
+paid through the door above rather than a new one — one predicate names the operand for `-x` and for `abs(x)`,
+so the two sentences can never disagree about what the operand holds — with the wording coming from the one
+sentence table, `abs` spelled as its own operation because CPython names the *call* there and the *operator*
+under the minus. Both lowering roads ask it: the `double` road builds its operand by lifting to a float, which
+yields nothing for a text, and had been printing `0.0` for `print(abs("hi") * 2.5)` at exit 0. What a *name*
+asks is its latest binding, which is why this row needed `Gap R.145` (ADR 0270) fixed in the same commit —
+`x = "text"` / `x = [1, 2]` printed `text`, and `x = "text"` / `x = 5` / `abs(x)` raised on a program whose
+answer is `5`. The three-engine program is `programs/abs_names_its_kind.gy`; what the sweep around it found
+broken is filed, not folded in: a builtin or an imported module used as a value is exit 2 compiled and
+`NameError` interpreted (`Gap R.150`), and `-(lambda x: x)` reaches `sub i32 0, lambda_0` — also exit 2
+(`Gap R.151`).
 
 A function's **return word** is now read from what its body does rather than from the shape of its `return`
 line (ADR 0254, closing Gap R.3c). `def addf(x): x = x + 1.5` / `return x` / `print(addf(1.0))` printed the
@@ -983,10 +999,10 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **143 rows over three legs** — the AST interpreter, the LLVM AOT
-  binary, and **CPython** — 104 rows asserting parity and 39 recorded without it (the probe and merged
+  `conformance-matrix.json`: **144 rows over three legs** — the AST interpreter, the LLVM AOT
+  binary, and **CPython** — 105 rows asserting parity and 39 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
-  the oracle verdict being 89 `match`, 33 pinned `debt` and 21 `not_applicable`. Parity (interpreter ==
+  the oracle verdict being 90 `match`, 33 pinned `debt` and 21 `not_applicable`. Parity (interpreter ===
   AOT) is necessary but not sufficient: two backends that share a bug agree, and for this
   project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when both backends print what CPython prints. Each case *declares* its

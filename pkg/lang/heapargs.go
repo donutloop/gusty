@@ -2667,7 +2667,7 @@ func (g *irGen) forgetTaggedBinding(name string) {
 // have their own forget helper and their own call, and the interned-text pair has none: `x = "text"` then
 // `x = [1, 2]` left `internedVars[x]` standing, and the compiled `print(x)` answered `text` at exit 0 while
 // CPython and the interpreter answered `[1, 2]` (roadmap Gap R.145, measured again while landing the signless
-// doors of ADR 0270, which read the same records and would have raised on `x = "text"` / `x = 5` / `abs(x)`).
+// doors of ADR 0271, which read the same records and would have raised on `x = "text"` / `x = 5` / `abs(x)`).
 //
 // It clears only what the new binding contradicts, and it is called before the binding records its own
 // kinds, so a program that rebinds a name to the same family keeps the record it needs.
@@ -4185,7 +4185,7 @@ func unsupportedNumberOp(op, kind, other string) (string, string) {
 	case "abs":
 		// `abs("hi")` is CPython's own sentence, and it is *not* the negation's: the reference names the
 		// call, not an operator. One table, one wording per operation, so the interpreter, the emitted
-		// raise and the tests cannot disagree (roadmap Gap R.140, ADR 0270).
+		// raise and the tests cannot disagree (roadmap Gap R.140, ADR 0271).
 		return "TypeError", fmt.Sprintf("bad operand type for abs(): '%s'", kind)
 	default:
 		if op == "+" && kind == "str" {

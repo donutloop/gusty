@@ -45,7 +45,7 @@ func negationOperandIsLiterallyNotANumber(e Expr) bool {
 // signlessOperandKind is ADR 0266's question — *what kind is this operand?* — asked for the other door that
 // has no meaning for a value without a sign: `abs`. `abs("hi")` answered `hi` interpreted (the interned index
 // rode on as the value) and `0` compiled, both at exit 0, and `abs([1])` had `llc` reject the module — exit 2,
-// spent on a program the reference merely stops on (roadmap Gap R.140, ADR 0270).
+// spent on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).
 //
 // It is the same question and the same table, not a copy: one predicate names a value for the unary minus,
 // for `abs`, for the printer and for the raise's wording, which is what keeps `-x` and `abs(x)` from
@@ -60,7 +60,7 @@ func (g *irGen) absOperandKind(e Expr) (string, bool) { return g.signlessOperand
 // a bool box answer with their payloads, an unboxed int is its own number, and every other object the heap
 // can hand back stops the program with the reference's sentence — `bad operand type for abs(): 'str'`, named
 // by the same `operandKind` the negation, the binary operators and `len` already read (roadmap Gap R.140,
-// ADR 0270). Until this door the interpreter negated the handle: `abs("hi")` returned the interned index, so
+// ADR 0271). Until this door the interpreter negated the handle: `abs("hi")` returned the interned index, so
 // `print(abs("hi"))` printed `hi` at exit 0 while CPython stops.
 func (e *Evaluator) absolute(v int64) (int64, error) {
 	if fv, ok := e.floatOf(v); ok {

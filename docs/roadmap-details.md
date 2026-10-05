@@ -6117,7 +6117,7 @@ argument arrived as a pair has to be bound as a tagged parameter, so the body's 
 caller saw — which is L11.1's own sentence, quoted again at the fourth door in a row: the kind belongs to
 the value, and every place a value crosses a boundary has to carry the tag across with it.
 
-### Gap R.140 — `abs` never asks a tag either (OPEN, owner L11.1, measured landing ADR 0266)
+### Gap R.140 — `abs` never asks a tag either (CLOSED by ADR 0271 on 2026-10-05; owner L11.1, measured landing ADR 0266)
 
 ```
 print(abs("hi"))    # CPython TypeError: bad operand type for abs(): 'str'
@@ -6136,6 +6136,38 @@ on both engines, catchably — `pkg/lang/negation.go`'s `negate` and `negationOp
 and `abs` needs a third that asks the same question with the reference's own wording. Filed rather than
 fixed with the negation because the sentence is different, the door is different, and one commit per feature
 is the rule.
+
+**Closed by ADR 0271.** The row's own guess — that `abs` "needs a third door" — was refined while landing it:
+the door is shared, not duplicated. `signlessOperandKind` in `pkg/lang/negation.go` answers the question once
+and `negationOperandKind`/`absOperandKind` are the two callers, so the two sentences cannot disagree about
+what the operand holds; the wording is `unsupportedNumberOp`'s own `case "abs"` row, spelled as its own
+operation because CPython names the *call* there and the *operator* under the minus; and the interpreter
+followed with `(*Evaluator).absolute` asking the value's `operandKind` rather than the compiled leg being
+fixed alone. Two things the filing did not anticipate:
+
+- The compiled path has **two** roads into the builtin, and the second one — the `@llvm.fabs.f64` road, whose
+  operand `floatValue` builds — had no operand at all for a text, so `print(abs("hi") * 2.5)` answered `0.0`
+  at exit 0 while the *interpreter* raised the multiplication's sentence for the same source. Both roads ask
+  the door now.
+- The door reads the per-name status records, so it inherited **Gap R.145**: `x = "text"` / `x = 5` /
+  `print(abs(x))` *raised* `'str'` while the stale interned-text record stood, on a program whose answer is
+  `5`. The conservative alternative — a program-wide scan declining to answer for any name bound twice — was
+  built, measured (`print(abs(x))` → `0`, exit 0) and deleted; ADR 0270's retire-at-the-binding door is the
+  fix, and it is why the two rows close a commit apart rather than one commit containing both.
+
+Measured at `be1ea45` and again here, three engines: the six kinds (`str`, `NoneType`, `list`, `dict`, `set`,
+an instance) went from `hi`/`None`/`[1, 2]`/`{'a': 1}`/`{1, 2}`/`<instance>` interpreted and `0`/`0`/**exit 2**
+(`%t1 = sub i32 0, @.lst1`)/`0`/**exit 2** (`@.set1`)/`0` compiled — every one at exit 0 — to CPython's
+sentence at exit 3 on both engines, catchable by `except TypeError:`; `abs(-3)`, `abs(-3.5)`, `abs(True)` and
+`abs(3 - 10)` are unmoved. `pkg/lang/abs_kind_test.go` (43 rows: parity, traps by class *and* message,
+catchability, IR shape, and both doors asked about the same operand), `integration/abs_kind_test.go` (the same
+through the shipped CLI against `python3`, exit class pinned, exit 2 forbidden, `--verify-llvm-file` run on
+every trap shape) and `programs/abs_names_its_kind.gy` (`match`, three legs) are the coverage.
+
+What the sweep around the door found broken is filed with its own ID rather than absorbed: **Gap R.150** (a
+built-in or an imported module as a *value* — exit 2 compiled) and **Gap R.151** (a `lambda` in a numeric
+position — the same `sub i32 0, <global>` under another name). Both reproduce at `be1ea45`, so neither is
+this cycle's doing.
 
 ### Gap R.141 — a tuple's operand-type sentence names the representation, not the value (OPEN, owner L11.3, measured landing ADR 0266)
 
@@ -6244,7 +6276,7 @@ binds the names in a different function from the one that owns the plain assignm
 targets, which will want the same door for the same reason (`for v in xs` where `xs` was built at run time).
 The fix is to walk the road once, from a helper both bindings call.
 
-### Gap R.145 — an interned-text binding survives the rebinding that replaced it (OPEN, owner L11.3 with Gap Q.1's table, measured landing ADR 0267)
+### Gap R.145 — an interned-text binding survives the rebinding that replaced it (CLOSED by ADR 0270 on 2026-10-05; owner L11.3 with Gap Q.1's table, measured landing ADR 0267)
 
 ```
 n = "text"
@@ -6283,7 +6315,7 @@ ledger row. It is the same missing word Gap R.139 names one position over: an ar
 needs a parameter that takes the pair; an argument a *builtin* declares, and an element, need the same thing
 in the runtime's own signature.
 
-### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (OPEN, owner both engines, measured landing ADR 0268)
+### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (CLOSED by ADR 0269 on 2026-10-05; owner both engines, measured landing ADR 0268)
 
 ```
 print(2 and 3)        # CPython 3   · both engines 1
@@ -6317,3 +6349,56 @@ which is the module `llc` rejects and the exit class this line of work has to st
 therefore records the hazard next to the refusal, and the two float rows in
 `TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI` are pinned to exit 1 with exit 2 failing the
 row, so the day someone routes them the tests name the class of failure instead of an `llc` dump.
+
+### Gap R.149 — the operand the test did not choose is still evaluated (OPEN, owner both engines, measured landing ADR 0269)
+
+```
+def boom():
+    print("boom")
+
+print(0 and boom())     # CPython 0, silent · both engines: boom, then 0
+print(0 and (1 // 0))   # CPython 0 · both engines: ZeroDivisionError
+```
+
+ADR 0269 lowered a value position to a `select`, which chooses a value but evaluates both arms, and the
+interpreter evaluates both operands before it asks which one it wanted. Both engines print CPython's answer
+when the rejected operand is pure, so this is one row for the two backends rather than a divergence — and it
+is the row that decides *when* the fix may land: a `select` cannot raise, so the compiled half needs a real
+`br` + `phi`, and the two roads that own exception flow (the store-and-branch of ADR 0228 and the zero guard
+of ADR 0253) must reach the merge together. One commit, both legs, or neither.
+
+### Gap R.150 — a built-in or an imported module used as a value has no word (OPEN, owner aot, measured landing ADR 0271)
+
+```
+print(len)              # CPython <built-in function len>
+                        # --interp NameError: name 'len' is not defined · --aot exit 2
+import math
+print(math)             # CPython <module 'math' (built-in)>
+                        # --interp <module> · --aot exit 2 (`use of undefined value '%_math'`)
+```
+
+(The `import math` rows need the stdlib on the search path — `stdlib/math.gy` is found from the working
+directory — which is why the same source says `cannot import module math` when run from elsewhere; that is
+L11.6's `probe_math_const` story, not this one.)
+
+The compiled leg emits `load i32, i32* %_len` / `load i32, i32* %_math` for a name that was never a
+variable — there is no slot, and `llc-20` says so (`use of undefined value '%_math'`). A name that is not a
+variable needs a value of its own (a function object for a built-in, a module object with an attribute read),
+and until it has one the front end must refuse rather than emit a load of nothing. The interpreted legs are
+not right either — `NameError` for a built-in CPython has — but they are at least in the runtime-error exit
+class. Reproduces at `be1ea45`; measured while probing ADR 0271's edges.
+
+### Gap R.151 — a `lambda` in a numeric position is the same exit 2 under another name (OPEN, owner aot, measured landing ADR 0271)
+
+```
+print(-(lambda x: x))   # CPython TypeError: bad operand type for unary -: 'function'
+                        # --interp that sentence · --aot exit 2 (`%t4 = sub i32 0, lambda_0`)
+```
+
+ADR 0271 deleted `sub i32 0, <heap global>` for containers; the closure's function global is the next
+occupant of that operand slot. A function value has no kind in `signlessOperandKind`, so it falls through to
+the arithmetic the door exists to guard. The fix is the door's: name the kind `'function'`, raise CPython's
+sentence, and widen `runtime_ir_test.go`'s module-wide "no global in a value position" assertion (today
+`i32 @.(str|lst|dict|set)`) to the `lambda_N` globals. The interpreted legs already say the right sentence,
+which is the usual signal that the compiled leg is the one holding the wrong belief. Reproduces at
+`be1ea45`.

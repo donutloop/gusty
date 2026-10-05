@@ -1,0 +1,50 @@
+# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.
+#
+# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the
+# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this
+# toolchain answered all of them: a text reached the print door holding the interned index it is stored
+# as, so `print(abs("hi"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and
+# `abs([1])`, `abs({"a": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's
+# "the compiler is broken" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).
+#
+# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that
+# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises
+# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the
+# last lines are the rebinding the door reads, where a name's latest binding decides the kind.
+print(abs(-10))
+print(abs(10))
+print(abs(-3.5))
+print(abs(True))
+print(abs(0))
+try:
+    print(abs("hi"))
+except TypeError:
+    print("trap str")
+try:
+    print(abs(None))
+except TypeError:
+    print("trap NoneType")
+try:
+    print(abs([1, 2]))
+except TypeError:
+    print("trap list")
+try:
+    print(abs({"a": 1}))
+except TypeError:
+    print("trap dict")
+try:
+    print(abs({1, 2}))
+except TypeError:
+    print("trap set")
+class Thing:
+    pass
+
+try:
+    print(abs(Thing()))
+except TypeError:
+    print("trap Thing")
+x = "text"
+x = -7
+print(abs(x))
+print(-x)
+print(abs(x) + 1)

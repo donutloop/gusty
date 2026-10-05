@@ -7163,7 +7163,7 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 			if id, ok := n.Fn.(*Name); ok && id.Value == "abs" && len(n.Args) == 1 {
 				// The double door asks the same question the i32 door asks. Landing here with an operand that
 				// has no number in it is what made `print(abs("hi") * 2.5)` answer `0.0` at exit 0: the operand
-				// lowered to nothing, and the intrinsic took an empty operand (roadmap Gap R.140, ADR 0270).
+				// lowered to nothing, and the intrinsic took an empty operand (roadmap Gap R.140, ADR 0271).
 				if kind, bad := g.absOperandKind(n.Args[0]); bad {
 					raised := false
 					if ix, isIdx := n.Args[0].(*Index); isIdx {
@@ -12546,7 +12546,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// number in it, and negating the word the value happens to be stored as is the answer this door used
 		// to give — `abs("hi")` printed `0`, `abs([1])` wrote `sub i32 0, @.lst1` and spent the contract's
 		// "the compiler is broken" code on a program the reference merely stops on
-		// (roadmap Gap R.140, ADR 0270).
+		// (roadmap Gap R.140, ADR 0271).
 		if kind, bad := g.absOperandKind(c.Args[0]); bad {
 			raised := false
 			if ix, isIdx := c.Args[0].(*Index); isIdx {

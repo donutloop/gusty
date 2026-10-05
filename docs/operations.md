@@ -573,10 +573,17 @@ raise the reference's `TypeError: bad operand type for unary -: 'str'` at **exit
 `except TypeError:` on each leg, for a text, `None`, a container literal, an instance (which names its own
 class) and a slot the literal says holds no number — the operator asks the operand's kind before it writes an
 instruction (`Gap R.89`, `Gap R.137`, ADR 0266; the three-engine program is
-`programs/negation_names_the_kind.gy`). What the same measurement found still answering quietly is filed
-rather than folded in: `abs("hi")` prints instead of raising `bad operand type for abs(): 'str'`
-(`Gap R.140`), and a tuple's operand-type sentence says `'list'` on the interpreted leg (`Gap R.141`,
-waiting on L11.3). To reproduce any of these numbers, force the leg: `gustyc --file <path> --interp` and
+`programs/negation_names_the_kind.gy`). `abs` asked the same question of the same operand and was answered
+with a number: `abs("hi")` printed `hi` and `abs(None)` printed `0` at exit 0, and `abs([1])`, `abs({"a": 1})`
+and `abs({1})` each wrote `sub i32 0, <heap global>` for `llc` to reject — **exit 2** on a program the
+reference merely stops on. It is paid by the same door rather than a new one: one predicate names the operand
+for `-x` and `abs(x)`, and the raise leaves with CPython's own `TypeError: bad operand type for abs():
+'<kind>'` at **exit 3** on both legs, catchable, an instance naming its class (`Gap R.140`, ADR 0271; the
+three-engine program is `programs/abs_names_its_kind.gy`). What the same sweep found and did not fix is
+filed with its own ID: a tuple's operand-type sentence says `'list'` on the interpreted leg (`Gap R.141`,
+waiting on L11.3), a builtin or an imported module used as a *value* is exit 2 compiled and `NameError`
+interpreted (`Gap R.150`), and a `lambda` in a numeric position reaches `sub i32 0, lambda_0` — also exit 2
+(`Gap R.151`). To reproduce any of these numbers, force the leg: `gustyc --file <path> --interp` and
 `gustyc --file <path> -aot` — a bare `--file` is the interpreter's default, and `-aot` written after the
 path is parsed as that flag's value rather than as the compiled leg.
 
