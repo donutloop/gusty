@@ -482,6 +482,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_combine_a_floored_pair",
+        "name": "probe_combine_a_floored_pair.gy",
+        "source": "# What CPython prints for each line here (python3, 3.12):\n#\n#   7         ((7 // 2) * 2 + (7 % 2) — the identity, integer side)\n#   7.5       ((7.5 // 2) * 2 + (7.5 % 2) — and float side, from the same define)\n#   -3.5      (the negative: a floored pair that truncated toward zero would disagree with itself)\n#   True      ((v // b) * b + (v % b) == v asked as a question, so a wrong half cannot hide)\n#   6.0       ((7.5 // 2) * 2 — an answer that used to print 6, exit 0)\n#   15        (7 * 2 + 1 — the same define's integer answer stays an integer)\n#   3.0       ((2.5 - 1) * 2)\n#   4.5       (2.5 + 1 + 1 — left-nested, the arm question's own shape)\n#   3.5       ((7.5 % 3) + (7.5 // 3) — both flooring operators in one answer)\n#   17.0      (the nested answer in the arm of a condition)\n#   13.0      ((7.5 - 1) * 2 of a slot read — the parameter door and the slot door over one expression)\n#   4.0       ((x + 1) * 2 where x became a double through `/=`-shaped state)\n#\n# ADR 0278 taught the pair door to floor and remainder; this program is what it left owed (roadmap\n# Gap R.166). The door asked about the *top* of an expression, and its arm question asked about the arm's\n# top node only — so a body whose answer was `(v // 2) * 2 + (v % 2)`, `v * 2 + 1` or `v + 1 + 1` declined,\n# and every one of them had already been *answered* a cycle earlier with a truncated digit at exit 0. The\n# tempting fix was to value the arms by their payloads, which prints `7` for `identity(7.5)`: the wrong\n# number with a passing test. The cure is that `slotArithmeticIsProven` walks its leaves (`BinOp`, `UnOp`,\n# `CondExpr`) instead of asking the top node whether it is a slot read, so each arm of a pair expression is\n# answered by the same tagged door as the whole — the identity ADR 0216 pinned holds over a parameter as it\n# does over a literal.\n#\n# What stays refused is a *position*, not an expression: a pair answer stored in a container element, or a\n# call's pair answer used as an arm (Gaps R.146 and R.164). Those rows are pinned as refusals in\n# `integration/floor_pair_test.go` so this family cannot be \"finished\" by truncating one of them.\ndef identity(v):\n    return (v // 2) * 2 + (v % 2)\n\ndef holds(v):\n    return (v // 2) * 2 + (v % 2) == v\n\ndef scaled(v):\n    return (v // 2) * 2\n\ndef shifted(v):\n    return v * 2 + 1\n\ndef under(a):\n    return (a - 1) * 2\n\ndef summed(v):\n    return v + 1 + 1\n\ndef both(v):\n    return (v % 3) + (v // 3)\n\ndef big(v):\n    if v \u003e 10:\n        return (v // 2) * 2 + 1\n    return v\n\nprint(identity(7))\nprint(identity(7.5))\nprint(identity(-3.5))\nprint(holds(7.5))\nprint(scaled(7.5))\nprint(shifted(7))\nprint(under(2.5))\nprint(summed(2.5))\nprint(both(7.5))\nprint(big(17.5))\nxs = []\nxs.append([7.5, 8])\nprint((xs[0][0] - 1) * 2)\ny = 2\ny = y / 2\nprint((y + 1) * 2)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "7\n7.5\n-3.5\nTrue\n6.0\n15\n3.0\n4.5\n3.5\n17.0\n13.0\n4.0\n",
+      "aot_ok": true,
+      "aot_stdout": "7\n7.5\n-3.5\nTrue\n6.0\n15\n3.0\n4.5\n3.5\n17.0\n13.0\n4.0\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "7\n7.5\n-3.5\nTrue\n6.0\n15\n3.0\n4.5\n3.5\n17.0\n13.0\n4.0\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/abs_names_its_kind",
         "name": "abs_names_its_kind.gy",
         "source": "# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.\n#\n# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the\n# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this\n# toolchain answered all of them: a text reached the print door holding the interned index it is stored\n# as, so `print(abs(\"hi\"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and\n# `abs([1])`, `abs({\"a\": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's\n# \"the compiler is broken\" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).\n#\n# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that\n# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises\n# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the\n# last lines are the rebinding the door reads, where a name's latest binding decides the kind.\nprint(abs(-10))\nprint(abs(10))\nprint(abs(-3.5))\nprint(abs(True))\nprint(abs(0))\ntry:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"trap str\")\ntry:\n    print(abs(None))\nexcept TypeError:\n    print(\"trap NoneType\")\ntry:\n    print(abs([1, 2]))\nexcept TypeError:\n    print(\"trap list\")\ntry:\n    print(abs({\"a\": 1}))\nexcept TypeError:\n    print(\"trap dict\")\ntry:\n    print(abs({1, 2}))\nexcept TypeError:\n    print(\"trap set\")\nclass Thing:\n    pass\n\ntry:\n    print(abs(Thing()))\nexcept TypeError:\n    print(\"trap Thing\")\nx = \"text\"\nx = -7\nprint(abs(x))\nprint(-x)\nprint(abs(x) + 1)\n",
@@ -3524,7 +3547,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3039342470/122/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3403767317/123/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3538,7 +3561,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3039342470/122/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3403767317/123/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4340,11 +4363,11 @@
       ]
     }
   ],
-  "rows": 147,
+  "rows": 148,
   "skipped": 36,
-  "pass": 111,
+  "pass": 112,
   "fail": 0,
-  "oracle_match": 96,
+  "oracle_match": 97,
   "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

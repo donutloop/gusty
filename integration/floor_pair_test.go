@@ -104,10 +104,50 @@ func floorParity() []struct{ name, src, want string } {
 			"def big(v):\n    if v > 10:\n        return v // 2\n    return v\n\nprint(big(18.5))\nprint(big(7.5))\n", "9.0\n7.5\n",
 		},
 		{
-			// ADR 0216's identity, half of it: the two halves are served, the whole is Gap R.166's
-			// refusal, and pinning the half is what lets the whole be added later without re-deriving this.
-			"half the flooring identity over a parameter",
-			"def halfer(v):\n    return v // 2\n\nprint(halfer(7))\nprint(halfer(7.5))\n", "3\n3.0\n",
+			// ADR 0216's identity, whole: what ADR 0278 left refused (and, before that, answered with a
+			// truncated digit at exit 0), paid the same day it was filed.
+			"the flooring identity over a parameter",
+			"def f(v):\n    return (v // 2) * 2 + (v % 2)\n\nprint(f(7))\nprint(f(7.5))\nprint(f(-3.5))\n", "7\n7.5\n-3.5\n",
+		},
+		{
+			"the identity asked as a question, so a wrong half cannot hide",
+			"def f(v):\n    return (v // 2) * 2 + (v % 2) == v\n\nprint(f(7.5))\n", "True\n",
+		},
+		{
+			"a product of a floored parameter, both kinds",
+			"def f(v):\n    return (v // 2) * 2\n\nprint(f(7.5))\nprint(f(7))\n", "6.0\n6\n",
+		},
+		{
+			"a product beside a literal",
+			"def f(v):\n    return v * 2 + 1\n\nprint(f(7.5))\nprint(f(7))\n", "16.0\n15\n",
+		},
+		{
+			"a difference under a product",
+			"def f(v):\n    return (v - 1) * 2\n\nprint(f(2.5))\nprint(f(2))\n", "3.0\n2\n",
+		},
+		{
+			"a sum of a sum, left-nested — the arm question's own shape",
+			"def f(v):\n    return v + 1 + 1\n\nprint(f(2.5))\n", "4.5\n",
+		},
+		{
+			"both flooring operators in one answer",
+			"def f(v):\n    return (v % 3) + (v // 3)\n\nprint(f(7.5))\nprint(f(7))\n", "3.5\n3\n",
+		},
+		{
+			"a nested answer in the arm of a condition",
+			"def f(v):\n    if v > 10:\n        return (v // 2) * 2 + 1\n    return v\n\nprint(f(17.5))\nprint(f(2.5))\n", "17.0\n2.5\n",
+		},
+		{
+			// The slot door and the parameter door in one expression, which ADR 0273 kept apart: the arm
+			// question now asks both of the same leaves. This program refused before the arm question
+			// walked its leaves, and prints the reference's answer now.
+			"a floored slot read under a product",
+			"xs = []\nxs.append([7.5, 8])\nprint(((xs[0][0] - 1) * 2))\n", "13.0\n",
+		},
+		{
+			// A float-state name is a pair too, and the same arm question covers it.
+			"a nested answer over a float-state name",
+			"x = 2\nx = x / 2\nprint((x + 1) * 2)\n", "4.0\n",
 		},
 	}
 }
@@ -194,15 +234,13 @@ func TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine(t *testing.
 	}
 }
 
-// TestAFlooredAnswerCombinedWithOtherArithmeticRefusesRatherThanTruncates pins the ladder's honest half:
-// Gap R.166 is owed, and until it is paid the combined shapes must exit 1 with the road named, because before
-// this cycle the same programs answered a truncated integer at exit 0. A wrong number is what the ladder is
-// for; a refusal is where a wrong number is allowed to stand until it is fixed.
-func TestAFlooredAnswerCombinedWithOtherArithmeticRefusesRatherThanTruncates(t *testing.T) {
+// TestAPairAnswerHeldByAOneWordPositionRefusesRatherThanTruncates pins the ladder's honest half after
+// Gap R.166 was paid: the door combines an *expression*, and ADR 0273's refusals remain where a *position*
+// keeps one word — a container's element (Gap R.146), or a call's pair answer used as an arm (Gap R.164).
+// Before ADR 0278 the first of these answered a truncated digit at exit 0, so the assertion is the exit class
+// and the sentence, never a number: a refusal is where a wrong number is allowed to stand until it is fixed.
+func TestAPairAnswerHeldByAOneWordPositionRefusesRatherThanTruncates(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"the whole flooring identity", "def f(v):\n    return (v // 2) * 2 + (v % 2)\n\nprint(f(7.5))\n", "pair road cannot answer"},
-		{"a product of a floored parameter", "def f(v):\n    return (v // 2) * 2\n\nprint(f(7.5))\n", "pair road cannot answer"},
-		{"a product beside a literal", "def f(v):\n    return v * 2 + 1\n\nprint(f(7.5))\n", "pair road cannot answer"},
 		// The pair answer stored in a container rather than returned: ADR 0273's own sentence, Gap R.146's
 		// family — the position keeps one word, so the tag has nowhere to go. Before ADR 0278 this program
 		// printed 2 and 2 at exit 0, because the floor never saw the double; refusal is the standing the
@@ -212,17 +250,32 @@ func TestAFlooredAnswerCombinedWithOtherArithmeticRefusesRatherThanTruncates(t *
 			"def floorit(v):\n    return v // 2\n\nout = []\nout.append(floorit(5.0))\nout.append(floorit(5))\nprint(out[0])\nprint(out[1])\n",
 			"hands back the (payload, tag) pair",
 		},
+		{
+			"a nested pair answer as a list-literal element",
+			"def f(v):\n    return [v * 2 + 1]\n\nprint(f(7.5)[0])\n",
+			"list literal elements must be integers",
+		},
+		{
+			"a pair-returning call as an arm of a pair expression",
+			"def other(w):\n    return w % 3\n\ndef f(v):\n    return (v // 2) + other(v)\n\nprint(f(7.5))\n",
+			"the pair road cannot answer",
+		},
+		{
+			"a pair answer handed to another function as its argument",
+			"def floorit(v):\n    return v // 2\n\ndef twice(w):\n    return w * 2\n\nprint(twice(floorit(5.0)))\n",
+			"hands back the (payload, tag) pair",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "floor_nested.gy", tc.src)
 			out, code := cliRunMerged(t, "--aot", "--file", path)
 			if code == 0 {
-				t.Fatalf("the compiled leg answered a nested pair expression with %q; the door does not serve it (Gap R.166) and must refuse\nsrc: %s", out, tc.src)
+				t.Fatalf("the compiled leg answered a pair in a one-word position with %q; Gap R.146 / Gap R.164 still own it and must refuse\nsrc: %s", out, tc.src)
 			}
 			if code != 1 {
 				t.Fatalf("compiled exit %d, want the front-end refusal's 1\noutput: %s\nsrc: %s", code, out, tc.src)
 			}
-			if !strings.Contains(out, tc.want) || !strings.Contains(out, "ADR 0273") {
+			if !strings.Contains(out, tc.want) {
 				t.Errorf("the refusal must name the road that declined (ADR 0273's contract), want %q, got %q\nsrc: %s", tc.want, out, tc.src)
 			}
 		})

@@ -73,6 +73,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// says which kind arrived: `floorit(5.0)` is 2.0 and `modop(7.5, 2)` is 1.5, where the compiled leg
 		// printed 2 and 1 at exit 0 (roadmap Gap R.162, ADR 0278). Ten lines, three legs, one `define` each.
 		"probe_floor_a_pair",
+		// A floored pair combined with more arithmetic in one expression: ADR 0216's identity, the product of
+		// a floor, a sum of a sum, both flooring operators in one answer — twelve lines the compiled leg either
+		// refused or answered with a truncated digit before the arm question learned to walk its leaves
+		// (roadmap Gap R.166, ADR 0279).
+		"probe_combine_a_floored_pair",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap

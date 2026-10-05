@@ -351,10 +351,25 @@ shares — `@llvm.floor.f64` for the floor (down, not toward zero) and `frem` co
 the remainder, so `floor(x/y)*y + (x%y) == x` holds of the doubles. The tag decides which of the reference's
 **four** divide-by-zero sentences a line gets: one `def f(v): return v % 0` says "integer modulo by zero" for
 `f(5)` and "float modulo" for `f(5.0)`, and `//` has its own pair of them — the first draft of the table shared
-the floor's wording with the remainder, which is the drift a whole-corpus sweep exists to catch. The combination
-still refuses: `(v // 2) * 2 + (v % 2)` and `v * 2 + 1` over a pair are `Gap R.166`, and so is the reference's
-text-`%`, `print("%.2f" % 3.5)` printing `0.0` for CPython's `3.50` (`Gap R.165`) — refusals and one measured
+the floor's wording with the remainder, which is the drift a whole-corpus sweep exists to catch.
+The combination landed the same day, one ADR later: see ADR 0279 below. What the pair door still refuses is a
+**position** that keeps one word — a pair answer stored in a container's element or handed to a call
+(`Gap R.166`'s neighbours `Gap R.146` and `Gap R.164`) — and the reference's
+text-`%`, `print("%.2f" % 3.5)` printing `0.0` for CPython's `3.50` (`Gap R.165`): refusals and one measured
 wrong number, filed instead of answered by payload.
+
+**The arms of a pair expression are asked the same question as the whole** (ADR 0279, closing `Gap R.166`).
+`def identity(v): return (v // 2) * 2 + (v % 2)` / `print(identity(7.5))` is CPython's `7.5` and the interpreted
+leg's; the compiled leg exited 1 on it, as it did on `v * 2 + 1` (since ADR 0276), `v + 1 + 1`, `2 * (v + 1)`
+and `(x + 1) * 2` over a name that had become a double. Three of the four questions the pair door asks of an
+operand walk it recursively — may this be a text, would the ordinary road have refused this, is this a shape the
+door serves. The fourth, "is this a slot the program is shown to hold only numbers?", looked at the node it was
+handed: a bare `v` passed, `(v - 1)` was not a name and not a chain, so the arm was declined, the expression fell
+back to the road with one word for a parameter, and that road refused. Walking the leaves is the whole fix.
+What was rejected is the version that prints something: valuing an arm by its payload with `tag = 0` makes
+`identity(7.5)` print `7` — a number, at exit 0, and the wrong one — which is why ADR 0278 pinned these shapes
+as refusals first, and the pinned refusals are what failed when the honest question was finally asked.
+`programs/probe_combine_a_floored_pair.gy` is the closing event: twelve lines, three legs, one answer.
 
 **An int that meets `/=` becomes a float** (ADR 0274, closing `Gap P.1`'s `/=` half and `Gap R.155`).
 `x = 7` / `x /= 2` / `print(x)` is CPython's `3.5` and the interpreted leg's `3.5`; the compiled leg printed

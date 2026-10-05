@@ -1,0 +1,70 @@
+# What CPython prints for each line here (python3, 3.12):
+#
+#   7         ((7 // 2) * 2 + (7 % 2) — the identity, integer side)
+#   7.5       ((7.5 // 2) * 2 + (7.5 % 2) — and float side, from the same define)
+#   -3.5      (the negative: a floored pair that truncated toward zero would disagree with itself)
+#   True      ((v // b) * b + (v % b) == v asked as a question, so a wrong half cannot hide)
+#   6.0       ((7.5 // 2) * 2 — an answer that used to print 6, exit 0)
+#   15        (7 * 2 + 1 — the same define's integer answer stays an integer)
+#   3.0       ((2.5 - 1) * 2)
+#   4.5       (2.5 + 1 + 1 — left-nested, the arm question's own shape)
+#   3.5       ((7.5 % 3) + (7.5 // 3) — both flooring operators in one answer)
+#   17.0      (the nested answer in the arm of a condition)
+#   13.0      ((7.5 - 1) * 2 of a slot read — the parameter door and the slot door over one expression)
+#   4.0       ((x + 1) * 2 where x became a double through `/=`-shaped state)
+#
+# ADR 0278 taught the pair door to floor and remainder; this program is what it left owed (roadmap
+# Gap R.166). The door asked about the *top* of an expression, and its arm question asked about the arm's
+# top node only — so a body whose answer was `(v // 2) * 2 + (v % 2)`, `v * 2 + 1` or `v + 1 + 1` declined,
+# and every one of them had already been *answered* a cycle earlier with a truncated digit at exit 0. The
+# tempting fix was to value the arms by their payloads, which prints `7` for `identity(7.5)`: the wrong
+# number with a passing test. The cure is that `slotArithmeticIsProven` walks its leaves (`BinOp`, `UnOp`,
+# `CondExpr`) instead of asking the top node whether it is a slot read, so each arm of a pair expression is
+# answered by the same tagged door as the whole — the identity ADR 0216 pinned holds over a parameter as it
+# does over a literal.
+#
+# What stays refused is a *position*, not an expression: a pair answer stored in a container element, or a
+# call's pair answer used as an arm (Gaps R.146 and R.164). Those rows are pinned as refusals in
+# `integration/floor_pair_test.go` so this family cannot be "finished" by truncating one of them.
+def identity(v):
+    return (v // 2) * 2 + (v % 2)
+
+def holds(v):
+    return (v // 2) * 2 + (v % 2) == v
+
+def scaled(v):
+    return (v // 2) * 2
+
+def shifted(v):
+    return v * 2 + 1
+
+def under(a):
+    return (a - 1) * 2
+
+def summed(v):
+    return v + 1 + 1
+
+def both(v):
+    return (v % 3) + (v // 3)
+
+def big(v):
+    if v > 10:
+        return (v // 2) * 2 + 1
+    return v
+
+print(identity(7))
+print(identity(7.5))
+print(identity(-3.5))
+print(holds(7.5))
+print(scaled(7.5))
+print(shifted(7))
+print(under(2.5))
+print(summed(2.5))
+print(both(7.5))
+print(big(17.5))
+xs = []
+xs.append([7.5, 8])
+print((xs[0][0] - 1) * 2)
+y = 2
+y = y / 2
+print((y + 1) * 2)

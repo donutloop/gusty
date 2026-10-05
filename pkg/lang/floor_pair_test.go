@@ -249,30 +249,115 @@ func TestTheFlooringTrapNamesTheKindTheOperandHad(t *testing.T) {
 	}
 }
 
-// TestAFlooredAnswerCombinedWithOtherArithmeticStillRefuses pins the ladder's honest half. Combining a
-// floored pair with more arithmetic in one expression is the nested case the door does not answer (Gap
-// R.166), and the refusal is what keeps it from being a number: before ADR 0278 the same program printed a
-// truncated integer at exit 0, which is the outcome this file's existence is against.
-func TestAFlooredAnswerCombinedWithOtherArithmeticStillRefuses(t *testing.T) {
-	for _, tc := range []struct{ name, src string }{
+// TestAPairExpressionCombinedWithMoreArithmeticAnswersOnBothBackends is Gap R.166 paid. ADR 0278 served the
+// flooring operators at the *top* of an expression; the arms of one were still asked of the ordinary road, so
+// `(v - 1) * 2`, `v + 1 + 1` and ADR 0216's own flooring identity refused for a parameter that carries a pair —
+// after a first draft of this cycle answered them from their payloads, which printed 7 where the reference
+// prints 7.5. The arm question now walks its leaves (`slotArithmeticIsProven` recurses through `BinOp`,
+// `UnOp` and `CondExpr`), so each arm is answered by the same door the whole is.
+func TestAPairExpressionCombinedWithMoreArithmeticAnswersOnBothBackends(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
 		{
-			"the whole flooring identity",
-			"def f(v):\n    return (v // 2) * 2 + (v % 2)\n\nprint(f(7.5))\n",
+			// The acceptance row ADR 0216 named: floor and remainder reassemble the value they were given,
+			// over a parameter as over a literal — including the negative, where a truncated pair of
+			// operators would disagree with itself as well as with the reference.
+			"the flooring identity over a parameter",
+			"def f(v):\n    return (v // 2) * 2 + (v % 2)\n\nprint(f(7))\nprint(f(7.5))\nprint(f(-3.5))\n", "7\n7.5\n-3.5\n",
 		},
 		{
-			"a product of a floored parameter",
-			"def f(v):\n    return (v // 2) * 2\n\nprint(f(7.5))\n",
+			"the identity asked as a question, so a wrong half cannot hide",
+			"def f(v):\n    return (v // 2) * 2 + (v % 2) == v\n\nprint(f(7.5))\n", "True\n",
 		},
 		{
-			"a product plus a literal",
-			"def f(v):\n    return v * 2 + 1\n\nprint(f(7.5))\n",
+			"a product of a floored parameter, both kinds",
+			"def f(v):\n    return (v // 2) * 2\n\nprint(f(7.5))\nprint(f(7))\n", "6.0\n6\n",
+		},
+		{
+			"a product beside a literal — refused since ADR 0276",
+			"def f(v):\n    return v * 2 + 1\n\nprint(f(7.5))\nprint(f(7))\n", "16.0\n15\n",
+		},
+		{
+			"a difference under a product",
+			"def f(v):\n    return (v - 1) * 2\n\nprint(f(2.5))\nprint(f(2))\n", "3.0\n2\n",
+		},
+		{
+			"a sum of a sum (left-nested, the shape the arm question used to decline)",
+			"def f(v):\n    return v + 1 + 1\n\nprint(f(2.5))\n", "4.5\n",
+		},
+		{
+			"a product by a sum (right-nested)",
+			"def f(v):\n    return 2 * (v + 1)\n\nprint(f(2.5))\n", "7.0\n",
+		},
+		{
+			"both flooring operators in one answer",
+			"def f(v):\n    return (v % 3) + (v // 3)\n\nprint(f(7.5))\nprint(f(7))\n", "3.5\n3\n",
+		},
+		{
+			"the parameter used twice, on both sides of a product",
+			"def f(v):\n    return (v + v) * (v - 1)\n\nprint(f(2.5))\nprint(f(2))\n", "7.5\n4\n",
+		},
+		{
+			// Two doors in one body: the pair the caller supplied, and a pair the slot read supplies,
+			// combined — the shape ADR 0273's refusal tables kept apart until now.
+			"a floored answer scaled by a literal, in the arm of a condition over the parameter",
+			"def f(v):\n    if v > 10:\n        return (v // 2) * 2 + 1\n    return v\n\nprint(f(17.5))\nprint(f(2.5))\n", "17.0\n2.5\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if out := captureStdout(t, tc.src); out != tc.want {
+				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, tc.want, tc.src)
+			}
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("compiled leg refused a program the oracle prints (%v): %s", err, tc.src)
+			}
+			assertNoForbiddenIR(t, tc.src, res.IR)
+			if got := runIR(t, res.IR); got != tc.want {
+				t.Errorf("compiled: stdout %q, want %q\nsrc: %s", got, tc.want, tc.src)
+			}
+		})
+	}
+}
+
+// TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses is the ladder's honest half, moved here from
+// Gap R.166: the door answers an expression, but a *position* that stores one word for a whole value — a
+// container's element — has nowhere to put the tag, and ADR 0273's sentence is the right answer there until
+// the box exists (Gap R.146's remaining half). Pinning these as refusals is what keeps the nested answers
+// above from being bought with a silently truncated digit.
+func TestAPairAnswerHeldByAPositionThatKeepsOneWordStillRefuses(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"a floored pair answer appended to a list",
+			"def floorit(v):\n    return v // 2\n\nout = []\nout.append(floorit(5.0))\nout.append(floorit(5))\nprint(out[0])\nprint(out[1])\n",
+			"hands back the (payload, tag) pair",
+		},
+		{
+			"a nested pair answer as a list-literal element",
+			"def f(v):\n    return [v * 2 + 1]\n\nprint(f(7.5)[0])\n",
+			"list literal elements must be integers",
+		},
+		{
+			// The other door's share, pinned so the nested answers above cannot be mistaken for "everything
+			// combines": a *call*'s pair answer as an arm of an expression is still ADR 0273's refusal, and
+			// Gap R.164 is the row that owns making a pair answer readable outside a direct `return`.
+			"a pair-returning call as an arm of a pair expression",
+			"def other(w):\n    return w % 3\n\ndef f(v):\n    return (v // 2) + other(v)\n\nprint(f(7.5))\n",
+			"the pair road cannot answer",
+		},
+		{
+			"a pair answer handed to another function as its argument",
+			"def floorit(v):\n    return v // 2\n\ndef twice(w):\n    return w * 2\n\nprint(twice(floorit(5.0)))\n",
+			"hands back the (payload, tag) pair",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := Compile(tc.src)
 			if err == nil {
 				_, out := runIRAllowingTrap(t, res.IR)
-				t.Fatalf("the module answered a nested pair expression, which the door does not serve yet (Gap R.166); printed %q\nsrc: %s", out, tc.src)
+				t.Fatalf("the module answered a pair in a one-word position, which Gap R.146 still owns; printed %q\nsrc: %s", out, tc.src)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("the refusal must name the position that declined (%q), got %v", tc.want, err)
 			}
 			if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") || strings.Contains(err.Error(), "panic") {
 				t.Fatalf("%s failed as an IR problem instead of a front-end refusal: %v", tc.name, err)

@@ -5295,6 +5295,19 @@ func (g *irGen) slotArithmeticIsProven(e Expr) bool {
 		// produced it and there is no container left to prove anything about.
 		return true
 	}
+	switch n := e.(type) {
+	case *BinOp:
+		// An arm of a pair expression is proven when every leaf under it is. The pair the door combines is
+		// built from those leaves, so "can a slot this pass cannot see reach this operand?" has to be
+		// walked rather than answered of the top node — declining the whole expression because its left arm
+		// is itself a sum is what left `(v - 1) * 2`, `v + 1 + 1` and ADR 0216's flooring identity on the
+		// ordinary road, which has one word for a parameter (roadmap Gap R.166, ADR 0278's owed half).
+		return g.slotArithmeticIsProven(n.L) && g.slotArithmeticIsProven(n.R)
+	case *UnOp:
+		return n.Op == "-" && g.slotArithmeticIsProven(n.X)
+	case *CondExpr:
+		return g.slotArithmeticIsProven(n.If) && g.slotArithmeticIsProven(n.Else)
+	}
 	nm, depth := chainDepth(e)
 	if nm == nil || depth < 1 || g.numChains == nil || g.numChains.blocked {
 		return false

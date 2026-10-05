@@ -7137,3 +7137,41 @@ renumbered, and the two new rows written once per table in the shape each table 
 out of the artifacts again: 270 ADRs / highest `0278`, 156 programs, 147 matrix rows → 111 parity, 96 `match` ·
 30 `debt` · 21 `not_applicable`, 101 of 110 queue rows owed — with the sweep's only corpus diff being the new
 probe, and no demotion anywhere in the matrix.
+
+## Cycle: the arms of a pair expression are asked the same question as the whole (ADR 0279, Gap R.166)
+
+**Four questions are asked of an operand; three walked the expression, one did not.** `slotLiteralMayBeNumber`,
+`arithWouldRefuse` and the door's own shape test all recurse, so ADR 0278 could serve `//` and `%` at the top of
+a body and leave `(v // 2) * 2`, `v * 2 + 1` (refused since ADR 0276) and `v + 1 + 1` refusing. The odd one out
+was `slotArithmeticIsProven`: it asks "is this a slot the program is shown to hold only numbers?" and answered
+it of the node in its hand — a bare `v` passed the `numericPairVar` proof, `(v - 1)` was neither a name nor a
+chain, so the arm was declined, the expression fell back to the one-word road, and that road refused. The fix is
+six lines of recursion through `BinOp`/`UnOp`/`CondExpr`. The lesson to keep: when a family of sibling questions
+exists, diff them for *how* they walk, not just for what they answer — a missing recursion in one of four is
+invisible in every one of the tests the other three already satisfy.
+
+**The version that prints something is the one to refuse.** `arithOperandPair` can hand back a payload with
+`tag = 0` today, and doing that for arms would have made all twelve of this cycle's programs print something —
+including `identity(7.5)` printing `7`, at exit 0, wrong. The cycle order matters: ADR 0278 pinned those shapes
+as refusals *first*, so the honest fix was the only change that could make the suite green, and the pinned
+refusals failing was the acceptance signal. If a wrong-number bug and a refusal are both on the table, pin the
+refusal, then pay it with an answer.
+
+**A pinned refusal earns its keep by failing.** Both test files lost a `Gap R.166` refusal table in this commit
+and gained a parity table; the rows that moved are named in the ADR, and one row went the other way — a
+suggested integration parity row (`(v - 1) * xs[0][1]` inside a body) was measured, found to still refuse
+through a *different* door (`index requires an inline list/dict/…`), and moved out rather than written into a
+test that would have pinned the wrong door's behaviour. Measure every expected row; do not infer it from a
+cousin that measured well (`(v // 2) + other(v)` was written expecting `4.5` and refuses, because a *call's*
+pair answer is Gap R.164's problem, not this one's).
+
+**Two rows, one family, one already-filed wrong number.** `abs(v * 2)` answers `4` where the reference answers
+`5.0` on both the pre-cycle and post-cycle binaries — measured here, left as `Gap R.146`'s evidence rather than
+promoted into this ADR's ledger row, because it is the same "a position keeps one word" defect that row already
+owns. Newly measured *instances* of a filed defect belong in its record; only a new defect gets a new ID.
+
+**Sweep, then suite, then commit — in that order.** The corpus diff for this change was empty: nothing that
+already answered moved, and the only programs that changed are the ones this cycle and the last one filed. The
+matrix moved 147 → 148 rows with the promoted `programs/probe_combine_a_floored_pair.gy` (twelve lines, three
+legs, one answer), 111 → 112 parity and 96 → 97 oracle `match`, no demotion anywhere. Snapshot: 271 ADRs /
+highest `0279`, 157 programs, 100 of 110 queue rows owed.

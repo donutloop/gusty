@@ -2391,11 +2391,13 @@ zero" for `f(5.0)`, and `f(v) = v % 0` says "integer modulo by zero" and "float 
 named by the argument. Each is raised catchably (`except ZeroDivisionError:` reaches it) and exits non-zero,
 because a trap that prints a number is not a trap.
 
-What the door still declines is the *combination*: `(v // 2) * 2 + (v % 2)`, `(v // 2) * 2` and `v * 2 + 1`
-over a pair-marked parameter are refused, because only the top of an expression is asked of the pair doors and
-the arms would be answered by their payloads alone — which would print `7` for `identity_check(7.5)`. Those
-three shapes are `Gap R.166`; and the text-`%` the guard above holds out of the door (`"%.2f" % 3.5`,
-`Gap R.165`) is owed beside them.
+What the door answers is the whole expression, not only its top: the arm question walks an operand's leaves,
+so the identity ADR 0216 pinned holds over a parameter as it does over a literal — `(v // 2) * 2 + (v % 2)`,
+`v * 2 + 1`, `v + 1 + 1`, `2 * (v + 1)`, `(v + v) * (v - 1)` and `(x + 1) * 2` over a name that became a double
+all answer a pair (`Gap R.166`, ADR 0279). A *position* that keeps one word still refuses, in words and at exit
+1: a pair answer stored in a container's element or handed to another function as its argument (`Gap R.146`),
+and a *call*'s pair answer used as an arm of an expression (`Gap R.164`). The text-`%` the guard above holds
+out of the door (`"%.2f" % 3.5`, `Gap R.165`) is owed beside them.
 
 
 What still refuses, in words: a **value** position — a builtin's argument, a container's element, an `and`'s

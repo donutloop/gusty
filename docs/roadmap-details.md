@@ -6909,7 +6909,7 @@ post-cycle binaries, so no answer this cycle made got worse — the shape was si
 the reference's formatting itself (a format string read by the door that renders f-strings today), or, at
 minimum, the exit-1 refusal its sibling shapes already give.
 
-### Gap R.166 — a floored answer combined with other arithmetic in one expression is refused (OPEN, owner L11.6, measured landing ADR 0278)
+### Gap R.166 — a floored answer combined with other arithmetic in one expression is refused (CLOSED by ADR 0279, owner L11.6, measured landing ADR 0278)
 
 ```
 def identity_check(v):
@@ -6932,3 +6932,34 @@ the arm question, so each arm gets its own `(payload, tag)` and the outer door c
 ADR 0216 pins, `a == (a // b) * b + (a % b)`, is the acceptance row, and
 `TestAFlooredAnswerCombinedWithOtherArithmeticRefusesRatherThanTruncates` is the row that must move to the
 parity table when it is paid.
+
+Closed by ADR 0279. Four questions are asked of an operand of the pair door; three of them walked the
+expression and one did not. `slotArithmeticIsProven` — "is this a read of a slot the program is shown to hold
+only numbers?" — answered of the node it was handed: a bare `v` passed its `numericPairVar` proof, `(v - 1)` was
+neither a name nor a chain, so the arm was declined, the whole expression fell back to the ordinary road, and
+that road has one word for a parameter and refused. Asking the same question of every leaf (`BinOp`, `UnOp`,
+`CondExpr`) is the whole cure, and it pays ADR 0216's acceptance row along with the family:
+
+```
+print(identity(7))          # 7    · 7    · 7        (exit 1 compiled before)
+print(identity(7.5))        # 7.5  · 7.5  · 7.5      (identity(v) = (v // 2) * 2 + (v % 2))
+print(identity(-3.5))       # -3.5 · -3.5 · -3.5
+print(holds(7.5))           # True · True · True     (… == v, so a wrong half cannot hide)
+print(scaled(7.5))          # 6.0  · 6.0  · 6.0      ((v // 2) * 2)
+print(shifted(7.5))         # 16.0 · 16.0 · 16.0     (v * 2 + 1 — refused since ADR 0276)
+print(under(2.5))           # 3.0  · 3.0  · 3.0      ((v - 1) * 2)
+print(summed(2.5))          # 4.5  · 4.5  · 4.5      (v + 1 + 1, the left-nested shape)
+print(both(7.5))            # 3.5  · 3.5  · 3.5      ((v % 3) + (v // 3))
+print(big(17.5))            # 17.0 · 17.0 · 17.0     (nested, in the arm of a condition)
+print((xs[0][0] - 1) * 2)   # 13.0 · 13.0 · 13.0     (the slot door beside the parameter door)
+print((y + 1) * 2)          # 4.0  · 4.0  · 4.0      (y became a double through `/`)
+```
+
+The shortcut that would have printed something was to value an arm by its payload with `tag = 0`, which makes
+`identity(7.5)` print `7` — a number at exit 0, and the wrong one; that is why the refusals were pinned first
+and why they, not a green suite, were the acceptance test. What stays refused is a **position**, not an
+expression: a pair answer appended to a list or handed to a call (`Gap R.146` — and its already-filed wrong
+number, `abs(v * 2)` answering `4` for `5.0`, measured identical on the pre-cycle and post-cycle binaries), a
+list-literal element, and a *call's* pair answer as an arm (`Gap R.164`, whose cure — binding the pair at the
+call whoever the body's answer is — this row's arm walk would pick up for free). The whole-corpus sweep's
+corpus diff for this change is empty: nothing that already answered moved.
