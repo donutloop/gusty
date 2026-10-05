@@ -968,6 +968,12 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- **a rendering the body bound to a name is not counted** on the compiled path: `def f(v): s = str(v);
+  return s` printed `0` for `f(3)` at exit 0 (and `2` for `"x" + str(v)` where the reference prints `x3`)
+  while the reference and the interpreter printed the text (`Gap R.170` / ADR 0286). Exit 0 covers that
+  shape now; where the renderer cannot name its operand the compiled leg exits **1** naming what is missing,
+  and the `str()` digits road is gated on what the operand can be *seen* to be — it writes the digits of the
+  word it is handed, which is a number for an int and a fabrication for a container handle.
 - **a number bound from a parameter is not truncated** on the compiled path: `def f(x): y = x + 1; return y`
   printed `1` for `f(0.1)` at exit 0 (and `0`, `-1`, `5` for its siblings) while the reference and the
   interpreter answered `1.1`/`0.2`/`-0.9`/`5.0` — four believable digits from the AOT engine (`Gap R.169` /

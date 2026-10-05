@@ -7498,3 +7498,62 @@ instance in someone else's record.
 
 **Instruments.** Suite green; 162-program sweep against the cycle-11 binary moved **nothing** (no number, no
 wording). Matrix 153 → 154, parity 116 → 117, match 101 → 102, 0 fail, 0 drift.
+
+---
+
+## Cycle: a rendering the body bound to a name is a string return (Gap R.170 closed, Gap R.171 filed; ADR 0286)
+
+**What shipped.** Five wrong numbers at exit 0 on the compiled engine became the reference's answer:
+`s = str(v); return s` printed `0` for `f(3)` (CPython `3`), `repr` through a name printed `0`, and
+`s = "x" + str(v); return s` printed `2` for `x3`. ADR 0281 had fixed `return str(42)`; a body that bound the
+rendering one statement earlier was still number-returning to its callers, so `print` handed `printf` an
+index into `@str_tab` with `%d`. Same two-hop lesson as ADR 0285 one road over: **a value's kind is written
+by an assignment**, and a scan that reads only the returned expression cannot see it.
+
+**The defect underneath the defect.** `str()` of an unfolded expression reached `rt_str_of_int` guarded only
+by "not a text and not a float" — and that call writes the **decimal digits of the word it is handed**. ADR
+0258 already had the sentence for it (*"a missing rendering must not become the number underneath the
+value"*, written when `str([1, 2])` answered `0`) and the rule had been applied to the container arms but
+never to the fall-through. Lesson worth keeping: when a gap record already contains the principle, check
+whether the principle was applied everywhere or only where the bug was first noticed.
+
+**Narrowing a road is more dangerous than opening one, and the suite caught both of my errors.**
+- I refused every parameter at the digits road ("a parameter's kind is unknown"). Four programs that had
+  always printed the reference's answer began refusing, `x = str(v); print(x)` printing `3` among them. The
+  reasoning was sound-looking and wrong because the guard lives one position **earlier**: ADR 0174 refuses a
+  text argument at the call site, so a word-sized parameter cannot hold a text. "Gate the road" had to become
+  "ask the road". This is the ladder rule (a working answer must not become a refusal) earning its keep for
+  the first time as a *revert* rather than a review note.
+- My gate then asked "was this name **ever** a number", and `x = "abc"` / `x = 5` / `print(str(x))` — CPython's
+  `5`, answered by the fold arm that reads what the name holds **now** — started refusing. The gate reads the
+  last binding; the test stays as a permanent row, not a debugging note.
+
+**A predicate whose name was one word from the wrong question.** I wrote `g.builtinShadowed(nm.Value)` in the
+call arm and every `str(g())` refused: that predicate asks *"did the program take this builtin's name?"* and
+answers YES for an ordinary callee, which is what a callee is. Right for Gap R.6 (`def str(x)` → `49`), wrong
+for "is this a program-defined callee" (`g.fds[name]`). Debugged with a `printf` trace rather than by re-reading
+the code, because re-reading the code is what made it look fine. Trace lines were removed once the cause was
+named; a trace that survives into a commit is a second defect.
+
+**Errors I made, all named.**
+- **Real compile errors:** a `:=`-assigned closure cannot reach its own name, so the recursive
+  `isStrExprIn` needed `var isStrExprIn func(...)` declared first; `Compile` returns `*CompileResult` (`.IR`),
+  not a string; `strVals` is `map[string]string`, so membership is `_, ok :=` and not a truth test; I deleted
+  `render.go`'s `fmt` import along with my trace and it was legitimately used by three other lines.
+- **Invented records:** `g.boundNumbers`, `g.varBoundValues`, `g.prog` — none exist. `moduleBinds`
+  (a `scanRebinds` of the module statements, recorded at `GenerateIR` time) is the real one.
+- **Instrumentation:** I checked `--emit-llvm --file X`, got `undefined name "file"` and read it as "the probe
+  produced nothing"; `--emit-llvm` takes a source *string*. And I ran a probe whose `f("hi")` row was refused
+  *whole-program* by ADR 0174's argument guard, then nearly registered a probe whose compiled leg printed an
+  empty first line — narrowing a probe to verified rows is legitimate curation, not cheating, provided the
+  dropped rows stay pinned as refusals elsewhere (they do, in both test files).
+- **Discipline that paid:** I ran the new unit table against the **stashed baseline** before believing it.
+  It failed there with `--aot printed "0", want "3"`. A test that cannot fail is a comment.
+
+**Filed, not absorbed:** `def f(v): return str(v)` / `print(f(None))` prints `0` compiled — and the bare
+`print(v)` body prints `0` too, **byte-identically on the pre-cycle binary**. `NoneLit` lowers to the word
+`0`, so no rendering question can be asked of a parameter holding the void. That is L11.1's tagged value word
+arriving by call; fresh ID (`Gap R.171`), own evidence, not a clause of this record.
+
+**Instruments.** Suite green; 164-file sweep against the pre-cycle binary moved **nothing** except the
+intended probe. Matrix 154 → 155 rows, 117 → 118 parity, 102 → 103 `match`, 0 fail, 0 drift.

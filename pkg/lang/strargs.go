@@ -259,7 +259,10 @@ func strReturningFuncs(prog *Program) map[string]bool {
 			defines[fd.Name] = true
 		}
 	}
-	isStrExprIn := func(fd *FuncDef, e Expr) bool {
+	// Declared before its own body so the name-bound case can ask it of a binding value — a closure
+	// assigned with `:=` cannot reach its own name in its initializer (roadmap Gap R.170, ADR 0286).
+	var isStrExprIn func(fd *FuncDef, e Expr) bool
+	isStrExprIn = func(fd *FuncDef, e Expr) bool {
 		if e == nil || isStringExpr(e) {
 			return e != nil && isStringExpr(e)
 		}
@@ -267,6 +270,18 @@ func strReturningFuncs(prog *Program) map[string]bool {
 		case *Name:
 			for i, p := range fd.Params {
 				if p.Name == v.Value && strParams[fd.Name][i] {
+					return true
+				}
+			}
+			// A name the body bound to a rendering is a text too: `s = str(v)` / `return s` is the same
+			// door two statements earlier, and the caller cannot tell the difference. ADR 0281 marked
+			// `return str(42)` string-returning, but the body that binds the rendering to a name first
+			// still answered a number to its callers — `print(f(3))` passed the interned index to `printf`
+			// with `%d` and printed `0` at exit 0, and `"x" + str(v)` / `return s` printed `2` for `x3`
+			// (roadmap L11.2, Gap R.170, ADR 0286). The two-hop question is what ADR 0285's number half
+			// asks too: the value's kind is written by an assignment, not by the returned expression.
+			for _, val := range bodyBindings(fd)[v.Value] {
+				if isStrExprIn(fd, val) {
 					return true
 				}
 			}
@@ -317,6 +332,25 @@ func strReturningFuncs(prog *Program) map[string]bool {
 		}
 	}
 	return out
+}
+
+// bodyBindings is the body's own assignment table (name -> every value ever bound to it), built once per
+// question so a returned name can be traced back to what wrote it. `scanRebinds` is the same table ADR
+// 0274's return convention and ADR 0285's number half read; caching it keeps a `y = y + 1` body from
+// rebuilding it on every hop.
+var bodyBindingCache = map[*FuncDef]map[string][]Expr{}
+
+func bodyBindings(fd *FuncDef) map[string][]Expr {
+	if fd == nil {
+		return map[string][]Expr{}
+	}
+	if m, ok := bodyBindingCache[fd]; ok {
+		return m
+	}
+	m := map[string][]Expr{}
+	scanRebinds(fd.Body, m)
+	bodyBindingCache[fd] = m
+	return m
 }
 
 // returnCollector gathers every `return` value in a body, including nested blocks, so a string

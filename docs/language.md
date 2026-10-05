@@ -1836,6 +1836,16 @@ The rule is ADR 0224's (a method's string answer is known to its callers) one do
 respects Gap R.6's: a program that defines `str` itself gets its own function, so
 `def str(x): return x + 7` beside that same body answers `49`.
 
+A text the body **rendered into a name** is a text-returning function (ADR 0286). `def f(v): s = str(v);
+return s` answers `3` for `f(3)` and `hi` for `f("hi")` on both engines; before this the compiled leg printed
+the interned index through `%d` — `0`, and `2` for `s = "x" + str(v)` where the reference prints `x3` — at
+exit 0. ADR 0281 taught the compiler that `return str(v)` renders; a body that binds the rendering one
+statement earlier was still a number-returning function to its callers. The verdict now follows the
+assignment, exactly as ADR 0285's number verdict does. The `str()` digits road is separately gated: it may
+only be handed what the compiler can *see* is a number, because it writes the decimal digits of the word it
+receives — right for an int, a fabrication for a handle. A `None` handed to a function is still the number
+`0` there (`Gap R.171`), which is L11.1's tagged value word arriving by call.
+
 A number the body **computed out of its own parameter** keeps the kind the argument arrived with (ADR 0285).
 `def f(x): y = x + 1; return y` answers `1.1` for `f(0.1)` and `3` for `f(2)` on both engines; before this
 the compiled leg printed the truncated `1`, and `y = x * 2`, `y = x - 1` and a float default printed `0`,

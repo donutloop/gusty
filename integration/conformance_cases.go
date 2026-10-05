@@ -99,6 +99,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// float default — whole on both engines. Each printed a truncated integer at exit 0 before ADR 0285
 		// (`1` for `1.1`, `0` for `0.2`, `-1` for `-0.9`, `3` for `5.0` — roadmap Gap R.169).
 		"probe_a_number_bound_from_a_parameter",
+		// A rendering the body bound to a NAME is the same string return as `return str(v)`: `s = str(v)` /
+		// `return s`, `repr` through a name, and `"x" + str(v)` all printed the interned index (`0`, `0`, `2`)
+		// at exit 0 where the reference and the interpreter print `3`, `3`, `x3` (roadmap Gap R.170, ADR 0286).
+		"probe_a_rendering_bound_to_a_name",
 		// `%` is the remainder for numbers on both engines — ints, negatives, doubles, the same body over a
 		// pair-marked parameter, and a float compared to a text — thirteen lines pinned beside the refusal
 		// that keeps the *text*-left spelling from answering a number (roadmap Gap R.165, ADR 0282).

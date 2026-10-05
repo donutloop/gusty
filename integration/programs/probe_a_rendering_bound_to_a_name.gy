@@ -1,0 +1,18 @@
+def render(v):
+    s = str(v)
+    return s
+
+
+def depict(v):
+    r = repr(v)
+    return r
+
+
+def label(v):
+    tag = "x" + str(v)
+    return tag
+
+
+print(render(3))
+print(depict(3))
+print(label(3))

@@ -597,6 +597,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_rendering_bound_to_a_name",
+        "name": "probe_a_rendering_bound_to_a_name.gy",
+        "source": "def render(v):\n    s = str(v)\n    return s\n\n\ndef depict(v):\n    r = repr(v)\n    return r\n\n\ndef label(v):\n    tag = \"x\" + str(v)\n    return tag\n\n\nprint(render(3))\nprint(depict(3))\nprint(label(3))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "3\n3\nx3\n",
+      "aot_ok": true,
+      "aot_stdout": "3\n3\nx3\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "3\n3\nx3\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3662,7 +3685,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1650738850/128/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2465393808/129/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3676,7 +3699,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1650738850/128/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2465393808/129/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4517,11 +4540,11 @@
       ]
     }
   ],
-  "rows": 154,
+  "rows": 155,
   "skipped": 37,
-  "pass": 117,
+  "pass": 118,
   "fail": 0,
-  "oracle_match": 102,
+  "oracle_match": 103,
   "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

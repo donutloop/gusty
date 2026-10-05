@@ -550,6 +550,21 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A text the body rendered **into a name** is a text-returning function (ADR 0286, closing `Gap R.170`).
+`def f(v): s = str(v); return s` printed `0` for `f(3)` on the compiled leg at exit 0 — and `2` for
+`s = "x" + str(v)` where the reference prints `x3` — because ADR 0281 taught the compiler that
+`return str(v)` renders, and a body that bound the rendering one statement earlier still looked
+number-returning to its callers: `print` handed `printf` an index into `@str_tab` with `%d`. The verdict
+now follows the assignment, the same two-hop question ADR 0285 asked of numbers. Underneath it sat the
+reason a wrong number was possible: `str()` of anything "not a text and not a float" fell to
+`rt_str_of_int`, which writes the **decimal digits of the word it was handed** — right for an int, a
+fabrication for a handle — so that road is now asked what it was given. Narrowing it nearly cost more than
+it bought: refusing every parameter broke four programs that had always worked (`x = str(v); print(x)`
+printing `3`), because a text argument is already refused at the call site by ADR 0174, and "gate the road"
+had to become "ask the road" — with `x = "abc"` / `x = 5` / `print(str(x))` pinned at CPython's `5` so the
+latest binding, not "was it ever a number", is what the gate reads. A `None` handed to a function is still
+the number `0` (`Gap R.171`, verified pre-existing, filed not absorbed).
+
 A number the body computed **out of its own parameter** keeps the kind the argument arrived with (ADR 0285,
 opening `Gap R.169`). `def f(x): y = x + 1; return y` printed `1` for `f(0.1)` on the compiled leg at exit 0 —
 and `0` for `y = x * 2`, `-1` for `y = x - 1`, `3` for `y = (v - 1) * 2`, `5` for a float default — four

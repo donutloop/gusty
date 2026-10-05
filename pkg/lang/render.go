@@ -150,7 +150,14 @@ func (g *irGen) renderPair(b *strings.Builder, e Expr, form ValueForm, sp Span) 
 	if n, ok := g.foldConstInt(e); ok {
 		return g.internStr(b, strconv.FormatInt(n, 10)), true, nil
 	}
-	if !g.exprIsString(e) && !g.isFloat(e) && !strings.Contains(exprTyName(e), "float") {
+	// ... but only for a number the compiler can SEE is one. This road used to take anything that
+	// was neither a text nor a float, which made `def f(v): print(str(v))` called with `None` intern
+	// the digits of the None handle and print `0` at exit 0, and left a name whose kind the object
+	// carries one guess away from the same. `str(None)` written literally answers `None` through the
+	// arms above; the parameter form now falls through to the renderer's own refusal, because a
+	// missing rendering must not become the number underneath the value (roadmap L11.2, Gap R.171,
+	// ADR 0258's rule for a container — extended to the void and to any name of unknown kind).
+	if g.strArgIsNumberish(e) && !g.exprIsString(e) && !g.isFloat(e) && !strings.Contains(exprTyName(e), "float") {
 		v, err := g.value(b, e)
 		if err != nil {
 			return "", true, err

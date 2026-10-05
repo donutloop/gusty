@@ -7381,3 +7381,73 @@ refusal nobody notices.
 a body that binds the rendering to a name first still prints the interned index through `%d`. Verified
 pre-existing on the pre-cycle binary before giving it an ID, which is the difference between a fresh row and
 hiding an instance inside this one.
+
+### Gap R.170 — a rendering the body bound to a name printed the interned index (CLOSED by ADR 0286, owner L11.2)
+
+Five wrong numbers at exit 0, one mechanism. `python3` 3.12.3, `--interp`, `--aot` before:
+
+```
+def f(v):
+    s = str(v)          # CPython 3 · --interp 3 · --aot 0     (print(f(3)))
+    return s
+def f(v):
+    s = "x" + str(v)    # CPython x3 · --aot 2
+    return s
+def f(v):
+    a = str(v)
+    b = a               # CPython 7 · --aot 0
+    return b
+```
+
+The direct form `return str(42)` was already answered — ADR 0281 fixed exactly that row, and keeping it
+answering `42` was itself a regression risk in this change. What ADR 0281 read was the **return
+expression**: `strReturningFuncs` collects `return` values and asks "is this a text?". `return s` names a
+local; the question was asked of the wrong syntax, the function stayed number-returning, and `print` passed
+the interned index to `printf` with `%d`. The rendering door had already run one statement earlier and its
+result was discarded by the verdict after it.
+
+That is ADR 0285's finding restated: a value's kind is written by an **assignment**, and a scan that reads
+only the returned expression cannot see it. The fix is the same two-hop question — `isStrExprIn`'s `*Name`
+case consults `bodyBindings(fd)` (a memoised `scanRebinds` over the body) and asks itself of each value that
+wrote the name. Two rows then answer correctly for free: `"x" + str(v)` because the `*BinOp` arm already
+reads `isConcat`, and `b = a` because `a`'s binding does.
+
+**The second defect was underneath, and is the more general one.** `str()` of an unfolded expression went to
+`rt_str_of_int` under a guard of "not a text and not a float". `rt_str_of_int` writes the **decimal digits of
+the word it is handed**. ADR 0258 already knew this — *"a missing rendering must not become the number
+underneath the value"*, the sentence that explains why `str([1, 2])` and `str(None)` once answered `0` — and
+the knowledge had been applied to the container arms but not to the fall-through. The gate is now
+`strArgIsNumberish`: literals, arithmetic over numbers, a call whose every `return` is a number, a name whose
+**latest** binding is one.
+
+**Two mistakes I made while narrowing, both worth the record.**
+
+1. *Refused every parameter.* The reasoning — "a parameter's kind is unknown, so the digits road may not
+   take it" — is sound-looking and wrong, because the guard already exists one position earlier: **ADR 0174
+   refuses a text argument at the call site** ("strings are not supported as function arguments in the AOT
+   backend yet"), so a word-sized parameter cannot hold a text, a container or a void. Four programs that had
+   always printed the reference's answer began refusing, `x = str(v); print(x)` among them. The ladder rule —
+   a working answer must not become a refusal — is what reverted it, and the reason the rule exists at all.
+2. *Asked "was it ever a number".* `x = "abc"` / `x = 5` / `print(str(x))` is CPython's `5`, answered by the
+   renderer's fold arm, which reads what the name holds **now**. My gate read the whole binding history and
+   refused. The gate now reads the last binding, and `TestTheDigitsRoadFollowsTheLatestBinding` keeps it
+   there.
+
+**`builtinShadowed` was the third, and the sneakiest.** I wrote `if !isName || g.builtinShadowed(nm.Value)
+{ return false }` in the call arm and every `str(g())` refused. That predicate answers *"did the program take
+this builtin's name?"*, and answers **yes** for an ordinary callee — which is exactly what a callee is. It is
+right for Gap R.6 (`def str(x): return x + 7` means the program's own function, `49`) and wrong for "is this
+a program-defined callee", which is `g.fds[name]`. Two questions one word apart in English; the wrong one
+reads plausible. The comment is in the code, not only here.
+
+**Filed rather than absorbed — Gap R.171.** `def f(v): return str(v)` / `print(f(None))` prints `0` compiled,
+and so does the bare `print(v)` body, **byte-identically on the pre-cycle binary**. `NoneLit` lowers to the
+word `0`, so a parameter cannot tell the void from the integer zero and no rendering question can be asked of
+it: `rt_print_value` picks text-versus-number from a compile-time flag and `rt_str_of_int` from the absence of
+one, and both are handed the same `0`. That is L11.1's tagged value word arriving by call rather than by
+assignment — a fresh ID with its own evidence, not a clause hidden inside this one.
+
+**Measurement, not memory.** Suite green; 164-file sweep against the pre-cycle binary moved **nothing** except
+the intended probe (`0/0/2` → `3/3/x3`). The new unit table was run against the stashed baseline first and
+failed there with `--aot printed "0", want "3"` — a test that cannot fail is a comment. Matrix 154 → 155 rows,
+117 → 118 parity, 102 → 103 `match`, 0 fail, 0 drift.

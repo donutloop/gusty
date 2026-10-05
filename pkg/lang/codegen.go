@@ -3597,6 +3597,9 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// What a compiled function body may know about its module: literal bindings the module never
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
+	g.moduleBinds = map[string][]Expr{}
+	scanRebinds(prog.Stmts, g.moduleBinds)
+	g.strArgBindCache = map[string][]Expr{}
 	g.moduleSlots = moduleSlotNames(prog, g.moduleConsts, g.moduleNames)
 	// Which container variables are still the literal they were bound to, which is what decides
 	// whether reading one of their slots can be checked against the tag the builder wrote (ADR 0241).
@@ -4366,6 +4369,11 @@ type irGen struct {
 	// the module never rebinds. A compiled function body may read those as values, because a value
 	// that cannot change needs no slot to read it from (ADR 0227, roadmap Gap R.35's compiled half).
 	moduleConsts map[string]Expr
+	// moduleBinds is every value the program's own top-level statements bound to each name, and
+	// strArgBindCache memoises the merged module+current-body answer the run-time digits road asks
+	// (roadmap L11.2, Gap R.170/R.171).
+	moduleBinds     map[string][]Expr
+	strArgBindCache map[string][]Expr
 	// unwritten is the checker's answer to "which names may this body read before assigning them",
 	// keyed by the FuncDef whose body the read sits in (nil key: the module's own statements). It is
 	// the same walk the checker runs and already warns about, asked a second question (ADR 0228) --
@@ -13004,7 +13012,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// A float must keep refusing: the compiled backend has no float in a word-sized
 			// slot yet (L11.6, ADR 0226), and truncating one to render it would be the
 			// silent-truncation bug that gap exists to keep dead.
+			// The run-time digits road may only be handed something the compiler can SEE is a number. It used
+			// to take anything that was not a text and not a float, so `def f(v): print(str(v))` called with
+			// `None` interned the digits of the None handle and printed `0` at exit 0 -- `str(None)` written
+			// literally answers `None` through the renderer, and only the parameter form fell through to the
+			// number underneath the value (roadmap L11.2, Gap R.171; ADR 0258's rule that a missing rendering
+			// must not become a number).
 			if !g.builtinShadowed("str") && len(c.Args) == 1 && !g.exprIsString(c.Args[0]) &&
+				!g.isNoneExpr(c.Args[0]) && !g.printsAsInternedStr(c.Args[0]) && !g.nameIsContainerRecorded(c.Args[0]) &&
+				g.strArgIsNumberish(c.Args[0]) &&
 				!strings.Contains(exprTyName(c.Args[0]), "float") && !g.isFloat(c.Args[0]) {
 				v, verr := g.value(b, c.Args[0])
 				if verr != nil {
@@ -13660,6 +13676,138 @@ func (g *irGen) lookupFuncDef(name string) *FuncDef {
 		return fd
 	}
 	return nil
+}
+
+// strArgIsNumberish answers the narrow question the run-time digits road needs: is this operand a number
+// the compiler can see, as opposed to a name whose kind the object carries, a container, a text or a void?
+// A parameter is deliberately NOT assumed numeric — it is written by the caller, and `f(None)` is an
+// ordinary program. A name the module bound to a number is; a name bound to anything else is not
+// (roadmap L11.2, Gap R.171, ADR 0258).
+func (g *irGen) strArgIsNumberish(e Expr) bool {
+	switch n := e.(type) {
+	case *IntLit, *BoolLit:
+		return true
+	case *Name:
+		// A parameter keeps the digits road. It is NOT assumed numeric — rather, a parameter that
+		// would arrive as a TEXT is refused at the CALL SITE by ADR 0174's argument guard ("strings
+		// are not supported as function arguments"), and a container or void argument likewise never
+		// reaches a word-sized parameter, so by the time `str(v)` is lowered here `v` can only hold
+		// what a word can carry. Removing this road instead turned four WORKING answers into refusals
+		// — `x = str(v); print(x)` with `f(3)` printed `3` before and refused after — which the ladder
+		// forbids (roadmap L11.2, Gap R.170/R.171, ADR 0174).
+		if _, isParam := g.params[n.Value]; isParam {
+			return true
+		}
+		if g.nameIsContainerRecorded(n) || g.noneVars[n.Value] || g.internedVars[n.Value] {
+			return false
+		}
+		if _, isText := g.strVals[n.Value]; isText {
+			return false
+		}
+		// Every value the program ever wrote into this name, module-level or in the body being
+		// compiled, must be something the digits road can render. One binding to a text, a container
+		// or a void is enough to make the digits a lie about the value (roadmap L11.2, Gap R.171) --
+		// and it must be EVERY binding, not the folded last one: `x = "abc"` then `x = 5` then
+		// `print(str(x))` is answered by a fold arm above this road, and gating it on a single
+		// record made that working answer refuse.
+		// The value the name holds NOW -- the last binding the program wrote, which is what the
+		// renderer's own fold arm reads, and what `x = "abc"` then `x = 5` then `print(str(x))` prints
+		// (`5`, per the rebinding rule ADR 0274's convention pins). Asking "was it EVER a number"
+		// answers a different question and printing the digits of an earlier value would be a lie.
+		vals := g.strArgBindings(n.Value)
+		if len(vals) == 0 {
+			return false
+		}
+		return g.strArgIsNumberish(vals[len(vals)-1])
+	case *BinOp:
+		switch n.Op {
+		case "+", "-", "*", "//", "%":
+			return g.strArgIsNumberish(n.L) && g.strArgIsNumberish(n.R)
+		}
+		return false // `/` answers a double, which this road must keep refusing
+	case *UnOp:
+		return n.Op == "-" && g.strArgIsNumberish(n.X)
+	case *Index:
+		return false // a slot's kind is the object's business, not this road's
+	case *Call:
+		// A callee's answer is readable when the body's own `return` is: `str(get())` where `def get():
+		// return 7` was always meant to work (ADR 0229 widened this road precisely so a call was as
+		// answerable as a literal), and a call to a function that renders, returns a text, a container or
+		// nothing is not a number.
+		// The callee must be a function the program defined, not a builtin by that name.
+		// (`builtinShadowed` asks the opposite question — "did the program take this builtin's
+		// name?" — and answers YES for an ordinary callee, which is how my first draft here
+		// refused every `str(call())`; roadmap Gap R.171, recorded so nobody re-borrows it.)
+		nm, isName := n.Fn.(*Name)
+		if !isName {
+			return false
+		}
+		fd, ok := g.fds[nm.Value]
+		if !ok || !fdReturnsValue(fd) || g.strFuncs[nm.Value] {
+			return false
+		}
+		w := returnCollector{}
+		w.stmts(fd.Body)
+		if len(w.returns) == 0 {
+			return false
+		}
+		for _, r := range w.returns {
+			if !g.strArgIsNumberish(r) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// strArgBindings collects every value the program bound to a name: module-level assignments plus the
+// bindings of the body currently being compiled. scanRebinds is the table the rest of the front end
+// already reads (ADR 0274's return convention, ADR 0285's number half), so this asks an existing record
+// rather than inventing a fourth one.
+func (g *irGen) strArgBindings(name string) []Expr {
+	if name == "" {
+		return nil
+	}
+	if g.strArgBindCache == nil {
+		g.strArgBindCache = map[string][]Expr{}
+	}
+	if v, ok := g.strArgBindCache[name]; ok {
+		return v
+	}
+	out := map[string][]Expr{}
+	for k, vs := range g.moduleBinds {
+		out[k] = append(out[k], vs...)
+	}
+	if fd, ok := g.fds[g.curFunc]; ok && fd != nil {
+		scanRebinds(fd.Body, out)
+	}
+	vals := out[name]
+	g.strArgBindCache[name] = vals
+	return vals
+}
+
+// nameIsContainerRecorded is the container side of the same question, asked of the records that already
+// exist rather than of a new one.
+func (g *irGen) nameIsContainerRecorded(e Expr) bool {
+	nm, isName := e.(*Name)
+	if !isName {
+		if _, isList := e.(*ListLit); isList {
+			return true
+		}
+		if _, isDict := e.(*DictLit); isDict {
+			return true
+		}
+		if _, isSet := e.(*SetLit); isSet {
+			return true
+		}
+		if _, isTup := e.(*Tuple); isTup {
+			return true
+		}
+		return false
+	}
+	return g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] ||
+		g.mixedLists[nm.Value] || g.mixedDicts[nm.Value] || g.mixedSets[nm.Value] || g.unionVars[nm.Value]
 }
 
 func (g *irGen) isNoneExpr(e Expr) bool {
