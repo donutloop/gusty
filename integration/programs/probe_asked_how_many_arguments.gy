@@ -1,0 +1,30 @@
+# How many arguments there were is one question, asked on the road every caller shares (Gap R.168,
+# ADR 0284). A callable read out of a variable used to be called without being asked: `g(1, 2)` printed
+# `2` and `g()` printed `0`, both at exit 0, where the reference raises. These eleven lines are calls the
+# reference ANSWERS, so both engines must answer them too.
+def g(a, b=2, c=3):
+    return a + b + c
+
+def fact(n):
+    if n <= 1:
+        return 1
+
+    return n * fact(n - 1)
+
+class C:
+    def m(self, a):
+        return a + 1
+
+print(g(1))
+print(g(1, 5))
+print(g(1, 5, 6))
+print(g(c=9, a=1))
+print(fact(5))
+c = C()
+print(c.m(4))
+lam = lambda x: x * 2
+print(lam(21))
+print(fact(0))
+print(fact(1))
+print(g(0))
+print(c.m(0))

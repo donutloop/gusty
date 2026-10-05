@@ -1836,6 +1836,17 @@ The rule is ADR 0224's (a method's string answer is known to its callers) one do
 respects Gap R.6's: a program that defines `str` itself gets its own function, so
 `def str(x): return x + 7` beside that same body answers `49`.
 
+A call is **asked how many arguments there were**, once, on the road every caller shares (ADR 0284). A
+callable read out of a variable used to be called without being asked: `g = lambda x: x * 2` then
+`print(g(1, 2))` printed `2` and `print(g())` printed `0`, both at exit 0 — arithmetic on arguments that
+were never passed — where the reference raises `takes 1 positional argument but 2 were given` /
+`missing 1 required positional argument: 'x'`. Both now stop at exit 3 naming the callee, the accepted count
+and the received count (`too many arguments for <lambda>: it accepts 1 argument, got 2`). A `def` keeps the
+name the program gave it (`too many arguments for f`); a lambda is `<lambda>`, never the compiler's
+generated `lambda_0`. Defaults and keywords are unaffected — `def g(a, b=2, c=3)` answers `6`/`9`/`12` for
+one, two and three arguments, and `g(c=9, a=1)` answers `12` — because a missing parameter is only an error
+when nothing can fill it.
+
 A `def`'d name is a **declaration, not a variable**, and says so (ADR 0283). Reading one where a value
 is asked — `print(f)`, `f + 1`, `xs = [f]`, `str(f)` — is a front-end refusal at exit 1, because a `def`
 allocates no slot to read; an earlier build emitted `load i32, i32* %_f` for that nonexistent slot and left

@@ -7246,3 +7246,66 @@ it cannot answer, so a partial value cannot sneak a silent load back in.
 The matrix caught the promotion for me: `probe_fn_name.gy` had been pinned *both legs fail* and the
 interpreter started answering `[2, 4]`, which is `oracle drift` until the row is updated — the drift is the
 evidence that the fix was real rather than cosmetic.
+
+### Gap R.168 — a callable read out of a variable was called without being asked how many arguments there were (CLOSED by ADR 0284, owner L11.8)
+
+```
+g = lambda x: x * 2
+print(g(1, 2))   # --interp: 2 at exit 0 · CPython: TypeError takes 1 positional argument but 2 were given
+print(g())       # --interp: 0 at exit 0 · CPython: TypeError missing 1 required positional argument: 'x'
+
+g2 = lambda x, y: x - y
+print(g2(3))     # --interp: 3 at exit 0 · CPython: TypeError missing 1 required positional argument: 'y'
+```
+
+Three believable numbers, all computed from arguments that were never passed, and — the detail that makes
+this the worst class rather than a cosmetic one — from **the engine that is supposed to be the trustworthy
+fast path**. `--aot` refused all five shapes; the interpreter, the REPL path, printed digits at exit 0.
+
+The two roads, side by side. The checked road (a literal call to a `def`'d name) walks `n.Args`, keeps an
+`argSet`, rejects `pos >= len(fd.Params)` and reports an unset parameter. `callClosure` — the road for a
+callable held by a *variable* — did this:
+
+```go
+argVals := make([]int64, len(n.Args))            // however many there were
+for i, a := range n.Args { argVals[i], err = e.eval(a) }
+return e.callFunc(o.fn, argVals, o.env, ...)     // no count, no question
+```
+
+and `callFunc`'s bind loop is written for the lenient case, so it cannot ask either:
+
+```go
+for i, p := range fd.Params {
+	if i < len(argVals) { av = argVals[i] }        // walks PARAMETERS: extras are never indexed
+	else if p.Default != nil { … }                  // a missing arg with no default falls through
+	scope[p.Name] = av                              // to av's zero value
+}
+```
+
+Extras die because the loop is driven by parameters. Zeros appear because `var av int64` has a zero value
+and nothing objects. Both are silent, and both produce *arithmetic that works*: `1 * 2` is a fine answer to
+display for a call that passed one argument and received two.
+
+**Placement is the design.** The count went into `callFunc` before the bind loop, not into `callClosure`,
+because a guard beside one caller is exactly how this hole opened — the next road (a decorator wrapper, an
+`await` trampoline, a `functools`-shaped helper) would inherit the question instead of having to remember
+it. The loop itself starts at `len(argVals)`, so a trailing default is filled exactly as before: nothing a
+*correct* call may do got tighter, which is what the eleven-line control probe is for (`6`/`9`/`12`,
+`g(c=9, a=1)` → `12`, `fact(5)` → `120`, a method → `5`, a lambda through a parameter → `12`).
+
+**Two vocabularies, measured rather than merged.** A literal `measure(1, 2)` never reaches the run-time
+sentence: the **checker** intercepts it with `verify: function "measure" accepts 1 argument, got more`, and
+no run-time string can shadow what the checker says first. Adopting the reference's exact wording would be
+an ADR 0215 table change across every call site — a wording decision that belongs in its own row, not
+buried in an arity fix. What the interpreter's own trap now says names the callee, the accepted count and
+the received count: `too many arguments for <lambda>: it accepts 1 argument, got 2`. A `def` keeps its own
+name; a lambda is `<lambda>`; the test fails if `lambda_0` leaks, because that is the compiler's naming
+scheme appearing to a user who never wrote it.
+
+**A process note the ledger forced, and was right about.** My first registration put the new probe in the
+debt list; `TestOracleProbeRowsAreRecordedAsDebt` failed it — *a probe that now matches CPython is a paid
+debt; promote it and delete the row* — and then failed again when my "promotion" edit landed in the wrong
+function of the same file. Two rounds of that test, not my judgement, decided where the row lives. The
+artifact (153 rows, 116 parity, 101 `match`, 0 fail, 0 drift) is the record. Sweep against the ADR 0283
+binary: **161 files, zero difference** but the pre-existing `int()`/`float()` panic's stack addresses
+(`Gap R.131`, still open, still a panic).

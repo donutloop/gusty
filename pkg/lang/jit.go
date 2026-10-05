@@ -852,6 +852,32 @@ func (e *Evaluator) bodyBinds(fd *FuncDef, name string) bool {
 	return set[name]
 }
 
+// callFuncNameForError names the callee in an arity sentence. A `lambda` is declared under the name
+// the compiler generated for it (`lambda_0`), which the reader never wrote; the reference calls the
+// same object `<lambda>`, so that is what a user sees, while a `def` keeps its own name because that
+// is the name they gave it (roadmap Gap R.168, ADR 0284 -- and ADR 0215's rule that the wording is a
+// contract, not an invention).
+func callFuncNameForError(fd *FuncDef) string {
+	if fd == nil {
+		return "<lambda>"
+	}
+	// The interpreter names a lambda "lambda" (jit's own anonymous FuncDef) and the compiler numbers
+	// its copies "lambda_0"; neither is a name the reader wrote, and the reference calls the same
+	// object `<lambda>`.
+	if fd.Name == "" || fd.Name == "lambda" || strings.HasPrefix(fd.Name, "lambda_") {
+		return "<lambda>"
+	}
+	return fd.Name
+}
+
+// pluralFor is the one grammar word an arity sentence needs.
+func pluralFor(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64, bodySafe bool) (int64, error) {
 	caller := e.fnName
 	callSite := e.cur
@@ -871,6 +897,23 @@ func (e *Evaluator) callFunc(fd *FuncDef, argVals []int64, env map[string]int64,
 	scope := map[string]int64{}
 	for k, v := range env {
 		scope[k] = v
+	}
+	// How many arguments there were is asked HERE, once, on the road every caller shares. The
+	// checked call road asked it on its own; `callClosure` -- the road for a callable read out of a
+	// variable (`g = lambda x: x * 2`) -- asked nothing, so the loop below quietly ignored the extras
+	// and defaulted a genuinely missing parameter to 0. `print(g(1, 2))` answered `2` and
+	// `print(g())` answered `0`, both at **exit 0**, where CPython raises
+	// `<lambda>() takes 1 positional argument but 2 were given` /
+	// `missing 1 required positional argument: 'x'`. A wrong number at exit 0 outranks every other
+	// defect class, which is why this moved into the shared road rather than into one caller
+	// (roadmap Gap R.168, ADR 0284).
+	if len(argVals) > len(fd.Params) {
+		return 0, &EvalError{Msg: fmt.Sprintf("too many arguments for %s: it accepts %d argument%s, got %d", callFuncNameForError(fd), len(fd.Params), pluralFor(len(fd.Params)), len(argVals))}
+	}
+	for i := len(argVals); i < len(fd.Params); i++ {
+		if fd.Params[i].Default == nil {
+			return 0, &EvalError{Msg: fmt.Sprintf("missing argument %q for %s", fd.Params[i].Name, callFuncNameForError(fd))}
+		}
 	}
 	// bind positional args, filling defaults for missing trailing params
 	for i, p := range fd.Params {
@@ -4168,7 +4211,10 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 					return 0, &EvalError{Msg: "positional argument after keyword argument"}
 				}
 				if pos >= len(fd.Params) {
-					return 0, &EvalError{Msg: "too many arguments"}
+					// The same sentence the shared road asks, so one program does not read two ways
+					// depending on whether the callee was declared or bound (ADR 0215's wording rule;
+					// roadmap Gap R.168, ADR 0284).
+					return 0, &EvalError{Msg: fmt.Sprintf("too many arguments for %s: it accepts %d argument%s, got more", callFuncNameForError(fd), len(fd.Params), pluralFor(len(fd.Params)))}
 				}
 				if argSet[pos] {
 					return 0, &EvalError{Msg: "multiple values for argument " + fd.Params[pos].Name}
@@ -4186,7 +4232,9 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 					continue
 				}
 				if p.Default == nil {
-					return 0, &EvalError{Msg: "missing argument " + p.Name}
+					// Named the way the shared road names it, and quoted as the reference quotes a
+					// parameter (roadmap Gap R.168, ADR 0284).
+					return 0, &EvalError{Msg: fmt.Sprintf("missing argument %q for %s", p.Name, callFuncNameForError(fd))}
 				}
 				dv, err := e.eval(p.Default)
 				if err != nil {

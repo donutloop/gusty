@@ -551,6 +551,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_asked_how_many_arguments",
+        "name": "probe_asked_how_many_arguments.gy",
+        "source": "# How many arguments there were is one question, asked on the road every caller shares (Gap R.168,\n# ADR 0284). A callable read out of a variable used to be called without being asked: `g(1, 2)` printed\n# `2` and `g()` printed `0`, both at exit 0, where the reference raises. These eleven lines are calls the\n# reference ANSWERS, so both engines must answer them too.\ndef g(a, b=2, c=3):\n    return a + b + c\n\ndef fact(n):\n    if n \u003c= 1:\n        return 1\n\n    return n * fact(n - 1)\n\nclass C:\n    def m(self, a):\n        return a + 1\n\nprint(g(1))\nprint(g(1, 5))\nprint(g(1, 5, 6))\nprint(g(c=9, a=1))\nprint(fact(5))\nc = C()\nprint(c.m(4))\nlam = lambda x: x * 2\nprint(lam(21))\nprint(fact(0))\nprint(fact(1))\nprint(g(0))\nprint(c.m(0))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "6\n9\n12\n12\n120\n5\n42\n1\n1\n5\n1\n",
+      "aot_ok": true,
+      "aot_stdout": "6\n9\n12\n12\n120\n5\n42\n1\n1\n5\n1\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "6\n9\n12\n12\n120\n5\n42\n1\n1\n5\n1\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3616,7 +3639,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix437246657/126/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3583021348/127/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3630,7 +3653,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix437246657/126/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3583021348/127/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4471,11 +4494,11 @@
       ]
     }
   ],
-  "rows": 152,
+  "rows": 153,
   "skipped": 37,
-  "pass": 115,
+  "pass": 116,
   "fail": 0,
-  "oracle_match": 100,
+  "oracle_match": 101,
   "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

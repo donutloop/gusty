@@ -7393,3 +7393,53 @@ because of the addresses in the stack trace. Matrix 151 → 152 rows, 100 `match
 **Next.** The queue's next eligible row. Two candidates I measured on the way and filed properly rather than
 silently fixing: `Gap R.167` (a function has no value to be — the feature) and `Gap R.168` (the closure road
 drops arity — a wrong number at exit 0, which is the class that always outranks a refusal).
+
+---
+
+## Cycle: how many arguments there were is one question (Gap R.168 closed; ADR 0284)
+
+**What shipped.** `g = lambda x: x * 2` then `print(g(1, 2))` printed `2`; `print(g())` printed `0`;
+`g = lambda x, y: x - y` / `print(g(3))` printed `3`. All at **exit 0**, all arithmetic computed from
+arguments that were never passed, and all on the *interpreter* — the engine an agent trusts for fast
+feedback while `--aot` correctly refused. Now each stops at exit 3 naming the callee, the accepted count
+and the received count.
+
+**The shape of the bug.** `callClosure` built `argVals` at whatever length the call site had and asked
+nothing; `callFunc`'s bind loop is **driven by parameters**, so extras are never indexed, and `var av int64`
+supplies a zero value for a missing parameter that has no default. Each half is individually defensible —
+the loop is written for defaults — and together they are silent. The answers were *believable*: `1 * 2` is a
+perfectly good thing to display.
+
+**Placement over patching.** The count went into `callFunc`, before the bind loop, not into `callClosure`.
+Fixing the one caller the bug was measured on would leave the shared sink still able to invent a zero, and
+the next road (decorator wrapper, `await` trampoline, `functools`-ish helper) would inherit the hole. The
+loop starts at `len(argVals)` so defaults keep filling — nothing a correct call may do got tighter.
+
+**Errors I made, all named.**
+- **Real compile error:** I reused `EvalExpr` as if it printed, writing `strings.TrimSpace(out)` on its
+  first return — which is an `int64` (the last expression's value, not stdout). A cheap mistake, but it says
+  something: when a helper's contract is `(value, diagnostics, error)` it is tempting to read it as the REPL
+  wrapper. Fixed to assert on the error, and the comment in the test now records what the tuple means.
+- **Two test-expectation errors that were actually discoveries.** I asserted the run-time sentence for
+  `measure(1, 2)` and got `verify: function "measure" accepts 1 argument, got more`: the **checker intercepts
+  a literal call first**, so no run-time string can shadow it. That's the *two vocabularies* fact now written
+  into the ADR's rejected-alternatives — I removed the temptation to "unify" wording across stages inside an
+  arity commit, and scoped the rows to the road each can reach (a callee reached *through a name*).
+- **A registration error the ledger caught twice.** I filed a fully-CPython-matching probe as a debt row;
+  `TestOracleProbeRowsAreRecordedAsDebt` rejected it ("a probe that now matches is a paid debt"). Then my
+  "fix" inserted the name into `conformanceProbes` instead of `conformanceStandalone` — both functions take
+  a `[]string` of names, my anchor matched the later-defined one — and my follow-up deletion removed the
+  only copy, silently dropping the program from the matrix. Counter movement (153 → 152 → 153, pass
+  115 → 115 → 116) is what told me. Lesson: **anchor edits inside the target function's byte range**, and
+  read the artifact counters, not just the test verdict.
+- **Instrumentation slips again:** `mkdir -p` missing before `cp` for the sweep baseline, and a `&&` chain
+  that swallowed a `sed` step when the `cp` failed.
+
+**The measurement the loop keeps insisting on.** To isolate this cycle I built a **worktree** at the previous
+commit (`git worktree add /tmp/c10 b905ec3`) and built the baseline binary from it, instead of trusting a
+`/tmp/newN` copy whose provenance I'd lost across cycles. The sweep then read exactly right: 161 files, zero
+difference except the pre-existing `int()`/`float()` panic's stack addresses.
+
+**Next.** Top of the Open queue again — L11.6's remaining half, or L11.3/L11.5; and `Gap R.167` (a function
+has no value to be) is now the natural sequel, since the interpreter can hold a callable and the compiled
+backend cannot.

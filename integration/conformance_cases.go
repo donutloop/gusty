@@ -89,6 +89,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the interned index to `printf` with `%d` — `0` at exit 0 where the reference prints `42`
 		// (roadmap Gap R.163, ADR 0281).
 		"probe_return_str",
+		// How many arguments there were is one question, asked on the road every caller shares: eleven calls
+		// the reference answers — defaults, keywords out of order, recursion, a method, a lambda read out of
+		// a name — whole on both engines. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
+		// (roadmap Gap R.168, ADR 0284).
+		"probe_asked_how_many_arguments",
 		// `%` is the remainder for numbers on both engines — ints, negatives, doubles, the same body over a
 		// pair-marked parameter, and a float compared to a text — thirteen lines pinned beside the refusal
 		// that keeps the *text*-left spelling from answering a number (roadmap Gap R.165, ADR 0282).
@@ -490,8 +495,13 @@ func conformanceProbes() []lang.ConformanceCase {
 		// longer a NameError, so a function flows through a parameter on the interpreter, and the numeric
 		// door raises CPython's `'function'`/`'module'` sentence instead of handing `llc` a load of a slot
 		// no `def` allocated (roadmap Gap R.150, Gap R.151, Gap R.153, ADR 0283).
-		"probe_a_function_as_a_value", // L11.7 — a def'd name is not a value at all
-		"probe_print_atomic",          // Gap L.5 — print writes while it evaluates
+		"probe_a_function_as_a_value",
+		// How many arguments there were is one question, asked on the road every caller shares: eleven calls
+		// the reference answers — defaults, keywords out of order, recursion, a method, a lambda read out of
+		// a name — whole on both engines. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
+		// (roadmap Gap R.168, ADR 0284).
+		// How many arguments there were is one question, asked on the road every caller shares: eleven calls
+		"probe_print_atomic", // Gap L.5 — print writes while it evaluates
 		// Found by the boring-program sweep (ADR 0190): the tutorial-shaped programs nobody
 		// probed, twelve of them, five divergences.
 

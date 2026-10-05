@@ -968,6 +968,12 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- a **wrong-arity call stops the program on both engines**, and never answers a number: `--interp` printed
+  `2` at exit 0 for `g = lambda x: x * 2` / `print(g(1, 2))` and `0` for `print(g())` — values computed from
+  arguments that were never passed — while the reference raises and `--aot` already refused. Exit 0 now means
+  the same thing on both paths (`Gap R.168` / ADR 0284), and the message carries the callee, the accepted
+  count and the received count so a harness can compute the fix instead of re-probing
+  (`too many arguments for <lambda>: it accepts 1 argument, got 2`).
 - a **declared** name read as a value is refused at **exit 1**, never at exit 2: `print(f)`, `f + 1`,
   `xs = [f]` and `print(lambda x: x)` all reached `llc-20` and came back "use of undefined value
   `%_f`"/`printf(…, i32 lambda_0)` — the exit-code contract's compiler-bug code spent on a program the

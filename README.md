@@ -550,6 +550,19 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A wrong-arity call **stops the program on both engines** (ADR 0284, closing `Gap R.168`). A callable read
+out of a variable was called without being asked how many arguments there were: `g = lambda x: x * 2` then
+`print(g(1, 2))` printed `2`, `print(g())` printed `0`, and `g = lambda x, y: x - y` / `print(g(3))` printed
+`3` — all at **exit 0**, all arithmetic on values that were never passed, where CPython raises
+`<lambda>() takes 1 positional argument but 2 were given`. `callClosure` handed `callFunc` a slice of however
+many arguments there were, and the bind loop walks *parameters*, so extras were never indexed and a missing
+parameter with no default kept its zero value. The count moved into `callFunc`, the road every caller shares,
+before the bind loop: a fifth road added later inherits the question instead of having to remember it. A
+`def` keeps the name the program gave it (`too many arguments for f`), a lambda is `<lambda>`, and the
+compiler's generated `lambda_0` is never shown to a reader who never wrote it. Nothing about a *correct* call
+tightened — defaults fill (`6`/`9`/`12`), keywords work out of order (`12`), recursion, methods and a lambda
+through a parameter are CPython-exact on both engines, which is what the eleven-line probe exists to prove.
+
 A declared name is **not a variable**, and a function is **not a number** (ADR 0283, closing the exit-2
 half of `Gap R.150` and `Gap R.151`). `print(f)`, `f + 1`, `xs = [f]`, `str(f)`, `print(math + 1)` and
 `print(lambda x: x)` all left `--aot` through **exit 2** — `llc-20` rejecting a module that emitted
