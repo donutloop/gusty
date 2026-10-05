@@ -320,6 +320,25 @@ rather than guessed: a double forwarded through a second function's parameter pr
 `%` over a pair truncate (`Gap R.162`), and `def g(): return str(42)` prints the interned index (`Gap R.163`,
 pre-existing, found by this cycle's whole-corpus sweep).
 
+**A number handed on by a body keeps the kind its caller's argument had** (ADR 0277, closing `Gap R.161`).
+`def twice(v): return v * 2` / `def outer(x): return twice(x)` / `print(outer(2.5))` is CPython's `5.0` and
+the interpreted leg's `5.0`; the compiled leg printed `4`, at **exit 0**, and `print(shift_it(2.5))` over
+`def shift_it(z): return add(z, 1)` printed `3` for `3.5`. Nothing inside `outer` says `x` can be a float: a
+parameter is written by the caller and never by the body, so no assignment records a binding for it and the
+only evidence is the argument `outer`'s own call site was written with. The scan now brackets a `def`'s body,
+which is how a call site learns whose parameter it hands over, and marks propagate along those edges in both
+directions — the caller holds a pair, so the callee position must carry it; another call site proved the
+callee's position, so every caller must supply the tag — in bounded rounds, growing only. A mark that rests on
+an edge is closed when the edge is: close the callee (it floors the value, renders it a text, indexes with it)
+and the caller loses its tag word too, because a pair half-read one frame down is the wrong number this file
+exists to remove. The answer direction moved to the same scan, and the tag word is declared where the callee's
+`define` is emitted: `def f(v): return other(v)` now compiles identically written above or below
+`def other(w): return w * 2`, where before it refused for a reason that had nothing to do with the program.
+The tag definition and the flag that records "this body carries a tag" cannot share a guard, because the read
+can precede the write. `programs/probe_forward_a_pair_through_a_function.gy` is the closing event — eight
+lines, three legs, one answer — and `integration/forwarded_pair_test.go` pins the chain that must **not** take
+the pair by its exit class rather than by a number.
+
 **An int that meets `/=` becomes a float** (ADR 0274, closing `Gap P.1`'s `/=` half and `Gap R.155`).
 `x = 7` / `x /= 2` / `print(x)` is CPython's `3.5` and the interpreted leg's `3.5`; the compiled leg printed
 `3`, and `x = 1` / `x /= 3` printed `0` where the reference prints `0.3333333333333333` — both at **exit 0**,

@@ -436,6 +436,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_forward_a_pair_through_a_function",
+        "name": "probe_forward_a_pair_through_a_function.gy",
+        "source": "# What CPython prints for each line here (python3, 3.12):\n#\n#   5.0       (twice(2.5) — the answer's kind follows the argument)\n#   6         (twice(3) — the same define, an int argument)\n#   5.0       (outer(2.5) — the argument is handed on through a second function's parameter)\n#   6         (outer(3))\n#   5.0       (outermost(2.5) — two frames hand the same pair on)\n#   5.0       (a slot of a literal list, forwarded)\n#   3.5       (add(x, 1) inside a forwarded frame: a pair beside an integer the body writes)\n#   3         (the same, with an int)\n#\n# A number handed to a function keeps the kind its argument had (roadmap L11.6, Gap P.1, ADR 0276) — and\n# the kind has to survive a boundary the *body* crosses too. `def outer(x): return twice(x)` writes nothing\n# that says `x` can be a float: a parameter is assigned by the caller, never by the body, so the evidence\n# lives two frames up, in the argument `outer`'s own call site was written with. Read without it, the\n# compiled leg truncated the value at each boundary — `print(outer(2.5))` printed 4, exit 0 — while the\n# interpreter, which boxes the value and asks it, printed CPython's 5.0.\n#\n# The last four lines cross two boundaries at once, and the last two share a body between a parameter that\n# carries the pair and one the call sites prove an integer: `a + b` needs a kind for both operands, and\n# `b`'s is the literal the body wrote. The door is the (payload, tag) pair the callee declares beside its\n# payload and the tag word it stores beside its own `return` (ADR 0273), settled for the whole program by\n# one scan of the AST so every `define` and every `call` agrees on the arity whichever comes first in the\n# file (roadmap L11.1, Gap R.161, ADR 0277).\ndef twice(v):\n    return v * 2\n\ndef outer(x):\n    return twice(x)\n\ndef outermost(y):\n    return outer(y)\n\ndef add(a, b):\n    return a + b\n\ndef shift_it(z):\n    return add(z, 1)\n\nprint(twice(2.5))\nprint(twice(3))\nprint(outer(2.5))\nprint(outer(3))\nprint(outermost(2.5))\nys = [1, 2.5]\nprint(outer(ys[1]))\nprint(shift_it(2.5))\nprint(shift_it(2))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "5.0\n6\n5.0\n6\n5.0\n5.0\n3.5\n3\n",
+      "aot_ok": true,
+      "aot_stdout": "5.0\n6\n5.0\n6\n5.0\n5.0\n3.5\n3\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "5.0\n6\n5.0\n6\n5.0\n5.0\n3.5\n3\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/abs_names_its_kind",
         "name": "abs_names_its_kind.gy",
         "source": "# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.\n#\n# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the\n# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this\n# toolchain answered all of them: a text reached the print door holding the interned index it is stored\n# as, so `print(abs(\"hi\"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and\n# `abs([1])`, `abs({\"a\": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's\n# \"the compiler is broken\" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).\n#\n# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that\n# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises\n# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the\n# last lines are the rebinding the door reads, where a name's latest binding decides the kind.\nprint(abs(-10))\nprint(abs(10))\nprint(abs(-3.5))\nprint(abs(True))\nprint(abs(0))\ntry:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"trap str\")\ntry:\n    print(abs(None))\nexcept TypeError:\n    print(\"trap NoneType\")\ntry:\n    print(abs([1, 2]))\nexcept TypeError:\n    print(\"trap list\")\ntry:\n    print(abs({\"a\": 1}))\nexcept TypeError:\n    print(\"trap dict\")\ntry:\n    print(abs({1, 2}))\nexcept TypeError:\n    print(\"trap set\")\nclass Thing:\n    pass\n\ntry:\n    print(abs(Thing()))\nexcept TypeError:\n    print(\"trap Thing\")\nx = \"text\"\nx = -7\nprint(abs(x))\nprint(-x)\nprint(abs(x) + 1)\n",
@@ -3478,7 +3501,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3887354007/120/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2773261251/121/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3492,7 +3515,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3887354007/120/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2773261251/121/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4294,11 +4317,11 @@
       ]
     }
   ],
-  "rows": 145,
+  "rows": 146,
   "skipped": 36,
-  "pass": 109,
+  "pass": 110,
   "fail": 0,
-  "oracle_match": 94,
+  "oracle_match": 95,
   "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

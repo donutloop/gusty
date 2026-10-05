@@ -6734,7 +6734,7 @@ parameter nobody proved. `print(shift(xs[0][1]))` is `108` and `print(shift(xs[0
 legs; the two refusal rows this row owned — one in `pkg/lang/pair_call_test.go`, one through the CLI — became
 parity rows rather than being deleted.
 
-### Gap R.161 — a double forwarded through another function's parameter truncates (OPEN, owner L11.6, measured landing ADR 0276)
+### Gap R.161 — a double forwarded through another function's parameter truncates (CLOSED by ADR 0277, owner L11.6, measured landing ADR 0276)
 
 ```
 def twice(v):
@@ -6743,21 +6743,52 @@ def twice(v):
 def outer(x):
     return twice(x)
 
-print(outer(2.5))  # CPython 5.0 · --interp 5.0 · --aot 4, exit 0
+print(outer(2.5))  # CPython 5.0 · --interp 5.0 · --aot 4, exit 0 → now 5.0 on both engines
 ```
 
-The same truncation as Gap P.1, one boundary deeper, and the one shape this cycle's widened gate cannot see.
+The same truncation as Gap P.1, one boundary deeper, and the one shape ADR 0276's widened gate could not see.
 `exprCarriesDouble` asks a name's recorded *bindings*, and an enclosing parameter has none: `x` is written by
-no assignment, only by the call site of `outer`, which the walk files under `twice`/`outer`'s callee entries and
-not under the name. So `twice`'s parameter is never marked, and the argument that had a pair one frame earlier
-is read as one `i32`.
+no assignment, only by the call site of `outer`, which the walk files under `twice`'s callee entries and not
+under the name. So `twice`'s parameter was never marked, and the argument that had a pair one frame earlier
+was read as one `i32`.
 
-The cure is the call graph, not another predicate: record the enclosing function of each call site, and let a
-parameter's evidence be the arguments its own call sites were written with — which is the question
-`knownIntParams` already answers for the integer side, asked of the double side instead. It cannot be done by
-consulting `s.calls[name]` from `exprCarriesDouble`, as this cycle first tried: that reads *`x` is called as a
-function somewhere*, which is a different question and marks the wrong parameters. Until then this answers a
-wrong number at exit 0, which is why it is a row and not a footnote.
+The cure was the call graph rather than another predicate. The walk now brackets a `def`'s body (`enterFn` /
+`leaveFn`, with a stack because a `def` nests), so each recorded call site knows the function it was written
+inside; a call site inside `f` that hands a callee position `f`'s own parameter — positionally or by keyword,
+and only while the body never rebinds that name — is a *forwarding edge*, and marks propagate along those
+edges in both directions, in bounded rounds that only ever grow:
+
+| program | CPython · interpreter | compiled before | compiled after |
+| --- | --- | --- | --- |
+| `outer(2.5)` / `outer(3)` | `5.0` · `6` | `4` · `6` (exit 0) | `5.0` · `6` |
+| `outermost → middle → outer → twice`, `outermost(2.5)` | `5.0` | `4` (exit 0) | `5.0` |
+| `def outer(a, b): return twice(b)` over `(1, 2.5)` / `(1, 2)` | `5.0` · `4` | `4` · `4` | `5.0` · `4` |
+| `def shift_it(z): return add(z, 1)` over `2.5` / `2` | `3.5` · `3` | `3` · `3` | `3.5` · `3` |
+| `outer(ys[1])` over `ys = [1, 2.5]`; a forwarded float-state name; `outer(v=x)` | `5.0` | `4` (exit 0) | `5.0` |
+| `def f(v): return other(v)` over a float slot, callee above or below | `3.0` · `6` | exit 1, and order-dependent | both orders `3.0` · `6` |
+
+Three rules came out of landing it, and all three are pinned by tests rather than asserted in prose:
+
+* **Both directions are load-bearing.** The caller holds a pair → the callee's position must carry it; another
+  call site proved the callee's position → every caller, forwarding included, must supply the tag. The first
+  version propagated one way and printed `4` for the row itself.
+* **A mark that rests on an edge dies with the edge.** Each propagated mark records the other parameter it
+  rests on; `pruneUnsuppliedForwards` closes it when the rounds closed that support, and the settle loop re-runs
+  the rounds afterwards, because closing a callee can close a caller's body in turn. A forwarding *cycle* proves
+  nothing and closes at a bounded depth — refusal over guess. The prune may only shrink: its first version
+  re-derived `params` from `wants` for every spec and silently gave the tag word back to a function whose body
+  the gate had closed, which turned the corpus's own `programs/probe_round_digit_count_kind_unseen.gy`
+  (`def scale(v): return round(v, 2)`, pinned `2` / `0`) into a refusal. The whole-corpus binary sweep caught it;
+  the suite never saw it.
+* **The answer direction is a scan answer.** `pairRetDone` used to be filled while emitting the callee's body,
+  with the tag word's *definition* behind the same one-shot flag, so `def f(v): return other(v)` written above
+  `def other(w): return w * 2` asked a question the emission order had not answered and refused. The read now
+  comes from the scan, pre-seeded before any emission, and the definition is written at the callee's own
+  `define` under its own `pairTagDeclared` guard — a read that can precede a write cannot share that write's
+  guard. This is ADR 0273's arity rule applied to the answer word, and both declaration orders are pinned.
+
+What the row still owes is filed beside it: Gap R.164 binds the callee's answer to a name before returning it
+and falls back off the pair road, and Gap R.162's flooring half now measures the same way one frame deeper.
 
 ### Gap R.162 — `//` and `%` over a parameter that carries a double answer the integer domain (OPEN, owner L11.6, measured landing ADR 0276)
 
@@ -6779,7 +6810,9 @@ left on the ordinary road and the double is truncated before the floor. The iden
 `a == (a // b) * b + (a % b)`, survives here only because both halves are truncated together, which is what
 makes the row easy to miss: the two lines are consistent with each other and both wrong. The tag is the cure —
 floor of a lifted double, printed as the double CPython prints — and the shape is the same one Gap R.148 names
-for `/` on a pair-bound name.
+for `/` on a pair-bound name. Measured one frame deeper by ADR 0277: `def outer(x): return floorit(x)` with
+`outer(5.0)` prints `2` where the reference and the interpreted leg print `2.0`, so the double arriving from
+the caller changes nothing about the defect — the flooring arms, not the forwarding, are what owe the answer.
 
 ### Gap R.163 — a function that returns `str(…)` prints the interned index (OPEN, owner L11.2, measured landing ADR 0276)
 
@@ -6798,3 +6831,35 @@ that index; what it did not cover is the index built at run time by `str()` of a
 `i32` and prints the bucket number. `def fmt(v): return str(v)` is refused outright (`str on non-integer`), so
 the pair road stays out of this shape entirely (`pairReturnRoadOwns`' string half, which ADR 0276 added to keep
 it out). What is owed is the read: the same door `print(str(42))` uses at statement level, asked of a `return`.
+
+### Gap R.164 — a pair-call answer bound to a name inside a forwarding frame truncates (OPEN, owner L11.6, measured landing ADR 0277)
+
+```
+def twice(v):
+    return v * 2
+
+def outer(x):
+    y = twice(x)
+    return y          # also measured: `return y + 0`
+
+print(outer(2.5))     # CPython 5.0 · --interp 5.0 · --aot 4, exit 0
+
+xs = []
+xs.append([1.5, 2])
+n = twice(xs[0][0])
+print(n + 0)          # 3.0 on all three legs — the cousin that proves the door exists
+```
+
+ADR 0277 forwards the pair when a body's `return` *is* the call. Bind the answer to a name one statement
+earlier and the picture changes: the answer-direction questions (`pairBodyAnswers`) do not accept the returned
+expression, the body is not answerable, and the call is lowered on the ordinary road instead of through
+`bindPairCallResult` — so `y` holds one `i32`, and the truncation happens a statement before the return rather
+than at the boundary. The slot-argument cousin in the same listing answers `3.0` on all three legs, which is
+what makes this a missing wire rather than a missing capability: the binding door ships, the calling road just
+does not ask it when the body's own answer is not a pair.
+
+Measured against the pre-cycle binary as well as the new one — `4` both ways, so no answer this cycle made got
+worse; the shape simply became reachable once the frame above it forwarded. What is owed: bind the pair at the
+call whoever the body's answer turns out to be, and let a value position read a pair-bound name back, which is
+the half Gap R.146 still owes. `integration/forwarded_pair_test.go` pins the chain around this shape by exit
+class rather than by number, so that paying the row has to move a logged row into the parity table.

@@ -64,6 +64,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the kind its argument had — `dbl(0.1)` is 0.2 and `bump(1.5)` is 2.5, the answers CPython and the
 		// interpreter always gave (roadmap L11.6, Gap P.1's argument half, ADR 0276).
 		"probe_float_numeric",
+		// The same kind crossing a second boundary: a parameter the body hands on to another function
+		// carries the pair too, which the callee's own text cannot show because a parameter is written by
+		// the caller. Eight lines, three legs, one `define` each — `print(outer(2.5))` is 5.0 where the
+		// compiled leg printed 4 at exit 0 (roadmap L11.6, Gap R.161, ADR 0277).
+		"probe_forward_a_pair_through_a_function",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap

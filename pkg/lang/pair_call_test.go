@@ -108,6 +108,47 @@ func TestASlotReadHandedToAFunctionAnswersOnBothBackends(t *testing.T) {
 			"def g(y):\n    return y * 2\n\ndef f(x):\n    x = x + 1.5\n    return g(x)\n\nprint(f(1.0))\n", "5.0\n",
 		},
 		{
+			// Gap R.161: the argument is handed on through a second function's parameter. The pair that
+			// existed one frame earlier has to survive both boundaries, or the number is truncated twice
+			// over — `print(outer(2.5))` printed 4 where CPython prints 5.0 (roadmap L11.6, ADR 0277).
+			"a double forwarded through another function's parameter",
+			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    return twice(x)\n\nprint(outer(2.5))\nprint(outer(3))\n",
+			"5.0\n6\n",
+		},
+		{
+			// Two boundaries deep: the middle frame forwards too, and each of the three frames has to
+			// agree on the arity without anyone asking the emission order.
+			"the same forwarding, two frames deep",
+			"def twice(v):\n    return v * 2\n\ndef middle(x):\n    return twice(x)\n\ndef outer(x):\n    return middle(x)\n\nprint(outer(2.5))\n",
+			"5.0\n",
+		},
+		{
+			// The forwarded parameter and the provably-integer one share a body: only the name the call
+			// sites hand doubles to carries a tag.
+			"a forwarded parameter beside an ordinary one",
+			"def twice(v):\n    return v * 2\n\ndef outer(a, b):\n    return twice(b)\n\nprint(outer(1, 2.5))\nprint(outer(1, 2))\n",
+			"5.0\n4\n",
+		},
+		{
+			// Forwarding and arithmetic in the same callee: `a` arrives as a pair from the caller above,
+			// `b` is the literal the body writes, and the door needs a kind for both operands.
+			"a forwarded parameter in arithmetic with a literal",
+			"def add(a, b):\n    return a + b\n\ndef outer(x):\n    return add(x, 1)\n\nprint(outer(2.5))\nprint(outer(2))\n",
+			"3.5\n3\n",
+		},
+		{
+			// A slot read handed to a function which hands it on again: the row ADR 0273 pinned as a
+			// refusal, answered by the call graph rather than by the body's own text (Gap R.161).
+			"a slot read handed on through a second function",
+			"def f(v):\n    return other(v)\n\ndef other(w):\n    return w\n\nxs = []\nxs.append([7, 8])\nprint(f(xs[0][0]))\n",
+			"7\n",
+		},
+		{
+			"a float slot read handed on, and the same function called with an int",
+			"def f(v):\n    return other(v)\n\ndef other(w):\n    return w * 2\n\nxs = []\nxs.append([1.5, 8])\nprint(f(xs[0][0]))\nprint(f(3))\n",
+			"3.0\n6\n",
+		},
+		{
 			// Python's bool is a number, and the tag the caller passed is the bool's own: the pair
 			// road (ADR 0233's rule at the arithmetic door) is what makes it answer 2 and not raise.
 			"a bool slot is a number",
@@ -298,20 +339,32 @@ func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
 // is not given a tagged parameter — it keeps the convention it has always had, so a program that
 // compiled before still compiles (roadmap ADR 0273).
 func TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack(t *testing.T) {
-	bodies := []struct{ name, body string }{
-		{"floor division", "    return v % 3\n"},
-		{"a power", "    return v ** 2\n"},
-		{"a true division", "    return v / 2\n"},
-		{"a subscript of the parameter", "    out = [1, 2]\n    return out[v]\n"},
-		{"a container literal", "    return [v]\n"},
-		{"a call over the parameter", "    return abs(v)\n"},
-		{"an f-string field", "    return f\"{v}\"\n"},
-		{"a text beside the parameter", "    return \"v\" + v\n"},
-		{"the parameter handed to another function", "    return other(v)\n"},
+	bodies := []struct{ name, body, other string }{
+		{"floor division", "    return v % 3\n", ""},
+		{"a power", "    return v ** 2\n", ""},
+		{"a true division", "    return v / 2\n", ""},
+		{"a subscript of the parameter", "    out = [1, 2]\n    return out[v]\n", ""},
+		{"a container literal", "    return [v]\n", ""},
+		{"a call over the parameter", "    return abs(v)\n", ""},
+		{"an f-string field", "    return f\"{v}\"\n", ""},
+		{"a text beside the parameter", "    return \"v\" + v\n", ""},
+		// "the parameter handed to another function" left this table in ADR 0277: with the call graph in
+		// the scan, `return other(v)` is served — `other`'s own parameter is marked from the same evidence,
+		// the callee answers a pair, and the caller hands it on. It answers on both engines in
+		// TestASlotReadHandedToAFunctionAnswersOnBothBackends, and its arity in either declaration order is
+		// pinned by TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten. What the gate still
+		// declines is the two rows below: a callee that cannot carry the pair closes the caller with it,
+		// because a tag word no callee reads is a pair that would be half-read one frame down.
+		{"the parameter handed to a callee that floors it", "    return other(v)\n", "    return w % 3\n"},
+		{"the parameter handed to a callee that returns a text", "    return other(v)\n", "    return str(w)\n"},
 	}
 	for _, b := range bodies {
 		t.Run(b.name, func(t *testing.T) {
-			src := "def f(v):\n" + b.body + "\ndef other(w):\n    return w\n\nxs = []\nxs.append([7, 8])\nprint(f(xs[0][0]))\n"
+			otherBody := b.other
+			if otherBody == "" {
+				otherBody = "    return w\n"
+			}
+			src := "def f(v):\n" + b.body + "\ndef other(w):\n" + otherBody + "\nxs = []\nxs.append([7, 8])\nprint(f(xs[0][0]))\n"
 			prog := mustParse(t, src)
 			if spec := pairCallSpecs(prog)["f"]; spec != nil && len(spec.params) > 0 {
 				t.Fatalf("the body cannot read a tagged parameter and was given one anyway\nsrc: %s", src)
@@ -445,6 +498,107 @@ func TestThePairSpecGateIsAskedDirectly(t *testing.T) {
 			got := spec != nil && len(spec.params) > 0
 			if got != tc.pair {
 				t.Errorf("the scan answered pair=%v, want pair=%v\nsrc: %s", got, tc.pair, tc.src)
+			}
+		})
+	}
+}
+
+// TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten is Gap R.161's module half, and the reason
+// the answer direction has to be a scan answer at all. `def f(v): return other(v)` written *above*
+// `def other(w): return w * 2` asks whether `other` hands back a pair while other's own body is still
+// ungenerated; asked from the emission order, that question answered "no", and the caller was left storing
+// whatever the tag word happened to hold — the program refused with ADR 0273's sentence for two lines whose
+// text says nothing about order. Both orders are pinned below, with the tag word's definition beside them:
+// the definition is written where the callee's `define` is emitted and read where the caller calls, so the
+// two cannot share the one-shot guard that writes it (roadmap L11.1, ADR 0277).
+func TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten(t *testing.T) {
+	const fDef = "def f(v):\n    return other(v)\n\n"
+	const otherDef = "def other(w):\n    return w * 2\n\n"
+	const tail = "xs = []\nxs.append([1.5, 8])\nprint(f(xs[0][0]))\nprint(f(3))\n"
+	for _, order := range []struct{ name, src string }{
+		{"the caller is written first", fDef + otherDef + tail},
+		{"the callee is written first", otherDef + fDef + tail},
+	} {
+		t.Run(order.name, func(t *testing.T) {
+			specs := pairCallSpecs(mustParse(t, order.src))
+			for _, fn := range []string{"f", "other"} {
+				if specs[fn] == nil || !specs[fn].returnsPair {
+					t.Fatalf("%s is not marked as a pair-carrying, pair-answering function\nsrc: %s", fn, order.src)
+				}
+			}
+			const want = "3.0\n6\n"
+			if out := captureStdout(t, order.src); out != want {
+				t.Errorf("interpreter: stdout %q, want %q\nsrc: %s", out, want, order.src)
+			}
+			res, err := Compile(order.src)
+			if err != nil {
+				t.Fatalf("compiled leg refused a program the oracle prints (%v): %s", err, order.src)
+			}
+			assertNoForbiddenIR(t, order.src, res.IR)
+			for _, fn := range []string{"gy_f", "gy_other"} {
+				line := defineLine(res.IR, fn)
+				if p, q := wordParams(line); p != 1 || q != 1 {
+					t.Errorf("%s does not take one payload word and one tag word: %s", fn, line)
+				}
+			}
+			// One tag word per pair-answering function, written by its own body and read by its caller.
+			if n := strings.Count(res.IR, ".anst = internal global"); n != 2 {
+				t.Errorf("module declares %d tag words, want 2\nsrc: %s", n, order.src)
+			}
+			for _, fn := range []string{"gy_f", "gy_other"} {
+				slot := "@" + fn + ".anst"
+				if !strings.Contains(res.IR, "store i32") || strings.Count(res.IR, slot) < 2 {
+					t.Errorf("%s's tag word is not both stored and read: %s", fn, slot)
+					continue
+				}
+				stored, loaded := false, false
+				for _, ln := range strings.Split(res.IR, "\n") {
+					if strings.Contains(ln, slot) && strings.HasPrefix(strings.TrimSpace(ln), "store") {
+						stored = true
+					}
+					if strings.Contains(ln, slot) && strings.Contains(ln, "load i32") {
+						loaded = true
+					}
+				}
+				if !stored || !loaded {
+					t.Errorf("%s's tag word is stored=%v read=%v; the answer's kind has to travel both ways", fn, stored, loaded)
+				}
+			}
+			if got := runIR(t, res.IR); got != want {
+				t.Errorf("compiled: stdout %q, want %q\nsrc: %s", got, want, order.src)
+			}
+		})
+	}
+}
+
+// TestAForwardingCallerIsClosedByACalleeThatCannotCarryThePair is the prune, and the reason a forwarding edge
+// is a promise rather than a permission: `def f(v): return other(v)` is only worth two words while `other`
+// can carry the pair it is handed. Close the callee — its body floors the value, or renders it a text — and
+// the caller's mark has to go with it, because a tag word the callee never reads leaves the pair to be
+// half-read one frame down, which is the wrong number this file exists to remove.
+func TestAForwardingCallerIsClosedByACalleeThatCannotCarryThePair(t *testing.T) {
+	for _, tc := range []struct{ name, otherBody string }{
+		{"the callee floors it", "    return w % 3\n"},
+		{"the callee renders it a text", "    return str(w)\n"},
+		{"the callee indexes with it", "    out = [1, 2]\n    return out[w]\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "def f(v):\n    return other(v)\n\ndef other(w):\n" + tc.otherBody + "\nprint(f(2.5))\n"
+			specs := pairCallSpecs(mustParse(t, src))
+			for _, fn := range []string{"f", "other"} {
+				if specs[fn] != nil && len(specs[fn].params) > 0 {
+					t.Fatalf("%s was given a tagged parameter although the callee cannot carry the pair\nsrc: %s", fn, src)
+				}
+			}
+			res, err := Compile(src)
+			if err != nil {
+				if strings.Contains(err.Error(), "LLVM ERROR") || strings.Contains(err.Error(), "verifier") {
+					t.Fatalf("%s failed as an IR problem instead of keeping its old road: %v", tc.name, err)
+				}
+				return
+			}
+			if strings.Contains(res.IR, ".anst = internal global") {
+				t.Fatalf("the module carries the pair door for a chain that cannot carry it\nsrc: %s", src)
 			}
 		})
 	}

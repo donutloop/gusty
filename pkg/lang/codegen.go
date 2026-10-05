@@ -3520,7 +3520,19 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
 	g.pairSpecs = pairCallSpecs(prog)
 	g.pairRetDone = map[string]bool{}
+	// Seeded from the scan, not from what has been emitted so far: `def f(v): return other(v)` written
+	// above `def other(w): return w` asks whether other answers a pair while other's own body is still
+	// ungenerated, and answering that question from the emission order made the answer depend on where in
+	// the file the two `def`s happened to sit (the same rule as the arity above, roadmap L11.1, ADR 0276's
+	// "asked of the program, not of the emission order"). The body's own emission still records the fact at
+	// the road that stores the tag, so a returnsPair whose emission declines keeps refusing.
+	for fnName, spec := range g.pairSpecs {
+		if spec != nil && spec.returnsPair {
+			g.pairRetDone[fnName] = true
+		}
+	}
 	g.pairCallAsked = map[string]bool{}
+	g.pairTagDeclared = map[string]bool{}
 	// What a compiled function body may know about its module: literal bindings the module never
 	// rebinds are values; the rest stay refused with a message that says so (ADR 0227).
 	g.moduleConsts, g.moduleNames = moduleEnvFor(prog)
@@ -4061,6 +4073,11 @@ type irGen struct {
 	// pairRetDone is the subset of pairSpecs whose answer direction the emitted body actually carries —
 	// a float- or string-returning function keeps its own convention, so no caller may read a tag for it.
 	pairRetDone map[string]bool
+	// pairTagDeclared remembers which functions' tag words this module has been given a definition for.
+	// The definition is written where the function's own `define` is emitted, and the read can happen in a
+	// caller emitted before it, so the two cannot share a guard (roadmap L11.1, ADR 0276's rule that the
+	// call boundary is asked of the program, not of the emission order).
+	pairTagDeclared map[string]bool
 	// pairCallAsked is the permission a pair-aware position holds while it emits such a call: the
 	// ordinary road refuses these calls, because a payload used as though it were the whole value is the
 	// float-box-handle-printed-as-an-int class of wrong answer (roadmap L11.1, ADR 0273).
@@ -14516,9 +14533,16 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 	// tag too. The arity is the scan's decision, so a call site emitted before this `define` agrees with
 	// it; only the binding half is narrowed by the convention this body is emitted under (ADR 0273).
 	pairSpec := g.pairSpecFor(fd, floatRet, g.strFuncs[g.fnName(fd)])
-	if pairSpec != nil && pairSpec.returnsPair && !g.pairRetDone[g.fnName(fd)] {
+	if pairSpec != nil && pairSpec.returnsPair {
+		// The tag word this body stores beside its answer. It is declared here, where the function's own
+		// `define` is emitted, and read by callers that may have been emitted already — so the read cannot
+		// be gated on the same one-shot flag that writes it (the flag now only records the fact, and the
+		// declaration is idempotent per function).
 		g.pairRetDone[g.fnName(fd)] = true
-		g.globals.WriteString(pairTagGlobalIR(g.fnName(fd)))
+		if !g.pairTagDeclared[g.fnName(fd)] {
+			g.pairTagDeclared[g.fnName(fd)] = true
+			g.globals.WriteString(pairTagGlobalIR(g.fnName(fd)))
+		}
 	}
 	// The program's own functions carry the irSymbolPrefix; see irSymbol.
 	g.dbgDefine(b, irSymbol(g.fnName(fd)), g.fnName(fd), fd.Src)

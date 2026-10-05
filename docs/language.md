@@ -2306,7 +2306,45 @@ print(greet("a"))               # 1.5 — a default is an argument the caller di
 The answer travels back the same way when it is a pair: `def g(y): return y * 2` under
 `def f(x): x = x + 1.5; return g(x)` hands the caller the pair the callee stored, and where the caller's own
 convention is a `double` the pair is lifted at `@rt_lift_num` — `f(1.0)` is `5.0`, where the module used to read
-the double as an `i32` and answer `2`. Two rules keep the answers that already worked, both of them answered by
+the double as an `i32` and answer `2`. The argument does not stop at the first frame: **a body that hands its parameter on keeps the kind too**
+(`Gap R.161`, ADR 0277). `def outer(x): return twice(x)` contains nothing that says `x` can be a float — a
+parameter is written by the caller and never by the body — so the evidence lives one frame up, in the
+argument `outer`'s own call site was written with:
+
+```python
+def twice(v):
+    return v * 2
+
+def outer(x):
+    return twice(x)
+
+print(outer(2.5))               # 5.0 — where the compiled leg printed 4
+print(outer(3))                 # 6   — one `define`, the answer's kind still follows the argument
+
+def outermost(y):
+    return outer(y)
+
+print(outermost(2.5))           # 5.0 — two frames hand the same pair on
+
+def add(a, b):
+    return a + b
+
+def shift_it(z):
+    return add(z, 1)
+
+print(shift_it(2.5))            # 3.5 — a forwarded parameter beside a literal the body writes
+```
+
+Where a pair is handed on, both frames carry the two words, and a function that returns a pair-returning
+callee's result directly is pair-returning itself **whichever order the file is written in**: `def f(v):
+return other(v)` above `def other(w): return w * 2` and the same two `def`s swapped compile identically,
+because the answer direction is a scan answer and the tag word is declared where the callee's own `define` is.
+A chain the doors cannot carry is closed from either end: if the callee floors its parameter, renders it a
+text, or indexes with it, the caller is not given a tag word either — the pair would be half-read one frame
+down, which is a wrong number rather than a refusal (`Gap R.164` and `Gap R.162` name what those chains still
+owe an answer for).
+
+Two rules keep the answers that already worked, both of them answered by
 the same scan rather than by the order the module happens to be emitted in. A function whose body is written
 under a convention that owns its return word — ADR 0274's `double`, ADR 0174's string index — keeps its
 parameter words too, so `def f(x): x = x + 1.5; return x` still compiles to `define double @gy_f(double %p0)`

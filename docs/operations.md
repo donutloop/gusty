@@ -583,6 +583,16 @@ verifier. The state travelling further is parity surface since
 `twice(2.5)` prints `5.0` where the module wrote one `i32` into the parameter and printed `4`, and the answer of
 a pair-returning callee handed through a `double`-returning caller is lifted at `@rt_lift_num` instead of
 reading `2` for CPython's `5.0`: `Gap P.1`'s last line, `Gap R.154`, `Gap R.157`, `Gap R.158`, ADR 0276).
+The same door reaches one frame further now: the scan brackets a `def`'s body while it walks, so a call site
+knows *whose* parameter it is handing over, and a parameter forwarded into a callee position that needs the
+pair is marked from that edge in either direction — `def outer(x): return twice(x)` prints `5.0` where the
+module read the pair as one `i32` and printed `4` at exit 0 (`Gap R.161`, ADR 0277). A mark made only by an
+edge records what it rests on and is closed when that support is closed (a callee the body rounds reject
+closes its caller with it, and a forwarding cycle proves nothing), so no caller is left handing a two-word
+argument to a body that cannot read one; and the answer direction — a function that returns a pair-returning
+callee's result is pair-returning — is answered by the scan and its tag word declared at the callee's own
+`define`, which is why `def f(v): return other(v)` compiles the same written above or below `def other(w):
+return w * 2` (the read and the write of one global cannot share a one-shot guard).
 Before that door the same family answered a truncated number at **exit 0** — `dbl(0.1)` was `0`, `bump(1.5)` was
 `2`, `area(2.5, 2)` was `4`, `greet("a")` over a `times=1.5` default was `1` — and a float-state name handed to
 a call was an exit-1 refusal, which is the outcome a widened gate must never produce for a program that already

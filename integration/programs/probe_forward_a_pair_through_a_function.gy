@@ -1,0 +1,48 @@
+# What CPython prints for each line here (python3, 3.12):
+#
+#   5.0       (twice(2.5) — the answer's kind follows the argument)
+#   6         (twice(3) — the same define, an int argument)
+#   5.0       (outer(2.5) — the argument is handed on through a second function's parameter)
+#   6         (outer(3))
+#   5.0       (outermost(2.5) — two frames hand the same pair on)
+#   5.0       (a slot of a literal list, forwarded)
+#   3.5       (add(x, 1) inside a forwarded frame: a pair beside an integer the body writes)
+#   3         (the same, with an int)
+#
+# A number handed to a function keeps the kind its argument had (roadmap L11.6, Gap P.1, ADR 0276) — and
+# the kind has to survive a boundary the *body* crosses too. `def outer(x): return twice(x)` writes nothing
+# that says `x` can be a float: a parameter is assigned by the caller, never by the body, so the evidence
+# lives two frames up, in the argument `outer`'s own call site was written with. Read without it, the
+# compiled leg truncated the value at each boundary — `print(outer(2.5))` printed 4, exit 0 — while the
+# interpreter, which boxes the value and asks it, printed CPython's 5.0.
+#
+# The last four lines cross two boundaries at once, and the last two share a body between a parameter that
+# carries the pair and one the call sites prove an integer: `a + b` needs a kind for both operands, and
+# `b`'s is the literal the body wrote. The door is the (payload, tag) pair the callee declares beside its
+# payload and the tag word it stores beside its own `return` (ADR 0273), settled for the whole program by
+# one scan of the AST so every `define` and every `call` agrees on the arity whichever comes first in the
+# file (roadmap L11.1, Gap R.161, ADR 0277).
+def twice(v):
+    return v * 2
+
+def outer(x):
+    return twice(x)
+
+def outermost(y):
+    return outer(y)
+
+def add(a, b):
+    return a + b
+
+def shift_it(z):
+    return add(z, 1)
+
+print(twice(2.5))
+print(twice(3))
+print(outer(2.5))
+print(outer(3))
+print(outermost(2.5))
+ys = [1, 2.5]
+print(outer(ys[1]))
+print(shift_it(2.5))
+print(shift_it(2))

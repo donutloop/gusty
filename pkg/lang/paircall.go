@@ -101,6 +101,11 @@ type pairWalker struct {
 	assign func(target, value Expr)
 	method func(recv Expr, member string)
 	empty  func(target Expr) // `x = []`/`{}`/`set()` and their element-assignment cousins
+	// enterFn/leaveFn bracket a `def`'s body, which is how a call site learns *whose* parameter it is
+	// handing over (Gap R.161). The signature's defaults are evaluated outside that scope, so they are
+	// walked before the callback fires.
+	enterFn func(name string)
+	leaveFn func()
 }
 
 func (w pairWalker) walkExprs(es []Expr) {
@@ -260,7 +265,13 @@ func (w pairWalker) walkStmts(ss []Stmt) {
 			for _, p := range n.Params {
 				w.walkExpr(p.Default)
 			}
+			if w.enterFn != nil {
+				w.enterFn(n.Name)
+			}
 			w.walkStmts(n.Body)
+			if w.leaveFn != nil {
+				w.leaveFn()
+			}
 		case *ClassDef:
 			w.walkStmts(n.Body)
 		case *YieldStmt:
@@ -288,13 +299,32 @@ func isEmptyContainerLit(e Expr) bool {
 	return false
 }
 
+// pairForward is one call site handing an *enclosing function's own parameter* to a callee position:
+// `def outer(x): return twice(x)` forwards outer's `x` onto twice's `v`. The record is the missing half
+// of ADR 0273's supply question — a parameter is written by no assignment, so `s.bound` never sees it, and
+// the only evidence that it can carry a double is the argument the caller's own caller wrote.
+type pairForward struct {
+	callee string
+	pos    int
+	caller string
+	idx    int
+}
+
+// pairSupport is one mark's reason for existing: the other parameter whose mark it rests on.
+type pairSupport struct {
+	fn  string
+	idx int
+}
+
 // pairScan is one program's answers to the three questions, computed once per Compile.
 type pairScan struct {
-	built  map[string]bool           // names whose containers the program built as it ran
-	bound  map[string][]Expr         // every value a name is ever bound to
-	calls  map[string]map[int][]Expr // per function, per parameter position, every argument written
-	fds    map[string]*FuncDef       // the functions in play
-	paired map[string]bool           // names the pair road binds (fixed point, below)
+	built   map[string]bool             // names whose containers the program built as it ran
+	bound   map[string][]Expr           // every value a name is ever bound to
+	calls   map[string]map[int][]Expr   // per function, per parameter position, every argument written
+	callers map[string]map[int][]string // the function each recorded argument was written inside (aligned)
+	fds     map[string]*FuncDef         // the functions in play
+	paired  map[string]bool             // names the pair road binds (fixed point, below)
+	fwd     []pairForward               // parameter-to-parameter forwarding edges, in walk order
 }
 
 // pairCallSpecs is the program-wide decision: which functions take the pair across their call boundary.
@@ -319,10 +349,21 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 		return nil
 	}
 	s := &pairScan{
-		built: map[string]bool{},
-		bound: map[string][]Expr{},
-		calls: map[string]map[int][]Expr{},
-		fds:   fds,
+		built:   map[string]bool{},
+		bound:   map[string][]Expr{},
+		calls:   map[string]map[int][]Expr{},
+		callers: map[string]map[int][]string{},
+		fds:     fds,
+	}
+	// The function whose body the walk is inside, so a call site knows whose parameter it is handing
+	// over. A stack, because a `def` nests; a body whose enclosing name is not a top-level function (a
+	// method, a closure) forwards nothing that this scan can act on, and recordForward says so.
+	stack := []string{}
+	curFn := func() string {
+		if len(stack) == 0 {
+			return ""
+		}
+		return stack[len(stack)-1]
 	}
 	mark := func(e Expr) {
 		if nm, ok := e.(*Name); ok {
@@ -330,7 +371,12 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 		}
 	}
 	w := pairWalker{
-		call: func(fn string, args []Expr) { s.recordCall(fn, args) },
+		call: func(fn string, args []Expr) {
+			s.recordCall(curFn(), fn, args)
+			s.recordForward(curFn(), fn, args)
+		},
+		enterFn: func(name string) { stack = append(stack, name) },
+		leaveFn: func() { stack = stack[:len(stack)-1] },
 		assign: func(target, value Expr) {
 			if nm, ok := target.(*Name); ok {
 				s.bound[nm.Value] = append(s.bound[nm.Value], value)
@@ -370,7 +416,16 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 		s.paired = next
 	}
 
-	specs := map[string]*pairFnSpec{}
+	// Pass one: what each parameter position is handed where the program can see it written — its own call
+	// sites, and its default. Direct evidence only; the call graph is pass two's question.
+	needsOf := map[string]map[int]bool{}
+	ownedByReturnRoad := map[string]bool{}
+	directOf := map[string]map[int]bool{}
+	// justified records *why* a mark that no call site of its own asked for was made: which other parameter's
+	// mark it rests on. A mark with no direct evidence and no live support is a pair nobody will ever read,
+	// and a caller whose body the rounds closed would otherwise hand a one-word argument to a two-word
+	// parameter — the truncation this file exists to remove, arriving back through the call graph.
+	justified := map[string]map[int][]pairSupport{}
 	for fnName, byIndex := range s.calls {
 		fd := fds[fnName]
 		if fd == nil {
@@ -410,20 +465,102 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 		// with it: ADR 0274's float return hands back a name the body bound to a double, and ADR 0174's
 		// string return hands back a text. Neither has a word a pair's tag could live beside, so the
 		// whole function keeps the convention — and the answer or refusal — it had before this door
-		// (answering a pair into a word that cannot hold one is Gap P.1's wrong number).
+		// (answering a pair into a word that cannot hold one is Gap P.1's wrong number). A function that
+		// owns its return word also forwards nothing: its parameter never reaches a pair door.
 		if pairReturnRoadOwns(fd, s) {
+			ownedByReturnRoad[fnName] = true
 			continue
 		}
-		if len(needs) == 0 {
+		if len(needs) > 0 {
+			needsOf[fnName] = needs
+			directOf[fnName] = map[int]bool{}
+			for i := range needs {
+				directOf[fnName][i] = true
+			}
+		}
+	}
+	// Pass two: the evidence a parameter can only get from the call graph (Gap R.161).
+	// `def twice(v): return v * 2` / `def outer(x): return twice(x)` / `print(outer(2.5))` marks nothing in
+	// pass one: twice's own call site writes `x`, a Name no assignment ever recorded a binding for, because
+	// a parameter is written by the *caller* — s.bound is the body's story, and the body never assigns x.
+	// outer's x is proven from outer's call sites (pass one, the FloatLit 2.5), and the edge carries that
+	// proof across the boundary in whichever direction it is missing:
+	//
+	//   - caller → callee, because a caller that holds a pair-bound name hands one to this callee position,
+	//     and a one-word parameter would read the payload and print 4 for 5.0 (the row itself);
+	//   - callee → caller, because a callee whose position the callee's *other* call sites proved (a second
+	//     `twice(2.5)` written elsewhere) asks every caller to supply the tag, including this forwarding one.
+	//
+	// Bounded rounds — the chain is as deep as the program's calls nest — and the marking only grows in this
+	// pass, so the fixed point is reachable.
+	for round := 0; round < 8; round++ {
+		changed := false
+		mark := func(fn string, idx int, by pairSupport) {
+			if fds[fn] == nil {
+				return
+			}
+			m := needsOf[fn]
+			if m == nil {
+				m = map[int]bool{}
+				needsOf[fn] = m
+			}
+			if !m[idx] {
+				m[idx] = true
+				changed = true
+			}
+			j := justified[fn]
+			if j == nil {
+				j = map[int][]pairSupport{}
+				justified[fn] = j
+			}
+			j[idx] = append(j[idx], by)
+		}
+		for _, f := range s.fwd {
+			if ownedByReturnRoad[f.callee] || ownedByReturnRoad[f.caller] {
+				continue
+			}
+			if cn := needsOf[f.callee]; cn != nil && cn[f.pos] {
+				// The callee reads a pair here, so the name the caller hands must arrive as one.
+				mark(f.caller, f.idx, pairSupport{fn: f.callee, idx: f.pos})
+			}
+			if co := needsOf[f.caller]; co != nil && co[f.idx] {
+				// The caller holds a pair here, so the position it is handed to must carry it.
+				mark(f.callee, f.pos, pairSupport{fn: f.caller, idx: f.idx})
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
+	specs := map[string]*pairFnSpec{}
+	for fnName, needs := range needsOf {
+		fd := fds[fnName]
+		if fd == nil || len(needs) == 0 || ownedByReturnRoad[fnName] {
 			continue
 		}
+		byIndex := s.calls[fnName]
 		// The supply half: every call site of every marked parameter must be readable from its own
 		// spelling. One argument this pass cannot name closes the parameter, and with it the function's
 		// answer direction — that program keeps the road, and the refusal, it has always had.
 		supplies := true
 		for i := range needs {
-			if !s.argsNumberish(byIndex[i]) {
-				supplies = false
+			args := append([]Expr{}, byIndex[i]...)
+			callers := s.callers[fnName][i]
+			if d := fd.Params[i].Default; d != nil {
+				args = append(args, d)
+				callers = append(callers, "")
+			}
+			for k, a := range args {
+				if s.argIsMarkedParam(callers, k, a, needsOf) {
+					continue // the caller hands a name it bound as a pair itself: read it back as one
+				}
+				if !s.exprNumberish(a, map[string]bool{}) {
+					supplies = false
+					break
+				}
+			}
+			if !supplies {
 				break
 			}
 		}
@@ -456,6 +593,41 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 	// call sites did not ask for. A self-call is out — the inner frame would write the tag word the outer
 	// caller has not read yet — so it keeps its ordinary single-word answer, and the pair-needing caller
 	// keeps its refusal (ADR 0273).
+	// A parameter proven only by pass two's edge is kept only while the callee position it forwards into is
+	// still marked. The rounds below can close a callee — its body may not be served, its answer may not
+	// come back as a pair — and a caller left carrying a tag its callee never reads would hand the ordinary
+	// road a pair-bound name, which is the wrong number this whole file exists to avoid. Removal only, so the
+	// outer loop terminates; the rounds are re-run after a removal, because a closed callee can close its
+	// caller's body in turn.
+	var answerable map[string]bool
+	for settle := 0; settle < 4; settle++ {
+		answerable = settlePairAnswer(fds, specs)
+		if !pruneUnsuppliedForwards(specs, directOf, justified) {
+			break
+		}
+	}
+	for fnName, spec := range specs {
+		if len(spec.params) == 0 {
+			delete(specs, fnName)
+			continue
+		}
+		spec.returnsPair = answerable[fnName]
+	}
+	if len(specs) == 0 {
+		return nil
+	}
+	return specs
+}
+
+// settlePairAnswer runs the body half and the answer half together, in rounds, and reports which functions
+// hand their answer back as a pair. A parameter is only worth tagging if the body can read it back, and
+// whether a body can read `return g(x)` back depends on whether g hands its own answer back as a pair —
+// which in turn depends on g's body being served. Both questions only ever remove things (a parameter, a
+// callee), so the marking shrinks monotonically and a bounded number of rounds reaches the answer; nothing
+// here grows a pair road the call sites did not ask for. A self-call is out — the inner frame would write
+// the tag word the outer caller has not read yet — so it keeps its ordinary single-word answer, and the
+// pair-needing caller keeps its refusal (ADR 0273).
+func settlePairAnswer(fds map[string]*FuncDef, specs map[string]*pairFnSpec) map[string]bool {
 	answerable := map[string]bool{}
 	for round := 0; round < 4; round++ {
 		for fnName, spec := range specs {
@@ -498,22 +670,145 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 			break
 		}
 	}
+	return answerable
+}
+
+// pruneUnsuppliedForwards closes a parameter whose only evidence was a forwarding edge that is no longer
+// live, and reports whether it closed anything: the callee position it was justified by has itself been
+// closed (its body was not served, its answer does not come back as a pair, its own caller was closed), and
+// a mark left standing on a dead edge is a tag word no reader exists for. A parameter with direct evidence —
+// its own call sites or its default — is nobody else's business and stays.
+func pruneUnsuppliedForwards(specs map[string]*pairFnSpec, directOf map[string]map[int]bool, justified map[string]map[int][]pairSupport) bool {
+	var supported func(fn string, idx int, depth int) bool
+	supported = func(fn string, idx int, depth int) bool {
+		if depth > 5 {
+			return false // a forwarding cycle proves nothing: close it, and let the road it needs refuse
+		}
+		if directOf[fn][idx] {
+			return true
+		}
+		caller := specs[fn]
+		if caller == nil || !caller.wants[idx] {
+			return false
+		}
+		for _, sup := range justified[fn][idx] {
+			callee := specs[sup.fn]
+			if callee != nil && callee.wants[sup.idx] && supported(sup.fn, sup.idx, depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	changed := false
 	for fnName, spec := range specs {
-		if len(spec.params) == 0 {
+		for i := range spec.wants {
+			if !supported(fnName, i, 0) {
+				delete(spec.wants, i)
+				changed = true
+			}
+		}
+		if len(spec.wants) == 0 {
 			delete(specs, fnName)
 			continue
 		}
-		spec.returnsPair = answerable[fnName]
+		// Only ever shrink: the body half owns `params`, and re-deriving it from `wants` here would hand
+		// back the tag word to a function whose body the rounds just closed.
+		for i := range spec.params {
+			if !spec.wants[i] {
+				delete(spec.params, i)
+			}
+		}
 	}
-	if len(specs) == 0 {
-		return nil
+	return changed
+}
+
+// argIsMarkedParam is the supply half's call-graph case: the argument is a name the *enclosing* function
+// received as its own parameter, and that parameter is marked — so at this call site the name is bound as a
+// pair by bindPairParams and the pair road reads it, even though no assignment in the program ever recorded
+// a binding for it (a parameter is written by the caller, not by the body). Without this, `def outer(x):
+// return twice(x)` proves twice's parameter and then refuses to hand it the argument that proved it.
+func (s *pairScan) argIsMarkedParam(callers []string, k int, e Expr, needsOf map[string]map[int]bool) bool {
+	if k >= len(callers) {
+		return false
 	}
-	return specs
+	nm, ok := e.(*Name)
+	if !ok || callers[k] == "" {
+		return false
+	}
+	cf := s.fds[callers[k]]
+	if cf == nil || needsOf[callers[k]] == nil {
+		return false
+	}
+	rebound := map[string][]Expr{}
+	scanRebinds(cf.Body, rebound)
+	for i, p := range cf.Params {
+		if p.Name == nm.Value {
+			return rebound[nm.Value] == nil && needsOf[callers[k]][i]
+		}
+	}
+	return false
+}
+
+// recordForward files the call sites that hand an enclosing function's own parameter to a callee. The name
+// must still be the parameter at that point: a body that rebinds it (`x = read_line()`) has replaced the
+// argument the caller wrote, and the edge would be a story about a value the callee never sees.
+func (s *pairScan) recordForward(caller, callee string, args []Expr) {
+	if caller == "" || callee == "" || caller == callee {
+		return
+	}
+	cf, cfd := s.fds[caller], s.fds[callee]
+	if cf == nil || cfd == nil {
+		return
+	}
+	rebound := map[string][]Expr{}
+	scanRebinds(cf.Body, rebound)
+	handed := func(name string) bool {
+		for _, p := range cf.Params {
+			if p.Name == name {
+				return rebound[name] == nil
+			}
+		}
+		return false
+	}
+	paramOf := func(name string) int {
+		for i, p := range cf.Params {
+			if p.Name == name {
+				return i
+			}
+		}
+		return -1
+	}
+	pos := 0
+	for _, a := range args {
+		v, target := a, pos
+		if kw, ok := a.(*KeywordArg); ok {
+			v = kw.Value
+			target = -1
+			for i, p := range cfd.Params {
+				if p.Name == kw.Name {
+					target = i
+				}
+			}
+		} else if pos >= len(cfd.Params) {
+			pos++
+			continue
+		}
+		pos++
+		if target < 0 || target >= len(cfd.Params) {
+			continue
+		}
+		nm, ok := v.(*Name)
+		if !ok || !handed(nm.Value) {
+			continue
+		}
+		s.fwd = append(s.fwd, pairForward{callee: callee, pos: target, caller: caller, idx: paramOf(nm.Value)})
+	}
 }
 
 // recordCall files the arguments one call site hands one function, by parameter position: positional
-// arguments in order, keyword arguments on the position they name.
-func (s *pairScan) recordCall(fn string, args []Expr) {
+// arguments in order, keyword arguments on the position they name, each beside the function it was written
+// inside (whose parameters are the only ones the pair road can read back at that site).
+func (s *pairScan) recordCall(caller, fn string, args []Expr) {
 	fd := s.fds[fn]
 	if fd == nil {
 		return
@@ -523,18 +818,25 @@ func (s *pairScan) recordCall(fn string, args []Expr) {
 		byIndex = map[int][]Expr{}
 		s.calls[fn] = byIndex
 	}
+	byCaller := s.callers[fn]
+	if byCaller == nil {
+		byCaller = map[int][]string{}
+		s.callers[fn] = byCaller
+	}
 	pos := 0
 	for _, a := range args {
 		if kw, ok := a.(*KeywordArg); ok {
 			for i, p := range fd.Params {
 				if p.Name == kw.Name {
 					byIndex[i] = append(byIndex[i], kw.Value)
+					byCaller[i] = append(byCaller[i], caller)
 				}
 			}
 			continue
 		}
 		if pos < len(fd.Params) {
 			byIndex[pos] = append(byIndex[pos], a)
+			byCaller[pos] = append(byCaller[pos], caller)
 		}
 		pos++
 	}

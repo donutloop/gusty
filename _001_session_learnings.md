@@ -7024,3 +7024,60 @@ so the two wrong lines are mutually consistent. `Gap R.163` (`def g(): return st
 `0`) is pre-existing, unrelated to floats, and only visible because the sweep compared binaries line by line —
 which is the argument for keeping that sweep, and for the AGENTS rule that a measured defect gets a fresh row and
 a fresh ID rather than a paragraph in someone else's record.
+
+---
+
+## Cycle: a number handed on by a body keeps the kind its caller's argument had (ADR 0277, Gap R.161)
+
+**A gate that reads only the callee's text cannot see who is calling it.** `def outer(x): return twice(x)`
+contains no float, no literal, no assignment to `x` — a parameter is written by the caller and never by the
+body, so `s.bound` has no story for it and ADR 0276's `exprCarriesDouble` answered false. The pair that
+existed one frame earlier was read as one `i32` and `print(outer(2.5))` printed `4` at exit 0. The fix was not
+a new predicate but a new *question to the same walk*: bracket a `def`'s body, so every recorded call site
+knows whose parameter it is handing over, and let marks travel the resulting edges in both directions. One
+direction was not enough — I wrote caller→callee only, and the row itself still printed `4`. The reverse edge
+is not symmetry for its own sake: it is the case where some *other* call site proved the callee's position and
+every caller, forwarding included, has to supply the tag.
+
+**A permission needs a matching retraction.** Each propagated mark now records the other parameter it rests
+on, and `pruneUnsuppliedForwards` closes a mark whose support the body rounds closed — otherwise a callee that
+was rejected (its body floors the value, renders it a text, indexes with it) leaves its caller carrying a tag
+word nobody reads, and the pair gets half-read one frame down. That is the same wrong number this file exists
+to remove, re-imported through the very mechanism that fixed it. A forwarding *cycle* proves nothing and closes
+at a bounded depth: refusal over guess.
+
+**Two bugs the suite never saw, and the one instrument that saw both.** (1) The prune's first version
+re-derived every spec's `params` from its `wants` after pruning — which silently handed the tag word back to a
+function whose body the gate had just closed, and the program it broke was already in the corpus:
+`probe_round_digit_count_kind_unseen.gy` (`def scale(v): return round(v, 2)`, pinned `2`/`0` as a known
+divergence) started *refusing*. An answer→refusal is the ladder rule's alarm bell, and it rang only in the
+whole-corpus binary sweep — a `bash` loop comparing the pre-cycle `build/pyre` with the new one over every
+program and fixture, thirty seconds, while `go test` stayed green because no test pinned that interaction.
+(2) `pairRetDone`, the "this body carries a tag" flag, was filled while emitting the callee's body, with the
+tag global's *definition* behind the same one-shot guard. `def f(v): return other(v)` written **above**
+`def other(w): return w * 2` therefore asked the answer question before the emission had an answer, and refused
+— an exit-1 for a program whose text says nothing about order. Found by writing the pinned-refusal row's
+promotion as a test and seeing it fail. Both are now pinned by tests that would have failed before the commit:
+the both-declaration-orders assertion, and the sweep's own diff being empty except for promotions.
+
+**The read of a global cannot share the write's guard.** Splitting `pairRetDone` (the fact, now pre-seeded
+from the scan before any emission) from `pairTagDeclared` (the definition, written at the callee's own
+`define`) is the whole of that fix. It is ADR 0273's arity rule re-learned one word later: anything a caller
+and a callee must agree on is a scan answer, or it is a question about the order the file was written in.
+
+**Move a pinned refusal, do not delete it.** `TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack` had a row
+"the parameter handed to another function" whose whole purpose was that `def f(v): return other(v)` was *not*
+given a tagged parameter. The cycle answered it. The row went into the parity table with CPython's bytes on both
+engines, and in its place the table gained two rows that still must not be served — the callee that floors the
+value, and the callee that returns `str(w)` — so the gate's own witness stayed the same size. Two refusals I
+had to *loosen* rather than delete: the closed-callee integration row for `str` refuses with ADR 0174's
+"str on non-integer", not with the word "pair", and pinning the message instead of the exit class would have
+made the test a record of one particular sentence.
+
+**Three rules for the ledger, from the ledger.** `Gap R.164` (bind the answer first, then return it: `4`
+where the reference says `5.0`) and `Gap R.162`'s forwarded half (`floorit(5.0)` → `2`) were both measured
+against the pre-cycle binary before being filed, so each row says plainly "unchanged by this cycle, which is
+why it is a row and not a footnote". `programs/probe_forward_a_pair_through_a_function.gy` is the closing
+event — eight lines, three legs, one answer — and the Snapshot's counts came out of the artifacts (269 ADRs,
+155 programs, 146 matrix rows → 110 parity, 95 oracle `match` · 30 `debt`, 101 of 109 queue rows owed), not
+out of memory.
