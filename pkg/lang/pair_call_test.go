@@ -340,7 +340,6 @@ func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
 // compiled before still compiles (roadmap ADR 0273).
 func TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack(t *testing.T) {
 	bodies := []struct{ name, body, other string }{
-		{"floor division", "    return v % 3\n", ""},
 		{"a power", "    return v ** 2\n", ""},
 		{"a true division", "    return v / 2\n", ""},
 		{"a subscript of the parameter", "    out = [1, 2]\n    return out[v]\n", ""},
@@ -348,14 +347,11 @@ func TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack(t *testing.T) {
 		{"a call over the parameter", "    return abs(v)\n", ""},
 		{"an f-string field", "    return f\"{v}\"\n", ""},
 		{"a text beside the parameter", "    return \"v\" + v\n", ""},
-		// "the parameter handed to another function" left this table in ADR 0277: with the call graph in
-		// the scan, `return other(v)` is served — `other`'s own parameter is marked from the same evidence,
-		// the callee answers a pair, and the caller hands it on. It answers on both engines in
-		// TestASlotReadHandedToAFunctionAnswersOnBothBackends, and its arity in either declaration order is
-		// pinned by TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten. What the gate still
-		// declines is the two rows below: a callee that cannot carry the pair closes the caller with it,
-		// because a tag word no callee reads is a pair that would be half-read one frame down.
-		{"the parameter handed to a callee that floors it", "    return other(v)\n", "    return w % 3\n"},
+		// "floor division" (`return v % 3`) left this table with ADR 0278: the flooring operators are now
+		// served over a pair, so the body can read a tagged parameter back and the program answers on both
+		// engines (`print(f(xs[0][0]))` is 1, pinned in TestTheFlooringOperatorsAnswerOverAPairOnBothBackends).
+		// "the parameter handed to another function" left it with ADR 0277 (Gap R.161).
+		{"the parameter handed to a callee that takes a power", "    return other(v)\n", "    return w ** 2\n"},
 		{"the parameter handed to a callee that returns a text", "    return other(v)\n", "    return str(w)\n"},
 	}
 	for _, b := range bodies {
@@ -573,12 +569,14 @@ func TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten(t *testing.T) 
 
 // TestAForwardingCallerIsClosedByACalleeThatCannotCarryThePair is the prune, and the reason a forwarding edge
 // is a promise rather than a permission: `def f(v): return other(v)` is only worth two words while `other`
-// can carry the pair it is handed. Close the callee — its body floors the value, or renders it a text — and
-// the caller's mark has to go with it, because a tag word the callee never reads leaves the pair to be
-// half-read one frame down, which is the wrong number this file exists to remove.
+// can carry the pair it is handed. Close the callee — its body takes a power of the value, renders it a text,
+// or indexes with it — and the caller's mark has to go with it, because a tag word the callee never reads
+// leaves the pair to be half-read one frame down, which is the wrong number this file exists to remove.
+// It used to list a callee that floored its parameter as well: `//` and `%` became carriable with ADR 0278,
+// and that row moved to the parity side of this file (TestTheFlooringOperatorsAnswerOverAPairOnBothBackends).
 func TestAForwardingCallerIsClosedByACalleeThatCannotCarryThePair(t *testing.T) {
 	for _, tc := range []struct{ name, otherBody string }{
-		{"the callee floors it", "    return w % 3\n"},
+		{"the callee takes a power of it", "    return w ** 2\n"},
 		{"the callee renders it a text", "    return str(w)\n"},
 		{"the callee indexes with it", "    out = [1, 2]\n    return out[w]\n"},
 	} {

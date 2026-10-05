@@ -4820,6 +4820,10 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 			op = 1
 		case "*":
 			op = 2
+		case "//":
+			op = 4
+		case "%":
+			op = 5
 		default:
 			return "", "", false, nil
 		}
@@ -4842,8 +4846,11 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 	// reference answered a value is a wrong program, and this backend cannot answer the repetition at all
 	// (Gap R.82), so those two operators take the door only where the compiler can see that no text and no
 	// container can reach a slot (ADR 0265). `-` and the unary `-` answer a number or raise, always, so
-	// they take it whatever the container holds.
-	if op == 0 || op == 2 {
+	// they take it whatever the container holds. `%` joins the guarded list for its own reason: `"%.2f" % v`
+	// is CPython's printf formatting, which answers a *text*, and this backend does not implement it — so a
+	// slot that might hold a text keeps the ordinary road and the refusal it already gave (roadmap Gap R.165
+	// names that missing feature). `//` needs no guard: no operand pair makes it answer a non-number.
+	if op == 0 || op == 2 || op == 5 {
 		if !slotLiteralMayBeNumber(l) || !slotLiteralMayBeNumber(r) {
 			return "", "", false, nil
 		}
@@ -4877,8 +4884,10 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 	// Two statuses, two classes: the operands do not add (CPython's TypeError) or the whole number
 	// the answer would be does not fit this backend's int word (an OverflowError naming L12.12, raised
 	// rather than letting `fptosi` answer poison — the rule Gap R.133 established the day it was filed).
-	isType, isOvf := g.newTmp(), g.newTmp()
-	next, badType, badOvf, done := g.newLabel("numnext"), g.newLabel("numtype"), g.newLabel("numovf"), g.newLabel("numok")
+	// A third says the divisor of `//` or `%` was zero, and the sentence is the runtime's, because which
+	// of the reference's three it is depends on the tags, which are the run time's fact (Gap R.162).
+	isType, isOvf, isZero := g.newTmp(), g.newTmp(), g.newTmp()
+	next, badType, badOvf, badZero, done := g.newLabel("numnext"), g.newLabel("numtype"), g.newLabel("numovf"), g.newLabel("numzero"), g.newLabel("numok")
 	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 1\n", isType, st)
 	g.markI1(isType)
 	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isType, badType, next)
@@ -4887,9 +4896,16 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 	fmt.Fprintf(b, "%s:\n", next)
 	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 2\n", isOvf, st)
 	g.markI1(isOvf)
-	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isOvf, badOvf, done)
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isOvf, badOvf, badZero)
 	fmt.Fprintf(b, "%s:\n", badOvf)
 	g.raiseRuntimeMsg(b, "OverflowError", outm, sp)
+	fmt.Fprintf(b, "%s:\n", badZero)
+	fmt.Fprintf(b, "  %s = icmp eq i32 %s, 3\n", isZero, st)
+	g.markI1(isZero)
+	zeroRaise := g.newLabel("numzeroraise")
+	fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", isZero, zeroRaise, done)
+	fmt.Fprintf(b, "%s:\n", zeroRaise)
+	g.raiseRuntimeMsg(b, "ZeroDivisionError", outm, sp)
 	fmt.Fprintf(b, "%s:\n", done)
 	v, t := g.newTmp(), g.newTmp()
 	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", v, outp)

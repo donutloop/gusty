@@ -1,0 +1,230 @@
+package integration
+
+// integration/floor_pair_test.go — `//` and `%` answer over a number whose kind crossed a call, at the CLI,
+// against the reference, on both engines (roadmap L11.6's numeric truth, Gap R.162, ADR 0278).
+//
+// The shape is the pair door's oldest gap behind ADR 0276's: the door served `+ - *` and the condition doors
+// served the comparisons, but the flooring operators were in neither list, so a parameter that could hold a
+// double never left the one-word road and the double was truncated into it before the floor ran. `print(f(5))`
+// and `print(f(5.0))` printed `2` and `2` for CPython's `2` and `2.0`, `print(modop(7.5, 2))` printed `1` for
+// `1.5`, `print(modop(-7.5, 2))` printed `1` for `0.5`, and a forwarded `print(outer(5.0))` printed `2` — all
+// at **exit 0**. The interpreter's answers were right on every one of them, which is the whole finding.
+//
+// Three claims, three tables:
+//
+//   - the parity rows, three legs, one answer: floor and remainder over a parameter, over two parameters, one
+//     frame and two frames deep, and the two sign rules that make flooring worth pinning at all;
+//   - the promoted programs/probe_floor_a_pair.gy, ten lines, pinned as a program so the corpus keeps it
+//     honest rather than this file;
+//   - the traps and the refusals: which of the reference's four ZeroDivisionError sentences a line raises is
+//     the operand's kind's fact (the tag, not the source text), and a floored answer *combined* with other
+//     arithmetic is still refused rather than answered with a truncated digit — Gap R.166, pinned as a
+//     refusal so it cannot silently become a number again.
+//
+// Exit 2 fails every row here: a module `llc` rejects for an ordinary program is the compiler's bug, not the
+// program's (ADR 0166).
+
+import (
+	"bytes"
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+// cliRunMerged is cliRunCode with the report attached: an uncaught trap's traceback and a front-end refusal's
+// sentence are written to stderr, and a row that asserts what the program *said* has to read the stream it
+// was said on. Exit 2 is still the compiler's bug (ADR 0166) and each row checks for it.
+func cliRunMerged(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command(cliBin(t), args...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	code := 0
+	if err := cmd.Run(); err != nil {
+		ee, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("gustyc %v: %v", args, err)
+		}
+		code = ee.ExitCode()
+	}
+	return out.String(), code
+}
+
+// floorParity is the family Gap R.162 measured wrong, with CPython's answer beside each.
+func floorParity() []struct{ name, src, want string } {
+	return []struct{ name, src, want string }{
+		{
+			"the row itself: a floor over a parameter that carries a double",
+			"def floorit(v):\n    return v // 2\n\nprint(floorit(5.0))\n", "2.0\n",
+		},
+		{
+			"the same define over an int answers an int",
+			"def floorit(v):\n    return v // 2\n\nprint(floorit(5.0))\nprint(floorit(5))\n", "2.0\n2\n",
+		},
+		{
+			"a remainder over a parameter that carries a double",
+			"def modit(v):\n    return v % 2\n\nprint(modit(5.0))\nprint(modit(5))\n", "1.0\n1\n",
+		},
+		{
+			// The two rules that make `//` and `%` a language rather than an `fdiv`: the floor rounds
+			// toward negative infinity, and the remainder carries the divisor's sign. Both are decisions
+			// the reference made and ADR 0216 wrote down; the pair road had simply never been shown them.
+			"the floor goes down and the remainder takes the divisor's sign",
+			"def floorit(v):\n    return v // 2\n\ndef modit(v):\n    return v % 2\n\nprint(floorit(-7.5))\nprint(modit(-7.5))\nprint(floorit(-7))\nprint(modit(-7))\n", "-4.0\n0.5\n-4\n1\n",
+		},
+		{
+			"two parameters, either of which can carry the double",
+			"def floordiv(a, b):\n    return a // b\n\ndef modop(a, b):\n    return a % b\n\nprint(floordiv(7.5, 2))\nprint(floordiv(7, 2))\nprint(modop(7.5, 2))\nprint(modop(-7.5, 2))\nprint(modop(-7, 2))\n", "3.0\n3\n1.5\n0.5\n1\n",
+		},
+		{
+			"a slot read under the remainder",
+			"def f(v):\n    return v % 3\n\nxs = []\nxs.append([7, 8])\nprint(f(xs[0][0]))\n", "1\n",
+		},
+		{
+			"a slot read under the floor, int slot and float slot",
+			"def f(v):\n    return v // 3\n\nxs = []\nxs.append([7, 8])\nxs.append([7.5, 8])\nprint(f(xs[0][0]))\nprint(f(xs[1][0]))\n", "2\n2.0\n",
+		},
+		{
+			// Two doors at once: the pair was opened by ADR 0277's scan (the caller forwards, and the
+			// callee's floor is asked of a value no literal ever named) over operators ADR 0278 served.
+			"a forwarded pair under the floor",
+			"def floorit(v):\n    return v // 2\n\ndef outer(x):\n    return floorit(x)\n\nprint(outer(5.0))\nprint(outer(5))\n", "2.0\n2\n",
+		},
+		{
+			"a forwarded pair under the remainder, one frame further",
+			"def other(w):\n    return w % 3\n\ndef middle(x):\n    return other(x)\n\ndef outer(x):\n    return middle(x)\n\nprint(outer(7.5))\nprint(outer(7))\n", "1.5\n1\n",
+		},
+		{
+			"a floored answer printed beside the parameter itself",
+			"def show(v):\n    print(v)\n    print(v // 2)\n    return 0\n\nshow(5.0)\n", "5.0\n2.0\n",
+		},
+		{
+			"a floored answer in the arm of a condition over the parameter",
+			"def big(v):\n    if v > 10:\n        return v // 2\n    return v\n\nprint(big(18.5))\nprint(big(7.5))\n", "9.0\n7.5\n",
+		},
+		{
+			// ADR 0216's identity, half of it: the two halves are served, the whole is Gap R.166's
+			// refusal, and pinning the half is what lets the whole be added later without re-deriving this.
+			"half the flooring identity over a parameter",
+			"def halfer(v):\n    return v // 2\n\nprint(halfer(7))\nprint(halfer(7.5))\n", "3\n3.0\n",
+		},
+	}
+}
+
+func TestTheFlooringOperatorsAnswerOnAllThreeLegs(t *testing.T) {
+	for _, tc := range floorParity() {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "floor_pair.gy", tc.src)
+			if py, ok := cpythonOut(t, path); ok && py != tc.want {
+				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
+			}
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunCode(t, engine, "--file", path)
+				if code == 2 {
+					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, cliRun(t, engine, "--file", path))
+				}
+				if code != 0 || out != tc.want {
+					t.Errorf("%s: exit %d, stdout %q, want %q\nsrc: %s", engine, code, out, tc.want, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestThePromotedFlooringProbePrintsCPythonTenLines is the closing event of the cycle, pinned as a program
+// rather than as a list of fragments: ten lines, three legs, the same bytes. The compiled leg printed `2`,
+// `1`, `1`, `1`, `-4`, `1`, `3`, `1`, `1`, `2` — truncated digits, every one of them, at exit 0.
+func TestThePromotedFlooringProbePrintsCPythonTenLines(t *testing.T) {
+	const want = "2.0\n1.0\n2\n1\n-4.0\n0.5\n3.0\n1.5\n1\n2.0\n"
+	src := readProgram(t, "probe_floor_a_pair.gy")
+	path := writeSrc(t, t.TempDir(), "probe_floor_a_pair.gy", src)
+	if py, ok := cpythonOut(t, path); ok && py != want {
+		t.Fatalf("the expectation is not CPython's: got %q want %q", py, want)
+	}
+	for _, engine := range []string{"--interp", "--aot"} {
+		out, code := cliRunCode(t, engine, "--file", path)
+		if code != 0 || out != want {
+			t.Errorf("%s: exit %d, stdout %q, want %q\nstderr: %s", engine, code, out, want, cliRun(t, engine, "--file", path))
+		}
+	}
+}
+
+// TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine is the half the truncated road could not
+// reach at all: which of the reference's four ZeroDivisionError sentences a line gets is the operand's kind's
+// fact, and over a parameter the kind is the tag — so `f(5)` and `f(5.0)` name themselves differently from
+// one `def`. Exit 0 fails the row: a trap that prints a number is not a trap (ADR 0216's finding, ADR 0278's
+// second half).
+func TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"the floor by zero over a parameter that carries a double",
+			"def f(v):\n    return v // 0\n\nprint(f(5.0))\n", "ZeroDivisionError: float floor division by zero",
+		},
+		{
+			"the same line over an int names the integer sentence",
+			"def f(v):\n    return v // 0\n\nprint(f(5))\n", "ZeroDivisionError: integer division or modulo by zero",
+		},
+		{
+			// CPython does not let the remainder share the floor's wording, and neither may this: the
+			// first draft of the runtime table did, and the row exists because the sweep caught it.
+			"the remainder by zero over an int",
+			"def f(v):\n    return v % 0\n\nprint(f(5))\n", "ZeroDivisionError: integer modulo by zero",
+		},
+		{
+			"the remainder by zero over a double",
+			"def f(v):\n    return v % 0\n\nprint(f(5.0))\n", "ZeroDivisionError: float modulo",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "floor_trap.gy", tc.src)
+			for _, engine := range []string{"--interp", "--aot"} {
+				out, code := cliRunMerged(t, engine, "--file", path)
+				if code == 2 {
+					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
+				}
+				if code == 0 {
+					t.Errorf("%s exited 0 on a divide by zero — a trap that produces output is not a trap\nsrc: %s", engine, tc.src)
+				}
+				if !strings.Contains(out, tc.want) {
+					t.Errorf("%s did not say %q (got %q)\nsrc: %s", engine, tc.want, out, tc.src)
+				}
+			}
+		})
+	}
+}
+
+// TestAFlooredAnswerCombinedWithOtherArithmeticRefusesRatherThanTruncates pins the ladder's honest half:
+// Gap R.166 is owed, and until it is paid the combined shapes must exit 1 with the road named, because before
+// this cycle the same programs answered a truncated integer at exit 0. A wrong number is what the ladder is
+// for; a refusal is where a wrong number is allowed to stand until it is fixed.
+func TestAFlooredAnswerCombinedWithOtherArithmeticRefusesRatherThanTruncates(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"the whole flooring identity", "def f(v):\n    return (v // 2) * 2 + (v % 2)\n\nprint(f(7.5))\n", "pair road cannot answer"},
+		{"a product of a floored parameter", "def f(v):\n    return (v // 2) * 2\n\nprint(f(7.5))\n", "pair road cannot answer"},
+		{"a product beside a literal", "def f(v):\n    return v * 2 + 1\n\nprint(f(7.5))\n", "pair road cannot answer"},
+		// The pair answer stored in a container rather than returned: ADR 0273's own sentence, Gap R.146's
+		// family — the position keeps one word, so the tag has nowhere to go. Before ADR 0278 this program
+		// printed 2 and 2 at exit 0, because the floor never saw the double; refusal is the standing the
+		// ladder allows until R.146's road learns to box a pair answer.
+		{
+			"a floored pair answer appended to a list",
+			"def floorit(v):\n    return v // 2\n\nout = []\nout.append(floorit(5.0))\nout.append(floorit(5))\nprint(out[0])\nprint(out[1])\n",
+			"hands back the (payload, tag) pair",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeSrc(t, t.TempDir(), "floor_nested.gy", tc.src)
+			out, code := cliRunMerged(t, "--aot", "--file", path)
+			if code == 0 {
+				t.Fatalf("the compiled leg answered a nested pair expression with %q; the door does not serve it (Gap R.166) and must refuse\nsrc: %s", out, tc.src)
+			}
+			if code != 1 {
+				t.Fatalf("compiled exit %d, want the front-end refusal's 1\noutput: %s\nsrc: %s", code, out, tc.src)
+			}
+			if !strings.Contains(out, tc.want) || !strings.Contains(out, "ADR 0273") {
+				t.Errorf("the refusal must name the road that declined (ADR 0273's contract), want %q, got %q\nsrc: %s", tc.want, out, tc.src)
+			}
+		})
+	}
+}

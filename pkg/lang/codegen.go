@@ -3085,6 +3085,17 @@ const numArithRuntimeIR = `@rt.num.fmt = private constant [61 x i8] c"TypeError:
 @rt.o.add = private constant [2 x i8] c"+\00"
 @rt.o.sub = private constant [2 x i8] c"-\00"
 @rt.o.mul = private constant [2 x i8] c"*\00"
+@rt.o.fdiv = private constant [3 x i8] c"//\00"
+@rt.o.mod = private constant [2 x i8] c"%\00"
+; The four ZeroDivisionError sentences the reference chooses between, by the operator and by the operands'
+; kinds. It is not two sentences and not three: '//' and '%' share one wording across the two integer cases
+; only for '//', because CPython answers '7 % 0' with "integer modulo by zero" and '7 // 0' with "integer
+; division or modulo by zero". The tags decide which is stored, so a parameter that carries a double says
+; "float modulo" where the same line with an int says "integer modulo by zero" (roadmap Gap R.162, ADR 0278).
+@rt.num.dzi = private constant [54 x i8] c"ZeroDivisionError: integer division or modulo by zero\00"
+@rt.num.dzm2 = private constant [42 x i8] c"ZeroDivisionError: integer modulo by zero\00"
+@rt.num.dzf = private constant [48 x i8] c"ZeroDivisionError: float floor division by zero\00"
+@rt.num.dzm = private constant [32 x i8] c"ZeroDivisionError: float modulo\00"
 
 ; rt_kind_name answers the word CPython puts inside the quotes of its operand-type message, from the
 ; canonical tag in value.go — the same table the printer, the comparison and the interpreter read, so
@@ -3135,9 +3146,16 @@ bin:
   %o0 = icmp eq i32 %op, 0
   %o1 = icmp eq i32 %op, 1
   %o2 = icmp eq i32 %op, 2
-  %sa = select i1 %o0, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.add, i32 0, i32 0), i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.sub, i32 0, i32 0)
-  %sb = select i1 %o1, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.sub, i32 0, i32 0), i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.mul, i32 0, i32 0)
-  %sym = select i1 %o2, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.mul, i32 0, i32 0), i8* %sa
+  %o4 = icmp eq i32 %op, 4
+  %o5 = icmp eq i32 %op, 5
+  ; One select chain, ordered innermost-first: the last select is the first test. Nested this way, each
+  ; operator symbol is named by its own comparison rather than by which pair the previous two selects
+  ; happened to share, which is how the flooring operators get named at all (ADR 0278).
+  %s1 = select i1 %o5, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.mod, i32 0, i32 0), i8* getelementptr inbounds ([3 x i8], [3 x i8]* @rt.o.fdiv, i32 0, i32 0)
+  %s2 = select i1 %o4, i8* getelementptr inbounds ([3 x i8], [3 x i8]* @rt.o.fdiv, i32 0, i32 0), i8* %s1
+  %s3 = select i1 %o2, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.mul, i32 0, i32 0), i8* %s2
+  %s4 = select i1 %o1, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.sub, i32 0, i32 0), i8* %s3
+  %sym = select i1 %o0, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.o.add, i32 0, i32 0), i8* %s4
   %ln1 = call i8* @rt_kind_name(i32 %lt)
   %rn1 = call i8* @rt_kind_name(i32 %rt)
   %w1 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* getelementptr inbounds ([61 x i8], [61 x i8]* @rt.num.fmt, i32 0, i32 0), i8* %sym, i8* %ln1, i8* %rn1)
@@ -3235,17 +3253,56 @@ calc:
   %dif = fsub double %af, %bf
   %prd = fmul double %af, %bf
   %neg = fneg double %af
+  %aiint = or i1 %a0, %a2
+  %biint = or i1 %b0, %b2
+  %bothint = and i1 %aiint, %biint
   %o0 = icmp eq i32 %op, 0
   %o1 = icmp eq i32 %op, 1
   %o2 = icmp eq i32 %op, 2
   %o3 = icmp eq i32 %op, 3
+  %o4 = icmp eq i32 %op, 4
+  %o5 = icmp eq i32 %op, 5
+  ; the two operators whose divisor may be zero, and the reference raises rather than
+  ; answering. The lifted divisor is the honest test — an int 0 and a float 0.0 both lift to zero, and
+  ; negative zero compares equal to it, which is what CPython raises for too.
+  %isdv = or i1 %o4, %o5
+  %iszero = fcmp oeq double %bf, 0.000000e+00
+  %dz = and i1 %isdv, %iszero
+  br i1 %dz, label %divzero, label %have
+divzero:
+  ; The sentence is the operands' kind's, not the source text's: floorit(0.0) and floorit(0) reach
+  ; this same block with different tags, and the reference names them differently — and ' % ' names the
+  ; integer case differently from '//', which is why the select is two deep rather than one.
+  %mf = select i1 %o4, i8* getelementptr inbounds ([48 x i8], [48 x i8]* @rt.num.dzf, i32 0, i32 0), i8* getelementptr inbounds ([32 x i8], [32 x i8]* @rt.num.dzm, i32 0, i32 0)
+  %mi = select i1 %o4, i8* getelementptr inbounds ([54 x i8], [54 x i8]* @rt.num.dzi, i32 0, i32 0), i8* getelementptr inbounds ([42 x i8], [42 x i8]* @rt.num.dzm2, i32 0, i32 0)
+  %ms = select i1 %bothint, i8* %mi, i8* %mf
+  store i8* %ms, i8** %outmsg
+  ret i32 3
+have:
+  ; The flooring pair, the same arithmetic the statement-level float road already runs (ADR 0216): a
+  ; floor of the quotient, and the remainder corrected from libm's truncated fmod to Python's
+  ; floor-mod — an exact remainder carries the divisor's sign, and a remainder whose sign differs from
+  ; the divisor's has the divisor added back. Keeping the two roads' arithmetic identical is what lets
+  ; a == (a // b) * b + (a % b) hold for a pair-bound operand as it does for a literal one.
+  %q = fdiv double %af, %bf
+  %fl = call double @llvm.floor.f64(double %q)
+  %rm0 = frem double %af, %bf
+  %zs = call double @llvm.copysign.f64(double 0.000000e+00, double %bf)
+  %iz = fcmp oeq double %rm0, 0.000000e+00
+  %rm1 = select i1 %iz, double %zs, double %rm0
+  %nz = fcmp one double %rm1, 0.000000e+00
+  %rne = fcmp olt double %rm1, 0.000000e+00
+  %rne_b = fcmp olt double %bf, 0.000000e+00
+  %diff = xor i1 %rne, %rne_b
+  %adj = and i1 %nz, %diff
+  %sum2 = fadd double %rm1, %bf
+  %md = select i1 %adj, double %sum2, double %rm1
   %c0 = select i1 %o0, double %sum, double %dif
   %c1 = select i1 %o1, double %dif, double %prd
   %c2 = select i1 %o2, double %prd, double %c0
-  %r = select i1 %o3, double %neg, double %c2
-  %aiint = or i1 %a0, %a2
-  %biint = or i1 %b0, %b2
-  %bothint = and i1 %aiint, %biint
+  %c3 = select i1 %o3, double %neg, double %c2
+  %c4 = select i1 %o4, double %fl, double %c3
+  %r = select i1 %o5, double %md, double %c4
   %hi = fcmp oge double %r, 2147483648.000000e+00
   %lo = fcmp olt double %r, -2147483648.000000e+00
   %oor = or i1 %hi, %lo

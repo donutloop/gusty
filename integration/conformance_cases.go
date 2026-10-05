@@ -69,6 +69,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the caller. Eight lines, three legs, one `define` each — `print(outer(2.5))` is 5.0 where the
 		// compiled leg printed 4 at exit 0 (roadmap L11.6, Gap R.161, ADR 0277).
 		"probe_forward_a_pair_through_a_function",
+		// `//` and `%` choose their answer's kind by the operands, and a parameter has to carry the tag that
+		// says which kind arrived: `floorit(5.0)` is 2.0 and `modop(7.5, 2)` is 1.5, where the compiled leg
+		// printed 2 and 1 at exit 0 (roadmap Gap R.162, ADR 0278). Ten lines, three legs, one `define` each.
+		"probe_floor_a_pair",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap

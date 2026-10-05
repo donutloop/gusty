@@ -7081,3 +7081,59 @@ why it is a row and not a footnote". `programs/probe_forward_a_pair_through_a_fu
 event — eight lines, three legs, one answer — and the Snapshot's counts came out of the artifacts (269 ADRs,
 155 programs, 146 matrix rows → 110 parity, 95 oracle `match` · 30 `debt`, 101 of 109 queue rows owed), not
 out of memory.
+
+## Cycle: what floors a number, and what remains, ask the tag the number arrived with (ADR 0278, Gap R.162; Gaps R.165, R.166 filed)
+
+**The served-operator list is one list, asked twice.** `+ - *` crossed the pair door; `//` and `%` crossed
+neither it nor the condition doors, so a parameter that could hold a double was silently left on the one-word
+road and the floor ran on the truncated payload: `floorit(5.0)` → `2`, `modop(7.5, 2)` → `1`,
+`modop(-7.5, 2)` → `1` for `0.5`, all at exit 0, all of them CPython's in the interpreter. The gate
+(`pairUsesServed`) and the answer shape (`pairAnswerShape`) each keep their own operator list, and both had to
+gain `//` and `%` in the same edit — one list growing alone turns answers into refusals, which is the ladder's
+forbidden direction. The lesson generalises: whenever a "which shapes do you serve" question is asked in two
+places, say so in the comment beside both, or the next operator lands half-served.
+
+**The reference has four divide-by-zero sentences, not two.** The first runtime table shared "integer division
+or modulo by zero" across `//` and `%`; CPython answers `7 % 0` with "integer modulo by zero". Nothing in the
+number-comparison sweep would have caught that — the *wording* is the artefact being compared, so the sweep
+that day was reading tracebacks line by line as well as stdout, and that is what flagged it. The four are
+now `@rt.num.dzi` / `@rt.num.dzm2` / `@rt.num.dzf` / `@rt.num.dzm`, selected by `%bothint` and by the operator,
+and a row in `integration/floor_pair_test.go` exists solely so no two of them may be merged again.
+
+**`frem` is the truncated remainder and `sdiv` truncates toward zero.** Both are C's rules, both answer the
+positive probes, and both lie on `floorit(-7.5)` / `modit(-7.5)`. `@llvm.floor.f64` after the `fdiv`, plus the
+three-instruction sign correction after `frem`, is ADR 0216's rule in the one helper the statement road already
+used — the reason to reuse that helper rather than lift-and-floor at the door is the *int* side of the same
+call: `floorit(5)` must still answer `2`, which a lift to `double` cannot un-decide.
+
+**Refusal is a deliverable.** Answering the arms of `(v // 2) * 2 + (v % 2)` from their payloads would have
+printed `7` for `identity_check(7.5)` — a number, at exit 0, and the wrong one. The combined shapes were left
+refusing, pinned as refusals, and filed (`Gap R.166`) with ADR 0216's identity named as their acceptance row, so
+paying the row means moving a pinned row rather than adding a check.
+
+**Measure "before" for every claim, including the ones that are not yours.** Three text-`%` spellings
+(`print("%.2f" % 3.5)`) print `0.0` at exit 0. They did so on the pre-cycle binary and on the new one, so the
+row (`Gap R.165`) says so and cites both; the same measurement is what proves the newly-refusing shapes
+(`(v // 2) * 2`, `v * 2 + 1`) are not this cycle's doing. A defect that is only *looked at* still needs a row
+and an ID.
+
+**Two interface lessons about the test helpers.** `cliRunCode` returns stdout only, so every trap and every
+front-end refusal row needs the merged stream — a local `cliRunMerged` now exists for exactly that, and a row
+that asserts what a program *said* must read the stream it was said on. And pinning a refusal's *sentence* is
+only safe when one sentence owns the family: the two ADR 0273 refusals here say different things ("pair road
+cannot answer" vs "hands back the (payload, tag) pair"), so the table gained a `want` column instead of one
+shared substring.
+
+**Self-inflicted, and worth remembering: backticks are the raw-string delimiter.** IR comments written with
+`//`-style prose inside `const numArithRuntimeIR = \`…\`` produced a cascade of `illegal character U+0040 '@'`
+errors, and the "strip every backtick in the region" cleanup then ate the opening delimiter. Two lessons: no
+backticks inside the IR text at all (quote with `'`), and a bulk fix must be line-targeted, not region-wide.
+
+**The tracker has two column contracts and rows drift between them.** `Gap R.164` had been appended to the Open
+queue table in ledger dress (eight cells, including the `aot | 0273, 0277` path/ADR pair) beside its own
+seven-cell queue twin, and two rows in that table carried the same priority number. The row was moved into the
+Gap ledger byte-identically (verified by diffing the string before and after), the duplicate priority
+renumbered, and the two new rows written once per table in the shape each table expects. Snapshot counts came
+out of the artifacts again: 270 ADRs / highest `0278`, 156 programs, 147 matrix rows → 111 parity, 96 `match` ·
+30 `debt` · 21 `not_applicable`, 101 of 110 queue rows owed — with the sweep's only corpus diff being the new
+probe, and no demotion anywhere in the matrix.

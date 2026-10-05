@@ -459,6 +459,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_floor_a_pair",
+        "name": "probe_floor_a_pair.gy",
+        "source": "# What CPython prints for each line here (python3, 3.12):\n#\n#   2.0       (5.0 // 2 — a float keeps its digits through the floor)\n#   1.0       (5.0 % 2)\n#   2         (5 // 2 — an int still answers an int, from the same define)\n#   1         (5 % 2)\n#   -4.0      (-7.5 // 2 — the floor goes down, not toward zero)\n#   0.5       (-7.5 % 2 — and the remainder takes the divisor's sign)\n#   3.0       (floordiv(7.5, 2))\n#   1.5       (modop(7.5, 2))\n#   -3        (modop(-7, 2) — the integer remainder, the control row)\n#   2.0       (outer(5.0) — the pair forwarded through a second function's parameter)\n#\n# `//` and `%` choose their answer's kind by the *operands*, which is the rule ADR 0216 pinned for the\n# statement-level roads and this program walks through the one road those rules never reached: a parameter\n# has one word, and the pair door served `+ - *` but not the flooring operators. So `floorit(5.0)` printed\n# `2`, `modop(7.5, 2)` printed `1` for `1.5`, and `print(outer(5.0))` printed `2` — all at **exit 0**,\n# because the double was truncated into the parameter before the floor ran. The interpreter, which boxes the\n# value and asks it, printed CPython's answer on every line.\n#\n# The cure is the tag: `@rt_num_arith` now answers the two flooring operators itself, with the same\n# `llvm.floor` / corrected-`frem` arithmetic the statement road uses, so `a == (a // b) * b + (a % b)` holds\n# over a pair-bound parameter as it does over a literal (roadmap Gap R.162, ADR 0278; the forwarded pair is\n# Gap R.161, ADR 0277). The divide-by-zero wording travels with the tag too: `f(5)` says \"integer division or\n# modulo by zero\" and `f(5.0)` says \"float floor division by zero\" from the same source line, which is what\n# the reference does and the truncated road could not.\ndef floorit(v):\n    return v // 2\n\ndef modit(v):\n    return v % 2\n\ndef floordiv(a, b):\n    return a // b\n\ndef modop(a, b):\n    return a % b\n\ndef outer(x):\n    return floorit(x)\n\nprint(floorit(5.0))\nprint(modit(5.0))\nprint(floorit(5))\nprint(modit(5))\nprint(floorit(-7.5))\nprint(modit(-7.5))\nprint(floordiv(7.5, 2))\nprint(modop(7.5, 2))\nprint(modop(-7, 2))\nprint(outer(5.0))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "2.0\n1.0\n2\n1\n-4.0\n0.5\n3.0\n1.5\n1\n2.0\n",
+      "aot_ok": true,
+      "aot_stdout": "2.0\n1.0\n2\n1\n-4.0\n0.5\n3.0\n1.5\n1\n2.0\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "2.0\n1.0\n2\n1\n-4.0\n0.5\n3.0\n1.5\n1\n2.0\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/abs_names_its_kind",
         "name": "abs_names_its_kind.gy",
         "source": "# abs_names_its_kind.gy — the absolute value of a value with no sign is stopped, not answered.\n#\n# `abs` is the other operator that needs to know what its operand *is*: the reference stops on the\n# absolute value of anything without a sign — `TypeError: bad operand type for abs(): 'str'` — and this\n# toolchain answered all of them: a text reached the print door holding the interned index it is stored\n# as, so `print(abs(\"hi\"))` printed `hi`; `abs(None)` and an instance answered the number `0`; and\n# `abs([1])`, `abs({\"a\": 1})` and `abs({1})` each had `llc` reject the module — **exit 2**, the contract's\n# \"the compiler is broken\" code, on a program the reference merely stops on (roadmap Gap R.140, ADR 0271).\n#\n# The rows ask the same question the unary minus asks (ADR 0266), per kind, and report the branch that\n# ran so the trap is tested rather than printed: the numbers answer, every kind without a sign raises\n# CPython's own sentence naming *its* kind — including an instance, which names its own class — and the\n# last lines are the rebinding the door reads, where a name's latest binding decides the kind.\nprint(abs(-10))\nprint(abs(10))\nprint(abs(-3.5))\nprint(abs(True))\nprint(abs(0))\ntry:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"trap str\")\ntry:\n    print(abs(None))\nexcept TypeError:\n    print(\"trap NoneType\")\ntry:\n    print(abs([1, 2]))\nexcept TypeError:\n    print(\"trap list\")\ntry:\n    print(abs({\"a\": 1}))\nexcept TypeError:\n    print(\"trap dict\")\ntry:\n    print(abs({1, 2}))\nexcept TypeError:\n    print(\"trap set\")\nclass Thing:\n    pass\n\ntry:\n    print(abs(Thing()))\nexcept TypeError:\n    print(\"trap Thing\")\nx = \"text\"\nx = -7\nprint(abs(x))\nprint(-x)\nprint(abs(x) + 1)\n",
@@ -3501,7 +3524,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2773261251/121/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3039342470/122/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3515,7 +3538,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2773261251/121/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3039342470/122/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4317,11 +4340,11 @@
       ]
     }
   ],
-  "rows": 146,
+  "rows": 147,
   "skipped": 36,
-  "pass": 110,
+  "pass": 111,
   "fail": 0,
-  "oracle_match": 95,
+  "oracle_match": 96,
   "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

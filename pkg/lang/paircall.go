@@ -1319,7 +1319,7 @@ func pairAnswerShape(e Expr, pairParams, intParams, pairCallees map[string]bool)
 		return m, sh && m
 	case *BinOp:
 		switch n.Op {
-		case "+", "-", "*":
+		case "+", "-", "*", "//", "%":
 			lm, ls := pairOperandShape(n.L, pairParams, intParams, pairCallees)
 			rm, rs := pairOperandShape(n.R, pairParams, intParams, pairCallees)
 			return lm || rm, ls && rs
@@ -1711,13 +1711,19 @@ func (g *pairGate) expr(e Expr) bool {
 		return n.Op == "-" && g.expr(n.X)
 	case *BinOp:
 		switch n.Op {
-		case "+", "-", "*", "and", "or":
+		case "+", "-", "*", "//", "%", "and", "or":
 			return g.operand(n.L) && g.operand(n.R)
 			// A comparison is absent here on purpose: as a *value* it is read by a road that takes one
 			// word for its operand, and has no door for a pair-carrying parameter. Asked as a
 			// *condition* — the position `cond` answers for — the truth door does read the tag
 			// (ADR 0269, ADR 0275), and `def big(v): if v > 10: return v * 2` is served (roadmap
 			// Gap R.161's comparison half names the value position still owed one).
+			//
+			// `//` and `%` joined the list with ADR 0278: the flooring rules are the reference's, chosen
+			// by the operands' kinds, and the tag is what says which kind arrived. Before that the two
+			// operators were the pair door's silent hole — served by neither list, so a parameter carrying
+			// a double stayed on the ordinary road and `floorit(5.0)` printed `2` for CPython's `2.0`,
+			// `modop(7.5, 2)` printed `1` for `1.5`, both at exit 0 (roadmap Gap R.162).
 		}
 	case *Call:
 		// print and str are the two positions a pair is rendered from (ADR 0268's renderer road and the

@@ -2339,10 +2339,10 @@ Where a pair is handed on, both frames carry the two words, and a function that 
 callee's result directly is pair-returning itself **whichever order the file is written in**: `def f(v):
 return other(v)` above `def other(w): return w * 2` and the same two `def`s swapped compile identically,
 because the answer direction is a scan answer and the tag word is declared where the callee's own `define` is.
-A chain the doors cannot carry is closed from either end: if the callee floors its parameter, renders it a
-text, or indexes with it, the caller is not given a tag word either — the pair would be half-read one frame
-down, which is a wrong number rather than a refusal (`Gap R.164` and `Gap R.162` name what those chains still
-owe an answer for).
+A chain the doors cannot carry is closed from either end: if the callee takes a power of its parameter, renders
+it a text, or indexes with it, the caller is not given a tag word either — the pair would be half-read one frame
+down, which is a wrong number rather than a refusal (`Gap R.164` names what those chains still owe an answer
+for; the flooring operators stopped being one of them with ADR 0278, below).
 
 Two rules keep the answers that already worked, both of them answered by
 the same scan rather than by the order the module happens to be emitted in. A function whose body is written
@@ -2353,6 +2353,49 @@ index. And a **condition** is a different position from a **value**: `if v > 10:
 the truth doors answer a pair for, while `return v > 1.5` asks for a value in a road that takes one word — so the
 first is served and the second leaves the parameter on the ordinary road, printing the `True`/`False` it always
 printed instead of refusing one it never needed (`Gap R.161`'s comparison half names what is owed).
+
+The same two words carry the kind that decides **what floors a number and what remains** (`Gap R.162`,
+ADR 0278). `//` and `%` choose their answer's kind by their operands, which is ADR 0216's rule for a literal;
+over a parameter the kind is the tag, so the pair door asks the same tagged arithmetic door that `+ - *` ask —
+the floor is `@llvm.floor.f64` and the remainder is `frem` corrected to the divisor's sign, both from one
+helper the statement road shares, so the two roads cannot grow two definitions of `//`:
+
+```python
+def floorit(v):
+    return v // 2
+
+def modit(v):
+    return v % 2
+
+print(floorit(5.0))              # 2.0 — where the compiled leg printed 2
+print(floorit(5))                # 2   — the same `define`, the answer's kind follows the argument
+print(modit(5.0))                # 1.0 — where the compiled leg printed 1
+print(floorit(-7.5))             # -4.0 — the floor goes down, not toward zero
+print(modit(-7.5))               # 0.5  — and the remainder takes the divisor's sign
+
+def modop(a, b):
+    return a % b
+
+print(modop(7.5, 2))             # 1.5 — either parameter may carry the double
+print(modop(-7, 2))              # 1   — the integer control row, still one word
+
+def outer(x):
+    return floorit(x)
+
+print(outer(5.0))                # 2.0 — the pair forwarded, and floored a frame down
+```
+
+The divide-by-zero sentence travels with the tag, and the reference has **four** of them, not two: over a
+parameter `f(v) = v // 0` says "integer division or modulo by zero" for `f(5)` and "float floor division by
+zero" for `f(5.0)`, and `f(v) = v % 0` says "integer modulo by zero" and "float modulo" — one source line,
+named by the argument. Each is raised catchably (`except ZeroDivisionError:` reaches it) and exits non-zero,
+because a trap that prints a number is not a trap.
+
+What the door still declines is the *combination*: `(v // 2) * 2 + (v % 2)`, `(v // 2) * 2` and `v * 2 + 1`
+over a pair-marked parameter are refused, because only the top of an expression is asked of the pair doors and
+the arms would be answered by their payloads alone — which would print `7` for `identity_check(7.5)`. Those
+three shapes are `Gap R.166`; and the text-`%` the guard above holds out of the door (`"%.2f" % 3.5`,
+`Gap R.165`) is owed beside them.
 
 
 What still refuses, in words: a **value** position — a builtin's argument, a container's element, an `and`'s

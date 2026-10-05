@@ -6790,7 +6790,7 @@ Three rules came out of landing it, and all three are pinned by tests rather tha
 What the row still owes is filed beside it: Gap R.164 binds the callee's answer to a name before returning it
 and falls back off the pair road, and Gap R.162's flooring half now measures the same way one frame deeper.
 
-### Gap R.162 — `//` and `%` over a parameter that carries a double answer the integer domain (OPEN, owner L11.6, measured landing ADR 0276)
+### Gap R.162 — `//` and `%` over a parameter that carries a double answer the integer domain (CLOSED by ADR 0278, owner L11.6, measured landing ADR 0276)
 
 ```
 def floorit(v):
@@ -6813,6 +6813,29 @@ floor of a lifted double, printed as the double CPython prints — and the shape
 for `/` on a pair-bound name. Measured one frame deeper by ADR 0277: `def outer(x): return floorit(x)` with
 `outer(5.0)` prints `2` where the reference and the interpreted leg print `2.0`, so the double arriving from
 the caller changes nothing about the defect — the flooring arms, not the forwarding, are what owe the answer.
+
+Closed by ADR 0278: `//` and `%` are two more operator codes of `@rt_num_arith`, asked by the pair door the way
+`+ - *` are, and the answer's tag is `bothint` — the operands', not the source text's. Every measured row is
+CPython's on both engines now, and the integer control rows still answer one word from the same `define`:
+
+```
+print(floorit(5.0))          # 2.0 · 2.0 · 2.0     (was 2 compiled, exit 0)
+print(floorit(5))            # 2   · 2   · 2
+print(modit(5.0))            # 1.0 · 1.0 · 1.0     (was 1)
+print(modit(-7.5))           # 0.5 · 0.5 · 0.5     (was 1 — the truncation hid a second, sign-shaped error)
+print(floordiv(7.5, 2))      # 3.0 · 3.0 · 3.0     (was 3)
+print(modop(7.5, 2))         # 1.5 · 1.5 · 1.5     (was 1)
+print(modop(-7, 2))          # 1   · 1   · 1
+print(outer(5.0))            # 2.0 · 2.0 · 2.0     (was 2 — ADR 0277's forwarding, ADR 0278's operators)
+print(big(18.5))             # 9.0 · 9.0 · 9.0     (the floored answer in the arm of a condition)
+```
+
+The two rows ADR 0273 had pinned as refusals — `def f(v): return v % 3` over `xs[0][0]`, and the same handed to
+`def other(w): return w % 3` — left the refusal tables and joined the parity tables, answering `1`. The
+divide-by-zero wording came free with the tag and had to be corrected once: the reference gives **four**
+sentences (`7 // 0` and `7 % 0` do not share one), and the first draft of the runtime table shared the floor's
+across both operators. What the door still declines is the *combination* — see Gap R.166 — and the guarded text
+`%` beside it is Gap R.165.
 
 ### Gap R.163 — a function that returns `str(…)` prints the interned index (OPEN, owner L11.2, measured landing ADR 0276)
 
@@ -6863,3 +6886,49 @@ worse; the shape simply became reachable once the frame above it forwarded. What
 call whoever the body's answer turns out to be, and let a value position read a pair-bound name back, which is
 the half Gap R.146 still owes. `integration/forwarded_pair_test.go` pins the chain around this shape by exit
 class rather than by number, so that paying the row has to move a logged row into the parity table.
+
+### Gap R.165 — printf-style `%` on a text answers `0.0` at exit 0 where the reference formats it (OPEN, owner L11.2, measured landing ADR 0278)
+
+```
+print("%.2f" % 3.5)          # CPython 3.50 · --interp TypeError: unsupported operand type(s) for %: 'str' and 'float' · --aot 0.0, exit 0
+print("%.1fx" % 2.5)         # CPython 2.5x · --interp TypeError (same) · --aot 0.0, exit 0
+x = 3.5
+print("%.2f" % x)            # CPython 3.50 · --interp TypeError (same) · --aot 0.0, exit 0
+print("%d items" % 3)        # CPython 3 items · --interp TypeError · --aot exit 1, Gap R.82's sentence
+print("%s!" % "hi")          # CPython hi!   · --interp TypeError · --aot exit 1, Gap R.82's sentence
+```
+
+Three legs, three answers, and none of them the reference's for the first three. The compiled leg refuses the
+family in general — Gap R.82's sentence, naming interned indices and the road that cannot open them — and that
+refusal is the honest standing. What is filed here is the subset that escapes the refusal: a text literal on the
+left of `%` with a *number* on the right reaches the numeric road, the interned index is used as the left
+operand, and the program prints `0.0` at **exit 0**. ADR 0278's pair door keeps its guard for exactly this
+reason (an operand that may be text leaves `//` and `%` on the ordinary road), and measuring the guard's hole is
+why the row is filed with the cycle rather than buried in it: `0.0` is unchanged on the pre-cycle and
+post-cycle binaries, so no answer this cycle made got worse — the shape was simply looked at. What is owed is
+the reference's formatting itself (a format string read by the door that renders f-strings today), or, at
+minimum, the exit-1 refusal its sibling shapes already give.
+
+### Gap R.166 — a floored answer combined with other arithmetic in one expression is refused (OPEN, owner L11.6, measured landing ADR 0278)
+
+```
+def identity_check(v):
+    return (v // 2) * 2 + (v % 2)
+
+print(identity_check(7))      # CPython 7   · --interp 7   · --aot exit 1 (before ADR 0278: 7, exit 0 — the wrong 7)
+print(identity_check(7.5))    # CPython 7.5 · --interp 7.5 · --aot exit 1 (before ADR 0278: 7, exit 0)
+
+def f(v):
+    return (v // 2) * 2       # exit 1 — and `v * 2 + 1`, refused since ADR 0276, still is
+```
+
+The pair door asks the *top* of an expression; the arms of it are not asked again. So a body whose answer is
+`(v // 2) * 2 + (v % 2)` reaches `taggedArithPair` with arms whose leaves are a pair-carrying parameter, and the
+arm question declines — the same hole ADR 0276 left for `v * 2 + 1`, pinned at the time and unchanged (the
+pre-cycle binary refuses that shape too, so nothing here is this cycle's regression). ADR 0278 chose refusal
+over the alternative, which was to answer the arms from their payloads and print `7` for `identity_check(7.5)`:
+a number, and the wrong one, at exit 0 — the one outcome the ladder rule forbids. What is owed: recursion in
+the arm question, so each arm gets its own `(payload, tag)` and the outer door combines two pairs. The identity
+ADR 0216 pins, `a == (a // b) * b + (a % b)`, is the acceptance row, and
+`TestAFlooredAnswerCombinedWithOtherArithmeticRefusesRatherThanTruncates` is the row that must move to the
+parity table when it is paid.

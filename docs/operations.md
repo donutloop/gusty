@@ -600,9 +600,18 @@ answered: the body gate serves a *condition* over a pair (`if v > 10:`) and decl
 (`return v > 1.5`, `True`/`False` unchanged), and a function whose return word belongs to ADR 0274's `double` or
 ADR 0174's string index keeps its parameter words too. What that row still leaves filed is the state travelling
 further still: returned from a function (`Gap R.156`), stored as a container element (`Gap R.159`), ordered
-against a float literal (`Gap R.160`), forwarded through a second function's parameter (`Gap R.161`, still an
-exit-0 `4`), and floored or remaindared (`Gap R.162`, `floorit(5.0)` is `2` where CPython answers `2.0`) — each
-pinned with its exit class in `integration/float_state_test.go` and `integration/float_argument_test.go`. The same door is the reason a program must
+against a float literal (`Gap R.160`), bound to a name inside a forwarding frame (`Gap R.164`), combined with
+further arithmetic after being floored (`Gap R.166`, where `(v // 2) * 2` refuses and `v * 2 + 1` has refused
+since ADR 0276), and formatted by the reference's text-`%` (`Gap R.165`, `"%.2f" % 3.5` prints `0.0`) — each
+pinned with its exit class in `integration/float_state_test.go` and `integration/float_argument_test.go`.
+Two of that list are paid surface now: the forwarded parameter (`Gap R.161`, ADR 0277) and the flooring
+operators (`Gap R.162`, ADR 0278) — `print(floorit(5.0))` is `2.0` and `print(modop(7.5, 2))` is `1.5` on both
+engines, `floorit(5)` still `2`, and the pair door asks `@rt_num_arith` with operator codes `4` and `5`, which
+`--emit-llvm 'def f(v): return v // 2'` shows without a source to read. The divide-by-zero sentence is chosen
+by the tag the argument arrived with, so one `def f(v): return v // 0` says "integer division or modulo by
+zero" for `f(5)` and "float floor division by zero" for `f(5.0)` (`%` has its own pair: "integer modulo by
+zero" and "float modulo"); all four exit non-zero, are catchable by `except ZeroDivisionError:`, and are the
+wording the `--json` report's `message` member carries unchanged from the reference. The same door is the reason a program must
 say which engine it wants: `--file` alone runs the interpreter, so the compiled leg of any of these shapes is
 `--aot --file <path>`, and `--json`'s `backend` member (or `--show-backend`) is how a measurement proves which
 engine produced it. The negation of a text was worse and is now paid:

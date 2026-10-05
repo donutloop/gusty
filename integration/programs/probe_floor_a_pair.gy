@@ -1,0 +1,51 @@
+# What CPython prints for each line here (python3, 3.12):
+#
+#   2.0       (5.0 // 2 — a float keeps its digits through the floor)
+#   1.0       (5.0 % 2)
+#   2         (5 // 2 — an int still answers an int, from the same define)
+#   1         (5 % 2)
+#   -4.0      (-7.5 // 2 — the floor goes down, not toward zero)
+#   0.5       (-7.5 % 2 — and the remainder takes the divisor's sign)
+#   3.0       (floordiv(7.5, 2))
+#   1.5       (modop(7.5, 2))
+#   -3        (modop(-7, 2) — the integer remainder, the control row)
+#   2.0       (outer(5.0) — the pair forwarded through a second function's parameter)
+#
+# `//` and `%` choose their answer's kind by the *operands*, which is the rule ADR 0216 pinned for the
+# statement-level roads and this program walks through the one road those rules never reached: a parameter
+# has one word, and the pair door served `+ - *` but not the flooring operators. So `floorit(5.0)` printed
+# `2`, `modop(7.5, 2)` printed `1` for `1.5`, and `print(outer(5.0))` printed `2` — all at **exit 0**,
+# because the double was truncated into the parameter before the floor ran. The interpreter, which boxes the
+# value and asks it, printed CPython's answer on every line.
+#
+# The cure is the tag: `@rt_num_arith` now answers the two flooring operators itself, with the same
+# `llvm.floor` / corrected-`frem` arithmetic the statement road uses, so `a == (a // b) * b + (a % b)` holds
+# over a pair-bound parameter as it does over a literal (roadmap Gap R.162, ADR 0278; the forwarded pair is
+# Gap R.161, ADR 0277). The divide-by-zero wording travels with the tag too: `f(5)` says "integer division or
+# modulo by zero" and `f(5.0)` says "float floor division by zero" from the same source line, which is what
+# the reference does and the truncated road could not.
+def floorit(v):
+    return v // 2
+
+def modit(v):
+    return v % 2
+
+def floordiv(a, b):
+    return a // b
+
+def modop(a, b):
+    return a % b
+
+def outer(x):
+    return floorit(x)
+
+print(floorit(5.0))
+print(modit(5.0))
+print(floorit(5))
+print(modit(5))
+print(floorit(-7.5))
+print(modit(-7.5))
+print(floordiv(7.5, 2))
+print(modop(7.5, 2))
+print(modop(-7, 2))
+print(outer(5.0))

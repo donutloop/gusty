@@ -316,8 +316,8 @@ ADR 0174's string index keeps its parameter words (`define double @gy_f(double %
 and `def fmt(v): return str(v)` keeps its refusal instead of printing an interned index), and a **condition** is
 served where a **value** is not — `if v > 10:` asks an operand's truth and takes the pair, `return v > 1.5` asks
 a road that has one word and keeps the `True`/`False` it always printed. What still owes an answer is filed
-rather than guessed: a double forwarded through a second function's parameter prints `4` (`Gap R.161`), `//` and
-`%` over a pair truncate (`Gap R.162`), and `def g(): return str(42)` prints the interned index (`Gap R.163`,
+rather than guessed: a pair-call answer bound to a name inside a forwarding frame prints `4` (`Gap R.164`),
+and `def g(): return str(42)` prints the interned index (`Gap R.163`,
 pre-existing, found by this cycle's whole-corpus sweep).
 
 **A number handed on by a body keeps the kind its caller's argument had** (ADR 0277, closing `Gap R.161`).
@@ -329,7 +329,8 @@ only evidence is the argument `outer`'s own call site was written with. The scan
 which is how a call site learns whose parameter it hands over, and marks propagate along those edges in both
 directions — the caller holds a pair, so the callee position must carry it; another call site proved the
 callee's position, so every caller must supply the tag — in bounded rounds, growing only. A mark that rests on
-an edge is closed when the edge is: close the callee (it floors the value, renders it a text, indexes with it)
+an edge is closed when the edge is: close the callee (it takes a power of the value, renders it a text, indexes
+with it)
 and the caller loses its tag word too, because a pair half-read one frame down is the wrong number this file
 exists to remove. The answer direction moved to the same scan, and the tag word is declared where the callee's
 `define` is emitted: `def f(v): return other(v)` now compiles identically written above or below
@@ -338,6 +339,22 @@ The tag definition and the flag that records "this body carries a tag" cannot sh
 can precede the write. `programs/probe_forward_a_pair_through_a_function.gy` is the closing event — eight
 lines, three legs, one answer — and `integration/forwarded_pair_test.go` pins the chain that must **not** take
 the pair by its exit class rather than by a number.
+
+**What floors a number, and what remains, ask the tag the number arrived with** (ADR 0278, closing
+`Gap R.162`). `def floorit(v): return v // 2` / `print(floorit(5.0))` is CPython's `2.0` and the interpreted
+leg's `2.0`; the compiled leg printed `2`, at **exit 0** — and `print(modit(-7.5))` printed `1` for `0.5`,
+`print(modop(7.5, 2))` printed `1` for `1.5`, `print(outer(5.0))` over `def outer(x): return floorit(x)` printed
+`2` for `2.0`. `+ - *` were served over the pair; `//` and `%` were in no served list at all, so the parameter
+never took the tag and the double was truncated before the floor ran. They now go through the same tagged door,
+as operator codes `4` and `5` of `@rt_num_arith`, with ADR 0216's rules kept in one helper the statement road
+shares — `@llvm.floor.f64` for the floor (down, not toward zero) and `frem` corrected to the divisor's sign for
+the remainder, so `floor(x/y)*y + (x%y) == x` holds of the doubles. The tag decides which of the reference's
+**four** divide-by-zero sentences a line gets: one `def f(v): return v % 0` says "integer modulo by zero" for
+`f(5)` and "float modulo" for `f(5.0)`, and `//` has its own pair of them — the first draft of the table shared
+the floor's wording with the remainder, which is the drift a whole-corpus sweep exists to catch. The combination
+still refuses: `(v // 2) * 2 + (v % 2)` and `v * 2 + 1` over a pair are `Gap R.166`, and so is the reference's
+text-`%`, `print("%.2f" % 3.5)` printing `0.0` for CPython's `3.50` (`Gap R.165`) — refusals and one measured
+wrong number, filed instead of answered by payload.
 
 **An int that meets `/=` becomes a float** (ADR 0274, closing `Gap P.1`'s `/=` half and `Gap R.155`).
 `x = 7` / `x /= 2` / `print(x)` is CPython's `3.5` and the interpreted leg's `3.5`; the compiled leg printed
