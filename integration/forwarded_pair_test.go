@@ -38,6 +38,30 @@ func forwardedParity() []struct{ name, src, want string } {
 			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    return twice(x)\n\nprint(outer(2.5))\n", "5.0\n",
 		},
 		{
+			// Gap R.164: the callee's answer is first a *name*, and the body returns that name. Nothing in
+			// the chain changed shape — `return twice(x)` already answered and `print(y)` already answered —
+			// and the middle position alone printed `4` at exit 0 for CPython's `5.0`. The sibling that must
+			// not move is the rebinding below: a name written back with an ordinary int answers as one.
+			"a pair answer bound to a name and returned",
+			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    y = twice(x)\n    return y\n\nprint(outer(2.5))\nprint(outer(3))\n", "5.0\n6\n",
+		},
+		{
+			"a pair answer bound to a name and returned through arithmetic",
+			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    y = twice(x)\n    return y + 0\n\nprint(outer(2.5))\nprint(outer(3))\n", "5.0\n6\n",
+		},
+		{
+			"a pair answer bound in a frame two deep",
+			"def twice(v):\n    return v * 2\n\ndef a(x):\n    y = twice(x)\n    return y\n\ndef b(x):\n    return a(x)\n\nprint(b(2.5))\nprint(b(3))\n", "5.0\n6\n",
+		},
+		{
+			"a floored answer bound to a name and returned",
+			"def floorit(v):\n    return v // 2\n\ndef outer(x):\n    h = floorit(x)\n    return h\n\nprint(outer(5.0))\nprint(outer(5))\n", "2.0\n2\n",
+		},
+		{
+			"a name bound to a pair answer and then to an ordinary int answers as one",
+			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    y = twice(x)\n    y = 3\n    return y\n\nprint(outer(2.5))\n", "3\n",
+		},
+		{
 			"one forwarded define, two arguments of two kinds",
 			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    return twice(x)\n\nprint(outer(2.5))\nprint(outer(3))\n", "5.0\n6\n",
 		},

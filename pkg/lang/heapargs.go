@@ -4910,6 +4910,14 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 	v, t := g.newTmp(), g.newTmp()
 	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", v, outp)
 	fmt.Fprintf(b, "  %s = load i32, i32* %s\n", t, outt)
+	// A double answer leaves the door as a heap box, and the door itself keeps no root for it: an
+	// answer that is only part of a larger expression — the arm of another door — survived long enough
+	// to be recycled by the next allocation, which is how `floorit(v) * 2 + modit(v)` printed `3.0` for
+	// CPython's `7.5` while the same body printed the truth one door at a time. The registration is the
+	// frame's own (ADR 0181), so it costs an entry that the frame close drops; an int payload pushed to
+	// die with the frame is a word wasted, not a bug.
+	fmt.Fprintf(b, "  call void @rt_root_put(i32* %s)\n", outp)
+	g.rooted = true
 	return v, t, true, nil
 }
 
@@ -4955,6 +4963,15 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 		return g.arithWouldRefuse(n.L) || g.arithWouldRefuse(n.R)
 	case *UnOp:
 		return n.Op == "-" && g.arithWouldRefuse(n.X)
+	case *Call:
+		// A call whose answer is a pair is exactly what the ordinary numeric road would read as one word:
+		// the callee stored the kind beside its own return (ADR 0273's answer direction), and the payload
+		// alone is the truncated number Gap R.161 and Gap R.164 were measured on. So an arm that is such a
+		// call may take the door — and an arm that is any other call keeps the road it has always had.
+		if nm, ok := n.Fn.(*Name); ok {
+			return g.pairRetDone[nm.Value]
+		}
+		return false
 	case *Index:
 		return g.indexKindIsRuntimeObject(n)
 	case *Name:
@@ -5246,6 +5263,18 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 		} else if verr != nil {
 			return "", "", false, verr
 		}
+	case *Call:
+		// A *call*'s answer as an arm of a pair expression: the callee stored the kind beside its own
+		// return, so the pair is read with the same door a print or a binding reads it with — the shape
+		// that left `return (v // 2) + other(v)` refusing while `return other(v)` answered (roadmap
+		// Gap R.164's arm half, ADR 0280). The permission is this arm's own, the rule the door already
+		// keeps for a pair-returning call in an argument: an arm the scan did not judge pair-returning is
+		// not read here and keeps the answer, or the refusal, it always had.
+		if p, t, okPair, pairErr := g.pairCallPair(b, e); pairErr != nil {
+			return "", "", false, pairErr
+		} else if okPair {
+			return p, t, true, nil
+		}
 	case *Index:
 		if v, t, okPair := g.runtimeSlotPairDeep(b, e); okPair {
 			return v, t, true, nil
@@ -5294,6 +5323,14 @@ func (g *irGen) slotArithmeticIsProven(e Expr) bool {
 		// The operand is a name the arithmetic door bound, so its kind was decided by the objects that
 		// produced it and there is no container left to prove anything about.
 		return true
+	}
+	if c, isCall := e.(*Call); isCall {
+		// A call whose answer is a pair: the callee stored the kind beside its own return, and that word
+		// says number — no container is involved, and the same walk that proved a parameter's arm proves
+		// this one (roadmap Gap R.164's arm half, ADR 0280). Any other call is the ordinary road's.
+		if nm, isName := c.Fn.(*Name); isName && g.pairRetDone[nm.Value] {
+			return true
+		}
 	}
 	switch n := e.(type) {
 	case *BinOp:

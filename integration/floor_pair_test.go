@@ -138,6 +138,26 @@ func floorParity() []struct{ name, src, want string } {
 			"def f(v):\n    if v > 10:\n        return (v // 2) * 2 + 1\n    return v\n\nprint(f(17.5))\nprint(f(2.5))\n", "17.0\n2.5\n",
 		},
 		{
+			// A *call*'s answer as one arm of a pair expression: roadmap Gap R.164's other half, ADR 0280.
+			// ADR 0273 read a pair answer at `return other(v)` and nowhere wider, so `f(7.5)` printed nothing
+			// at exit 1 on the compiled leg while the interpreter printed 3.5 — both legs are checked.
+			"a call answer as an arm",
+			"def other(w):\n    return w % 3\n\ndef f(v):\n    return (v // 2) + other(v)\n\nprint(f(7.5))\nprint(f(7))\n", "4.5\n4\n",
+		},
+		{
+			// Two pair-returning calls in one expression, both arm orders. The first draft printed `30.0`
+			// for CPython's `18.0` one way and the truth the other: a double answer leaves the arithmetic
+			// door as a heap box that nothing rooted, and the next allocation recycled the slot (ADR 0181).
+			"two call answers as the two arms, either order",
+			"def half(w):\n    return w // 2\n\ndef twice(u):\n    return u * 2\n\nprint(half(7.5) + twice(7.5))\nprint(twice(7.5) + half(7.5))\n", "18.0\n18.0\n",
+		},
+		{
+			// An identity assembled from two floored call answers — the shape that printed `3.0` for
+			// CPython's `7.5` for the same unrooted-box reason, one door deeper.
+			"an identity assembled from two call answers",
+			"def floorit(v):\n    return v // 2\n\ndef modit(v):\n    return v % 2\n\ndef idn(v):\n    return floorit(v) * 2 + modit(v)\n\nprint(idn(7.5))\nprint(idn(7))\nprint(idn(-3.5))\n", "7.5\n7\n-3.5\n",
+		},
+		{
 			// The slot door and the parameter door in one expression, which ADR 0273 kept apart: the arm
 			// question now asks both of the same leaves. This program refused before the arm question
 			// walked its leaves, and prints the reference's answer now.
@@ -256,14 +276,26 @@ func TestAPairAnswerHeldByAOneWordPositionRefusesRatherThanTruncates(t *testing.
 			"list literal elements must be integers",
 		},
 		{
-			"a pair-returning call as an arm of a pair expression",
-			"def other(w):\n    return w % 3\n\ndef f(v):\n    return (v // 2) + other(v)\n\nprint(f(7.5))\n",
-			"the pair road cannot answer",
-		},
-		{
+			// A *call*'s pair answer as an arm of an expression used to be ADR 0273's refusal; ADR 0280 made
+			// it an answer, so the row lives in the table above, and this neighbour is a refusal for the
+			// other reason — the argument below carries one word and no tag (Gap R.146).
 			"a pair answer handed to another function as its argument",
 			"def floorit(v):\n    return v // 2\n\ndef twice(w):\n    return w * 2\n\nprint(twice(floorit(5.0)))\n",
 			"hands back the (payload, tag) pair",
+		},
+		{
+			// A pair answer handed on as an *argument*: the callee's position was marked for the pair and
+			// then closed under it, so the caller is left with a double and one word. ADR 0276's supply gate
+			// closes the position; ADR 0280 makes that closure a refusal instead of the truncation that
+			// printed `8` for CPython's `10.0` (roadmap Gap R.164).
+			"a pair answer bound and handed on as an argument",
+			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    y = twice(x)\n    z = twice(y)\n    return z\n\nprint(outer(2.5))\n",
+			"considered for the (payload, tag) pair and closed",
+		},
+		{
+			"a pair answer read back by an augmented assignment",
+			"def twice(v):\n    return v * 2\n\ndef outer(x):\n    y = twice(x)\n    y += 1\n    return y\n\nprint(outer(2.5))\n",
+			"holds the answer of arithmetic over a slot",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -304,11 +304,13 @@ func TestThePairCallKeepsTheRefusalItAlreadyHad(t *testing.T) {
 			"cannot reach into",
 		},
 		{
-			// The pair road's own honesty: an answer is not a payload. Reading the payload alone is
-			// how a float box's handle gets printed as an int, so the position that keeps one word
-			// for the value refuses instead (roadmap Gap R.146's shape, one operator further out).
-			"the answer used as one number is refused, not half-read",
-			builtTwice + "print(twice(xs[0][0]) + 1)\n",
+			// The pair road's own honesty is unchanged: an answer is not a payload. What ADR 0280 settled is
+			// which positions are one-word: `twice(xs[0][0]) + 1` is an *arm* of an expression the door asks
+			// both halves of, so it answers CPython's `15` and its row lives in the answering table above
+			// (roadmap Gap R.146's shape, closed for this position). The row below is the position that
+			// genuinely keeps one word — an answer handed to a second function — and it still refuses.
+			"the answer handed to another function is refused, not half-read",
+			"def twice(v):\n    return v * 2\n\ndef show(w):\n    return w\n\nxs = []\nxs.append([7, 8])\nprint(show(twice(xs[0][0])))\n",
 			"hands back the (payload, tag) pair",
 		},
 		{

@@ -43,6 +43,14 @@ func TestASlotReadHandedToAFunctionAnswersAtTheCLI(t *testing.T) {
 			pairCallTwice + "print(twice(v=xs[0][1]))\n", "16\n",
 		},
 		{
+			// An answer used as one arm of an arithmetic expression: each half is asked for its pair, so the
+			// sum answers rather than reading the payload alone. The row moved here from the refusal table
+			// below when ADR 0280 closed this position (roadmap Gap R.146), and it is the reference's own
+			// `15` that pins it on all three legs.
+			"the answer used as one number",
+			pairCallTwice + "print(twice(xs[0][0]) + 1)\n", "15\n",
+		},
+		{
 			"two operands are slot reads",
 			"def add(a, b):\n    return a + b\n\nxs = []\nxs.append([7, 8])\nprint(add(xs[0][0], xs[0][1]))\n", "15\n",
 		},
@@ -248,12 +256,11 @@ func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
 			pairCallTwice + "print(twice(twice(xs[0][0])))\n", "28\n", "cannot reach into",
 		},
 		{
-			// An answer read as one number is the payload alone — printed as an int, a float box's
-			// handle would come out as digits (roadmap Gap R.146's sentence, one door further out).
-			"the answer used as one number",
-			pairCallTwice + "print(twice(xs[0][0]) + 1)\n", "15\n", "hands back the (payload, tag) pair",
-		},
-		{
+			// An answer read as one number used to be this same payload-alone risk. It is an answer now:
+			// the expression's two halves are each asked for their pair, so `twice(xs[0][0]) + 1` prints
+			// CPython's `15` and the row lives in the answering table above rather than here (roadmap
+			// Gap R.146's shape, closed for this position by ADR 0280). What remains below is the position
+			// that really does keep one word for a whole value.
 			"the answer as a container element",
 			pairCallTwice + "print([twice(xs[0][0])])\n", "[14]\n", "hands back the (payload, tag) pair",
 		},

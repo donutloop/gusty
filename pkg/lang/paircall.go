@@ -325,10 +325,22 @@ type pairScan struct {
 	fds     map[string]*FuncDef         // the functions in play
 	paired  map[string]bool             // names the pair road binds (fixed point, below)
 	fwd     []pairForward               // parameter-to-parameter forwarding edges, in walk order
+	// readsCallAnswers is the return side's permission to ask "what does this callee hand back?".
+	// ADR 0276's argument gate asks the *same* function a different question — "can the pair road produce
+	// both words for this argument from its spelling alone?" — and a call spelled `make()` cannot, which is
+	// what closes a parameter for a program like `print(twice(make()))` and keeps the refusal that ADR
+	// 0273 pinned (roadmap Gap R.164, ADR 0280). One predicate, two questions; the flag says which is being
+	// asked, so widening the answer for the return side cannot silently widen the gate for arguments.
+	readsCallAnswers bool
 }
 
 // pairCallSpecs is the program-wide decision: which functions take the pair across their call boundary.
+// pairClosedOut carries the closed-position set out of the one scan a Compile runs. It is written, never
+// read, by every caller but codegen's, which reads it immediately after asking for the specs.
+var pairClosedOut map[string]map[int]bool
+
 func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
+	pairClosedOut = nil
 	if prog == nil {
 		return nil
 	}
@@ -534,6 +546,14 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 	}
 
 	specs := map[string]*pairFnSpec{}
+	// closed records the (function, parameter) positions the scan considered for the pair and then
+	// declined, because one call site wrote them something the pass cannot name. It is not the same
+	// statement as "this function never needed the pair": a caller holding a double and handing it to a
+	// closed position has no road left that reads its kind, and the ordinary road truncates the double to
+	// its int word — `y = twice(x)` / `z = twice(y)` / `return z` printed `8` for CPython's `10.0` at exit
+	// 0 this way (roadmap Gap R.164, ADR 0280). codegen asks this set before it hands a float down.
+	closed := map[string]map[int]bool{}
+	pairClosedOut = closed
 	for fnName, needs := range needsOf {
 		fd := fds[fnName]
 		if fd == nil || len(needs) == 0 || ownedByReturnRoad[fnName] {
@@ -556,6 +576,15 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 					continue // the caller hands a name it bound as a pair itself: read it back as one
 				}
 				if !s.exprNumberish(a, map[string]bool{}) {
+					if closed == nil {
+						closed = map[string]map[int]bool{}
+					}
+					if closed[fnName] == nil {
+						closed[fnName] = map[int]bool{}
+					}
+					for j := range needs {
+						closed[fnName][j] = true
+					}
 					supplies = false
 					break
 				}
@@ -601,7 +630,7 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 	// caller's body in turn.
 	var answerable map[string]bool
 	for settle := 0; settle < 4; settle++ {
-		answerable = settlePairAnswer(fds, specs)
+		answerable = settlePairAnswer(fds, specs, closed, s)
 		if !pruneUnsuppliedForwards(specs, directOf, justified) {
 			break
 		}
@@ -627,7 +656,7 @@ func pairCallSpecs(prog *Program) map[string]*pairFnSpec {
 // here grows a pair road the call sites did not ask for. A self-call is out — the inner frame would write
 // the tag word the outer caller has not read yet — so it keeps its ordinary single-word answer, and the
 // pair-needing caller keeps its refusal (ADR 0273).
-func settlePairAnswer(fds map[string]*FuncDef, specs map[string]*pairFnSpec) map[string]bool {
+func settlePairAnswer(fds map[string]*FuncDef, specs map[string]*pairFnSpec, closedForServe map[string]map[int]bool, sc *pairScan) map[string]bool {
 	answerable := map[string]bool{}
 	for round := 0; round < 4; round++ {
 		for fnName, spec := range specs {
@@ -643,6 +672,26 @@ func settlePairAnswer(fds map[string]*FuncDef, specs map[string]*pairFnSpec) map
 				spec.params[i] = true
 			}
 			if len(spec.params) > 0 && !pairUsesServed(fd, spec, answerable) {
+				// A function marked on paper whose body the rounds then declined to serve leaves its
+				// callers with no road at all: the emission falls back to the one-word convention, and a
+				// caller holding a double truncates it to the int half. `y = twice(x)` / `z = twice(y)` /
+				// `return z` printed `8` for CPython's `10.0` at exit 0 by exactly this route — `outer` was
+				// marked, its callee closed under it, and nothing told the call site (roadmap Gap R.164,
+				// ADR 0280). Recording the positions here is what turns that digit into a refusal.
+				//
+				// The recording is limited to the body this was measured on: one that holds a pair at all,
+				// by binding the answer of a pair-carrying user call. The second draft recorded every
+				// not-served body, which is the ordinary fate of most functions, and it took back answers
+				// that work today — `def f(x): x = x + 1.5; return int(x)` and `def cmpf(v): return v > 1.5`
+				// both printed their reference answer before and refused after, which the ladder forbids.
+				if holdsPairFromPairCall(fd, sc) {
+					if closedForServe[fnName] == nil {
+						closedForServe[fnName] = map[int]bool{}
+					}
+					for i := range spec.wants {
+						closedForServe[fnName][i] = true
+					}
+				}
 				spec.params = map[int]bool{}
 			}
 		}
@@ -848,9 +897,15 @@ func (s *pairScan) recordCall(caller, fn string, args []Expr) {
 // *might* take one of those roads keeps its old convention — because the pair road is an extra answer,
 // never a replacement for a road that already worked.
 func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
+	// The return side may ask what a callee hands back (see pairScan.readsCallAnswers); the argument gate
+	// below in this file may not, and the two asks are the only ones that differ.
+	was := s.readsCallAnswers
+	s.readsCallAnswers = true
+	defer func() { s.readsCallAnswers = was }()
 	returned := []Expr{}
 	var walk func(ss []Stmt)
 	handled := false
+	declines := false
 	walk = func(ss []Stmt) {
 		for _, st := range ss {
 			switch n := st.(type) {
@@ -861,6 +916,18 @@ func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
 				}
 				if pairTextReturnExpr(n.Expr) {
 					handled = true
+					return
+				}
+				// A body that returns a name it bound to a *call's* answer is not the ordinary road's
+				// either. The float-return promotion (ADR 0274) and the string index (ADR 0174) are the two
+				// shapes this predicate exists to catch; a third slipped in beside them: `y = twice(x)` /
+				// `z = twice(y)` / `return z`, where the leaf is a plain local, the leaf check below cannot
+				// read the call that produced it, the body was left to the one-word road, and `print(outer(2.5))`
+				// answered `8` for CPython's `10.0` at exit 0 — the silent truncation this file exists to
+				// refuse instead (roadmap Gap R.164, ADR 0280). Declining here hands the body to the pair road,
+				// which answers it or refuses it, both of which are honest.
+				if nm, isName := n.Expr.(*Name); isName && bindsNameToPairCallAnswer(fd, s, nm.Value) {
+					declines = true
 					return
 				}
 				returned = append(returned, n.Expr)
@@ -889,6 +956,9 @@ func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
 		}
 	}
 	walk(fd.Body)
+	if declines {
+		return false
+	}
 	if handled {
 		return true
 	}
@@ -914,6 +984,182 @@ func pairReturnRoadOwns(fd *FuncDef, s *pairScan) bool {
 		}
 	}
 	return false
+}
+
+// holdsPairFromPairCall reports whether a body holds a pair at all: some name it binds to the answer of a
+// user-defined call whose own answer the pair road speaks. That is the evidence that the function was
+// marked *because of* what its callee carries, and so that closing it strands a caller holding a double —
+// as opposed to the hundred bodies the settle rounds decline for ordinary reasons (roadmap Gap R.164, ADR 0280).
+func holdsPairFromPairCall(fd *FuncDef, s *pairScan) bool {
+	if fd == nil {
+		return false
+	}
+	names := map[string]bool{}
+	var collect func(ss []Stmt)
+	collect = func(ss []Stmt) {
+		for _, st := range ss {
+			switch n := st.(type) {
+			case nil:
+			case *AssignStmt:
+				nm, isName := n.Target.(*Name)
+				c, isCall := n.Value.(*Call)
+				if !isName || !isCall {
+					continue
+				}
+				cf, isFn := c.Fn.(*Name)
+				if !isFn {
+					continue
+				}
+				if _, isUser := s.fds[cf.Value]; isUser {
+					names[nm.Value] = true
+				}
+			case *IfStmt:
+				collect(n.Then)
+				collect(n.Else)
+				for _, e := range n.Elifs {
+					collect([]Stmt{e})
+				}
+			case *WhileStmt:
+				collect(n.Body)
+				collect(n.Else)
+			case *ForStmt:
+				collect(n.Body)
+				collect(n.Else)
+			case *TryStmt:
+				collect(n.Body)
+				for _, e := range n.Excepts {
+					collect(e.Body)
+				}
+				collect(n.Finally)
+			case *WithStmt:
+				collect(n.Body)
+			case *MatchStmt:
+				for _, cs := range n.Cases {
+					collect(cs.Body)
+				}
+			}
+		}
+	}
+	collect(fd.Body)
+	if len(names) == 0 {
+		return false
+	}
+	// The returned expression must read one of those names: a body that binds such a name and returns
+	// something else never leaned on the pair, so nothing is stranded by closing it.
+	leans := false
+	var walkRet func(ss []Stmt)
+	walkRet = func(ss []Stmt) {
+		for _, st := range ss {
+			switch n := st.(type) {
+			case nil:
+			case *ReturnStmt:
+				if n.Expr == nil {
+					continue
+				}
+				for _, leaf := range namedNumericLeaves(n.Expr) {
+					if names[leaf] {
+						leans = true
+					}
+				}
+			case *IfStmt:
+				walkRet(n.Then)
+				walkRet(n.Else)
+				for _, e := range n.Elifs {
+					walkRet([]Stmt{e})
+				}
+			case *WhileStmt:
+				walkRet(n.Body)
+				walkRet(n.Else)
+			case *ForStmt:
+				walkRet(n.Body)
+				walkRet(n.Else)
+			case *TryStmt:
+				walkRet(n.Body)
+				for _, e := range n.Excepts {
+					walkRet(e.Body)
+				}
+				walkRet(n.Finally)
+			case *WithStmt:
+				walkRet(n.Body)
+			case *MatchStmt:
+				for _, cs := range n.Cases {
+					walkRet(cs.Body)
+				}
+			}
+		}
+	}
+	walkRet(fd.Body)
+	return leans
+}
+
+// bindsNameToPairCallAnswer reports whether a body assigns a name the answer of a call whose OWN answer
+// the pair road speaks — `y = twice(x)` where `twice` carries the pair, not merely any call.
+//
+// The narrowing is the whole point of the second draft. The first asked only "was this name bound to a
+// call", and it is true of `x = int(s)` / `return x`, of `x = round(v)` / `return x`, and of a comparison
+// the body binds and hands back: three families that answer today, on ADR 0274's promoted-float road and
+// ADR 0174's string road. Taking those bodies away from the road that prints them turns a working answer
+// into a refusal, which the ladder forbids far more loudly than Gap R.164's missing digit. Asking whether
+// the callee itself carries a pair keeps the rule on the shape it was measured on.
+func bindsNameToPairCallAnswer(fd *FuncDef, s *pairScan, name string) bool {
+	found := false
+	var walk func(ss []Stmt)
+	walk = func(ss []Stmt) {
+		for _, st := range ss {
+			if found {
+				return
+			}
+			switch n := st.(type) {
+			case nil:
+			case *AssignStmt:
+				nm, isName := n.Target.(*Name)
+				if !isName || nm.Value != name {
+					continue
+				}
+				c, isCall := n.Value.(*Call)
+				if !isCall {
+					continue
+				}
+				// The callee must be a user-defined function: a builtin's answer (`int(s)`, `round(v)`,
+				// `len(xs)`) is the road that already prints it, and none of those travel as a pair.
+				cf, isFn := c.Fn.(*Name)
+				if !isFn {
+					continue
+				}
+				if _, isUser := s.fds[cf.Value]; !isUser {
+					continue
+				}
+				found = true
+				return
+			case *IfStmt:
+				walk(n.Then)
+				walk(n.Else)
+				for _, e := range n.Elifs {
+					walk([]Stmt{e})
+				}
+			case *WhileStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *ForStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *TryStmt:
+				walk(n.Body)
+				for _, e := range n.Excepts {
+					walk(e.Body)
+				}
+				walk(n.Finally)
+			case *WithStmt:
+				walk(n.Body)
+			case *MatchStmt:
+				for _, cs := range n.Cases {
+					walk(cs.Body)
+				}
+			}
+		}
+	}
+	walk(fd.Body)
+	return found
 }
 
 // pairTextReturnExpr is the string-return road's shape: a text, or the call that builds one.
@@ -1026,6 +1272,81 @@ func (s *pairScan) exprNumberish(e Expr, seen map[string]bool) bool {
 		case "+", "-", "*", "/", "//", "%", "**":
 			return s.exprNumberish(n.L, seen) && s.exprNumberish(n.R, seen)
 		}
+	case *Call:
+		// Only the return side asks this question (pairScan.readsCallAnswers): `y = twice(x)` / `return y`
+		// is numberish when the callee's own returns are, because the pair road speaks the kind the callee
+		// stored beside its return. Answering "no" here is what handed such a body to ADR 0274's float-return
+		// road and ADR 0174's string index, which is how Gap R.164's `y = twice(x); return y` lost its tag one
+		// statement before the return. A builtin keeps the answer this question has always given it: unknown,
+		// which is a refusal to speculate; and a callee that returns a text, a container or nothing is
+		// numberish neither.
+		if !s.readsCallAnswers {
+			return false
+		}
+		nm, isName := n.Fn.(*Name)
+		if !isName {
+			return false
+		}
+		cfd, known := s.fds[nm.Value]
+		calleeKey := "fn:" + nm.Value
+		if !known || cfd == nil || seen[calleeKey] {
+			return false
+		}
+		seen[calleeKey] = true
+		defer delete(seen, calleeKey)
+		// The callee's own parameters are its caller's evidence, not a binding this scan can read:
+		// `def twice(v): return v * 2` answers a number whose kind arrives in the tag, and asking
+		// `s.bound` about `v` would say "nothing recorded", which is a wrong answer rather than no
+		// answer. The `seen` seed is `exprNumberish`'s existing "say nothing worse than unproven"
+		// path, applied to a parameter the first time it is met.
+		for _, prm := range cfd.Params {
+			if seen[prm.Name] {
+				continue
+			}
+			seen[prm.Name] = true
+			defer delete(seen, prm.Name)
+		}
+		returns := 0
+		answers := true
+		var walkReturns func(ss []Stmt)
+		walkReturns = func(ss []Stmt) {
+			for _, st := range ss {
+				if !answers {
+					return
+				}
+				switch n := st.(type) {
+				case nil:
+				case *ReturnStmt:
+					if n.Expr == nil || pairTextReturnExpr(n.Expr) || !s.exprNumberish(n.Expr, seen) {
+						answers = false
+						return
+					}
+					returns++
+				case *IfStmt:
+					walkReturns(n.Then)
+					for _, e := range n.Elifs {
+						walkReturns([]Stmt{e})
+					}
+					walkReturns(n.Else)
+				case *WhileStmt:
+					walkReturns(n.Body)
+					walkReturns(n.Else)
+				case *ForStmt:
+					walkReturns(n.Body)
+					walkReturns(n.Else)
+				case *TryStmt:
+					walkReturns(n.Body)
+					for _, e := range n.Excepts {
+						walkReturns(e.Body)
+					}
+					walkReturns(n.Finally)
+				case *FuncDef:
+					walkReturns(n.Body) // a nested `def`'s returns belong to that frame, not to this one
+				}
+			}
+		}
+		walkReturns(cfd.Body)
+		return answers && returns > 0
 	case *Index:
 		nm, depth := chainDepth(e)
 		if nm == nil || depth == 0 {
@@ -1232,10 +1553,16 @@ func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) boo
 	if len(pairParams) == 0 {
 		return false
 	}
+	// A body may hold the pair without being handed it: `y = twice(x)` binds the answer the callee
+	// doubled, floored or added with both words, and `return y` on the next line hands that same pair
+	// back. Without this the returned expression is a plain local name, the answer direction closes the
+	// body, the call falls back to the ordinary road, and the payload is truncated one statement before
+	// the return — the wrong number Gap R.164 measured (roadmap L11.6, ADR 0280).
+	bound := pairBoundCallNames(fd.Body, callees, pairParams)
 	answers, ok := false, true
 	var walk func(ss []Stmt)
 	check := func(e Expr) {
-		mentions, shaped := pairAnswerShape(e, pairParams, spec.intParams, callees)
+		mentions, shaped := pairAnswerShape(e, pairParams, spec.intParams, callees, bound)
 		if !shaped || !mentions {
 			ok = false
 		} else {
@@ -1290,12 +1617,89 @@ func pairBodyAnswers(fd *FuncDef, spec *pairFnSpec, callees map[string]bool) boo
 	return ok && answers
 }
 
+// pairBoundCallNames collects the names a body binds to the answer of a pair-returning call, keeping only
+// those whose arguments mention a pair-carrying parameter — the binding that carries the caller's kind
+// rather than a literal's. It is the answer direction's missing shape: `def outer(x): y = twice(x);
+// return y` contains no expression that *looks* like a pair to the old question, yet the pair is exactly
+// what `y` holds (roadmap Gap R.164, ADR 0280).
+//
+// A name the body writes two ways is not trusted: any other write to a name that had earned the pair —
+// another value, an augmented assignment — retires it, because one tag word cannot travel with a name the
+// body fills in two different ways (the rule `scanRebinds` enforces for forwarding, applied to a local).
+func pairBoundCallNames(body []Stmt, callees map[string]bool, pairParams map[string]bool) map[string]bool {
+	bound := map[string]bool{}
+	untrusted := map[string]bool{}
+	var walk func(ss []Stmt)
+	walk = func(ss []Stmt) {
+		for _, s := range ss {
+			switch n := s.(type) {
+			case nil:
+			case *AssignStmt:
+				nm, isName := n.Target.(*Name)
+				if !isName {
+					continue
+				}
+				// A binding counts only when it is a call, by name, to a callee the scan judged
+				// pair-returning, and it mentions one of this body's pair-carrying parameters. Every
+				// question is asked of the value it belongs to — the first draft reached for `c.Fn`
+				// before asking whether the value was a call at all, and a later `y = 3` panicked the
+				// compiler, which is exit 2 and the compiler's bug, not the program's (ADR 0166).
+				handsBackAPair := false
+				if c, isCall := n.Value.(*Call); isCall {
+					if cf, isFn := c.Fn.(*Name); isFn && callees[cf.Value] && pairMentions(c, pairParams) {
+						handsBackAPair = true
+					}
+				}
+				if handsBackAPair {
+					if !untrusted[nm.Value] {
+						bound[nm.Value] = true
+					}
+					continue
+				}
+				delete(bound, nm.Value)
+				untrusted[nm.Value] = true
+			case *AugAssignStmt:
+				if nm, isName := n.Target.(*Name); isName {
+					delete(bound, nm.Value)
+					untrusted[nm.Value] = true
+				}
+			case *IfStmt:
+				walk(n.Then)
+				for _, e := range n.Elifs {
+					walk([]Stmt{e})
+				}
+				walk(n.Else)
+			case *WhileStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *ForStmt:
+				walk(n.Body)
+				walk(n.Else)
+			case *TryStmt:
+				walk(n.Body)
+				for _, e := range n.Excepts {
+					walk(e.Body)
+				}
+				walk(n.Finally)
+			case *WithStmt:
+				walk(n.Body)
+			case *MatchStmt:
+				for _, c := range n.Cases {
+					walk(c.Body)
+				}
+			}
+		}
+	}
+	walk(body)
+	return bound
+}
+
 // pairAnswerShape asks one expression two questions: does it *mention* a pair-carrying parameter, and
 // is everything it mentions answerable by the pair door (a pair parameter, a number literal, or `+`,
 // `-`, `*` over those). The other operators are not here because they have their own doors already
 // (ADR 0253's `/`, ADR 0264's `//`/`%**`), and a second answer to the same question is how three
 // truthiness tables happened.
-func pairAnswerShape(e Expr, pairParams, intParams, pairCallees map[string]bool) (mentions, shaped bool) {
+func pairAnswerShape(e Expr, pairParams, intParams, pairCallees, bound map[string]bool) (mentions, shaped bool) {
 	if c, isCall := e.(*Call); isCall {
 		// `return g(x)` where g hands back a pair: the callee stored the tag beside its own return and
 		// this body passes both words on beside its own. It is shaped because the pair is what the door
@@ -1308,6 +1712,11 @@ func pairAnswerShape(e Expr, pairParams, intParams, pairCallees map[string]bool)
 	}
 	switch n := e.(type) {
 	case *Name:
+		if bound[n.Value] {
+			// The name holds the pair a callee handed back; the emission reads it through the binding
+			// door's registers, the same way `print(y)` already does (Gap R.164, ADR 0280).
+			return true, true
+		}
 		return pairParams[n.Value], pairParams[n.Value]
 	case *IntLit, *FloatLit, *BoolLit:
 		return false, true
@@ -1315,13 +1724,13 @@ func pairAnswerShape(e Expr, pairParams, intParams, pairCallees map[string]bool)
 		if n.Op != "-" {
 			return false, false
 		}
-		m, sh := pairAnswerShape(n.X, pairParams, intParams, pairCallees)
+		m, sh := pairAnswerShape(n.X, pairParams, intParams, pairCallees, bound)
 		return m, sh && m
 	case *BinOp:
 		switch n.Op {
 		case "+", "-", "*", "//", "%":
-			lm, ls := pairOperandShape(n.L, pairParams, intParams, pairCallees)
-			rm, rs := pairOperandShape(n.R, pairParams, intParams, pairCallees)
+			lm, ls := pairOperandShape(n.L, pairParams, intParams, pairCallees, bound)
+			rm, rs := pairOperandShape(n.R, pairParams, intParams, pairCallees, bound)
 			return lm || rm, ls && rs
 		}
 	}
@@ -1330,8 +1739,8 @@ func pairAnswerShape(e Expr, pairParams, intParams, pairCallees map[string]bool)
 
 // pairOperandShape is one arm of the answer's arithmetic: an arm that mentions no pair-carrying parameter
 // is shaped only when it is a number the door can tag itself.
-func pairOperandShape(e Expr, pairParams, intParams, pairCallees map[string]bool) (mentions, shaped bool) {
-	m, sh := pairAnswerShape(e, pairParams, intParams, pairCallees)
+func pairOperandShape(e Expr, pairParams, intParams, pairCallees, bound map[string]bool) (mentions, shaped bool) {
+	m, sh := pairAnswerShape(e, pairParams, intParams, pairCallees, bound)
 	if m {
 		return m, sh
 	}
@@ -1401,9 +1810,41 @@ func (g *irGen) pairCallPair(b *strings.Builder, e Expr) (payload, tag string, o
 	if err != nil {
 		return "", "", false, err
 	}
+	// The payload may be a float box the callee's own frame allocated, and that frame is closed the
+	// moment the call returns — without a root the box is recycled by the next allocation and the pair
+	// carries a handle to somebody else's bits. A single answer printed fine (the box was still live),
+	// which is why the shape that exposed it is two pair-returning calls in one expression:
+	// `half(7.5) + twice(7.5)` printed `30.0` for CPython's `18.0`, while the same expression with the
+	// arms swapped printed the truth — an order-dependent wrong number, the loudest kind this file
+	// takes seriously (roadmap Gap R.164, ADR 0280). The registration is the same one a binding of the
+	// answer makes (ADR 0181's rule for every handle-carrying store), taken at the call instead.
+	if h, isHandle := g.pairPayloadNeedsRoot(c); isHandle {
+		_ = h
+		pay := g.newTmp()
+		fmt.Fprintf(b, "  %s = alloca i32\n", pay)
+		fmt.Fprintf(b, "  store i32 %s, i32* %s\n", v, pay)
+		fmt.Fprintf(b, "  call void @rt_root_put(i32* %s)\n", pay)
+		g.rooted = true
+	}
 	t := g.newTmp()
 	fmt.Fprintf(b, "  %s = load i32, i32* @%s\n", t, pairTagSlot(nm.Value))
 	return v, t, true, nil
+}
+
+// pairPayloadNeedsRoot reports that a pair-returning callee's answer may be a heap handle rather than an
+// immediate int, which is the case whenever the callee's own arithmetic can answer a double. The question
+// is asked of the callee's body, not of the call site: the tag that says which kind arrived is a run-time
+// fact, and a root pushed for a payload that turned out to be an int costs one dead frame entry.
+func (g *irGen) pairPayloadNeedsRoot(c *Call) (bool, bool) {
+	nm, isName := c.Fn.(*Name)
+	if !isName {
+		return false, false
+	}
+	spec := g.pairSpecs[nm.Value]
+	if spec == nil || !spec.returnsPair {
+		return false, false
+	}
+	return true, true
 }
 
 // pairCallPrint prints the answer of a pair-returning call through the one printer that takes a value

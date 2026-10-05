@@ -6963,3 +6963,89 @@ number, `abs(v * 2)` answering `4` for `5.0`, measured identical on the pre-cycl
 list-literal element, and a *call's* pair answer as an arm (`Gap R.164`, whose cure — binding the pair at the
 call whoever the body's answer is — this row's arm walk would pick up for free). The whole-corpus sweep's
 corpus diff for this change is empty: nothing that already answered moved.
+
+### Gap R.164 — a pair-call answer bound to a name inside a forwarding frame truncates (CLOSED by ADR 0280, owner L11.6, measured landing ADR 0277)
+
+```
+def twice(v):
+    return v * 2
+
+def outer(x):
+    y = twice(x)      # the answer arrives as a (payload, tag) pair…
+    return y          # …and is read back as one word
+
+print(outer(2.5))     # CPython 5.0 · --interp 5.0 · --aot 4 at exit 0 (before ADR 0280)
+print(outer(3))       # 6 · 6 · 6
+```
+
+ADR 0277 forwards the pair when the body's `return` *is* the call. Put one statement between the two and the
+answer direction closes the body: the returned expression is a plain local, none of the shape questions accept a
+local, the call falls back to the ordinary road instead of binding through `bindPairCallResult`, and the double
+is truncated one statement before the return — a number at exit 0, and the wrong one. The sibling that made the
+hole precise is `n = twice(xs[0][0])` / `print(n + 1)`, which already answered: the binding door existed, it was
+simply not asked when the value came from a call rather than from a slot.
+
+Three questions had to be asked of the *name*, not of the expression it was written in:
+
+* **does this body hold a pair at all?** `pairBoundCallNames` collects the locals bound to a pair-returning
+  callee's answer whose arguments mention a pair-carrying parameter, and retires a name on any other write — so
+  `y = twice(x); y = 3; return y` still answers `3` on the road it always used.
+* **is a call's answer a number?** `exprNumberish` had no `*Call` case and answered "unknown", which is the
+  answer that hands a whole function to ADR 0274's float-return road and ADR 0174's string index. The case is
+  asked only on the return side (`pairScan.readsCallAnswers`): the same predicate answers ADR 0276's *argument*
+  gate, where `make()` must keep answering "no" — that "no" is what closes a parameter and keeps a pinned
+  refusal refused.
+* **can an arm be a call?** `arithOperandPair`, `arithWouldRefuse` and `slotArithmeticIsProven` read a
+  pair-returning call through `pairCallPair`, the door `print` and a binding already used.
+
+The answers, three legs, CPython beside each:
+
+```
+print(outer(2.5))        # 5.0  · 5.0  · 5.0     (y = twice(x); return y — 4 at exit 0 before)
+print(outer(3))          # 6    · 6    · 6
+print(viaPlus(2.5))      # 5.0  · 5.0  · 5.0     (return y + 0)
+print(floored(5.0))      # 2.0  · 2.0  · 2.0     (h = floorit(x); return h — 2 before)
+print(three(2.5))        # 5.0  · 5.0  · 5.0     (b → a(x) → y = twice(x); return y)
+print(rebound(2.5))      # 3    · 3    · 3       (y = twice(x); y = 3 — must not move)
+print(asArm(7.5))        # 4.5  · 4.5  · 4.5     ((v // 2) + other(v) — exit 1 before)
+print(scaled(7.5))       # 7.0  · 7.0  · 7.0     (half(v) * 2 + 1 — exit 1 before)
+print(bothOrders())      # 18.0 · 18.0 · 18.0    (half(7.5) + twice(7.5), and the arms swapped)
+print(idn(7.5))          # 7.5  · 7.5  · 7.5     (floorit(v) * 2 + modit(v) — exit 1 before)
+print(twice(xs[0][0]) + 1)  # 15 · 15 · 15       (a refusal row that moved to the parity tables)
+```
+
+Two shapes are refused rather than answered, and both are pinned as refusals, because the alternative measured
+as a digit:
+
+```
+def outer(x):
+    y = twice(x)
+    z = twice(y)      # CPython 10.0 — the compiled leg answered 8 at exit 0
+    return z          # exit 1 now: the parameter was marked, its callee closed under it, and the ordinary
+                      # road has one word for an argument
+
+def outer2(x):
+    y = twice(x)
+    y += 1            # CPython 6.0 — the compiled leg answered 5 at exit 0
+    return y          # exit 1 now, Gap R.143's position
+```
+
+Two silent wrong numbers surfaced while getting there, and both are the reason this ADR exists in as much
+detail as it does. `half(7.5) + twice(7.5)` printed `30.0` for `18.0` **in one arm order only** — a double
+answer leaves `@rt_num_arith` as a heap box that no root held, the callee's `rt_frame_close` freed it, and the
+next allocation recycled the slot, so the left arm's payload was a handle to somebody else's bits.
+`floorit(v) * 2 + modit(v)` printed `3.0` for `7.5` for the same reason one door deeper. Order-dependent output
+is the case a table that asks one order cannot see; the rows now ask both.
+
+The rejected drafts are as instructive as the cure. Widening `exprNumberish` once, globally, took back three
+families that answer today — `def f(x): x = x + 1.5; return int(x)`, `return round(x)`,
+`def cmpf(v): return v > 1.5` — every one a working answer turned into a refusal, which the ladder forbids far
+more loudly than a missing digit. Declining the ordinary road for *any* `return name` bound to a call did the
+same damage, because `int()` and `round()` are builtins whose answers the promotion road prints correctly.
+Recording every not-served body as a closed position refused `f(1.0)` and `cmpf(2.0)`. Each narrowing was
+measured against the corpus, not argued.
+
+Owed by the neighbours, unchanged by this row: Gap R.146's one-word positions (`[n]`, `abs(n)`, `min(n, 3)`, a
+pair answer as a call's argument) and Gap R.143's augmented read of a pair-bound name — both still refuse, both
+still name the missing half. The whole-corpus sweep's corpus diff for this change is empty: of the 160+ programs
+swept, only the four probe files this row is about moved, two refusal → parity and two wrong-number → refusal.

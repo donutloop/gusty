@@ -3575,7 +3575,11 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// Which functions take the (payload, tag) pair across their call boundary: asked of the whole program
 	// before any IR exists, because a `define` and the `call`s to it must agree on the arity whichever
 	// comes first in the file (roadmap L11.1, Gap R.139, ADR 0273).
+	// One scan answers both questions: `pairClosedOut` is the set the call above just computed, read here rather
+	// than re-derived (pairCallSpecs is pure, but a second walk over the program for a lookup would be
+	// wasted work on every Compile).
 	g.pairSpecs = pairCallSpecs(prog)
+	g.pairClosed = pairClosedOut
 	g.pairRetDone = map[string]bool{}
 	// Seeded from the scan, not from what has been emitted so far: `def f(v): return other(v)` written
 	// above `def other(w): return w` asks whether other answers a pair while other's own body is still
@@ -4127,6 +4131,9 @@ type irGen struct {
 	// beside its return. It is a pure scan of the AST (paircall.go) because the `define` of a function
 	// written after its first call must agree with that call about the arity (roadmap L11.1, ADR 0273).
 	pairSpecs map[string]*pairFnSpec
+	// pairClosed is the scan's second answer: the (function, parameter) positions it considered for the
+	// pair and closed. Handing a float into one is refused rather than truncated (roadmap Gap R.164, ADR 0280).
+	pairClosed map[string]map[int]bool
 	// pairRetDone is the subset of pairSpecs whose answer direction the emitted body actually carries —
 	// a float- or string-returning function keeps its own convention, so no caller may read a tag for it.
 	pairRetDone map[string]bool
@@ -11534,6 +11541,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			} else if handled {
 				tagWords[idx] = t
 				return p, nil
+			}
+			// A position the scan considered for the pair and then closed is not a free pass. It was closed
+			// because some *other* call site hands that parameter something this pass cannot name —
+			// `y = twice(x)` / `z = twice(y)` is exactly that — and a caller holding a double now has no road
+			// left that reads its kind: the ordinary road keeps one word per argument and truncates the double
+			// to its int half, which is how `print(outer(2.5))` answered `8` for CPython's `10.0` at exit 0
+			// (roadmap Gap R.164, ADR 0280). Refusing here is the same judgement pairArgWords already makes for a
+			// float handed to a *marked* position: a kind with nowhere to travel.
+			if g.pairClosed[fnName] != nil && g.pairClosed[fnName][idx] && g.isFloat(a) {
+				return "", fmt.Errorf("codegen: %s is a float handed to parameter %d of %s, a position this pass considered for the (payload, tag) pair and closed because another call site hands it something it cannot name: the ordinary road keeps one word per argument and would truncate the double to its int half, which is a wrong number rather than a refusal (roadmap L11.6, Gap R.164, ADR 0280)", exprSurface(a), idx, fnName)
 			}
 			return argVal(a, idx)
 		}

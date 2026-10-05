@@ -78,6 +78,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// refused or answered with a truncated digit before the arm question learned to walk its leaves
 		// (roadmap Gap R.166, ADR 0279).
 		"probe_combine_a_floored_pair",
+		// The answer of a pair-returning call held by a *name*: bound and returned, bound and put into
+		// arithmetic, bound and then overwritten with an ordinary int, and an identity assembled from two
+		// floored call answers — eleven lines CPython prints and the compiled leg answered `4`, `2` and `5`
+		// for, or refused outright, until the pair was read wherever such a name is read
+		// (roadmap Gap R.164, ADR 0280).
+		"probe_bind_a_pair_call_answer",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
 		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap

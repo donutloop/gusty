@@ -352,11 +352,11 @@ the remainder, so `floor(x/y)*y + (x%y) == x` holds of the doubles. The tag deci
 **four** divide-by-zero sentences a line gets: one `def f(v): return v % 0` says "integer modulo by zero" for
 `f(5)` and "float modulo" for `f(5.0)`, and `//` has its own pair of them — the first draft of the table shared
 the floor's wording with the remainder, which is the drift a whole-corpus sweep exists to catch.
-The combination landed the same day, one ADR later: see ADR 0279 below. What the pair door still refuses is a
-**position** that keeps one word — a pair answer stored in a container's element or handed to a call
-(`Gap R.166`'s neighbours `Gap R.146` and `Gap R.164`) — and the reference's
-text-`%`, `print("%.2f" % 3.5)` printing `0.0` for CPython's `3.50` (`Gap R.165`): refusals and one measured
-wrong number, filed instead of answered by payload.
+The combination landed the same day, one ADR later: see ADR 0279 below, and ADR 0280 below that, which pays
+`Gap R.164`. What the pair door still refuses is a **position** that keeps one word — a pair answer stored in a
+container's element or handed to a call (`Gap R.146`) and a pair answer read back by an augmented assignment
+(`Gap R.143`) — and the reference's text-`%`, `print("%.2f" % 3.5)` printing `0.0` for CPython's `3.50`
+(`Gap R.165`): refusals and one measured wrong number, filed instead of answered by payload.
 
 **The arms of a pair expression are asked the same question as the whole** (ADR 0279, closing `Gap R.166`).
 `def identity(v): return (v // 2) * 2 + (v % 2)` / `print(identity(7.5))` is CPython's `7.5` and the interpreted
@@ -370,6 +370,23 @@ What was rejected is the version that prints something: valuing an arm by its pa
 `identity(7.5)` print `7` — a number, at exit 0, and the wrong one — which is why ADR 0278 pinned these shapes
 as refusals first, and the pinned refusals are what failed when the honest question was finally asked.
 `programs/probe_combine_a_floored_pair.gy` is the closing event: twelve lines, three legs, one answer.
+
+**A name holding a pair answer is read as a pair wherever it is read** (ADR 0280, closing `Gap R.164`).
+`def outer(x): y = twice(x); return y` / `print(outer(2.5))` is CPython's `5.0` and the interpreted leg's; the
+compiled leg printed `4` at **exit 0**, and the same was true of `return y + 0`, of `h = floorit(x); return h`
+printing `2` for `2.0`, and of that body three frames deep. Nothing about the call changed — `return twice(x)`
+already answered (ADR 0277) and `print(y)` already answered (ADR 0273) — the pair simply was not bound when the
+answer went through a *name*. Three questions had to be asked of the name instead of the expression: does this
+body hold a pair at all (`pairBoundCallNames`, which retires a name the moment the program writes anything else
+to it — `y = twice(x); y = 3` still answers `3`), is a call's answer a number (`exprNumberish` had no answer for
+a call and said "unknown", which hands the whole function to the float-return road), and can an arm be a call
+(it can, through the same door `print` uses). Two silent wrong numbers surfaced on the way and both are pinned:
+`half(7.5) + twice(7.5)` printed `30.0` for `18.0` **in one arm order only**, because a double answer leaves the
+arithmetic door as a heap box that no root held and the next allocation recycled its slot; the same cause one
+door deeper printed `3.0` for `floorit(v) * 2 + modit(v)`. What the cycle could not answer it refuses instead of
+truncating — `z = twice(y)` and `y += 1` are exit 1 naming the parameter and the missing kind, where both had
+printed `8` and `5` — and the two rows are pinned as refusals. `programs/probe_bind_a_pair_call_answer.gy` is the
+closing event: eleven lines, three legs, one answer.
 
 **An int that meets `/=` becomes a float** (ADR 0274, closing `Gap P.1`'s `/=` half and `Gap R.155`).
 `x = 7` / `x /= 2` / `print(x)` is CPython's `3.5` and the interpreted leg's `3.5`; the compiled leg printed

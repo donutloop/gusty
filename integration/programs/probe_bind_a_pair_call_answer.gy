@@ -1,0 +1,45 @@
+# The answer of a pair-returning call bound to a name, then handed back or combined:
+# CPython's answers, on both engines (roadmap Gap R.164, ADR 0280).
+def twice(v):
+    return v * 2
+
+def floorit(v):
+    return v // 2
+
+def modit(v):
+    return v % 2
+
+def outer(x):
+    y = twice(x)
+    return y
+
+def floored(x):
+    h = floorit(x)
+    return h
+
+def shifted(x):
+    y = twice(x)
+    return y + 1
+
+def rebound(x):
+    y = twice(x)
+    y = 3
+    return y
+
+def identity(v):
+    return floorit(v) * 2 + modit(v)
+
+def mixed(v):
+    return (v // 2) + modit(v)
+
+print(outer(2.5))
+print(outer(3))
+print(floored(5.0))
+print(floored(5))
+print(shifted(2.5))
+print(shifted(2))
+print(rebound(2.5))
+print(identity(7.5))
+print(identity(7))
+print(mixed(7.5))
+print(mixed(7))

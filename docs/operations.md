@@ -606,7 +606,11 @@ pinned with its exit class in `integration/float_state_test.go` and `integration
 Three of that list are paid surface now: the forwarded parameter (`Gap R.161`, ADR 0277), the flooring
 operators (`Gap R.162`, ADR 0278) and combining a floored answer with more arithmetic (`Gap R.166`, ADR 0279) —
 `print(floorit(5.0))` is `2.0` and `print(modop(7.5, 2))` is `1.5` on both engines, `floorit(5)` still `2`, and
-`def identity(v): return (v // 2) * 2 + (v % 2)` answers `7.5` for `identity(7.5)`; the pair door asks
+`def identity(v): return (v // 2) * 2 + (v % 2)` answers `7.5` for `identity(7.5)`; and so is the state bound to
+a name inside a forwarding frame (`Gap R.164`, ADR 0280) — `def outer(x): y = twice(x); return y` answers
+`5.0`, `return (v // 2) + other(v)` answers `4.5`, and a name the pair road bound is rooted for as long as the
+frame holds it, which is what `--emit-llvm 'def f(v): return half(v) + twice(v)'` shows as an `rt_root_put`
+beside the call. the pair door asks
 `@rt_num_arith` with operator codes `4` and `5`, which
 `--emit-llvm 'def f(v): return v // 2'` shows without a source to read. The divide-by-zero sentence is chosen
 by the tag the argument arrived with, so one `def f(v): return v // 0` says "integer division or modulo by

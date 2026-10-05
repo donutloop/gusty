@@ -2394,10 +2394,15 @@ because a trap that prints a number is not a trap.
 What the door answers is the whole expression, not only its top: the arm question walks an operand's leaves,
 so the identity ADR 0216 pinned holds over a parameter as it does over a literal — `(v // 2) * 2 + (v % 2)`,
 `v * 2 + 1`, `v + 1 + 1`, `2 * (v + 1)`, `(v + v) * (v - 1)` and `(x + 1) * 2` over a name that became a double
-all answer a pair (`Gap R.166`, ADR 0279). A *position* that keeps one word still refuses, in words and at exit
-1: a pair answer stored in a container's element or handed to another function as its argument (`Gap R.146`),
-and a *call*'s pair answer used as an arm of an expression (`Gap R.164`). The text-`%` the guard above holds
-out of the door (`"%.2f" % 3.5`, `Gap R.165`) is owed beside them.
+all answer a pair (`Gap R.166`, ADR 0279). A *call*'s pair answer is an arm too, and a name that holds one is
+read as a pair wherever the program reads it: `def outer(x): y = twice(x); return y` answers CPython's `5.0`,
+`(v // 2) + other(v)` answers `4.5`, and an identity built from two call answers — `floorit(v) * 2 + modit(v)` —
+answers `7.5` for `7.5` (`Gap R.164`, ADR 0280); a name written back with an ordinary value retires the pair, so
+`y = twice(x); y = 3; return y` still answers `3`. What stays refused is a **position** that keeps one word, in
+words and at exit 1: a pair answer stored in a container's element or handed to another function as its argument
+(`Gap R.146`), and a pair answer read back by an augmented assignment (`Gap R.143`) — each of them measured
+first as a digit at exit 0 (`8` for `10.0`, `5` for `6.0`) and turned into a refusal rather than shipped. The
+text-`%` the guard above holds out of the door (`"%.2f" % 3.5`, `Gap R.165`) is owed beside them.
 
 
 What still refuses, in words: a **value** position — a builtin's argument, a container's element, an `and`'s

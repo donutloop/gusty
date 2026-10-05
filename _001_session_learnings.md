@@ -7175,3 +7175,61 @@ already answered moved, and the only programs that changed are the ones this cyc
 matrix moved 147 → 148 rows with the promoted `programs/probe_combine_a_floored_pair.gy` (twelve lines, three
 legs, one answer), 111 → 112 parity and 96 → 97 oracle `match`, no demotion anywhere. Snapshot: 271 ADRs /
 highest `0279`, 157 programs, 100 of 110 queue rows owed.
+
+## Cycle: a name holding a pair answer is read as a pair wherever it is read (ADR 0280, Gap R.164)
+
+**A name is not the expression it was bound to.** Every shape question in the pair road asked about the
+expression in its hand, so `return twice(x)` was answerable, `print(y)` was answerable, and `y = twice(x)` /
+`return y` — the same value, one statement longer — printed `4` for CPython's `5.0` at exit 0. The cure was not
+a new door; it was asking the existing doors a question about the *name*: which locals did this body bind to a
+pair-returning callee's answer, and did any other write retire them (`pairBoundCallNames`). The general lesson:
+a dataflow fact that only exists at a binding site is invisible to every consumer that re-derives it from the
+use site's syntax, and the fix is to carry the binding, not to widen the syntax test.
+
+**One predicate, two questions, and the flag that keeps them apart.** `exprNumberish` is asked both "is this
+expression a number the pair road can speak?" (the return side) and "can the pair road produce both words for
+this argument from its spelling alone?" (ADR 0276's supply gate). Adding a `*Call` case answered the first and
+silently widened the second — three pinned refusals came back as answers, and two of them were *wrong numbers*.
+The narrowing is a scanner flag naming which question is being asked. The lesson: when a helper is asked two
+questions that happen to share a shape, splitting it is cheaper than the bug where one answer serves both; and
+a pinned refusal is what finds this, not the parity table.
+
+**Order-dependent output is the bug a table cannot see.** `half(7.5) + twice(7.5)` printed `30.0`; the same
+expression with the arms swapped printed the correct `18.0`. A double answer leaves `@rt_num_arith` as a heap
+box, the callee's frame closed, no root held it, and the next allocation recycled the slot — so the left arm's
+payload was a live handle to somebody else's bits. Both orders are pinned now, in three files, and the rule for
+this file's future: any pair payload that outlives the instruction that produced it needs a root (ADR 0181's
+rule, taken at the *door* and at the *call*, not only at the binding).
+
+**Wrong numbers are not allowed to survive a cycle, and refusal is the pressure valve.** `z = twice(y)` printed
+`8` for `10.0`; `y += 1` printed `5` for `6.0`. Neither could be answered honestly inside this cycle's boundary,
+so both became exit-1 refusals naming the parameter, the position and the missing word — and the rows were
+*pinned as refusals*, not deleted. Three rejected drafts are worth remembering because each of them turned a
+working answer into a refusal: widening `exprNumberish` globally (lost `return int(x)`, `return round(x)`,
+`return v > 1.5`), declining the ordinary road for any `return name` bound to a call (same three), and recording
+every not-served body as a closed position (lost `f(1.0)` and `cmpf(2.0)`). The ladder is asymmetric — a
+refusal that becomes an answer is progress, an answer that becomes a refusal is a regression — and the whole
+corpus sweep is what makes that asymmetry visible before a commit rather than after one.
+
+**A promotion moves; it does not delete.** `print(twice(xs[0][0]) + 1)` printed nothing at exit 1 in three
+files' refusal tables and prints CPython's `15` now. All three rows *moved* to answering tables, with a comment
+naming the ADR that promoted them, so the next cycle can see the shape was once a hole. Deleting them would
+have removed the only tests that fail if the answer regresses.
+
+**Measure the row you write.** One table row was written expecting `3.5`/`3` by copying a cousin row; the real
+answer was `4.5`/`4` (`7.5 // 2 = 3.0`, `7.5 % 3 = 1.5`). The suite caught it in the first run, which is the
+whole argument for measuring every expected value at the CLI instead of deriving it.
+
+**Debug by instrumenting the decision, not by reading the code.** The truncation looked like a missing mark and
+wasn't: `pairReturnRoadOwns` was already declining correctly, and the pair died one step later at the supply
+gate — `DBG supply gate closed twice arg y` named it in one line, where twenty minutes of reading had produced
+three wrong hypotheses (an unrooted payload, a stale tag global, a declaration-order bug). Two related traps
+earned here: an `if` inside a `walk` closure that `return`s from the closure instead of the predicate (the flag
+needs to be a variable), and reaching for a field that isn't there (`MatchStmt` has `Cases`, not `Arms`) — both
+compile-time noise that a build between measurements caught.
+
+**Sweep, then suite, then commit — in that order.** The corpus diff was empty except for the four probe files
+this cycle is about: two refusal → parity promotions, two wrong-number → refusal. The matrix went 148 → 149
+rows, 112 → 113 parity, 97 → 98 oracle `match`, 0 fail, 0 drift, with
+`programs/probe_bind_a_pair_call_answer.gy` (eleven lines, three legs, one answer) registered in
+`conformanceStandalone()`. Snapshot: 272 ADRs / highest `0280`, 158 programs, 99 of 110 queue rows owed.

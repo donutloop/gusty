@@ -244,8 +244,13 @@ func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 	// left the debt ledger for the parity surface in the same commit.
 	for _, tc := range []struct{ name, src, want string }{
 		{
-			"the answer read as one number",
-			"def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\nprint(twice(xs[0][0]) + 1)\n",
+			// An answer read as one *number* used to be the position with no place for the tag. Since the
+			// tag is read with the answer wherever the pair road is asked for a value, `twice(xs[0][0]) + 1`
+			// is an arm of an expression the door answers for both of its halves (roadmap Gap R.146's shape,
+			// closed for this position by ADR 0280): the row moved here from the refusal table below rather
+			// than being deleted, and CPython's `15` is what pins it.
+			"the answer handed to a second function",
+			"def twice(v):\n    return v * 2\n\ndef show(w):\n    return w\n\nxs = []\nxs.append([7, 8])\nprint(show(twice(xs[0][0])))\n",
 			"hands back the (payload, tag) pair",
 		},
 		{
