@@ -16,7 +16,7 @@ var _ = lang.Compile
 // IR LLVM rejects outright, and reading it back printed the address instead of
 // the list. The AOT path now materialises the folded elements into a runtime
 // heap list, exactly like `ys = [..literal..]` does. Every case is checked on
-// both backends.
+// the compiled path.
 
 func TestAssignedComprehensionParity(t *testing.T) {
 	tests := []struct {
@@ -162,9 +162,7 @@ print(xs[2])
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := runInterp(t, tc.src); got != tc.want {
-				t.Errorf("interpreter = %q, want %q", got, tc.want)
-			}
+			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			got, err := runAOTConformance(t, tc.src)
 			if err != nil {
 				t.Fatalf("AOT: %v", err)

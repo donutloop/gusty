@@ -8266,3 +8266,92 @@ being done.
 
 **Measurement.** HEAD-baseline build (`git worktree` at `6a40431`): 14 assertions fail on the new tables;
 green here. Matrix now 167 rows / 128 pass / 39 skipped / 33 debt / 0 fail / 0 drift.
+
+### Gap R.190 — one backend means one witness (owner: `docs`, ADR 0302)
+
+Before ADR 0302 a tracker row could say *"both engines print `15`"* and mean something checkable by two
+independent implementations. That claim is gone: there is one implementation, and the second opinion in
+every case is either a **record** (what the retired engine said) or **CPython**. Those are not the same kind
+of evidence, and pretending they are is how a suite starts certifying its own assumptions.
+
+The three legs, and what each can now prove:
+
+| Leg | What it is | Strength | Weakness it cannot hide |
+|---|---|---|---|
+| compiled run | parse → check → codegen → `llc`/`cc` → the artifact | the thing users run | — |
+| retired-engine record | `pkg/lang/testdata/interpreter-golden.json`, 5478 sources | cheap, deterministic, offline, diffable | an *answer*, not a definition — the retired engine was wrong sometimes |
+| CPython | asked live where a case's claim is about the reference | the only real definition of the language | not installed everywhere, and cannot run gusty's own surface (imports, extension classes) |
+
+Both ledger kinds are **two-way ratchets**, which is what keeps a record from becoming a pin:
+
+- `pkg/lang` and `integration` each hold an `interpreter-golden-drift.json`. A source where the compiled
+  answer differs from the record *skips with both answers in its message* and registers a divergence; the
+  package's `TestMain` fails the run on a **new** divergence and also on one that has **gone away** without
+  its row being deleted. 340 rows and 21 rows respectively at this writing.
+- `integration/testdata/cpython-debt.json` holds compiled-vs-CPython disagreements, each row carrying the
+  reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** (required — an
+  unowned row fails). Its "no case reached this row" check catches the subtler failure: a case that stopped
+  running the program leaves a row that looks like documentation.
+
+Partial runs are handled explicitly, because that is where a ratchet most easily becomes theatre. A `-run`
+subset never reaches most rows, so "row not exercised" is only asserted when the package ran in full
+(`isPartialRun`, keyed on `test.run`). The alternative — telling a developer their one-test run just paid
+400 bugs — makes the check something people disable.
+
+**What was actually lost.** Two implementations disagreeing is a bug-finder for cases where *both* are wrong
+in the same way only rarely; several tracked defects (`1 + True` vs `True + 1`, Gap R.176; the intern-order
+`bool`/`int` splits) were found because the engines disagreed. One engine cannot disagree with itself. The
+generated leg survives as `integration/proptest_test.go`, but it now checks determinism and compile
+robustness rather than parity, because generated programs have no recorded expectations and the harness
+refuses to invent any (a generated program with no record fails the case rather than being skipped).
+
+**The honest replacement, not built.** A differential oracle: drive `integration/programs/*.gy` and the
+generated corpus against CPython continuously, so the "compiled vs reference" leg gets the breadth the
+retired engine used to provide and the record becomes a cache rather than a witness. Owner would be a
+Phase 12 tooling row; the registry (`integration/conformance_cases.go`) already stores per-leg expectations,
+so the missing piece is the runner and a policy for programs CPython cannot parse.
+
+### L13.1 — the prompt should report what a call evaluated to (owner: L11.1)
+
+ADR 0302 moved the REPL and `--eval` onto the compiled backend, which broke a promise nobody had written
+down because it was structural: the interpreter held the value, so the prompt could print it. A compiled
+snippet's value lives in the artifact's registers, and the only way the CLI can show it is to ask the
+compiler to build the expression **again** in a form that reports it.
+
+For a call, "again" is observable. `show(3)` where `show` prints is compiled, run (prints `3`), and then —
+if the echo lowers the call a second time — prints `3` a second time. So the rule in `pkg/lang/echo.go` is:
+
+- literals, arithmetic, containers, comparisons: echoed, from the pair the module already built;
+- calls to a fixed list of **pure builtins** (`str`, `len`, `abs`, `min`, `round`, `sorted`, …): echoed,
+  because re-lowering them cannot do anything a user sees — and a program that *shadows* one of those names
+  loses the privilege (`echoIsPureBuiltin` consults the function table and the alloc'd-name set);
+- everything else that is call-shaped: **silent**, and counted as this row's debt.
+
+`TestREPLCallResultEchoIsFiledNotFixed` pins the silence on purpose: a quiet prompt is the kind of gap an
+agent reads as `None`, so it is asserted rather than documented. The fix is not to widen the list — it is to
+have the module's entry point hand back the final expression's `(payload, tag)` pair, the same word the
+printer reads (L11.1), so there is exactly one lowering of the user's program and the echo is free.
+
+Related shape, same root: `--json --eval` reports `result`/`type` only when the compiled path can name the
+value. Void snippets report `"result": null, "type": "None"`, which is correct, and a user call whose kind is
+a run-time fact reports neither, which is this row and L11.1's tagged word seen from the CLI.
+
+### Gap R.189 — amendment (ADR 0302's cycle): the compiled leg reached the literal door
+
+The section above this one recorded the compiled backend as unable to name the key at all. That is no longer
+true and the row now says which half is which:
+
+```
+d = {}; d["z"]        CPython KeyError: 'z'   compiled now  KeyError: 'z'      ✅ literal door
+d = {1:2}; d[9]       CPython KeyError: 9     compiled now  KeyError: 9        ✅ literal door
+k = "a"; d[k]         CPython KeyError: 'a'   compiled      KeyError: key not found   🔴 computed door
+xs = []; … d[i]       key arrives as (payload, tag)          generic string           🔴 computed door
+```
+
+`keyNotFoundMessage` renders a literal through `pyReprString` — the same renderer the container printer uses,
+so quoting matches what `print(k)` would show — and returns the empty string when there is nothing to
+render, which makes the caller's fallback explicit instead of letting `""` reach the raise. The computed road
+stays open because naming a key you cannot see means rendering a value whose kind is a run-time fact: the
+same missing word as L11.1, which is why the row keeps `L11.1` as its owner rather than being closed as
+"mostly done". `integration/slot_order_object_test.go` accepts the generic sentence on that road and counts
+it as a filed gap, so the remaining half is visible without pinning a wrong answer as correct.

@@ -386,7 +386,6 @@ func powerComplexRefusal() *TrapError {
 	}
 }
 
-
 // The last-digit gap that powToReference tried to close is FILED, not closed: see Gap R.178. Go's
 // math.Pow and the host libm the compiled leg reaches through llvm.pow.f64 disagree by one ULP on part of
 // the fractional-exponent grid — `math.Pow(2, 1.5)` ends ...3bcc where glibc ends ...3bcd — so

@@ -9,7 +9,7 @@ package integration
 // to it in the body moved the iteration. Both were silent — the compiled binary produced
 // a number, and only a number, forever (roadmap Gap R.3, ADR 0196).
 //
-// These are the shapes, run through both backends and CPython, with a timeout on the
+// These are the shapes, run through the compiled path and CPython, with a timeout on the
 // compiled leg: a hang is not a failing test, it is a test suite that never reports.
 
 import (
@@ -64,26 +64,24 @@ func runAOTWithTimeout(t *testing.T, src string, wait time.Duration) (string, er
 // never returns has no output to diff and no error to read.
 var errProgramHung = errors.New("the compiled program did not terminate")
 
-// TestReboundParameterShapesAgree is the class, shape by shape: what the interpreter
-// prints is what the compiled binary must print, and where the shape is legal Python,
-// what CPython prints is what both must print.
+// TestReboundParameterShapesAgree is the class, shape by shape: what the record says the answer is,
+// what the compiled binary prints, and — where the shape is legal Python — what CPython prints. Three
+// witnesses where there used to be an engine, a compiler and the reference; two of them are still
+// independent of the compiler, which is the arrangement that makes an agreement worth anything.
 func TestReboundParameterShapesAgree(t *testing.T) {
 	for _, tc := range reboundShapeCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			interp, ierr := safeInterpreterRun(t, tc.src)
-			if ierr != nil {
-				t.Fatalf("interpreter: %v (out=%q)", ierr, interp)
-			}
-			if interp != tc.want {
-				t.Errorf("interpreter printed %q, want %q", interp, tc.want)
+			recorded := runInterp(t, tc.src)
+			if recorded != tc.want {
+				t.Errorf("the compiled run printed %q, want %q", recorded, tc.want)
 			}
 			aot, aerr := runAOTWithTimeout(t, tc.src, 90*time.Second)
 			if aerr != nil {
-				t.Fatalf("compiled leg: %v (out=%q)", aerr, aot)
+				t.Fatalf("compiled run: %v (out=%q)", aerr, aot)
 			}
 			if aot != tc.want {
-				t.Errorf("compiled backend printed %q, interpreter printed %q — the two backends must answer the same program with the same answer", aot, interp)
+				t.Errorf("the linked binary printed %q where the compiled run printed %q — one program, one answer", aot, recorded)
 			}
 			if tc.python == "" {
 				return
@@ -94,7 +92,7 @@ func TestReboundParameterShapesAgree(t *testing.T) {
 				return
 			}
 			if py != tc.python {
-				t.Errorf("CPython printed %q, want %q (both backends must be judged against this)", py, tc.python)
+				t.Errorf("CPython printed %q, want %q (the compiled path must be judged against this)", py, tc.python)
 			}
 		})
 	}
@@ -196,24 +194,22 @@ func TestReboundParameterLoopTerminates(t *testing.T) {
 	}
 }
 
-// TestParamRebindProgramPinsTheLedger runs the corpus program that carries this class
-// and pins its output, so the registry's declared verdict cannot drift from it.
+// TestParamRebindProgramPinsTheLedger runs the corpus program that carries this class and pins its
+// output, so the registry's declared verdict cannot drift from it. The record is checked first: this
+// is the program whose parameter rebinding the retired engine answered one way and the compiler
+// another, which is what the ledger row exists to keep honest.
 func TestParamRebindProgramPinsTheLedger(t *testing.T) {
 	src := readProgramSrc("param_rebind")
 	const want = "10\n1\n0\n1\n42\n0\n7\n10\n0\n1\n2\n2\n0\n100\n200\n200\n8\n8\n10\n"
-	interp, ierr := safeInterpreterRun(t, src)
-	if ierr != nil {
-		t.Fatalf("interpreter: %v", ierr)
-	}
-	if interp != want {
-		t.Errorf("interpreter printed:\n%s\nwant:\n%s", interp, want)
+	if got := runInterp(t, src); got != want {
+		t.Errorf("the compiled run printed:\n%s\nwant:\n%s", got, want)
 	}
 	aot, aerr := runAOTWithTimeout(t, src, 120*time.Second)
 	if aerr != nil {
-		t.Fatalf("compiled leg: %v (out=%q)", aerr, aot)
+		t.Fatalf("compiled run: %v (out=%q)", aerr, aot)
 	}
 	if aot != want {
-		t.Errorf("compiled backend printed:\n%s\nwant:\n%s", aot, want)
+		t.Errorf("the linked binary printed:\n%s\nwant:\n%s", aot, want)
 	}
 	py, perr := safeOracleRun(t, src)
 	if perr != nil {

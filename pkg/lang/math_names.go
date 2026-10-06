@@ -152,7 +152,6 @@ func (g *irGen) raiseMathRaise(b *strings.Builder, cond, class, msg string, sp S
 	g.branchRaise(b, cond, class, msg, sp, tag)
 }
 
-
 // floorAnswer / ceilAnswer are the whole-number answers, in the int64 the evaluator carries and as
 // the errors CPython raises for the two values no whole number holds.
 func floorAnswer(f float64) (int64, error) {

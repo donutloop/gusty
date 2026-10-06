@@ -21,9 +21,7 @@ func TestMethodAndModuleFunctionOfOneNameAgree(t *testing.T) {
 	src := readProgramSrc("method_function_name_clash")
 	want := "6\n7\n6\n12\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

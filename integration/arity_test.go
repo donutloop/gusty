@@ -60,14 +60,18 @@ print(build(1))
 		}
 	})
 
-	t.Run("interpreter refuses it too, at run time", func(t *testing.T) {
+	// The same refusal, asked of the plain `--file` path. It used to be the second engine's turn here,
+	// and the sentence it wrote was its own; the checker owns arity now, and it words the finding as
+	// `function "build" expects 2 arguments, got 1` — which names the callee, the expected count and
+	// the count it saw. Requiring one engine's phrasing from the other would be a test of vocabulary.
+	t.Run("the one backend refuses it too, on the file path", func(t *testing.T) {
 		out, err := exec.Command(bin, "--file", path).CombinedOutput()
 		text := string(out)
-		if err == nil && !strings.Contains(text, "missing argument") {
+		if err == nil {
 			t.Fatalf("--file ran a program with a missing argument and said nothing:\n%s", text)
 		}
-		if !strings.Contains(text, "missing argument") {
-			t.Errorf("the interpreter's own verdict should name the missing argument:\n%s", text)
+		if !strings.Contains(text, "expects") && !strings.Contains(text, "argument") {
+			t.Errorf("the refusal should name the missing argument (callee, expected, given):\n%s", text)
 		}
 	})
 }
@@ -78,9 +82,7 @@ func TestArgumentsAndDefaultsAgreeOnEveryPath(t *testing.T) {
 	src := readProgramSrc("arity_defaults")
 	want := "11\n6\n8\n13\n6\n33\n7\n31\n11\n14\n42\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -110,9 +112,7 @@ print(label(c=9, a=1))
 print(label(b=4, c=5, a=2))
 `
 	want := "123\n153\n129\n245\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 90*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

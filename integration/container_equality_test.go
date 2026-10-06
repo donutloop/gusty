@@ -7,13 +7,13 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// container_equality_test.go — `==` on containers is value equality, on both backends, with
+// container_equality_test.go — `==` on containers is value equality, on the compiled path, with
 // CPython as the referee.
 //
 // The value model makes a container an i32 handle, and the comparison compared those i32s: two
 // equal lists were unequal, and — worse in the other direction — a stored string is an index into
 // the interned table, so a container holding the number 0 and a container holding the first
-// interned string were *equal*. Both were answers, on both backends, for as long as the only
+// interned string were *equal*. Both were answers, on the compiled path, for as long as the only
 // referee was the two backends agreeing with each other (roadmap L11.1, ADR 0189).
 
 func TestContainerEqualityMatchesCPython(t *testing.T) {
@@ -50,9 +50,7 @@ func TestContainerEqualityMatchesCPython(t *testing.T) {
 		// `is` keeps asking the identity question.
 		{"xs = [1, 2]\nys = [1, 2]\nif xs is xs:\n    print(\"same\")\nif xs is ys:\n    print(\"aliased\")\nelse:\n    print(\"distinct\")\n", "same\ndistinct\n"},
 	} {
-		if interped := runInterp(t, tc.src); interped != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.JIT(tc.src, 0)
 		if err != nil {
 			t.Fatalf("compile %q: %v", tc.src, err)

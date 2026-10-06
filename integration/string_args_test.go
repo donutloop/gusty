@@ -12,7 +12,7 @@ import (
 // A string is a compile-time global (@.strN) and a parameter slot is an i32, so
 // `greet("ada")` used to lower to `call i32 @greet(i32 @.str1)` — IR LLVM rejected, which the
 // exit-code contract reported as a compiler bug for valid code. Arguments are now interned
-// into the runtime string table (Gap I.2) and the callee receives the index, so both backends
+// into the runtime string table (Gap I.2) and the callee receives the index, so the compiled path
 // produce what CPython produces.
 
 const stringArgProgram = `def greet(name):
@@ -24,9 +24,7 @@ print(greet("ada"))
 
 func TestStringArgumentRunsOnBothBackends(t *testing.T) {
 	want := "hello ada\n1\n"
-	if got := runInterp(t, stringArgProgram); got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, stringArgProgram, want)
 	if got := compileAndRun(t, stringArgProgram); got != want {
 		t.Errorf("AOT = %q, want %q", got, want)
 	}
@@ -105,7 +103,7 @@ func TestUnsupportedStringUseIsADiagnosticNotBadIR(t *testing.T) {
 		t.Fatalf("expected a compile diagnostic; got IR:\n%s", res.IR)
 	}
 	msg := err.Error()
-	for _, want := range []string{"on a string", "interpreter"} {
+	for _, want := range []string{"on a string", "not supported"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message %q should contain %q", msg, want)
 		}

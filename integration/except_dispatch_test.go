@@ -21,9 +21,7 @@ func TestExceptArmDispatchAgreesOnEveryPath(t *testing.T) {
 	src := readProgram(t, "except_arm_order.gy")
 	want := "second arm\nthird arm\nbare arm\nouter arm\nexception base\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -71,7 +69,7 @@ func TestUnhandledExceptionEscapingATryIsTheRuntimeClass(t *testing.T) {
 
 	bin := cliBin(t)
 	file := writeTrapCase(t, t.TempDir(), "escape.gy", src)
-	for _, args := range [][]string{{"--aot", file}, {"--file", file}, {"--interp", file}} {
+	for _, args := range [][]string{{"--aot", file}, {"--file", file}, {"--aot", file}} {
 		cmd := exec.Command(bin, args...)
 		var stdout, stderr strings.Builder
 		cmd.Stdout = &stdout

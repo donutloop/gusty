@@ -9,7 +9,7 @@ import (
 //
 // The unit table in pkg/lang/text_order_test.go holds the hand-derived expectations; this file is the
 // one with the oracle in it, so a row cannot be written that flatters the compiler. Every row is run
-// through python3 first, and both engines must print what it printed — which matters most for the
+// through python3 first, and the compiled path must print what it printed — which matters most for the
 // rows whose arrival order and text order disagree, since those are exactly the ones the old
 // index comparison got wrong.
 
@@ -112,7 +112,7 @@ func TestTextOrderingMatchesCPython(t *testing.T) {
 			if !ok {
 				t.Skipf("no oracle to ask")
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -147,8 +147,18 @@ func TestTextOrderingStillRefusedHonestly(t *testing.T) {
 			if py, ok := cpythonOut(t, path); !ok || py == "" {
 				t.Fatalf("this row is about a program CPython answers")
 			}
-			if out, code := cliRunCode(t, "--interp", path); code != 0 {
-				t.Fatalf("--interp exited %d on a program CPython answers: %s", code, out)
+			// CPython answers, which is what makes this row's refusal a limit of this backend rather
+			// than a limit of the language. The claim, then, is the two-way one: the compiled path
+			// answers, or it refuses with the missing half named — and the row's own `want` column
+			// checks the sentence, so an honest refusal is checked and a mute one fails.
+			if _, code := cliRunCode(t, "--aot", path); code == exitIRVerify {
+				t.Fatalf("--aot: exit 2 — LLVM rejected the module gusty emitted (ADR 0166):\n%s", cliRun(t, "--aot", path))
+			} else if code != 0 {
+				combined := cliRun(t, "--aot", path)
+				if code != 1 || !refusesHonestly(combined) {
+					t.Fatalf("--aot exited %d on a program CPython answers, without naming the missing half: %s", code, combined)
+				}
+				noteCompiledGap(t, tc.src, combined)
 			}
 			out, code := cliRunCode(t, "--aot", path)
 			if code == 2 {

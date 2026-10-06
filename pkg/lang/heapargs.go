@@ -1520,7 +1520,7 @@ func (g *irGen) mixedDictPair(b *strings.Builder, dictName string, key Expr, sp 
 	if !ok {
 		return "", "", fmt.Errorf("codegen: reading %q from a dict whose values are of more than one kind needs a key whose kind the compiler can prove; a bool, float or container key needs the tagged value word (roadmap L11.1, ADR 0232)", dictName)
 	}
-	g.checkKeyReadTagged(b, h, kv, kt, sp)
+	g.checkKeyReadTagged(b, h, kv, kt, nil, sp)
 	val = g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, h, kv, kt)
 	tag = g.newTmp()
@@ -2036,7 +2036,7 @@ func (g *irGen) mixedDictIndexRead(ix *Index) (string, bool) {
 
 // mixedKindErr is the diagnostic every mixed-container site reports.
 func mixedKindErr(what string) error {
-	return fmt.Errorf("codegen: a compiled %s holds either strings or numbers, not both; the interpreter allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)", what)
+	return fmt.Errorf("codegen: a compiled %s holds either strings or numbers, not both; CPython allows mixing — a compiled container records one element kind, so heterogeneous contents need per-element tagging (roadmap Gap J.6)", what)
 }
 
 // recordElemKind notes that a container variable holds strings (isStr) or numbers in a given
@@ -2045,7 +2045,7 @@ func mixedKindErr(what string) error {
 // string table — an honest diagnostic beats that (roadmap Gap J.6, ADR 0166).
 func (g *irGen) recordElemKind(name, slot string, isStr bool, e Expr) error {
 	if e != nil && !g.containerKindProvable(e) {
-		return fmt.Errorf("codegen: cannot put %s in a compiled %s: the compiler cannot prove one kind for it, because the function it calls hands back text on one path and a number on another. print asks that question when it prints and gets it right; a container slot is labelled once, and labelling it either way misprints the other (the interpreter answers this program; per-element asking is the tagged value word, roadmap L11.1, ADR 0232)", g.exprSummary(e), containerSlotLabel(slot))
+		return fmt.Errorf("codegen: cannot put %s in a compiled %s: the compiler cannot prove one kind for it, because the function it calls hands back text on one path and a number on another. print asks that question when it prints and gets it right; a container slot is labelled once, and labelling it either way misprints the other (CPython answers this program; per-element asking is the tagged value word, roadmap L11.1, ADR 0232)", g.exprSummary(e), containerSlotLabel(slot))
 	}
 	strMap, numMap, label := g.kindMapsFor(slot)
 	if isStr {
@@ -2970,7 +2970,7 @@ func (g *irGen) slotReadUnderTag(b *strings.Builder, base, baseTag string, ix *I
 
 	// ---- the dict arm: the entry whose key is the (payload, tag) pair, and the value one word past it.
 	fmt.Fprintf(b, "%s:\n", dictArm)
-	g.checkKeyReadTagged(b, base, key, keyTag, sp)
+	g.checkKeyReadTagged(b, base, key, keyTag, nil, sp)
 	dv := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", dv, base, key, keyTag)
 	dt := g.newTmp()
@@ -3184,7 +3184,7 @@ func (g *irGen) containerSlotRead(b *strings.Builder, base, kind string, key Exp
 			// A key: found by the payload-and-tag rule equality uses, and the value sits one word
 			// past it — rt_get_elem with the key as an index would read the key back and call it a
 			// value, which is what rt_dict_get_tagged and rt_dict_value_tag exist to avoid.
-			g.checkKeyReadTagged(b, base, kv, kt, sp)
+			g.checkKeyReadTagged(b, base, kv, kt, nil, sp)
 			val = g.newTmp()
 			fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, base, kv, kt)
 			tag = g.newTmp()

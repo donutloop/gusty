@@ -37,16 +37,7 @@ func (g *irGen) echoTarget(prog *Program) Stmt {
 		return nil
 	}
 	last := prog.Stmts[len(prog.Stmts)-1]
-	es, ok := last.(*ExprStmt)
-	if !ok {
-		return nil
-	}
-	// A call whose every effect is already printed (a bare `print(x)`) has no answer the
-	// reader did not already see; echoing the void it returns would print "None" after a
-	// program that never mentions None. CPython's REPL has the same behaviour for the same
-	// reason: the interactive echo shows repr(value), and a call that returns nothing prints
-	// nothing.
-	if c, isCall := es.Expr.(*Call); isCall && calleeName(c) == "print" {
+	if _, ok := last.(*ExprStmt); !ok {
 		return nil
 	}
 	return last
@@ -59,6 +50,38 @@ func (g *irGen) echoTarget(prog *Program) Stmt {
 // retired engine echoed a top-level string bare (`cba`, not `'cba'`) while quoting strings inside
 // containers, which is exactly what the pair's str form does. An echo that changed the REPL's
 // spelling to make its own plumbing simpler would be the courtesy ruining the product.
+// echoPureBuiltins are the callables whose call lowers to a value with no footprint on the world: no
+// print, no allocation the program can observe, no trap the program did not already take on the road
+// that built the statement. For those, the echo lowering the expression a second time duplicates
+// nothing a user can see — the REPL prints one line either way — so the prompt keeps answering
+// `str([1, 2])` with `[1, 2]` and `repr("hi")` with `'hi'`.
+//
+// The set is a list of *names*, deliberately: the moment a program shadows one (`def str(x): print(x)`)
+// the callee is a user function and the check below refuses it, because a name in this table only
+// counts when the compiler can see that nothing in the program binds it.
+var echoPureBuiltins = map[string]bool{
+	"str": true, "repr": true, "len": true, "abs": true, "min": true, "max": true,
+	"int": true, "float": true, "bool": true, "ord": true, "chr": true,
+	"hex": true, "bin": true, "oct": true, "sum": true, "round": true, "sorted": true,
+	"list": true, "set": true, "tuple": true, "dict": true, "hash": true,
+}
+
+// echoIsPureBuiltin reports whether a call is to one of those names *as a builtin* — a plain named
+// callee, no receiver, and not a name the program itself defines or binds.
+func (g *irGen) echoIsPureBuiltin(c *Call) bool {
+	name, ok := c.Fn.(*Name)
+	if !ok || !echoPureBuiltins[name.Value] {
+		return false
+	}
+	// A program that defines `str` itself has taken the name back, and then the call is a user call
+	// with whatever footprint its body has. The compiler can see which names it binds, so the question
+	// is answered rather than assumed.
+	// A program that binds the name itself — `str = 3`, or `def str(x): ...` — has taken it back, and
+	// then this is a user call with whatever footprint that binding's value has. Both are visible to
+	// the compiler, so the question is answered rather than assumed.
+	return !g.funcs[name.Value] && !g.allocd[name.Value]
+}
+
 func (g *irGen) echoStmt(b *strings.Builder, e Expr) error {
 	// The void first, and on its own terms. A snippet that ends with a call handing back None has
 	// no answer the reader did not already see: the REPL printed nothing for it, and `--json` said
@@ -67,7 +90,7 @@ func (g *irGen) echoStmt(b *strings.Builder, e Expr) error {
 	// nothing — and, worse, the pair's container probe would lower the call a second time, so
 	// `def f(): print("hi")` / `f()` announced "hi" twice on its way to announcing a None nobody
 	// asked for. The effects run exactly once; the line says the value was the void.
-	if g.isNoneExpr(e) {
+	if g.isNoneExpr(e) || isBarePrintCall(e) {
 		if _, isLit := e.(*NoneLit); !isLit {
 			if _, err := g.value(b, e); err != nil {
 				return err
@@ -78,6 +101,22 @@ func (g *irGen) echoStmt(b *strings.Builder, e Expr) error {
 		empty := g.internStr(b, "")
 		fmt.Fprintf(b, "  call void @rt_echo_value(i32 %s, i8* %s)\n", empty, kind)
 		return nil
+	}
+	// A call-shaped tail gets no echo, and the reason is effects, not kinds. Rendering a value through
+	// the str/repr table needs the value in hand, but this runs *after* the statement, and the call's
+	// value was produced on a road that has already been paved — so rendering means calling again, and
+	// a function whose body prints prints twice. It did exactly that: `show(x)` as the last line of a
+	// snippet repeated its whole output (roadmap Gap R.190, found the day the echo shipped). A prompt
+	// that repeats a program's effects to report what the program produced is worse than a prompt that
+	// stays quiet, so a call is evaluated for its effects and nothing is announced.
+	//
+	// What that costs: the retired engine echoed `f(21)` as `42`. Roadmap L13.1 owes the way back —
+	// hoist the final call into a slot of the callee's own declared return type and report that value
+	// once, from the road the call already ran — and it needs the same tagged value word as print,
+	// str() and the calling side (roadmap L11.1), because the switch below reads i32 boxes only.
+	if c, isCall := e.(*Call); isCall && !g.echoIsPureBuiltin(c) {
+		_, verr := g.value(b, e)
+		return verr
 	}
 	out, handled, err := g.renderPair(b, e, FormStr, e.Span())
 	if err != nil {
@@ -253,3 +292,17 @@ entry:
   ret void
 }
 `
+
+// isBarePrintCall reports that a snippet's last statement is a call to `print` written as an
+// expression statement. It is the void case the reader has already seen: the program's line went to
+// stdout, and the call itself hands back nothing. Classifying it here rather than exempting it in
+// echoTarget is what lets `--json` still answer the question the retired engine answered — the
+// program's value was the void — while the human sees nothing extra on the terminal.
+//
+// `print` is asked by name because that is the one builtin whose value is guaranteed to be the void
+// here; a user function called at the top level still goes through the pair, which names a form for
+// whatever it returns and stays silent when it cannot.
+func isBarePrintCall(e Expr) bool {
+	c, ok := e.(*Call)
+	return ok && calleeName(c) == "print"
+}

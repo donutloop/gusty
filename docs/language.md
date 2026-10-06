@@ -1,5 +1,25 @@
 # gusty language
 
+## One backend
+
+There is one execution path in this language: check → LLVM codegen → `llc`/`cc` → the artifact. The AST
+interpreter that used to run `--eval`, the REPL and `--interp` is retired (ADR 0302), so a passage below
+that says "the interpreter answers X" is one of two things, and the sentence's own tense tells you which:
+
+- **history** ("the interpreter answered `[]` here, which is why the shape is a defect"): keep it — that is
+  the measurement the row was filed from, and the answer itself is preserved, per source, in
+  `pkg/lang/testdata/interpreter-golden.json`;
+- **a live claim** ("supported in both the interpreter and the AOT backend"): read it as *the compiled
+  backend is what runs, and the record is what the language owes there*. Where the two differ, the case is
+  a row in `testdata/interpreter-golden-drift.json`, not a passing test, and where the compiled answer also
+  differs from CPython it is a row in `integration/testdata/cpython-debt.json` naming the roadmap row that
+  owes the fix. `docs/operations.md` §"The suite's own interface" is the contract for both files.
+
+A capability the retired engine had and the compiler does not is a **gap with an owner**, never a
+fallback: `docs/operations.md` §"One backend, and what it does not lower" lists them (nested closures,
+higher-order calls, run-time iteration and `sorted` over a computed container, `dict(<container>)` copies)
+with the row that owes each.
+
 ## Gradual typing
 
 `--verify` statically checks assignment annotations against the inferred type
@@ -57,12 +77,12 @@ own tag (ADR 0247, closing Gap R.79). What still refuses
 by naming itself: a comprehension over a name the compiler kept as a compile-time list, and — since
 ADR 0259 took bool out of the fold — a **set or dict comprehension whose element, key or value is a
 verdict** (`{True for x in [1]}`, `{1: True for x in [1]}`), which folds to a compile-time global with
-nowhere to write the tag; the interpreter answers all three lines (roadmap Gap R.116).
+nowhere to write the tag; the record holds all three answers and the compiled path owes them (roadmap
+Gap R.116).
 
 ## Slicing (`s[a:b]`, `s[::step]`, negative indices)
 
-Sequence slicing is supported on strings and lists in both the interpreter and
-the AOT (native) backend:
+Sequence slicing is supported on strings and lists:
 
 ```
 l = [1, 2, 3, 4, 5, 6]
@@ -84,15 +104,16 @@ print(l[::-1])   # [6, 5, 4, 3, 2, 1]
   subscript, where `i` is a key and `-1` is a key you can store (`d[-1] = v` works, as in
   Python). Out of range past either end is `IndexError`; a negative key in a dict is simply a
   key. See *Containers* below. A string held in a variable still cannot be subscripted in the
-  AOT backend (roadmap L11.5) — the interpreter and CPython answer it, the compiled backend
-  refuses with a message rather than answering zero.
+  AOT backend (roadmap L11.5) — CPython and the retired engine's record answer it, and the compiled
+  backend refuses with a message naming that gap rather than answering zero.
 - A zero step is an error.
 - Slicing a string returns a string; slicing a list returns a list.
 
-String slicing is supported in the interpreter; in the AOT backend string
-variables are currently limited (string *literals* are supported inline), so
-list slicing is the primary native path. See `pkg/lang/jit.go` (`pySliceIndices`)
-and the `rt_slice` runtime helper in `pkg/lang/codegen.go`.
+String slicing works on a value the compiler can see; a string held in a *variable* is still limited
+(string *literals* are supported inline), so list slicing is the primary native path. The index arithmetic
+lives in `pkg/lang/fold.go` (`pySliceIndices`, `normPosIndex` — shared code the retired engine and the
+codegen both used, which is why it survived the engine), and the lowering in the `rt_slice` runtime helper
+in `pkg/lang/codegen.go`.
 
 ## Pattern matching
 
@@ -118,8 +139,9 @@ not definitely assigned, and reading it after the match is an `undefined
 name` error.
 
 **AOT lowering.** Guards, or-patterns, and the `_` wildcard lower to native
-code (`codegen.go`); dict-pattern and class-pattern lowering is
-interpreter-only today.
+code (`codegen.go`); dict-pattern and class-pattern matching does not — the retired engine answered them,
+the compiler refuses by naming the missing lowering, and the shapes are tracked with `L11.1`'s tagged
+value word, which is what a pattern that asks a value what it is needs.
 
 ## Standard library
 
@@ -256,8 +278,10 @@ Observable consequences, and the limits, in one place:
 - Conservative by design: garbage created inside a call that is *nested in an
   expression* is not reclaimed until the enclosing statement completes. Only the
   value model of roadmap Phase 11 (a real value stack) removes that limit.
-- `ev.Collect()` remains the explicit entry point (it lifts the watermark first, since
-  nothing is mid-evaluation when it is called from outside a running program).
+- The collector's own report (`--gc-stats`, and `lang.SetGCReport` for a caller in-process) is the way a
+  program says what the collector did: `collections`, `roots`, `marked`, `freed`, `live`, and the heap's
+  `top`. The retired engine had a `Collect()` entry point on its own heap; the precise-root collector is
+  now the compiled runtime's, entered by the allocation watermark crossing its threshold.
 - The collector reports itself: `Evaluator.GCStats()` in Go, `gustyc --gc-stats` (and
   the `gc` member of an `--eval --json` payload) on the command line. See
   `docs/operations.md` § Collector self-report.
@@ -594,7 +618,9 @@ What still refuses in the compiled backend refuses *with the list spelling's wor
 tagged element retires the category), and a non-integer iterable, element or key (L11.5, L11.6).
 A container **returned** from a function is a separate hole, literals included: `return [1, 2]` emits
 `ret i32 @.lst1` and `la = [1, 2]; return la` prints the handle (roadmap Gap R.67).
-The interpreter evaluates comprehensions at runtime and is the reference for all of this.
+A comprehension over a value the compiler cannot see at compile time — a text, or a container built by
+running the program — is refused naming its missing runtime door (`Gap I.2`), where the retired engine
+evaluated it and the record still holds its answer.
 
 
 ### Multi-argument range iterables (comprehensions)
@@ -1027,14 +1053,15 @@ function, storing it in a list/dict/set, using it as a membership needle, and re
 (`print(echo("yo"))` prints `yo`). Comparison is cheap because interning makes equal text the
 same index.
 
-Not yet supported in the compiled backend, each reported as a compile diagnostic that names
-the interpreter rather than failing in the verifier:
+Not yet supported in the compiled backend — each is refused with a diagnostic that names the missing door,
+says what the reference does there, and cites the roadmap row that owes it (ADR 0166), rather than failing
+in the verifier or answering a table index:
 
 - **concatenation of a runtime string** (`s + "!"`) — building a new string needs a buffer
   allocation the runtime does not have yet;
 - **string methods on a parameter** (`s.upper()`) — same reason;
-- **arithmetic on a string** (`s + 1`) — the interpreter raises `TypeError`; compiled code
-  refuses rather than computing with a table index. **Ordering is not in this list**: an
+- **arithmetic on a string** (`s + 1`) — CPython raises `TypeError`; the compiled backend refuses rather
+  than computing with a table index, and the record holds the answer the retired engine gave. **Ordering is not in this list**: an
   ordering of two texts is answered by `strcmp` on the bytes behind the index (ADR 0248), and
   ordering a text against a number is a separate open trap (Gap R.85), and an ordering whose
   operand is a slot whose kind the object carries asks the tag which pair it was — two numbers,
@@ -1074,14 +1101,16 @@ lst.append(7)
 
 - `xs.pop()` on an empty list raises `IndexError: pop from empty list`; `xs.pop(i)` with a
   bad index raises `IndexError: pop index out of range`. Both are real exceptions, so
-  `except IndexError:` catches them on either backend. In AOT the bounds test is emitted
+  `except IndexError:` catches them. The bounds test is emitted
   around the removal (the new `rt_pop` shifts the tail left and shrinks the length).
 - `set()` / `list()` / `dict()` construct empty containers. `s.add` / `s.discard` /
   `s.remove` / `s.clear` are the set methods; `remove` raises `KeyError` where `discard`
   is silent, matching Python.
-- **AOT limitation:** the one-argument copy forms `list(xs)` / `set(xs)` / `dict(d)` are a
-  compile-time diagnostic naming the interpreter as the working backend (ADR 0166). Build
-  the container with the empty constructor and add elements.
+- **Not lowered:** the one-argument copy forms `list(xs)` / `set(xs)` / `dict(d)` are a compile-time
+  refusal that names the runtime door they need (`rt_list_clone` and its dict/set siblings, which were
+  never emitted — the retired engine did the copy in Go), what the reference answers, and the rows that
+  own the work (`Gap I.2`, `L11.1`, `L12.11`). Until then: build the container with the empty constructor
+  and add elements.
 
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as

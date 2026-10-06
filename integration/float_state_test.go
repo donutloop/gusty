@@ -64,7 +64,7 @@ func TestIntStateBecomesFloatMatchesCPython(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != floatStateWant {
 		t.Fatalf("the expectation is not CPython's: got\n%s\nwant\n%s", py, floatStateWant)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, path)
 		if code == 2 {
 			t.Fatalf("the %s leg rejected the compiler's own module (ADR 0166):\n%s", engine, cliRun(t, engine, path))
@@ -111,7 +111,7 @@ func TestAFloatRebindingDoesNotReachIntoItsNeighbour(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("the %s leg exited %d: %s", engine, code, cliRun(t, engine, path))
@@ -161,7 +161,7 @@ func TestTrueDivisionChoosesTheFloatDomain(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("the %s leg rejected the compiler's own module (ADR 0166):\n%s", engine, cliRun(t, engine, path))

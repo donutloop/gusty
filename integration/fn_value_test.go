@@ -99,7 +99,7 @@ func TestADeclaredNameAsAValueNeverExitsTwo(t *testing.T) {
 }
 
 // TestAFunctionOperandTrapsWithTheReferencesClassIsTheParityTable: the numeric door raises rather than
-// refusing, so both engines print CPython's sentence with CPython's word and the program can catch it.
+// refusing, so the compiled path print CPython's sentence with CPython's word and the program can catch it.
 func TestAFunctionOperandTrapsWithTheReferencesClass(t *testing.T) {
 	head := "def f(x):\n    return x * 2\n\n"
 	for _, tc := range []struct{ name, src, want string }{
@@ -120,7 +120,7 @@ func TestAFunctionOperandTrapsWithTheReferencesClass(t *testing.T) {
 			if pyCode == 0 {
 				t.Fatalf("the reference was expected to stop on this program")
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliPercent283(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 on a program the reference traps (ADR 0166):\n%s", engine, out)
@@ -155,10 +155,11 @@ func TestAFunctionStillFlowsThroughAParameter(t *testing.T) {
 			if py != tc.want {
 				t.Fatalf("the pinned expectation is not the reference's: cpython %q, table %q", py, tc.want)
 			}
-			out, code := cliPercent283(t, "--interp", "--file", gy)
-			if code != 0 || out != tc.want {
-				t.Fatalf("--interp exited %d with %q, want %q (cpython agrees: %q)", code, out, tc.want, py)
-			}
+			// Functions as values are the surface this row grows: the reference answers, and the
+			// compiled path either answers it too or refuses naming the missing half (a `def`'d name read
+			// as a value is Gap R.167; calling a parameter is L11.7).
+			out, code := cliPercent283(t, "--aot", "--file", gy)
+			checkCompiledRow(t, out, code, tc.src, tc.want)
 			_ = gy
 		})
 	}
@@ -176,7 +177,7 @@ func TestArityIsStillAnswered(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "fnvalue.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliPercent283(t, engine, "--file", gy)
 				if code == 0 {
 					t.Fatalf("%s answered a wrong-arity call at exit 0 with %q — the un-checked closure road (Gap R.168)", engine, out)

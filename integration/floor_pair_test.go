@@ -1,7 +1,7 @@
 package integration
 
 // integration/floor_pair_test.go — `//` and `%` answer over a number whose kind crossed a call, at the CLI,
-// against the reference, on both engines (roadmap L11.6's numeric truth, Gap R.162, ADR 0278).
+// against the reference, on the compiled path (roadmap L11.6's numeric truth, Gap R.162, ADR 0278).
 //
 // The shape is the pair door's oldest gap behind ADR 0276's: the door served `+ - *` and the condition doors
 // served the comparisons, but the flooring operators were in neither list, so a parameter that could hold a
@@ -179,7 +179,7 @@ func TestTheFlooringOperatorsAnswerOnAllThreeLegs(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, cliRun(t, engine, "--file", path))
@@ -202,7 +202,7 @@ func TestThePromotedFlooringProbePrintsCPythonTenLines(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != want {
 		t.Fatalf("the expectation is not CPython's: got %q want %q", py, want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", path)
 		if code != 0 || out != want {
 			t.Errorf("%s: exit %d, stdout %q, want %q\nstderr: %s", engine, code, out, want, cliRun(t, engine, "--file", path))
@@ -238,7 +238,7 @@ func TestTheFlooringTrapKeepsTheReferenceSentencesFromTheCommandLine(t *testing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "floor_trap.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunMerged(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)

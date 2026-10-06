@@ -221,4 +221,3 @@ func (g *irGen) raiseNdigitsTypeMismatch(b *strings.Builder, msg string, sp Span
 	g.markI1(always)
 	g.branchRaise(b, always, "TypeError", msg, sp, "roundnd")
 }
-

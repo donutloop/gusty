@@ -35,7 +35,7 @@ func TestCLITextTruthAgreesWithTheReference(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliTextOut(t, backend, src)
 			if code != 0 {
 				t.Fatalf("%s %q: exit %d, the reference exits 0:\n%s", backend, src, code, out)
@@ -72,7 +72,7 @@ func TestCLIStringMethodsAnswerText(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliTextOut(t, backend, src)
 			if code != 0 {
 				t.Fatalf("%s %q: exit %d, the reference exits 0:\n%s", backend, src, code, out)
@@ -84,7 +84,7 @@ func TestCLIStringMethodsAnswerText(t *testing.T) {
 	}
 }
 
-// The sign rule both engines had wrong TOGETHER, which is the class the parity matrix cannot see.
+// The sign rule the compiled path had wrong TOGETHER, which is the class the parity matrix cannot see.
 func TestCLIZfillPadsAfterTheSignOnBothEngines(t *testing.T) {
 	for _, src := range []string{
 		`print("-42".zfill(5))`,
@@ -95,10 +95,10 @@ func TestCLIZfillPadsAfterTheSignOnBothEngines(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		oi, ci := cliTextOut(t, "--interp", src)
+		oi, ci := cliTextOut(t, "--aot", src)
 		oa, ca := cliTextOut(t, "--aot", src)
 		if strings.TrimSpace(oi) != want || strings.TrimSpace(oa) != want {
-			t.Fatalf("%s: interp %q / aot %q, reference %q — both engines padded the whole string and "+
+			t.Fatalf("%s: interp %q / aot %q, reference %q — the compiled path padded the whole string and "+
 				"agreed with each other instead (Gap R.184)", src, strings.TrimSpace(oi), strings.TrimSpace(oa), want)
 		}
 		if ci != 0 || ca != 0 {

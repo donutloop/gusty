@@ -25,7 +25,7 @@ func TestCLISliceOfAContainerNeverSpendsExit2(t *testing.T) {
 		`print([1, 2, 3][::2])`,
 		`print(["a", "b"][1:])`,
 	} {
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliSliceOut(t, backend, src)
 			if code == 2 {
 				t.Fatalf("%s %q spent the contract's exit 2 (compiler bug):\n%s", backend, src, out)
@@ -56,7 +56,7 @@ func TestCLISliceOfAContainerPrintsWhatTheReferencePrints(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliSliceOut(t, backend, src)
 			if strings.TrimSpace(out) != want {
 				t.Fatalf("%s %q: we printed %q, the reference prints %q", backend, src, strings.TrimSpace(out), want)
@@ -76,7 +76,7 @@ func TestCLISliceKeepsTheAnswersItAlreadyHad(t *testing.T) {
 		{`print([1, 2, 3][0])`, `1`},
 		{`print([1, 2, 3][-1])`, `3`},
 	} {
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliSliceOut(t, backend, tc.src)
 			if code != 0 || strings.TrimSpace(out) != tc.want {
 				t.Fatalf("%s %q: exit %d out %q, want %q", backend, tc.src, code, strings.TrimSpace(out), tc.want)

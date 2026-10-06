@@ -8,7 +8,7 @@ import (
 )
 
 // print(*args, sep=" ", end="\n") — Python's separator and terminator semantics,
-// agreed on by both backends (ADR 0165).
+// agreed on by the compiled path (ADR 0165).
 //
 // The old backend behaviour printed one argument per line, which quietly matched
 // between backends (so parity could not see it) but made the most-used builtin in
@@ -53,7 +53,7 @@ func TestPrintSeparationParity(t *testing.T) {
 		},
 		{
 			// The argument is written after the separator, then its evaluation may
-			// print of its own accord; both backends interleave identically.
+			// print of its own accord; the compiled path interleave identically.
 			"an argument that prints keeps its place in the line",
 			"def twice(v):\n    print(\"<<\", v, \">>\")\n    return v + v\n\nprint(\"got\", twice(21))\n",
 			"got << 21 >>\n42\n",
@@ -118,9 +118,7 @@ func TestPrintTerminatorIsNotBakedIntoArgumentFormats(t *testing.T) {
 		{"sa = {1}\nprint(sa, end=\"\")\n", "{1}"},
 	}
 	for _, tc := range cases {
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("interpreter wrote %q, want %q (%q)", got, tc.want, tc.src)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		if got := runAOT(t, tc.src); got != tc.want {
 			t.Errorf("AOT wrote %q, want %q (%q)", got, tc.want, tc.src)
 		}

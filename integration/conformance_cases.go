@@ -50,14 +50,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"single", "sq", "print1", "ir", "fstr", "floatfn",
 		"ctrl_a", "ctrl_b", "ctrl_c",
 		"data_a", "data_b", "data_c",
-		// floor/ceil/sqrt answer whole numbers and a float respectively, on both backends (Gap R.51,
+		// floor/ceil/sqrt answer whole numbers and a float respectively, on the compiled path (Gap R.51,
 		// ADR 0264); the file is gusty's spelling of the reference's math-module names, so the ledger
 		// records it and the CLI test runs the twin.
 		"whole_number_builtins",
 		// The number use of a slot whose kind only the run time can describe: a list of lists, and
 		// arithmetic on what comes out of one (roadmap L11.1's last clause, ADR 0265).
 		"numeric_slot_arith",
-		// `and`/`or` hand back the operand the test chose, on both backends: `2 and 3` is `3`, `"" or "d"`
+		// `and`/`or` hand back the operand the test chose, on the compiled path: `2 and 3` is `3`, `"" or "d"`
 		// is the text `d`, `[1] and [2]` is `[2]`, and `1 or True` stays the number `1` (roadmap Gap R.147,
 		// ADR 0269). The shapes whose answer needs the kind to travel with it are filed beside it.
 		"and_or_answer_like_python",
@@ -99,12 +99,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"probe_return_str",
 		// How many arguments there were is one question, asked on the road every caller shares: eleven calls
 		// the reference answers — defaults, keywords out of order, recursion, a method, a lambda read out of
-		// a name — whole on both engines. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
+		// a name — whole on the compiled path. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
 		// (roadmap Gap R.168, ADR 0284).
 		"probe_asked_how_many_arguments",
 		// A number the body computed out of its own parameter keeps the kind the argument arrived with:
 		// eight lines — add-one, double over a float and an int, an expression with arithmetic arms, and a
-		// float default — whole on both engines. Each printed a truncated integer at exit 0 before ADR 0285
+		// float default — whole on the compiled path. Each printed a truncated integer at exit 0 before ADR 0285
 		// (`1` for `1.1`, `0` for `0.2`, `-1` for `-0.9`, `3` for `5.0` — roadmap Gap R.169).
 		"probe_a_number_bound_from_a_parameter",
 		// A rendering the body bound to a NAME is the same string return as `return str(v)`: `s = str(v)` /
@@ -123,8 +123,8 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// exit-code pin leaves the debt table with the probe).
 		"probe_ternary_text_arms",
 		// A text predicate — startswith, endswith, isdigit, isalpha and their siblings — answers a
-		// VERDICT in both backends, but the print road never asked about a method call, so each line
-		// printed the 0/1 WORD it holds: True as `1`, False as `0`, on both engines (Gap R.172, ADR 0289).
+		// VERDICT in the compiled path, but the print road never asked about a method call, so each line
+		// printed the 0/1 WORD it holds: True as `1`, False as `0`, on the compiled path (Gap R.172, ADR 0289).
 		"probe_a_text_predicate_prints_a_verdict",
 		// `d.get(key)` with the key absent hands back None. The interpreter returned the bare word 0
 		// and printed `0`; the compiled leg refused the program with `get: key not found and no
@@ -135,7 +135,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `print([0] * 3)`, `add i32 @.lst1, @.lst2` for `print([1, 2] + [3])`, `sitofp i32 @.lst1 to
 		// double` for `print([1] / 2)` — because `value()` renders a list literal as the ADDRESS of a
 		// compile-time global. llc refused the compiler's own module, and exit 2 is the contract's code
-		// for OUR bug. Every line here is a pair the reference raises for, so both engines now raise the
+		// for OUR bug. Every line here is a pair the reference raises for, so the compiled path now raise the
 		// reference's own sentence (roadmap Gap R.175, ADR 0292).
 		"probe_a_container_in_arithmetic",
 		// `x ** y` answers an int or a float, and the compiled leg answered EVERY power through
@@ -174,13 +174,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// engines; the interpreter used to die with a Go index-out-of-range and exit 2, and the compiler
 		// refused a program the reference runs (roadmap Gap R.131, ADR 0287 — promoted from a recorded
 		// debt the day the three legs agreed).
-		// `%` is the remainder for numbers on both engines — ints, negatives, doubles, the same body over a
+		// `%` is the remainder for numbers on the compiled path — ints, negatives, doubles, the same body over a
 		// pair-marked parameter, and a float compared to a text — thirteen lines pinned beside the refusal
 		// that keeps the *text*-left spelling from answering a number (roadmap Gap R.165, ADR 0282).
 		"probe_remainder_and_percent",
 		// `abs` answers with its operand's kind: the numbers keep answering (`abs(-3.5)` is `3.5`) and every
 		// operand without a sign raises the reference's own sentence naming its kind — `str`, `NoneType`,
-		// `list`, `dict`, `set`, and an instance's own class — catchably, on both backends (roadmap Gap
+		// `list`, `dict`, `set`, and an instance's own class — catchably, on the compiled path (roadmap Gap
 		// R.140, ADR 0271). The last two lines are the rebinding the door depends on: a name's *latest*
 		// binding decides the kind the raise names (Gap R.145, ADR 0270).
 		"abs_names_its_kind",
@@ -202,7 +202,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// tag — and the variable beside it keeps its own number, which the `store double` into the
 		// four-byte slot could not promise (roadmap L11.6, Gap P.1, Gap R.155, ADR 0274).
 		"probe_int_state_becomes_float",
-		// The unary minus names its operand's kind on both engines, and every shape the reference stops on
+		// The unary minus names its operand's kind on the compiled path, and every shape the reference stops on
 		// is a raise this program catches (roadmap Gap R.137, ADR 0266).
 		"negation_names_the_kind",
 		"features_a", "features_b",
@@ -219,7 +219,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// answered by libc (roadmap Gap R.4, ADR 0198).
 		"host_symbol_names",
 		// Built-in call names are names, not keywords: `def str`, `def float`, `def len`
-		// shadow the built-in on both backends, where the compiled path used to read those
+		// shadow the built-in on the compiled path, where the compiled path used to read those
 		// calls through the built-in's meaning by name (roadmap Gap R.6, ADR 0199).
 		"shadowed_builtins",
 		// A module function and a method of one name are two definitions, not one key: the
@@ -238,7 +238,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// neighbours: a defaulted parameter in the middle of a signature, bound both
 		// positionally and by keyword (Gap R.11, ADR 0206). CPython cannot run it.
 		"param_default_order",
-		// `for x in <integer>` as a repeat count, which both backends implement and
+		// `for x in <integer>` as a repeat count, which the compiled path implement and
 		// CPython refuses: a declared feature, not an undiscovered divergence
 		// (Gap R.14, ADR 0207).
 		"for_int_count",
@@ -251,7 +251,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// are ordinary parity cases, ledger-free because the oracle decides.
 		"negative_index",
 		"negative_literal_index",
-		// Division by zero raises, on both backends (L11.x Gap R.18, ADR 0212): the
+		// Division by zero raises, on the compiled path (L11.x Gap R.18, ADR 0212): the
 		// program below is ledger-free because the oracle, the interpreter and the
 		// compiled binary print the same nine lines.
 		"zero_division",
@@ -288,7 +288,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// of a non-ASCII string.
 		"string_index",
 		// The promoted code-point probe: len, indexing and iteration over non-ASCII text measured
-		// the same way on both backends and in CPython (ADR 0225).
+		// the same way on the compiled path and in CPython (ADR 0225).
 		"unicode_text",
 		// ADR 0226: which question an operator asks. A number against a container is answered by
 		// kind, not by coercing a container global through a float conversion.
@@ -320,7 +320,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// container instead of as its handle / its static global (Gap J.6, Gap K.3, ADR 0188).
 		"empty_containers",
 		"empty_set",
-		// Containers compare by value on both backends, and the row is checked against
+		// Containers compare by value on the compiled path, and the row is checked against
 		// CPython like every other parity case (roadmap L11.1, ADR 0189).
 		"container_equality",
 		"print_args",
@@ -339,7 +339,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 		"string_params",
 		// A float in a container slot (roadmap L11.1, ADR 0233): the element is the handle of a
 		// float box and the comparison reads the doubles behind it, so [1] == [1.0] is True and
-		// [1.5] == [1.6] is False on both backends. Both programs were oracle debt while the
+		// [1.5] == [1.6] is False on the compiled path. Both programs were oracle debt while the
 		// literal emitter wrote a float's bits into a static i32 initializer (Gap R.40, ADR 0221).
 		"probe_float_list_equal",
 		"probe_float_container_equality",
@@ -354,12 +354,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// A container inside a container, read back out again: `xs[2][1]` and `m["k"]` reach through
 		// a slot whose payload is the inner object's handle, and the tag the builder wrote is what
 		// licenses the second read (roadmap L11.1, ADR 0241). It is here rather than in
-		// conformanceProbes because both backends now print CPython's answer on every line.
+		// conformanceProbes because the compiled path now print CPython's answer on every line.
 		"probe_heterogeneous",
 		// A container the program *built* rather than spelled out, read one level down: `xs.append([7,
 		// 8])` leaves no literal behind, so the tag the object carries is the only thing that can say
 		// whether the payload names a list, a dict or a text — and it is what the compiled subscript
-		// branches on. It is here rather than in conformanceProbes because both backends now print
+		// branches on. It is here rather than in conformanceProbes because the compiled path now print
 		// CPython's answer on every line (roadmap L11.1, ADR 0251).
 		"probe_nested_list",
 		// The rendering pair, three engines on one source: every value form written twice, once by
@@ -424,9 +424,9 @@ func conformanceStandalone() []lang.ConformanceCase {
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
 		cases = append(cases, lang.ConformanceCase{
-			ID:     "programs/" + n,
-			Name:   n + ".gy",
-			Source: readProgramSrc(n),
+			ID:       "programs/" + n,
+			Name:     n + ".gy",
+			Source:   readProgramSrc(n),
 			Asserted: true,
 		})
 	}
@@ -451,9 +451,9 @@ func conformanceMerged() []lang.ConformanceCase {
 	cases := make([]lang.ConformanceCase, 0, len(groups))
 	for _, g := range groups {
 		cases = append(cases, lang.ConformanceCase{
-			ID:     g.id,
-			Name:   g.name,
-			Source: mergePrograms(g.files...),
+			ID:       g.id,
+			Name:     g.name,
+			Source:   mergePrograms(g.files...),
 			Asserted: true,
 		})
 	}
@@ -482,7 +482,7 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_an_in_place_mutation_answers_none",
 		// An f-string's format spec and conversion. The interpreter answers every field the way the
 		// reference does; the compiled leg answers the constant ones and refuses a field it cannot
-		// read at compile time. Before this the spec was cut off at parse time and both engines
+		// read at compile time. Before this the spec was cut off at parse time and the compiled path
 		// printed the plain value at exit 0 -- parity could not see it because the engines agreed.
 		// Gap R.186 / L12.8, ADR 0298's sibling ADR 0299.
 		"probe_a_format_spec_formats",
@@ -491,7 +491,7 @@ func conformanceProbes() []lang.ConformanceCase {
 		// compiled leg's refusal is RECORDED rather than pinned as a limit. Gap R.185 / ADR 0298.
 		"probe_a_text_iterates_one_character_at_a_time",
 		// A bool handed to a function and printed there. The parameter's slot holds the 1 the
-		// comparison produced and nothing says it was ever a verdict, so both backends print 1
+		// comparison produced and nothing says it was ever a verdict, so the compiled path print 1
 		// where CPython prints True (roadmap Gap R.111, filed by ADR 0257).
 		"probe_bool_through_a_call",
 		// The same value's *kind*, chosen by `and`/`or`: the print door renders a chosen operand by its tag,
@@ -509,12 +509,12 @@ func conformanceProbes() []lang.ConformanceCase {
 		// call filled with a double, a loop variable off a literal list — where the compiled leg reads
 		// the i32 road of the call and prints the truncated number, or the handle (roadmap Gap R.129).
 		"probe_round_digit_count_kind_unseen",
-		// floor/ceil answer a whole number on both engines now (Gap R.51, ADR 0264). What stays filed is
+		// floor/ceil answer a whole number on the compiled path now (Gap R.51, ADR 0264). What stays filed is
 		// the answer past the compiled int word: the evaluator's int64 answers CPython's number and the
 		// compiled guard raises an OverflowError naming L12.12, rather than wrapping in silence
 		// (roadmap Gap R.133).
 		"probe_whole_number_beyond_the_int_word",
-		// The negation of a text is answered by both engines the way the reference answers it — the shape
+		// The negation of a text is answered by the compiled path the way the reference answers it — the shape
 		// this row filed (Gap R.137) is parity surface now, in programs/negation_names_the_kind.gy
 		// (roadmap L11.1, ADR 0266).
 		// Arithmetic whose whole-number answer will not fit the compiled int word: the evaluator's int64
@@ -529,7 +529,7 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_pair_bound_name_takes_a_value",
 		"probe_pair_from_a_tuple_unpack",
 		// A double written with an exponent — the spelling a scientific value arrives in — does not lex:
-		// both engines stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
+		// the compiled path stop at a parse error where the reference parses `1e18` as 10^18 (roadmap Gap
 		// R.135). Filed while measuring `sqrt`, whose natural test values are 1e18 and 1e-3.
 		"probe_float_literal_with_exponent",
 		// A folded non-finite constant used to be emitted as `inf.0e+00`, which `llc` rejects: exit 2 on a
@@ -592,7 +592,7 @@ func conformanceProbes() []lang.ConformanceCase {
 		"probe_a_function_as_a_value",
 		// How many arguments there were is one question, asked on the road every caller shares: eleven calls
 		// the reference answers — defaults, keywords out of order, recursion, a method, a lambda read out of
-		// a name — whole on both engines. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
+		// a name — whole on the compiled path. `g(1, 2)` had printed `2` and `g()` had printed `0`, both at exit 0
 		// (roadmap Gap R.168, ADR 0284).
 		// How many arguments there were is one question, asked on the road every caller shares: eleven calls
 		"probe_print_atomic", // Gap L.5 — print writes while it evaluates
@@ -611,9 +611,9 @@ func conformanceProbes() []lang.ConformanceCase {
 	cases := make([]lang.ConformanceCase, 0, len(names))
 	for _, n := range names {
 		cases = append(cases, lang.ConformanceCase{
-			ID:     "programs/" + n,
-			Name:   n + ".gy",
-			Source: readProgramSrc(n),
+			ID:       "programs/" + n,
+			Name:     n + ".gy",
+			Source:   readProgramSrc(n),
 			Asserted: false, // a probe is a recorded divergence, not conformance surface
 		})
 	}
@@ -671,11 +671,11 @@ var oracleLedger = map[string]oracleDecl{
 
 	// ---- gusty-only surface: CPython cannot run the program at all --------------
 	"programs/whole_number_builtins": {oracle: lang.OracleNA,
-		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against both engines",
+		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against the compiled path",
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
 	"programs/probe_pair_bound_name_takes_a_value": {oracle: lang.OracleDebt,
-		reason: "CPython prints 14, 3, [14], 3 and the interpreted leg now prints the same four — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because an argument, a list element and a builtin's argument each keep one word for the value and have nowhere to put the tag the binding carried",
+		reason: "CPython prints 14, 3, [14], 3 and the reference now prints the same four — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because an argument, a list element and a builtin's argument each keep one word for the value and have nowhere to put the tag the binding carried",
 		ref:    "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "holds the answer of arithmetic over a slot"}}},
 	// `and`/`or` choose an operand (Gap R.147, ADR 0269). The print door can render the choice because the
@@ -683,28 +683,28 @@ var oracleLedger = map[string]oracleDecl{
 	// — `len`'s argument, a binding, a container element, an arithmetic operand — refuse instead of reading
 	// the payload alone, which is Gap R.146's missing pair one operator further out.
 	"programs/probe_and_or_shapes_the_word_carry": {oracle: lang.OracleDebt,
-		reason: "CPython and the interpreted leg print 3, d, ['b'], 5.0 and [[1, 2]]; the compiled leg spends exit 1 on the first of them, because a chosen operand that is not a number has no word to travel in outside the print door, where the tag can travel beside the payload",
+		reason: "CPython and the reference print 3, d, ['b'], 5.0 and [[1, 2]]; the compiled leg spends exit 1 on the first of them, because a chosen operand that is not a number has no word to travel in outside the print door, where the tag can travel beside the payload",
 		ref:    "roadmap Gap R.147 (owed half, owned by L11.1's tagged value word) and Gap R.146; docs/adr/0269, Consequences",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "requires an inline list/dict/set literal"}}},
-	// A text used as an iterable: CPython and the interpreted leg answer the characters; the compiled
+	// A text used as an iterable: CPython and the reference answer the characters; the compiled
 	// leg spends exit 1 because a comprehension iterable and an iterable builtin argument cannot be a
 	// text there at all. Before this row the interpreter answered [] for the comprehensions and the
 	// whole string for max/min — a WRONG answer at exit 0, which the pin below now forbids.
 	// Gap R.185 / ADR 0298, owner L11.1 and L11.5.
-	// An f-string's format spec: CPython and the interpreted leg render 3.50, 00007, ff, 1,234.00
+	// An f-string's format spec: CPython and the reference render 3.50, 00007, ff, 1,234.00
 	// and the padding; the compiled leg spends exit 1 on the first field it cannot fold, because a
 	// spec is applied by the shared engine at compile time and a name or an expression has no
 	// constant value to apply it to. Before this row the interpreter printed the PLAIN number for
 	// all of them at exit 0 — a wrong answer the two-engine parity could not see.
 	// Gap R.186 / ADR 0299, owner L12.8 (with L11.1 for the compiled half).
-	// An in-place container mutation: CPython and the interpreted leg answer None for `append`,
+	// An in-place container mutation: CPython and the reference answer None for `append`,
 	// `add`, `discard`, `remove`, `sort` and `reverse`, and answer the item for `pop`; the compiled
 	// leg prints None for the ones it lowers and spends exit 1 on a set method over a NAME, because
 	// it folds container methods only over a literal written at the call. Before this row the
 	// interpreter answered the CONTAINER at exit 0 and the compiled leg emitted `printf(..., i32 )`
 	// -- an invalid module, exit 2.
 	// Gap R.187 / ADR 0300, owner L12.11 (the compiled half, owed).
-	// A container's missing methods: CPython and the interpreted leg run all sixteen lines -- the
+	// A container's missing methods: CPython and the reference run all sixteen lines -- the
 	// list grows by extend/insert, empties by clear, finds by index; the dict grows by update,
 	// answers by pop and setdefault, empties by clear. The compiled leg spends exit 1 on the first
 	// one, because it folds a container method only over a literal written at the call. Before this
@@ -712,27 +712,27 @@ var oracleLedger = map[string]oracleDecl{
 	// answer rather than a wrong one, which is why no pin could have caught it.
 	// Gap R.188 / ADR 0301, owner L12.11 (the compiled half, owed).
 	"programs/probe_a_container_has_its_methods": {oracle: lang.OracleDebt,
-		reason: "CPython runs the whole program and the interpreted leg runs it too -- extend, insert, index, remove, clear on the list and update, pop, setdefault, clear on the dict; the compiled leg spends exit 1 on the first of them, because it folds a container method only over a literal written at the call and the slots a variable holds belong to the runtime",
-		ref:    "roadmap Gap R.188 and Gap R.63 (both engines' receiver tables, owner L12.11); docs/adr/0301",
+		reason: "CPython runs the whole program and the reference runs it too -- extend, insert, index, remove, clear on the list and update, pop, setdefault, clear on the dict; the compiled leg spends exit 1 on the first of them, because it folds a container method only over a literal written at the call and the slots a variable holds belong to the runtime",
+		ref:    "roadmap Gap R.188 and Gap R.63 (the compiled path' receiver tables, owner L12.11); docs/adr/0301",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
 	"programs/probe_an_in_place_mutation_answers_none": {oracle: lang.OracleDebt,
-		reason: "CPython prints None for every in-place mutation and the item for `pop`, and the interpreted leg prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
+		reason: "CPython prints None for every in-place mutation and the item for `pop`, and the reference prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
 		ref:    "roadmap Gap R.187 (the void half, closed) and L12.11 / Gap R.63 (the receiver table, owed); docs/adr/0300",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
 	"programs/probe_a_format_spec_formats": {oracle: lang.OracleDebt,
-		reason: "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the interpreted leg prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
+		reason: "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the reference prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
 		ref:    "roadmap Gap R.186 and L12.8 (the compiled half, owed); docs/adr/0299",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "needs a value this backend can read at compile time"}}},
 	"programs/probe_a_text_iterates_one_character_at_a_time": {oracle: lang.OracleDebt,
-		reason: "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the interpreted leg now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
+		reason: "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the reference now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
 		ref:    "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",
-		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "comprehension iterable must be an inline list literal, range(), or a container variable"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "is refused: this backend builds a comprehension over an inline list literal"}}},
 	"programs/probe_pair_from_a_tuple_unpack": {oracle: lang.OracleDebt,
-		reason: "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
+		reason: "CPython prints 8 and the reference prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
 		ref:    "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
 	"programs/probe_whole_number_slot_beyond_the_int_word": {oracle: lang.OracleDebt,
-		reason: "CPython answers 7000000000 and so does the interpreted leg, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
+		reason: "CPython answers 7000000000 and so does the reference, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
 		ref:    "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "exit status 3"}}},
 	"programs/probe_whole_number_beyond_the_int_word": {oracle: lang.OracleNA,
@@ -743,13 +743,13 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython evaluates `pow(2, 3)` as 8; here the name is in the checker's predeclared table but not in the call table, so the compiled leg refuses the call — a program the reference runs, spent on exit 1 (ADR 0211's misclassed class)",
 		ref:    "roadmap Gap R.136 (measured landing ADR 0264); the same shape Gap R.51 had, and the same two ways out",
 		pins: []lang.OraclePin{
-			{Backend: "aot", Missing: true, Err: `unsupported call "pow"`},
+			{Backend: "aot", Missing: true, Err: `is not a function this backend can build a call to`},
 		}},
 	"programs/probe_float_literal_with_exponent": {oracle: lang.OracleDebt,
 		reason: "the reference parses `1e18` as a float literal and prints 1e+18; here the exponent marker is not in the number lexer, so the `e18` is read as a name and both legs stop at the same parse error before either engine runs",
 		ref:    "roadmap Gap R.135 (measured landing ADR 0264); docs/language.md § Lexical structure → Numeric literals",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: `parse error at 1:8: expected ")"`}}},
-	"programs/non_finite_float_constant": {oracle: lang.OracleNA, reason: "the last two lines ask `sqrt`, which the reference keeps in the math module, so the CPython leg stops at a NameError there — the rows above them do match, and integration/math_names_test.go runs this file against `from math import floor, ceil, sqrt` on both engines",
+	"programs/non_finite_float_constant": {oracle: lang.OracleNA, reason: "the last two lines ask `sqrt`, which the reference keeps in the math module, so the CPython leg stops at a NameError there — the rows above them do match, and integration/math_names_test.go runs this file against `from math import floor, ceil, sqrt` on the compiled path",
 		ref:  "roadmap Gap R.134 (closed alongside Gap R.51 by ADR 0264)",
 		pins: []lang.OraclePin{{Backend: "aot", Stdout: "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"}}},
 	"programs/for_int_count": {oracle: lang.OracleNA,
@@ -785,7 +785,7 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "docs/shared-lowering-spec.md § async / await",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "11\n21\n"}}},
 	"programs/async_effects": {oracle: lang.OracleNA,
-		reason: "await at module scope is a SyntaxError in CPython; this is the L7.6 legal-async surface the checker must accept, so what is pinned is that both backends agree and nothing was reported",
+		reason: "await at module scope is a SyntaxError in CPython; this is the L7.6 legal-async surface the checker must accept, so what is pinned is that the compiled path agree and nothing was reported",
 		ref:    "docs/language.md § Async (the await/return discipline)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "24\n18\n10\n42\n15\n6\n20\n3\n2\n4\n"}}},
 	"programs/match_literal": {oracle: lang.OracleNA,
@@ -820,7 +820,7 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
 		ref:    "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n"}}},
-	// A bool stored in a container is no longer a probe: it prints CPython's answer on both backends
+	// A bool stored in a container is no longer a probe: it prints CPython's answer on the compiled path
 	// and lives in conformanceStandalone (roadmap Gap R.112, ADR 0259).
 	"programs/probe_bool_in_a_container":        {oracle: lang.OracleMatch},
 	"programs/probe_bool_chosen_by_an_operator": {oracle: lang.OracleMatch},
@@ -875,7 +875,7 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
 		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-	// Gap R.36 + R.39 closed (ADR 0228): the parity assertion for this program is that both backends
+	// Gap R.36 + R.39 closed (ADR 0228): the parity assertion for this program is that the compiled path
 	// print `1` and then raise the class CPython raises. The oracle leg itself exits 1 (an uncaught
 	// raise), which is why this is not_applicable rather than match -- the CPython leg cannot
 	// complete, and the two legs are pinned instead.
@@ -921,7 +921,7 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap L11.7 + L11.3 (tuples are values)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	"programs/probe_fn_value": {oracle: lang.OracleDebt,
-		reason: "calling a function through a parameter is `unsupported call \"f\"` in AOT: no fnptr operand, no indirect call lowering",
+		reason: "calling a function through a parameter is refused in AOT (`\"f\" is called but is not a function this backend can build a call to`): no fnptr operand, no indirect call lowering",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	// The interpreter leg closed with ADR 0283: a top-level `def` now binds its own name to the same
@@ -938,7 +938,7 @@ var oracleLedger = map[string]oracleDecl{
 	// *parameter* — which is L11.7's limit rather than this row's name lookup, so the row is a debt with
 	// one leg whole and one leg refused (roadmap Gap R.150, Gap R.151, ADR 0283).
 	"programs/probe_a_function_as_a_value": {oracle: lang.OracleDebt,
-		reason: "the interpreter answers CPython's five lines; the compiled leg refuses the body that calls a parameter (`unsupported call \"f\"`), the higher-order limit L11.7 records",
+		reason: "the record holds CPython's five lines from the retired engine; the compiled leg refuses the body that calls a parameter (`\"f\" is called but is not a function this backend can build a call to`), the higher-order limit L11.7 records",
 		ref:    "roadmap L11.7 (functions are values that compile); Gap R.150, Gap R.151, Gap R.153 (ADR 0283)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	"programs/probe_comp_runtime_reduce": {oracle: lang.OracleDebt,

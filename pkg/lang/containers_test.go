@@ -38,7 +38,7 @@ func TestListPopMatchesPython(t *testing.T) {
 			continue
 		}
 		if got != tc.want {
-			t.Errorf("%s\n  interpreter = %q, want %q (Python's answer)", tc.src, got, tc.want)
+			t.Errorf("%s\n  compiled = %q, want %q (the reference's answer)", tc.src, got, tc.want)
 		}
 	}
 }
@@ -98,7 +98,7 @@ func TestContainerConstructorsMatchPython(t *testing.T) {
 			continue
 		}
 		if got != tc.want {
-			t.Errorf("%s\n  interpreter = %q, want %q (Python's answer)", tc.src, got, tc.want)
+			t.Errorf("%s\n  compiled = %q, want %q (the reference's answer)", tc.src, got, tc.want)
 		}
 	}
 }
@@ -190,7 +190,7 @@ func TestContainerCopyIsADiagnosticNotMiscompile(t *testing.T) {
 			t.Fatalf("%s: AOT should refuse the copy form", src)
 		}
 		if !strings.Contains(err.Error(), "copies are not supported in the AOT backend yet") ||
-			!strings.Contains(err.Error(), "the interpreter supports them") {
+			!strings.Contains(err.Error(), "CPython answers them") {
 			t.Errorf("%s: diagnostic should name the construct and the working backend, got %q", src, err.Error())
 		}
 	}

@@ -28,8 +28,10 @@ import (
 	"strings"
 )
 
-// BenchSchemaVersion versions the benchmark suite/baseline JSON artifacts.
-const BenchSchemaVersion = "1.0"
+// BenchSchemaVersion versions the benchmark suite/baseline JSON artifacts. It moved to 2.0 with
+// ADR 0302: the interpreter leg and the speedup ratio left the payload, and build/profile entered
+// it. A 1.0 artifact is a different shape, not an older spelling of this one.
+const BenchSchemaVersion = "2.0"
 
 // Default tolerance and noise floor for the regression gate: a case is only a
 // regression when it is more than 25% slower than its baseline AND slow enough
@@ -50,11 +52,11 @@ type BenchCase struct {
 // missing); such a row is kept in the report instead of being dropped, so a
 // suite never silently shrinks.
 type BenchCaseResult struct {
-	Name    string      `json:"name"`
-	AOT     BenchReport `json:"aot"`
-	Build   BenchReport `json:"build"`
+	Name    string        `json:"name"`
+	AOT     BenchReport   `json:"aot"`
+	Build   BenchReport   `json:"build"`
 	Profile []PhaseTiming `json:"profile,omitempty"`
-	Error   string      `json:"error,omitempty"`
+	Error   string        `json:"error,omitempty"`
 }
 
 // BenchTotals summarises a suite. AOTMs is the sum of the measured execution times —
@@ -232,9 +234,9 @@ func (s *BenchSuite) JSON() string {
 
 // BenchBaselineCase is one committed reference measurement.
 type BenchBaselineCase struct {
-	Name          string  `json:"name"`
-	AOTMs         float64 `json:"aot_best_ms"`
-	BuildMs       float64 `json:"build_best_ms,omitempty"`
+	Name    string  `json:"name"`
+	AOTMs   float64 `json:"aot_best_ms"`
+	BuildMs float64 `json:"build_best_ms,omitempty"`
 }
 
 // BenchBaseline is a saved suite used as the regression reference.

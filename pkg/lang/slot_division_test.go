@@ -231,13 +231,12 @@ func TestTrueDivisionOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 			}
 			// The compiled leg's KeyError is a module constant, not the key's repr, until the tagged
 			// word lets it render the key at run time (Gap R.189 PARTIAL, ADR 0301).
+			// A KeyError carries the key's repr, in the compiled program as in the reference — the
+			// raise site renders a literal key into the message the way the reference words it
+			// (roadmap Gap R.189, paid by the compiled leg in ADR 0302's cycle). A key the compiler
+			// cannot see as a literal keeps the generic sentence, and L11.1's tagged word is what would
+			// name those too; a row here asserting the old prose would be asserting a regression.
 			compiledWant := tc.message
-			if tc.class == "KeyError" && strings.HasPrefix(tc.message, "'") {
-				// Only a KeyError whose message is a QUOTED key is the asymmetry: the compiled leg
-				// cannot render a key at run time. A KeyError with its own sentence ("not in set",
-				// "popitem(): dictionary is empty") is a constant both legs already agree on.
-				compiledWant = "key not found"
-			}
 			if !strings.Contains(out, compiledWant) {
 				t.Errorf("compiled message missing %q:\n%s", compiledWant, out)
 			}
@@ -331,7 +330,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesWhatItCannotName(t *testing.T) 
 		{
 			"a comprehension whose iterable is a slot one level below",
 			"xs = []\nxs.append([4])\nprint([w / 2 for w in xs[0]])\n",
-			"comprehension iterable must be",
+			"is refused: this backend builds a comprehension over",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

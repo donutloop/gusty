@@ -14,7 +14,7 @@ import (
 //
 // Three things are checked here that the unit table in pkg/lang cannot:
 //
-//   - the expectations come from python3, for both backends, so a row cannot be written that flatters
+//   - the expectations come from python3, for the compiled path, so a row cannot be written that flatters
 //     the compiler;
 //   - the traps really trap: the compiled program has to raise CPython's own sentence rather than be
 //     refused by the compiler, which is how a build could otherwise pass a table like this one;
@@ -79,7 +79,7 @@ func TestSlotOrderingMatchesCPython(t *testing.T) {
 			if !ok {
 				t.Skip("no python3 oracle")
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Errorf("%s exited 2 (a module llc rejected — the compiler's own bug, ADR 0166):\n%s", engine, out)
@@ -96,7 +96,7 @@ func TestSlotOrderingMatchesCPython(t *testing.T) {
 }
 
 // The pairs CPython refuses. A compiled program that prints a verdict for one of these is the worst
-// answer this feature can give — it looks like a result — so both engines have to raise the same
+// answer this feature can give — it looks like a result — so the compiled path have to raise the same
 // sentence, naming the left operand's type first.
 func TestSlotOrderingTrapsAreRaisedNotRefused(t *testing.T) {
 	for _, tc := range []struct {
@@ -154,7 +154,7 @@ func TestSlotOrderingTrapsAreRaisedNotRefused(t *testing.T) {
 			if code == 0 {
 				t.Fatalf("the oracle exited 0 on a program meant to trap:\n%s", want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				combined := cliRun(t, engine, path)
 				if code == 2 {
 					t.Errorf("%s exited 2 (compiler bug, ADR 0166) on a trapping program:\n%s", engine, combined)
@@ -191,7 +191,7 @@ func TestSlotOrderingRefusalsLeaveTheCompilerOutOfIt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "slot_ordering_refuse.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Errorf("%s exited 2 (the compiler's own bug, ADR 0166) instead of refusing:\n%s", engine, out)
@@ -215,14 +215,14 @@ func refusalOf(out string) (string, bool) {
 }
 
 // The bounds check survives the tagged read: a slot that is not there traps with IndexError before any
-// arm runs, in both engines. The wording of that sentence is a separate measured debt (Gap R.90).
+// arm runs, in the compiled path. The wording of that sentence is a separate measured debt (Gap R.90).
 func TestSlotOrderingKeepsTheBoundsCheck(t *testing.T) {
 	for _, src := range []string{
 		"xs = [1, \"a\"]\nprint(1 if xs[7] > \"a\" else 0)\n",
 		"xs = [1, \"a\"]\nprint(1 if xs[7] < 5 else 0)\n",
 	} {
 		path := writeSrc(t, t.TempDir(), "slot_ordering_bounds.gy", src)
-		for _, engine := range []string{"--interp", "--aot"} {
+		for _, engine := range cliEngines {
 			out, code := cliRunCode(t, engine, path)
 			if code == 0 {
 				t.Errorf("%s printed a verdict for an out-of-range slot read: %q", engine, out)

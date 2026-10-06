@@ -33,7 +33,7 @@ func TestCLISetLiteralCountsDistinctMembers(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliPairOut(t, backend, src)
 			if code != 0 {
 				t.Fatalf("%s %q: exit %d, the reference exits 0:\n%s", backend, src, code, out)
@@ -68,7 +68,7 @@ func TestCLIDictGetPrintsTheKindItsSlotHas(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		for _, backend := range []string{"--interp", "--aot"} {
+		for _, backend := range cliEngines {
 			out, code := cliPairOut(t, backend, src)
 			if code != 0 {
 				t.Fatalf("%s %q: exit %d, the reference exits 0:\n%s", backend, src, code, out)

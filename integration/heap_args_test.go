@@ -268,9 +268,7 @@ print(len(xs))
 print(total([10, 20]))
 `
 	want := "6\n4\n30\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter: got %q want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	if got := runAOT(t, src); got != want {
 		t.Errorf("AOT: got %q want %q", got, want)
 	}

@@ -20,7 +20,7 @@ func mustParseForCheck(t *testing.T, src string) *lang.Program {
 
 // TestForwardReferencedProgramCompilesAndRuns is the regression for Gap R.6: a program
 // whose functions call each other, or call helpers declared below them, is refused by no
-// part of the toolchain and runs the same way on both backends.
+// part of the toolchain and runs the same way on the compiled path.
 //
 // Before the fix the interpreter ran it and the checker refused it: `undefined name
 // "is_odd"`, which — because the compiled path refuses to emit IR for a program the front

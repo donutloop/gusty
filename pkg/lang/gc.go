@@ -207,23 +207,6 @@ func gcEnvStress() bool {
 	return err == nil && on
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // gcReport is the process switch that makes the *compiled* backend's runtime print its
 // collector report at the end of main — the AOT counterpart of the interpreter's
 // --gc-stats. Codegen has no option object, so this follows the SetStdlibDir pattern:

@@ -56,9 +56,7 @@ func TestStringReturningFunctionRunsEverywhere(t *testing.T) {
 print(txt())
 `
 	want := "hi\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 90*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -86,9 +84,7 @@ func TestRuntimeStringIterableAnswersRatherThanFallingThrough(t *testing.T) {
 	if perr != nil {
 		t.Fatalf("CPython disagreed with this table: %v", perr)
 	}
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	compiled, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled leg failed: %v", err)

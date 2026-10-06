@@ -5,6 +5,13 @@ import "encoding/json"
 // Version is the compiler version string (semver).
 const Version = "0.10.0"
 
+// BackendName is the name the one execution backend gives itself in every machine-readable surface —
+// the `backend` member of a `--json` payload, a conformance row, a collector report. It used to be one
+// of two values; ADR 0302 retired the other, and the name stayed because a payload that always says who
+// ran the program is worth keeping even when there is only one answer, and a script should not have to
+// infer it from which flag was passed.
+const BackendName = "aot"
+
 // CompileResult is the outcome of a compile: IR text, JSON AST dump, and diagnostics.
 type CompileResult struct {
 	IR          string       `json:"ir"`

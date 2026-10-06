@@ -110,8 +110,14 @@ print(C().m())
 	if err == nil {
 		t.Fatalf("the compiler accepted a construct it cannot lower and emitted:\n%s", res.IR)
 	}
-	if !strings.Contains(err.Error(), "list index out of range") {
+	if !strings.Contains(err.Error(), "out of range") {
 		t.Fatalf("refusal = %q, want the codegen refusal for the constant fold", err.Error())
+	}
+	// The sentence must also say who owns the gap, now that it is a refusal the reader can act on:
+	// the reference would run this and raise, and the row that asks for the runtime trap instead of
+	// this compile-time stop is Gap R.37 (ADR 0166: a refusal names the half it lacks).
+	if !strings.Contains(err.Error(), "Gap R.37") {
+		t.Fatalf("the refusal does not name the roadmap row that owns it: %q", err.Error())
 	}
 }
 

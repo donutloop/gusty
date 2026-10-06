@@ -13,7 +13,7 @@ import (
 // reproduce it, and a future `--aot` change that re-breaks one of these rows fails here
 // rather than in a user's terminal.
 //
-// Bools are deliberately absent: `print(True)` prints `1` on both backends because bools
+// Bools are deliberately absent: `print(True)` prints `1` on the compiled path because bools
 // are not values yet in either (roadmap L11.1), which is tracked as gated there rather
 // than half-fixed here.
 func TestStrFormsMatchCPythonOnBothBackends(t *testing.T) {
@@ -31,9 +31,7 @@ func TestStrFormsMatchCPythonOnBothBackends(t *testing.T) {
 		{"w = str(42)\nprint(w)\nprint(len(w))\n", "42\n2\n"},
 		{`print("v=" + str(None))`, "v=None\n"},
 	} {
-		if interped := runInterp(t, tc.src); interped != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, interped, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.JIT(tc.src, 0)
 		if err != nil {
 			t.Fatalf("compile %q: %v", tc.src, err)

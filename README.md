@@ -9,6 +9,12 @@ compiled executables. Source goes through a clean, inspectable pipeline —
 is verified, optimized, and lowered to a native binary, or JIT-executed in
 the REPL.
 
+There is **one backend**. Everything `gusty` runs — `--file`, `--eval`, the REPL — goes through LLVM
+codegen and the resulting artifact; the AST interpreter that used to answer those paths is retired
+(ADR 0302), and its recorded answers, per source, are what the test suite checks the compiler against
+(`docs/operations.md` §"The suite's own interface"). `--aot`/`--jit` are accepted and ignored; `--interp`
+is a usage error that says so.
+
 The toolchain is built for **both humans and agents**: a friendly REPL/CLI for
 people, plus structured, machine-readable output (JSON diagnostics, JSON AST/IR
 dumps, a JSON Schema, stable flags, deterministic exit codes) so scripts and AI
@@ -73,8 +79,8 @@ gusty ships an indentation-based syntax covering:
   walk + attribute binding).
 - **Data structures** — inline `list` / `dict` / `set` literals, indexing, and
   list / dict / set comprehensions.
-- **Slicing** — `s[a:b]`, `s[::step]`, negative indices; supported in both the
-  interpreter and the AOT backend (via the `rt_slice` runtime helper).
+- **Slicing** — `s[a:b]`, `s[::step]`, negative indices, lowered by the `rt_slice` runtime helper; the
+  index arithmetic (`pySliceIndices`, `normPosIndex`) is shared code in `pkg/lang/fold.go`.
 - **Generators** — `def g(): yield a; yield b` collects yielded values.
 - **Async** — `async def` / `await` / `async for` / `async with`, with the await/return
   discipline checked in the shared front end: dropping a coroutine, awaiting one twice, or
@@ -91,8 +97,9 @@ gusty ships an indentation-based syntax covering:
   `super()` delegation.
 - **Operator overloading** — binary operators dispatch to dunder methods
   (`__add__`, `__mul__`, `__lt__`, ...) with reflected fallbacks
-  (`__radd__`, `__rmul__`, swapped comparisons), in both the interpreter and
-  AOT codegen.
+  (`__radd__`, `__rmul__`, swapped comparisons), resolved from one table
+  (`dunderForBinOp`/`reflectedDunder` in `pkg/lang/fold.go`) so the name a program defines and the name
+  the runtime dispatches can never disagree.
 - **Decorators** — `@dec def f:` → `f = dec(f)` at definition time; wrapping
   (fnptr-valued) decorators compile in AOT via compile-time specialization.
 - **Modules** — `import mod` loads `mod.gy` and binds `mod` as a namespace with
@@ -108,9 +115,9 @@ gusty ships an indentation-based syntax covering:
 
 Behind the annotations, a runtime value is one of fifteen kinds — `int`, `float`, `bool`,
 `None`, `str`, `list`, `dict`, `set`, `tuple`, `class`, `instance`, `method`, `closure`,
-`exn`, `module` — and one Go table says which. The interpreter's heap objects, the compiled
-runtime's tagged values, the exported C ABI and the garbage collector's root tracing all
-read those numbers, and the compiled heap's own object-header kind is a projection of them
+`exn`, `module` — and one Go table says which. The compiled runtime's tagged values, the exported C ABI and
+the garbage collector's root tracing all read those numbers, and the heap's own object-header kind is a
+projection of them
 (`list`, `dict`, `set`, `instance`, with 0 meaning "not allocated — an immediate or an
 interned string"). `gustyc --lang` prints both tables and `--schema`'s `valueTag`
 definition documents the numbering (ADR 0182).

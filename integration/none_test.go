@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-// Gap: None was the integer 0 in both backends, so `print(None)` printed 0, a procedure
+// Gap: None was the integer 0 in the compiled path, so `print(None)` printed 0, a procedure
 // "returned" the value of its last statement, `f() == None` was false, and `gustyc --file`
 // echoed a stray `0` after every program. ADR 0172 makes None a singleton; this file pins
 // the answers Python gives — not merely that the two backends agree, because they happily
 // agreed on the wrong answer before.
 
 // noneExpected is CPython's own answer for the program, line for line. The three verdict
-// lines used to read 1/0/1, which is what both backends printed before ADR 0257 gave a
+// lines used to read 1/0/1, which is what the compiled path printed before ADR 0257 gave a
 // bool its rendering; the last 1 stays a 1 because that line prints `1 if ... else 0`.
 const noneExpected = "None\nNone\nside\nNone\nside\nTrue\nFalse\nTrue\nfalsy\n2\nonce\n1\n"
 

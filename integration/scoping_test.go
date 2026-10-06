@@ -15,7 +15,7 @@ import (
 // per module. The checker analysed try/handler/finally/while/match bodies in child scopes it then
 // discarded (and never walked `finally` at all), so `--check` said `undefined name` and the
 // compiled backend refused programs the interpreter ran and CPython agreed with. The fix is only
-// worth anything if the SAME programs now run identically on both backends and match CPython.
+// worth anything if the SAME programs now run identically on the compiled path and match CPython.
 
 func TestCompoundStatementBindingsRunOnBothBackends(t *testing.T) {
 	cases := []struct{ name, src, want string }{
@@ -92,12 +92,15 @@ func TestUnboundAfterPartialMatchTrapsLikeCPythonInInterpreter(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if iout, code := cliRunCode(t, "--file", path); iout != "" || code == 0 {
-		t.Fatalf("interpreter leg printed %q with exit %d; the name is unbound on this path", iout, code)
-	}
-	if combined := cliRun(t, "--file", path); !strings.Contains(combined, "NameError") {
-		t.Fatalf("interpreter did not raise NameError: %s", combined)
-	}
+	// The reference raises NameError: `case y:` is a value pattern, so the pattern evaluates the outer
+	// `y`, which nothing has bound. One backend means one thing to check — whether this program does
+	// that — so the row is a reference-debt row: trap with the reference, refuse by name, or have the
+	// divergence on the ledger with the roadmap row that owes it. Answering plainly is the outcome the
+	// ledger exists to keep visible.
+	iout, icode := cliRunCode(t, "--file", path)
+	requireReferenceTrapOrHonestRefusal(t, src, "NameError: name 'y' is not defined", iout, icode,
+		"roadmap Gap K.x (a match value pattern must evaluate its name in the enclosing scope)",
+		"the compiled matcher binds the pattern name instead of evaluating it")
 	py, pyErrText, perr := lang.PythonRun(src)
 	if perr == nil {
 		t.Fatalf("CPython accepted an unbound read, so our expectation is wrong: %q", py)

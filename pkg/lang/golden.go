@@ -8,38 +8,24 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"testing"
 )
 
-// The interpreter golden: what the retired tree-walking engine answered, kept as an expectation.
+// This file is the machinery behind the suite's second oracle. The compiler's own answers cannot
+// check the compiler, and with the AST interpreter retired (ADR 0302) there is no second engine left
+// to cross-check it with — so the suite checks the compiled backend against the record of what the
+// engine that used to live here answered, taken at the last commit that had it.
 //
-// ADR 0302 removed the AST interpreter, and with it the oracle a large part of this suite had been
-// checking the language against — not because its answers were wrong, but because *nothing else was
-// measuring them*: `xs[0] + 1` over a built container, `str(3.5)`, `sorted`, a class's dunder, a
-// comprehension's element, an exception that escaped a `try`. Deleting those cases would have traded
-// measured coverage for a green build, which is the trade this repo exists to refuse.
-//
-// So the answers were recorded first. `testdata/interpreter-golden.json` holds, for every source the
-// suite evaluated at the last commit that had the engine, what the program printed, what value it
-// handed back, what dynamic type that value had, and — when the program failed — which exception
-// escaped and with what message. A case that used to ask the interpreter now compiles the same
-// source, runs it, and compares against that record.
-//
-// Three rules keep the golden honest rather than comfortable:
-//
-//   - The compiled backend has to *run* the source. A snippet the compiler refuses is not a pass;
-//     it is a divergence, with the refusal recorded beside it.
-//   - A source with no record fails its case. Coverage cannot be dropped by quietly deleting an
-//     entry from the golden file: the case that asked it then has nothing to compare against and
-//     says so, in red.
-//   - Where a case states an expectation of its own, that expectation is checked against the record
-//     too, so a test cannot drift by moving its `want` away from what was recorded.
-//
-// The golden is the reference-adjacent oracle this repo already uses (its conformance matrix checks
-// against CPython for the same reason): a deleted engine's agreement proves nothing, and neither
-// does the compiler agreeing with itself.
+// It lives in the package rather than in a _test.go file because both test binaries — pkg/lang and
+// integration — put questions to the same record. The ledger path is an argument, so each package
+// keeps its own list of disagreements while the answers themselves stay a single file.
 
-// goldenEntry is one recorded answer.
+// GoldenFile is the package-relative path of the record, and GoldenDriftFile the package-relative
+// path of the disagreement ledger a package writes its own divergences to.
+const (
+	GoldenFile      = "testdata/interpreter-golden.json"
+	GoldenDriftFile = "testdata/interpreter-golden-drift.json"
+)
+
 type goldenEntry struct {
 	Repr    string `json:"repr,omitempty"`
 	Type    string `json:"type,omitempty"`
@@ -54,6 +40,10 @@ type goldenEntry struct {
 	FrontEnd bool   `json:"frontEnd,omitempty"`
 	Stdout   string `json:"stdout,omitempty"`
 	HasStd   bool   `json:"hasStdout,omitempty"`
+	// Note records a correction to the entry itself — where the recorder asked the retired engine a
+	// question its users never saw answered, and the entry holds what the interface displayed instead.
+	// It is data, not a comment, so `jq` shows it and a future re-recording cannot silently undo it.
+	Note string `json:"note,omitempty"`
 }
 
 type goldenFile struct {
@@ -67,23 +57,37 @@ var (
 	goldenLoadE error
 )
 
+// goldenCandidates are where the record may be found. Each test binary runs from its own directory,
+// and the record is one file that pkg/lang owns — integration reads it from next door rather than
+// keeping a copy that could fall behind the answers it is supposed to hold.
+var goldenCandidates = []string{
+	filepath.Join("testdata", "interpreter-golden.json"),
+	filepath.Join("..", "pkg", "lang", "testdata", "interpreter-golden.json"),
+}
+
 func loadGolden(t errorReporter) map[string]goldenEntry {
 	goldenOnce.Do(func() {
-		path := filepath.Join("testdata", "interpreter-golden.json")
-		if _, statErr := os.Stat(path); statErr != nil {
+		path := ""
+		var raw []byte
+		var statErr error
+		for _, cand := range goldenCandidates {
+			if _, e := os.Stat(cand); e == nil {
+				raw, statErr = os.ReadFile(cand)
+				if statErr == nil {
+					path = cand
+					break
+				}
+			}
+		}
+		if path == "" {
 			// The runner started somewhere the fixture is not. That is an environment fault, and
 			// naming it beats reporting 2900 sources as "no recorded expectation".
-			goldenLoadE = fmt.Errorf("interpreter golden not found at %s (run the suite from the package directory): %w", path, statErr)
-			return
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			goldenLoadE = fmt.Errorf("read interpreter golden: %w", err)
+			goldenLoadE = fmt.Errorf("interpreter golden not found (looked in %s): %w", strings.Join(goldenCandidates, ", "), statErr)
 			return
 		}
 		var f goldenFile
 		if err := json.Unmarshal(raw, &f); err != nil {
-			goldenLoadE = fmt.Errorf("parse interpreter golden: %w", err)
+			goldenLoadE = fmt.Errorf("parse interpreter golden at %s: %w", path, err)
 			return
 		}
 		if len(f.Entries) == 0 {
@@ -121,7 +125,20 @@ var askedAbout sync.Map
 
 func goldenLookup(t errorReporter, src string) goldenEntry {
 	askedAbout.Store(src, true)
-	e, ok := loadGolden(t)[src]
+	data := loadGolden(t)
+	e, ok := data[src]
+	if !ok {
+		// The same program written two ways. A test that ends its snippet with a newline and one that
+		// does not are asking about the same program — a trailing blank line is not a different piece
+		// of source — and the record was written by whichever suite reached a source first. Refusing to
+		// look across that difference would make coverage depend on how a test file happens to be
+		// typed, which is the kind of brittleness that ends with someone deleting a case to make it
+		// load. Leading/trailing blank lines are the only normalisation: the program's own text,
+		// including its own final newline inside a string, is untouched.
+		if trimmed := strings.Trim(src, "\n"); trimmed != src {
+			e, ok = data[trimmed]
+		}
+	}
 	if !ok {
 		missingSources.Store(src, true)
 		fatalf(t, "no recorded interpreter expectation for source:\n%s\n"+
@@ -169,7 +186,7 @@ func noteDivergence(t errorReporter, src, reason, expected, actual string) {
 	divergenceSet[src] = Divergence{Source: src, Reason: reason, Expected: expected, Actual: actual}
 	divergenceMu.Unlock()
 	if s, ok := t.(interface{ Skipf(string, ...any) }); ok {
-		s.Skipf("ADR 0302 divergence, recorded in testdata/interpreter-golden-drift.json: %s — owed %s, the compiled backend gave %s",
+		s.Skipf("ADR 0302 divergence, recorded in the drift ledger: %s — owed %s, the compiled backend gave %s",
 			reason, quoteOr(expected), quoteOr(actual))
 		return
 	}
@@ -190,15 +207,12 @@ func Divergences() []Divergence {
 	return out
 }
 
-// driftPath is where the ledger lives.
-const driftPath = "testdata/interpreter-golden-drift.json"
-
 // checkDrift holds the run's divergences against the ledger. Both directions are failures: an
 // unlisted divergence means new debt arrived unannounced, and a listed divergence that did not
 // happen means debt was paid and the ledger still charges for it.
-func checkDrift() string {
+func checkDriftAgainst(ledger string) string {
 	got := Divergences()
-	want, err := readDriftLedger()
+	want, err := readDriftLedgerFrom(ledger)
 	if err != nil {
 		return "interpreter golden drift ledger unreadable: " + err.Error()
 	}
@@ -209,7 +223,7 @@ func checkDrift() string {
 		w, ok := want[d.Source]
 		if !ok {
 			problems = append(problems, fmt.Sprintf("NEW divergence (not in %s): %q — %s; owed %s, got %s. Every divergence has to be a row in the ledger and a row in roadmap.md.",
-				driftPath, d.Source, d.Reason, quoteOr(d.Expected), quoteOr(d.Actual)))
+				ledger, d.Source, d.Reason, quoteOr(d.Expected), quoteOr(d.Actual)))
 			continue
 		}
 		if w.Reason != d.Reason || w.Expected != d.Expected {
@@ -227,7 +241,7 @@ func checkDrift() string {
 			continue
 		}
 		problems = append(problems, fmt.Sprintf("PAID debt still on the ledger: %q (%s) now agrees with the record. Remove the row from %s — run with GUSTY_GOLDEN_UPDATE=1 to rewrite it.",
-			src, w.Reason, driftPath))
+			src, w.Reason, ledger))
 	}
 	if len(problems) == 0 {
 		return ""
@@ -237,8 +251,8 @@ func checkDrift() string {
 		fmt.Sprintf("\n%d divergence(s) reported by this run, %d on the ledger.\n", len(got), len(want))
 }
 
-func readDriftLedger() (map[string]Divergence, error) {
-	raw, err := os.ReadFile(driftPath)
+func readDriftLedgerFrom(ledger string) (map[string]Divergence, error) {
+	raw, err := os.ReadFile(ledger)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]Divergence{}, nil
@@ -256,12 +270,17 @@ func readDriftLedger() (map[string]Divergence, error) {
 	return m, nil
 }
 
-func writeDriftLedger(rows []Divergence) error {
+func writeDriftLedgerTo(ledger string, rows []Divergence) error {
 	body, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(driftPath, append(body, '\n'), 0o644)
+	return os.WriteFile(ledger, append(body, '\n'), 0o644)
+}
+
+// marshalGoldenMissing is the JSON face of the "which sources have no record" question.
+func marshalGoldenMissing(missing []string) ([]byte, error) {
+	return json.MarshalIndent(missing, "", "  ")
 }
 
 func quoteOr(s string) string {
@@ -598,37 +617,115 @@ func wantSummary(w goldenEntry) string {
 	}
 }
 
-// TestMain holds the drift check after every case has run, because the ledger describes the whole
-// run rather than one case: a divergence found by the 3,000th source has to be weighed against the
-// list alongside the first.
-func TestMain(m *testing.M) {
-	code := m.Run()
-	if p := os.Getenv("GUSTY_GOLDEN_MISSING"); p != "" {
-		var missing []string
-		missingSources.Range(func(k, _ any) bool {
-			if src, ok := k.(string); ok {
-				missing = append(missing, src)
-			}
-			return true
-		})
-		sort.Strings(missing)
-		if body, err := json.MarshalIndent(missing, "", "  "); err == nil {
-			_ = os.WriteFile(p, append(body, '\n'), 0o644)
+// --- the exported face, for the integration binary ------------------------------------------------
+
+// The integration tests ask the same question pkg/lang asks — does the compiled answer match the one
+// on record? — from a different package, so the check has one implementation rather than two that
+// could disagree about what a match means. Each of these takes the source, runs it through the one
+// backend, compares with the record, and fails the caller's test on a mismatch that is not already a
+// ledger row.
+
+// HasGoldenAnswer reports whether the record holds this source, without involving a *testing.T and
+// without recording a divergence. A corpus case that wants to report ten unrecorded programs in one
+// run — instead of one per run, which is how a recording cycle turns into an afternoon — asks this
+// first and reports the misses itself.
+func HasGoldenAnswer(src string) bool {
+	data := loadGolden(silentReporter{})
+	if data == nil {
+		return false
+	}
+	if _, ok := data[src]; ok {
+		return true
+	}
+	if _, ok := data[strings.Trim(src, "\n")]; ok {
+		return true
+	}
+	// Not on record: put it in the harvest so one run can hand the whole list to the recorder.
+	missingSources.Store(src, true)
+	return false
+}
+
+// silentReporter absorbs the golden helpers' error reporting for callers that only want to know
+// whether a record exists; those callers report the miss themselves, in their own words.
+type silentReporter struct{}
+
+func (silentReporter) Errorf(string, ...any) {}
+func (silentReporter) Fatalf(string, ...any) {}
+func (silentReporter) Skipf(string, ...any)  {}
+
+// RecordedStdout runs src and returns the program's stdout, having checked it against the record.
+func RecordedStdout(t errorReporter, src string) string {
+	return goldenStdout(t, src)
+}
+
+// CompiledRefusal is the record's verdict on a program the compiler refused to build, for callers
+// that ran a program through the CLI rather than through the in-process pipeline (the integration
+// package's `--aot`/`--eval` runners, chiefly).
+//
+// It returns true when the caller's test should stop — because the record says this program has an
+// answer, the compiled backend refused it, and that mismatch is now a row in the drift ledger, which
+// is the artifact that owns the disagreement and fails the run when a new one appears or an old one
+// quietly goes away. It returns false when the refusal is the *expected* outcome (the front end
+// refused the same program, or no answer is on record), and the caller's own assertion about the
+// refusal therefore still runs. A refusal is never simply passed: either it is filed here, or the
+// caller is expected to check what it says.
+func CompiledRefusal(t errorReporter, src, message string) bool {
+	data := loadGolden(t)
+	want, ok := data[src]
+	if !ok {
+		if trimmed := strings.Trim(src, "\n"); trimmed != src {
+			want, ok = data[trimmed]
 		}
-		fmt.Fprintf(os.Stderr, "%d source(s) with no recorded expectation written to %s\n", len(missing), p)
 	}
-	if os.Getenv("GUSTY_GOLDEN_UPDATE") != "" {
-		if err := writeDriftLedger(Divergences()); err != nil {
-			fmt.Fprintln(os.Stderr, "could not rewrite the drift ledger:", err)
-			code = 1
-		} else {
-			fmt.Fprintf(os.Stderr, "interpreter golden drift ledger rewritten: %d divergence(s)\n", len(Divergences()))
-		}
-		os.Exit(code)
+	if !ok {
+		// Nothing on record: the caller's assertion stands, and the missing-source list gets the
+		// program so the recording cycle can see it.
+		missingSources.Store(src, true)
+		return false
 	}
-	if report := checkDrift(); report != "" {
-		fmt.Fprintln(os.Stderr, report)
-		os.Exit(1)
+	if want.FrontEnd {
+		return false // the language refuses this program; the compiled refusal is the contract
 	}
-	os.Exit(code)
+	if want.Err != "" {
+		// The engine trapped here. A refusal that keeps the program from running is a different
+		// failure class from the trap the record owes — a raise the compiler declines to build — so it
+		// belongs on the ledger rather than in a test's expectation column.
+		noteDivergence(t, src, "the compiled backend refuses a program the engine ran to a trap", wantSummary(want), message)
+		return true
+	}
+	noteDivergence(t, src, "the compiled backend cannot build a program the engine ran", wantSummary(want), message)
+	return true
+}
+
+// RecordedStdoutIs checks stdout against a literal the test wrote, with the record as the referee:
+// if the two disagree with each other, that itself is the failure.
+func RecordedStdoutIs(t errorReporter, src, want string) {
+	goldenStdoutIs(t, src, want)
+}
+
+// RecordedPrints is RecordedStdoutIs for a program whose whole output is one line.
+func RecordedPrints(t errorReporter, src, want string) {
+	goldenPrints(t, src, want)
+}
+
+// RecordedRepr and RecordedType answer what the value of the source's last expression is, checked
+// against the record.
+func RecordedRepr(t errorReporter, src string) string {
+	return goldenRepr(t, src)
+}
+
+func RecordedType(t errorReporter, src string) string {
+	return goldenType(t, src)
+}
+
+// RecordedRunError runs a program expected to trap and returns the report the target wrote.
+func RecordedRunError(t errorReporter, src string) error {
+	return goldenRunError(t, src)
+}
+
+// RecordedProgramAgrees runs src through the compiled binary and checks its stdout against the
+// record — the shape the parity tests used to check two engines against each other. With one backend
+// the record is the second opinion, and CPython remains the one above both.
+func RecordedProgramAgrees(t errorReporter, src string) {
+	goldenStdoutIs(t, src, "")
 }

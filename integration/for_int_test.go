@@ -8,7 +8,7 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// `for x in <integer>` is a repeat count in this language: both backends bind 0, 1, … n-1, and CPython
+// `for x in <integer>` is a repeat count in this language: the compiled path bind 0, 1, … n-1, and CPython
 // refuses the construct outright. Two engines agreeing makes it a feature; the missing piece was the
 // declaration — a document, a ledger row that excludes the oracle, and tests that fail if it moves
 // (roadmap Gap R.14, ADR 0207).
@@ -17,9 +17,7 @@ func TestIntegerRepeatCountAgreesOnEveryPath(t *testing.T) {
 	src := readProgramSrc("for_int_count")
 	want := "0\n1\n2\n3\n0\n10\n20\n100\n101\n102\n10\ndone\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -53,9 +51,7 @@ for m in -2:
 print("boundary done")
 `
 	want := "0\n10\n20\nboundary done\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 90*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

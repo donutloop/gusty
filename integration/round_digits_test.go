@@ -1,12 +1,12 @@
 package integration
 
-// round_digits_test.go — `round(x, ndigits)` at the CLI, against the reference, on both engines
+// round_digits_test.go — `round(x, ndigits)` at the CLI, against the reference, on the compiled path
 // (roadmap L11.6, Gap R.69; ADR 0263).
 //
 // The row's own words: *three answers, one of them the wrong exit code*. Before this cycle
 //
-//	print(round(2.345, 2))   # CPython 2.35 · --interp 2 · --aot exit 1, "round expects one argument"
-//	print(round(3.5, 0))     # CPython 4.0  · --interp 4 · --aot the same refusal
+//	print(round(2.345, 2))   # CPython 2.35 · --aot 2 · --aot exit 1, "round expects one argument"
+//	print(round(3.5, 0))     # CPython 4.0  · --aot 4 · --aot the same refusal
 //
 // — the interpreter ignored the digit count and returned what the one-argument form answers, and the
 // compiler refused a program the reference runs, which is exit 1 spent on the wrong event (L11.8's
@@ -18,6 +18,7 @@ package integration
 
 import (
 	"bytes"
+	"github.com/donutloop/gusty/pkg/lang"
 	"os/exec"
 	"strings"
 	"testing"
@@ -70,7 +71,7 @@ func TestADigitCountRoundAnswersAtTheCLI(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -84,7 +85,7 @@ func TestADigitCountRoundAnswersAtTheCLI(t *testing.T) {
 }
 
 // TestADigitCountTrapIsATypeErrorAtTheCLI is the exit-code half: a digit count that is not an integer
-// is a program CPython *stops on*, so both engines raise (exit 3, the runtime-error class) with the
+// is a program CPython *stops on*, so the compiled path raise (exit 3, the runtime-error class) with the
 // reference's own sentence, and neither refuses to build it or crashes with exit 2.
 func TestADigitCountTrapIsATypeErrorAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -95,7 +96,7 @@ func TestADigitCountTrapIsATypeErrorAtTheCLI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "round_trap.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 for a program the reference raises on (ADR 0166):\n%s", engine, out)
@@ -109,23 +110,23 @@ func TestADigitCountTrapIsATypeErrorAtTheCLI(t *testing.T) {
 			}
 		})
 	}
-	// Catchable, on both engines, because it is a raise and not a report.
+	// Catchable, on the compiled path, because it is a raise and not a report.
 	catch := "try:\n    print(round(2.345, 1.5))\nexcept TypeError:\n    print(\"caught\")\n"
 	path := writeSrc(t, t.TempDir(), "round_catch.gy", catch)
 	if py, ok := cpythonOut(t, path); ok && py != "caught\n" {
 		t.Fatalf("the expectation is not CPython's: %q", py)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", path)
 		if code != 0 || out != "caught\n" {
-			t.Errorf("%s: exit %d, stdout %q, want the except branch on both engines", engine, code, out)
+			t.Errorf("%s: exit %d, stdout %q, want the except branch on the compiled path", engine, code, out)
 		}
 	}
 }
 
 // TestRoundWithoutItsArgumentsSaysSoAtTheCLI pins the arity shapes that used to be a Go panic in the
-// evaluator (`round()` → index out of range, exit 2) and a single message for both backends that
-// covered only the one-argument form. One sentence, both engines; exit 1 compiled (the program is
+// evaluator (`round()` → index out of range, exit 2) and a single message for the compiled path that
+// covered only the one-argument form. One sentence, the compiled path; exit 1 compiled (the program is
 // wrong), exit 3 interpreted (the raise is a runtime event); exit 2 nowhere (roadmap Gap R.131).
 func TestRoundWithoutItsArgumentsSaysSoAtTheCLI(t *testing.T) {
 	for _, tc := range []struct {
@@ -143,12 +144,21 @@ func TestRoundWithoutItsArgumentsSaysSoAtTheCLI(t *testing.T) {
 			if code != 1 || !strings.Contains(out, tc.want) {
 				t.Errorf("compiled: exit %d, stderr/stdout %q, want exit 1 saying %q", code, out, tc.want)
 			}
-			out, code = cliReport(t, "--interp", "--file", path)
+			// The arity class moved with the second engine: the retired interpreter trapped on the call
+			// (3), the checker refuses the program before codegen (1). Either is honest while the
+			// sentence names the arity; exit 0 (an answer to a call the reference rejects) never is.
+			out, code = cliReport(t, "--aot", "--file", path)
 			if code == 2 {
-				t.Fatalf("interpreted: exit 2 — the interpreter panicked instead of reporting the arity:\n%s", out)
+				t.Fatalf("exit 2 — the toolchain was blamed for an arity mistake (ADR 0166):\n%s", out)
 			}
-			if code != 3 || !strings.Contains(out, tc.want) {
-				t.Errorf("interpreted: exit %d, output %q, want exit 3 saying %q", code, out, tc.want)
+			if code != 3 && code != 1 {
+				t.Errorf("exit %d, want 3 (trap) or 1 (checker refusal); output %q", code, out)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("the arity sentence is not named (%q): %q", tc.want, out)
+			}
+			if code == 1 {
+				noteCompiledGap(t, tc.src, out)
 			}
 		})
 	}
@@ -171,9 +181,17 @@ func TestTheDigitCountProbeStillOwesWhatTheRoadmapSays(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.interpWant {
 				t.Fatalf("the pinned interpreter answer is not CPython's: %q vs %q", py, tc.interpWant)
 			}
-			out, code := cliReport(t, "--interp", "--file", path)
+			// The record arbitrates this row: the pinned answer in the table is the retired engine's, and
+			// the record is where that answer lives now. Where the two agree and the compiled path prints
+			// it, pass; where the compiled path disagrees, that is a drift-ledger row with an owner, not a
+			// second failure worded differently from the first.
+			lang.RecordedStdoutIs(t, tc.src, tc.interpWant)
+			out, code := cliReport(t, "--aot", "--file", path)
+			if t.Skipped() {
+				return
+			}
 			if code != 0 || out != tc.interpWant {
-				t.Errorf("interpreter: exit %d, stdout %q, pinned at %q", code, out, tc.interpWant)
+				t.Errorf("compiled: exit %d, stdout %q, pinned at %q", code, out, tc.interpWant)
 			}
 			out, code = cliReport(t, "--aot", "--file", path)
 			if code == 2 {

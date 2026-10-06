@@ -8,7 +8,7 @@ import (
 )
 
 // Integration coverage for roadmap Gap R.23 (ADR 0222): a deferred `finally` body runs on every
-// exit from its `try`, on both backends, and an `except` arm catches exceptions rather than
+// exit from its `try`, on the compiled path, and an `except` arm catches exceptions rather than
 // transfers. Both backends were wrong in the same way, which is exactly what the parity contract
 // cannot see; every expectation below is the answer CPython gives for that source.
 
@@ -124,7 +124,7 @@ var deferredCases = []deferredCase{
 		name:     "raise_in_finally_replaces_and_traps",
 		src:      "try:\n    x = 1 / 0\nexcept ZeroDivisionError:\n    print(\"caught zero\")\nfinally:\n    raise ValueError(\"boom\")\n",
 		want:     "caught zero\n",
-		wantCode: 3, // the documented runtime-error class (docs/operations.md, ADR 0211), both backends
+		wantCode: 3, // the documented runtime-error class (docs/operations.md, ADR 0211), the compiled path
 	},
 }
 
@@ -136,7 +136,7 @@ func TestDeferredBodiesMatchCPythonOnBothEngines(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.src), 0o644); err != nil {
 				t.Fatalf("write: %v", err)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != tc.wantCode {
 					t.Fatalf("%s exited %d, want %d:\n%s", engine, code, tc.wantCode, out)
@@ -156,10 +156,10 @@ func TestUncaughtExceptionAfterDeferredBodiesTrapsOnBothEngines(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, path)
 		if code != 3 {
-			t.Fatalf("%s exited %d, want 3 — the documented runtime-error class, the same on both backends (ADR 0211):\n%s", engine, code, out)
+			t.Fatalf("%s exited %d, want 3 — the documented runtime-error class, the same on the compiled path (ADR 0211):\n%s", engine, code, out)
 		}
 		// The traceback is a diagnostic and goes where diagnostics go; the run's own output is
 		// `out`, so the message is asserted on the combined stream.
@@ -175,12 +175,12 @@ func TestUncaughtExceptionAfterDeferredBodiesTrapsOnBothEngines(t *testing.T) {
 
 // TestMethodWithTryCompiles is the shape that used to be pinned as a toolchain rejection: a
 // method whose body contains a `try` emitted `br label %` with an empty target because the method
-// path never set a raise-exit block (roadmap Gap R.41, ADR 0223). It runs on both backends now,
+// path never set a raise-exit block (roadmap Gap R.41, ADR 0223). It runs on the compiled path now,
 // and `programs/method_try.gy` carries it into the parity corpus.
 func TestMethodWithTryCompiles(t *testing.T) {
 	src := "class C:\n    def m(self) -> int:\n        try:\n            return 3\n        finally:\n            print(\"m fin\")\n\nc = C()\nprint(c.m())\n"
 	path := writeSrc(t, t.TempDir(), "method_try_run.gy", src)
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, path)
 		if code != 0 || out != "m fin\n3\n" {
 			t.Fatalf("%s gave (%d) %q, want \"m fin\\n3\\n\"", engine, code, out)

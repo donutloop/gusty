@@ -12,7 +12,7 @@ import (
 )
 
 // Gap K.6 — an uncaught exception must be *reported* and must fail the process, on
-// both backends.
+// the compiled path.
 //
 // The AOT used to branch to its raise-exit block and `ret i32 0`, so
 //
@@ -96,7 +96,7 @@ func aotRun(t *testing.T, src string) runResult {
 	return runResult{outb.String(), errb.String(), code}
 }
 
-// uncaughtCases: every program raises past the last handler, and both backends must
+// uncaughtCases: every program raises past the last handler, and the compiled path must
 // report the same exception line on stderr while keeping stdout clean.
 var uncaughtCases = []struct {
 	name string
@@ -104,7 +104,7 @@ var uncaughtCases = []struct {
 	// wantOut is what the program printed before the raise (stdout must not contain
 	// the traceback — that is the whole point of stderr).
 	wantOut string
-	// wantErr is the exception line both backends must print.
+	// wantErr is the exception line the compiled path must print.
 	wantErr string
 }{
 	{
@@ -251,9 +251,7 @@ var staticallyRejectedCases = []struct {
 func TestStaticallyImpossibleAssignmentsAreDiagnostics(t *testing.T) {
 	for _, tc := range staticallyRejectedCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := runInterp(t, tc.src); got != "caught\n" {
-				t.Errorf("interpreter = %q, want %q (the TypeError is catchable there)", got, "caught\n")
-			}
+			lang.RecordedStdoutIs(t, tc.src, "caught\n")
 			_, err := lang.Compile(tc.src)
 			if err == nil {
 				t.Fatalf("AOT should refuse to compile: %s", tc.src)
@@ -274,7 +272,7 @@ func TestTracebackFramesNameTheRaiseSite(t *testing.T) {
 	cases := []struct {
 		name string
 		src  string
-		// the frame line both backends must print for the raise site itself
+		// the frame line the compiled path must print for the raise site itself
 		wantFrame string
 	}{
 		{

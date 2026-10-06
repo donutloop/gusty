@@ -680,7 +680,6 @@ func logicWordErr(n *BinOp) error {
 	return fmt.Errorf("`%s %s %s` chooses between two values whose kinds this pass cannot state in one word: the answer is one operand or the other, and which one is a run-time fact. Printing the verdict the operator is not would be the wrong answer this backend refuses to ship (ADR 0166), and choosing the value needs the value word that carries its own tag — roadmap L11.1's tagged value word, Gap R.147. Write both operands in the same shape, test with `if`/`else` and bind the value there, or print it (the print door renders a chosen operand by its kind)", exprSurface(n.L), n.Op, exprSurface(n.R))
 }
 
-
 // logicFoldConst answers the fold paths: what operand an `and`/`or` of two values the source wrote hands
 // back. Before this the folders answered the verdict, so `print(len("" or "abc"))` and every index, repeat
 // count and constant argument built from `and`/`or` was computed from a 1 the operator never returns.

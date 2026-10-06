@@ -20,9 +20,7 @@ func TestShadowedBuiltinsAgreeOnEveryPath(t *testing.T) {
 	src := readProgramSrc("shadowed_builtins")
 	want := "8\n9\n8\n9.5\n3\n4\n9\n3\n10\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

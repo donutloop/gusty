@@ -74,7 +74,7 @@ func diagWithCode(diags []checkDiag, code string) *checkDiag {
 	return nil
 }
 
-// TestVarianceParity runs the variance conformance program on both backends.
+// TestVarianceParity runs the variance conformance program on the compiled path.
 func TestVarianceParity(t *testing.T) {
 	src := readProgramSrc("variance")
 	want := "1\n2\n3\n30\n2\n42\n"

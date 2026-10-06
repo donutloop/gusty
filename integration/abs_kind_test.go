@@ -1,14 +1,14 @@
 package integration
 
-// integration/abs_kind_test.go — `abs` answers with its operand's kind at the CLI, on both engines, against
+// integration/abs_kind_test.go — `abs` answers with its operand's kind at the CLI, on the compiled path, against
 // the reference (roadmap Gap R.140, ADR 0271).
 //
-// Every row is the same source run three ways: CPython, `gustyc --file <path> --interp`, and `gustyc --file
+// Every row is the same source run three ways: CPython, `gustyc --file <path> --aot`, and `gustyc --file
 // <path> --aot`. The legs are forced explicitly — a bare `--file` is the interpreter's default.
 //
 // Two verdict classes are kept apart, because confusing them is how the row stayed open for four milestones:
 //
-//   - a shape the reference answers prints the same bytes on every engine, at exit 0;
+//   - a shape the reference answers prints the same bytes on the compiled path, at exit 0;
 //   - a shape the reference *traps* — `TypeError: bad operand type for abs(): '<kind>'` — traps on every
 //     engine: the same sentence, exit 3 (ADR 0166's trap class), catchable by `except TypeError:`.
 //
@@ -21,7 +21,7 @@ import (
 	"testing"
 )
 
-// absNumbers are the shapes the reference answers, so both engines must answer them identically.
+// absNumbers are the shapes the reference answers, so the compiled path must answer them identically.
 func absNumbers() []struct{ name, src, want string } {
 	return []struct{ name, src, want string }{
 		{"the row's own answer", "print(abs(-10))\n", "10\n"},
@@ -39,7 +39,7 @@ func absNumbers() []struct{ name, src, want string } {
 }
 
 // absTraps are the shapes the reference refuses to answer with a number: every one is a TypeError naming the
-// operand's kind, on every engine.
+// operand's kind, on the compiled path.
 func absTraps() []struct{ name, src, kind string } {
 	return []struct{ name, src, kind string }{
 		{"text", "print(abs(\"hi\"))\n", "str"},
@@ -66,7 +66,7 @@ func TestTheReferenceAndBothEnginesAnswerAbsWithTheNumber(t *testing.T) {
 			if !ok || py != tc.want {
 				t.Fatalf("the reference said %q (ok %v), want %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -97,7 +97,7 @@ func TestTheReferenceAndBothEnginesTrapAbsTheSameWay(t *testing.T) {
 			if !strings.Contains(py, sentence) {
 				t.Fatalf("the reference did not say %q: %q\nsrc: %s", sentence, py, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -115,7 +115,7 @@ func TestTheReferenceAndBothEnginesTrapAbsTheSameWay(t *testing.T) {
 
 // TestAnAbsTrapIsCaughtByAnExceptTypeError is the other half of why a trap raises rather than refuses: the
 // contract's exit 1 (ADR 0166) is a compile-time verdict and escapes the handler, so a source the reference
-// can catch must be catchable on both engines.
+// can catch must be catchable on the compiled path.
 func TestAnAbsTrapIsCaughtByAnExceptTypeError(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"text", "try:\n    print(abs(\"hi\"))\nexcept TypeError:\n    print(\"caught\")\n", "caught\n"},
@@ -131,7 +131,7 @@ func TestAnAbsTrapIsCaughtByAnExceptTypeError(t *testing.T) {
 			if !ok || py != tc.want {
 				t.Fatalf("the reference said %q (ok %v), want %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)

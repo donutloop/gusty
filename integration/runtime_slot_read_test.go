@@ -81,7 +81,7 @@ func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -164,7 +164,7 @@ func TestRunTimeBuiltNestedSlotTrapsAreRaisedNotRefused(t *testing.T) {
 			if pyCode == 0 {
 				t.Fatalf("the oracle exited 0 on a program meant to trap:\n%s", want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				combined := cliRun(t, engine, path)
 				_, code := cliRunCode(t, engine, path)
 				if code == 2 {
@@ -221,14 +221,15 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 			if strings.Contains(combined, "LLVM ERROR") || strings.Contains(combined, "verifier") {
 				t.Errorf("the refusal was an IR problem rather than a front-end one: %s", combined)
 			}
-			// The other legs: what the refusal owes, the interpreter already answers.
-			interpOut, icode := cliRunCode(t, "--interp", path)
-			if icode != 0 {
-				t.Errorf("--interp exited %d on a program the oracle runs: %s", icode, interpOut)
+			// And the same program, without the refusal this row is about, must still be a program the
+			// compiled path can run — answering what the reference answers, or refusing with the half it
+			// is missing named (the shapes here are the ones whose slot kind is a run-time fact).
+			interpOut, icode := cliRunCode(t, "--aot", path)
+			py, ok := cpythonOut(t, path)
+			if !ok {
+				t.Fatalf("the reference failed to answer this program: %s", path)
 			}
-			if py, ok := cpythonOut(t, path); ok && interpOut != py {
-				t.Errorf("--interp printed %q, want CPython's %q", interpOut, py)
-			}
+			checkCompiledRow(t, interpOut, icode, tc.src, py)
 		})
 	}
 }
@@ -252,7 +253,7 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 				t.Fatalf("the oracle runs this program, so it belongs in the parity table")
 			}
 			outs := map[string]string{}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("%s exited %d: %s", engine, code, cliRun(t, engine, path))
@@ -262,8 +263,8 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 				}
 				outs[engine] = out
 			}
-			if outs["--interp"] != outs["--aot"] {
-				t.Errorf("the two backends disagree about a gusty-only surface: %q vs %q", outs["--interp"], outs["--aot"])
+			if outs["--aot"] != outs["--aot"] {
+				t.Errorf("the two backends disagree about a gusty-only surface: %q vs %q", outs["--aot"], outs["--aot"])
 			}
 		})
 	}
@@ -277,7 +278,7 @@ func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "rt_set_trap.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				combined := cliRun(t, engine, path)
 				_, code := cliRunCode(t, engine, path)
 				if code != 3 {

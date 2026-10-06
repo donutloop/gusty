@@ -53,6 +53,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 	"unsafe"
 )
@@ -177,6 +178,13 @@ func JITWithOptions(src string, optLevel int, opts *JITOptions) (*JITResult, err
 		ir, derr = GenerateIR(prog)
 	}
 	if derr != nil {
+		// One stage prefix per line. The codegen errors carry their own ("codegen: …"), and wrapping
+		// them produced `jit: codegen: codegen: …` — the same message the build path is tested not to
+		// repeat, arriving twice on this one, which is exactly the diagnostic noise that makes an agent
+		// grep for a substring that no longer exists (ADR 0166's readability rule).
+		if strings.HasPrefix(derr.Error(), "codegen: ") {
+			return nil, fmt.Errorf("jit: %w", derr)
+		}
 		return nil, fmt.Errorf("jit: codegen: %w", derr)
 	}
 	ir = OptimizeIR(ir, optLevel)

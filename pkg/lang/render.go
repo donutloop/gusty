@@ -32,7 +32,6 @@ const (
 // a list and `str` of that list agree.
 func (f ValueForm) QuotesText() bool { return f == FormRepr }
 
-
 // renderPair lowers str(x) and repr(x) in the compiled backend onto the printers the module
 // already has, by pointing those printers at a capture buffer instead of at stdout
 // (rt_str_of_value / rt_str_of_container, heapRuntimeIR). handled=false means "this form is

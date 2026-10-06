@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/donutloop/gusty/pkg/lang"
 )
 
 // A program's stdout is only what the program printed. Echoing the last value is a courtesy for
@@ -24,18 +26,47 @@ func writeProgram(t *testing.T, name, src string) string {
 	return path
 }
 
-// TestProgramFileDoesNotEchoLastValue is the fix, stated as the difference between the two backends.
+// TestProgramFileDoesNotEchoLastValue is the fix, stated as the difference between a program and a
+// prompt: the same source run as a file owes no bytes, and typed as a snippet owes its value.
 func TestProgramFileDoesNotEchoLastValue(t *testing.T) {
-	path := writeProgram(t, "echo.gy", "def f(x):\n    return x * 2\n\nf(5)\n")
+	const src = "x = 21\nprint(0)\nx * 2\n"
+	path := writeProgram(t, "echo.gy", src)
 
-	if got := cli(t, "--file", path); got != "" {
-		t.Errorf("--file echoed the last statement's value: %q, want no output at all", got)
+	// The program's stdout is exactly what the program printed — the closing expression
+	// contributes nothing, which is the whole point of ADR 0204.
+	if got := cli(t, "--file", path); got != "0\n" {
+		t.Errorf("--file output = %q, want the program's own line only", got)
 	}
-	if got := cli(t, "--interp", path); got != "" {
-		t.Errorf("--interp echoed the last statement's value: %q", got)
-	}
-	if got := cli(t, "--aot", path); got != "" {
+	if got := cli(t, "--aot", path); got != "0\n" {
 		t.Errorf("the compiled backend printed something too: %q", got)
+	}
+	// The other half of the rule, on the same source: asked as a snippet, the caller is owed the
+	// value of the expression it typed, and it is presented separately from the program's bytes.
+	if got := cli(t, "--eval", src); got != "0\n42\n" {
+		t.Errorf("--eval of the same source should echo the value, got %q", got)
+	}
+}
+
+// TestEchoIsSilentForAValueWhoseKindTheCompilerCannotSee states where the compiled echo stops, so
+// that "a program is never echoed" does not quietly become "a snippet is sometimes answered". The
+// echo renders through the one str/repr table (ADR 0258); an expression whose kind the compiler
+// cannot prove — here, the result of calling a user function, whose return type is a run-time fact —
+// has no form in that table yet, and the echo stays silent rather than inventing one. The retired
+// engine echoed `10` here, and the record holds that answer; the gap is the tagged value word
+// (roadmap L11.1) carrying a value's kind with it, which is also what L11.1's rows name for `print`,
+// `str()` and the calling side.
+//
+// This is an assertion about today, not an acceptance of it: the day the pair can name a form for a
+// call's result, the golden record's `10` outranks this row and the case that pins the silence fails.
+func TestEchoIsSilentForAValueWhoseKindTheCompilerCannotSee(t *testing.T) {
+	const src = "def f(x):\n    return x * 2\n\nf(5)\n"
+	if got := cli(t, "--eval", src); got != "" {
+		t.Errorf("the echo answered a value the pair cannot name (%q); if the tagged value word landed, delete this row and let the record's `10` be the expectation", got)
+	}
+	// The program still ran: silence is not refusal.
+	out, code := cliCombined(t, "--eval", src)
+	if code != 0 {
+		t.Fatalf("a snippet ending in a call exited %d: %s", code, out)
 	}
 }
 
@@ -47,7 +78,7 @@ func TestProgramOutputIsNotAffixed(t *testing.T) {
 	path := writeProgram(t, "affix.gy", src)
 
 	want := "1\n3\n"
-	for _, mode := range []string{"--file", "--interp"} {
+	for _, mode := range []string{"--file", "--aot"} {
 		if got := cli(t, mode, path); got != want {
 			t.Errorf("%s output = %q, want %q", mode, got, want)
 		}
@@ -81,7 +112,7 @@ func TestSnippetStillEchoes(t *testing.T) {
 // about the *program's* stdout, not about hiding information from an agent, so `--json` still reports
 // the evaluated result — labelled as what it is, not as program output.
 func TestFileJSONStillReportsTheValueAsMetadata(t *testing.T) {
-	path := writeProgram(t, "json_echo.gy", "def f(x):\n    return x * 2\n\nf(5)\n")
+	path := writeProgram(t, "json_echo.gy", "x = 5\nx * 2\n")
 	out := cli(t, "--json", "--file", path)
 	var doc struct {
 		Result  *string `json:"result"`
@@ -95,7 +126,10 @@ func TestFileJSONStillReportsTheValueAsMetadata(t *testing.T) {
 	if doc.Result == nil || *doc.Result != "10" {
 		t.Errorf("the machine path lost the evaluated result: %s", out)
 	}
-	if doc.Backend != "interpreter" || doc.Exit != 0 {
+	if doc.Type != "int" {
+		t.Errorf("the machine path mislabelled the result's kind: %s", out)
+	}
+	if doc.Backend != lang.BackendName || doc.Exit != 0 {
 		t.Errorf("the machine path lost the backend or the exit code: %s", out)
 	}
 }

@@ -213,7 +213,7 @@ func buildConformanceMatrix(t *testing.T) lang.ConformanceMatrix {
 //
 // Contract 1 is the one that survived ADR 0302's removal of the AST interpreter: the parity
 // contract it replaces ("the two backends print the same bytes") could not see a wrong answer
-// both engines shared, which is the hole L11.9's oracle leg was built to close (ADR 0186). The
+// the compiled path shared, which is the hole L11.9's oracle leg was built to close (ADR 0186). The
 // artifact goes to integration/conformance-matrix.json for agent and script consumption.
 func TestConformanceMatrix(t *testing.T) {
 	requirePinnedOracle(t)

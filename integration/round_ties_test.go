@@ -30,9 +30,7 @@ func TestRoundTiesToEvenOnAllThreeLegs(t *testing.T) {
 		{"tie_inside_an_expression", "n = 0.5\nprint(round(n) + 10)\nprint(round(2.5) * 2)\n", "10\n4\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := runInterp(t, tc.src); got != tc.want {
-				t.Errorf("interpreter\n got %q\nwant %q", got, tc.want)
-			}
+			lang.RecordedStdoutIs(t, tc.src, tc.want)
 			res, err := lang.JIT(tc.src, 0)
 			if err != nil {
 				t.Fatalf("compile: %v", err)

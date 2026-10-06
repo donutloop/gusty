@@ -56,8 +56,6 @@ func (g *irGen) signlessOperandKind(e Expr) (string, bool) { return g.negationOp
 // absOperandKind is the door `abs` asks.
 func (g *irGen) absOperandKind(e Expr) (string, bool) { return g.signlessOperandKind(e) }
 
-
-
 // negationOperandKind names the kind CPython would put inside the quotes of its `bad operand type for
 // unary -` sentence — for the half the compiler can answer without asking the run time. A literal has a
 // spelling, and a name is described by the same records the print dispatch reads (`strVals`,

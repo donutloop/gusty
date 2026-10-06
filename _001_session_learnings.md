@@ -8248,3 +8248,131 @@ sentence) beat guessing. One regex table-rewrite corrupted a test file; I `git c
 one-line surgical change instead. Two heredoc escaping failures moved the row-authoring into real `.py`
 files, which is where ledger rows with quotes inside them belong. Baseline (`6a40431`): 14 failing
 assertions on the new tables, 0 here. Matrix 167/128/39, 33 debt, 0 fail, 0 drift.
+
+## Cycle: the interpreter is retired; one compiled backend is the language (ADR 0302; Gap R.190, L13.1 filed)
+
+The AST interpreter is gone — `pkg/lang/jit.go` deleted, its `func (e *Evaluator)` methods stripped out of
+eight files, `EvalExpr`/`EvalProgram`/`InterpreterRun` gone, `--interp` a usage error, one `backend` in every
+machine payload, a two-leg oracle instead of a three-leg one. Baseline before touching anything: `go test
+-tags=llvm20 ./...` green in ~3m40. Same command green at the end, ~5m.
+
+**The deletion order is the whole decision.** Roughly 2900 `pkg/lang` cases and several hundred in
+`integration` asked the interpreter a question. Deleting them with the engine produces a perfectly green
+suite over removed coverage, which is the worst available outcome because the green is the bug. So: instrument
+the old engine in a `git worktree` at the pre-retirement commit, record every source its own suite asked about
+(5478 entries eventually, with value/type/stdout/trap class+message/front-end refusal), convert each case to
+run the compiled path against that record, and only then delete. `go test` was green at every commit boundary
+in that sequence, which is the only property that made a change this size reviewable.
+
+**A missing record must fail, and a disagreement must be a ratchet rather than an expectation.** Three
+mechanisms, and each one exists because of a specific way the naive version fails:
+
+- *missing record fails the case* — otherwise deleting an entry silently deletes coverage;
+- *a compiled answer that differs from the record skips with both answers in its message* and registers a
+  divergence — asserting the compiled answer would pin a wrong value, failing it would make the suite
+  unrunnable for a week;
+- *the ledger is two-way*: new divergences fail, and divergences that **went away** also fail until the row is
+  deleted. This earned its keep immediately — improving `KeyError` to name its key (ADR 0301's rule, now on
+  the compiled door) flipped two rows to green and the ratchet said "remove them" instead of letting the file
+  rot into describing a compiler nobody has.
+
+**`TestMain` in a non-test file is a silent no-op.** The `pkg/lang` drift ratchet lived in
+`golden_main.go`. Go only calls `TestMain` from a `_test.go` file, so for a full cycle the ratchet did not
+run: 341 divergences were being collected into memory, compared against nothing, and the package reported
+`ok`. Moved to `golden_testmain_test.go`, and the first run that actually checked found 340 rows (one had
+quietly paid) and surfaced the one new divergence my own diagnostic rewording had introduced. **A harness
+that cannot fail is not a harness** — the fix for a ratchet is to watch it fail once, deliberately, before
+believing it green. Related, same family: `go vet` doesn't catch it, the compiler doesn't, and the test suite
+passing is exactly what you'd expect.
+
+**Two ledger checks must not live where test order can reach them.** I put the "row on the ledger but no case
+reached it" check in a test function; `reference_debt_test.go` sorts before `scoping_test.go`, so the check ran
+before the cases that own the rows and reported them as fiction. Moved to `TestMain`, after `m.Run()`. Same
+class of bug as the `TestMain` one: an assertion whose verdict depends on which *file* a case happens to live
+in is not an assertion. And partial runs: `-run` subsets never reach most rows, so "not exercised" is only
+asserted on a full-package run (`isPartialRun`, keyed on the `test.run` flag) — the same rule the golden
+ledger runs by, discovered the hard way twice in one cycle.
+
+**`python3` being *absent* and `python3` *raising* are different events.** The reference helper cached
+"python3 is not here" on any error from `cmd.Run()`, including the exit-1 that a program which *raises*
+produces — and half the reference's answers in this suite are raises. One raise anywhere in the run poisoned
+the flag, every later case skipped its reference comparison, and the debt ledger's rows went unexercised.
+Distinguish `*exec.ExitError` (the binary ran, the program failed) from a real spawn failure. This is the
+general shape: an oracle that fails **quietly** converts a checked claim into an unchecked one, and only the
+ledger's "nobody asked" check caught it.
+
+**The golden record is an answer, not a definition — so it needed a second ledger.** Some retired-engine
+answers were wrong against CPython (`sum([1,2,3].append(4))` → `10` where the reference raises `TypeError`; a
+`match` `case y:` binding instead of evaluating `y`; ordering two built slots answering instead of raising
+`TypeError`). Turning those into passing tests by asserting the record's value would have converted the
+retired engine's mistakes into gusty's specification. Hence
+`integration/testdata/cpython-debt.json`: the reference's answer, the compiled answer, a `why`, and a required
+`roadmap` field, with the same two-way ratchet plus an "its case stopped running" check. Rule that fell out and
+is worth keeping: **a refusal counts as exercising a row** (the case asked, and declined honestly) — otherwise
+filed gaps get reported as untested whenever the compiler happens to refuse them.
+
+**Corrections to the record are data, not comments.** Three classes of recorder error had to be fixed *in the
+entries*: a compound-statement snippet (`if x: …`) has no value *to* echo, so the recorded repr came from
+`EvalExpr`'s statement value rather than from what any interface displayed (a hand-written probe proved the
+REPL printed nothing for those); a void has no visible repr, so `repr` is empty and the CLI reports `null`;
+and the type name was plain-wrong for `10 ** 6 // 7` (`float` for an `int`). Each fix went in as a `note`
+field on the entry, because an over-broad cleanup that "helpfully" blanked reprs by shape had to be reverted
+(`git checkout -- …golden.json`, re-record, redo carefully) and the next re-recording needs to know why those
+entries look the way they do.
+
+**The compiler's refusals were the real finding.** Everything that ran through the whole suite for the first
+time in this cycle was a capability the LLVM path never had and the interpreter's answers had been hiding:
+comprehension/iteration over a run-time text, `sorted` over a non-literal container, `dict(<dict>)` copies,
+`list.index`/`dict.pop` as expressions, higher-order calls and functions-as-values, `str()`/repr of a value
+whose kind is a run-time fact. None of those is a regression; all of them are `L11.1`/`Gap I.2`/`L12.11`/
+`Gap R.37` work now attached to named gaps, and the count of them is printed at the end of every run
+(`compiled refusals this run: 56`). Several were diagnosed into existence by the rule that a refusal must name
+the door, the reference's behaviour there, and the row that owns it — `unsupported call "x"`, `str on
+non-integer`, `unsupported list method index`, `sorted: codegen folds only an inline list literal`, `list index
+out of range` were all rewritten, and each rewrite turned an unactionable message into either a fixed bug or a
+filed gap. `unsupported call` naming the value's *actual* kind (`"5" is called… CPython raises TypeError: 'int'
+object is not callable`) is the pattern.
+
+**Two real compiler bugs fell out of the conversion, not test churn.** (1) `strArgIsNumberish`/
+`strArgBindings` recursed infinitely on `s = s + x` inside a function — the guard (`strArgInFlight`) refuses
+the shape, and the test asserts the guard rather than the compiler's ability to hang itself. (2) The `dict()`
+copy road contained placeholder IR that did not parse (`store { … }`) and had never been verified, because
+`Compile` refused the shape before reaching it; the unit test that "verified" it was verifying nothing. Also a
+latent test bug that only bites under `-tags=llvm20`: the bench-gate test rebuilt its "generous" baseline by
+indexing a *filtered* slice against an *unfiltered* one, so the doctored row survived and the gate correctly
+reported a 220x regression on the case it was supposed to pass. Index by key, not by position, when two lists
+can differ in length.
+
+**Diagnostics are features.** A generated lambda's arity message said `too many arguments for lambda_0`; the
+reference says `<lambda>` and a reader can't act on a name they never wrote (`callableSurfaceName`). Echo of a
+final expression has a purity rule, because rendering a user call means lowering it twice and `show(3)` printing
+twice is worse than a quiet prompt — the silence is `L13.1`, and `TestREPLCallResultEchoIsFiledNotFixed` pins it
+so nobody reads a quiet prompt as `None`. The REPL persists state by **replaying source** for state-establishing
+turns and *not* replaying queries, for the same reason: replaying `print` twice is a compiler that contradicts
+the user's own program.
+
+**What was genuinely lost, recorded as `Gap R.190`.** Two implementations disagreeing is how `1 + True` vs
+`True + 1` (Gap R.176) and the intern-order bool/int splits were found. One engine cannot disagree with
+itself, and the record cannot substitute for that — it's the same answers. `integration/proptest_test.go`
+survives as a determinism/compile-robustness leg (generated programs with no recorded expectation are refused
+by the harness rather than skipped — inventing an expectation is worse than not having one), but the honest
+replacement is a differential oracle driving CPython continuously, and that is not built. Saying so in the
+tracker is the difference between a decision and a drift.
+
+**Conformance semantics had to be re-derived, not just re-run.** With three engines, `OracleNA`/`OracleDebt`
+rows could compare engine-to-engine. With one, demanding compiled stdout equal CPython stdout for a row whose
+own registry entry says "CPython can't answer this" is incoherent — those classes are now judged against their
+registry pins (`Conformant = Asserted && pinsOK && len(Pins) > 0`), while ordinary rows keep demanding real
+agreement. Two refusal-wording pins moved because I improved the sentences they quoted; the fix was to update
+the pins, never to soften the harness.
+
+**Measurements.** Suite: `pkg/lang` ~280s, `integration` ~296s, `cmd/gustyc` ~20s, whole repo green both with
+and without `-tags=llvm20`. Record: 5478 sources. Ledgers: 340 + 21 drift rows, 7 reference-debt rows, each
+naming its owner. Refusals taken during a full run: 56.
+
+**Small things that cost time and are worth writing down.** `-count=1` hides nothing but patience; Go runs a
+package's tests in *file order*, which is a real dependency you must not exploit; `t.Errorf` (not `Fatalf`) in
+the missing-record path converts an afternoon of one-missing-source-per-run into one run; the corpus test needed
+`HasGoldenAnswer` precisely so it could report *all* ten unrecorded programs at once; and the shell's quoting
+inside a Python heredoc will happily write a Go string literal with a real newline in it, so multi-line Go
+strings go through the `edit` tool or a real `.py` file.

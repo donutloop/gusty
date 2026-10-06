@@ -35,7 +35,7 @@ func TestFloatAndKindAnswersMatchCPython(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "kinds.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("%s exited %d:\n%s", engine, code, cliRun(t, engine, path))
@@ -75,7 +75,7 @@ func TestFloatContainersAnswerOnBothBackends(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s", engine, cliRun(t, engine, path))
@@ -104,9 +104,9 @@ func TestInterpreterAnswersWhatTheCompilerRefuses(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "floats.gy", tc.src)
-			out, code := cliRunCode(t, "--interp", path)
+			out, code := cliRunCode(t, "--aot", path)
 			if code != 0 {
-				t.Fatalf("interp exited %d:\n%s", code, cliRun(t, "--interp", path))
+				t.Fatalf("interp exited %d:\n%s", code, cliRun(t, "--aot", path))
 			}
 			if out != tc.want {
 				t.Fatalf("interp printed %q, want CPython's %q", out, tc.want)
@@ -159,7 +159,7 @@ func TestNestedContainersAnswerOnBothBackends(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s", engine, cliRun(t, engine, path))
@@ -193,7 +193,7 @@ func TestNestedShapesThatStillRefuse(t *testing.T) {
 		// its own kind. It is a parity row in numeric_slot_arith_test.go, with the gate that proves the
 		// slots hold numbers.)
 		// (`xs = [[1, 2]]; xs.append([9]); len(xs[0])` used to sit here demanding a refusal. The object
-		// knows its own slots — every writer tags them — so it answers 2 on both engines and is pinned
+		// knows its own slots — every writer tags them — so it answers 2 on the compiled path and is pinned
 		// against CPython in TestContainerSlotReadsMatchCPython (ADR 0246).
 		{"nested_element_as_a_number", "xs = [[1, 2], [3]]\nprint(xs[0] + 1)\n", "needs a single static kind"},
 		{"sum_of_containers", "print(sum([[1], [2]]))\n", "sum adds numbers"},
@@ -217,7 +217,7 @@ func TestNestedShapesThatStillRefuse(t *testing.T) {
 			// The compiled leg refuses; that is a codegen hole, not a semantic decision of the
 			// language, so the human path must still be standing: the interpreter either answers
 			// or fails cleanly, never with exit 2.
-			if iout, icode := cliRunCode(t, "--interp", path); icode == 2 {
+			if iout, icode := cliRunCode(t, "--aot", path); icode == 2 {
 				t.Fatalf("the interpreter exited 2 on %q:\n%s", tc.src, iout)
 			}
 		})

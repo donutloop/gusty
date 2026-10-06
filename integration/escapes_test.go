@@ -122,9 +122,7 @@ func TestStringLengthCountsCodePoints(t *testing.T) {
 		{"s = \"héllo\"\nprint(len(s))\n", "5\n"},
 		{"s = \"日本語\"\nprint(len(s))\n", "3\n"},
 	} {
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		if got := runAOT(t, tc.src); got != tc.want {
 			t.Errorf("AOT %q = %q, want %q", tc.src, got, tc.want)
 		}
@@ -143,9 +141,7 @@ func TestMalformedEscapesKeepTheirText(t *testing.T) {
 		{"print(\"\\U00\")\n", "\\U00\n"},
 		{"print(\"\\x41\")\n", "A\n"}, // well-formed: decoded
 	} {
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("interpreter %q = %q, want %q", tc.src, got, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		if got := runAOT(t, tc.src); got != tc.want {
 			t.Errorf("AOT %q = %q, want %q", tc.src, got, tc.want)
 		}
@@ -200,9 +196,7 @@ func TestStringMembershipMatchesPython(t *testing.T) {
 		if py := pythonOutput(t, tc.src); py != tc.want {
 			t.Fatalf("%s: expected output disagrees with CPython\n cpython = %q\n   want   = %q", tc.name, py, tc.want)
 		}
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, got, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.Compile(tc.src)
 		if err != nil {
 			t.Errorf("%s: compile: %v", tc.name, err)
@@ -243,9 +237,7 @@ func TestAOTStringPrintsMatchPython(t *testing.T) {
 		if py := pythonOutput(t, tc.src); py != tc.want {
 			t.Fatalf("%s: expected output disagrees with CPython\n cpython = %q\n   want   = %q", tc.name, py, tc.want)
 		}
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, got, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.Compile(tc.src)
 		if err != nil {
 			t.Errorf("%s: compile: %v", tc.name, err)

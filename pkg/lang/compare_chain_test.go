@@ -221,7 +221,7 @@ func TestChainWithAContainerOperandRefusesOnTheCompiledLeg(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
-			want := captureStdout(t, src) // the interpreter answers the reference here
+			want := captureStdout(t, src) // the record holds the reference answer here
 			res, err := Compile(src)
 			if err == nil {
 				out := runIR(t, res.IR)

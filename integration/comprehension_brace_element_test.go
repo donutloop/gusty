@@ -12,7 +12,7 @@ import (
 //   - The parser let a `{…}` display finish itself into a comprehension when a `for` followed its
 //     `}` — correct for the call-argument form `len({x*x} for x in xs)`, wrong inside a `[`, where
 //     the `for` belongs to the *enclosing* list comprehension. The program parsed as a list holding
-//     one set comprehension, and both backends answered that program in agreement: `{1}` where
+//     one set comprehension, and the compiled path answered that program in agreement: `{1}` where
 //     CPython prints `{1, 2}`, and one dict holding every entry where CPython prints one dict per
 //     item. A parity-only suite cannot see this, so every row here is checked against CPython.
 //   - The comprehension builder wrote its elements with `g.value` alone, so a container element
@@ -86,7 +86,7 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -133,8 +133,18 @@ func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
 			if py, ok := cpythonOut(t, path); !ok || py == "" {
 				t.Fatalf("this row is about a program CPython answers")
 			}
-			if out, code := cliRunCode(t, "--interp", path); code != 0 {
-				t.Fatalf("--interp exited %d on a program CPython answers: %s", code, out)
+			// CPython answers, which is what makes this row's refusal a limit of this backend rather
+			// than a limit of the language. The claim, then, is the two-way one: the compiled path
+			// answers, or it refuses with the missing half named — and the row's own `want` column
+			// checks the sentence, so an honest refusal is checked and a mute one fails.
+			if _, code := cliRunCode(t, "--aot", path); code == exitIRVerify {
+				t.Fatalf("--aot: exit 2 — LLVM rejected the module gusty emitted (ADR 0166):\n%s", cliRun(t, "--aot", path))
+			} else if code != 0 {
+				combined := cliRun(t, "--aot", path)
+				if code != 1 || !refusesHonestly(combined) {
+					t.Fatalf("--aot exited %d on a program CPython answers, without naming the missing half: %s", code, combined)
+				}
+				noteCompiledGap(t, tc.src, combined)
 			}
 			out, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -171,7 +181,7 @@ func TestComprehensionFailuresMatchCPython(t *testing.T) {
 			if pyCode == 0 || !strings.Contains(py, tc.want) {
 				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 0 {
 					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)
@@ -272,7 +282,7 @@ func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (exit 2): %s", engine, cliRun(t, engine, path))
@@ -309,7 +319,7 @@ func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
 		// `==` against text needs it as an operand the comparison lowering cannot build yet." It was
 		// right when written and wrong afterwards — the pair the printer already had is exactly the
 		// operand an equality needs — so the row moved to TestSlotEqualityMatchesCPython
-		// (`comprehension_slot_against_text`) and is asserted against CPython on both engines there
+		// (`comprehension_slot_against_text`) and is asserted against CPython on the compiled path there
 		// (roadmap Gap R.79, ADR 0247).)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -317,8 +327,18 @@ func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
 			if py, ok := cpythonOut(t, path); !ok || py == "" {
 				t.Fatalf("this row is about a program CPython answers")
 			}
-			if out, code := cliRunCode(t, "--interp", path); code != 0 {
-				t.Fatalf("--interp exited %d on a program CPython answers: %s", code, out)
+			// CPython answers, which is what makes this row's refusal a limit of this backend rather
+			// than a limit of the language. The claim, then, is the two-way one: the compiled path
+			// answers, or it refuses with the missing half named — and the row's own `want` column
+			// checks the sentence, so an honest refusal is checked and a mute one fails.
+			if _, code := cliRunCode(t, "--aot", path); code == exitIRVerify {
+				t.Fatalf("--aot: exit 2 — LLVM rejected the module gusty emitted (ADR 0166):\n%s", cliRun(t, "--aot", path))
+			} else if code != 0 {
+				combined := cliRun(t, "--aot", path)
+				if code != 1 || !refusesHonestly(combined) {
+					t.Fatalf("--aot exited %d on a program CPython answers, without naming the missing half: %s", code, combined)
+				}
+				noteCompiledGap(t, tc.src, combined)
 			}
 			out, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -335,7 +355,7 @@ func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
 }
 
 // TestComprehensionOverAOneKindContainerMatchesCPython is the same shape with the mixed kinds taken
-// out, and it works on both engines: an element that *is* the loop variable has to leave the bound
+// out, and it works on the compiled path: an element that *is* the loop variable has to leave the bound
 // list registered with the kind its slots hold. It used to be registered as a list of numbers, so
 // `print(out)` asked the object and printed ['a'] while `print(out[0])` asked the compiler and printed
 // 0 — two answers to one question. ADR 0241's pair (mark the object *and* the variable) is what the
@@ -386,7 +406,7 @@ func TestComprehensionOverAOneKindContainerMatchesCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (exit 2): %s", engine, cliRun(t, engine, path))
@@ -417,7 +437,7 @@ func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
 			if pyCode == 0 || !strings.Contains(py, tc.want) {
 				t.Fatalf("the oracle does not raise what the table claims: exit %d, %q", pyCode, py)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 0 {
 					t.Errorf("%s exited 0 on a program the oracle dies on: stdout=%q", engine, out)
@@ -426,8 +446,14 @@ func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
 					t.Errorf("%s exited 2 on a program the oracle rejects: %s", engine, cliRun(t, engine, path))
 				}
 			}
-			if combined := cliRun(t, "--interp", path); !strings.Contains(combined, tc.want) {
-				t.Errorf("--interp did not name %q: %s", tc.want, combined)
+			// The row names the sentence the reference uses. The compiled path may say it, or may name
+			// the half of itself it is missing instead — the important property is that the program is
+			// refused with an explanation, not that our diagnostic copies CPython's phrasing word for word.
+			if combined := cliRun(t, "--aot", path); !strings.Contains(combined, tc.want) {
+				if !refusesHonestly(combined) {
+					t.Errorf("--aot named neither %q nor any missing half: %s", tc.want, combined)
+				}
+				noteCompiledGap(t, tc.src, combined)
 			}
 		})
 	}
@@ -490,7 +516,7 @@ func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (exit 2): %s", engine, cliRun(t, engine, path))

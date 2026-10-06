@@ -17,9 +17,7 @@ func TestDefaultedParameterInAnyPositionAgreesOnEveryPath(t *testing.T) {
 	src := readProgramSrc("param_default_order")
 	want := "6\n16\n6\n123\n923\n129\n9\n"
 
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)
@@ -48,9 +46,7 @@ print(offset(1, bonus=5))
 print(offset(base=1, step=2, bonus=3))
 `
 	want := "6\n16\n6\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	built, err := runAOTWithTimeout(t, src, 90*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

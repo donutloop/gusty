@@ -49,9 +49,7 @@ print(vs)
 		{"xs = [3, 1, 2]\nys = sorted(xs)\nprint(ys)\nprint(xs)\n", "[1, 2, 3]\n[3, 1, 2]\n"},
 	}
 	for _, tc := range append([]struct{ src, want string }{{mixed[0], mixed[1]}}, forEach...) {
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("interpreter\n got %q\nwant %q", got, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.JIT(tc.src, 0)
 		if err != nil {
 			t.Fatalf("compile: %v", err)

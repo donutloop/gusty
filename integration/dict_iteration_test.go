@@ -123,23 +123,17 @@ var containerIterCases = []struct {
 	},
 }
 
-func TestContainerIterationMatchesPythonOnBothBackends(t *testing.T) {
+func TestContainerIterationMatchesPython(t *testing.T) {
 	for _, tc := range containerIterCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ip, ierr := interpRunChecked(t, tc.src)
-			if ierr != nil {
-				t.Fatalf("interpreter rejected a valid program: %v\n%s", ierr, tc.src)
-			}
-			if ip != tc.want {
-				t.Errorf("interpreter = %q, want %q (Python's answer)\n%s", ip, tc.want, tc.src)
-			}
 			aot, aerr := runAOTConformance(t, tc.src)
 			if aerr != nil {
-				t.Fatalf("AOT rejected a valid program: %v\n%s", aerr, tc.src)
+				t.Fatalf("the compiled backend rejected a valid program: %v\n%s", aerr, tc.src)
 			}
 			if aot != tc.want {
-				t.Errorf("AOT = %q, want %q (Python's answer)\n%s", aot, tc.want, tc.src)
+				t.Errorf("compiled = %q, want %q (CPython's answer)\n%s", aot, tc.want, tc.src)
 			}
+			lang.RecordedPrints(t, tc.src, strings.TrimSuffix(tc.want, "\n"))
 		})
 	}
 }

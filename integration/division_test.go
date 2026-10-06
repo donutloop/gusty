@@ -9,7 +9,7 @@ import (
 
 // Gap P — `/` is true division and floats print like Python (ADR 0180).
 //
-// `7 / 2` truncated to 3 in both backends (the parity harness could not see it:
+// `7 / 2` truncated to 3 in the compiled path (the parity harness could not see it:
 // both agreed), and `print(x * 2.0)` showed 2. Each expectation here is
 // cross-checked by running CPython on the same source.
 
@@ -56,9 +56,7 @@ func TestKnownAOTDivisionGaps(t *testing.T) {
 		if py := pythonOutput(t, tc.src); py != tc.want {
 			t.Fatalf("%s: expectation disagrees with CPython: %q", tc.name, py)
 		}
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("%s: the interpreter must be the correct backend: got %q want %q", tc.name, got, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		got := runAOT(t, tc.src)
 		if got != tc.aotGets && got != tc.want {
 			t.Errorf("%s: AOT printed %q — neither the documented gap %q nor a fix", tc.name, got, tc.aotGets)
@@ -74,9 +72,7 @@ func TestDivisionAndFloatReprMatchPython(t *testing.T) {
 		if py := pythonOutput(t, tc.src); py != tc.want {
 			t.Fatalf("%s: expected output disagrees with CPython\n cpython = %q\n   want   = %q", tc.name, py, tc.want)
 		}
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, got, tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.Compile(tc.src)
 		if err != nil {
 			t.Errorf("%s: compile: %v", tc.name, err)
@@ -94,15 +90,12 @@ func TestDivisionAndFloatReprMatchPython(t *testing.T) {
 // Division by zero is an error, not a silent 0 or an infinity.
 func TestDivisionByZeroMatchesPython(t *testing.T) {
 	src := "a = 1\nprint(a / 0)\n"
-	prog, err := lang.Parse(src)
-	if err != nil {
+	if _, err := lang.Parse(src); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	ev := lang.NewEvaluator()
-	if _, err := ev.EvalProgram(prog); err == nil || !strings.Contains(err.Error(), "division by zero") {
-		t.Errorf("interpreter must raise division by zero, got %v", err)
-	}
-	if _, err := lang.Compile(src); err != nil {
-		t.Logf("AOT refuses to compile the division (an acceptable answer): %v", err)
+	// The engine that used to answer this is retired, so the check is the one that matters: the
+	// compiled program must raise, and name the condition the way CPython names it.
+	if err := lang.RecordedRunError(t, src); err == nil || !strings.Contains(err.Error(), "division by zero") {
+		t.Errorf("the compiled program must raise division by zero, got %v", err)
 	}
 }

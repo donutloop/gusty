@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -195,6 +196,11 @@ func ternaryArmNames(n *CondExpr) [3]string {
 // knows the node, the node kind where it does not. It never returns the empty string, because it is
 // always written inside backquotes.
 func exprSurface(e Expr) string {
+	// A diagnostic must never be the thing that crashes. The surface of nothing is written as nothing,
+	// and the sentence around it still says which door refused.
+	if e == nil || reflect.ValueOf(e).IsNil() {
+		return "…"
+	}
 	switch x := e.(type) {
 	case nil:
 		return "…"

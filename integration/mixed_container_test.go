@@ -130,7 +130,7 @@ func TestMixedContainersAnswerLikeTheInterpreter(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "mixed.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("%s exited %d:\n%s", engine, code, cliRun(t, engine, path))
@@ -155,7 +155,7 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 		{"mixed_dict_iteration", "d = {\"a\": 1, \"b\": \"x\", \"c\": None}\nfor k in d:\n    print(k)\n"},
 		// No set-printing row here on purpose. CPython prints a set in hash order — {1, "a",
 		// None} comes out {'a', 1, None} — and gusty prints it in insertion order, which is
-		// documented (docs/language.md, "Sets iterate in insertion order in both backends")
+		// documented (docs/language.md, "Sets iterate in insertion order in the compiled path")
 		// and is what makes the two backends' output comparable at all. The engines are
 		// compared against each other for rendering, in
 		// TestMixedContainersAnswerLikeTheInterpreter; the oracle decides the *answers*.
@@ -177,7 +177,7 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 			if !ok {
 				return
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				got, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("%s exited %d:\n%s", engine, code, cliRun(t, engine, path))

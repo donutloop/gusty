@@ -32,6 +32,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -414,16 +415,73 @@ func srcOrFile(src, file string) (string, error) {
 // the retirement to keep working.
 type backend = string
 
-const backendAOT backend = "aot"
+const backendAOT backend = lang.BackendName
 
 // evalSrcOrFile runs one source through the one backend the language has: codegen -> llc ->
 // cc -> run the artifact in-process (lang.JITWithOptions).
 //
 // A snippet (--eval) and a program (--file, a positional) differ in exactly one courtesy. A
-// snippet's final bare expression is a question the caller asked, so it comes back as the
-// answer: `result`/`type` on the machine path, a printed repr on the human one — what a REPL
-// is for. A program is never echoed, because a program's stdout is only what the program
-// printed (ADR 0204), which is what makes `gustyc prog.gy` and `./prog` print the same bytes.
+// snippet's final bare expression is a question the caller asked, so it comes back as the answer:
+// `result`/`type` on the machine path, and a printed line on the human one — what a REPL is for. A
+// program is never echoed to stdout, because a program's stdout is only what the program printed
+// (ADR 0204), which is what makes `gustyc prog.gy` and `./prog` print the same bytes.
+//
+// The distinction is about *stdout*, not about who is allowed to know the value. The module reports
+// its final expression's value on the tool channel either way (fd 2), and the runner lifts that line
+// out before anything reads stderr; the human path drops it, and `--json` presents it as `result` and
+// `type` for a program as well as for a snippet. Suppressing a courtesy is not a reason to blind an
+// agent (ADR 0204's machine path, kept through ADR 0302).
+// toolFailurePayload is the machine-readable form of "the program did not make it to a run".
+//
+// It used to be three keys — an error sentence, the backend, an exit code — which pushed whoever read
+// it back into prose: to tell "my source does not parse" from "the checker refused it" from "the
+// compiler declined to lower it" from "LLVM rejected the module we emitted", an agent had to match on
+// substrings of a sentence written for a human, and the position of the problem was in none of them.
+// So the payload names the phase, and carries the spans the sentence contains as data.
+//
+// The phase vocabulary is the pipeline's own: parse, check, codegen, verify, toolchain. `error` keeps
+// its old meaning and text for callers already reading it; `ok` says what the run was not.
+func toolFailurePayload(err error, exitCode int) string {
+	msg := err.Error()
+	phase := "compile"
+	switch {
+	case strings.Contains(msg, "parse error at") || strings.Contains(msg, "unexpected token"):
+		phase = "parse"
+	case strings.Contains(msg, "error(s) in source") || strings.Contains(msg, "error at "):
+		phase = "check"
+	case strings.Contains(msg, "codegen:"):
+		phase = "codegen"
+	case exitCode == exitIRVerify:
+		phase = "verify"
+	}
+	type pos struct {
+		Line int    `json:"line"`
+		Col  int    `json:"col"`
+		Msg  string `json:"msg"`
+	}
+	var list []pos
+	for _, m := range positionRE.FindAllStringSubmatch(msg, -1) {
+		line, _ := strconv.Atoi(m[1])
+		col, _ := strconv.Atoi(m[2])
+		list = append(list, pos{Line: line, Col: col, Msg: strings.TrimSpace(m[3])})
+	}
+	if list == nil {
+		list = []pos{}
+	}
+	b, jerr := json.Marshal(map[string]any{
+		"ok": false, "phase": phase, "error": msg, "errors": list,
+		"backend": backendAOT, "exit": exitCode,
+	})
+	if jerr != nil {
+		return fmt.Sprintf("{\"error\": %q, \"backend\": %q, \"exit\": %d}", msg, backendAOT, exitCode)
+	}
+	return string(b)
+}
+
+// positionRE finds the positions a front-end sentence carries — `parse error at 1:7: ...`,
+// `error at 3:2: ...` — so a payload can hand them over as numbers.
+var positionRE = regexp.MustCompile(`(?:parse error|error) at ([0-9]+):([0-9]+): (.*)$`)
+
 func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 	s, err := srcOrFile(src, file)
 	if err != nil {
@@ -437,7 +495,7 @@ func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 	// it lands on fd 2, which the in-process runner captures for us.
 	lang.SetGCReport(gcStats)
 	defer lang.SetGCReport(false)
-	jitOpts := &lang.JITOptions{EchoResult: snippet}
+	jitOpts := &lang.JITOptions{EchoResult: true}
 	if debug {
 		// `--debug` is a request about the artifact, so it is honoured on every path that builds
 		// one — including the in-process runner, whose module and object a debugger can read when
@@ -456,7 +514,7 @@ func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 			exitCode = exitIRVerify
 		}
 		if jsonOut {
-			fmt.Printf("{\"error\": %q, \"backend\": %q, \"exit\": %d}\n", err.Error(), backendAOT, exitCode)
+			fmt.Println(toolFailurePayload(err, exitCode))
 		} else {
 			fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 		}
@@ -492,7 +550,7 @@ func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 	}
 	if gcStats {
 		if st, ok := lang.ParseGCStatsLine(reportLine(res.Stderr)); ok {
-			members = append(members, "gc: "+gcObject(st))
+			members = append(members, `"gc": `+gcObject(st))
 		}
 	}
 	// A trap carries its exception class as data (ADR 0214): an agent branching on `exception`
@@ -531,19 +589,20 @@ func evalSrcOrFile(src, file string, jsonOut bool, gcStats, debug bool) int {
 		return exitCode
 	}
 	fmt.Print(res.Output)
-	if res.Result != nil && res.Result.Repr != "" {
+	if snippet && res.Result != nil && res.Result.Repr != "" {
 		// The REPL courtesy, on stdout: an interactive caller typed an expression and is owed its
 		// value, the way CPython's prompt writes repr(value). It is a tool statement made *for* the
 		// reader, which is why it goes where the reader is looking and nowhere in --json's output
 		// member (that stays the program's own bytes). A value that was the void prints nothing —
-		// neither the old REPL nor CPython's announces a None nobody asked for.
+		// neither the old REPL nor CPython's announces a None nobody asked for. A *program* is never
+		// echoed even when the module reported a value for its last expression: `gustyc prog.gy` and
+		// `./prog` owe the same bytes, and that is what the flag `snippet` remembers (ADR 0204).
 		fmt.Println(res.Result.Repr)
 	}
-	if gcStats {
-		if st, ok := lang.ParseGCStatsLine(reportLine(res.Stderr)); ok {
-			fmt.Fprintln(os.Stderr, st.String())
-		}
-	}
+	// The collector's line is not printed twice. The compiled program reports its own counters on
+	// fd 2 (rt_gc_report), and that line is forwarded above with the rest of the tool channel; the
+	// CLI's job is to add the *data* form under --json, not to render the same numbers a second time
+	// in its own words (ADR 0181: one report per run, on the tool channel).
 	return exitCode
 }
 
@@ -737,6 +796,15 @@ func emitAST(src string, jsonOut bool) int {
 //
 //	{"ok": false, "phase": "compile", "error": "...", "exit": N}
 func reportCompileErr(err error, jsonOut bool) int {
+	// A front-end rejection reaching this entry point still reports its phase as `parse`, with spans.
+	// `--eval` and `--file` compile through one call, so a typo and an unlowerable construct both arrive
+	// here, and until now both were labelled `phase: "compile"` with a bare sentence — an agent reading
+	// the payload could not tell "my source does not parse" from "the compiler declined my program",
+	// which is the exact distinction the phase field exists to carry (docs/operations.md § JSON output).
+	var pes *lang.ParseErrors
+	if errors.As(err, &pes) || strings.HasPrefix(err.Error(), "parse error") || strings.Contains(err.Error(), "unexpected token") {
+		return reportParseErr(err, jsonOut)
+	}
 	if jsonOut {
 		fmt.Printf(`{"ok": false, "phase": "compile", "error": %q, "exit": %d}`+"\n", err.Error(), exitCompileError)
 		return exitCompileError
@@ -774,6 +842,17 @@ func reportParseErr(err error, jsonOut bool) int {
 		}
 		list := []pos{}
 		first := err.Error()
+		if !isForest {
+			// A wrapped front-end message — `jit: parse error at 1:1: unexpected token` — still has a
+			// position in it, and the payload is where an agent reads that position from. Pull it out
+			// rather than hand back a payload with an empty `errors` list and let everyone grep stderr.
+			if m := parseAtRE.FindStringSubmatch(first); m != nil {
+				line, _ := strconv.Atoi(m[1])
+				col, _ := strconv.Atoi(m[2])
+				list = append(list, pos{Line: line, Col: col, Msg: strings.TrimSpace(m[3])})
+				first = fmt.Sprintf("%d:%d: %s", line, col, strings.TrimSpace(m[3]))
+			}
+		}
 		if isForest {
 			for _, pe := range pes.Errors {
 				list = append(list, pos{Line: pe.Span.Line, Col: pe.Span.Col, Msg: pe.Msg})
@@ -800,6 +879,11 @@ func reportParseErr(err error, jsonOut bool) int {
 	fmt.Fprintf(os.Stderr, "gustyc: %v\n", err)
 	return exitCompileError
 }
+
+// parseAtRE reads the position back out of a front-end sentence — `parse error at 1:7: unexpected
+// token` — for the cases where the error reached the CLI already wrapped, so the structured payload
+// still carries a line and a column instead of only prose.
+var parseAtRE = regexp.MustCompile(`parse error at ([0-9]+):([0-9]+): (.*)$`)
 
 func usage(fs *flag.FlagSet) {
 	fmt.Printf(`gustyc — gusty language CLI/REPL

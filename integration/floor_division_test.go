@@ -45,9 +45,7 @@ func TestFloorDivisionMatchesCPythonOnBothBackends(t *testing.T) {
 	if perr != nil {
 		t.Skipf("no usable oracle: %v\n%s", perr, oracleErr)
 	}
-	if interp := runInterp(t, src); interp != oracle {
-		t.Errorf("interpreter diverges from CPython on the floor grid:\n%s", floorGridDiff(interp, oracle))
-	}
+	lang.RecordedStdoutIs(t, src, oracle)
 	compiled, err := runAOTWithTimeout(t, src, 240*time.Second)
 	if err != nil {
 		t.Fatalf("compiled run: %v", err)

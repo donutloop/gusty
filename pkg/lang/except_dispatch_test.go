@@ -46,6 +46,7 @@ func edInterp(t *testing.T, src string) (string, error) {
 	t.Helper()
 	return runGoldenStdout(t, src)
 }
+
 var edCases = []struct {
 	name string
 	src  string

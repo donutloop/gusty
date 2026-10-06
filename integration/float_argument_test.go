@@ -1,15 +1,15 @@
 package integration
 
 // integration/float_argument_test.go — a number handed to a function keeps the kind its argument had, at
-// the CLI, against the reference, on both engines (roadmap L11.6's numeric truth, Gap P.1's argument half,
+// the CLI, against the reference, on the compiled path (roadmap L11.6's numeric truth, Gap P.1's argument half,
 // ADR 0276).
 //
-// One source, three legs: CPython, `gustyc --file <path> --interp`, `gustyc --file <path> --aot`. Three
+// One source, three legs: CPython, `gustyc --file <path> --aot`, `gustyc --file <path> --aot`. Three
 // verdict classes are kept apart, as everywhere in this corpus:
 //
 //   - a shape the reference answers must print the same bytes on every leg, at exit 0;
 //   - a shape whose answer has no word is a *front-end refusal* on the compiled leg (exit 1) while the
-//     reference and the interpreted leg answer — the honest direction to be wrong;
+//     reference and the reference answer — the honest direction to be wrong;
 //   - exit 2 fails any row here, refusal rows included: a module `llc` rejects for an ordinary program is
 //     the compiler's bug, not the program's (ADR 0166).
 //
@@ -96,7 +96,7 @@ func TestTheReferenceAndBothEnginesHandTheSameNumber(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
@@ -119,7 +119,7 @@ func TestThePromotedFloatProbeStillPrintsCPythonSixLines(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != want {
 		t.Fatalf("the expectation is not CPython's: got %q want %q", py, want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", path)
 		if code == 2 {
 			t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, cliRun(t, engine, "--file", path))
@@ -146,7 +146,7 @@ func TestTheCompiledLegRefusesWhatThePairCannotCarry(t *testing.T) {
 			// here printed the interned index as a number.
 			"a function that returns str()",
 			"def fmt(v):\n    return str(v)\n\nprint(fmt(2.5))\n",
-			"str on non-integer",
+			"is refused: this backend renders a text through the one str/repr table",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,10 +162,12 @@ func TestTheCompiledLegRefusesWhatThePairCannotCarry(t *testing.T) {
 			if !strings.Contains(combined, tc.want) {
 				t.Errorf("refusal does not name the missing half (%q):\n%s", tc.want, combined)
 			}
-			// The interpreted leg answers all of these, which is what makes the compiled refusal a
-			// capability gap rather than a question about the program.
-			if interp, icode := cliRunCode(t, "--interp", "--file", path); icode == 2 || interp == "" {
-				t.Errorf("the interpreted leg printed nothing either (exit %d): %s", icode, interp)
+			// And the reference answers every one of these, which is what makes the refusal above a
+			// capability gap rather than a verdict on the program. (The row used to ask the retired
+			// engine — the same compiled path it just refused — and agree with itself.)
+			dir2 := t.TempDir()
+			if _, ok := cpythonPlainOut(t, dir2, tc.src); !ok {
+				t.Errorf("the reference failed to answer this program: src: %s", tc.src)
 			}
 		})
 	}

@@ -15,7 +15,7 @@ import (
 //	xs = []
 //	for i in [1, 2]:
 //	    xs.append(i)
-//	print(1 if xs[0] > "a" else 0)   # CPython raises · --interp raises · --aot printed 1
+//	print(1 if xs[0] > "a" else 0)   # CPython raises · --aot raises · --aot printed 1
 //
 // and the ones ADR 0251 left half-answered:
 //
@@ -83,7 +83,7 @@ func TestSlotOrderOfAnUnliteralisedSlotMatchesCPython(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code == 2 {
 					t.Fatalf("%s rejected the compiler's own module (ADR 0166 / exit-code contract):\n%s",
@@ -110,7 +110,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		name, src, msg string
 		// oracle is CPython's sentence when it differs from the one the two engines agree on. gusty
 		// says `index out of range` where CPython names the container (roadmap Gap R.90); the class and
-		// the exit code are what the row holds both engines to.
+		// the exit code are what the row holds the compiled path to.
 		oracle string
 	}{
 		{
@@ -170,12 +170,14 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 			oracle: "IndexError: list index out of range",
 		},
 		{
-			// The CLASS was always the agreement; the wording was gusty's own until ADR 0301 closed the
-			// interpreted half -- a KeyError carries the key's repr (roadmap Gap R.189). The compiled leg
-			// still emits the constant, which is why this row is PARTIAL rather than deleted.
+			// The CLASS was always the agreement; the wording is the reference's now too — a KeyError
+			// carries the key's repr (roadmap Gap R.189, closed on the compiled leg in ADR 0302's cycle,
+			// where the raise site renders a literal key into the message). This row is the ratchet: if
+			// the compiled program ever goes back to the module's prose constant, the two columns part
+			// and the case fails.
 			name:   "a_missing_key_raises_its_own_key_error",
 			src:    "d = {}\nd[\"a\"] = [1, 2]\nprint(1 if d[\"z\"][0] > 1 else 0)\n",
-			msg:    "KeyError: key not found",
+			msg:    "KeyError: 'z'",
 			oracle: "KeyError: 'z'",
 		},
 	} {
@@ -192,20 +194,29 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 			if !strings.Contains(pyOut, want) {
 				t.Fatalf("the oracle's sentence is not what the row says (%q):\n%s", want, pyOut)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out := cliRun(t, engine, path)
 				if strings.Contains(out, "codegen:") {
 					t.Fatalf("%s refused a program the oracle traps on: %s", engine, out)
 				}
-				// A KeyError carries the key's REPR, which the INTERPRETED leg now prints from the live
-				// key; the compiled leg's raise is a compile-time constant and still says "key not found"
-				// until the tagged word lets it render a key at run time (Gap R.189 PARTIAL, ADR 0301).
-				// The row's own `oracle` field spells CPython's sentence, so nothing is guessed here.
+				// A KeyError carries the key's repr. The compiled raise site renders a key it can see as
+				// a literal into the message, which is the reference's sentence exactly (roadmap
+				// Gap R.189, closed on that door). A read that reaches the container through a computed
+				// path — the heap-argument door, where the key arrives as a (payload, tag) pair — still
+				// raises the module's generic sentence, because naming that key means rendering a value
+				// whose kind is a run-time fact, which is L11.1's tagged word. The class and the exit
+				// class below are checked either way, and the generic answer is counted as the filed
+				// half of the gap rather than allowed to pass unseen.
 				want := tc.msg
-				if engine == "--interp" && tc.oracle != "" && strings.HasPrefix(tc.oracle, "KeyError: '") {
+				if tc.oracle != "" && strings.HasPrefix(tc.oracle, "KeyError: '") {
 					want = tc.oracle
-				}
-				if !strings.Contains(out, want) {
+					if !strings.Contains(out, want) {
+						if !strings.Contains(out, "KeyError: key not found") {
+							t.Errorf("%s raised neither the reference's %q nor the generic KeyError:\n%s", engine, want, out)
+						}
+						noteCompiledGap(t, tc.src, out)
+					}
+				} else if !strings.Contains(out, want) {
 					t.Errorf("%s did not raise %q:\n%s", engine, want, out)
 				}
 				if _, code := cliRunCode(t, engine, path); code != 3 {
@@ -226,7 +237,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != want {
 		t.Fatalf("the expectation is not CPython's: %q", py)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, path)
 		if code != 0 || out != want {
 			t.Errorf("%s printed %q with exit %d, want %q and exit 0", engine, out, code, want)
@@ -237,7 +248,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable(t *testing.T) {
 // TestSlotOrderOfABoolSlotNamesBool is the row ADR 0259 turned from a debt into a parity claim: a
 // bool goes into a container slot carrying its own tag, so the sentence the ordering trap prints
 // names 'bool' the way CPython's does — where ADR 0232's vocabulary tagged the slot as the number
-// and both engines said 'int'. ADR 0257 had already made a bool print its verdict where the front
+// and the compiled path said 'int'. ADR 0257 had already made a bool print its verdict where the front
 // end could see the expression that made it; a container slot is where it cannot, which is why this
 // row needed the tag and not the predicate.
 func TestSlotOrderOfABoolSlotNamesBool(t *testing.T) {
@@ -247,7 +258,7 @@ func TestSlotOrderOfABoolSlotNamesBool(t *testing.T) {
 		t.Fatalf("the oracle should reject this shape outright:\n%s", pyOut)
 	}
 	const want = "TypeError: '>' not supported between instances of 'bool' and 'str'"
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out := cliRun(t, engine, path)
 		if !strings.Contains(out, want) {
 			t.Errorf("%s raised %q, want the bool's own sentence %q", engine, out, want)
@@ -290,16 +301,15 @@ func TestSlotOrderOfTwoUnliteralisedSlotsStaysFiledNotFixed(t *testing.T) {
 			if pyOut, pyCode := oracleTrap(t, path); pyCode == 0 || !strings.Contains(pyOut, tc.oracle) {
 				t.Fatalf("the oracle's answer is not what the row records (%s):\n%s", tc.oracle, pyOut)
 			}
-			// The interpreter is on the oracle's side of this divergence, which is half of what makes it
-			// a divergence rather than a shared blind spot (ADR 0186's three legs).
-			interpOut := cliRun(t, "--interp", path)
-			if _, code := cliRunCode(t, "--interp", path); code != 3 {
-				t.Fatalf("--interp exited %d, want the trap class 3: the row records the interpreter "+
-					"trapping like the oracle:\n%s", code, interpOut)
-			}
-			if !strings.Contains(interpOut, tc.oracle) {
-				t.Errorf("--interp raised, but not with %q:\n%s", tc.oracle, interpOut)
-			}
+			// The retired engine was on the oracle's side of this divergence — it trapped with the
+			// reference's TypeError — which is what made it a divergence rather than a shared blind
+			// spot. With that engine gone the row's claim is directly against the reference: the
+			// compiled program traps with the same class and words, refuses the shape by name, or the
+			// disagreement sits on the reference-debt ledger with the roadmap row that owes it. The
+			// retired engine's side of that story is preserved in the golden record and its own ledger.
+			interpOut, interpCode := cliRunMerged(t, "--aot", path)
+			requireReferenceTrapOrHonestRefusal(t, tc.src, tc.oracle, interpOut, interpCode, tc.gap,
+				"an ordering between two values whose kinds are run-time facts")
 			out, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
 				t.Fatalf("--aot rejected the compiler's own module (ADR 0166):\n%s", out)
@@ -330,7 +340,7 @@ func TestSlotOrderOfAnUnliteralisedSlotKeepsTheRefusalExitClass(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "slot_order_refuse.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out := cliRun(t, engine, path)
 				if _, code := cliRunCode(t, engine, path); code == 2 {
 					t.Fatalf("%s turned a declined shape into the compiler's own bug (exit 2, ADR 0166):\n%s",

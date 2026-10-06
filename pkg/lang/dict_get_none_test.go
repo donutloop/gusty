@@ -69,7 +69,7 @@ func TestDictGetOnANameIsNotAnsweredByTheFold(t *testing.T) {
 	} {
 		src := src
 		t.Run(strings.TrimSpace(src), func(t *testing.T) {
-			want := captureStdout(t, src) // the interpreter answers the reference on every row
+			want := captureStdout(t, src) // the record holds the reference answer on every row
 			res, err := Compile(src)
 			if err == nil {
 				if out := runIR(t, res.IR); out != want {

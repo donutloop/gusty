@@ -5395,7 +5395,7 @@ func dictLiteralKeys(dl *DictLit) ([]int64, error) {
 	for i, k := range dl.Keys {
 		il, ok := k.(*IntLit)
 		if !ok {
-			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer keys only; the interpreter supports string and other keys (a compiled string needs the runtime string table, roadmap Gap I.2)")
+			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer keys only; CPython supports string and other keys (a compiled string needs the runtime string table, roadmap Gap I.2)")
 		}
 		keys[i] = il.Value
 	}
@@ -5409,7 +5409,7 @@ func dictLiteralVals(dl *DictLit) ([]int64, error) {
 	for i, v := range dl.Vals {
 		il, ok := v.(*IntLit)
 		if !ok {
-			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer values only; the interpreter supports string and other values (a compiled string needs the runtime string table, roadmap Gap I.2)")
+			return nil, fmt.Errorf("codegen: a compiled dict literal holds constant integer values only; CPython supports string and other values (a compiled string needs the runtime string table, roadmap Gap I.2)")
 		}
 		vals[i] = il.Value
 	}
@@ -5507,7 +5507,7 @@ func constIntMemberVal(e Expr) (int64, bool) {
 // alternative; the interpreter supports strings in containers, and the plan for AOT is an
 // interned string table (roadmap Gap I.2).
 func runtimeStringErr(slot, op string) error {
-	return fmt.Errorf("codegen: cannot %s a string as a runtime %s in the AOT backend yet; the interpreter supports it — a compiled container slot holds an int/bool value, and strings need the runtime string table (roadmap Gap I.2)", op, slot)
+	return fmt.Errorf("codegen: cannot %s a string as a runtime %s in the AOT backend yet; CPython answers it — a compiled container slot holds an int/bool value, and strings need the runtime string table (roadmap Gap I.2)", op, slot)
 }
 
 // rejectRuntimeString reports whether e would put (or look up) a string in a heap container
@@ -5826,7 +5826,7 @@ func (g *irGen) emitList(ln *ListLit) (string, error) {
 		il, ok := el.(*IntLit)
 		if !ok {
 			if _, isFloat := el.(*FloatLit); isFloat {
-				return "", fmt.Errorf("a compiled container cannot hold a float yet: the element slot is an i32 word and %s has no representation in one (the interpreter and CPython both answer this program; compiled floats in containers are roadmap L11.6)", exprTyName(el))
+				return "", fmt.Errorf("a compiled container cannot hold a float yet: the element slot is an i32 word and %s has no representation in one (CPython answers this program; compiled floats in containers are roadmap L11.6)", exprTyName(el))
 			}
 			return "", fmt.Errorf("list literal elements must be integers, not %s", exprTyName(el))
 		}
@@ -7379,7 +7379,7 @@ func (g *irGen) moduleStateErr(nm string) error {
 		return nil // the body binds it: this is a local, and its own rules apply
 	}
 	if g.moduleNames[nm] {
-		return fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (the interpreter answers this program; compiled module globals are roadmap Gap R.35)", nm)
+		return fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)", nm)
 	}
 	return nil
 }
@@ -8294,7 +8294,7 @@ func (g *irGen) truthOperandErr(b *strings.Builder, e Expr) (string, error) {
 func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	nm, ok := ix.Obj.(*Name)
 	if !ok {
-		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; the interpreter supports more forms", ix.Obj)
+		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; CPython accepts more forms", ix.Obj)
 	}
 	v, err := g.value(b, val)
 	if err != nil {
@@ -8452,7 +8452,7 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
 		return nil
 	case g.runtimeSets[nm.Value]:
-		return fmt.Errorf("codegen: sets do not support item assignment (s[k] = v); the interpreter raises TypeError")
+		return fmt.Errorf("codegen: sets do not support item assignment (s[k] = v); CPython raises TypeError")
 	case isStringExpr(ix.Obj) || (g.strVals != nil && g.strVals[nm.Value] != ""):
 		return fmt.Errorf("codegen: strings are immutable, so s[k] = v is not allowed")
 	}
@@ -8798,7 +8798,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// before this line, so a name the program assigned keeps its meaning, and only a name that is
 		// purely a declaration is refused.
 		if kindName, isValue := g.nameIsAValueWithNoSign(n.Value); isValue {
-			return "", fmt.Errorf("codegen: %q names %s, which the compiled backend has no value for: a %s is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `%s` with a %s object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)", n.Value, kindName, kindName, n.Value, kindName)
+			return "", fmt.Errorf("codegen: %q names %s, which the compiled backend has no value for: a %s is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `%s` with a %s object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)", n.Value, kindName, kindName, n.Value, kindName)
 		}
 		// String variables are compile-time constants (strVals); emit their
 		// global pointer so printf/assign via value() sees the real string.
@@ -8864,11 +8864,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				return g.value(b, folded)
 			}
 			if g.moduleNames[n.Value] && !(g.allocd[n.Value] || (g.funcLocals != nil && g.funcLocals[n.Value])) {
-				return "", fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot read module-level state that changes: only a literal the module never rebinds is visible here (the interpreter answers this program; compiled module globals are roadmap Gap R.35)", n.Value)
+				return "", fmt.Errorf("codegen: %q is bound at module level, and a compiled function body cannot read module-level state that changes: only a literal the module never rebinds is visible here (CPython answers this program; compiled module globals are roadmap Gap R.35)", n.Value)
 			}
 		}
 		if !g.nameIsBound(n.Value) {
-			return "", fmt.Errorf("codegen: undefined name %q (no binding for it; assign it before use) — the interpreter reports the same error", n.Value)
+			return "", fmt.Errorf("codegen: undefined name %q (no binding for it; assign it before use) — the reference reports the same error", n.Value)
 		}
 		ld := fmt.Sprintf("%%_%s.ld%d", n.Value, g.ldN)
 		if g.unionVars[n.Value] {
@@ -9188,7 +9188,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				if isCompareOpForContainer(n.Op) && !exprIsContainerShape(n.L) && !exprIsContainerShape(n.R) {
 					continue
 				}
-				return "", fmt.Errorf("`%s` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)", exprSurface(n))
+				return "", fmt.Errorf("`%s` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)", exprSurface(n))
 			}
 			for _, side := range []Expr{n.L, n.R} {
 				kindName, isValue := g.valueWithNoSign(side)
@@ -9221,7 +9221,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				// whose textness the compiler cannot prove — a parameter, typically, whose kind the call
 				// sites do not agree on in a way this pass can carry into the body (Gap R.38: a refusal
 				// that claims something false about the language is its own defect).
-				return "", fmt.Errorf("codegen: operator %q on a string (%s) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)", n.Op, exprSnippet(n.L))
+				return "", fmt.Errorf("codegen: operator %q on a string (%s) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)", n.Op, exprSnippet(n.L))
 			}
 			if n.Op == "+" && (isStrOperand(n.L) || isStrOperand(n.R)) {
 				if _, ok := g.stringVal(n.L); ok {
@@ -9244,9 +9244,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return g.rtStrCall(b, "rt_str_cat", "i32 "+ls, "i32 "+rs), nil
 				}
 				if lok != rok {
-					return "", fmt.Errorf("codegen: concatenating a string with a value that is not a string is not supported in the AOT backend; CPython and the interpreter raise TypeError for it")
+					return "", fmt.Errorf("codegen: concatenating a string with a value that is not a string is not supported in the AOT backend; CPython raises TypeError for it")
 				}
-				return "", fmt.Errorf("codegen: concatenating a runtime string is not supported in the AOT backend yet; the interpreter supports it — building a new string needs a buffer allocation (roadmap Gap J.5)")
+				return "", fmt.Errorf("codegen: concatenating a runtime string is not supported in the AOT backend yet; CPython answers it — building a new string needs a buffer allocation (roadmap Gap J.5)")
 			}
 		}
 		// `s == "yes"` where s is a string parameter, a container element, or the result of a
@@ -9948,7 +9948,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				runes := []rune(txt)
 				i := normPosIndex(key, int64(len(runes)))
 				if i < 0 || i >= int64(len(runes)) {
-					return "", fmt.Errorf("string index out of range")
+					return "", fmt.Errorf("%s", outOfRangeRead("text"))
 				}
 				return g.internStr(b, string(runes[i])), nil
 			}
@@ -9993,10 +9993,10 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					keyTag = kt
 				}
 				if keyTag != "" {
-					g.checkKeyReadTagged(b, fmt.Sprintf("%%h%d", hs), keyOp, keyTag, n.Span())
+					g.checkKeyReadTagged(b, fmt.Sprintf("%%h%d", hs), keyOp, keyTag, n.Idx, n.Span())
 					b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, hs, keyOp, keyTag))
 				} else {
-					g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Span())
+					g.checkKeyRead(b, fmt.Sprintf("%%h%d", hs), keyOp, n.Idx, n.Span())
 					b.WriteString(fmt.Sprintf("  %%g%d = call i32 @rt_dict_get(i32 %%h%d, i32 %s)\n", hs, hs, keyOp))
 				}
 				return fmt.Sprintf("%%g%d", hs), nil
@@ -10089,7 +10089,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// exit-code contract classifies as a compiler bug (ADR 0168's rule).
 			li := int(normPosIndex(key, int64(len(obj.Elems))))
 			if li < 0 || li >= len(obj.Elems) {
-				return "", fmt.Errorf("list index out of range")
+				return "", fmt.Errorf("%s", outOfRangeRead("list"))
 			}
 			return g.value(b, obj.Elems[li])
 		case *DictLit:
@@ -10136,7 +10136,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 				n := g.compLen[obj]
 				key = normPosIndex(key, int64(n))
 				if key < 0 || key >= int64(n) {
-					return "", fmt.Errorf("list index out of range")
+					return "", fmt.Errorf("%s", outOfRangeRead("list"))
 				}
 				v := g.newTmp()
 				b.WriteString(fmt.Sprintf("  %s = load i32, i32* getelementptr({i32, [%d x i32]}, {i32, [%d x i32]}* %s, i32 0, i32 1, i32 %d)\n", v, n, n, name, key))
@@ -10181,7 +10181,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			runes := []rune(str)
 			key = normPosIndex(key, int64(len(runes)))
 			if key < 0 || key >= int64(len(runes)) {
-				return "", fmt.Errorf("string index out of range")
+				return "", fmt.Errorf("%s", outOfRangeRead("text"))
 			}
 			return g.internStr(b, string(runes[key])), nil
 		case *Call:
@@ -10192,7 +10192,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			if elems, ok2 := g.indexListElems(obj); ok2 {
 				key = normPosIndex(key, int64(len(elems)))
 				if key < 0 || int(key) >= len(elems) {
-					return "", fmt.Errorf("list index out of range")
+					return "", fmt.Errorf("%s", outOfRangeRead("list"))
 				}
 				return g.value(b, elems[key])
 			}
@@ -10231,7 +10231,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// line, and both engines answer those (roadmap Gap R.150, Gap R.151, ADR 0283).
 		// (The callable positions — a lambda called directly, bound as a decorator, or handed to the
 		// closure road — register their FuncDef at their own sites and never come through here.)
-		return "", fmt.Errorf("codegen: a lambda used as a value has no compiled representation: it is declared, not assigned, so there is no slot to read and no number, text or container to be — the reference answers `print(lambda x: x)` with a function object and the interpreter prints `<closure>`, while a lambda that is called (`g = lambda x: x * 3` / `g(4)`, or passed to a function) is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)")
+		return "", fmt.Errorf("codegen: a lambda used as a value has no compiled representation: it is declared, not assigned, so there is no slot to read and no number, text or container to be — the reference answers `print(lambda x: x)` with a function object and the reference prints a function object, while a lambda that is called (`g = lambda x: x * 3` / `g(4)`, or passed to a function) is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)")
 	case *ChainCompare:
 		// The comparison roads read g.numCtx to know which operator an operand is being lowered for;
 		// a chain must set it, or a container subscript inside a chain loses the answer its
@@ -10293,7 +10293,7 @@ func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) 
 		// containers fine, and L11.1's tagged value word is what lets the compiled leg do the same
 		// (roadmap L12.1 / Gap R.53, ADR 0288).
 		if g.chainOperandIsContainer(o) {
-			return "", fmt.Errorf("codegen: a container operand of a comparison chain would store a container global into an i32 slot; the interpreter chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)")
+			return "", fmt.Errorf("codegen: a container operand of a comparison chain would store a container global into an i32 slot; the reference chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)")
 		}
 		slot := fmt.Sprintf("chain%d", g.ldN)
 		if !g.allocd[slot] {
@@ -11462,7 +11462,7 @@ func (g *irGen) compItems(c *Comp) ([]int64, []Expr, error) {
 		}
 		return items, itemExprs, nil
 	}
-	return nil, nil, fmt.Errorf("codegen: comprehension iterable must be an inline list literal, range(), or a container variable")
+	return nil, nil, fmt.Errorf("codegen: a comprehension over %s is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)", exprSurface(c.Iter))
 }
 
 // foldConstUnder folds one operand of a comprehension with the loop variable bound to one item,
@@ -12259,7 +12259,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				elems := append(append([]Expr{}, ll.Elems...), c.Args[0])
 				return g.value(b, &ListLit{Elems: elems})
 			}
-			return "", fmt.Errorf("unsupported list method %s", attr.Name.Value)
+			// Three words ("unsupported list method index") tell a reader nothing they can act on. The
+			// sentence now says which door this is, what the reference does for this method, and the row
+			// that owns the rest (ADR 0166's rule: a refusal names the half it lacks).
+			return "", fmt.Errorf("codegen: %s is refused: this backend builds the list methods it can lower against the container's own word (append, extend, insert, remove, pop, clear, sort, reverse, index-of-a-literal, count, and membership), and %s needs a run-time search the compiled doors do not have — the reference answers it (with %s when the value is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)", exprSurface(&Attr{Obj: attr.Obj, Name: attr.Name, Src: attr.Src}), attr.Name.Value, referenceMethodTrap(attr.Name.Value))
 		}
 		// dict methods: `{1: 2, 3: 4}.keys()` -> [1, 3], `.values()` -> [2, 4].
 		if dl, ok := attr.Obj.(*DictLit); ok {
@@ -12300,7 +12303,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// the same arrangement ADR 0172 set for a void return (roadmap Gap R.174, ADR 0291).
 				return g.value(b, &NoneLit{})
 			default:
-				return "", fmt.Errorf("unsupported dict method %s", attr.Name.Value)
+				return "", fmt.Errorf("codegen: %s is refused: this backend builds the dict methods it can lower against the container's own word (get, keys, values, items, clear, and a literal read), and %s needs a run-time search the compiled doors do not have — the reference answers it (with %s when the key is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)", exprSurface(&Attr{Obj: attr.Obj, Name: attr.Name, Src: attr.Src}), attr.Name.Value, referenceMethodTrap(attr.Name.Value))
 			}
 		}
 		// string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
@@ -12338,7 +12341,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// this are the same ones the loop and subscript roads read, so the refusal cannot disagree
 			// with the codegen beside it (roadmap Gap R.174, ADR 0291).
 			if nm, ok2 := attr.Obj.(*Name); ok2 && g.nameHoldsContainer(nm.Value) {
-				return "", fmt.Errorf("%s() on %q, which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and %q is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)", attr.Name.Value, nm.Value, nm.Value)
+				return "", fmt.Errorf("%s() on %q, which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and %q is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)", attr.Name.Value, nm.Value, nm.Value)
 			}
 			return "", fmt.Errorf("string-method %s on a receiver that is not a text the compiler can read: %s (roadmap Gap I.2, ADR 0166)", attr.Name.Value, g.exprSummary(attr.Obj))
 		}
@@ -12771,7 +12774,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if idx >= 0 && idx < len(fd.Params) {
 				what = fmt.Sprintf("parameter %q of %s", fd.Params[idx].Name, fnName)
 			}
-			return fmt.Errorf("codegen: strings are not supported as function arguments in the AOT backend yet (%s); the interpreter supports them", what)
+			return fmt.Errorf("codegen: strings are not supported as function arguments in the AOT backend yet (%s); CPython answers them", what)
 		}
 		argVal := func(a Expr, idx int) (string, error) {
 			if h, ok, err := g.heapArg(b, a); ok || err != nil {
@@ -12907,7 +12910,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				return "", fmt.Errorf("codegen: positional argument after keyword argument for %s", fnName)
 			}
 			if pos >= n {
-				return "", fmt.Errorf("codegen: too many arguments for %s", fnName)
+				return "", fmt.Errorf("codegen: too many arguments for %s", callableSurfaceName(fnName))
 			}
 			if provided[pos] {
 				return "", fmt.Errorf("codegen: multiple values for argument %q of %s", fd.Params[pos].Name, fnName)
@@ -13038,7 +13041,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 			sl, isStr := kw.Value.(*StrLit)
 			if !isStr {
-				return "", fmt.Errorf("codegen: print's %s must be a compile-time string constant (the interpreter accepts any expression)", kw.Name)
+				return "", fmt.Errorf("codegen: print's %s must be a compile-time string constant (CPython accepts any expression)", kw.Name)
 			}
 			switch kw.Name {
 			case "sep":
@@ -13605,7 +13608,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if len(c.Args) == 1 {
 			// Copying another container is a loop over its elements; the interpreter
 			// supports it, so say which backend does rather than miscompile (ADR 0166).
-			return "", fmt.Errorf("codegen: %s(<container>) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with %s() and add elements", calleeName(c), calleeName(c))
+			return "", fmt.Errorf("codegen: %s(<container>) copies are not supported in the AOT backend yet; CPython answers them — build the container with %s() and add elements", calleeName(c), calleeName(c))
 		}
 		// Allocate a fresh heap container. Lowering to an empty literal instead would
 		// hand back a compile-time global (@.set1), and `s = set()` would then store that
@@ -13825,7 +13828,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// global in an i32 slot: llc refuses it, and the exit-code contract calls that a
 				// compiler bug for an ordinary program (ADR 0166). The interpreter, whose elements
 				// are boxed values, answers `any([[1], [2]])` (roadmap L11.1).
-				return "", fmt.Errorf("%s asks each element whether it is truthy, and %s is a container the compiled fold has no word for; the interpreter answers this program (roadmap L11.1)", fnName, exprSnippet(elem))
+				return "", fmt.Errorf("%s asks each element whether it is truthy, and %s is a container the compiled fold has no word for; CPython answers this program (roadmap L11.1)", fnName, exprSnippet(elem))
 			}
 		}
 		if len(elems) == 0 {
@@ -14045,7 +14048,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				// refuses, and the exit-code contract counts as a compiler bug for an ordinary
 				// program (ADR 0166). Python compares lists element by element and answers this;
 				// the interpreter, whose elements are boxed, agrees with it (roadmap L11.1).
-				return "", fmt.Errorf("%s compares its elements, and %s is a container: the compiled fold has no word for comparing two containers, so it would compare globals (the interpreter answers this program; roadmap L11.1)", fnName, exprSnippet(elem))
+				return "", fmt.Errorf("%s compares its elements, and %s is a container: the compiled fold has no word for comparing two containers, so it would compare globals (CPython answers this program; roadmap L11.1)", fnName, exprSnippet(elem))
 			}
 		}
 		if trap, raised, err := g.minMaxKindTrap(b, elems, fnName == "min", c.Span()); raised || err != nil {
@@ -14283,7 +14286,10 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				g.checkStrSentinels(b, r, "RuntimeError", strFullMessage, c.Span(), "stoint")
 				return r, nil
 			}
-			return "", fmt.Errorf("str on non-integer")
+			// `str(v)` where v is not a number the renderer can name. The old sentence was three words —
+			// `str on non-integer` — which told a reader nothing about what was missing, and an agent
+			// could not act on it (ADR 0166's rule is that a refusal names the half it lacks).
+			return "", fmt.Errorf("codegen: str(%s) is refused: this backend renders a text through the one str/repr table, which reaches an integer, a text, None, bool and the container literals, and has no word for this argument's kind — the reference answers str() of any value, and doing the same needs the value word that carries its own kind (roadmap L11.1/L11.2, Gap R.171)", exprSurface(c.Args[0]))
 		}
 		// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
 		return g.internStr(b, fmt.Sprintf("%d", n)), nil
@@ -14393,7 +14399,9 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			}
 		}
 		if !ok {
-			return "", fmt.Errorf("sorted: codegen folds only an inline list literal")
+			// Three words is not a refusal a reader can act on. The sentence says what the door takes,
+			// what this program handed it, and which roadmap row owns the rest (ADR 0166).
+			return "", fmt.Errorf("codegen: sorted(%s) is refused: this backend sorts an inline list literal it can evaluate at compile time, and this argument is not one — the reference sorts any iterable by building the container at run time, which needs the value word that carries its own kind (roadmap L11.1)", exprSurface(c.Args[0]))
 		}
 		vals := make([]int64, len(ln.Elems))
 		for i, el := range ln.Elems {
@@ -14590,7 +14598,7 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		// for every handle ever allocated, `bool([])` included. Refusing is the honest answer until the
 		// tagged value word lets the object be asked (roadmap Gap R.131, ADR 0287, L11.1).
 		if g.nameIsContainerRecorded(c.Args[0]) {
-			return "", fmt.Errorf("codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); the interpreter answers it (roadmap Gap R.131, ADR 0166)")
+			return "", fmt.Errorf("codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)")
 		}
 		// A TEXT asks a different question than a number: `bool("")` is False and `bool("x")` is
 		// True, and a text's word is its interned INDEX, whose being non-zero says nothing about
@@ -14614,7 +14622,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		b.WriteString(fmt.Sprintf("  %s = zext i1 %s to i32\n", val, bit))
 		return val, nil
 	default:
-		return "", fmt.Errorf("codegen: unsupported call %q", fnName)
+		// The name is called and the backend cannot find a callable behind it. The reference raises
+		// TypeError here — `'int' object is not callable` — because it asks the value what it is at
+		// the moment of the call; this backend decides at the compile door, and says so with the half
+		// it is missing rather than the word "unsupported" alone (ADR 0166's vocabulary, and the
+		// tagged value word of roadmap L11.1 is what would let the question be asked at run time).
+		return "", fmt.Errorf("codegen: %q is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)", fnName)
 	}
 }
 
@@ -15706,7 +15719,7 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 // checkKeyReadTagged is checkKeyRead for a dict whose keys are tagged: the same KeyError, raised
 // by the same path, asked of the (payload, tag) key. Without the tag the check would answer "the
 // key is there" for {0: 1} when asked for "0", and the raise below would never come.
-func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, sp Span) {
+func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, keyExpr Expr, sp Span) {
 	ok := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has_tagged(i32 %s, i32 %s, i32 %s)\n", ok, h, key, keyTag))
 	isZero := g.newTmp()
@@ -15715,13 +15728,13 @@ func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, sp
 	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isZero, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found", sp)
+	g.raiseTo(b, exnCode("KeyError"), "KeyError", g.keyNotFoundMessage(keyExpr), sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
 }
 
 // checkKeyRead emits the membership test for a heap-dict read: `d[k]` for a missing
 // key used to return 0, where Python raises KeyError.
-func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, sp Span) {
+func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, keyExpr Expr, sp Span) {
 	ok := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = call i32 @rt_dict_has(i32 %s, i32 %s)\n", ok, h, key))
 	isZero := g.newTmp()
@@ -15730,8 +15743,72 @@ func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, sp Span) {
 	badL, okL := g.newLabel("rd.bad"), g.newLabel("rd.ok")
 	b.WriteString(fmt.Sprintf("  br i1 %s, label %%%s, label %%%s\n", isZero, badL, okL))
 	b.WriteString(fmt.Sprintf("%s:\n", badL))
-	g.raiseTo(b, exnCode("KeyError"), "KeyError", "key not found", sp)
+	g.raiseTo(b, exnCode("KeyError"), "KeyError", g.keyNotFoundMessage(keyExpr), sp)
 	b.WriteString(fmt.Sprintf("%s:\n", okL))
+}
+
+// outOfRangeRead words the refusal a constant out-of-range read produces. The reference does not
+// refuse: it runs the program and raises IndexError when the position is reached, so a program that
+// catches the read (`try: xs[9] except IndexError:`) is a legal program the reference answers. This
+// backend decides at the compile door instead, because the position is a literal it can see — and that
+// is roadmap Gap R.37's asymmetry, which asks for the runtime trap rather than this refusal. Until
+// then the honest thing is to say which door stopped the program, what the reference does there, and
+// who owes the change (ADR 0166's rule: a refusal names the half it lacks).
+func outOfRangeRead(kind string) string {
+	return fmt.Sprintf("codegen: the %s position this program asks for is out of range, and this backend refuses to build the read rather than answer it wrongly: the reference runs the program and raises IndexError when that position is reached, so a `try:`/`except IndexError:` around it is legal and answered there — making this a runtime trap instead of a compile-time stop is roadmap Gap R.37 (see also L11.1 for a position whose kind is a run-time fact)", kind)
+}
+
+// callableSurfaceName turns a compiled function's internal name back into the name the reference
+// would use in the same message. A lambda is compiled to a generated symbol (`lambda_0`) that no
+// source line contains; printing it in a diagnostic blames a name the programmer never wrote, while
+// the reference says `<lambda>` — and an arity sentence is exactly the message a reader acts on.
+func callableSurfaceName(fnName string) string {
+	if strings.HasPrefix(fnName, "lambda_") {
+		return "<lambda>"
+	}
+	return fnName
+}
+
+// referenceMethodTrap names what the reference raises for the container methods whose whole job is to
+// fail loudly, so a refusal can say what the compiled program would have to do, not merely that it
+// will not. Methods that answer instead of raising return a description of their answer.
+func referenceMethodTrap(name string) string {
+	switch name {
+	case "index":
+		return "ValueError: … is not in list"
+	case "pop":
+		return "KeyError: <the missing key>"
+	case "remove":
+		return "ValueError: list.remove(x): x not in list"
+	case "discard":
+		return "no error (it is remove without the raise)"
+	}
+	return "its documented answer"
+}
+
+// keyNotFoundMessage words the KeyError the way the reference does: `KeyError: 'z'`, the key itself
+// as the message — which is what a reader greps for and what makes a traceback actionable. A key the
+// compiler cannot see as a literal at this point (a name whose kind is a run-time fact, a computed
+// index) keeps the sentence the backend has always used, because inventing a key would be worse than
+// a generic one; naming it for those keys needs the tagged value word (roadmap L11.1), which is the
+// same debt that silences the echo of a value whose kind is not statically known.
+func (g *irGen) keyNotFoundMessage(keyExpr Expr) string {
+	switch k := keyExpr.(type) {
+	case *StrLit:
+		return pyReprString(k.Value)
+	case *IntLit:
+		return strconv.FormatInt(k.Value, 10)
+	case *FloatLit:
+		return pyFloatRepr(k.Value)
+	case *BoolLit:
+		if k.Value {
+			return "True"
+		}
+		return "False"
+	case *NoneLit:
+		return "None"
+	}
+	return "key not found"
 }
 
 // raiseStmt compiles `raise Exception("msg")` / `raise ValueError("msg")`.

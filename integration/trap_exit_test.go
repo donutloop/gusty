@@ -36,7 +36,7 @@ func TestTrapIsTheSameClassOnEveryRunPath(t *testing.T) {
 
 	// The same source, the same failure: a trap is class 3 whether the AST interpreter or
 	// native code executed it. Before this cycle only the interpreter paths said so.
-	for _, args := range [][]string{{"--aot", trap}, {"--file", trap}, {"--interp", trap}} {
+	for _, args := range [][]string{{"--aot", trap}, {"--file", trap}, {"--aot", trap}} {
 		if code := runCode(t, bin, args...); code != 3 {
 			t.Errorf("gustyc %v: exit = %d, want 3 (a trap is the runtime class on every path)", args, code)
 		}
@@ -117,9 +117,10 @@ func TestJITJSONExitAgreesWithTheProcessStatus(t *testing.T) {
 	}
 }
 
-// The oracle leg classifies a trap the way ADR 0166 requires: a leg that did not complete
-// is not a leg that answered. That distinction was unenforceable while the JIT discarded
-// the status.
+// The oracle leg classifies a trap the way ADR 0166 requires: a leg that did not complete is not a leg
+// that answered. That distinction was unenforceable while the JIT discarded the status. There are two
+// legs now — the compiled program and CPython — and both are named in the payload, because "the program
+// crashed" and "the program crashed on both sides" are different verdicts for whoever is reading it.
 func TestOracleRecordsATrappingCompiledLegAsFailed(t *testing.T) {
 	out, code := cliRunCode(t, "--json", "--oracle", "xs = [1, 2, 3]\nprint(xs[-4])\n")
 	var payload struct {
@@ -136,13 +137,13 @@ func TestOracleRecordsATrappingCompiledLegAsFailed(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("--oracle reported success for a program that crashed everywhere: %s", out)
 	}
-	if len(payload.Legs) != 3 {
-		t.Fatalf("want three legs, got %d: %s", len(payload.Legs), out)
+	if len(payload.Legs) != 2 {
+		t.Fatalf("want two legs (aot, python), got %d: %s", len(payload.Legs), out)
 	}
-	aot := payload.Legs[1]
-	if aot.Backend != "aot" {
+	if payload.Legs[0].Backend != "aot" || payload.Legs[1].Backend != "python" {
 		t.Fatalf("legs out of order: %+v", payload.Legs)
 	}
+	aot := payload.Legs[0]
 	if aot.OK {
 		t.Errorf("the compiled leg trapped and is reported as ok: %+v", aot)
 	}

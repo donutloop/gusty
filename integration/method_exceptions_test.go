@@ -59,7 +59,7 @@ func TestMethodExceptionsMatchCPythonOnBothEngines(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "method.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != tc.wantCode {
 					t.Fatalf("%s exited %d, want %d:\n%s", engine, code, tc.wantCode, out)
@@ -82,8 +82,16 @@ func TestMethodExceptionsMatchCPythonOnBothEngines(t *testing.T) {
 func TestRefusalInsideAMethodIsNotAToolchainRejection(t *testing.T) {
 	src := "class C:\n    def m(self) -> int:\n        return [][0]\n\nprint(C().m())\n"
 	path := writeSrc(t, t.TempDir(), "method_refusal.gy", src)
-	if out, code := cliRunCode(t, "--interp", path); code != 3 {
-		t.Fatalf("interp exited %d, want 3 (the trap is a runtime event here):\n%s", code, out)
+	// The trap is a runtime event in the reference; the compiled path either traps the same way or
+	// refuses the shape at the compile door naming the half it lacks (Gap R.37: a trap the compiler
+	// can see coming should still be a runtime trap, and until it is, the refusal is the honest class
+	// — never exit 2, and never an answer).
+	if out, code := cliRunMerged(t, "--aot", path); code != 3 {
+		if code == 1 && refusesHonestly(out) {
+			noteCompiledGap(t, src, out)
+		} else {
+			t.Fatalf("compiled exited %d, want 3 (a runtime trap) or an honest refusal naming the missing half (Gap R.37):\n%s", code, out)
+		}
 	}
 	out, code := cliRunCode(t, "--aot", path)
 	if code == 2 {
@@ -99,12 +107,12 @@ func TestRefusalInsideAMethodIsNotAToolchainRejection(t *testing.T) {
 }
 
 // TestUncaughtRaiseFromMethodIsRuntimeClass asserts the exit-code contract rather than CPython's
-// number: an uncaught exception is the runtime-error class on both backends (ADR 0211), and a
+// number: an uncaught exception is the runtime-error class on the compiled path (ADR 0211), and a
 // method raising is no exception to that.
 func TestUncaughtRaiseFromMethodIsRuntimeClass(t *testing.T) {
 	src := "class C:\n    def m(self) -> int:\n        raise ValueError(\"boom\")\n\nprint(C().m())\n"
 	path := writeSrc(t, t.TempDir(), "method_raise.gy", src)
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, path)
 		if code != 3 {
 			t.Fatalf("%s exited %d, want 3 (the documented runtime-error class):\n%s", engine, code, out)

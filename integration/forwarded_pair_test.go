@@ -1,7 +1,7 @@
 package integration
 
 // integration/forwarded_pair_test.go — a number handed to a function keeps its kind when the body hands it
-// on to *another* function, at the CLI, against the reference, on both engines (roadmap L11.6's numeric
+// on to *another* function, at the CLI, against the reference, on the compiled path (roadmap L11.6's numeric
 // truth, Gap R.161, ADR 0277).
 //
 // The shape is one line longer than ADR 0276's and a whole level deeper: `def outer(x): return twice(x)`
@@ -118,7 +118,7 @@ func TestAForwardedNumberKeepsItsKindOnEveryLeg(t *testing.T) {
 			if py, ok := cpythonOut(t, path); ok && py != tc.want {
 				t.Fatalf("the expectation is not CPython's: got %q want %q", py, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", path)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, cliRun(t, engine, "--file", path))
@@ -142,7 +142,7 @@ func TestThePromotedForwardingProbePrintsCPythonEightLines(t *testing.T) {
 	if py, ok := cpythonOut(t, path); ok && py != want {
 		t.Fatalf("the expectation is not CPython's: got %q want %q", py, want)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", path)
 		if code == 2 {
 			t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, cliRun(t, engine, "--file", path))
@@ -156,7 +156,7 @@ func TestThePromotedForwardingProbePrintsCPythonEightLines(t *testing.T) {
 // TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad is the prune at the interface: closing the callee
 // — it floors the value, renders it a text, indexes with it — has to close the caller's pair with it. The
 // rows pin the exit class and the absence of a digit, not a number: what they protect is that no leg prints a
-// truncated answer at exit 0 for a chain the doors cannot carry, and that the interpreted leg still answers,
+// truncated answer at exit 0 for a chain the doors cannot carry, and that the reference still answers,
 // which is what makes any compiled refusal a capability gap rather than a question about the program.
 func TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad(t *testing.T) {
 	for _, tc := range []struct{ name, src, refusal string }{
@@ -170,7 +170,7 @@ func TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad(t *testing.T) {
 			// `pairReturnRoadOwns`), so the chain keeps that road and the refusal that road has always said.
 			"the callee renders it a text",
 			"def fmt(v):\n    return str(v)\n\ndef outer(x):\n    return fmt(x)\n\nprint(outer(2.5))\n",
-			"str on non-integer",
+			"is refused: this backend renders a text through the one str/repr table",
 		},
 		{
 			// An index of the parameter is a position the pair doors do not reach, so neither frame is given
@@ -189,16 +189,19 @@ func TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "forwarded_closed.gy", tc.src)
-			interp, icode := cliRunCode(t, "--interp", "--file", path)
+			// This is the compiled leg — there is only one — and CPython is the reference it is compared
+			// to. The duplicate "reference" in the old wording was the retired engine, whose leg left
+			// with ADR 0302; the row's real claim is that the compiled program and CPython agree, or that
+			// the compiler refuses this shape out loud.
+			interp, icode := cliRunCode(t, "--aot", "--file", path)
 			if icode == 2 {
-				t.Fatalf("the interpreted leg hit exit 2 (ADR 0166):\n%s", cliRun(t, "--interp", "--file", path))
+				t.Fatalf("exit 2 — LLVM rejected the module gusty emitted (ADR 0166):\n%s", cliRun(t, "--aot", "--file", path))
 			}
-			if interp == "" {
-				t.Fatalf("the interpreted leg printed nothing (exit %d) — the row is about the compiled leg, not this one", icode)
+			py, ok := cpythonOut(t, path)
+			if !ok {
+				t.Fatalf("the reference failed to answer this program: %s", path)
 			}
-			if py, ok := cpythonOut(t, path); ok && icode == 0 && py != interp {
-				t.Errorf("the interpreted leg disagrees with the reference (%q vs %q); fix this row first", interp, py)
-			}
+			checkCompiledRow(t, interp, icode, tc.src, py)
 			out, code := cliRunCode(t, "--aot", "--file", path)
 			if code == 2 {
 				t.Fatalf("the compiled leg rejected the compiler's own module (ADR 0166):\n%s", cliRun(t, "--aot", "--file", path))

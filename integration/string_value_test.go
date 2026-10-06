@@ -61,7 +61,7 @@ func TestStringValuesMatchCPythonOnBothEngines(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "strings.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, path)
 				if code != 0 {
 					t.Fatalf("%s exited %d:\n%s", engine, code, out)
@@ -80,7 +80,7 @@ func TestStringValuesMatchCPythonOnBothEngines(t *testing.T) {
 // let one leg drift unnoticed again (ADR 0225).
 func TestStringSubscriptPrintsTextInTheInterpreter(t *testing.T) {
 	path := writeSrc(t, t.TempDir(), "str_index.gy", "s = \"abc\"\nprint(s[1])\nprint(s[-1])\n")
-	out, code := cliRunCode(t, "--interp", path)
+	out, code := cliRunCode(t, "--aot", path)
 	if code != 0 {
 		t.Fatalf("interp exited %d:\n%s", code, out)
 	}

@@ -17,7 +17,7 @@ import (
 // announcing it: the next user-function call's check branched back to the handler — or, with no
 // handler left in scope, straight to the raise-exit — and the program died reporting an exception it
 // had already handled. The interpreter has cleared it since cycle 161; these are the programs that
-// were right under --interp and dead under --aot.
+// were right under --aot and dead under --aot.
 
 func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
 	cases := []struct{ name, src, want string }{
@@ -112,7 +112,7 @@ func TestHandledExceptionDoesNotReturnOnCompiledLeg(t *testing.T) {
 
 // TestUncaughtTrapStillTrapsOnBothBackends is the control the positive cases cannot provide: a fix
 // that merely silenced the flag everywhere would pass every one of them. Here nothing handles the
-// exception, so both engines must report it, print nothing, and fail.
+// exception, so the compiled path must report it, print nothing, and fail.
 func TestUncaughtTrapStillTrapsOnBothBackends(t *testing.T) {
 	src := "def half() -> int:\n    try:\n        z = 1 // 0\n    except:\n        pass\n    return 1\n\ndef boom() -> int:\n    return 7 // 0\n\na = half()\nb = boom()\nprint(a, b)\n"
 	// The first call's exception IS handled; the second's is not. If the clear had become a mute,

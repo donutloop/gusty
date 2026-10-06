@@ -1,5 +1,10 @@
 [
   {
+    "source": "\nclass M:\n    def __enter__(self):\n        return 1\n    def __exit__(self, t, val, tb):\n        return 2\ndef main():\n    m = M()\n    with m:\n        return 7\nmain()\n",
+    "reason": "the echoed value differs from the record",
+    "expected": "7"
+  },
+  {
     "source": "\nclass M:\n    def __enter__(self):\n        return 42\n    def __exit__(self, t, val, tb):\n        pass\ndef main():\n    m = M()\n    with m as x:\n        return x\nmain()\n",
     "reason": "the echoed value differs from the record",
     "expected": "42"
@@ -17,20 +22,37 @@
   {
     "source": "\"   \".isspace()",
     "reason": "the echoed value differs from the record",
-    "expected": "1",
-    "actual": "True"
+    "expected": "1"
+  },
+  {
+    "source": "\"  hi  \".lstrip()",
+    "reason": "the echoed value differs from the record",
+    "expected": "hi  "
+  },
+  {
+    "source": "\"-\".join([\"a\", \"b\", \"c\"])",
+    "reason": "the echoed value differs from the record",
+    "expected": "a-b-c"
   },
   {
     "source": "\"123\".isdigit()",
     "reason": "the echoed value differs from the record",
-    "expected": "1",
-    "actual": "True"
+    "expected": "1"
   },
   {
-    "source": "\"a b c\".split(\" \")",
-    "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"['a', 'b', 'c']\"",
-    "actual": "jit: codegen: unsupported string method split"
+    "source": "\"42\".zfill(5)",
+    "reason": "the echoed value differs from the record",
+    "expected": "00042"
+  },
+  {
+    "source": "\"AbC\".upper()",
+    "reason": "the echoed value differs from the record",
+    "expected": "ABC"
+  },
+  {
+    "source": "\"HeLLo\".swapcase()",
+    "reason": "the echoed value differs from the record",
+    "expected": "hEllO"
   },
   {
     "source": "\"a-b-c\".partition(\"-\")[0]",
@@ -59,6 +81,21 @@
     "expected": "a-b-c"
   },
   {
+    "source": "\"ab\".ljust(4)",
+    "reason": "the echoed value differs from the record",
+    "expected": "ab  "
+  },
+  {
+    "source": "\"ab\".ljust(5)",
+    "reason": "the echoed value differs from the record",
+    "expected": "ab   "
+  },
+  {
+    "source": "\"ab\".zfill(5)",
+    "reason": "the echoed value differs from the record",
+    "expected": "000ab"
+  },
+  {
     "source": "\"ababab\".count(\"ab\")",
     "reason": "the echoed value differs from the record",
     "expected": "3"
@@ -83,20 +120,17 @@
   {
     "source": "\"abc\".isalpha()",
     "reason": "the echoed value differs from the record",
-    "expected": "1",
-    "actual": "True"
+    "expected": "1"
   },
   {
     "source": "\"abc\".islower()",
     "reason": "the echoed value differs from the record",
-    "expected": "1",
-    "actual": "True"
+    "expected": "1"
   },
   {
     "source": "\"abc123\".isalnum()",
     "reason": "the echoed value differs from the record",
-    "expected": "1",
-    "actual": "True"
+    "expected": "1"
   },
   {
     "source": "\"abcabc\".find(\"bc\")",
@@ -109,15 +143,39 @@
     "expected": "1"
   },
   {
+    "source": "\"abcabc\".removeprefix(\"abc\")",
+    "reason": "the echoed value differs from the record",
+    "expected": "abc"
+  },
+  {
     "source": "\"abcabc\".rfind(\"bc\")",
     "reason": "the echoed value differs from the record",
     "expected": "4"
   },
   {
+    "source": "\"heLLo\".upper()",
+    "reason": "the echoed value differs from the record",
+    "expected": "HELLO"
+  },
+  {
+    "source": "\"hello world\".title()",
+    "reason": "the echoed value differs from the record",
+    "expected": "Hello World"
+  },
+  {
+    "source": "\"hello\".capitalize()",
+    "reason": "the echoed value differs from the record",
+    "expected": "Hello"
+  },
+  {
+    "source": "\"hello\".removeprefix(\"he\")",
+    "reason": "the echoed value differs from the record",
+    "expected": "llo"
+  },
+  {
     "source": "\"hello\".startswith(\"he\")",
     "reason": "the echoed value differs from the record",
-    "expected": "1",
-    "actual": "True"
+    "expected": "1"
   },
   {
     "source": "\"xxhi xx\".strip(\"x\")",
@@ -192,13 +250,13 @@
     "source": "[\"a\", \"b\", \"a\"].count(\"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"2\"",
-    "actual": "jit: codegen: unsupported list method count"
+    "actual": "jit: codegen: [\"a\", \"b\", \"a\"].count is refused: this backend builds the list methods it can lower against the container's own word (append, extend, insert, remove, pop, clear, sort, reverse, index-of-a-literal, count, and membership), and count needs a run-time search the compiled doors do not have — the reference answers it (with its documented answer when the value is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)"
   },
   {
     "source": "a = (1, 2,)\nlen(a)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"2\"",
-    "actual": "jit: codegen: codegen: unsupported expression *lang.Tuple"
+    "actual": "jit: codegen: unsupported expression *lang.Tuple"
   },
   {
     "source": "a = 2.5\nb = 1\nprint(min(a, b), max(a, b))\n",
@@ -225,7 +283,7 @@
     "source": "a = lambda x: x + 1\nb = lambda x, y: x - y\nprint(a(1, 2))\nprint(b(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: codegen: too many arguments for lambda_0"
+    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
   },
   {
     "source": "a = {1, 2,}\nlen(a)",
@@ -246,30 +304,24 @@
     "source": "a, b = [1, 2, 3]\nprint(a)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many values to unpack (expected 2)",
-    "actual": "jit: codegen: codegen: tuple assignment length mismatch"
+    "actual": "jit: codegen: tuple assignment length mismatch"
   },
   {
     "source": "a, b = [1]\nprint(a)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: not enough values to unpack (expected 2, got 1)",
-    "actual": "jit: codegen: codegen: tuple assignment length mismatch"
+    "actual": "jit: codegen: tuple assignment length mismatch"
   },
   {
     "source": "any([0, 0, 1])",
     "reason": "the echoed value differs from the record",
-    "expected": "1",
-    "actual": "True"
+    "expected": "1"
   },
   {
     "source": "async def f():\n    raise ValueError(\"ran\")\n    return 7\nc = f()\nn = 0\ntry:\n    await c\n    n = 1\nexcept ValueError:\n    n = 2\nn",
     "reason": "the program trapped where the record has an answer",
     "expected": "result \"2\"",
     "actual": "trapped: ValueError: ran"
-  },
-  {
-    "source": "async def f(x):\n    return x * 2\nasync for v in [f(1), f(2), f(3)]:\n    print(v)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
   },
   {
     "source": "async def f(x):\n    return x + 1\nv = await f(2)\nv",
@@ -355,13 +407,13 @@
     "source": "class C:\n    def m(self, x):\n        x = x + 0.5\n        return x\n\nc = C()\nprint(c.m(1.0))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: function \"m\" cannot be compiled: \"x\" is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)"
+    "actual": "jit: codegen: function \"m\" cannot be compiled: \"x\" is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)"
   },
   {
     "source": "class C:\n    def m(self, x):\n        x = x + 1.5\n        return x if x \u003e 2 else 0.0\n\nc = C()\nprint(c.m(1.0))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: function \"m\" cannot be compiled: \"x\" is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)"
+    "actual": "jit: codegen: function \"m\" cannot be compiled: \"x\" is rebound to a float by this body and returned by bare name (or through an expression, a negation, a numeric builtin, or a ternary arm): a method is emitted with an i32 return word, so the double the body computed has no word to travel in and the call answers the argument as it arrived — bind it to a new name, or return an expression the compiler reads as a float (roadmap L11.6, Gap R.3c, ADR 0196)"
   },
   {
     "source": "class C:\n    def set(self, v):\n        self.x = v\n    def bump(self):\n        self.x += 5\nc = C()\nc.set(2)\nc.bump()\nc.x",
@@ -384,7 +436,7 @@
     "source": "class P:\n    pass\np = P()\nprint(p.x.y)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: 'P' object has no attribute 'x'",
-    "actual": "jit: codegen: codegen: unsupported attr expression"
+    "actual": "jit: codegen: unsupported attr expression"
   },
   {
     "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n    def norm(self) -\u003e int:\n        return self.x * self.x + self.y * self.y\n\ns = 0\nfor i in range(2000):\n    p = Point(i, i % 7)\n    s = s + p.norm()\nprint(s)\n",
@@ -409,19 +461,9 @@
     "expected": "5"
   },
   {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\nAlias = Point\np = Point(5, 6)\nmatch p:\n    case Alias(x, y):\n        x * y\n    case _:\n        0\n",
+    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\nAlias = Point\ndef go(p):\n    match p:\n        case Alias(x, y):\n            return x + y\n    return -1\ngo(Point(2, 3))\n",
     "reason": "the echoed value differs from the record",
-    "expected": "30"
-  },
-  {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\nclass CPoint(Point):\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\np = CPoint(3, 4)\nmatch p:\n    case Point(x, y):\n        x + y\n    case _:\n        0\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "7"
-  },
-  {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\nclass Circle:\n    def __init__(self, r):\n        self.r = r\np = Circle(5)\nmatch p:\n    case Point(x, y):\n        x + y\n    case _:\n        99\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "99"
+    "expected": "5"
   },
   {
     "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\ndef area(p):\n    match p:\n        case Point(x, y,):\n            return x * y\n        case _:\n            return 0\narea(Point(3, 4))",
@@ -429,94 +471,64 @@
     "expected": "12"
   },
   {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\np = Point(1, 2)\nmatch p:\n    case Point(x, z):\n        x + z\n    case _:\n        77\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "77"
-  },
-  {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\np = Point(2, 3)\nmatch p:\n    case Point(a, b):\n        99\n    case _:\n        7\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "7"
-  },
-  {
-    "source": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\np = Point(2, 3)\nmatch p:\n    case Point(x, y):\n        x + y\n    case _:\n        0\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "5"
-  },
-  {
     "source": "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __add__(self, other):\n        return self.x + other.x\n    def __mul__(self, n):\n        return self.x * n\na = Vec(2)\nb = Vec(3)\na + b",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"5\"",
-    "actual": "jit: codegen: codegen: unsupported attr expression"
+    "actual": "jit: codegen: unsupported attr expression"
   },
   {
     "source": "d = [{1, 2} for x in [1]]\nprint(1 if 2 in d[0] else 0)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a compiled list holds elements of more than one kind, so one element is a (value, tag) pair; print(xs[i]), v = xs[i] and — since ADR 0249 — a numeric use whose result kind the compiler can settle all work because the tag travels with them, but this context needs a single static kind (roadmap L11.1, Gap R.82)"
+    "actual": "jit: codegen: a compiled list holds elements of more than one kind, so one element is a (value, tag) pair; print(xs[i]), v = xs[i] and — since ADR 0249 — a numeric use whose result kind the compiler can settle all work because the tag travels with them, but this context needs a single static kind (roadmap L11.1, Gap R.82)"
   },
   {
     "source": "d = {\"a\": 1, \"b\": 2, \"a\": 3}\nc = dict(d)\nprint(c)\nprint(len(c))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: dict(\u003ccontainer\u003e) copies are not supported in the AOT backend yet; the interpreter supports them — build the container with dict() and add elements"
-  },
-  {
-    "source": "d = {\"a\": 10}\nmatch d:\n    case {\"a\": v}:\n        v\n    case _:\n        0",
-    "reason": "the echoed value differs from the record",
-    "expected": "10"
+    "actual": "jit: codegen: dict(\u003ccontainer\u003e) copies are not supported in the AOT backend yet; CPython answers them — build the container with dict() and add elements"
   },
   {
     "source": "d = {\"a\": 1}\nd.update({\"b\": 2})\nprint(d)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: update() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+    "actual": "jit: codegen: update() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "d = {\"a\": 1}\nprint(d.get(\"a\"))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+    "actual": "jit: codegen: get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "d = {\"a\": 1}\nprint(d.get(\"z\"))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+    "actual": "jit: codegen: get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "d = {\"a\": 1}\nprint(d.get(\"z\", 42))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+    "actual": "jit: codegen: get() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "d = {\"a\": 1}\nprint(d.keys())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: keys() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
-  },
-  {
-    "source": "d = {\"b\": 5}\nmatch d:\n    case {\"a\": v}:\n        v\n    case _:\n        0",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "actual": "jit: codegen: keys() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "d = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension key must be constant"
+    "actual": "jit: codegen: comprehension key must be constant"
   },
   {
     "source": "d = {1: \"a\", 2: \"b\", 3: \"c\"}\nprint(d.pop(2))\nprint(d)\nprint(d[1])\nprint(d[3])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: pop() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
-  },
-  {
-    "source": "d = {1: 1, 1: 2}\nfor k in d:\n    print(k)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "actual": "jit: codegen: pop() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "d = {1: 10, 2: 20}\nd[1]",
@@ -547,12 +559,6 @@
     "actual": "KeyError: key not found"
   },
   {
-    "source": "d = {}\nprint(d[\"a\"])",
-    "reason": "the trap's class or message differs from the record",
-    "expected": "KeyError: 'a'",
-    "actual": "KeyError: key not found"
-  },
-  {
     "source": "def add(a, b):\n    return a + b\nadd(3, 4)",
     "reason": "the echoed value differs from the record",
     "expected": "7"
@@ -561,7 +567,12 @@
     "source": "def add(x):\n    def mid(y):\n        def inner(z):\n            return x + y + z\n        return inner\n    return mid\nm = add(1)\nm2 = m(2)\nm2(3)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"6\"",
-    "actual": "jit: codegen: codegen: unsupported call \"m\""
+    "actual": "jit: codegen: \"m\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
+  },
+  {
+    "source": "def add1(g):\n    def wrap():\n        return g() + 1\n    return wrap\n@add1\ndef f():\n    return 40\nf()",
+    "reason": "the echoed value differs from the record",
+    "expected": "41"
   },
   {
     "source": "def bump(n):\n    n = n + 1\n    return n\nbump(0)\n",
@@ -578,28 +589,23 @@
     "source": "def classify(v):\n    match v:\n        case 1:\n            return \"one\"\n        case x:\n            return \"other:\" + str(x)\nprint(classify(1) == \"one\" and classify(5) == \"other:5\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: str on non-integer"
+    "actual": "jit: codegen: str(x) is refused: this backend renders a text through the one str/repr table, which reaches an integer, a text, None, bool and the container literals, and has no word for this argument's kind — the reference answers str() of any value, and doing the same needs the value word that carries its own kind (roadmap L11.1/L11.2, Gap R.171)"
+  },
+  {
+    "source": "def dec(g):\n    return g\n@dec\ndef f():\n    return 42\nf()",
+    "reason": "the echoed value differs from the record",
+    "expected": "42"
   },
   {
     "source": "def dec1(g):\n    def w():\n        return g() + 1\n    return w\ndef dec2(g):\n    def w():\n        return g() * 2\n    return w\n@dec1\n@dec2\ndef f():\n    return 10\nf()",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"22\"",
-    "actual": "jit: codegen: codegen: decorator \"dec1\" for \"f\" is not an identity decorator (wrapping/transform decorators are not yet supported in AOT)"
+    "actual": "jit: codegen: decorator \"dec1\" for \"f\" is not an identity decorator (wrapping/transform decorators are not yet supported in AOT)"
   },
   {
     "source": "def double(x):\n    return x * 2\ndouble(5)",
     "reason": "the echoed value differs from the record",
     "expected": "10"
-  },
-  {
-    "source": "def f() -\u003e int:\n    try:\n        pass\n    finally:\n        z = 1 / 0\n\ntry:\n    print(f())\nexcept:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "def f() -\u003e int:\n    try:\n        x = 1 / 0\n    finally:\n        print(\"fin\")\n    return 0\n\ntry:\n    print(f())\nexcept:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
   },
   {
     "source": "def f(a, b):\n    return a * b\nf(a=3, b=4)",
@@ -637,16 +643,6 @@
     "expected": "114"
   },
   {
-    "source": "def f(v):\n    return v % 0\n\ntry:\n    print(f(5.0))\nexcept ZeroDivisionError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "def f(v):\n    return v // 0\n\ntry:\n    print(f(5.0))\nexcept ZeroDivisionError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "def f(x):\n    return 1 if x \u003e 2 else 0.0\n\nprint(f(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
@@ -668,41 +664,31 @@
     "source": "def f(x):\n    return x * 2\n\ng = f\nprint(g(21))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)"
+    "actual": "jit: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
   },
   {
     "source": "def f(x):\n    return x * 2\n\nh = f\nprint(h())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: missing argument \"x\" for f",
-    "actual": "jit: codegen: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)"
+    "actual": "jit: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
   },
   {
     "source": "def f(x):\n    return x * 2\n\nh = f\nprint(h(1, 2))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many arguments for f: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)"
+    "actual": "jit: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
   },
   {
     "source": "def f(x):\n    return x * 2\n\nprint(f)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)"
-  },
-  {
-    "source": "def f(x):\n    return x * 2\n\ntry:\n    -f\n    print('no raise')\nexcept TypeError:\n    print('caught')\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "def f(x):\n    return x * 2\n\ntry:\n    abs(f)\n    print('no raise')\nexcept TypeError:\n    print('caught')\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "actual": "jit: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
   },
   {
     "source": "def f(x):\n    return x * 2\n\nxs = [f]\nprint(len(xs))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)"
+    "actual": "jit: codegen: \"f\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `f` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
   },
   {
     "source": "def f(x):\n    x = x + 1.5\n    return x if x \u003e 2 else 0\n\nprint(f(1))\n",
@@ -743,31 +729,31 @@
     "source": "def g(ys):\n    s = 0\n    for y in ys:\n        s = s + y\n    return s\nv = [1, 2, 3]\ng([x * 2 for x in v])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"12\"",
-    "actual": "jit: codegen: codegen: v is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)"
+    "actual": "jit: codegen: v is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)"
   },
   {
     "source": "def make_adder(x):\n    def add(y):\n        return x + y\n    return add\nw = make_adder(5)\nw(3)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"8\"",
-    "actual": "jit: codegen: codegen: unsupported call \"w\""
+    "actual": "jit: codegen: \"w\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "def measure(x):\n    return x\n\nh = measure\nh(1, 2)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many arguments for measure: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: codegen: \"measure\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `measure` with a function object and the interpreter prints it, while passing one to a function is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)"
+    "actual": "jit: codegen: \"measure\" names function, which the compiled backend has no value for: a function is declared rather than assigned, so it has no slot to read and no number, text or container to be — the reference answers `measure` with a function object and the reference prints it, while passing one to a function is answered by the compiled backend too (roadmap Gap R.150, Gap R.151, ADR 0283)"
   },
   {
     "source": "def outer():\n    def inner():\n        \"inner helper\"\n        return 1\n    return inner\nf = outer()\nprint(f.__doc__)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: unsupported attr expression"
+    "actual": "jit: codegen: unsupported attr expression"
   },
   {
     "source": "def outer(a):\n    def inner(b):\n        return a * b\n    return inner\nf = outer(6)\nf(7)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"42\"",
-    "actual": "jit: codegen: codegen: unsupported call \"f\""
+    "actual": "jit: codegen: \"f\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "def pick(c):\n    if c:\n        return \"z\"\n    return 7\n\nxs = []\nxs.append(3)\nprint(1 if xs[0] \u003e pick(1) else 0)\n",
@@ -783,21 +769,19 @@
   },
   {
     "source": "def show(v):\n    print(v)\n    print(v // 2)\n    return 0\n\nshow(5.0)\n",
-    "reason": "stdout differs from the record",
-    "expected": "5.0\n2.0\n",
-    "actual": "5.0\n2.0\n5.0\n2.0\n"
+    "reason": "the echoed value differs from the record",
+    "expected": "0"
   },
   {
     "source": "def show(v):\n    print(v)\n    return 0\n\nxs = []\nxs.append([7, 8])\nshow(xs[0][0])\n",
-    "reason": "stdout differs from the record",
-    "expected": "7\n",
-    "actual": "7\n7\n"
+    "reason": "the echoed value differs from the record",
+    "expected": "0"
   },
   {
     "source": "def twice(fn, v):\n    return fn(v) + fn(v)\n\nprint(twice(lambda x: x * 3, 2))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: unsupported call \"fn\""
+    "actual": "jit: codegen: \"fn\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "def twice(v):\n    return v + v\n\nprint(twice(1.5 if 1 else 2))\n",
@@ -806,15 +790,10 @@
     "actual": "jit: codegen: the answer of `1.5 if 1 else 2` is a double and this context stores an i32 word: the compiled backend has a number-typed `select` (ADR 0262) but not a word that is both a double and an i32 — print it, store it, or compute with it rather than hand it to something that reads an i32 (a container slot, a call argument typed as an int, an index); roadmap L11.1's tagged value word is what makes an answer carry its own kind"
   },
   {
-    "source": "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "enumerate([10, 20, 30])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"[[0, 10], [1, 20], [2, 30]]\"",
-    "actual": "jit: codegen: codegen: unsupported call \"enumerate\""
+    "actual": "jit: codegen: \"enumerate\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "extern fn abs(x: int) -\u003e int\nabs(-5)",
@@ -835,34 +814,19 @@
     "source": "f\"a{1}b\"",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"a1b\"",
-    "actual": "jit: codegen: codegen: f-string requires a constant expression (AOT backend)"
+    "actual": "jit: codegen: f-string requires a constant expression (AOT backend)"
   },
   {
     "source": "f\"hello\"",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"hello\"",
-    "actual": "jit: codegen: codegen: f-string requires a constant expression (AOT backend)"
+    "actual": "jit: codegen: f-string requires a constant expression (AOT backend)"
   },
   {
     "source": "f\"plain\"",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"plain\"",
-    "actual": "jit: codegen: codegen: f-string requires a constant expression (AOT backend)"
-  },
-  {
-    "source": "for i in [1, 2]:\n    print(i); print(\"step\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "for i in range(2):\n    print(round(2.345 + i, 1))\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "for i in range(3):\n    print(floor(2.7) + i)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "actual": "jit: codegen: f-string requires a constant expression (AOT backend)"
   },
   {
     "source": "for v in [1.5]:\n    print(v * 2)\n",
@@ -877,72 +841,52 @@
     "actual": "0\n"
   },
   {
-    "source": "for w in [\"pear\", \"apple\"]:\n    print(1 if w \u003e \"a\" else 0)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "for w in [2.345]:\n    print(round(w, 2))\n",
     "reason": "stdout differs from the record",
     "expected": "2.35\n",
     "actual": "0\n"
   },
   {
-    "source": "for x in [1, 2]:\n    if x == 2:\n        print(\"two\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "for x in [True, 1]:\n    print(x)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "g = lambda x, y: x\nprint(g(1))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: missing argument \"y\" for \u003clambda\u003e",
-    "actual": "jit: codegen: codegen: missing argument \"y\" for lambda_0"
+    "actual": "jit: codegen: missing argument \"y\" for lambda_0"
   },
   {
     "source": "g = lambda x, y: x - y\nprint(g(3))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: missing argument \"y\" for \u003clambda\u003e",
-    "actual": "jit: codegen: codegen: missing argument \"y\" for lambda_0"
+    "actual": "jit: codegen: missing argument \"y\" for lambda_0"
   },
   {
     "source": "g = lambda x: x\nprint(g(1, 2))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: codegen: too many arguments for lambda_0"
+    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: missing argument \"x\" for \u003clambda\u003e",
-    "actual": "jit: codegen: codegen: missing argument \"x\" for lambda_0"
+    "actual": "jit: codegen: missing argument \"x\" for lambda_0"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g(1, 2))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 2",
-    "actual": "jit: codegen: codegen: too many arguments for lambda_0"
+    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g(1, 2, 3, 4))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: too many arguments for \u003clambda\u003e: it accepts 1 argument, got 4",
-    "actual": "jit: codegen: codegen: too many arguments for lambda_0"
+    "actual": "jit: codegen: too many arguments for \u003clambda\u003e"
   },
   {
     "source": "g = lambda x: x * 2\nprint(g)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: undefined name \"g\" (no binding for it; assign it before use) — the interpreter reports the same error"
-  },
-  {
-    "source": "i = -2\nwhile i \u003c 0:\n    print(abs(i))\n    i = i + 1\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "actual": "jit: codegen: undefined name \"g\" (no binding for it; assign it before use) — the reference reports the same error"
   },
   {
     "source": "i = 0\nprint(max([True, i]))\n",
@@ -964,11 +908,6 @@
     "source": "i = 0\nwhile i \u003c 100:\n    i = i + 1\n    if i == 3:\n        break\ni",
     "reason": "the echoed value differs from the record",
     "expected": "3"
-  },
-  {
-    "source": "i = 3\nwhile i \u003e 0:\n    print(-i)\n    i = i - 1\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
   },
   {
     "source": "import cfg\ncfg.d[1]",
@@ -1216,11 +1155,6 @@
     "expected": "1"
   },
   {
-    "source": "n = 0\nwhile n \u003c 2: n = n + 1; print(n)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "ord(chr(65))",
     "reason": "the echoed value differs from the record",
     "expected": "65"
@@ -1229,19 +1163,19 @@
     "source": "print(\"a\" % 2)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: not all arguments converted during string formatting",
-    "actual": "jit: codegen: codegen: operator \"%\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"%\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(\"a\" * \"b\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: can't multiply sequence by non-int of type 'str'",
-    "actual": "jit: codegen: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(\"a\" * 1.5)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: can't multiply sequence by non-int of type 'float'",
-    "actual": "jit: codegen: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(\"a\" * [1])",
@@ -1253,43 +1187,43 @@
     "source": "print(\"a\" ** 2)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for ** or pow(): 'str' and 'int'",
-    "actual": "jit: codegen: codegen: operator \"**\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"**\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(\"a\" + 1)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: can only concatenate str (not \"int\") to str",
-    "actual": "jit: codegen: codegen: concatenating a string with a value that is not a string is not supported in the AOT backend; CPython and the interpreter raise TypeError for it"
+    "actual": "jit: codegen: concatenating a string with a value that is not a string is not supported in the AOT backend; CPython raises TypeError for it"
   },
   {
     "source": "print(\"a\" - 1)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for -: 'str' and 'int'",
-    "actual": "jit: codegen: codegen: operator \"-\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"-\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(\"a\" / 2)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for /: 'str' and 'int'",
-    "actual": "jit: codegen: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(\"a\" // \"b\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for //: 'str' and 'str'",
-    "actual": "jit: codegen: codegen: operator \"//\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"//\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(\"a\" \u003c 1)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: '\u003c' not supported between instances of 'str' and 'int'",
-    "actual": "jit: codegen: codegen: operator \"\u003c\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"\u003c\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(\"ab\" * 2)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(-(\"a\", 1))\n",
@@ -1312,43 +1246,43 @@
     "source": "print(1 - \"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for -: 'int' and 'str'",
-    "actual": "jit: codegen: codegen: operator \"-\" on a string (*lang.IntLit) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"-\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(1 / \"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for /: 'int' and 'str'",
-    "actual": "jit: codegen: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
+    "actual": "jit: codegen: a string is a text, which has no double to widen from: printf-style formatting — the reference's `\"%.2f\" % 3.5` answers `3.50`, and this backend builds neither that nor a number from a format string (roadmap L11.2, Gap R.165)"
   },
   {
     "source": "print(1 // \"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for //: 'int' and 'str'",
-    "actual": "jit: codegen: codegen: operator \"//\" on a string (*lang.IntLit) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"//\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(1 \u003c \"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: '\u003c' not supported between instances of 'int' and 'str'",
-    "actual": "jit: codegen: codegen: operator \"\u003c\" on a string (*lang.IntLit) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"\u003c\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(1 in [1, 2] == 1)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a container operand of a comparison chain would store a container global into an i32 slot; the interpreter chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)"
+    "actual": "jit: codegen: a container operand of a comparison chain would store a container global into an i32 slot; the reference chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)"
   },
   {
     "source": "print(1 not in [2] == 1)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a container operand of a comparison chain would store a container global into an i32 slot; the interpreter chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)"
+    "actual": "jit: codegen: a container operand of a comparison chain would store a container global into an i32 slot; the reference chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)"
   },
   {
     "source": "print(2 ** \"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for ** or pow(): 'int' and 'str'",
-    "actual": "jit: codegen: codegen: operator \"**\" on a string (*lang.IntLit) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"**\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(2 ** 1.5)\n",
@@ -1372,13 +1306,13 @@
     "source": "print(3 * [0])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: `3 * [0]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `3 * [0]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
   },
   {
     "source": "print(7 % \"a\")",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for %: 'int' and 'str'",
-    "actual": "jit: codegen: codegen: operator \"%\" on a string (*lang.IntLit) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+    "actual": "jit: codegen: operator \"%\" on a string (*lang.IntLit) is not supported in the AOT backend; CPython evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
   },
   {
     "source": "print(None * 2)",
@@ -1396,73 +1330,73 @@
     "source": "print([0] * 3)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: `[0] * 3` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `[0] * 3` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
   },
   {
     "source": "print([1, 2] + [3])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: `[1, 2] + [3]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `[1, 2] + [3]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
   },
   {
     "source": "print([1, 2].index(5))",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: 5 is not in list",
-    "actual": "jit: codegen: unsupported list method index"
+    "actual": "jit: codegen: [1, 2].index is refused: this backend builds the list methods it can lower against the container's own word (append, extend, insert, remove, pop, clear, sort, reverse, index-of-a-literal, count, and membership), and index needs a run-time search the compiled doors do not have — the reference answers it (with ValueError: … is not in list when the value is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)"
   },
   {
     "source": "print([1] + [2])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: `[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
   },
   {
     "source": "print([1] \u003c [\"a\"])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: '\u003c' not supported between instances of 'int' and 'str'",
-    "actual": "jit: codegen: `[1] \u003c [\"a\"]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `[1] \u003c [\"a\"]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
   },
   {
     "source": "print([c + c for c in \"ab\"])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"ab\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print([c for c in \"\"])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print([c for c in \"abc\" if c != \"b\"])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print([c for c in \"abc\"] == [])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print([c for c in \"abc\"])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print([c for c in \"abc\"])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print([x for x in \"abc\" if False])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"abc\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print([{\"a\": 1}.get(\"z\")])\n",
@@ -1486,25 +1420,25 @@
     "source": "print(bool([1, 2, 3]))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); the interpreter answers it (roadmap Gap R.131, ADR 0166)"
+    "actual": "jit: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)"
   },
   {
     "source": "print(bool([1]))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); the interpreter answers it (roadmap Gap R.131, ADR 0166)"
+    "actual": "jit: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)"
   },
   {
     "source": "print(bool([]))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); the interpreter answers it (roadmap Gap R.131, ADR 0166)"
+    "actual": "jit: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)"
   },
   {
     "source": "print(bool({\"a\": 1}))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); the interpreter answers it (roadmap Gap R.131, ADR 0166)"
+    "actual": "jit: codegen: a container's truthiness is its length, and this backend cannot ask an object how many elements it has from a call to bool(); CPython answers it (roadmap Gap R.131, ADR 0166)"
   },
   {
     "source": "print(ceil())\n",
@@ -1564,7 +1498,7 @@
     "source": "print(len([c for c in \"abcd\"]))",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+    "actual": "jit: codegen: a comprehension over \"abcd\" is refused: this backend builds a comprehension over an inline list literal, range(), or a container variable it can see the kind of, and the reference iterates a text one character at a time — answering the same needs the value word that carries its own kind (roadmap L11.1; Gap I.2 covers text iteration through the same door)"
   },
   {
     "source": "print(max(\"a\"))",
@@ -1654,7 +1588,7 @@
     "source": "print(sorted([c for c in \"cba\"]))",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: sorted: codegen folds only an inline list literal"
+    "actual": "jit: codegen: sorted([c for c in \"cba\"]) is refused: this backend sorts an inline list literal it can evaluate at compile time, and this argument is not one — the reference sorts any iterable by building the container at run time, which needs the value word that carries its own kind (roadmap L11.1)"
   },
   {
     "source": "print(sqrt(1, 2))\n",
@@ -1672,19 +1606,19 @@
     "source": "print({\"a\": 1} + {\"b\": 2})",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: unsupported operand type(s) for +: 'dict' and 'dict'",
-    "actual": "jit: codegen: `{\"a\": 1} + {\"b\": 2}` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
+    "actual": "jit: codegen: `{\"a\": 1} + {\"b\": 2}` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
   },
   {
     "source": "print({1: 2}.popitem())",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: popitem() answers a pair, and this language has no tuple value yet (roadmap L11.3)",
-    "actual": "jit: codegen: unsupported dict method popitem"
+    "actual": "jit: codegen: {1: 2}.popitem is refused: this backend builds the dict methods it can lower against the container's own word (get, keys, values, items, clear, and a literal read), and popitem needs a run-time search the compiled doors do not have — the reference answers it (with its documented answer when the key is absent), which needs the value word that carries its own kind (roadmap L11.1, Gap I.2)"
   },
   {
     "source": "print({True for x in [1]})\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)"
+    "actual": "jit: codegen: a comprehension of verdicts needs the tagged set builder, which a set comprehension does not have yet (roadmap Gap R.116)"
   },
   {
     "source": "reversed([1, 2, 3])",
@@ -1705,7 +1639,13 @@
     "source": "s = \"abc\"\nprint(s[9])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: string index out of range",
-    "actual": "jit: codegen: string index out of range"
+    "actual": "jit: codegen: the text position this program asks for is out of range, and this backend refuses to build the read rather than answer it wrongly: the reference runs the program and raises IndexError when that position is reached, so a `try:`/`except IndexError:` around it is legal and answered there — making this a runtime trap instead of a compile-time stop is roadmap Gap R.37 (see also L11.1 for a position whose kind is a run-time fact)"
+  },
+  {
+    "source": "s = \"abc\"\ns[0] = \"z\"\n",
+    "reason": "the compiled backend cannot build a program the engine ran",
+    "expected": "trap eval error: strings are immutable",
+    "actual": "jit: codegen: strings are immutable, so s[k] = v is not allowed"
   },
   {
     "source": "s = 0\nfor i in range(1, 5, 2):\n    s = s + i\ns",
@@ -1747,19 +1687,19 @@
     "source": "s = {1, 2}\ns.remove(9)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: remove(): element not in set",
-    "actual": "jit: codegen: remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+    "actual": "jit: codegen: remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "s = {1, 2}\ns[0] = 5\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: cannot assign to a set element",
-    "actual": "jit: codegen: codegen: sets do not support item assignment (s[k] = v); the interpreter raises TypeError"
+    "actual": "jit: codegen: sets do not support item assignment (s[k] = v); CPython raises TypeError"
   },
   {
     "source": "s = {1}\nprint(s.remove(1))",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+    "actual": "jit: codegen: remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "sorted([3, 1, 2])[0]",
@@ -1785,139 +1725,56 @@
   {
     "source": "try:\n    a, b = [1, 2, 3]\n    print(a)\nexcept ValueError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"0\"",
-    "actual": "jit: codegen: codegen: tuple assignment length mismatch"
+    "expected": "result \"None\"",
+    "actual": "jit: codegen: tuple assignment length mismatch"
   },
   {
     "source": "try:\n    a, b = [1]\n    print(a)\nexcept ValueError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"0\"",
-    "actual": "jit: codegen: codegen: tuple assignment length mismatch"
+    "expected": "result \"None\"",
+    "actual": "jit: codegen: tuple assignment length mismatch"
   },
   {
     "source": "try:\n    class P:\n        pass\n    p = P()\n    print(p.nope)\nexcept AttributeError:\n    print(\"handled\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "reason": "stdout differs from the record",
+    "expected": "handled\n",
+    "actual": "0\n"
   },
   {
     "source": "try:\n    class P:\n        pass\n    p = P()\n    print(p.x.y)\nexcept AttributeError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"0\"",
-    "actual": "jit: codegen: codegen: unsupported attr expression"
-  },
-  {
-    "source": "try:\n    print(-\"hi\")\n    print(\"not reached\")\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(-None)\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(-[1])\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(abs(\"hi\") * 2.5)\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(abs(\"hi\"))\n    print(\"not reached\")\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(abs(None))\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(abs([1]))\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "expected": "result \"None\"",
+    "actual": "jit: codegen: unsupported attr expression"
   },
   {
     "source": "try:\n    print(float(\"zzz\"))\nexcept ValueError:\n    print(\"handled\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(floor(\"a\"))\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "reason": "stdout differs from the record",
+    "expected": "handled\n",
+    "actual": "0.0\n"
   },
   {
     "source": "try:\n    print(int(\"abc\"))\nexcept ValueError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"0\"",
+    "expected": "result \"None\"",
     "actual": "jit: codegen: int on non-integer string"
   },
   {
     "source": "try:\n    print(len(5))\nexcept TypeError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"0\"",
+    "expected": "result \"None\"",
     "actual": "jit: codegen: len requires an inline list/dict/set literal"
-  },
-  {
-    "source": "try:\n    print(max(1, [2]))\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(min(1, \"a\"))\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(min([1, \"a\"]))\nexcept TypeError:\n    print(min(3, 1))\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(round(2.345, 1.5))\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    print(sqrt(-4))\nexcept ValueError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    raise ValueError(\"bad\")\nexcept ValueError:\n    1",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    x = 1 / 0\nexcept:\n    print(\"caught\")\nfinally:\n    print(\"fin\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
   },
   {
     "source": "try:\n    x = 5\n    print(x[0])\nexcept TypeError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"0\"",
+    "expected": "result \"None\"",
     "actual": "jit: codegen: index of a non-literal variable"
   },
   {
     "source": "try:\n    x = 5\n    x()\nexcept TypeError:\n    print(\"handled\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
-    "expected": "result \"0\"",
-    "actual": "jit: codegen: codegen: unsupported call \"x\""
-  },
-  {
-    "source": "try:\n    xs = [1]\n    print(xs[5])\nexcept IndexError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "try:\n    xs = []\n    xs.pop()\nexcept IndexError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "expected": "result \"None\"",
+    "actual": "jit: codegen: \"x\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "v0 = len([2, 4, 3, 2, 7])\nprint(3, len([9, 8, 7, 2, 0]) - len([8, 1, 1, 7, 8]), len([5, 0, 0, 5, 9]))\nv1 = len([1, 4, 7, 7, 6]) - 6\nv2 = -2\nif 6 \u003e= 1:\n  print(1)\n  print(len([2, 2, 3, 2, 6]))\n  print(8)\n  print(-1)\nprint(v1 + 6)\nif 3 \u003e 4:\n  print(len([1, 5, 4, 3, 2]))\n  print(2)\n  print(0)\n  print(7)\nelse:\n  print(1 * 1)\n  print(len([0, 5, 6, 5, 4]))\nv3 = v1\ndef f39000(p0):\n  print(-3)\n  return 7 + len([9, 8, 8, 3, 4])\nv4 = 8\ndef f45665(p0, p1):\n  print(p0 * 4)\n  return p0\nv5 = -9\nprint([4, 1, 1, 9, 8], 8 * 9)\nv6 = len([4, 1, 2, 1, 4])",
@@ -1925,37 +1782,7 @@
     "expected": "5"
   },
   {
-    "source": "x = \"text\"\nx = [1, 2]\nfor v in x:\n    print(v)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "x = 0\nfor i in range(3):\n    pass\n    x = x + i\nx",
-    "reason": "the echoed value differs from the record",
-    "expected": "3"
-  },
-  {
-    "source": "x = 0\ntry:\n    print(x and (1 // 0))\nexcept ZeroDivisionError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "x = 0\nwhile (x or 3) \u003c 5:\n    print(x)\n    x = x + 1\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "x = 20\nmatch x:\n    case 20 if x \u003e 10:\n        200\n    case _:\n        999",
-    "reason": "the echoed value differs from the record",
-    "expected": "200"
-  },
-  {
-    "source": "x = 3\nmatch x:\n    case 1 | 2:\n        111\n    case 3 | 4:\n        333\n    case _:\n        999",
-    "reason": "the echoed value differs from the record",
-    "expected": "333"
-  },
-  {
-    "source": "x = 3\ntry:\n    print(x / 0)\nexcept ZeroDivisionError:\n    print(\"handled\")\n",
     "reason": "the echoed value differs from the record",
     "expected": "3"
   },
@@ -1964,11 +1791,6 @@
     "reason": "the program trapped where the record has an answer",
     "expected": "result \"None\"",
     "actual": "trapped: OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)"
-  },
-  {
-    "source": "x = 5\nmatch x:\n    case 5 if x \u003e 10:\n        100\n    case 5:\n        555\n    case _:\n        999",
-    "reason": "the echoed value differs from the record",
-    "expected": "555"
   },
   {
     "source": "x = 5\nprint(x[0])\n",
@@ -1980,23 +1802,13 @@
     "source": "x = 5\ntry:\n    x()\nexcept ValueError:\n    print(\"wrong arm\")\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: 'int' object is not callable",
-    "actual": "jit: codegen: codegen: unsupported call \"x\""
+    "actual": "jit: codegen: \"x\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "x = 5\nx()\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "trap eval error: 'int' object is not callable",
-    "actual": "jit: codegen: codegen: unsupported call \"x\""
-  },
-  {
-    "source": "x = [1, 2, 3]\nmatch x:\n    case [a, b]:\n        a + b\n    case _:\n        99\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "99"
-  },
-  {
-    "source": "x = [10, 20]\nmatch x:\n    case [a, b]:\n        a + b\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "30"
+    "actual": "jit: codegen: \"x\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "x = round(0.5)\nprint(x)\nx\n",
@@ -2019,63 +1831,28 @@
     "expected": "42"
   },
   {
-    "source": "xs = [\"a\"]\ntry:\n    print(-xs[0])\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "['a']"
-  },
-  {
-    "source": "xs = [\"a\"]\ntry:\n    print(abs(xs[0]))\nexcept TypeError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "['a']"
-  },
-  {
     "source": "xs = [\"b\", \"a\"]\nprint(min(xs))\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
     "actual": "jit: codegen: min requires an inline list/set/dict literal"
   },
   {
-    "source": "xs = [1, \"a\", None, 1.5]\nfor x in xs:\n    print(1 if x == \"a\" else 0, 1 if x == 1 else 0, 1 if x == None else 0)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "xs = [1, \"a\"]\nfor i in [0]:\n    print(1 if xs[i] \u003e 2 else 0)\n    print(1 if xs[i] \u003c= 1 else 0)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "xs = [1, \"a\"]\ni = 1\nwhile xs[i] \u003c \"z\":\n    print(\"step\")\n    break\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "1"
-  },
-  {
     "source": "xs = [1, 2, 3]\n\ndef n() -\u003e int:\n    return len(xs)\n\nprint(n())\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (the interpreter answers this program; compiled module globals are roadmap Gap R.35)"
-  },
-  {
-    "source": "xs = [1, 2]\nfor x in xs:\n    y = x * 10; print(y)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "xs = [1.5, 2.5]\nfor i in [0, 1]:\n    print(xs[i] * 2)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "actual": "jit: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)"
   },
   {
     "source": "xs = [1]\n\ndef add() -\u003e int:\n    xs.append(2)\n    return len(xs)\n\nprint(add(), xs)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (the interpreter answers this program; compiled module globals are roadmap Gap R.35)"
+    "actual": "jit: codegen: \"xs\" is bound at module level, and a compiled function body cannot reach module-level containers or state that changes (CPython answers this program; compiled module globals are roadmap Gap R.35)"
   },
   {
     "source": "xs = [1]\nxs.extend([2, 3])\nprint(xs)",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: extend() on \"xs\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"xs\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+    "actual": "jit: codegen: extend() on \"xs\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"xs\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
     "source": "xs = [3, 1, 2]\nprint(min(xs), max(xs))\n",
@@ -2084,15 +1861,10 @@
     "actual": "jit: codegen: min requires an inline list/set/dict literal"
   },
   {
-    "source": "xs = [[1, 2]]\nfor v in xs[0]:\n    print(v)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "xs = []\nfor i in range(3):\n    xs.append(\"n\" + str(i))\n\nprint(xs)\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: str on non-integer"
+    "actual": "jit: codegen: str(i) is refused: this backend renders a text through the one str/repr table, which reaches an integer, a text, None, bool and the container literals, and has no word for this argument's kind — the reference answers str() of any value, and doing the same needs the value word that carries its own kind (roadmap L11.1/L11.2, Gap R.171)"
   },
   {
     "source": "xs = []\nxs.append(\"a\")\nys = []\nys.append(1)\nprint(1 if xs[0] \u003e ys[0] else 0)\n",
@@ -2101,35 +1873,10 @@
     "actual": "answered (no answer)"
   },
   {
-    "source": "xs = []\nxs.append(3)\ni = 0\nwhile xs[0] \u003e i:\n    print(i)\n    i = i + 1\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "xs = []\nxs.append(6)\nfor v in xs:\n    print(v / 2)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "xs = []\nxs.append(6)\nfor v in xs:\n    print(v / 4)\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "xs = []\nxs.append(6)\nfor v in xs:\n    try:\n        print(v / 0)\n    except ZeroDivisionError:\n        print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
     "source": "xs = []\nxs.append(6)\ni = 0\nprint(xs[i] / xs[0])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: the left operand an element read of \"/\" has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)"
-  },
-  {
-    "source": "xs = []\nxs.append(6)\ni = 0\nwhile xs[0] / 4 \u003e i:\n    print(i)\n    i = i + 1\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
+    "actual": "jit: codegen: the left operand an element read of \"/\" has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)"
   },
   {
     "source": "xs = []\nxs.append(6)\nprint({v: v / 2 for v in xs})\n",
@@ -2141,34 +1888,19 @@
     "source": "xs = []\nxs.append(6)\nys = []\nys.append(4)\nprint(xs[0] / ys[0])\n",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"None\"",
-    "actual": "jit: codegen: codegen: the left operand an element read of \"/\" has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)"
-  },
-  {
-    "source": "xs = []\nxs.append([7, 8])\ni = 0\nwhile i \u003c 1:\n    n = xs[0][0] * 2\n    print(n)\n    i = 1\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nwhile n \u003e 0:\n    print(n)\n    n = 0\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "0"
-  },
-  {
-    "source": "y = 1\ntry:\n    print(y or (1 // 0))\nexcept ZeroDivisionError:\n    print(\"caught\")\n",
-    "reason": "the echoed value differs from the record",
-    "expected": "1"
+    "actual": "jit: codegen: the left operand an element read of \"/\" has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)"
   },
   {
     "source": "ys = [1, 2, 3]\nzs = [y for y in ys if y \u003e 1]\nzs",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"[2, 3]\"",
-    "actual": "jit: codegen: codegen: ys is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)"
+    "actual": "jit: codegen: ys is a list the compiler kept as a compile-time constant, so a comprehension cannot walk it at runtime; mutating it (append) or iterating it with `for` materialises it, and the tagged value word will make every container a runtime object (roadmap L11.2, ADR 0192)"
   },
   {
     "source": "zip([1, 2], [10, 20])",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"[[1, 10], [2, 20]]\"",
-    "actual": "jit: codegen: codegen: unsupported call \"zip\""
+    "actual": "jit: codegen: \"zip\" is called but is not a function this backend can build a call to: the reference asks the value what it is at the moment of the call and raises TypeError (`'int' object is not callable`), and asking that question needs the value word that carries its own kind (roadmap L11.1, ADR 0166)"
   },
   {
     "source": "{\"a\": 1, \"b\": 2}.get(\"a\", 9)",

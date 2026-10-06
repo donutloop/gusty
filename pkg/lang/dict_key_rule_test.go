@@ -89,7 +89,7 @@ func TestADictComprehensionPutsItsEntries(t *testing.T) {
 }
 
 // The compiled path's dict-comprehension builder walks integer keys, so the text spelling of the same
-// comprehension is a refusal it makes in words while the interpreter answers — filed as roadmap Gap
+// comprehension is a refusal it makes in words while the reference answers — filed as roadmap Gap
 // R.123 rather than skipped, and pinned per leg in the conformance ledger. The int spelling two rows up
 // is parity surface; the difference between the two is what the compiled builder can spell into a
 // compile-time global, not what a dict means.

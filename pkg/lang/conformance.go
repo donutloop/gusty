@@ -148,7 +148,6 @@ func (c ConformanceCase) OracleCheck(r *ConformanceResult) []string {
 		c.Rules, r.PythonOK, r.PythonOut, r.PythonErr)
 	r.Oracle = rep.Status
 	r.AOTMatchesPython = rep.Legs[0].Matches
-	r.Conformant = c.Asserted && r.AOTMatchesPython
 	r.OracleDeclared = c.Oracle
 	r.OracleReason = c.Reason
 	r.OracleRef = c.Ref
@@ -156,6 +155,8 @@ func (c ConformanceCase) OracleCheck(r *ConformanceResult) []string {
 	r.OracleNotes = rep.Notes
 
 	var drift []string
+	pinsOK := true
+	pinDriftStart := 0
 	switch c.Oracle {
 	case OracleMatch, OracleDebt, OracleNA:
 	case "":
@@ -196,6 +197,24 @@ func (c ConformanceCase) OracleCheck(r *ConformanceResult) []string {
 		case !p.Missing && OracleNormalize(out, rep.Rules) != OracleNormalize(p.Stdout, rep.Rules):
 			drift = append(drift, fmt.Sprintf("pin says the %s leg prints %q, got %q", p.Backend, p.Stdout, out))
 		}
+	}
+	pinsOK = pinsOK && len(drift) == pinDriftStart
+	// Conformance, and which of the two possible assertions a row is under.
+	//
+	// Where the reference can answer, conformance is equality with it: that is the claim an asserted
+	// row makes, and the one the matrix exists to check. Where the reference *cannot* answer — a
+	// `string.DIGITS` the Python stdlib does not have, an `await` at module scope CPython calls a
+	// SyntaxError, a debt row whose divergence the registry owns by name — demanding equality with an
+	// empty or truncated CPython run would not be strictness, it would be a test that fails for the
+	// reason the row documents. There the assertion is the row's pin: the answer the compiled leg was
+	// measured to produce, checked above and drifted on when it moves. A row cannot be conformant
+	// because nobody could disprove it, so a not_applicable/debt row with no pin is drift, and a row
+	// whose pin no longer holds is neither conformant nor quiet.
+	switch r.Oracle {
+	case OracleNA, OracleDebt:
+		r.Conformant = c.Asserted && pinsOK && len(c.Pins) > 0
+	default:
+		r.Conformant = c.Asserted && r.AOTMatchesPython
 	}
 	return drift
 }

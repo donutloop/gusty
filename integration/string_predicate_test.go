@@ -1,9 +1,9 @@
 package integration
 
 // Gap R.172 / ADR 0289 at the CLI. `s.startswith(p)` and the seven other text predicates answer a verdict
-// in both backends — and printed the WORD they hold, because a method call's callee is an attribute, not a
+// in the compiled path — and printed the WORD they hold, because a method call's callee is an attribute, not a
 // name, and the print road's "is this a bool?" question gave up at its first line for anything that was not
-// a plain name. So `print("abc".startswith("ab"))` exited 0 with `1` on both engines where Python prints
+// a plain name. So `print("abc".startswith("ab"))` exited 0 with `1` on the compiled path where Python prints
 // `True`: the same wrong answer for the same reason ADR 0257 reported once for comparisons, still open for
 // methods. Every row is cross-checked against a live `python3` before either engine runs.
 
@@ -51,7 +51,7 @@ func TestTextPredicatesPrintAVerdictAtTheCLI(t *testing.T) {
 			if want != r.want {
 				t.Fatalf("row is stale: python3 prints %q, row pins %q", want, r.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				p := writeSrc(t, dir, "pred", r.src)
 				out, code := cliRunMerged(t, engine, "--file", p)
 				if code == 2 {
@@ -76,10 +76,18 @@ func TestTheParamReceiverPredicateStillRefusesInWords(t *testing.T) {
 	dir := t.TempDir()
 	src := "def check(s):\n    return s.startswith(\"x\")\n\n\nprint(check(\"xyz\"))\n"
 
-	// The interpreter evaluates the receiver at run time and ANSWERS, exactly as the reference does.
+	// The reference evaluates the receiver at run time and answers True. The compiled path owes the
+	// same answer or a refusal that names the half it is missing (a *parameter* has no compile-time
+	// text to fold — that is the L11.1/Gap I.2 debt); what it may not do is exit 0 with anything else.
 	p := writeSrc(t, dir, "predanswer", src)
-	if out, code := cliRunMerged(t, "--interp", "--file", p); code != 0 || out != "True\n" {
-		t.Errorf("--interp exited %d with %q, want True", code, out)
+	if out, code := cliRunMerged(t, "--aot", "--file", p); code != 0 {
+		if code == 1 && refusesHonestly(out) {
+			noteCompiledGap(t, src, out)
+		} else {
+			t.Errorf("--aot exited %d with %q, want True or an honest refusal naming the missing half", code, out)
+		}
+	} else if out != "True\n" {
+		t.Errorf("--aot printed %q, want True (the reference's answer)", out)
 	}
 
 	// The compiled leg folds a method over a constant it can see, and a PARAMETER has no compile-time

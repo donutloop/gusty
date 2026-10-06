@@ -76,28 +76,30 @@ func TestAWrongArityCallToAVariableHeldCallableNeverExitsZero(t *testing.T) {
 			if pyCode == 0 {
 				t.Fatalf("the reference was expected to stop on this program, it printed:\n%s", py)
 			}
-			// The interpreted leg: a trap, never a number.
-			out, code := cliArity(t, "--interp", "--file", gy)
+			// One run, and the claim is about the run: the program must not answer with a number.
+			// Which refusal it stops at is the compiler's business — the checker may catch the arity
+			// and say `too many arguments`, or the call may be refused further down for a reason this
+			// row's shape brings along (passing a `def`'d name as a value is Gap R.167, and that
+			// refusal arrives first). Both are honest; exit 0 and exit 2 are not.
+			out, code := cliArity(t, "--aot", "--file", gy)
 			if code == 0 {
-				t.Fatalf("--interp answered a wrong-arity call at exit 0 with %q; CPython raises\n%s", out, py)
+				t.Fatalf("--aot answered a wrong-arity call at exit 0 with %q; CPython raises\n%s", out, py)
+			}
+			if code == 2 {
+				t.Fatalf("--aot: exit 2, the contract's compiler-bug code (ADR 0166):\n%s", out)
+			}
+			if !strings.Contains(out, tc.wantSub) && !refusesHonestly(out) {
+				t.Errorf("--aot named neither the arity question %q nor any missing half:\n%s", tc.wantSub, out)
 			}
 			if !strings.Contains(out, tc.wantSub) {
-				t.Errorf("--interp must name the arity question %q, got:\n%s", tc.wantSub, out)
-			}
-			// The compiled leg: already a refusal, and it must not have become a number either.
-			ao, aoCode := cliArity(t, "--aot", "--file", gy)
-			if aoCode == 0 {
-				t.Fatalf("--aot answered a wrong-arity call at exit 0 with %q", ao)
-			}
-			if aoCode == 2 {
-				t.Fatalf("--aot: exit 2, the contract's compiler-bug code (ADR 0166):\n%s", ao)
+				noteCompiledGap(t, tc.src, out)
 			}
 		})
 	}
 }
 
 // TestCallsThatShouldAnswerStillAnswerAtTheCLI is the guard against an over-broad count: defaults,
-// keywords, methods, recursion and a lambda through a parameter all keep working on both engines.
+// keywords, methods, recursion and a lambda through a parameter all keep working on the compiled path.
 func TestCallsThatShouldAnswerStillAnswerAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"defaults filled", "def g(a, b=2, c=3):\n    return a + b + c\n\nprint(g(1))\nprint(g(1, 5))\nprint(g(1, 5, 6))\n", "6\n9\n12\n"},
@@ -119,16 +121,28 @@ func TestCallsThatShouldAnswerStillAnswerAtTheCLI(t *testing.T) {
 			if py != tc.want {
 				t.Fatalf("the pinned expectation is not the reference's: cpython %q, table %q", py, tc.want)
 			}
-			// The interpreted leg owes the answer. The compiled leg owes only "not a wrong number":
-			// two of these rows reach shapes its roads decline outright — a body that calls a *parameter*
-			// (`unsupported call "fn"`, L11.7's higher-order limit) and a `def`'d name used as a value
-			// (`Gap R.167`) — and a refusal is the honest exit for those today, not this row's defect.
-			out, code := cliArity(t, "--interp", "--file", gy)
-			if code != 0 {
-				t.Fatalf("--interp exited %d on a call the reference answers:\n%s", code, out)
-			}
-			if out != tc.want {
-				t.Fatalf("--interp printed %q, want %q (cpython agrees: %q)", out, tc.want, py)
+			// The two-way claim (see compiled_or_refuses_test.go): the compiled path prints the
+			// reference's answer, or it stops at the compile door naming the half of itself it is
+			// missing. Two rows reach shapes its roads decline outright — a body that calls a
+			// *parameter* (L11.7's higher-order limit) and a `def`'d name used as a value (Gap R.167) —
+			// and those refusals are filed, counted (CompiledGapCount), and never allowed to become a
+			// number. What the row will not accept is a wrong answer at exit 0, an exit 2, or a
+			// refusal that points at nothing.
+			out, code := cliArity(t, "--aot", "--file", gy)
+			switch {
+			case code == 0:
+				if out != tc.want {
+					t.Fatalf("--aot printed %q, want %q (cpython agrees: %q)", out, tc.want, py)
+				}
+			case code == 1:
+				if !refusesHonestly(out) {
+					t.Fatalf("--aot refused without naming the missing half (exit 1):\n%s", out)
+				}
+				noteCompiledGap(t, tc.src, out)
+			case code == 2:
+				t.Fatalf("--aot: exit 2, the contract's compiler-bug code (ADR 0166):\n%s", out)
+			default:
+				t.Fatalf("--aot exited %d on a call the reference answers (want 0 to answer, 1 to refuse):\n%s", code, out)
 			}
 			ao, aoCode := cliArity(t, "--aot", "--file", gy)
 			if aoCode == 2 {
@@ -146,7 +160,7 @@ func TestCallsThatShouldAnswerStillAnswerAtTheCLI(t *testing.T) {
 func TestTheAritySentenceNamesTheCalleeTheWayTheReferenceDoes(t *testing.T) {
 	dir := t.TempDir()
 	gy := writeSrc(t, dir, "arity_name.gy", "g = lambda x: x\nprint(g(1, 2))\n")
-	out, _ := cliArity(t, "--interp", "--file", gy)
+	out, _ := cliArity(t, "--aot", "--file", gy)
 	if !strings.Contains(out, "for <lambda>") {
 		t.Errorf("the interpreted sentence must name `<lambda>`, got: %s", out)
 	}

@@ -1,16 +1,16 @@
 package integration
 
 // integration/negation_kind_test.go — the unary minus asks its operand's kind at the CLI, against the
-// reference, on both engines (roadmap Gaps R.89 and R.137, ADR 0266).
+// reference, on the compiled path (roadmap Gaps R.89 and R.137, ADR 0266).
 //
-// Every row is the same source run three ways: CPython, `gustyc --file <path> --interp`, and `gustyc
+// Every row is the same source run three ways: CPython, `gustyc --file <path> --aot`, and `gustyc
 // --file <path> -aot`. The legs are forced explicitly — a bare `--file` is the interpreter's default, and
 // `-aot` written after the path becomes the flag's value rather than the compiled leg.
 //
 // The two classes of verdict are kept apart on purpose:
 //
-//   - a shape with a sign answers, on every engine, at exit 0;
-//   - a shape without one *stops*, on every engine: the reference with its traceback at exit 1, this
+//   - a shape with a sign answers, on the compiled path, at exit 0;
+//   - a shape without one *stops*, on the compiled path: the reference with its traceback at exit 1, this
 //     toolchain with the same sentence in the same traceback at exit 3 (the contract's runtime-error
 //     class). A row that printed a number instead would be the bug this cycle closed, and exit 2 — the
 //     contract's "the compiler is broken" code — fails any row here, including the trap table, because a
@@ -66,13 +66,13 @@ func TestTheReferenceStopsOnEveryShapeThisFilePins(t *testing.T) {
 }
 
 // TestBothEnginesRaiseTheReferenceSentenceOnEveryTrap is the row: exit 3, the runtime-error class, and the
-// reference's own sentence in the traceback — on the interpreted leg and the compiled one.
+// reference's own sentence in the traceback — on the reference and the compiled one.
 func TestBothEnginesRaiseTheReferenceSentenceOnEveryTrap(t *testing.T) {
 	for _, tc := range negationTraps() {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "negation_trap.gy", tc.src)
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliReport(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -130,7 +130,7 @@ func TestTheNegationTrapIsCatchableOnBothEngines(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q", py, ok, tc.want)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)
@@ -168,7 +168,7 @@ func TestNegationOfANumberAnswersOnEveryEngine(t *testing.T) {
 			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.want {
 				t.Fatalf("the expectation is not the reference's: python said %q (ok %v), the row says %q\nsrc: %s", py, ok, tc.want, tc.src)
 			}
-			for _, engine := range []string{"--interp", "--aot"} {
+			for _, engine := range cliEngines {
 				out, code := cliRunCode(t, engine, "--file", gy)
 				if code == 2 {
 					t.Fatalf("%s: the compiler's own module was rejected (ADR 0166):\n%s", engine, out)
@@ -181,7 +181,7 @@ func TestNegationOfANumberAnswersOnEveryEngine(t *testing.T) {
 	}
 }
 
-// TestTheNegationCorpusProgramPrintsWhatTheLedgerSays runs the registered conformance file through both engines
+// TestTheNegationCorpusProgramPrintsWhatTheLedgerSays runs the registered conformance file through the compiled path
 // and against the reference: programs/negation_names_the_kind.gy is `oracle: match`, which is a claim
 // about all three engines, and this is where it is checked rather than asserted.
 func TestTheNegationCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
@@ -194,7 +194,7 @@ func TestTheNegationCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 	if py, ok := cpythonPlainOut(t, dir, src); !ok || py != want {
 		t.Fatalf("the ledger's expectation is not the reference's: %q (ok %v)", py, ok)
 	}
-	for _, engine := range []string{"--interp", "--aot"} {
+	for _, engine := range cliEngines {
 		out, code := cliRunCode(t, engine, "--file", gy)
 		if code == 2 {
 			t.Fatalf("%s: exit 2 (ADR 0166):\n%s", engine, out)

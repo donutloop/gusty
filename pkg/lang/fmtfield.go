@@ -15,8 +15,6 @@ import (
 	"strconv"
 )
 
-
-
 // numFormatOf is the single entry the spec asks through: the same spec, from an int or a float,
 // through the same engine, with the value's own type deciding the empty spec.
 func numFormatOf(f float64, spec string, isFloat bool) (string, bool, error) {
@@ -96,8 +94,6 @@ func needFloatOf(e Expr) float64 {
 	}
 	return 0
 }
-
-
 
 // inPlaceMutations is the one list of receiver methods that CHANGE their receiver and hand back
 // nothing. It is a table rather than a switch in each road because two roads must agree on it: the

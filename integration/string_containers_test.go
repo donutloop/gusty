@@ -16,7 +16,7 @@ import (
 // addressed, so two spellings of the same text are the same key), rt_str_ptr(i32) -> i8*,
 // and container slots hold the index. Per-container element kinds (listElemStr /
 // setElemStr / dictKeyStr / dictValStr) decide how elements print and how reads behave, so
-// both backends render exactly what Python does: ['a', 'b'], {'k': 1}, {1: 's'}, set().
+// the compiled path render exactly what Python does: ['a', 'b'], {'k': 1}, {1: 's'}, set().
 
 var stringContainerCases = []struct {
 	name string
@@ -76,9 +76,7 @@ func TestStringContainersMatchPython(t *testing.T) {
 func TestStringInterningIsContentAddressed(t *testing.T) {
 	src := "d = {}\nd[\"k\"] = 1\nd[\"k\"] = 2\nprint(len(d))\nprint(d[\"k\"])\n"
 	want := "1\n2\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	if got := compileAndRun(t, src); got != want {
 		t.Errorf("AOT = %q, want %q", got, want)
 	}
@@ -142,9 +140,7 @@ var containerLiteralCases = []struct {
 
 func TestContainerLiteralsMatchPython(t *testing.T) {
 	for _, tc := range containerLiteralCases {
-		if got := runInterp(t, tc.src); got != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterpHint(got), tc.want)
-		}
+		lang.RecordedStdoutIs(t, tc.src, tc.want)
 		res, err := lang.Compile(tc.src)
 		if err != nil {
 			t.Errorf("%s: compile: %v", tc.name, err)
@@ -281,9 +277,12 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 			!strings.Contains(err.Error(), "cannot prove one kind") {
 			t.Errorf("%q: unexpected diagnostic: %v", src, err)
 		}
-		if !strings.Contains(err.Error(), "interpreter") && !strings.Contains(err.Error(), "interpreted") &&
+		// The refusal must point somewhere a reader can go: either the door that does work ("printing
+		// it works") or the reference that answers it, with the roadmap row that owns the rest. Naming a
+		// second engine that no longer exists would name nothing.
+		if !strings.Contains(err.Error(), "CPython") && !strings.Contains(err.Error(), "reference") &&
 			!strings.Contains(err.Error(), "printing it works") {
-			t.Errorf("%q: should name the path that works: %v", src, err)
+			t.Errorf("%q: should name the path that works, or the reference that answers it: %v", src, err)
 		}
 		if res != nil {
 			// nothing usable was emitted, and it must not be an invalid module
@@ -297,9 +296,7 @@ func TestMixedContainersAreADiagnosticNotAMisprint(t *testing.T) {
 func TestItemAssignmentReplacesElementKind(t *testing.T) {
 	src := "xs = [1]\nxs[0] = \"s\"\nprint(xs)\n"
 	want := "['s']\n"
-	if got := runInterp(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q", got, want)
-	}
+	lang.RecordedStdoutIs(t, src, want)
 	if got := compileAndRun(t, src); got != want {
 		t.Errorf("AOT = %q, want %q", got, want)
 	}
