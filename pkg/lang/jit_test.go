@@ -1316,10 +1316,14 @@ print(f"x={x}")`)
 		t.Fatalf("print expr f-string stdout %q, want 3\\n", out)
 	}
 	// f-string with multiple parts and a format spec is supported
+	// A format spec is HONOURED, not stripped. This pin used to assert `val=7` — the padding the
+	// spec asked for simply never happened, on both engines, at exit 0, which is the whole defect
+	// Gap R.186 files (ADR 0299). CPython answers `val=  7` for `f"val={n:>3}"`, and a pinned wrong
+	// answer is an acceptance test that moves when the road lifts; it does not get deleted.
 	out = captureStdout(t, `n = 7
 print(f"val={n:>3}")`)
-	if out != "val=7\n" {
-		t.Fatalf("print fmt f-string stdout %q, want val=7\\n", out)
+	if out != "val=  7\n" {
+		t.Fatalf("print fmt f-string stdout %q, want val=  7\\n", out)
 	}
 }
 

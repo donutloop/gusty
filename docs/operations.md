@@ -973,6 +973,17 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **an f-string's format spec formats**: `--interp --eval 'print(f"{3.5:.2f}")'` exits 0 with `3.50`, and
+  `f"{7:05d}"` with `00007`, `f"{255:x}"` with `ff`, `f"{3.5:>6}"` with the padding (`Gap R.186` /
+  ADR 0299). Before this the spec was cut off at parse time and never stored, so **both** engines printed
+  the plain number at **exit 0** — eleven shapes, engines in perfect agreement, which is exactly why
+  parity could not see a single one: parity compares the engines to each other and only the oracle leg
+  compares either to CPython. A spec the language cannot honour now **refuses with a sentence naming it**
+  (`f"{[1,2]:>8}"` raises `TypeError: unsupported format string passed to list.__format__`, the
+  reference's own words) rather than answering the unformatted value; on the compiled leg a field it
+  cannot read at compile time, and any field that is a container, exits 1 naming the spec — owed to
+  `L12.8` with `L11.1`. `f"{[1,2]}"` previously emitted `printf(..., i32 @.lst1)` and died in `llc`,
+  which is exit 2, the forbidden class; it refuses now.
 - **a text iterates one character at a time on the interpreter**: `--interp --eval
   'print([c for c in "abc"])'` exits 0 with `['a', 'b', 'c']` and `print(max("abc"))` with `c` (`Gap
   R.185` / ADR 0298). Before this the interpreter answered `[]` and `abc` — a WRONG answer at exit 0, no

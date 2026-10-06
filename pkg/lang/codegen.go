@@ -13082,7 +13082,34 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						fmtLit += strings.ReplaceAll(part.Lit, "%", "%%")
 						continue
 					}
+					// A field that ASKED for a format is answered by the shared spec engine, at
+					// compile time where the value is a constant and by refusing where it is not.
+					// Falling through to the plain %d/%s below is the defect this row exists to end:
+					// `f"{3.5:.2f}"` printed `3.5` here and on the interpreter at exit 0, and the two
+					// engines agreeing is exactly why parity never saw it (Gap R.186, ADR 0299).
+					if part.Spec != "" || part.Conv != ConvNone {
+						lit, ok := g.formatFieldConst(part)
+						if !ok {
+							return "", fmt.Errorf("codegen: the format spec %q needs a value this backend "+
+								"can read at compile time (AOT backend)", part.Spec)
+						}
+						fmtLit += strings.ReplaceAll(lit, "%", "%%")
+						continue
+					}
 					if part.Expr != nil {
+						if exprIsContainerShape(part.Expr) {
+							// A container interpolated into an f-string is a heap object, and this road
+							// builds ONE printf format string: the only words it can hand printf are an
+							// i32 or an i8*, neither of which renders `[1, 2]`. Emitting the handle as
+							// `%d` is what produced `printf(..., i32 @.lst1)` -- a global address where a
+							// heap handle belongs, which llc rejects as an invalid module and ADR 0166
+							// forbids outright. Rendering it needs rt_print_list_mixed's sink, which
+							// cannot compose into a single printf; so the field is REFUSED here, and the
+							// interpreter -- which has no such limit -- answers [1, 2] like the
+							// reference (Gap R.186 / Gap R.60's remainder, ADR 0299, owed to L11.1).
+							return "", fmt.Errorf("codegen: an f-string field that is a container has no word to " +
+								"travel in beside the text around it (AOT backend)")
+						}
 						if nm, isName := part.Expr.(*Name); isName && g.numericPairVar(nm.Value) {
 							// An interpolated name the arithmetic door bound contributes the digits the
 							// printer writes for its (payload, tag) pair — the same helper str() calls,

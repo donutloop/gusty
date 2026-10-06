@@ -1230,6 +1230,44 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### An f-string's format spec and conversion
+
+A field may carry a **format spec** after a `:` and a **conversion** `!r` / `!s` before it. Both are part
+of the program (`Gap R.185`'s sibling `Gap R.186`, ADR 0299) — they used to be cut off at parse time and
+discarded, which is how `f"{3.5:.2f}"` came to print `3.5` on both engines at exit 0:
+
+```
+print(f"{3.5:.2f}")        # 3.50
+print(f"{3.5:.0f}")        # 4         rounding, and 2.5 below answers 2 (the reference's rule)
+print(f"{7:05d}")          # 00007
+print(f"{-4:05d}")         # -0004     padding goes after the sign; the width counts the sign
+print(f"{255:x}")          # ff        also :X :b :o
+print(f"{1234:,.2f}")      # 1,234.00
+print(f"{3.5:>6}|")        #     3.5|  also <, ^, and a fill: f"{3.5:*^7}|" is **3.5**|
+print(f"{0.25:.2%}")       # 25.00%
+print(f"{3.14159:.3e}")    # 3.142e+00
+print(f"{2}")              # 2
+print(f"{2.0}")            # 2.0       an int's empty spec is its digits, a float's is its repr
+print(f"{7!r}")            # 7         the conversion, which the parser also used to drop
+print(f"{3.5!r:>8}|")      #      3.5| the spec applies to the conversion's text
+n = 7
+print(f"{n:05d}")          # 00007     a name is formatted too
+```
+
+The digits always come from one shared formatter, never from `printf`'s own `%05d` / `%.2f`: the two
+diverge on exactly the cases that matter — `%.0f` rounding, `%g`'s exponent rules, and `%d` on a value
+the language calls `float`.
+
+**A spec is honoured or the field refuses — there is no third answer.** A spec this language cannot
+honour (`!a`, `#`, `;`-grouping, `n`, a `.q`, a spec on a value that is not a number) raises with the
+reference's own sentence; `format([1,2], ">8")` answers
+`TypeError: unsupported format string passed to list.__format__`, because a list has no `__format__`
+beyond the object default. On the compiled leg, a field whose value it cannot read at compile time
+(`f"{n:05d}"` over a variable, `f"{3.5 + 1:.2f}"`) and a field that is a **container** both refuse at
+exit 1 naming the spec — owed to `L12.8` with `L11.1`, whose tagged word will make a field's kind
+readable. Neither ever emits the unformatted number, and neither reaches exit 2: `f"{[1,2]}"` used to
+hand a list's *global address* to `printf`'s `%d`, which `llc` rejected as an invalid module.
+
 ### A text iterates one character at a time
 
 A text is an **iterable**, so the roads that iterate one answer the same thing (`Gap R.185`, ADR 0298):

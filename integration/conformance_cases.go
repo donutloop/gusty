@@ -463,6 +463,12 @@ func conformanceMerged() []lang.ConformanceCase {
 // conformanceProbes to conformanceStandalone, so it becomes parity surface.
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
+		// An f-string's format spec and conversion. The interpreter answers every field the way the
+		// reference does; the compiled leg answers the constant ones and refuses a field it cannot
+		// read at compile time. Before this the spec was cut off at parse time and both engines
+		// printed the plain value at exit 0 -- parity could not see it because the engines agreed.
+		// Gap R.186 / L12.8, ADR 0298's sibling ADR 0299.
+		"probe_a_format_spec_formats",
 		// A text used as an iterable — a comprehension over one, and max/min of one. The interpreter
 		// answered [] and the whole string; it now answers the characters the reference answers, and the
 		// compiled leg's refusal is RECORDED rather than pinned as a limit. Gap R.185 / ADR 0298.
@@ -668,6 +674,16 @@ var oracleLedger = map[string]oracleDecl{
 	// text there at all. Before this row the interpreter answered [] for the comprehensions and the
 	// whole string for max/min — a WRONG answer at exit 0, which the pin below now forbids.
 	// Gap R.185 / ADR 0298, owner L11.1 and L11.5.
+	// An f-string's format spec: CPython and the interpreted leg render 3.50, 00007, ff, 1,234.00
+	// and the padding; the compiled leg spends exit 1 on the first field it cannot fold, because a
+	// spec is applied by the shared engine at compile time and a name or an expression has no
+	// constant value to apply it to. Before this row the interpreter printed the PLAIN number for
+	// all of them at exit 0 — a wrong answer the two-engine parity could not see.
+	// Gap R.186 / ADR 0299, owner L12.8 (with L11.1 for the compiled half).
+	"programs/probe_a_format_spec_formats": {oracle: lang.OracleDebt,
+		reason: "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the interpreted leg prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
+		ref:    "roadmap Gap R.186 and L12.8 (the compiled half, owed); docs/adr/0299",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3.50\n4\n2\n00007\n-0004\nff\n1,234.00\n   3.5|\n3.5   |\n**3.5**|\n25.00%\n3.142e+00\n2\n2.0\n7\n     3.5|\n00007\n0008\npi=3.14 e=2.72\n"}, {Backend: "aot", Missing: true, Err: "needs a value this backend can read at compile time"}}},
 	"programs/probe_a_text_iterates_one_character_at_a_time": {oracle: lang.OracleDebt,
 		reason: "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the interpreted leg now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
 		ref:    "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",

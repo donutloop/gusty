@@ -3223,6 +3223,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_format_spec_formats",
+        "name": "probe_a_format_spec_formats.gy",
+        "source": "# An f-string's format spec and conversion, on the programs that used to print the plain number.\n# Every line is checked against CPython 3.12.3 by the conformance matrix; the interpreter answers\n# all of them and the compiled leg answers the constant ones and refuses the rest by name.\n# (roadmap Gap R.186 / L12.8, ADR 0299)\n\nprint(f\"{3.5:.2f}\")        # 3.50      -- was 3.5 on BOTH engines at exit 0\nprint(f\"{3.5:.0f}\")        # 4\nprint(f\"{2.5:.0f}\")        # 2         -- banker's rounding, the reference's rule\nprint(f\"{7:05d}\")          # 00007\nprint(f\"{-4:05d}\")         # -0004     -- padding AFTER the sign, and the width counts the sign\nprint(f\"{255:x}\")          # ff        -- a presentation type the old parser never kept\nprint(f\"{1234:,.2f}\")      # 1,234.00\nprint(f\"{3.5:\u003e6}|\")        #     3.5|  -- alignment\nprint(f\"{3.5:\u003c6}|\")        # 3.5   |\nprint(f\"{3.5:*^7}|\")       # **3.5**|  -- fill and align together\nprint(f\"{0.25:.2%}\")       # 25.00%\nprint(f\"{3.14159:.3e}\")    # 3.142e+00\nprint(f\"{2}\")              # 2         -- an int's empty spec is its digits\nprint(f\"{2.0}\")            # 2.0       -- a float's is its repr; the two MUST differ\nprint(f\"{7!r}\")            # 7         -- the conversion, which the parser also dropped\nprint(f\"{3.5!r:\u003e8}|\")      #      3.5| -- the spec applied to the conversion's text\nn = 7\nprint(f\"{n:05d}\")          # 00007     -- a name, formatted\nprint(f\"{n + 1:04d}\")      # 0008      -- an expression, formatted\nprint(f\"pi={3.14159:.2f} e={2.71828:.2f}\")  # pi=3.14 e=2.72 -- two fields, one string\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the interpreted leg prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
+        "ref": "roadmap Gap R.186 and L12.8 (the compiled half, owed); docs/adr/0299",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "3.50\n4\n2\n00007\n-0004\nff\n1,234.00\n   3.5|\n3.5   |\n**3.5**|\n25.00%\n3.142e+00\n2\n2.0\n7\n     3.5|\n00007\n0008\npi=3.14 e=2.72\n"
+          },
+          {
+            "backend": "aot",
+            "error": "needs a value this backend can read at compile time",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "3.50\n4\n2\n00007\n-0004\nff\n1,234.00\n   3.5|\n3.5   |\n**3.5**|\n25.00%\n3.142e+00\n2\n2.0\n7\n     3.5|\n00007\n0008\npi=3.14 e=2.72\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: the format spec \"05d\" needs a value this backend can read at compile time (AOT backend)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "3.50\n4\n2\n00007\n-0004\nff\n1,234.00\n   3.5|\n3.5   |\n**3.5**|\n25.00%\n3.142e+00\n2\n2.0\n7\n     3.5|\n00007\n0008\npi=3.14 e=2.72\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the interpreted leg prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
+      "oracle_ref": "roadmap Gap R.186 and L12.8 (the compiled half, owed); docs/adr/0299",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: the format spec \"05d\" needs a value this backend can read at compile time (AOT backend)"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_a_text_iterates_one_character_at_a_time",
         "name": "probe_a_text_iterates_one_character_at_a_time.gy",
         "source": "# A text iterates one character at a time (roadmap Gap R.185, owner L11.1/L11.5; ADR 0298)\n#\n# Both were WRONG answers at exit 0 on the interpreter, where the compiled leg at least refused:\n#   [c for c in \"abc\"]     CPython ['a', 'b', 'c']   --interp []      characters live in the object's\n#                                                                     sval field, never in elems, so the\n#                                                                     comprehension found nothing at all\n#   max(\"abc\") / min(\"abc\")  CPython c / a           --interp abc     a text fell through to the\n#                                                                     bare-scalar arm: one-element collection\n#\n# The `for` statement already iterated a text per rune. Three roads asked \"iterate this text\" and got two\n# different answers -- ADR 0279/0280's one-question rule, applied to iteration.\n#\n# The compiled leg still refuses these (exit 1, honest) until L11.1's container read lands; a refusal is\n# allowed and an invented answer is not, so this file's compiled leg is checked, not pinned.\nprint([c for c in \"abc\"])\nprint([c for c in \"abc\" if c != \"b\"])\nprint([c + c for c in \"ab\"])\nprint([c for c in \"\"])\nprint(len([c for c in \"abcd\"]))\nprint(sorted([c for c in \"cba\"]))\nprint(max(\"abc\"))\nprint(min(\"abc\"))\nprint(max(\"cba\"))\nprint(min(\"Za\"))\nprint(max([1, 2, 3]))\nprint(min([1, 2, 3]))\nprint(max(3, 5))\nfor c in \"abc\":\n    print(c)\n",
@@ -3872,7 +3914,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1018724312/138/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2585544973/138/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3886,7 +3928,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1018724312/138/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2585544973/138/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4727,12 +4769,12 @@
       ]
     }
   ],
-  "rows": 164,
-  "skipped": 36,
+  "rows": 165,
+  "skipped": 37,
   "pass": 128,
   "fail": 0,
   "oracle_match": 113,
-  "oracle_debt": 30,
+  "oracle_debt": 31,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

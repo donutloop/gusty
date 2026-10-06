@@ -342,6 +342,12 @@ func (n *FString) exprNode()  {}
 type FStringPart struct {
 	Lit  string `json:"lit,omitempty"`
 	Expr Expr   `json:"expr,omitempty"`
+	// Spec is the field's format spec (`:.2f`'s `​.2f`), Conv its `!r`/`!s` conversion. Both used to
+	// be cut off by stripFormatSpec and dropped on the floor, which is how `f"{3.5:.2f}"` came to
+	// print `3.5` on both backends at exit 0 (roadmap Gap R.186, ADR 0299). They are in the AST now
+	// so every road that renders an interpolation can honour them — and refuses when it cannot.
+	Spec string     `json:"spec,omitempty"`
+	Conv FormatConv `json:"conv,omitempty"`
 }
 
 type ListLit struct {

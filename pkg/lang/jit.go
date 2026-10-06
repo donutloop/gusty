@@ -1753,6 +1753,19 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 			if err != nil {
 				return 0, err
 			}
+			// A field that ASKED for a format (`f"{x:.2f}"`, `f"{x!r}"`) is formatted by the shared
+			// spec engine, so the interpreter, the compiled print door and str() cannot each invent
+			// their own answer to one spec -- which is exactly what happened while the spec never
+			// reached the AST (roadmap Gap R.186, ADR 0299). A spec this language cannot honour
+			// raises rather than quietly rendering the plain value.
+			if part.Spec != "" || part.Conv != ConvNone {
+				txt, ferr := e.formatField(v, part)
+				if ferr != nil {
+					return 0, ferr
+				}
+				b.WriteString(txt)
+				continue
+			}
 			// An interpolated bool contributes its word, not its digit: `f"{1 == 1}"` is
 			// "True", and the f-string, str() and print ask one predicate the same question
 			// so no two renderings of the same bool can differ (ADR 0257).

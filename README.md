@@ -563,6 +563,18 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+An f-string's **format spec is part of the program** (ADR 0299, advancing `L12.8` / `Gap R.60`).
+`stripFormatSpec` used to cut the `:` suffix off and drop it on the floor — no AST field ever held it —
+so `f"{3.5:.2f}"` printed `3.5`, `f"{7:05d}"` printed `7`, `f"{255:x}"` printed `255` and `f"{3.5:>6}"`
+padded nothing, on **both** engines, at **exit 0**. Eleven shapes, engines in perfect agreement, which is
+precisely why nothing noticed: parity compares the engines to each other, and only the oracle leg compares
+either to CPython. The spec and the `!r`/`!s` conversion now live in the AST and both engines format
+through one shared engine, whose digits never come from `printf` — the two diverge on exactly the cases
+that matter (`%.0f` rounding, `%g`'s exponent rules, `%d` on what the language calls a `float`). A spec
+this language cannot honour **refuses with a sentence naming it**; there is no "print the plain value"
+fallback, because that is the bug with a parser bolted on. `f"{[1,2]}"` used to hand a list's *global
+address* to `printf`'s `%d` and die in `llc` — exit 2, the forbidden class — and refuses now.
+
 A text iterates **one character at a time** (ADR 0298, closing `Gap R.185`). `[c for c in "abc"]` answered
 `[]` on the interpreter at **exit 0** — not a refusal, not a trap, just an empty list a program would happily
 iterate and never enter — and `max("abc")` answered `abc`, the whole string, because a text fell through to

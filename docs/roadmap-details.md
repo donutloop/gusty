@@ -8075,3 +8075,67 @@ a *recorded divergence*, never a parity row.
 
 **Measurement.** HEAD-baseline build (`git worktree`): **13** subtest failures on the new tables, green here.
 Matrix now 164 rows / 128 pass / 36 skipped / 30 debt / 0 fail / 0 drift.
+
+### Gap R.186 — an f-string's format spec was cut off at parse time, so every road answered the plain value (CLOSED by ADR 0299, owner L12.8)
+
+```
+program              CPython     BOTH engines before   exit   now (--interp)
+f"{3.5:.2f}"         3.50        3.5                   0      3.50
+f"{7:05d}"           00007       7                     0      00007
+f"{-4:05d}"          -0004       -4                    0      -0004
+f"{255:x}"           ff          255                   0      ff
+f"{1234:,.2f}"       1,234.00    1234                  0      1,234.00
+f"{3.5:>6}"          ··3.5       3.5                   0      ··3.5
+f"{0.25:.2%}"        25.00%      0.25                  0      25.00%
+f"{7!r}"             7           conversion dropped     0      7
+```
+
+**Eleven shapes, both backends, exit 0, engines in perfect agreement — and that agreement is the reason
+nothing was noticed.** Parity compares the engines to each other; only the oracle leg compares either to
+CPython. A family this large surviving this long is an argument for the oracle leg being mandatory rather
+than a report you read.
+
+**The spec was destroyed at the earliest possible moment.** `buildFString` called `stripFormatSpec`, which
+returned `src[:i]` at the first depth-0 `:`; the remainder was never stored anywhere. Once the text is
+gone no later road can recover it, and every road is then *locally* correct — printing the value is the
+right thing to do when nobody told you a spec existed. This is why the fix is "stop losing it" and not
+"patch the print door": patching the road leaves the loss in place for the next consumer to rediscover.
+
+**The value's own type is an input, not something to infer.** `format(2, "")` is `"2"` and
+`format(2.0, "")` is `"2.0"`; recovering "was this a float?" from `f == math.Trunc(f)` makes `f"{2}"` and
+`f"{2.0}"` agree, which the reference forbids. So the engine exposes `FormatNumber` (caller holds a float)
+and `FormatRawInt` (caller holds an int) as two entry points, and the interpreter answers with the heap
+object's `kind == "float"`. A backend that cannot say which it holds must refuse, not guess — which is one
+more bill coming due on L11.1's tagged word.
+
+**Go's `'g'` is not Python's repr.** The empty-spec float case first ran through
+`strconv.FormatFloat(f, 'g', -1, 64)`, which answers `"2"` for `2.0`: Go's shortest-round-trip has no duty
+to keep the `.0` Python's repr keeps. Reusing the module's existing `pyFloatRepr` — which already owns the
+`1e-4 … 1e16` notation switch and `-0.0`'s sign — fixed three rows at once and stopped the spec engine
+becoming a second, subtly-different float printer. Same lesson as ADR 0156: never reimplement a formatter
+to match a formatter.
+
+**A container field has no word to travel in.** `f"{[1,2]}"` emitted `printf(i8* @.fmt1, i32 @.lst1)` —
+a list's *global address* where a heap handle belongs — and `llc-20` rejected the module: exit 2, the
+forbidden class, pre-dating this row. The print door renders a container through `rt_print_list_mixed`,
+but that is a *sink*; an f-string builds one `printf` format string, and the two do not compose. The road
+refuses, and the interpreter — no such limit — answers `[1, 2]`.
+
+**The first attempt padded where the reference raises.** `f"{[1,2]:>8}"` answering `"  [1, 2]"` at exit 0
+looked reasonable and was wrong: `format([1,2], ">8")` is
+`TypeError: unsupported format string passed to list.__format__`, because a list has no `__format__` past
+the object default. A container's *whole* spec is refused, not just its numeric fields.
+
+**Refusal symmetry declined again (ADR 0298's rule, restated).** The compiled leg refuses a field it
+cannot read at compile time. Making `--interp` refuse too would "agree" the two engines by deleting a
+correct answer; the ladder forbids it, so the compiled half is recorded as owed to L12.8/L11.1 as an
+`OraclePin{aot, Missing}` instead.
+
+**Ledger mechanics.** `TestEvalFString` had a pin asserting `f"val={n:>3}"` prints `val=7` — a pinned
+wrong answer, so it moved to `val=  7` rather than being deleted. My first integration tables used
+`strings.TrimSpace`, which destroys a padded answer and made three correct rows fail: for a padding
+feature, the comparison must be exact-but-for-the-newline. Same trap ADR 0297 recorded.
+
+**Measurement.** HEAD-baseline build (`git worktree` at `102e739`) prints `3.5` / `7` / `255` / `3.5` on
+both engines for the four headline shapes — the new tables all fail there and pass here. Matrix now
+165 rows / 128 pass / 37 skipped / 31 debt / 0 fail / 0 drift.

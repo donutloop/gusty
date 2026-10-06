@@ -8126,3 +8126,50 @@ correctly: a program whose compiled leg refuses is a *recorded divergence* → `
 **Process.** Baseline: 13 failures on a HEAD worktree build, 0 here. Two failed-then-fixed registrations, one
 misfiled ADR number (0299 → the next free 0298), one unused-variable caught by `go vet` before commit.
 Suite green; matrix 164/128/36, 30 debt, 0 fail, 0 drift.
+
+## Cycle: an f-string's format spec is part of the program (Gap R.186 closed; ADR 0299)
+
+**The largest silent-wrong family found so far, hidden by engine agreement.** Eleven f-string shapes —
+`:.2f`, `:05d`, `:x`, `,.2f`, `:>6`, `.2%`, `!r` — printed the plain number on **both** engines at **exit
+0**. Parity compares interp to aot; when both are wrong the same way, it reports green. Only the oracle
+leg can see this class, which is the strongest argument yet for treating the CPython leg as mandatory
+rather than informational.
+
+**The bug was one function call at the front of the pipeline.** `buildFString` → `stripFormatSpec` →
+`return src[:i]`, and the remainder went nowhere: no AST field existed. Every road downstream was then
+*locally* correct — print the value is right when nobody told you a spec was asked for. That's the shape
+of a whole class of these: the defect isn't in the road that prints wrong, it's in the road that forgot to
+look. Fix the loss, don't patch the printer.
+
+**Two lessons about not reimplementing a formatter.** (1) I nearly handed `printf` the `%05d`/`%.2f`
+directly for compiled constants; printf and Python disagree on `%.0f` rounding, `%g`'s exponent rules, and
+`%d` on a float, so the digits come from the shared engine and printf only ever sees `%s`. (2) The
+empty-spec float case went through `strconv.FormatFloat(f,'g',-1,64)`, which answers `"2"` for `2.0` — Go's
+shortest-round-trip owes nothing to Python's repr. Reusing the module's own `pyFloatRepr` fixed three rows
+in one move.
+
+**The value's type is an input, not an inference.** `format(2,"")` = `"2"`, `format(2.0,"")` = `"2.0"`.
+Inferring floatness from `f == math.Trunc(f)` makes `f"{2}"` and `f"{2.0}"` agree, which the reference
+forbids. Two entry points (`FormatNumber` / `FormatRawInt`) and the interpreter asks the heap object's
+`kind`. Where the backend can't say, it refuses — another bill for L11.1.
+
+**I laundered an exit 2 into a wrong answer, and caught it only because I checked the exit code.** The
+first container-field patch turned `f"{[1,2]!r}"`'s `llc` failure (exit 2) into a blank line at exit 0.
+"Exit 2 → 0" is not automatically progress; progress is "exit 2 → right answer or honest exit 1". Then I
+read `$?` after a pipe and got the *pipe's* status, which made the refusals look like exit 0 successes —
+measure exit codes by running the binary alone.
+
+**A refusal must not be invented where the reference raises.** My first cut padded `"[1, 2]"` for
+`f"{[1,2]:>8}"` at exit 0. The reference *raises* `TypeError: unsupported format string passed to
+list.__format__` — a list has no `__format__`. A "reasonable" behaviour the reference doesn't have is still
+a wrong answer.
+
+**Test-authoring trap, second occurrence:** `strings.TrimSpace` on a padding feature's output. It made
+three *correct* rows fail until I compared exact-but-for-newline. For anything whose answer is whitespace,
+the harness must not normalise whitespace.
+
+**Process.** Baseline (`git worktree` at `102e739`) prints `3.5`/`7`/`255`/`3.5` on both engines where the
+new tables demand `3.50`/`00007`/`ff`/`··3.5` — all new tables fail there, pass here. One pre-existing pin
+(`f"val={n:>3}"` → `val=7`) was a pinned wrong answer and moved to `val=  7`, not deleted. Matrix
+165/128/37, 31 debt, 0 fail, 0 drift. Five intermediate Go-syntax breakages from script-based edits, each
+caught by `go build` before any test ran.

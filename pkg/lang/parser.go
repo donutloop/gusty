@@ -2169,7 +2169,13 @@ func (p *parser) buildFString(raw string, sp Span) (*FString, error) {
 			if j >= n {
 				return nil, &ParseError{Span: sp, Msg: "unterminated f-string expression"}
 			}
-			exprSrc := stripFormatSpec(raw[i+1 : j])
+			// One bracket- and quote-aware scan yields the expression, the `!r`/`!s` conversion and
+			// the format spec. The spec used to be cut away by stripFormatSpec and never stored, so
+			// every road that rendered an interpolation answered the plain value (Gap R.186, ADR 0299).
+			exprSrc, conv, spec, serr := splitSpecConv(raw[i+1 : j])
+			if serr != nil {
+				return nil, &ParseError{Span: sp, Msg: serr.Error()}
+			}
 			toks, err := Lex(exprSrc)
 			if err != nil {
 				return nil, err
@@ -2179,7 +2185,7 @@ func (p *parser) buildFString(raw string, sp Span) (*FString, error) {
 			if err != nil {
 				return nil, err
 			}
-			fs.Parts = append(fs.Parts, FStringPart{Expr: ex})
+			fs.Parts = append(fs.Parts, FStringPart{Expr: ex, Spec: spec, Conv: conv})
 			i = j + 1
 		case '}':
 			if i+1 < n && raw[i+1] == '}' {
