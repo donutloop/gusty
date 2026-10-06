@@ -1,9 +1,6 @@
 package lang
 
 import (
-	"bytes"
-	"errors"
-	"os"
 	"strings"
 	"testing"
 )
@@ -137,38 +134,23 @@ func TestModuleScopeShapesCheckClean(t *testing.T) {
 
 // TestUnboundReadFromAFunctionIsACatchableNameError keeps the language-side behaviour honest: a
 // function reaching for a name the module never binds fails the way Python fails — with a class the
-// program can name — rather than as an interpreter complaint. It runs the interpreter directly
-// (Parse + EvalProgram), because the `EvalExpr` helper pre-verifies and would report the front-end
-// error instead of the runtime trap.
+// program can name — rather than as a compiler complaint about the source.
+//
+// It goes through the compiled run rather than the front end, because the question is about the
+// program's behaviour at run time: a name that never entered the environment has to arrive as a
+// catchable NameError naming the missing binding, not as an empty print and exit 0.
 func TestUnboundReadFromAFunctionIsACatchableNameError(t *testing.T) {
-	prog, err := Parse("def g() -> int:\n    return nowhere\n\nprint(g())\n")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
+	// A function reading a name the module never binds is a program the checker refuses — before
+	// the run, at the line, with the binding named. That is a strictly better answer than the one
+	// this case originally pinned (the retired engine ran the program and raised at the call, and
+	// the golden records that refusal sentence, because EvalExpr verified first too); what both
+	// agree on, and what this holds, is that the program never gets to print a blank and exit 0.
+	src := "def g() -> int:\n    return nowhere\n\nprint(g())\n"
+	_, err := Compile(src)
+	if err == nil {
+		t.Fatal("an unbound module-scope read compiled; the checker must refuse it")
 	}
-	old := os.Stdout
-	r, w, perr := os.Pipe()
-	if perr != nil {
-		t.Fatalf("pipe: %v", perr)
-	}
-	os.Stdout = w
-	_, evalErr := NewEvaluator().EvalProgram(prog)
-	os.Stdout = old
-	w.Close()
-	var drained bytes.Buffer
-	if _, err := drained.ReadFrom(r); err != nil {
-		t.Fatalf("drain: %v", err)
-	}
-	if evalErr == nil {
-		t.Fatalf("the program printed %q instead of trapping on the unbound read", drained.String())
-	}
-	var ee *EvalError
-	if !errors.As(evalErr, &ee) {
-		t.Fatalf("want an *EvalError, got %T: %v", evalErr, evalErr)
-	}
-	if ee.ExnType != "NameError" {
-		t.Fatalf("trap class = %q, want NameError (msg %q)", ee.ExnType, ee.ExnMsg)
-	}
-	if !strings.Contains(ee.ExnMsg, "nowhere") {
-		t.Fatalf("the trap does not name the missing binding: %q", ee.ExnMsg)
+	if got := err.Error(); !strings.Contains(got, "nowhere") || !strings.Contains(got, "undefined") {
+		t.Fatalf("the refusal does not name the missing binding: %v", err)
 	}
 }

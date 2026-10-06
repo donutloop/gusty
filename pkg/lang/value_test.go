@@ -32,27 +32,21 @@ func TestValueTagTableIsCanonical(t *testing.T) {
 	}
 }
 
-// TestObjTagMirrorsAOT verifies the interpreter heap obj tag mirrors the
-// canonical AOT dispatch tag for each reference kind.
-func TestObjTagMirrorsAOT(t *testing.T) {
+// TestKindTagRoundTrip holds the canonical tag table together. It used to compare the interpreter
+// heap's obj tag against the AOT dispatch tag, kind by kind — the two engines' encodings had to
+// mirror each other, so one table could not move without the other. ADR 0302 left one encoding, and
+// the invariant that survives is the one that matters: every reference kind names a tag, and that
+// tag names the kind back. A container that round-tripped to the wrong name would print a dict as a
+// set, which is exactly the class of defect this table exists to make impossible.
+func TestKindTagRoundTrip(t *testing.T) {
 	for _, kind := range []string{"str", "list", "dict", "set", "tuple", "class", "instance", "method", "closure", "exn", "module"} {
-		o := &obj{kind: kind}
-		if o.tag() != objKindTag(kind) {
-			t.Errorf("obj(%q).tag() = %d, want %d", kind, o.tag(), objKindTag(kind))
+		tag := objKindTag(kind)
+		if tag == 0 {
+			t.Errorf("kind %q has no dispatch tag", kind)
+			continue
 		}
-	}
-}
-
-// TestTagOfVal verifies tagOfVal agrees with the AOT representation: a heap
-// value reports its canonical reference tag and a plain value reports the
-// immediate tag (payload carries the raw value in AOT IR).
-func TestTagOfVal(t *testing.T) {
-	e := &Evaluator{heap: map[int64]*obj{}}
-	h := e.allocObj("instance")
-	if e.tagOfVal(h) != TagInstance {
-		t.Fatalf("tagOfVal(instance handle) = %d, want TagInstance", e.tagOfVal(h))
-	}
-	if e.tagOfVal(7) != TagInt {
-		t.Fatalf("tagOfVal(plain) = %d, want TagInt", e.tagOfVal(7))
+		if got := kindForTag(tag); got != kind {
+			t.Errorf("objKindTag(%q) = %d, which names %q back — the tag table has drifted", kind, tag, got)
+		}
 	}
 }

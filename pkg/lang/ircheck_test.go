@@ -1526,7 +1526,7 @@ func TestIRImportStringInterpVsAOT(t *testing.T) {
 	defer os.Chdir(old)
 
 	// interpreter
-	v, _, err := EvalExpr("import msg\nlen(msg.msg)")
+	v, _, err := evalGolden(t, "import msg\nlen(msg.msg)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1567,7 +1567,7 @@ func TestIRImportReversedInterpVsAOT(t *testing.T) {
 	defer os.Chdir(old)
 
 	// interpreter
-	v, _, err := EvalExpr("import msg\nlen(reversed(msg.msg))")
+	v, _, err := evalGolden(t, "import msg\nlen(reversed(msg.msg))")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1607,7 +1607,7 @@ func TestIRImportListIndexInterpVsAOT(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(old)
 
-	v, _, err := EvalExpr("import cfg\ncfg.l[0]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.l[0]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1644,7 +1644,7 @@ func TestIRImportLenListInterpVsAOT(t *testing.T) {
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\nlen(cfg.l)")
+	v, _, err := evalGolden(t, "import cfg\nlen(cfg.l)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1681,7 +1681,7 @@ func TestIRImportDictIndexInterpVsAOT(t *testing.T) {
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\ncfg.d[1]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.d[1]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1719,7 +1719,7 @@ func TestIRImportListArithInterpVsAOT(t *testing.T) {
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\ncfg.l[0] + cfg.l[1]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.l[0] + cfg.l[1]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1741,7 +1741,7 @@ func TestIRImportLenDictInterpVsAOT(t *testing.T) {
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\nlen(cfg.d)")
+	v, _, err := evalGolden(t, "import cfg\nlen(cfg.d)")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1763,7 +1763,7 @@ func TestIRImportDictArithInterpVsAOT(t *testing.T) {
 	old, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(old)
-	v, _, err := EvalExpr("import cfg\ncfg.d[1] + cfg.d[2]")
+	v, _, err := evalGolden(t, "import cfg\ncfg.d[1] + cfg.d[2]")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}
@@ -1786,7 +1786,7 @@ func TestIRImportReversedListParity(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(old)
 	// interpreter: len(reversed(cfg.l)) == 3
-	v, _, err := EvalExpr("import cfg\nlen(reversed(cfg.l))")
+	v, _, err := evalGolden(t, "import cfg\nlen(reversed(cfg.l))")
 	if err != nil {
 		t.Fatalf("interp: %v", err)
 	}

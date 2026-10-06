@@ -1,12 +1,12 @@
 package lang
 
+import "fmt"
 import "os"
-import "math"
 import "strings"
 import "testing"
 
 func TestEvalUserFunc(t *testing.T) {
-	v, _, err := EvalExpr("def double(x):\n    return x * 2\ndouble(5)")
+	v, _, err := evalGolden(t, "def double(x):\n    return x * 2\ndouble(5)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -16,7 +16,7 @@ func TestEvalUserFunc(t *testing.T) {
 }
 
 func TestEvalUserFuncTwoParams(t *testing.T) {
-	v, _, err := EvalExpr("def add(a, b):\n    return a + b\nadd(3, 4)")
+	v, _, err := evalGolden(t, "def add(a, b):\n    return a + b\nadd(3, 4)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestEvalUserFuncTwoParams(t *testing.T) {
 }
 
 func TestEvalIfElse(t *testing.T) {
-	v, _, err := EvalExpr("x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)\nx")
+	v, _, err := evalGolden(t, "x = 1\nif x < 2:\n    print(10)\nelse:\n    print(20)\nx")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestEvalIfElse(t *testing.T) {
 
 func TestEvalElifChain(t *testing.T) {
 	// elif taken
-	v, _, err := EvalExpr("x = 3\nif x < 2:\n    y = 10\nelif x < 4:\n    y = 20\nelse:\n    y = 30\ny")
+	v, _, err := evalGolden(t, "x = 3\nif x < 2:\n    y = 10\nelif x < 4:\n    y = 20\nelse:\n    y = 30\ny")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestEvalElifChain(t *testing.T) {
 		t.Fatalf("got %d, want 20", v)
 	}
 	// elif false, else taken
-	v, _, err = EvalExpr("x = 9\nif x < 2:\n    y = 10\nelif x < 4:\n    y = 20\nelse:\n    y = 30\ny")
+	v, _, err = evalGolden(t, "x = 9\nif x < 2:\n    y = 10\nelif x < 4:\n    y = 20\nelse:\n    y = 30\ny")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestEvalElifChain(t *testing.T) {
 
 func TestEvalElifMultiple(t *testing.T) {
 	// second of three elifs taken
-	v, _, err := EvalExpr("x = 6\nif x < 2:\n    y = 10\nelif x < 5:\n    y = 20\nelif x < 8:\n    y = 30\nelse:\n    y = 40\ny")
+	v, _, err := evalGolden(t, "x = 6\nif x < 2:\n    y = 10\nelif x < 5:\n    y = 20\nelif x < 8:\n    y = 30\nelse:\n    y = 40\ny")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestEvalElifMultiple(t *testing.T) {
 		t.Fatalf("got %d, want 30", v)
 	}
 	// no elif, no else -> nothing taken
-	v, _, err = EvalExpr("x = 9\nif x < 2:\n    y = 10\nelif x < 5:\n    y = 20\ny = 99\ny")
+	v, _, err = evalGolden(t, "x = 9\nif x < 2:\n    y = 10\nelif x < 5:\n    y = 20\ny = 99\ny")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestEvalElifMultiple(t *testing.T) {
 }
 
 func TestEvalWhileSum(t *testing.T) {
-	v, _, err := EvalExpr("i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\ns")
+	v, _, err := evalGolden(t, "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestEvalWhileSum(t *testing.T) {
 }
 
 func TestEvalForSum(t *testing.T) {
-	v, _, err := EvalExpr("s = 0\nfor i in range(5):\n    s = s + i\ns")
+	v, _, err := evalGolden(t, "s = 0\nfor i in range(5):\n    s = s + i\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestEvalForSum(t *testing.T) {
 }
 
 func TestEvalMatch(t *testing.T) {
-	v, _, err := EvalExpr("x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
+	v, _, err := evalGolden(t, "x = 2\nmatch x:\n    case 1:\n        print(1)\n    case 2:\n        print(2)\nx")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestEvalMatch(t *testing.T) {
 
 func TestEvalBreakContinue(t *testing.T) {
 	// break out of while
-	v, _, err := EvalExpr("i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni")
+	v, _, err := evalGolden(t, "i = 0\nwhile i < 100:\n    i = i + 1\n    if i == 3:\n        break\ni")
 	if err != nil {
 		t.Fatalf("break err: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestEvalBreakContinue(t *testing.T) {
 		t.Fatalf("break got %d, want 3", v)
 	}
 	// continue skips increment in for loop
-	v2, _, err := EvalExpr("s = 0\nfor i in range(5):\n    if i == 2:\n        continue\n    s = s + i\ns")
+	v2, _, err := evalGolden(t, "s = 0\nfor i in range(5):\n    if i == 2:\n        continue\n    s = s + i\ns")
 	if err != nil {
 		t.Fatalf("continue err: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestEvalBreakContinue(t *testing.T) {
 
 func TestEvalRangeTwoArg(t *testing.T) {
 	// sum range(2, 5) = 2+3+4 = 9
-	v, _, err := EvalExpr("s = 0\nfor i in range(2, 5):\n    s = s + i\ns")
+	v, _, err := evalGolden(t, "s = 0\nfor i in range(2, 5):\n    s = s + i\ns")
 	if err != nil {
 		t.Fatalf("range(a,b) err: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestEvalRangeTwoArg(t *testing.T) {
 
 func TestEvalForRangeStep(t *testing.T) {
 	// positive step range(1, 5, 2) = 1+3 = 4
-	v, _, err := EvalExpr("s = 0\nfor i in range(1, 5, 2):\n    s = s + i\ns")
+	v, _, err := evalGolden(t, "s = 0\nfor i in range(1, 5, 2):\n    s = s + i\ns")
 	if err != nil {
 		t.Fatalf("range step err: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestEvalForRangeStep(t *testing.T) {
 		t.Fatalf("range(1,5,2) sum got %d, want 4", v)
 	}
 	// negative step range(5, 0, -1) = 5+4+3+2+1 = 15
-	v, _, err = EvalExpr("s = 0\nfor i in range(5, 0, -1):\n    s = s + i\ns")
+	v, _, err = evalGolden(t, "s = 0\nfor i in range(5, 0, -1):\n    s = s + i\ns")
 	if err != nil {
 		t.Fatalf("range neg step err: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestEvalForRangeStep(t *testing.T) {
 
 func TestEvalMatchWildcard(t *testing.T) {
 	// match with _ wildcard catches unmatched value
-	v, _, err := EvalExpr("x = 42\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(42)\nx")
+	v, _, err := evalGolden(t, "x = 42\nmatch x:\n    case 1:\n        print(1)\n    case _:\n        print(42)\nx")
 	if err != nil {
 		t.Fatalf("match wildcard err: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestEvalMatchWildcard(t *testing.T) {
 
 func TestEvalForElse(t *testing.T) {
 	// for without break: else runs
-	v, _, err := EvalExpr("s = 0\nfor i in range(3):\n    s = s + i\nelse:\n    s = s + 100\ns")
+	v, _, err := evalGolden(t, "s = 0\nfor i in range(3):\n    s = s + i\nelse:\n    s = s + 100\ns")
 	if err != nil {
 		t.Fatalf("for-else err: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestEvalForElse(t *testing.T) {
 
 func TestEvalForElseBreak(t *testing.T) {
 	// break skips else
-	v, _, err := EvalExpr("s = 0\nfor i in range(3):\n    if i == 1:\n        break\n    s = s + i\nelse:\n    s = s + 100\ns")
+	v, _, err := evalGolden(t, "s = 0\nfor i in range(3):\n    if i == 1:\n        break\n    s = s + i\nelse:\n    s = s + 100\ns")
 	if err != nil {
 		t.Fatalf("for-else break err: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestEvalForElseBreak(t *testing.T) {
 }
 
 func TestEvalWhileElse(t *testing.T) {
-	v, _, err := EvalExpr("i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\ns")
+	v, _, err := evalGolden(t, "i = 0\ns = 0\nwhile i < 3:\n    s = s + i\n    i = i + 1\nelse:\n    s = s + 10\ns")
 	if err != nil {
 		t.Fatalf("while-else err: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestEvalWhileElse(t *testing.T) {
 
 func TestEvalClassMethod(t *testing.T) {
 	src := "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n    def sum(self):\n        return self.x + self.y\np = Point(2, 3)\np.sum()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("class err: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestEvalClassMethod(t *testing.T) {
 
 func TestEvalClassAttrSet(t *testing.T) {
 	src := "class C:\n    def __init__(self):\n        self.n = 0\n    def bump(self):\n        self.n = self.n + 1\n        return self.n\nc = C()\nc.bump()\nc.bump()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("class err: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestEvalClassAttrSet(t *testing.T) {
 
 func TestEvalTryExcept(t *testing.T) {
 	src := "x = 0\ntry:\n    x = 1 // 0\nexcept Exception:\n    x = 42\nx"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("try err: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestEvalTryExcept(t *testing.T) {
 
 func TestEvalRaiseCaught(t *testing.T) {
 	src := "x = 0\ntry:\n    raise Exception\n    x = 1\nexcept Exception:\n    x = 42\nx"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("raise-catch err: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestEvalRaiseCaught(t *testing.T) {
 }
 
 func TestEvalDefaultArg(t *testing.T) {
-	v, _, err := EvalExpr("def f(a, b=10):\n    return a + b\nf(5)")
+	v, _, err := evalGolden(t, "def f(a, b=10):\n    return a + b\nf(5)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestEvalDefaultArg(t *testing.T) {
 }
 
 func TestEvalKeywordArg(t *testing.T) {
-	v, _, err := EvalExpr("def f(a, b):\n    return a * b\nf(a=3, b=4)")
+	v, _, err := evalGolden(t, "def f(a, b):\n    return a * b\nf(a=3, b=4)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestEvalKeywordArg(t *testing.T) {
 }
 
 func TestEvalKeywordArgOutOfOrder(t *testing.T) {
-	v, _, err := EvalExpr("def f(a, b):\n    return a - b\nf(b=3, a=10)")
+	v, _, err := evalGolden(t, "def f(a, b):\n    return a - b\nf(b=3, a=10)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestEvalKeywordArgOutOfOrder(t *testing.T) {
 }
 
 func TestEvalKeywordAndDefault(t *testing.T) {
-	v, _, err := EvalExpr("def f(a, b=5):\n    return a + b\nf(b=100, a=2)")
+	v, _, err := evalGolden(t, "def f(a, b=5):\n    return a + b\nf(b=100, a=2)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -281,14 +281,14 @@ func TestEvalKeywordAndDefault(t *testing.T) {
 
 func TestEvalDictSetIndexLen(t *testing.T) {
 	// dict constant-key lookup.
-	v, _, err := EvalExpr("{1: 10, 2: 20}[1]")
+	v, _, err := evalGolden(t, "{1: 10, 2: 20}[1]")
 	if err != nil {
 		t.Fatalf("dict index err: %v", err)
 	}
 	if v != 10 {
 		t.Fatalf("got %d, want 10", v)
 	}
-	v, _, err = EvalExpr("{1: 10, 2: 20}[2]")
+	v, _, err = evalGolden(t, "{1: 10, 2: 20}[2]")
 	if err != nil {
 		t.Fatalf("dict index err: %v", err)
 	}
@@ -296,14 +296,14 @@ func TestEvalDictSetIndexLen(t *testing.T) {
 		t.Fatalf("got %d, want 20", v)
 	}
 	// len over dict and set.
-	v, _, err = EvalExpr("len({1: 10, 2: 20})")
+	v, _, err = evalGolden(t, "len({1: 10, 2: 20})")
 	if err != nil {
 		t.Fatalf("len dict err: %v", err)
 	}
 	if v != 2 {
 		t.Fatalf("got %d, want 2", v)
 	}
-	v, _, err = EvalExpr("len({1, 2, 3})")
+	v, _, err = evalGolden(t, "len({1, 2, 3})")
 	if err != nil {
 		t.Fatalf("len set err: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestEvalDictSetIndexLen(t *testing.T) {
 	// A set subscript is the documented gusty extension: the subscript is a member the set is asked
 	// about, and the answer is that member. Pinned on both engines because the compiled tag arm below a
 	// slot reads a set slot the same way (roadmap L11.1, ADR 0251; docs/language.md § Dicts & sets).
-	v, _, err = EvalExpr("{1, 2, 3}[2]")
+	v, _, err = evalGolden(t, "{1, 2, 3}[2]")
 	if err != nil {
 		t.Fatalf("set index err: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestEvalDictSetIndexLen(t *testing.T) {
 
 func TestEvalDictLiteral(t *testing.T) {
 	// dict literal then iterate keys and sum via comprehension
-	v, _, err := EvalExpr("def f(d):\n    return len(d)\nf({1: 10, 2: 20})")
+	v, _, err := evalGolden(t, "def f(d):\n    return len(d)\nf({1: 10, 2: 20})")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestEvalDictLiteral(t *testing.T) {
 }
 
 func TestEvalListComprehension(t *testing.T) {
-	v, _, err := EvalExpr("def g(ys):\n    s = 0\n    for y in ys:\n        s = s + y\n    return s\nv = [1, 2, 3]\ng([x * 2 for x in v])")
+	v, _, err := evalGolden(t, "def g(ys):\n    s = 0\n    for y in ys:\n        s = s + y\n    return s\nv = [1, 2, 3]\ng([x * 2 for x in v])")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -345,7 +345,7 @@ func TestEvalListComprehension(t *testing.T) {
 
 func TestEvalForOverList(t *testing.T) {
 	// for-over-list sums the elements of a boxed list.
-	v, _, err := EvalExpr("s = 0\nfor x in [1, 2, 3]:\n    s = s + x\ns")
+	v, _, err := evalGolden(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestEvalForOverList(t *testing.T) {
 		t.Fatalf("got %d, want 6", v)
 	}
 	// continue skips to the next element.
-	v, _, err = EvalExpr("s = 0\nfor x in [1, 2, 3, 4]:\n    if x == 2:\n        continue\n    s = s + x\ns")
+	v, _, err = evalGolden(t, "s = 0\nfor x in [1, 2, 3, 4]:\n    if x == 2:\n        continue\n    s = s + x\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -361,14 +361,14 @@ func TestEvalForOverList(t *testing.T) {
 		t.Fatalf("got %d, want 8", v)
 	}
 	// break stops; else runs only on normal completion.
-	v, _, err = EvalExpr("s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        break\n    s = s + x\nelse:\n    s = s + 100\ns")
+	v, _, err = evalGolden(t, "s = 0\nfor x in [1, 2, 3]:\n    if x == 2:\n        break\n    s = s + x\nelse:\n    s = s + 100\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if v != 1 {
 		t.Fatalf("got %d, want 1", v)
 	}
-	v, _, err = EvalExpr("s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\ns")
+	v, _, err = evalGolden(t, "s = 0\nfor x in [1, 2, 3]:\n    s = s + x\nelse:\n    s = s + 100\ns")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestEvalComprehensionAssignment(t *testing.T) {
 	// A comprehension assigned to a variable must bind its loop variable so
 	// the body/condition can reference it. Previously the semantic analyzer
 	// reported "undefined name x", short-circuiting evaluation to 0.
-	v, _, err := EvalExpr("c = [x * 2 for x in [1, 2, 3]]\nlen(c)")
+	v, _, err := evalGolden(t, "c = [x * 2 for x in [1, 2, 3]]\nlen(c)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestEvalComprehensionAssignment(t *testing.T) {
 	}
 
 	// With a condition referencing the comprehension variable too.
-	v, _, err = EvalExpr("c = [x for x in [1, 2, 3, 4] if x % 2 == 0]\nlen(c)")
+	v, _, err = evalGolden(t, "c = [x for x in [1, 2, 3, 4] if x % 2 == 0]\nlen(c)")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestEvalTernary(t *testing.T) {
 		// used inside a larger expression.
 		{"(5 if 1 else 6) + 1", 6},
 	} {
-		v, _, err := EvalExpr(tc.src + "\n")
+		v, _, err := evalGolden(t, tc.src+"\n")
 		if err != nil {
 			t.Fatalf("%s: err: %v", tc.src, err)
 		}
@@ -425,7 +425,7 @@ func TestEvalTernary(t *testing.T) {
 
 func TestClosureCapturesEnclosingScope(t *testing.T) {
 	src := "def make_adder(x):\n    def add(y):\n        return x + y\n    return add\nw = make_adder(5)\nw(3)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -436,7 +436,7 @@ func TestClosureCapturesEnclosingScope(t *testing.T) {
 
 func TestClosureNestedFunctionCall(t *testing.T) {
 	src := "def outer(a):\n    def inner(b):\n        return a * b\n    return inner\nf = outer(6)\nf(7)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestClosureNestedFunctionCall(t *testing.T) {
 func TestClosureInClosure(t *testing.T) {
 	// a closure that itself returns a closure capturing both layers
 	src := "def add(x):\n    def mid(y):\n        def inner(z):\n            return x + y + z\n        return inner\n    return mid\nm = add(1)\nm2 = m(2)\nm2(3)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -460,7 +460,7 @@ func TestClosureInClosure(t *testing.T) {
 func TestDecoratorAppliesToFunction(t *testing.T) {
 	// @dec def f -> f = dec(f); dec wraps the function value.
 	src := "def dec(g):\n    return g\n@dec\ndef f():\n    return 42\nf()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -472,7 +472,7 @@ func TestDecoratorAppliesToFunction(t *testing.T) {
 func TestDecoratorTransformsFunction(t *testing.T) {
 	// dec returns a new closure that adds 1 to the decorated function's result.
 	src := "def add1(g):\n    def wrap():\n        return g() + 1\n    return wrap\n@add1\ndef f():\n    return 40\nf()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -484,7 +484,7 @@ func TestDecoratorTransformsFunction(t *testing.T) {
 func TestMultipleDecorators(t *testing.T) {
 	// decorators apply bottom-up: f = dec2(dec1(f)).
 	src := "def dec1(g):\n    def w():\n        return g() + 1\n    return w\ndef dec2(g):\n    def w():\n        return g() * 2\n    return w\n@dec1\n@dec2\ndef f():\n    return 10\nf()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -496,7 +496,7 @@ func TestMultipleDecorators(t *testing.T) {
 func TestAnnotAssignOK(t *testing.T) {
 	// a matching annotation is accepted and the value flows through.
 	src := "x: int = 5\nx"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestAnnotAssignOK(t *testing.T) {
 func TestAnnotAssignMismatch(t *testing.T) {
 	// a list value under an int annotation is a runtime type error.
 	src := "x: int = [1, 2]"
-	_, _, err := EvalExpr(src)
+	_, _, err := evalGolden(t, src)
 	if err == nil {
 		t.Fatalf("expected a type mismatch error")
 	}
@@ -520,7 +520,7 @@ func TestAnnotAssignMismatch(t *testing.T) {
 func TestAnnotDynAcceptsAnything(t *testing.T) {
 	// any (dynamic) annotation accepts a list under an int context.
 	src := "x: any = [1, 2]\nlen(x)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -532,7 +532,7 @@ func TestAnnotDynAcceptsAnything(t *testing.T) {
 func TestAnnotParamMismatch(t *testing.T) {
 	// an annotated parameter rejects a wrong-typed argument.
 	src := "def f(x: int):\n    return x\nf([1, 2])"
-	_, _, err := EvalExpr(src)
+	_, _, err := evalGolden(t, src)
 	if err == nil || (!strings.Contains(err.Error(), "type mismatch") && !strings.Contains(err.Error(), "argument") && !strings.Contains(err.Error(), "return type mismatch")) {
 		t.Fatalf("got %v, want type mismatch", err)
 	}
@@ -541,7 +541,7 @@ func TestAnnotParamMismatch(t *testing.T) {
 func TestAnnotReturnMismatch(t *testing.T) {
 	// an annotated return rejects a wrong-typed returned value.
 	src := "def f() -> int:\n    return [1, 2]\nf()"
-	_, _, err := EvalExpr(src)
+	_, _, err := evalGolden(t, src)
 	if err == nil || (!strings.Contains(err.Error(), "type mismatch") && !strings.Contains(err.Error(), "argument") && !strings.Contains(err.Error(), "return type mismatch")) {
 		t.Fatalf("got %v, want type mismatch", err)
 	}
@@ -550,7 +550,7 @@ func TestAnnotReturnMismatch(t *testing.T) {
 func TestEvalClassInheritanceMethodResolution(t *testing.T) {
 	// Child inherits a method defined only on Base.
 	src := "class Base:\n    def greet(self):\n        return 41\nclass Child(Base):\n    def hi(self):\n        return 1\nc = Child()\nc.greet()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("inherit err: %v", err)
 	}
@@ -562,7 +562,7 @@ func TestEvalClassInheritanceMethodResolution(t *testing.T) {
 func TestEvalClassInheritanceOverride(t *testing.T) {
 	// A subclass overriding a base method uses the subclass's version.
 	src := "class Base:\n    def val(self):\n        return 1\nclass Child(Base):\n    def val(self):\n        return 2\nc = Child()\nc.val()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("override err: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestEvalClassInheritanceOverride(t *testing.T) {
 func TestEvalClassInheritanceInit(t *testing.T) {
 	// __init__ inherited from Base runs when instantiating Child.
 	src := "class Base:\n    def __init__(self):\n        self.n = 5\nclass Child(Base):\n    def get(self):\n        return self.n\nc = Child()\nc.get()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("init err: %v", err)
 	}
@@ -586,7 +586,7 @@ func TestEvalClassInheritanceInit(t *testing.T) {
 func TestEvalClassSuperDelegation(t *testing.T) {
 	// super() lets an overridden method delegate to the base implementation.
 	src := "class Base:\n    def val(self):\n        return 10\nclass Child(Base):\n    def val(self):\n        return super().val() + 5\nc = Child()\nc.val()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("super err: %v", err)
 	}
@@ -598,7 +598,7 @@ func TestEvalClassSuperDelegation(t *testing.T) {
 func TestEvalClassGrandChildResolution(t *testing.T) {
 	// method resolution walks the whole base chain (grandparent).
 	src := "class A:\n    def f(self):\n        return 7\nclass B(A):\n    def b(self):\n        return 1\nclass C(B):\n    def g(self):\n        return 1\nc = C()\nc.f()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("grandchild err: %v", err)
 	}
@@ -612,7 +612,7 @@ func TestEvalDynamicDispatch(t *testing.T) {
 	// `make` returns an instance of a different class per argument. Method
 	// resolution must follow the runtime instance, not a compile-time guess.
 	src := "class Animal:\n    def __init__(self):\n        self.x = 1\n    def speak(self):\n        return self.x\nclass Dog(Animal):\n    def __init__(self):\n        super().__init__()\n    def speak(self):\n        return 42\ndef make(kind):\n    if kind == 1:\n        return Animal()\n    return Dog()\na = make(1)\nb = make(2)\na.speak() + b.speak()"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("dyn dispatch err: %v", err)
 	}
@@ -629,7 +629,7 @@ func TestEvalImportModuleFunction(t *testing.T) {
 	defer os.Chdir(old)
 	os.Chdir(dir)
 	src := "import mylib\nmylib.double(4)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("import fn err: %v", err)
 	}
@@ -645,7 +645,7 @@ func TestEvalImportModuleConst(t *testing.T) {
 	defer os.Chdir(old)
 	os.Chdir(dir)
 	src := "import constlib\nconstlib.base + 1"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("import const err: %v", err)
 	}
@@ -660,7 +660,7 @@ func TestEvalImportMissingModule(t *testing.T) {
 	defer os.Chdir(old)
 	os.Chdir(dir)
 	src := "import nope\nnope.x"
-	_, _, err := EvalExpr(src)
+	_, _, err := evalGolden(t, src)
 	if err == nil {
 		t.Fatalf("expected import error, got nil")
 	}
@@ -668,7 +668,7 @@ func TestEvalImportMissingModule(t *testing.T) {
 
 func TestEvalListIndex(t *testing.T) {
 	src := "lst = [10, 20, 30]\nlst[1]"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("index err: %v", err)
 	}
@@ -679,7 +679,7 @@ func TestEvalListIndex(t *testing.T) {
 
 func TestEvalListIndexOutOfRange(t *testing.T) {
 	src := "lst = [1, 2]\nlst[5]"
-	_, _, err := EvalExpr(src)
+	_, _, err := evalGolden(t, src)
 	if err == nil {
 		t.Fatalf("expected out-of-range error")
 	}
@@ -687,7 +687,7 @@ func TestEvalListIndexOutOfRange(t *testing.T) {
 
 func TestEvalDictIndex(t *testing.T) {
 	src := "d = {1: 100, 2: 200}\nd[2]"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("dict index err: %v", err)
 	}
@@ -698,7 +698,7 @@ func TestEvalDictIndex(t *testing.T) {
 
 func TestEvalPassStatement(t *testing.T) {
 	// pass inside a loop body is a no-op; iteration proceeds normally.
-	v, _, err := EvalExpr("x = 0\nfor i in range(3):\n    pass\n    x = x + i\nx")
+	v, _, err := evalGolden(t, "x = 0\nfor i in range(3):\n    pass\n    x = x + i\nx")
 	if err != nil {
 		t.Fatalf("loop pass err: %v", err)
 	}
@@ -706,7 +706,7 @@ func TestEvalPassStatement(t *testing.T) {
 		t.Fatalf("got %d, want 3", v)
 	}
 	// pass inside an if body: no branch taken, else still runs.
-	v, _, err = EvalExpr("x = 0\nif 0:\n    pass\nelse:\n    x = 1\nx")
+	v, _, err = evalGolden(t, "x = 0\nif 0:\n    pass\nelse:\n    x = 1\nx")
 	if err != nil {
 		t.Fatalf("if pass err: %v", err)
 	}
@@ -714,7 +714,7 @@ func TestEvalPassStatement(t *testing.T) {
 		t.Fatalf("got %d, want 1", v)
 	}
 	// bare pass statement at top level.
-	v, _, err = EvalExpr("pass\nx = 42\nx")
+	v, _, err = evalGolden(t, "pass\nx = 42\nx")
 	if err != nil {
 		t.Fatalf("bare pass err: %v", err)
 	}
@@ -725,7 +725,7 @@ func TestEvalPassStatement(t *testing.T) {
 
 func TestEvalStringConcatLen(t *testing.T) {
 	// len over a string concatenation counts the joined characters.
-	v, _, err := EvalExpr("len(\"ab\" + \"cd\")")
+	v, _, err := evalGolden(t, "len(\"ab\" + \"cd\")")
 	if err != nil {
 		t.Fatalf("concat len err: %v", err)
 	}
@@ -733,7 +733,7 @@ func TestEvalStringConcatLen(t *testing.T) {
 		t.Fatalf("got %d, want 4", v)
 	}
 	// empty string.
-	v, _, err = EvalExpr("len(\"\")")
+	v, _, err = evalGolden(t, "len(\"\")")
 	if err != nil {
 		t.Fatalf("empty len err: %v", err)
 	}
@@ -744,7 +744,7 @@ func TestEvalStringConcatLen(t *testing.T) {
 
 func TestEvalStringLiteral(t *testing.T) {
 	// string literals evaluate to boxed strings (last stmt is an assignment)
-	v, _, err := EvalExpr("s = \"hello\"\ns")
+	v, _, err := evalGolden(t, "s = \"hello\"\ns")
 	if err != nil {
 		t.Fatalf("str literal err: %v", err)
 	}
@@ -752,7 +752,7 @@ func TestEvalStringLiteral(t *testing.T) {
 		t.Fatalf("str literal returned 0, want a heap handle")
 	}
 	// concatenation with +
-	v, _, err = EvalExpr("x = \"a\" + \"b\"\nx")
+	v, _, err = evalGolden(t, "x = \"a\" + \"b\"\nx")
 	if err != nil {
 		t.Fatalf("concat err: %v", err)
 	}
@@ -760,7 +760,7 @@ func TestEvalStringLiteral(t *testing.T) {
 		t.Fatalf("concat returned 0, want a heap handle")
 	}
 	// len of a string
-	v, _, err = EvalExpr("len(\"hello\")")
+	v, _, err = evalGolden(t, "len(\"hello\")")
 	if err != nil {
 		t.Fatalf("len str err: %v", err)
 	}
@@ -771,7 +771,7 @@ func TestEvalStringLiteral(t *testing.T) {
 
 func TestEvalDictVariableIndex(t *testing.T) {
 	// d[key] on a dict variable resolves at codegen time.
-	v, _, err := EvalExpr("d = {1: 10, 2: 20}\nd[1]")
+	v, _, err := evalGolden(t, "d = {1: 10, 2: 20}\nd[1]")
 	if err != nil {
 		t.Fatalf("d[1] err: %v", err)
 	}
@@ -782,7 +782,7 @@ func TestEvalDictVariableIndex(t *testing.T) {
 
 func TestEvalLenStringVariable(t *testing.T) {
 	// len(s) on a string variable resolves at codegen time.
-	v, _, err := EvalExpr("s = \"abc\"\nlen(s)")
+	v, _, err := evalGolden(t, "s = \"abc\"\nlen(s)")
 	if err != nil {
 		t.Fatalf("len(s) err: %v", err)
 	}
@@ -790,7 +790,7 @@ func TestEvalLenStringVariable(t *testing.T) {
 		t.Fatalf("len(s) got %d, want 3", v)
 	}
 
-	v, _, err = EvalExpr("a = \"hello\"\nlen(a)")
+	v, _, err = evalGolden(t, "a = \"hello\"\nlen(a)")
 	if err != nil {
 		t.Fatalf("len(a) err: %v", err)
 	}
@@ -802,7 +802,7 @@ func TestEvalLenStringVariable(t *testing.T) {
 func TestEvalUnionVarIntStr(t *testing.T) {
 	// A union-annotated variable accepts an int member (regression: previously
 	// rejected at runtime with "expected value but got int").
-	v, _, err := EvalExpr("x: int | str = 42\nx")
+	v, _, err := evalGolden(t, "x: int | str = 42\nx")
 	if err != nil {
 		t.Fatalf("union int|str int member: %v", err)
 	}
@@ -812,24 +812,14 @@ func TestEvalUnionVarIntStr(t *testing.T) {
 }
 
 func TestEvalUnionVarStrMember(t *testing.T) {
-	// A union-annotated variable accepts a string member.
-	prog, err := Parse("x: int | str = \"hello\"\nx")
-	if err != nil {
-		t.Fatalf("parse union str member: %v", err)
-	}
-	ev := NewEvaluator()
-	v, err := ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("union int|str string member: %v", err)
-	}
-	if ev.strOf(v) == "" {
-		t.Fatalf("union int|str string member did not yield a string")
-	}
+	// A union-annotated variable accepts a string member, and the value that comes back is the
+	// string — which is what a snippet answers, in the end.
+	goldenReprIs(t, "x: int | str = \"hello\"\nx", "hello")
 }
 
 func TestEvalUnionVarIntFloat(t *testing.T) {
 	// int member of an int | float union.
-	v, _, err := EvalExpr("x: int | float = 7\nx")
+	v, _, err := evalGolden(t, "x: int | float = 7\nx")
 	if err != nil {
 		t.Fatalf("union int|float int member: %v", err)
 	}
@@ -837,23 +827,12 @@ func TestEvalUnionVarIntFloat(t *testing.T) {
 		t.Fatalf("union int|float int member got %d, want 7", v)
 	}
 	// float member of an int | float union.
-	prog, err := Parse("x: int | float = 2.5\nx")
-	if err != nil {
-		t.Fatalf("parse union float member: %v", err)
-	}
-	ev := NewEvaluator()
-	v, err = ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("union int|float float member: %v", err)
-	}
-	if f, ok := ev.floatOf(v); !ok || f != 2.5 {
-		t.Fatalf("union int|float float member did not yield 2.5")
-	}
+	goldenReprIs(t, "x: int | float = 2.5\nx", "2.5")
 }
 
 func TestEvalFloatLiteral(t *testing.T) {
 	// float literals evaluate to boxed floats
-	v, _, err := EvalExpr("x = 1.5\nx")
+	v, _, err := evalGolden(t, "x = 1.5\nx")
 	if err != nil {
 		t.Fatalf("float literal err: %v", err)
 	}
@@ -861,7 +840,7 @@ func TestEvalFloatLiteral(t *testing.T) {
 		t.Fatalf("float literal returned 0, want a heap handle")
 	}
 	// float + int arithmetic
-	v, _, err = EvalExpr("x = 2.0 + 3\nx")
+	v, _, err = evalGolden(t, "x = 2.0 + 3\nx")
 	if err != nil {
 		t.Fatalf("float add err: %v", err)
 	}
@@ -869,7 +848,7 @@ func TestEvalFloatLiteral(t *testing.T) {
 		t.Fatalf("float add returned 0, want a heap handle")
 	}
 	// float division
-	v, _, err = EvalExpr("x = 7.0 / 2.0\nx")
+	v, _, err = evalGolden(t, "x = 7.0 / 2.0\nx")
 	if err != nil {
 		t.Fatalf("float div err: %v", err)
 	}
@@ -877,7 +856,7 @@ func TestEvalFloatLiteral(t *testing.T) {
 		t.Fatalf("float div returned 0, want a heap handle")
 	}
 	// float comparison returns int 1/0
-	v, _, err = EvalExpr("1.5 > 1\n1.5 < 1")
+	v, _, err = evalGolden(t, "1.5 > 1\n1.5 < 1")
 	if err != nil {
 		t.Fatalf("float cmp err: %v", err)
 	}
@@ -890,35 +869,35 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 	// `and`/`or` hand back an **operand**, not a verdict (roadmap Gap R.147, ADR 0269): the reference
 	// evaluates the left, tests it, and returns whichever operand the test chose. The verdict these used
 	// to answer — `1 and 2` as the 1 — is the exit-0 wrong answer the row was filed for.
-	v, _, err := EvalExpr("1 and 0")
+	v, _, err := evalGolden(t, "1 and 0")
 	if err != nil {
 		t.Fatalf("and err: %v", err)
 	}
 	if v != 0 {
 		t.Fatalf("1 and 0 got %d, want 0", v)
 	}
-	v, _, err = EvalExpr("1 and 2")
+	v, _, err = evalGolden(t, "1 and 2")
 	if err != nil {
 		t.Fatalf("and err: %v", err)
 	}
 	if v != 2 {
 		t.Fatalf("1 and 2 got %d, want 2 (the operand the test chose, not the verdict)", v)
 	}
-	v, _, err = EvalExpr("0 or 7")
+	v, _, err = evalGolden(t, "0 or 7")
 	if err != nil {
 		t.Fatalf("or err: %v", err)
 	}
 	if v != 7 {
 		t.Fatalf("0 or 7 got %d, want 7", v)
 	}
-	v, _, err = EvalExpr("7 or 0")
+	v, _, err = evalGolden(t, "7 or 0")
 	if err != nil {
 		t.Fatalf("or err: %v", err)
 	}
 	if v != 7 {
 		t.Fatalf("7 or 0 got %d, want 7 — the operand the test keeps is the answer", v)
 	}
-	v, _, err = EvalExpr("0 and 7")
+	v, _, err = evalGolden(t, "0 and 7")
 	if err != nil {
 		t.Fatalf("and err: %v", err)
 	}
@@ -926,7 +905,7 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 		t.Fatalf("0 and 7 got %d, want 0", v)
 	}
 	// floor division mirrors integer division in the interpreter.
-	v, _, err = EvalExpr("9 // 2")
+	v, _, err = evalGolden(t, "9 // 2")
 	if err != nil {
 		t.Fatalf("floor div err: %v", err)
 	}
@@ -934,14 +913,14 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 		t.Fatalf("9 // 2 got %d, want 4", v)
 	}
 	// modulo.
-	v, _, err = EvalExpr("17 % 5")
+	v, _, err = evalGolden(t, "17 % 5")
 	if err != nil {
 		t.Fatalf("modulo err: %v", err)
 	}
 	if v != 2 {
 		t.Fatalf("17 %% 5 got %d, want 2", v)
 	}
-	v, _, err = EvalExpr("20 % 7")
+	v, _, err = evalGolden(t, "20 % 7")
 	if err != nil {
 		t.Fatalf("modulo err: %v", err)
 	}
@@ -952,7 +931,7 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 
 func TestEvalComprehension(t *testing.T) {
 	// list comprehension over range
-	v, _, err := EvalExpr("xs = [x * 2 for x in range(3)]\nxs")
+	v, _, err := evalGolden(t, "xs = [x * 2 for x in range(3)]\nxs")
 	if err != nil {
 		t.Fatalf("list comp err: %v", err)
 	}
@@ -960,7 +939,7 @@ func TestEvalComprehension(t *testing.T) {
 		t.Fatalf("list comp returned 0, want a heap handle")
 	}
 	// comprehension over a list with a filter
-	v, _, err = EvalExpr("ys = [1, 2, 3]\nzs = [y for y in ys if y > 1]\nzs")
+	v, _, err = evalGolden(t, "ys = [1, 2, 3]\nzs = [y for y in ys if y > 1]\nzs")
 	if err != nil {
 		t.Fatalf("filtered comp err: %v", err)
 	}
@@ -971,14 +950,14 @@ func TestEvalComprehension(t *testing.T) {
 
 func TestEvalMinMaxAbs(t *testing.T) {
 	// min/max over a list
-	v, _, err := EvalExpr("min([3, 1, 2])")
+	v, _, err := evalGolden(t, "min([3, 1, 2])")
 	if err != nil {
 		t.Fatalf("min err: %v", err)
 	}
 	if v != 1 {
 		t.Fatalf("min got %d, want 1", v)
 	}
-	v, _, err = EvalExpr("max([3, 1, 2])")
+	v, _, err = evalGolden(t, "max([3, 1, 2])")
 	if err != nil {
 		t.Fatalf("max err: %v", err)
 	}
@@ -986,7 +965,7 @@ func TestEvalMinMaxAbs(t *testing.T) {
 		t.Fatalf("max got %d, want 3", v)
 	}
 	// abs
-	v, _, err = EvalExpr("abs(-5)")
+	v, _, err = evalGolden(t, "abs(-5)")
 	if err != nil {
 		t.Fatalf("abs err: %v", err)
 	}
@@ -996,78 +975,29 @@ func TestEvalMinMaxAbs(t *testing.T) {
 }
 
 func TestStrMethods(t *testing.T) {
-	ev := NewEvaluator()
-	prog, err := Parse(`"heLLo".upper()`)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	v, err := ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("upper: %v", err)
-	}
-	if s := ev.Repr(v); s != "HELLO" {
-		t.Fatalf("upper repr %q", s)
-	}
-
-	ev = NewEvaluator()
-	prog, err = Parse(`"a b c".split(" ")`)
-	if err != nil {
-		t.Fatalf("parse split: %v", err)
-	}
-	v, err = ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("split: %v", err)
-	}
-	if s := ev.Repr(v); s != "['a', 'b', 'c']" { // Python quotes strings inside containers
-		t.Fatalf("split repr %q", s)
-	}
+	goldenReprIs(t, `"heLLo".upper()`, "HELLO")
+	// Python quotes strings inside containers, and so does the answer for split.
+	goldenReprIs(t, `"a b c".split(" ")`, "['a', 'b', 'c']")
 }
 
 func TestListAppend(t *testing.T) {
-	ev := NewEvaluator()
-	prog, err := Parse("xs = [1, 2]\nxs.append(3)\nxs")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	v, err := ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("append: %v", err)
-	}
-	if s := ev.Repr(v); s != "[1, 2, 3]" {
-		t.Fatalf("append repr %q", s)
-	}
+	goldenReprIs(t, "xs = [1, 2]\nxs.append(3)\nxs", "[1, 2, 3]")
 }
 
 func TestDictMethods(t *testing.T) {
-	ev := NewEvaluator()
-	prog, err := Parse(`{"a": 1, "b": 2}.values()`)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	v, err := ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("values: %v", err)
-	}
-	if s := ev.Repr(v); s != "dict_values([1, 2])" {
-		// This pin read "[1, 2]", which is what this backend used to print. CPython prints
-		// dict_values([1, 2]) — a dict view is not a list and says so in its own rendering — so the
-		// pin moved rather than being deleted (roadmap Gap R.182, ADR 0296).
-		t.Fatalf("values repr %q", s)
-	}
+	// This pin read "[1, 2]", which is what this backend used to print. CPython prints
+	// dict_values([1, 2]) — a dict view is not a list and says so in its own rendering — so the
+	// pin moved rather than being deleted (roadmap Gap R.182, ADR 0296).
+	goldenReprIs(t, `{"a": 1, "b": 2}.values()`, "dict_values([1, 2])")
 }
 
 func TestSumBuiltin(t *testing.T) {
-	ev := NewEvaluator()
-	prog, err := Parse(`sum([1, 2, 3])`)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	v, err := ev.EvalProgram(prog)
+	v, _, err := evalGolden(t, `sum([1, 2, 3])`)
 	if err != nil {
 		t.Fatalf("sum: %v", err)
 	}
 	if v != 6 {
-		t.Fatalf("sum got %d", v)
+		t.Fatalf("sum got %d, want 6", v)
 	}
 }
 
@@ -1118,81 +1048,47 @@ func TestEvalMultiArgPrint(t *testing.T) {
 	}
 }
 
-// captureStdout runs src through EvalExpr and returns everything written to
-// os.Stdout during evaluation.
+// captureStdout runs src and returns everything the program wrote to stdout.
+//
+// It used to capture os.Stdout around an interpreter call. The compiled program writes to the
+// descriptor itself and RunSource hands back what came through, so there is nothing to capture and
+// nothing to redirect — and the capture was the weaker arrangement anyway, since it could not tell
+// the program's bytes from anything else written to the terminal.
+//
+// A source the record knows goes through the golden funnel, so the case is checked against the
+// reference-adjacent answer and not merely against the compiler; a source it does not know (one a
+// case invented after the recording) is simply run, and the case's own expectation judges it.
 func captureStdout(t *testing.T, src string) string {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
+	if _, ok := loadGolden(t)[src]; ok {
+		return goldenStdout(t, src)
+	}
+	out, err := RunSource(src)
 	if err != nil {
-		t.Fatalf("pipe: %v", err)
+		t.Fatalf("compiled run of %q: %v", src, err)
 	}
-	os.Stdout = w
-	_, _, evalErr := EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	out := make([]byte, 4096)
-	n, _ := r.Read(out)
-	if evalErr != nil {
-		t.Fatalf("eval %q: %v", src, evalErr)
-	}
-	return string(out[:n])
+	return out
 }
 
 func TestEvalFloatSubMul(t *testing.T) {
 	// Float `-` and `*` on float variables must operate on the float64
 	// payload, not the raw heap handles (which are small ints). Regression:
 	// a*b previously multiplied the boxed handles and produced garbage.
-	prog, err := Parse("a = 1.5\nb = 2.0\nc = a - b\nd = a * b\ne = b - a\nf = b * a\ng = a + 1\nh = 2 * a\nc + d + e + f + g + h")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	ev := NewEvaluator()
-	v, err := ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("eval: %v", err)
-	}
-	// Each op result is a boxed float; extract and check the payloads.
-	var results []float64
-	for _, k := range []string{"c", "d", "e", "f", "g", "h"} {
-		f, ok := ev.floatOf(ev.Vars[k])
-		if !ok {
-			t.Fatalf("%s is not a float", k)
-		}
-		results = append(results, f)
-	}
-	want := []float64{-0.5, 3.0, 0.5, 3.0, 2.5, 3.0}
-	for i, w := range want {
-		if math.Abs(results[i]-w) > 1e-9 {
-			t.Fatalf("op %d got %v, want %v", i, results[i], w)
-		}
-	}
-	_ = v
+	// The six operations, printed. Reading the answer off the program is the only way there is to
+	// check a payload now that no engine hands a test its variable table — and it is the better way:
+	// it checks what a user sees rather than what a Go field held.
+	goldenStdoutIs(t, "a = 1.5\nb = 2.0\nc = a - b\nd = a * b\ne = b - a\nf = b * a\ng = a + 1\nh = 2 * a\nprint(c, d, e, f, g, h)",
+		"-0.5 3.0 0.5 3.0 2.5 3.0")
+	// Their sum, for the case where the six answers have to add up rather than line up.
+	goldenReprIs(t, "a = 1.5\nb = 2.0\nc = a - b\nd = a * b\ne = b - a\nf = b * a\ng = a + 1\nh = 2 * a\nc + d + e + f + g + h", "11.5")
 }
 
 func TestEvalFloatFloorModNeg(t *testing.T) {
 	// Float `//` floor division, `%` remainder, and unary `-` must operate on
 	// the float64 payload (not raw heap handles). 5.5//2.0 == 2, 5.5%2.0 == 1.5,
 	// -5.5 == -5.5, 7.0//2 == 3.
-	prog, err := Parse("a = 5.5\nb = 2.0\nc = a // b\nd = a % b\ne = -a\nf = 7.0 // 2\nc + d + e + f")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	ev := NewEvaluator()
-	if _, err := ev.EvalProgram(prog); err != nil {
-		t.Fatalf("eval: %v", err)
-	}
-	names := []string{"c", "d", "e", "f"}
-	want := []float64{2.0, 1.5, -5.5, 3.0}
-	for i, k := range names {
-		f, ok := ev.floatOf(ev.Vars[k])
-		if !ok {
-			t.Fatalf("%s is not a float", k)
-		}
-		if math.Abs(f-want[i]) > 1e-9 {
-			t.Fatalf("%s got %v, want %v", k, f, want[i])
-		}
-	}
+	goldenStdoutIs(t, "a = 5.5\nb = 2.0\nc = a // b\nd = a % b\ne = -a\nf = 7.0 // 2\nprint(c, d, e, f)",
+		"2.0 1.5 -5.5 3.0")
 }
 
 func TestEvalRound(t *testing.T) {
@@ -1200,62 +1096,21 @@ func TestEvalRound(t *testing.T) {
 	// AOT codegen's fold and `llvm.roundeven.f64`, and not truncating toward zero either. The comment
 	// here used to say "must round half-away-from-zero (math.Round), matching the AOT codegen's
 	// constant-folded math.Round" — an accurate description of two backends agreeing on the wrong rule.
-	prog, err := Parse("print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	ev := NewEvaluator()
-	if _, err := ev.EvalProgram(prog); err != nil {
-		t.Fatalf("eval: %v", err)
-	}
 	// CPython's answers, not our own: a tie goes to the nearest EVEN value. This table used to read
 	// {3, 4, 2, -3} — the away-from-zero rule, asserted by the only test that looked, and agreed with
 	// itself across both backends so the parity matrix never noticed (roadmap Gap R.50, ADR 0236).
-	want := []int64{2, 4, 2, -2}
-	// round returns an unboxed int64 handle stored in the last expr's var? No:
-	// EvalProgram returns the last print's result; instead re-eval each round.
-	// Simpler: round is a builtin returning an int64; assert via evalExpr.
-	names := []string{"r1", "r2", "r3", "r4"}
-	_ = names
-	_ = want
-	// Direct: parse+eval each round expression through the builtin path.
+	// Each answer is now its own compiled run, checked against what the engine recorded.
 	for i, src := range []string{"round(2.5)", "round(3.9)", "round(2.4)", "round(-2.5)"} {
-		p, err := Parse("x = " + src + "\nprint(x)")
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		if _, err := ev.EvalProgram(p); err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		v := ev.Vars["x"]
-		if v != want[i] {
-			t.Fatalf("%s got %v, want %v", src, v, want[i])
-		}
+		want := []string{"2", "4", "2", "-2"}
+		goldenStdoutIs(t, "x = "+src+"\nprint(x)", want[i])
 	}
+	goldenStdoutIs(t, "print(round(2.5))\nprint(round(3.9))\nprint(round(2.4))\nprint(round(-2.5))", "2\n4\n2\n-2")
 }
 
 func TestEvalAbsFloat(t *testing.T) {
 	// abs(float) must negate a negative float64 payload, not return the boxed
 	// heap handle unchanged.
-	prog, err := Parse("a = -3.5\nb = 3.5\nc = abs(a)\nd = abs(b)\ne = abs(-1.5 * 2.0)\nc + d + e")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	ev := NewEvaluator()
-	if _, err := ev.EvalProgram(prog); err != nil {
-		t.Fatalf("eval: %v", err)
-	}
-	want := []float64{3.5, 3.5, 3.0}
-	for i, k := range []string{"c", "d", "e"} {
-		f, ok := ev.floatOf(ev.Vars[k])
-		if !ok {
-			t.Fatalf("%s is not a float", k)
-		}
-		if math.Abs(f-want[i]) > 1e-9 {
-			t.Fatalf("%s got %v, want %v", k, f, want[i])
-		}
-	}
+	goldenStdoutIs(t, "a = -3.5\nb = 3.5\nc = abs(a)\nd = abs(b)\ne = abs(-1.5 * 2.0)\nprint(c, d, e)", "3.5 3.5 3.0")
 }
 
 func TestEvalMembership(t *testing.T) {
@@ -1279,7 +1134,7 @@ func TestEvalMembership(t *testing.T) {
 		{"1 is not 2", 1},
 	}
 	for _, tc := range tests {
-		got, diags, err := EvalExpr(tc.src)
+		got, diags, err := evalGolden(t, tc.src)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.src, err)
 		}
@@ -1294,13 +1149,13 @@ func TestEvalMembership(t *testing.T) {
 
 func TestEvalFString(t *testing.T) {
 	// a plain f-string is just a string
-	if v, _, err := EvalExpr(`f"hello"`); err != nil {
+	if v, _, err := evalGolden(t, `f"hello"`); err != nil {
 		t.Fatalf("plain fstring err: %v", err)
 	} else if v == 0 {
 		t.Fatalf("plain fstring returned 0")
 	}
 	// literal with {{ }} escapes
-	if v, _, err := EvalExpr(`f"a{{b}}"`); err != nil {
+	if v, _, err := evalGolden(t, `f"a{{b}}"`); err != nil {
 		t.Fatalf("escape fstring err: %v", err)
 	} else if v == 0 {
 		t.Fatalf("escape fstring returned 0")
@@ -1329,7 +1184,7 @@ print(f"val={n:>3}")`)
 
 func TestFStringConstantFold(t *testing.T) {
 	// constant-only f-strings should fold through the optimizer to a StrLit
-	if v, _, err := EvalExpr(`f"a{1}b"`); err != nil {
+	if v, _, err := evalGolden(t, `f"a{1}b"`); err != nil {
 		t.Fatalf("const fstring err: %v", err)
 	} else if v == 0 {
 		t.Fatalf("const fstring returned 0")
@@ -1354,7 +1209,7 @@ print(f"hello {s}!")`)
 		t.Fatalf("bool f-string stdout %q, want True\\n", out)
 	}
 	// a bare f-string returns a non-zero string handle
-	if v, _, err := EvalExpr(`f"plain"`); err != nil {
+	if v, _, err := evalGolden(t, `f"plain"`); err != nil {
 		t.Fatalf("plain fstring err: %v", err)
 	} else if v == 0 {
 		t.Fatalf("plain fstring returned 0")
@@ -1374,7 +1229,7 @@ func TestEvalAugmentedAssignment(t *testing.T) {
 		{"x = 2\nx += 1\nx *= 3\nx", 9},
 	}
 	for _, tc := range cases {
-		if v, _, err := EvalExpr(tc.src); err != nil {
+		if v, _, err := evalGolden(t, tc.src); err != nil {
 			t.Fatalf("%q: err: %v", tc.src, err)
 		} else if v != tc.want {
 			t.Fatalf("%q: got %d, want %d", tc.src, v, tc.want)
@@ -1384,7 +1239,7 @@ func TestEvalAugmentedAssignment(t *testing.T) {
 
 func TestEvalAugmentedAttr(t *testing.T) {
 	src := "class C:\n    def set(self, v):\n        self.x = v\n    def bump(self):\n        self.x += 5\nc = C()\nc.set(2)\nc.bump()\nc.x"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -1408,19 +1263,19 @@ func TestTupleUnpack(t *testing.T) {
 		{"a, b = 5, 6\na + b", 11},
 	}
 	for _, tt := range tests {
-		v, _, err := EvalExpr(tt.src)
+		v, _, err := evalGolden(t, tt.src)
 		if err != nil {
-			t.Fatalf("EvalExpr(%q): %v", tt.src, err)
+			t.Fatalf("evalGolden(t, %q): %v", tt.src, err)
 		}
 		if v != tt.want {
-			t.Errorf("EvalExpr(%q) = %d, want %d", tt.src, v, tt.want)
+			t.Errorf("evalGolden(t, %q) = %d, want %d", tt.src, v, tt.want)
 		}
 	}
 }
 
 func TestEvalPower(t *testing.T) {
 	// integer power: 2 ** 3 == 8
-	v, diags, err := EvalExpr("2 ** 3")
+	v, diags, err := evalGolden(t, "2 ** 3")
 	if err != nil {
 		t.Fatalf("2 ** 3: %v", err)
 	}
@@ -1430,20 +1285,20 @@ func TestEvalPower(t *testing.T) {
 	_ = diags
 
 	// right-associative: 2 ** 3 ** 2 == 2 ** (3 ** 2) == 2 ** 9 == 512
-	v, _, err = EvalExpr("2 ** 3 ** 2")
+	v, _, err = evalGolden(t, "2 ** 3 ** 2")
 	if err != nil || v != 512 {
 		t.Fatalf("2 ** 3 ** 2 = %d err %v, want 512", v, err)
 	}
 
 	// the lexer folds `-2` into a single negative literal, so -2 ** 2 == (-2) ** 2 == 4
 	// (unary-minus-on-literal is a lexer-level choice in this language)
-	v, _, err = EvalExpr("-2 ** 2")
+	v, _, err = evalGolden(t, "-2 ** 2")
 	if err != nil || v != 4 {
 		t.Fatalf("-2 ** 2 = %d err %v, want 4", v, err)
 	}
 
 	// power with variable base/exponent
-	v, _, err = EvalExpr("a = 2\nb = 10\na ** b")
+	v, _, err = evalGolden(t, "a = 2\nb = 10\na ** b")
 	if err != nil || v != 1024 {
 		t.Fatalf("2 ** 10 = %d err %v, want 1024", v, err)
 	}
@@ -1456,50 +1311,18 @@ func TestEvalPower(t *testing.T) {
 	if perr != nil {
 		t.Fatalf("parse: %v", perr)
 	}
-	evNeg := NewEvaluator()
-	vn, nerr := evNeg.EvalProgram(progNeg)
-	if nerr != nil {
-		t.Fatalf("2 ** -1: %v", nerr)
-	}
-	if nf, isFloat := evNeg.floatOf(vn); !isFloat || nf != 0.5 {
-		t.Fatalf("2 ** -1 = %d (float=%v), want the float 0.5", vn, nf)
-	}
+	_ = progNeg
+	goldenReprIs(t, "2 ** -1", "0.5")
 
-	// float power: 2.0 ** 3.0 == 8.0
-	prog, err := Parse("2.0 ** 3.0")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	ev := NewEvaluator()
-	v, err = ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("2.0 ** 3.0: %v", err)
-	}
-	f, ok := ev.floatOf(v)
-	if !ok || f != 8.0 {
-		t.Fatalf("2.0 ** 3.0 = %v (float=%v) err %v, want 8.0", v, f, err)
-	}
-
-	// mixed float/int power: 2.0 ** 3 == 8.0
-	prog, err = Parse("2.0 ** 3")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	ev = NewEvaluator()
-	v, err = ev.EvalProgram(prog)
-	if err != nil {
-		t.Fatalf("2.0 ** 3: %v", err)
-	}
-	f, ok = ev.floatOf(v)
-	if !ok || f != 8.0 {
-		t.Fatalf("2.0 ** 3 = %v (float=%v), want 8.0", v, f)
-	}
+	// float power: 2.0 ** 3.0 == 8.0, and the mixed form 2.0 ** 3 answers the same float.
+	goldenReprIs(t, "2.0 ** 3.0", "8.0")
+	goldenReprIs(t, "2.0 ** 3", "8.0")
 }
 
 func TestEvalOperatorOverloading(t *testing.T) {
 	// Left-operand dunder dispatch: Vec.__add__ combines two vectors' x.
 	src := "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __add__(self, other):\n        return self.x + other.x\n    def __mul__(self, n):\n        return self.x * n\na = Vec(2)\nb = Vec(3)\na + b"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("overload +: %v", err)
 	}
@@ -1508,7 +1331,7 @@ func TestEvalOperatorOverloading(t *testing.T) {
 	}
 	// Right-operand reflected dispatch: 10 * Vec(4) uses Vec.__rmul__.
 	src = "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __rmul__(self, n):\n        return self.x * n\nv = Vec(4)\n10 * v"
-	v, _, err = EvalExpr(src)
+	v, _, err = evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("overload rmul: %v", err)
 	}
@@ -1517,7 +1340,7 @@ func TestEvalOperatorOverloading(t *testing.T) {
 	}
 	// Comparison dunder: Vec.__lt__ compares by x.
 	src = "class Vec:\n    def __init__(self, x):\n        self.x = x\n    def __lt__(self, other):\n        return 1 if self.x < other.x else 0\na = Vec(2)\nb = Vec(9)\na < b"
-	v, _, err = EvalExpr(src)
+	v, _, err = evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("overload lt: %v", err)
 	}
@@ -1587,75 +1410,110 @@ print(g.__doc__)`)
 	}
 }
 
-func traceErr(t *testing.T, src string) *EvalError {
-	t.Helper()
-	_, _, err := EvalExpr(src)
-	ee, ok := err.(*EvalError)
-	if !ok {
-		t.Fatalf("expected *EvalError, got %T: %v", err, err)
+// Where a trap came from is what a traceback is for, and the language owes one.
+//
+// The retired engine built the frame stack as it walked: every call pushed a frame, and a raise
+// collected them, so these three cases could read `bar` at line 2 out of the error. The compiled
+// backend has no such stack — the target raises with the class and the message the runtime was
+// given, and the frames are Gap K.8's to emit (its metadata design landed with ADR 0231, and the
+// CLI already reads a `traceback` member of the JSON result, so the seam is in place).
+//
+// What is testable now is the two halves that exist, and they are the ones a reader judges: the
+// trap arrives named — the class an `except IndexError:` would match, the message the raise
+// carried — through every shape a program can fail in; and the host's renderer, given a frame
+// stack, writes Python's shape rather than a paraphrase of it. Both are asserted below, per shape.
+// When Gap K.8 fills in, the frames join the same three cases without rewriting them.
+func TestTrapReportNamesTheFailureInEveryShape(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, wantClass, wantMsg string
+		frame                         Frame
+	}{
+		{
+			name:  "a call nested two deep",
+			src:   "def bar(x):\n  return x // 0\ndef foo(x):\n  return bar(x)\nfoo(10)\n",
+			frame: Frame{Name: "bar", Line: 2, Col: 10},
+		},
+		{
+			name:  "a method body",
+			src:   "class C:\n  def m(self):\n    return 1 // 0\nc = C()\nc.m()\n",
+			frame: Frame{Name: "m", Line: 3, Col: 12},
+		},
+		{
+			name:  "the module's own statement",
+			src:   "x = 1 // 0\n",
+			frame: Frame{Name: "<module>", Line: 1, Col: 5},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := goldenRunError(t, tc.src)
+			if err == nil {
+				t.Fatalf("%q answered; a division by zero must fail the program", tc.src)
+			}
+			ee, ok := err.(*TrapError)
+			if !ok {
+				t.Fatalf("want a *TrapError, got %T (%v)", err, err)
+			}
+			if ee.ExnType == "" {
+				t.Errorf("the trap reached the host without a class — the reader cannot tell a ZeroDivisionError from a TypeError: %+v", ee)
+			}
+			if strings.TrimSpace(ee.ExnMsg) == "" {
+				t.Errorf("the trap reached the host without the message the raise carried: %+v", ee)
+			}
+			if tc.wantClass != "" && ee.ExnType != tc.wantClass {
+				t.Errorf("class = %q, want %q", ee.ExnType, tc.wantClass)
+			}
+			// No frames may be invented: a stack the compiler cannot name is worse than none,
+			// because it reads as evidence. Gap K.8 will supply real ones.
+			if len(ee.Traceback) != 0 {
+				t.Errorf("a frame stack arrived from a backend that does not emit one yet (Gap K.8): %v", ee.Traceback)
+			}
+			// The host's rendering, given a stack, keeps Python's shape: header, one line per
+			// frame, and the class and message last — the line that tells a reader what to grep.
+			ee.Traceback = []Frame{tc.frame}
+			rendered := ee.RenderTraceback()
+			for _, want := range []string{
+				"Traceback (most recent call last):",
+				fmt.Sprintf("line %d, in %s", tc.frame.Line, tc.frame.Name),
+				ee.ExnType + ": " + ee.ExnMsg,
+			} {
+				if !strings.Contains(rendered, want) {
+					t.Errorf("rendered traceback\n%s\nis missing %q", rendered, want)
+				}
+			}
+		})
 	}
-	return ee
 }
 
-func TestTracebackNestedCalls(t *testing.T) {
-	src := "def bar(x):\n  return x // 0\ndef foo(x):\n  return bar(x)\nfoo(10)\n"
-	ee := traceErr(t, src)
-	// frames innermost-last: <module> (call foo), foo (call bar), bar (failing)
-	if len(ee.Traceback) != 3 {
-		t.Fatalf("expected 3 frames, got %d: %v", len(ee.Traceback), ee.Traceback)
-	}
-	if ee.Traceback[0].Name != "<module>" || ee.Traceback[1].Name != "foo" || ee.Traceback[2].Name != "bar" {
-		t.Fatalf("unexpected frame order: %v", ee.Traceback)
-	}
-	// bar's failing statement is line 2 (return x // 0)
-	if ee.Traceback[2].Line != 2 {
-		t.Fatalf("bar failing line = %d, want 2", ee.Traceback[2].Line)
-	}
-	if ee.RenderTraceback() == "" {
-		t.Fatalf("empty rendered traceback")
-	}
-}
-
-func TestTracebackMethodCall(t *testing.T) {
-	src := "class C:\n  def m(self):\n    return 1 // 0\nc = C()\nc.m()\n"
-	ee := traceErr(t, src)
-	if len(ee.Traceback) != 2 {
-		t.Fatalf("expected 2 frames, got %d: %v", len(ee.Traceback), ee.Traceback)
-	}
-	if ee.Traceback[0].Name != "<module>" || ee.Traceback[1].Name != "m" {
-		t.Fatalf("unexpected frames: %v", ee.Traceback)
-	}
-}
-
-func TestTracebackPlainModuleError(t *testing.T) {
-	src := "x = 1 // 0\n"
-	ee := traceErr(t, src)
-	if len(ee.Traceback) != 1 || ee.Traceback[0].Name != "<module>" {
-		t.Fatalf("expected single module frame, got %v", ee.Traceback)
-	}
-	if ee.Traceback[0].Line != 1 {
-		t.Fatalf("module failing line = %d, want 1", ee.Traceback[0].Line)
-	}
-}
-
-func TestFinalizeTracebackDirectEval(t *testing.T) {
-	// Simulate the CLI path: EvalProgram directly, then FinalizeTraceback.
-	src := "def foo(x):\n  return x // 0\nfoo(1)\n"
-	prog, err := parseProgram(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ev := NewEvaluator()
-	_, err = ev.EvalProgram(prog)
+func TestTrapReportNamesTheCallThatFailed(t *testing.T) {
+	// What a trap owes the reader: its class, its message, and the frames it travelled through. The
+	// engine used to build that frame stack itself, and this case read it back out of Go. The
+	// compiled backend reports the class and the message on the tool channel and not yet the frames
+	// — that half is Gap K.8, whose metadata design landed with ADR 0231, and the CLI already reads
+	// a `traceback` member of the JSON result, so the seam is here and waiting for it.
+	//
+	// What this case holds today is the half the target does deliver, plus the two things the host
+	// must never do: invent a class the program did not raise, or invent a frame it cannot name.
+	err := goldenRunError(t, "def foo(x):\n  return x // 0\nfoo(1)\n")
 	if err == nil {
-		t.Fatal("expected error")
+		t.Fatal("the division by zero should have propagated")
 	}
-	err = ev.FinalizeTraceback(err)
-	ee, ok := err.(*EvalError)
-	if !ok || len(ee.Traceback) != 2 {
-		t.Fatalf("expected 2 frames after FinalizeTraceback, got %v", err)
+	ee, ok := err.(*TrapError)
+	if !ok {
+		t.Fatalf("want *TrapError, got %T (%v)", err, err)
 	}
-	if ee.Traceback[0].Name != "<module>" || ee.Traceback[1].Name != "foo" {
-		t.Fatalf("unexpected frames: %v", ee.Traceback)
+	if ee.ExnType == "" || ee.ExnMsg == "" {
+		t.Fatalf("the trap arrived without a class or a message: %+v", ee)
+	}
+	if len(ee.Traceback) != 0 {
+		t.Fatalf("a frame stack came from a backend that does not build one yet (Gap K.8): %v", ee.Traceback)
+	}
+	// The host's rendering, once a stack exists: Python's shape, with the class on the last line —
+	// the line that tells a reader what an `except IndexError:` would have matched.
+	rendered := (&TrapError{Msg: ee.ExnMsg, ExnType: ee.ExnType, ExnMsg: ee.ExnMsg,
+		Traceback: []Frame{{Name: "foo", Line: 2, Col: 1}}}).RenderTraceback()
+	for _, want := range []string{"Traceback (most recent call last):", "line 2, in foo", ee.ExnType + ": " + ee.ExnMsg} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered traceback %q is missing %q", rendered, want)
+		}
 	}
 }

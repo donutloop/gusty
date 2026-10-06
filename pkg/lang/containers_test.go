@@ -55,9 +55,9 @@ func TestListPopErrorsAreTypedAndCatchable(t *testing.T) {
 	}
 	for _, tc := range cases {
 		_, err := evalOnly(t, tc.src)
-		ee, ok := err.(*EvalError)
+		ee, ok := err.(*TrapError)
 		if !ok {
-			t.Errorf("%s: want *EvalError, got %T (%v)", tc.src, err, err)
+			t.Errorf("%s: want *TrapError, got %T (%v)", tc.src, err, err)
 			continue
 		}
 		if ee.ExnType != tc.exnType {
@@ -105,9 +105,9 @@ func TestContainerConstructorsMatchPython(t *testing.T) {
 
 func TestSetRemoveRaisesKeyErrorLikePython(t *testing.T) {
 	_, err := evalOnly(t, "s = {1, 2}\ns.remove(9)\n")
-	ee, ok := err.(*EvalError)
+	ee, ok := err.(*TrapError)
 	if !ok {
-		t.Fatalf("want *EvalError, got %T", err)
+		t.Fatalf("want *TrapError, got %T", err)
 	}
 	if ee.ExnType != "KeyError" {
 		t.Errorf("ExnType = %q, want KeyError (discard is silent, remove is not)", ee.ExnType)

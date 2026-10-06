@@ -147,7 +147,7 @@ func TestTheReferenceRaiseIsTheCompiledRaise(t *testing.T) {
 			if want != r.want {
 				t.Fatalf("the row is stale against the reference: it prints %q, row pins %q", want, r.want)
 			}
-			// The raise arrives as an EvalError, not as stdout: `captureStdout` fails the test on a
+			// The raise arrives as an TrapError, not as stdout: `captureStdout` fails the test on a
 			// program that traps, which is exactly the shape this table pins.
 			ex := trapRun(t, r.src)
 			if ex == nil {

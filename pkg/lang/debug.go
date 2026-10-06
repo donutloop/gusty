@@ -127,6 +127,15 @@ type IRGenOptions struct {
 	// Debug, when non-nil, attaches a `!dbg` record to every instruction of every
 	// program function and emits the compile unit's metadata.
 	Debug *DebugOptions
+	// EchoResult asks for the REPL's courtesy: the value of a snippet's final bare expression
+	// is written to the tool channel (fd 2) as one `gusty: result <kind> <repr>` line, so an
+	// interactive caller sees the answer it asked for instead of only what the program printed.
+	//
+	// It is opt-in and only ever set by a REPL/`--eval` caller. A program's stdout is only what
+	// the program printed (ADR 0204), and the answer is not program output — it is the tool
+	// answering "what did that expression evaluate to?", on the same channel the collector's
+	// self-report and an uncaught-exception report use (ADR 0179). Roadmap L13.1, ADR 0302.
+	EchoResult bool
 }
 
 // --- machine-readable accounts --------------------------------------------------

@@ -8,55 +8,28 @@ import (
 // ADR 0172 — None is a value, not the integer 0.
 
 func TestNoneSingletonSemantics(t *testing.T) {
-	ev := NewEvaluator()
-	prog, err := Parse("x = None\n")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	if _, err := ev.EvalProgram(prog); err != nil {
-		t.Fatalf("eval: %v", err)
-	}
-	if !ev.IsNone(ev.Vars["x"]) {
-		t.Errorf("x = None must bind the None singleton")
-	}
-	if ev.IsNone(0) {
-		t.Errorf("the integer 0 must not be None — that identity was the whole bug")
-	}
-	if got := ev.Repr(ev.Vars["x"]); got != "None" {
-		t.Errorf("Repr(None) = %q, want \"None\"", got)
-	}
-	if got := ev.TypeOf(ev.Vars["x"]); got != "None" {
-		t.Errorf("TypeOf(None) = %q, want \"None\"", got)
-	}
-	if ev.truthy(ev.Vars["x"]) {
-		t.Errorf("None must be falsy")
-	}
-	if ev.truthy(0) {
-		t.Errorf("0 must stay falsy")
-	}
-	if h := ev.heap[ev.Vars["x"]]; h == nil || h.tag() != TagNone {
-		t.Errorf("None's value tag must be TagNone, got %+v", h)
-	}
+	// ADR 0172's bug was an identity: `None` and `0` were the same word, so `0 == None` answered
+	// True and a container holding None printed as a number. The case is now asked of the compiled
+	// program — which is the stronger form of the same question, since what a user can see is what
+	// the program prints, not what a Go field held.
+	goldenStdoutIs(t, "x = None\nprint(x)\nprint(x == None)\nprint(0 == None)\nif x:\n    print(\"truthy\")\nelse:\n    print(\"falsy\")\nif 0:\n    print(\"zero-truthy\")\nelse:\n    print(\"zero-falsy\")",
+		"None\nTrue\nFalse\nfalsy\nzero-falsy")
+	// The value a snippet ends with is the other half: None renders as its one name, under str and
+	// under the echo alike, and `0` never becomes it.
+	goldenReprIs(t, "x = None\nx", "None")
+	goldenReprIs(t, "None", "None")
+	goldenReprIs(t, "0 == None", "0")
+	goldenReprIs(t, "None == None", "1")
 }
 
 func TestNoneSurvivesGC(t *testing.T) {
 	// The singleton is a permanent root: if sweeping reclaimed it, its heap slot would be
 	// handed to the free list and a later container would print as "None".
 	src := "for i in range(6):\n    xs = [i, None]\n    print(len(xs))\nprint(None)\n"
-	out, err := evalCapturePkg(t, src)
-	if err != nil {
-		t.Fatalf("eval: %v", err)
-	}
+	out := goldenStdout(t, src)
 	if strings.Count(out, "None") != 1 {
 		t.Errorf("None must render exactly once as the singleton, got %q", out)
 	}
-}
-
-// evalCapturePkg runs src through the interpreter and returns its stdout. It wraps the
-// package's captureStdout so a failing program reports the source that failed.
-func evalCapturePkg(t *testing.T, src string) (string, error) {
-	t.Helper()
-	return captureStdout(t, src), nil
 }
 
 func TestVoidFunctionYieldsNone(t *testing.T) {
@@ -74,7 +47,7 @@ func TestVoidFunctionYieldsNone(t *testing.T) {
 		{"def f(n):\n    for i in range(3):\n        if i == n:\n            return i\n\n    return -1\n\nprint(f(1))\n", "1\n"},
 	}
 	for _, tc := range cases {
-		got, err := evalCapturePkg(t, tc.src)
+		got, err := runGoldenStdout(t, tc.src)
 		if err != nil {
 			t.Errorf("%q: %v", tc.src, err)
 			continue
@@ -122,7 +95,7 @@ func TestNoneEqualityIsStaticButNotLazy(t *testing.T) {
 
 func TestNoneVarIsClearedByReassignment(t *testing.T) {
 	// x = None; x = 0 must print 0 — the variable's *latest* assignment decides.
-	got, err := evalCapturePkg(t, "x = None\nx = 0\nprint(x)\nprint(x == None)\n")
+	got, err := runGoldenStdout(t, "x = None\nx = 0\nprint(x)\nprint(x == None)\n")
 	if err != nil {
 		t.Fatalf("eval: %v", err)
 	}

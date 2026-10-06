@@ -50,19 +50,6 @@ func firstNonEmptyLine(s string) string {
 	return ""
 }
 
-// safeInterpreterRun is lang.InterpreterRun with a net under it. A Go panic in the
-// compiler or the evaluator used to take the whole test binary down, which turns
-// one bad program into "the suite crashed" and loses every other row; recorded as
-// a leg failure it is instead a matrix row with a name (ADR 0186, L11.8).
-func safeInterpreterRun(t *testing.T, src string) (out string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			out, err = "", fmt.Errorf("compiler panic: %v", r)
-		}
-	}()
-	return lang.InterpreterRun(src)
-}
-
 // safeAOTRun is runAOTConformance with the same net: codegen panics are recorded,
 // not fatal, so the corpus keeps reporting the other programs.
 func safeAOTRun(t *testing.T, src string) (out string, err error) {
@@ -124,13 +111,12 @@ func requirePinnedOracle(t *testing.T) {
 	}
 }
 
-// runLegs is the three legs of one case, and nothing else: interpreter, compiled
-// binary, CPython. No assertion lives here — a leg that fails is data.
+// runLegs is the two legs of one case, and nothing else: the compiled binary and CPython.
+// No assertion lives here — a leg that fails is data. The third leg this carried (the AST
+// interpreter) left with ADR 0302; what the matrix compares now is the artifact against the
+// reference, which is the comparison that ever decided anything (ADR 0186).
 func runLegs(t *testing.T, c lang.ConformanceCase) lang.ConformanceResult {
 	row := lang.ConformanceResult{Case: c}
-	out, ierr := safeInterpreterRun(t, c.Source)
-	row.InterpOut, row.InterpErr = out, errText(ierr)
-	row.InterpOK = ierr == nil
 
 	aout, aerr := safeAOTRun(t, c.Source)
 	row.AOTOut, row.AOTErr = aout, errText(aerr)
@@ -140,7 +126,7 @@ func runLegs(t *testing.T, c lang.ConformanceCase) lang.ConformanceResult {
 	row.PythonOut, row.PythonErr = pout, errText(perr)
 	row.PythonOK = perr == nil
 
-	row.Parity = row.InterpOK && row.AOTOK && row.InterpOut == row.AOTOut
+	row.Conformant = c.Asserted && row.AOTMatchesPython
 	row.OracleDrift = c.OracleCheck(&row)
 	return row
 }
@@ -190,8 +176,8 @@ func buildConformanceMatrix(t *testing.T) lang.ConformanceMatrix {
 		row := runLegs(t, c)
 		matrix.Results = append(matrix.Results, row)
 		matrix.Rows++
-		if c.Shared {
-			if row.Parity {
+		if c.Asserted {
+			if row.Conformant {
 				matrix.Pass++
 			} else {
 				matrix.Fail++
@@ -216,30 +202,31 @@ func buildConformanceMatrix(t *testing.T) lang.ConformanceMatrix {
 	return matrix
 }
 
-// TestConformanceMatrix runs every whole-program integration case through THREE
-// legs — the AST interpreter, the LLVM AOT compiler, and CPython — records the
-// outcome in a machine-readable matrix, and asserts two contracts:
+// TestConformanceMatrix runs every whole-program integration case through both legs — the
+// binary the LLVM backend produced, and the pinned CPython — records the outcome in a
+// machine-readable matrix, and asserts two contracts:
 //
-//  1. parity: every shared case prints identical stdout on both backends; and
-//  2. the oracle: every case's observed CPython state equals the state the
-//     registry declares, with its reason, owner and per-leg pins still true.
+//  1. conformance: every asserted case prints the stdout the reference prints, under the
+//     row's documented comparison rules; and
+//  2. the oracle: every case's observed CPython state equals the state the registry
+//     declares, with its reason, owner and per-leg pins still true.
 //
-// Contract 2 is what L11.9 adds (ADR 0186): before it, a construct that *both*
-// backends got wrong was invisible to CI, because parity only compares the two
-// implementations to each other. The artifact goes to
-// integration/conformance-matrix.json for agent and script consumption.
+// Contract 1 is the one that survived ADR 0302's removal of the AST interpreter: the parity
+// contract it replaces ("the two backends print the same bytes") could not see a wrong answer
+// both engines shared, which is the hole L11.9's oracle leg was built to close (ADR 0186). The
+// artifact goes to integration/conformance-matrix.json for agent and script consumption.
 func TestConformanceMatrix(t *testing.T) {
 	requirePinnedOracle(t)
 	matrix := conformanceMatrix(t)
 
-	// Assert the shared-lowering contract: every shared case must pass parity.
+	// Assert the conformance contract: every asserted case prints what the reference prints.
 	if matrix.Fail != 0 {
 		for _, r := range matrix.Results {
-			if !r.Parity && r.Case.Shared {
-				t.Errorf("conformance case %s (%s): interp=%q aot=%q", r.Case.ID, r.Case.Name, r.InterpOut, r.AOTOut)
+			if !r.Conformant && r.Case.Asserted {
+				t.Errorf("conformance case %s (%s): aot=%q python=%q", r.Case.ID, r.Case.Name, r.AOTOut, r.PythonOut)
 			}
 		}
-		t.Fatalf("conformance matrix: %d/%d cases failed parity", matrix.Fail, len(matrix.Results))
+		t.Fatalf("conformance matrix: %d/%d cases failed against the reference", matrix.Fail, len(matrix.Results))
 	}
 
 	// Assert the oracle contract: the registry must describe reality in both
@@ -254,7 +241,7 @@ func TestConformanceMatrix(t *testing.T) {
 			matrix.OracleDrift, len(matrix.Results))
 	}
 
-	t.Logf("conformance matrix: %d/%d parity, oracle %d match / %d debt / %d not-applicable over %d cases (artifact: integration/conformance-matrix.json)",
+	t.Logf("conformance matrix: %d/%d conformant, oracle %d match / %d debt / %d not-applicable over %d cases (artifact: integration/conformance-matrix.json)",
 		matrix.Pass, len(matrix.Results), matrix.OracleMatched, matrix.OracleDebt, matrix.OracleNA, len(matrix.Results))
 }
 

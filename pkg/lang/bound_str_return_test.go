@@ -84,7 +84,7 @@ func TestTheRenderingRefusalIsNotAWrongNumber(t *testing.T) {
 			if err == nil && res != nil {
 				// Answering is allowed, but not with a digit the reference does not print; the
 				// table above is where answers are pinned, so a compile here must run cleanly.
-				if _, _, rerr := EvalExpr(r.src); rerr != nil {
+				if _, _, rerr := evalGolden(t, r.src); rerr != nil {
 					t.Fatalf("compiled cleanly but the program failed to run: %v", rerr)
 				}
 				return

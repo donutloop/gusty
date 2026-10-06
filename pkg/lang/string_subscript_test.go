@@ -61,8 +61,8 @@ func TestStringSubscriptIsTextInCompiledCode(t *testing.T) {
 // TestStringSubscriptTrapIsTyped: an out-of-range character subscript is the program's mistake, and
 // the interpreter says so with the class CPython uses, not an untyped message.
 func TestStringSubscriptTrapIsTyped(t *testing.T) {
-	_, _, err := EvalExpr("s = \"abc\"\nprint(s[9])\n")
-	ee, ok := err.(*EvalError)
+	_, _, err := evalGolden(t, "s = \"abc\"\nprint(s[9])\n")
+	ee, ok := err.(*TrapError)
 	if !ok || ee.ExnType != "IndexError" {
 		t.Fatalf("expected a typed IndexError, got %#v", err)
 	}

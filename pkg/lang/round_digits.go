@@ -46,7 +46,7 @@ import (
 )
 
 // roundArityMessage is the arity sentence, written once and read by both backends: the evaluator
-// raises it as an EvalError and codegen refuses with it. Two spellings of one event is the shape
+// raises it as an TrapError and codegen refuses with it. Two spellings of one event is the shape
 // ADR 0236 and ADR 0262 both had to come back for, and `round()` with no argument was, until this
 // pair of lines, a Go panic in the evaluator (roadmap Gap R.131).
 func roundArityMessage(given int) string {
@@ -222,21 +222,3 @@ func (g *irGen) raiseNdigitsTypeMismatch(b *strings.Builder, msg string, sp Span
 	g.branchRaise(b, always, "TypeError", msg, sp, "roundnd")
 }
 
-// roundNdigits is the interpreter's half of the digit-count check the compiled backend asks of
-// `roundNdigitsValue`: the count must be an integer, and what arrives that is not one is the
-// TypeError CPython raises, worded with the kind that turned up — `round(2.345, 1.5)` is
-// "type 'float' is not what round() asked for" territory, and the reference says
-// `'float' object cannot be interpreted as an integer`. Truncating a 1.5 to 1 instead would be the
-// Gap R.69 mistake wearing a different hat: answering a program the reference stops on.
-//
-// A verdict is an integer here for the same reason it is one everywhere else since ADR 0257:
-// `round(2.345, True)` is 2.3 in the reference, because True *is* 1.
-func (e *Evaluator) roundNdigits(v int64) (int, error) {
-	if o, ok := e.heap[v]; ok && o.kind != "bool" {
-		return 0, exnError("TypeError", e.valueTypeName(v)+" object cannot be interpreted as an integer")
-	}
-	if o, ok := e.heap[v]; ok {
-		return int(o.bval), nil
-	}
-	return int(v), nil
-}

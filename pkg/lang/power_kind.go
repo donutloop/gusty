@@ -377,8 +377,8 @@ func powerComplexResult(base, exp float64) (raised bool, asked bool) {
 
 // powerComplexRefusal is the words for that refusal: naming what the reference answers with and what this
 // language lacks (Gap R.38 — a diagnostic must describe the program the reader is holding).
-func powerComplexRefusal() *EvalError {
-	return &EvalError{
+func powerComplexRefusal() *TrapError {
+	return &TrapError{
 		ExnType: "ValueError",
 		Msg: "a negative base raised to a fractional power is a complex number in the reference, " +
 			"and this language has no complex value; the compiled leg declines the program rather " +
@@ -386,48 +386,6 @@ func powerComplexRefusal() *EvalError {
 	}
 }
 
-// powerNegativeExponentFromZeroFor is the raise test for two evaluated operands, where the caller has
-// already unboxed them: a zero base and a negative exponent, either spelling. The base may be a boxed 0.0
-// or the bare int 0, and the exponent may arrive as a negative int or as a boxed negative float.
-func powerNegativeExponentFromZeroFor(l, r int64, e *Evaluator) bool {
-	// `l` and `r` are the unboxed WORDS the numeric road carries, and a float is a heap HANDLE, not its
-	// value — `0.0 ** -1` arrives as l=281474976710658 (the box), so testing `l != 0` declined the raise
-	// and pow answered `inf`. The value has to be asked of the heap before the sign is judged.
-	lv, isFloat := float64(0), false
-	if e != nil {
-		if f, ok := e.floatOf(l); ok {
-			lv, isFloat = f, true
-		} else if b, ok := e.heap[l]; ok && b.kind == "float" {
-			lv, isFloat = b.fval, true
-		}
-	}
-	if isFloat {
-		if lv != 0 {
-			return false
-		}
-		if r < 0 {
-			return true
-		}
-		if e != nil {
-			if rf, ok := e.floatOf(r); ok {
-				return rf < 0
-			}
-		}
-		return false
-	}
-	if l != 0 {
-		return false
-	}
-	if r < 0 {
-		return true
-	}
-	if e != nil {
-		if rf, ok := e.floatOf(r); ok {
-			return rf < 0
-		}
-	}
-	return false
-}
 
 // The last-digit gap that powToReference tried to close is FILED, not closed: see Gap R.178. Go's
 // math.Pow and the host libm the compiled leg reaches through llvm.pow.f64 disagree by one ULP on part of

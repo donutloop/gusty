@@ -176,7 +176,7 @@ func TestPowerComplexIsRefusedNotNan(t *testing.T) {
 	} {
 		r := r
 		t.Run(r.name, func(t *testing.T) {
-			// The interpreter REFUSES with an EvalError, so `captureStdout` cannot be used here — it
+			// The interpreter REFUSES with an TrapError, so `captureStdout` cannot be used here — it
 			// fails the test on a program that traps, which is the shape being pinned.
 			// The test looks for a printed NaN, not for the WORD "nan", which the refusal's own
 			// message contains: only an ANSWER of nan is the bug, and the refusal naming it is the fix.

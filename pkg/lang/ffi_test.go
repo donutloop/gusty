@@ -71,7 +71,7 @@ func TestGenerateIRExternStr(t *testing.T) {
 // interpreter: extern calls dispatch to the Go registry.
 func TestEvalExtern(t *testing.T) {
 	// abs(-5) == 5
-	v, _, err := EvalExpr("extern fn abs(x: int) -> int\nabs(-5)")
+	v, _, err := evalGolden(t, "extern fn abs(x: int) -> int\nabs(-5)")
 	if err != nil {
 		t.Fatalf("abs: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestEvalExtern(t *testing.T) {
 		t.Fatalf("abs(-5) = %d, want 5", v)
 	}
 	// getpid() returns the process id
-	v, _, err = EvalExpr("extern fn getpid() -> int\ngetpid()")
+	v, _, err = evalGolden(t, "extern fn getpid() -> int\ngetpid()")
 	if err != nil {
 		t.Fatalf("getpid: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestEvalExtern(t *testing.T) {
 		t.Fatalf("getpid() = %d, want %d", v, os.Getpid())
 	}
 	// strlen("hello") == 5
-	v, _, err = EvalExpr("extern fn strlen(s: str) -> int\nstrlen(\"hello\")")
+	v, _, err = evalGolden(t, "extern fn strlen(s: str) -> int\nstrlen(\"hello\")")
 	if err != nil {
 		t.Fatalf("strlen: %v", err)
 	}

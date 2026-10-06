@@ -47,7 +47,7 @@ func TestTypeAliasParsesAndResolvesStructurally(t *testing.T) {
 // compile-time no-op and that a function using an alias runs without error.
 func TestTypeAliasInterpNoOp(t *testing.T) {
 	src := "type Count = int\ndef twice(c: Count):\n    return c * 2\nprint(twice(21))\n"
-	if _, diags, err := EvalExpr(src); err != nil {
+	if _, diags, err := evalGolden(t, src); err != nil {
 		t.Fatalf("eval: %v (diags=%v)", err, diags)
 	}
 }

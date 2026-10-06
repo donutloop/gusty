@@ -55,7 +55,7 @@ func TestPropInterpreterValid(t *testing.T) {
 	for _, seed := range []int64{1, 42, 20260702, 12345, 54321, 999} {
 		srcs := PropSource(seed, 40, g)
 		for i, src := range srcs {
-			if _, err := InterpreterRun(src); err != nil {
+			if _, err := runGoldenStdout(t, src); err != nil {
 				t.Fatalf("seed %d corpus program %d rejected: %v\nsource:\n%s", seed, i, err, src)
 			}
 		}
@@ -68,8 +68,8 @@ func TestPropInterpreterDeterministic(t *testing.T) {
 	g := DefaultPropGrammar()
 	srcs := PropSource(20260702, 40, g)
 	for i, src := range srcs {
-		out1, err1 := InterpreterRun(src)
-		out2, err2 := InterpreterRun(src)
+		out1, err1 := runGoldenStdout(t, src)
+		out2, err2 := runGoldenStdout(t, src)
 		if err1 != nil || err2 != nil {
 			t.Fatalf("seed corpus program %d errored: %v / %v\n%s", i, err1, err2, src)
 		}

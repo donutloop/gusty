@@ -74,7 +74,7 @@ func TestNumericFoldsRefuseWhatTheyCannotAnswer(t *testing.T) {
 		{"print(sum([[1], [2]]))\n", "unsupported operand type(s) for +: 'int' and 'list'"},
 		{"print(sum([\"a\"]))\n", "unsupported operand type(s) for +: 'int' and 'str'"},
 	} {
-		_, _, err := EvalExpr(tc.src)
+		_, _, err := evalGolden(t, tc.src)
 		if err == nil {
 			t.Fatalf("%q answered; CPython raises %q", tc.src, tc.want)
 		}

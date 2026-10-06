@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -17,22 +16,11 @@ import (
 // quietly implement two different rules.
 
 // negInterp runs src through the interpreter and returns what it printed.
+// negInterp answers what a program printed, checked against the record the retired engine left
+// (ADR 0302): the compiled program runs, and the answer it owes is the one that was recorded.
 func negInterp(t *testing.T, src string) (string, error) {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	_, _, evalErr := EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("read pipe: %v", err)
-	}
-	return buf.String(), evalErr
+	return runGoldenStdout(t, src)
 }
 
 // negBuildRun compiles src through the real pipeline and runs the binary, returning the
@@ -168,7 +156,7 @@ func TestNegativeIndexPastTheStartStillTraps(t *testing.T) {
 	if err == nil {
 		t.Fatalf("interpreter: want IndexError, got stdout %q", out)
 	}
-	var evalErr *EvalError
+	var evalErr *TrapError
 	if !errors.As(err, &evalErr) || evalErr.ExnType != "IndexError" {
 		t.Fatalf("interpreter: want an IndexError, got %v (%T)", err, err)
 	}

@@ -3642,6 +3642,8 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// `--emit-source-map` wants the line table without asking for DWARF. Turning marks
 	// into metadata is the gated part (ADR 0231).
 	g.dbgOn = opts != nil && opts.Debug != nil
+	g.echoOn = opts != nil && opts.EchoResult
+	g.echoKinds = map[string]string{}
 	g.decoratorNames = map[string]bool{}
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
@@ -3784,12 +3786,23 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	}
 	g.funcRaiseExit = "main.raiseexit"
 	g.inMain = true
+	// The REPL's echo, compiled: the last statement of a snippet is a *question* the reader
+	// asked (L11.1's `1 + 1`, L11.2's repr of a text), so the caller that asked it gets the
+	// answer back on the tool channel. Only a REPL/`--eval` caller turns this on; a program is
+	// never echoed, because a program's stdout is only what the program printed (ADR 0204).
+	echoTarget := g.echoTarget(prog)
 	for _, st := range prog.Stmts {
 		if _, ok := st.(*FuncDef); ok {
 			continue
 		}
 		g.dbgMark(&b, st.Span())
 		g.gcCall(&b)
+		if st == echoTarget {
+			if err := g.echoStmt(&b, st.(*ExprStmt).Expr); err != nil {
+				return "", nil, err
+			}
+			continue
+		}
 		if err := g.stmt(&b, st); err != nil {
 			return "", nil, err
 		}
@@ -3866,6 +3879,16 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 			g.globals.WriteString(heapRuntimeIR)
 		}
 		g.globals.WriteString(numArithRuntimeIR)
+	}
+	// The REPL echo's writer (roadmap L13.1, ADR 0302) rides with the heap block for the same
+	// reason the arithmetic door does: it renders through `rt_str_ptr`/`rt_str_len`, which live
+	// there, and a referenced internal function that was never emitted is the module `llc`
+	// rejects.
+	if g.echoUsed || runtimeBlockReferenced(echoRuntimeIR, bodyText) {
+		if !needHeap {
+			g.globals.WriteString(heapRuntimeIR)
+		}
+		g.globals.WriteString(echoRuntimeIR)
 	}
 	// The precise-root stack runtime (ADR 0181) is emitted whether or not the program
 	// allocates: every function prologue calls rt_frame_open, and a referenced but
@@ -4244,6 +4267,12 @@ type irGen struct {
 	runtimeDicts map[string]bool
 	runtimeSets  map[string]bool
 	heapUsed     bool
+	// echoOn records that this module was built for a caller that wants the value of a snippet
+	// back (the REPL, `--eval`), and echoUsed that the module actually calls the writer — which
+	// is what gates echoRuntimeIR. Roadmap L13.1, ADR 0302.
+	echoOn    bool
+	echoUsed  bool
+	echoKinds map[string]string
 	// curFnSrc is the source-level name of the function being lowered, for the
 	// traceback frame; empty means module level, which renders as <module>.
 	curFnSrc string
@@ -4393,6 +4422,9 @@ type irGen struct {
 	// (roadmap L11.2, Gap R.170/R.171).
 	moduleBinds     map[string][]Expr
 	strArgBindCache map[string][]Expr
+	// strArgInFlight holds the names whose binding is currently being asked about, so a name whose
+	// own binding mentions it (`s = s + x`) is refused instead of recursed into. See strArgIsNumberish.
+	strArgInFlight map[string]bool
 	// unwritten is the checker's answer to "which names may this body read before assigning them",
 	// keyed by the FuncDef whose body the read sits in (nil key: the module's own statements). It is
 	// the same walk the checker runs and already warns about, asked a second question (ADR 0228) --
@@ -15043,6 +15075,21 @@ func (g *irGen) strArgIsNumberish(e Expr) bool {
 		if len(vals) == 0 {
 			return false
 		}
+		// A name whose last binding is an expression that mentions the name itself — `s = s + x`,
+		// the accumulator every loop writes — asks this predicate the same question again. The answer
+		// is not provable from the bindings (the value depends on what was already there), and the
+		// honest refusal is what the digits road wants. Without the guard the question recursed until
+		// the process ran out of stack: the fold crashed instead of refusing, which is the one answer
+		// a compiler is never allowed (roadmap Gap R.38's rule; surfaced by ADR 0302's echo, which
+		// asks the pair about a snippet's final `s`).
+		if g.strArgInFlight == nil {
+			g.strArgInFlight = map[string]bool{}
+		}
+		if g.strArgInFlight[n.Value] {
+			return false
+		}
+		g.strArgInFlight[n.Value] = true
+		defer delete(g.strArgInFlight, n.Value)
 		return g.strArgIsNumberish(vals[len(vals)-1])
 	case *BinOp:
 		switch n.Op {

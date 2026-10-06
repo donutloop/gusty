@@ -61,12 +61,8 @@ func TestAMutatorIsNotAValueInThePlacesAValueIsWanted(t *testing.T) {
 		`len([1].append(2))`,
 		`abs({1}.add(2))`,
 	} {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		if v, err := NewEvaluator().EvalProgram(prog); err == nil {
-			t.Errorf("%s answered %v; the reference raises TypeError because the mutator hands back None", src, v)
+		if err := goldenRunError(t, src); err == nil {
+			t.Errorf("%s answered; the reference raises TypeError because the mutator hands back None", src)
 		}
 	}
 }

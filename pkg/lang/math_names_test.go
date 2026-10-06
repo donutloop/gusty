@@ -289,10 +289,10 @@ func TestTheWholeNumberRuleIsTheOnesTheReferenceUses(t *testing.T) {
 }
 
 // exnText is a raised value as the CLI would print it: the class and the message live in two
-// fields of an EvalError, and Error() prints only the message, so a test that compared Error()
+// fields of an TrapError, and Error() prints only the message, so a test that compared Error()
 // would read a typed ValueError as an ordinary failure.
 func exnText(err error) string {
-	if e, ok := err.(*EvalError); ok {
+	if e, ok := err.(*TrapError); ok {
 		return trapText(e)
 	}
 	if err == nil {

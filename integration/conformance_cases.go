@@ -37,6 +37,14 @@ func mergePrograms(names ...string) string {
 // every programs/*.gy that runs as a standalone source (fragments used only by
 // multi-file build tests are excluded — they appear in conformanceMerged; probe
 // programs — recorded divergences — appear in conformanceProbes).
+//
+// The ledger is the current claim: an `aot` pin is what the compiled leg prints, and a
+// `python` pin what the pinned CPython prints. Its prose is history: a `reason` written before
+// ADR 0302 sometimes measures three engines, because until that cycle the harness ran three legs
+// (the AST interpreter among them). Those sentences record what was measured when the row was
+// written — the same way a roadmap row's `Free text` cell keeps its pre-tabulation wording — and
+// they are not a claim about what runs today. What runs is in the pins, and a pin for a leg the
+// harness does not run fails the build (pkg/lang/conformance.go, `leg`).
 func conformanceStandalone() []lang.ConformanceCase {
 	names := []string{
 		"single", "sq", "print1", "ir", "fstr", "floatfn",
@@ -419,7 +427,7 @@ func conformanceStandalone() []lang.ConformanceCase {
 			ID:     "programs/" + n,
 			Name:   n + ".gy",
 			Source: readProgramSrc(n),
-			Shared: true,
+			Asserted: true,
 		})
 	}
 	return cases
@@ -446,7 +454,7 @@ func conformanceMerged() []lang.ConformanceCase {
 			ID:     g.id,
 			Name:   g.name,
 			Source: mergePrograms(g.files...),
-			Shared: true,
+			Asserted: true,
 		})
 	}
 	return cases
@@ -606,7 +614,7 @@ func conformanceProbes() []lang.ConformanceCase {
 			ID:     "programs/" + n,
 			Name:   n + ".gy",
 			Source: readProgramSrc(n),
-			Shared: false, // a probe is a recorded divergence, not parity surface
+			Asserted: false, // a probe is a recorded divergence, not conformance surface
 		})
 	}
 	return cases
@@ -665,11 +673,11 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/whole_number_builtins": {oracle: lang.OracleNA,
 		reason: "floor, ceil and sqrt are this language's builtins; the reference keeps them in the math module, so the CPython leg stops at a NameError on the first line — integration/math_names_test.go runs the same source with `from math import floor, ceil, sqrt` prefixed and asserts that twin against both engines",
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}, {Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
 	"programs/probe_pair_bound_name_takes_a_value": {oracle: lang.OracleDebt,
 		reason: "CPython prints 14, 3, [14], 3 and the interpreted leg now prints the same four — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because an argument, a list element and a builtin's argument each keep one word for the value and have nowhere to put the tag the binding carried",
 		ref:    "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n3\n[14]\n3\n"}, {Backend: "aot", Missing: true, Err: "holds the answer of arithmetic over a slot"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "holds the answer of arithmetic over a slot"}}},
 	// `and`/`or` choose an operand (Gap R.147, ADR 0269). The print door can render the choice because the
 	// module has one printer that takes a value *and* its kind; the positions that keep one word for a value
 	// — `len`'s argument, a binding, a container element, an arithmetic operand — refuse instead of reading
@@ -677,7 +685,7 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_and_or_shapes_the_word_carry": {oracle: lang.OracleDebt,
 		reason: "CPython and the interpreted leg print 3, d, ['b'], 5.0 and [[1, 2]]; the compiled leg spends exit 1 on the first of them, because a chosen operand that is not a number has no word to travel in outside the print door, where the tag can travel beside the payload",
 		ref:    "roadmap Gap R.147 (owed half, owned by L11.1's tagged value word) and Gap R.146; docs/adr/0269, Consequences",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\nd\n['b']\n5.0\n[[1, 2]]\n"}, {Backend: "aot", Missing: true, Err: "requires an inline list/dict/set literal"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "requires an inline list/dict/set literal"}}},
 	// A text used as an iterable: CPython and the interpreted leg answer the characters; the compiled
 	// leg spends exit 1 because a comprehension iterable and an iterable builtin argument cannot be a
 	// text there at all. Before this row the interpreter answered [] for the comprehensions and the
@@ -706,85 +714,84 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_a_container_has_its_methods": {oracle: lang.OracleDebt,
 		reason: "CPython runs the whole program and the interpreted leg runs it too -- extend, insert, index, remove, clear on the list and update, pop, setdefault, clear on the dict; the compiled leg spends exit 1 on the first of them, because it folds a container method only over a literal written at the call and the slots a variable holds belong to the runtime",
 		ref:    "roadmap Gap R.188 and Gap R.63 (both engines' receiver tables, owner L12.11); docs/adr/0301",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n[0, 1, 2, 3]\n2\n[1, 2, 3]\n[]\n[1, 2, 3]\n{'a': 1, 'b': 2}\n1\n{'b': 2}\n9\n3\n{'b': 2, 'c': 3}\nNone\n{}\n2\n2\n"}, {Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
 	"programs/probe_an_in_place_mutation_answers_none": {oracle: lang.OracleDebt,
 		reason: "CPython prints None for every in-place mutation and the item for `pop`, and the interpreted leg prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
 		ref:    "roadmap Gap R.187 (the void half, closed) and L12.11 / Gap R.63 (the receiver table, owed); docs/adr/0300",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "None\n[1, 2]\nNone\nNone\n1\nNone\n{1, 2}\nNone\n{1}\nNone\nset()\nNone\n[5, 6]\n[1, 2]\n"}, {Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
 	"programs/probe_a_format_spec_formats": {oracle: lang.OracleDebt,
 		reason: "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the interpreted leg prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
 		ref:    "roadmap Gap R.186 and L12.8 (the compiled half, owed); docs/adr/0299",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3.50\n4\n2\n00007\n-0004\nff\n1,234.00\n   3.5|\n3.5   |\n**3.5**|\n25.00%\n3.142e+00\n2\n2.0\n7\n     3.5|\n00007\n0008\npi=3.14 e=2.72\n"}, {Backend: "aot", Missing: true, Err: "needs a value this backend can read at compile time"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "needs a value this backend can read at compile time"}}},
 	"programs/probe_a_text_iterates_one_character_at_a_time": {oracle: lang.OracleDebt,
 		reason: "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the interpreted leg now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
 		ref:    "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "['a', 'b', 'c']\n['a', 'c']\n['aa', 'bb']\n[]\n4\n['a', 'b', 'c']\nc\na\nc\nZ\n3\n1\n5\na\nb\nc\n"}, {Backend: "aot", Missing: true, Err: "comprehension iterable must be an inline list literal, range(), or a container variable"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "comprehension iterable must be an inline list literal, range(), or a container variable"}}},
 	"programs/probe_pair_from_a_tuple_unpack": {oracle: lang.OracleDebt,
 		reason: "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
 		ref:    "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "8\n"}, {Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "index cannot reach into xs's slots"}}},
 	"programs/probe_whole_number_slot_beyond_the_int_word": {oracle: lang.OracleDebt,
 		reason: "CPython answers 7000000000 and so does the interpreted leg, whose ints are int64; the compiled int word is 32 bits, and the arm raises a catchable OverflowError before the fptosi rather than wrapping a poison truncation into a silent negative — the harness sees the compiled leg's exit class, and integration/numeric_slot_arith_test.go is where the sentence and its catchability are asserted",
 		ref:    "roadmap L12.12 (the word's owner); ADR 0264's identical guard for floor/ceil, applied at the new door by ADR 0265",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "7000000000\n"}, {Backend: "aot", Missing: true, Err: "exit status 3"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "exit status 3"}}},
 	"programs/probe_whole_number_beyond_the_int_word": {oracle: lang.OracleNA,
 		reason: "the same spelling (the reference's math.floor / math.ceil), and the two engines disagree here on purpose: the evaluator's ints are int64 and answer 3000000000, while the compiled int word is 32 bits and its guard raises `OverflowError: floor: the whole number is beyond the word this backend's int holds (roadmap L12.12)` rather than wrapping a poison `fptosi` into a silent negative — the harness sees the compiled leg's exit class, and integration/math_names_test.go is where the sentence itself and its catchability are asserted",
 		ref:    "roadmap Gap R.133 (measured landing ADR 0264); the decision this waits on is L12.12's",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3000000000\n3000000000\n"}, {Backend: "aot", Missing: true, Err: "exit status 3"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "exit status 3"}}},
 	"programs/probe_predeclared_name_not_callable": {oracle: lang.OracleDebt,
-		reason: "CPython evaluates `pow(2, 3)` as 8; here the name is in the checker's predeclared table and in neither engine's call table, so the interpreted leg traps NameError and the compiled leg refuses the call — a program the reference runs, spent on exit 3 and exit 1 (ADR 0211's misclassed class)",
+		reason: "CPython evaluates `pow(2, 3)` as 8; here the name is in the checker's predeclared table but not in the call table, so the compiled leg refuses the call — a program the reference runs, spent on exit 1 (ADR 0211's misclassed class)",
 		ref:    "roadmap Gap R.136 (measured landing ADR 0264); the same shape Gap R.51 had, and the same two ways out",
 		pins: []lang.OraclePin{
-			{Backend: "interpreter", Missing: true, Err: "name 'pow' is not defined"},
 			{Backend: "aot", Missing: true, Err: `unsupported call "pow"`},
 		}},
 	"programs/probe_float_literal_with_exponent": {oracle: lang.OracleDebt,
 		reason: "the reference parses `1e18` as a float literal and prints 1e+18; here the exponent marker is not in the number lexer, so the `e18` is read as a name and both legs stop at the same parse error before either engine runs",
 		ref:    "roadmap Gap R.135 (measured landing ADR 0264); docs/language.md § Lexical structure → Numeric literals",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: `parse error at 1:8: expected ")"`}, {Backend: "aot", Missing: true, Err: `parse error at 1:8: expected ")"`}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: `parse error at 1:8: expected ")"`}}},
 	"programs/non_finite_float_constant": {oracle: lang.OracleNA, reason: "the last two lines ask `sqrt`, which the reference keeps in the math module, so the CPython leg stops at a NameError there — the rows above them do match, and integration/math_names_test.go runs this file against `from math import floor, ceil, sqrt` on both engines",
 		ref:  "roadmap Gap R.134 (closed alongside Gap R.51 by ADR 0264)",
-		pins: []lang.OraclePin{{Backend: "interpreter", Stdout: "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"}, {Backend: "aot", Stdout: "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"}}},
+		pins: []lang.OraclePin{{Backend: "aot", Stdout: "inf\ninf\n-inf\nnan\nnan\ninf\nnan\n0.0\n"}}},
 	"programs/for_int_count": {oracle: lang.OracleNA,
 		reason: "`for i in 4:` treats an integer as a repeat count; CPython raises TypeError ('int' object is not iterable), so the CPython leg stops at the first loop and never sees the rest of the file",
 		ref:    "docs/language.md § Control flow (integer repeat count) and roadmap Gap R.14 (ADR 0207)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "0\n1\n2\n3\n0\n10\n20\n100\n101\n102\n10\ndone\n"}, {Backend: "aot", Stdout: "0\n1\n2\n3\n0\n10\n20\n100\n101\n102\n10\ndone\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0\n1\n2\n3\n0\n10\n20\n100\n101\n102\n10\ndone\n"}}},
 	"programs/param_default_order": {oracle: lang.OracleNA,
 		reason: "def offset(base, step=10, bonus) is a SyntaxError in CPython (`parameter without a default follows parameter with a default`); here positional binding fills left to right and a keyword call names what it fills, so every parameter is reachable",
 		ref:    "roadmap Gap R.11 (closed) and docs/language.md § Parameters and defaults (ADR 0206)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "6\n16\n6\n123\n923\n129\n9\n"}, {Backend: "aot", Stdout: "6\n16\n6\n123\n923\n129\n9\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "6\n16\n6\n123\n923\n129\n9\n"}}},
 	"programs/data_b": {oracle: lang.OracleNA,
 		reason: "{5, 6, 7}[6] — subscripting a set by position is gusty surface; CPython raises TypeError ('set' object is not subscriptable)",
 		ref:    "docs/language.md § Dicts & sets (positional set subscript is a gusty extension)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "dkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\n"}, {Backend: "aot", Stdout: "dkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "dkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\n"}}},
 	"programs/features_b": {oracle: lang.OracleNA,
 		reason: "{1, 2, 3}[2] — positional set subscript again; the CPython leg stops there and never reaches the rest of the program",
 		ref:    "docs/language.md § Dicts & sets (positional set subscript is a gusty extension)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}, {Backend: "aot", Stdout: "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "func 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}}},
 	"programs/stdlib": {oracle: lang.OracleNA,
 		reason: "string.DIGITS / string.LOWERCASE are this language's stdlib names; Python's string module has no such attributes",
 		ref:    "roadmap Phase 2 § on-disk stdlib modules",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "0123456789\nabcdefghijklmnopqrstuvwxyz\n"}, {Backend: "aot", Stdout: "0123456789\nabcdefghijklmnopqrstuvwxyz\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0123456789\nabcdefghijklmnopqrstuvwxyz\n"}}},
 	"programs/async_basic": {oracle: lang.OracleNA,
 		reason: "await at module scope is a SyntaxError in CPython; the minimal synchronous-coroutine model accepts it (L5.6)",
 		ref:    "docs/shared-lowering-spec.md § async / await",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\n6\n"}, {Backend: "aot", Stdout: "3\n6\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "3\n6\n"}}},
 	"programs/async_for": {oracle: lang.OracleNA,
 		reason: "async for outside an async function is a SyntaxError in CPython; lowered as a plain for loop here (L5.6)",
 		ref:    "docs/shared-lowering-spec.md § async / await",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2\n4\n6\n"}, {Backend: "aot", Stdout: "2\n4\n6\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "2\n4\n6\n"}}},
 	"programs/async_multi": {oracle: lang.OracleNA,
 		reason: "await at module scope is a SyntaxError in CPython (L5.6)",
 		ref:    "docs/shared-lowering-spec.md § async / await",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "11\n21\n"}, {Backend: "aot", Stdout: "11\n21\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "11\n21\n"}}},
 	"programs/async_effects": {oracle: lang.OracleNA,
 		reason: "await at module scope is a SyntaxError in CPython; this is the L7.6 legal-async surface the checker must accept, so what is pinned is that both backends agree and nothing was reported",
 		ref:    "docs/language.md § Async (the await/return discipline)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "24\n18\n10\n42\n15\n6\n20\n3\n2\n4\n"}, {Backend: "aot", Stdout: "24\n18\n10\n42\n15\n6\n20\n3\n2\n4\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "24\n18\n10\n42\n15\n6\n20\n3\n2\n4\n"}}},
 	"programs/match_literal": {oracle: lang.OracleNA,
 		reason: "Literal[1, 2] is this language's checker surface; plain CPython has no Literal in scope and stops at the annotation",
 		ref:    "roadmap Phase 2 § gradual typing; docs/operations.md § gusty check",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "one\ntwo\n"}, {Backend: "aot", Stdout: "one\ntwo\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "one\ntwo\n"}}},
 	// Class patterns (roadmap Gap B, ADR 0235) — the first time this shape was ever run as a whole
 	// program. The compiled backend had matched instances carrying no such attribute, lost
 	// `Alias = Point` inside a function body (exit 2), and loaded a variable that does not exist for
@@ -792,27 +799,27 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/match_classpat": {oracle: lang.OracleNA,
 		reason: "a positional class sub-pattern needs __match_args__, which this language does not have — a class pattern binds attributes by the capture name, so CPython stops at the first case with `TypeError: Point() accepts 0 positional sub-patterns`",
 		ref:    "docs/language.md § Class patterns (ADR 0235)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "attrs 2 3\nalias 2 3\nmissing none\nkind none\nsubclass 4 5\ncall pattern\nor pattern\nfn alias 6 7\ndynamic 8\nnot a class none\nearly n 1\nlate z 99\n"}, {Backend: "aot", Stdout: "attrs 2 3\nalias 2 3\nmissing none\nkind none\nsubclass 4 5\ncall pattern\nor pattern\nfn alias 6 7\ndynamic 8\nnot a class none\nearly n 1\nlate z 99\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "attrs 2 3\nalias 2 3\nmissing none\nkind none\nsubclass 4 5\ncall pattern\nor pattern\nfn alias 6 7\ndynamic 8\nnot a class none\nearly n 1\nlate z 99\n"}}},
 	"merged/data": {oracle: lang.OracleNA,
 		reason: "inherits data_b's positional set subscript, which CPython rejects",
 		ref:    "docs/language.md § Dicts & sets (positional set subscript is a gusty extension)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\nfsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n"}, {Backend: "aot", Stdout: "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\nfsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "dsum 15\ndmin 1\ndmax 5\ndlen 3\ndidx 8\ndkeys 3\ndval 20\nslen 3\nsidx 6\nodd 25\nfsum 21\nloop 45\nbig 66\nabs 42\nconv 100 2.0 7\n"}}},
 	"merged/features": {oracle: lang.OracleNA,
 		reason: "inherits features_b's positional set subscript, which CPython rejects; features_a's \"abc\"[1] == 98 divergence is pinned on its own row",
 		ref:    "roadmap L11.5 (code-point strings)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}, {Backend: "aot", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "sum 10\narith 3 1 5.0 6 -1 5\nfloat 3.5\nstr abc\nslen 5\nsidx b\nsup ABC\nslow abc\nfunc 5\nkw 5\nlambda 49\nlen 3\nidx 2\nsum 6\nminmax 1 3\ndict 2 10\nset 3 2\nwhile 18\nif many\nstep 20\nabs 5\nconv 42 1.0 42\n"}}},
 
 	// ---- measured divergences: valid CPython programs that print something else --
 	"programs/print_args": {oracle: lang.OracleDebt,
 		reason: "print writes each argument as it evaluates it, so a call that itself prints interleaves into the caller's line; Python evaluates every argument, then writes one line",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n"}, {Backend: "aot", Stdout: "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "n = 42\na 1 b 2\n\ncsv, 1, 2, 3\ntick!tock\nxs = [1, 2, 3]\nm = {1: 2} len 3\ngot << 21 >>\n42\n"}}},
 
 	// ---- Phase 11 probes: measured, owned, and not yet paid ----------------------
 	"programs/probe_bool_through_a_call": {oracle: lang.OracleDebt,
 		reason: "a bool passed to a function prints as the 1 its parameter's slot holds: the print site sees a name, and nothing travels with that name saying it was a verdict",
 		ref:    "roadmap Gap R.111 (filed by ADR 0257, the bools-are-values cycle)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n1\n"}, {Backend: "aot", Stdout: "1\n1\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n"}}},
 	// A bool stored in a container is no longer a probe: it prints CPython's answer on both backends
 	// and lives in conformanceStandalone (roadmap Gap R.112, ADR 0259).
 	"programs/probe_bool_in_a_container":        {oracle: lang.OracleMatch},
@@ -820,31 +827,31 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_minmax_candidate_unreadable": {oracle: lang.OracleDebt,
 		reason: "a min/max fold can name the winner only when it can read every candidate: with a name the compiler has not folded, the run-time select keeps the payload and nothing says it came from a verdict, so the compiled leg prints 1 while the interpreter and CPython print True; the literal-backed candidate in the same program is parity",
 		ref:    "roadmap Gap R.124 (measured while closing Gap R.117, ADR 0261)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "True\nTrue\n"}, {Backend: "aot", Stdout: "1\nTrue\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\nTrue\n"}}},
 	"programs/probe_ternary_the_test_chose": {oracle: lang.OracleDebt,
 		reason: "a ternary whose test the compiler cannot read has no arm known to run, so the conservative rule — a verdict only when both arms are — prints the number: the compiled leg prints 1 on all four lines and the interpreter on two of them, where CPython prints True on all four",
 		ref:    "roadmap Gap R.125 (measured while closing Gap R.117, ADR 0261)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "True\n1\nTrue\n1\n"}, {Backend: "aot", Stdout: "1\n1\n1\n1\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n1\n1\n"}}},
 	"programs/probe_ternary_container_arms": {oracle: lang.OracleDebt,
 		reason: "a ternary whose arms are containers chooses between the container globals themselves — `select i1 %c, i32 @.lst1, i32 @.lst2` — and llc rejects a global in a value position, so the compiled leg exits 2 on a program the interpreter and CPython print in one line (the i32 @.N operand family of Gap R.67, arriving through a ternary)",
 		ref:    "roadmap Gap R.128 (measured while landing Gap R.102, ADR 0262; the Gap R.67 / Gap J.6 family)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n"}, {Backend: "aot", Missing: true, Err: "global variable reference must have pointer type"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "global variable reference must have pointer type"}}},
 	"programs/probe_round_digit_count_kind_unseen": {oracle: lang.OracleDebt,
 		reason: "round(x, ndigits) answers with the kind x arrived as, and only where the module can see that kind: of a parameter the call filled with a double the compiled leg takes the i32 road of the call and prints the truncated number, and of a loop variable over a literal list of doubles it prints the element handle",
 		ref:    "roadmap Gap R.129 (measured landing ADR 0263; the tagged value word's, roadmap L11.1, as with Gaps R.107–R.110)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "2.35\n2.35\n"}, {Backend: "aot", Stdout: "2\n0\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "2\n0\n"}}},
 	"programs/probe_float_loop_variable_as_number": {oracle: lang.OracleDebt,
 		reason: "a for binding over a literal container of doubles is not a number on the compiled leg: v * 2, v + 1 and v / 2 arithmetic on the element handle answer 0, 1 and 0.0 with exit 0, where the interpreter and CPython answer 3.0, 2.5 and 0.75 — the subscript read of the same container is parity, the binding never got ADR 0243's pair",
 		ref:    "roadmap Gap R.130 (measured while landing ADR 0263; Gap R.91's family, roadmap L11.1)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3.0\n2.5\n0.75\n"}, {Backend: "aot", Stdout: "0\n1\n0.0\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0\n1\n0.0\n"}}},
 	"programs/probe_negative_zero_constant": {oracle: lang.OracleDebt,
 		reason: "the sign of a negative zero the compiler wrote is lost before the module exists: the emitter materialises a folded float constant with `fadd double 0.0, <const>` (thirteen sites in pkg/lang/codegen.go), and IEEE answers -0.0 + +0.0 with +0.0 — so a literal -0.0, and a name bound to one, print 0.0, while a product the target multiplies and either road of round(-0.5, 0) print -0.0; the runtime formatter (rt_fmt_double) handles the sign and is never given the value",
 		ref:    "roadmap Gap R.132 (measured while landing ADR 0263, against the pre-cycle binary; the two-renderers-one-rule shape of ADR 0236; ADR 0263's own fold shipped with that fadd for one cycle and no longer does)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "-0.0\n-0.0\n-0.0\n-0.0\n"}, {Backend: "aot", Stdout: "0.0\n0.0\n-0.0\n-0.0\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "0.0\n0.0\n-0.0\n-0.0\n"}}},
 	"programs/probe_bool_in_a_comprehension": {oracle: lang.OracleDebt,
 		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
 		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[True, 1, 1]\n{True}\n{1: True}\n{True: 1}\n"}, {Backend: "aot", Missing: true, Err: "comprehension of verdicts needs the tagged set builder"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "comprehension of verdicts needs the tagged set builder"}}},
 	// A repeated key is paid: the interpreter's dict builders put an entry through the dict's own key
 	// lookup instead of appending it, so the comprehension, the literal and item assignment build the
 	// same one-entry container CPython does (roadmap Gap R.118, ADR 0260 — the program left the debt
@@ -852,22 +859,22 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_dict_comp_text_key": {oracle: lang.OracleDebt,
 		reason: "a dict comprehension the compiler cannot fold spells its key through its runtime builder, which walks integer keys only, so a text key dies with `comprehension key must be constant` while the interpreter and CPython print the same dict; the int spelling of the identical program is parity",
 		ref:    "roadmap Gap R.123 (measured while closing Gaps R.118 and R.120, ADR 0260)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "{'k': 3}\n3 1\n"}, {Backend: "aot", Missing: true, Err: "comprehension key must be constant"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "comprehension key must be constant"}}},
 	"programs/probe_dict_comprehension_duplicate_key": {oracle: lang.OracleMatch},
 	"programs/dict_key_rule":                          {oracle: lang.OracleMatch},
 	"programs/probe_slot_order_in_a_ternary": {oracle: lang.OracleNA,
 		reason: "the ordering CPython itself refuses — an int against a text raises TypeError, so there is no third opinion to compare; what is recorded is that the interpreter raises the same sentence and the compiled backend folds the ternary's condition and prints the true branch, measured on HEAD so it is a gap and not a regression from ADR 0259",
 		ref:    "roadmap Gap R.119 (measured while closing Gap R.112, ADR 0259)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: "not supported between instances of 'int' and 'str'"}, {Backend: "aot", Stdout: "1\n1\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n1\n"}}},
 	"programs/probe_tuple": {oracle: lang.OracleDebt,
 		reason: "a tuple literal has no AOT lowering at all (unsupported expression *lang.Tuple) and the interpreter renders one as a list",
 		ref:    "roadmap L11.3 (tuples are values)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n2\n3\n4\n5\n[1, 2]\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
 	"programs/sequence_ops": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
 		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	// Gap R.36 + R.39 closed (ADR 0228): the parity assertion for this program is that both backends
 	// print `1` and then raise the class CPython raises. The oracle leg itself exits 1 (an uncaught
 	// raise), which is why this is not_applicable rather than match -- the CPython leg cannot
@@ -877,46 +884,46 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/runtime_string_ops":    {oracle: lang.OracleMatch},
 	"programs/runtime_string_writes": {oracle: lang.OracleMatch},
 	"programs/unwritten_slot_trap": {oracle: lang.OracleNA,
-		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError; both gusty backends now print the same first line and raise the same class, which they did not before ADR 0228 -- the compiled leg printed 0 for the unbound call and exited 0, and the interpreter called it a NameError",
+		reason: "a local assigned only inside `if c:` with no else: `f(False)` never binds it. CPython raises UnboundLocalError; the compiled leg prints the same first line and raises the same class, which it did not before ADR 0228 -- it printed 0 for the unbound call and exited 0",
 		ref:    "roadmap Gap R.36 (definite assignment) + Gap R.39 (which class an unwritten local raises); ADR 0228",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "1\n", Missing: true, Err: "cannot access local variable 'x'"}, {Backend: "aot", Stdout: "1\n", Missing: true, Err: "exit status 3"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "1\n", Missing: true, Err: "exit status 3"}}},
 
 	// Gap R.48 (found while closing R.36, ADR 0228's probe pass).
 	"programs/probe_global_statement": {oracle: lang.OracleNA,
-		reason: "there is no `global` statement: CPython reads `global gz` as a declaration and the read afterwards raises NameError, the interpreter parses it as the *expression* `global gz` and reports `name 'global' is not defined`, and the compiled backend refuses the program outright. The two backends disagree with CPython and with each other, on a construct every Python reader expects",
+		reason: "there is no `global` statement: CPython reads `global gz` as a declaration and the read afterwards raises NameError, while the compiled backend parses `global gz` as the *expression* `global gz` and refuses the program for having no binding for `global` — it disagrees with the reference on a construct every Python reader expects",
 		ref:    "roadmap Gap R.48 (`global` is not in the language); Gap R.36 (the probe pass that found it)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Missing: true, Err: `undefined name "global"`}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
 	"programs/probe_percent_format": {oracle: lang.OracleDebt,
 		reason: "no `%` string formatting exists yet: the interpreter raises the operand TypeError (catchably, in all three shapes) where CPython formats, and the compiled backend refuses to lower `str % x` at all, so the compiled leg never runs",
 		ref:    "roadmap Gap R.31; ADR 0215 (the operand gate that turned the old wrong answer into this refusal)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "str % int: TypeError\nstr % tuple: TypeError\nstr % str: TypeError\n1 1\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
 	"programs/probe_operand_types": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all seven handler lines, but the compiled backend answers `1 + None` with a value instead of raising and refuses the rest at compile time, so the compiled leg never completes",
 		ref:    "roadmap Gap R.27 (operand kinds unchecked in the compiled backend); ADR 0215",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "mul-str ok\nsub ok\ndiv ok\nnone ok\nconcat ok\norder ok\ndone\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 
 	"programs/probe_builtin_traps_untyped": {oracle: lang.OracleDebt,
 		reason: "the interpreter and CPython agree on all five handler lines, but the compiled backend answers the missing-attribute case with a value instead of raising (Gap R.19) and refuses the others at compile time with prose diagnostics, so the compiled leg never completes",
 		ref:    "roadmap Gap R.25 (typed built-in traps) and Gap R.19 (attribute answers 0 in AOT); ADR 0214",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "attr ok\nvalue ok\nunpack ok\ncall ok\nlen ok\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	"programs/probe_mixed_return_value": {oracle: lang.OracleDebt,
 		reason: "a function whose return paths have different types is lowered as returning one of them, so the compiled caller reads the integer as an interned-string index and prints (null) where the interpreter and CPython print 3 — silently, with exit 0",
 		ref:    "roadmap Gap R.22 (mixed return types; ADR 0213 refiled the original Gap R.21 reading, which blamed try/except)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\n"}, {Backend: "aot", Stdout: "(null)\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "(null)\n"}}},
 	"programs/probe_math_const": {oracle: lang.OracleNA,
 		reason: "Python spells these math.pi / math.e, so the source is not a CPython program — the row stays not-applicable for the spelling alone: what the twin asserts is the two numbers below, and integration/module_const_test.go asks the reference for its own spelling beside them. The fold's lost float type — the answer this row pinned at 3 and 2 compiled — is paid (roadmap L11.6, ADR 0272)",
 		ref:    "roadmap L11.6 (a stdlib constant keeps its type); closed 2026-10-05",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3.141592653589793\n2.718281828459045\n"}, {Backend: "aot", Stdout: "3.141592653589793\n2.718281828459045\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "3.141592653589793\n2.718281828459045\n"}}},
 	"programs/probe_enumerate": {oracle: lang.OracleDebt,
 		reason: "enumerate/zip produce pairs the interpreter renders as lists (tuples again), and list(<container>) copies are refused in AOT",
 		ref:    "roadmap L11.7 + L11.3 (tuples are values)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[[0, 'a'], [1, 'b']]\n[[1, 3], [2, 4]]\n[3, 2, 1]\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	"programs/probe_fn_value": {oracle: lang.OracleDebt,
 		reason: "calling a function through a parameter is `unsupported call \"f\"` in AOT: no fnptr operand, no indirect call lowering",
 		ref:    "roadmap L11.7 (functions are values that compile)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[3, 6]\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	// The interpreter leg closed with ADR 0283: a top-level `def` now binds its own name to the same
 	// closure handle a `lambda` gets, so `apply(twice, [1, 2])` maps the function and answers CPython's
 	// `[2, 4]` instead of `undefined name twice`. Only the compiled leg still owes it — its body calls a
@@ -925,7 +932,7 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_fn_name": {oracle: lang.OracleDebt,
 		reason: "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
 		ref:    "roadmap L11.7 (functions are values that compile)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[2, 4]\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	// Five lines of CPython parity on the interpreter. The compiled leg answers the two trap lines
 	// (`abs(twice)`, `-twice`) byte-for-byte and refuses only the higher-order body — `apply` calls a
 	// *parameter* — which is L11.7's limit rather than this row's name lookup, so the row is a debt with
@@ -933,21 +940,21 @@ var oracleLedger = map[string]oracleDecl{
 	"programs/probe_a_function_as_a_value": {oracle: lang.OracleDebt,
 		reason: "the interpreter answers CPython's five lines; the compiled leg refuses the body that calls a parameter (`unsupported call \"f\"`), the higher-order limit L11.7 records",
 		ref:    "roadmap L11.7 (functions are values that compile); Gap R.150, Gap R.151, Gap R.153 (ADR 0283)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "42\n[2, 4, 6]\n12\ncaught the function operand\ncaught the negation\n"}, {Backend: "aot", Missing: true}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
 	"programs/probe_comp_runtime_reduce": {oracle: lang.OracleDebt,
 		reason: "sum over a comprehension whose elements are computed at runtime has no compile-time element set to fold; it refuses rather than add up nothing and answer 0",
 		ref:    "roadmap L11.7 (functions are values that compile)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "14\n"}, {Backend: "aot", Missing: true, Err: "runtime reduction"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "runtime reduction"}}},
 	"programs/probe_comp_folded_iter": {oracle: lang.OracleDebt,
 		reason: "a comprehension cannot walk a list the escape analysis kept as a compile-time constant — there is no runtime object to index — while `for` over the same list and the interpreter both work",
 		ref:    "roadmap L11.2 (the tagged value word makes every container a runtime object)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[2, 4, 6]\n"}, {Backend: "aot", Missing: true, Err: "compile-time constant"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "compile-time constant"}}},
 	"programs/probe_async_eager": {oracle: lang.OracleNA,
 		reason: "the compiled backend lowers an async call as a call, so `work(1)` prints at the call and the interpreter prints at the await; CPython rejects the program outright (module-scope await)",
 		ref:    "roadmap L7.6a (deferred coroutines in codegen)",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "between\neffect 1\n2\n"}, {Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "effect 1\nbetween\n2\n"}}},
 	"programs/probe_print_atomic": {oracle: lang.OracleDebt,
 		reason: "print writes as it evaluates: a call that itself prints lands inside the caller's line instead of before it",
 		ref:    "roadmap Gap L.5 (print is atomic), found by the L11.9 oracle leg",
-		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "got << 21 >>\n42\nafter\n"}, {Backend: "aot", Stdout: "got << 21 >>\n42\nafter\n"}}},
+		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "got << 21 >>\n42\nafter\n"}}},
 }

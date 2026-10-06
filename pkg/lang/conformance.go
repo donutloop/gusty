@@ -1,37 +1,49 @@
-// Package lang exposes the shared-lowering conformance matrix: a stable,
-// machine-readable JSON schema that records whether every whole-program
-// integration case produces identical stdout on BOTH backends — the AST
-// interpreter (EvalExpr) and the LLVM AOT compiler (Compile).
+// Package lang exposes the conformance matrix: a stable, machine-readable JSON schema
+// that records, for every whole-program integration case, whether the program the one
+// backend compiles prints what CPython prints for the same source.
 //
-// The shared lowering contract (see docs/shared-lowering-spec.md) says that
-// evaluating a source with the interpreter and compiling+running it through
-// AOT must produce byte-identical stdout. The conformance matrix asserts that
-// contract over every integration case and records the observed outputs so a
-// semantics drift between the two backends is caught as a matrix row failing
-// parity instead of being silently accepted.
+// The contract (see docs/conformance-spec.md) is the reference comparison: compiling and
+// running a source must produce byte-identical stdout to the pinned CPython, under the
+// documented comparison rules. The matrix asserts that over every case and records the
+// observed outputs, so a semantics drift is caught as a row failing its pin rather than
+// being silently accepted.
+//
+// Until ADR 0302 the matrix had a second leg — the AST interpreter — and a second
+// contract, "the two backends print the same thing" (parity). That contract could not
+// catch a wrong answer both engines shared, which is why the CPython leg was added
+// (ADR 0186); once the reference is in the room, engine-vs-engine agreement is a
+// restatement of "we both got it right" rather than a fact of its own. With one backend
+// the matrix asks one question.
 package lang
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
 // ConformanceSchemaVersion is the machine-readable JSON schema version for the
 // conformance matrix emitted by the integration conformance test.
 //
-// 1.1 (L11.9, ADR 0186) adds the third leg: `python_stdout`/`python_ok`/`python_error`,
-// the `interp_matches_python`/`aot_matches_python` flags, the computed `oracle`
-// classification with its declared counterpart, reason, roadmap reference, notes
-// and the matrix-level oracle counters. 1.0 rows compared the two backends to
-// each other only; a 1.1 row compares them to CPython as well.
-const ConformanceSchemaVersion = "1.2"
+// 1.0 (Phase 8) compared the two backends to each other. 1.1 (L11.9, ADR 0186) added the
+// CPython leg: `python_stdout`/`python_ok`/`python_error`, the `*_matches_python` flags,
+// the computed `oracle` classification with its declared counterpart, reason, roadmap
+// reference, notes and the matrix-level oracle counters; 1.2 (ADR 0193) added the pinned
+// `toolchain.min_python`.
+//
+// 2.0 (ADR 0302) retires the AST interpreter and every field that described it:
+// `interp_ok`/`interp_stdout`/`interp_error`, `interp_matches_python`, the row's `parity`
+// flag, and the `shared` marker — which said "this case runs on both backends" and is now
+// written as `asserted`, because what an asserted row claims is that the compiled program
+// matches the reference. A pin's `backend` is `"aot"` or `"python"`; `"interpreter"` is no
+// longer a legal value, and a ledger that still carries one fails the build rather than
+// being silently ignored.
+const ConformanceSchemaVersion = "2.0"
 
-// ConformanceCase is one whole-program conformance case. Every case is a single
-// merged source that both backends lower independently. Shared marks whether
-// the construct is expected to be shared surface: run on BOTH backends and
-// produce identical stdout. Non-shared (backend-specific) cases are recorded
-// in the matrix but not asserted for parity.
+// ConformanceCase is one whole-program conformance case: a single merged source the
+// compiler lowers and runs. Asserted marks the rows whose claim is measured — the compiled
+// program printed what the pinned CPython printed. A row that is not asserted is still
+// recorded (its refusal, its trap, its known-wrong answer, each pinned), it just makes no
+// conformance claim: that is where the gusty-only surface and the open debts live.
 //
 // The Oracle fields are the case's *declared* CPython-oracle state (L11.9): the
 // classification the harness must observe, why it is that way, and which roadmap
@@ -39,10 +51,10 @@ const ConformanceSchemaVersion = "1.2"
 // harness failure — and the observed state must equal it, so both a regression and
 // an unrecorded fix fail the build.
 type ConformanceCase struct {
-	ID     string `json:"id"`     // stable identifier, e.g. "programs/single"
-	Name   string `json:"name"`   // human label, e.g. "single.gy"
-	Source string `json:"source"` // merged single-source program
-	Shared bool   `json:"shared"` // expected to run on both backends with equal stdout
+	ID       string `json:"id"`       // stable identifier, e.g. "programs/single"
+	Name     string `json:"name"`     // human label, e.g. "single.gy"
+	Source   string `json:"source"`   // merged single-source program
+	Asserted bool   `json:"asserted"` // the compiled leg's stdout is asserted against CPython
 
 	Oracle string      `json:"oracle"`           // declared: match | debt | not_applicable
 	Reason string      `json:"reason,omitempty"` // why the case is in that state
@@ -57,38 +69,36 @@ type ConformanceCase struct {
 // that moves the output fails the row, and a fix that closes the debt fails the row
 // with "debt paid" instead of quietly disappearing from the ledger.
 type OraclePin struct {
-	Backend string `json:"backend"`           // "interpreter" | "aot"
+	Backend string `json:"backend"`           // "aot" | "python"
 	Stdout  string `json:"stdout,omitempty"`  // expected stdout when Err is empty
 	Err     string `json:"error,omitempty"`   // expected failure; "" + Missing means any failure
 	Missing bool   `json:"missing,omitempty"` // this leg is expected to fail (refuse/trap)
 }
 
-// ConformanceResult records the observed behaviour of one case on all three legs:
-// the interpreter stdout, the AOT binary stdout, and the CPython stdout. Parity is
-// interpreter stdout == AOT stdout; the oracle flag is what each backend prints
-// against CPython.
+// ConformanceResult records the observed behaviour of one case on both legs: the stdout
+// of the native binary the compiler produced, and the stdout of the pinned CPython.
+//
+// `parity` is gone with the second engine. Its replacement is `conformant`, which is the
+// assertion an asserted row makes: the compiled stdout equals the reference stdout under
+// the row's comparison rules.
 type ConformanceResult struct {
-	Case      ConformanceCase `json:"case"`
-	InterpOK  bool            `json:"interp_ok"`
-	InterpOut string          `json:"interp_stdout"`
-	InterpErr string          `json:"interp_error,omitempty"`
-	AOTOK     bool            `json:"aot_ok"`
-	AOTOut    string          `json:"aot_stdout"`
-	AOTErr    string          `json:"aot_error,omitempty"`
-	Parity    bool            `json:"parity"` // interpreter stdout == AOT stdout
+	Case   ConformanceCase `json:"case"`
+	AOTOK  bool            `json:"aot_ok"`
+	AOTOut string          `json:"aot_stdout"`
+	AOTErr string          `json:"aot_error,omitempty"`
 
-	PythonOK            bool     `json:"python_ok"`
-	PythonOut           string   `json:"python_stdout"`
-	PythonErr           string   `json:"python_error,omitempty"`
-	InterpMatchesPython bool     `json:"interp_matches_python"`
-	AOTMatchesPython    bool     `json:"aot_matches_python"`
-	Oracle              string   `json:"oracle"` // computed classification
-	OracleDeclared      string   `json:"oracle_declared"`
-	OracleReason        string   `json:"oracle_reason,omitempty"`
-	OracleRef           string   `json:"oracle_ref,omitempty"`
-	OracleRules         []string `json:"oracle_rules,omitempty"`
-	OracleNotes         []string `json:"oracle_notes,omitempty"`
-	OracleDrift         []string `json:"oracle_drift,omitempty"`
+	PythonOK         bool     `json:"python_ok"`
+	PythonOut        string   `json:"python_stdout"`
+	PythonErr        string   `json:"python_error,omitempty"`
+	AOTMatchesPython bool     `json:"aot_matches_python"`
+	Conformant       bool     `json:"conformant"` // asserted rows: compiled stdout == reference stdout
+	Oracle           string   `json:"oracle"`     // computed classification
+	OracleDeclared   string   `json:"oracle_declared"`
+	OracleReason     string   `json:"oracle_reason,omitempty"`
+	OracleRef        string   `json:"oracle_ref,omitempty"`
+	OracleRules      []string `json:"oracle_rules,omitempty"`
+	OracleNotes      []string `json:"oracle_notes,omitempty"`
+	OracleDrift      []string `json:"oracle_drift,omitempty"`
 }
 
 // ConformanceMatrix is the machine-readable conformance matrix artifact. It is
@@ -101,7 +111,7 @@ type ConformanceMatrix struct {
 	Toolchain     OracleToolchain     `json:"toolchain"`
 	Results       []ConformanceResult `json:"results"`
 	Rows          int                 `json:"rows"`
-	Skipped       int                 `json:"skipped"` // non-shared rows: recorded, parity not asserted
+	Skipped       int                 `json:"skipped"` // non-asserted rows: recorded, no conformance claim made
 	Pass          int                 `json:"pass"`
 	Fail          int                 `json:"fail"`
 	OracleMatched int                 `json:"oracle_match"`
@@ -124,74 +134,6 @@ type OracleToolchain struct {
 	MinPython string `json:"min_python,omitempty"`
 }
 
-// InterpreterRunOptions tunes the interpreter for harnesses that need to prove
-// something about the collector rather than infer it from program output.
-type InterpreterRunOptions struct {
-	// GCStress collects at every statement boundary instead of only when
-	// allocation pressure asks for it (the L7.2 soundness probe).
-	GCStress bool
-	// GCAllocThreshold overrides the allocation count that triggers a collection
-	// (0 keeps the default).
-	GCAllocThreshold int64
-}
-
-// InterpreterRunOpts is InterpreterRun plus the collector's self-report, so a
-// conformance case can assert that collections really happened while the program
-// ran instead of trusting a threshold to have been crossed.
-//
-// Like InterpreterRun it redirects the process-wide stdout and is not safe for
-// concurrent use.
-func InterpreterRunOpts(src string, opt InterpreterRunOptions) (stdout string, stats GCStats, err error) {
-	prog, perr := Parse(src)
-	if perr != nil {
-		return "", GCStats{}, perr
-	}
-	ev := NewEvaluator()
-	if opt.GCStress {
-		ev.SetGCStress(true)
-	}
-	if opt.GCAllocThreshold > 0 {
-		ev.SetGCAllocThreshold(opt.GCAllocThreshold)
-	}
-	old := os.Stdout
-	r, w, werr := os.Pipe()
-	if werr != nil {
-		return "", GCStats{}, fmt.Errorf("pipe: %w", werr)
-	}
-	os.Stdout = w
-	_, evalErr := ev.EvalProgram(prog)
-	os.Stdout = old
-	w.Close()
-	out := make([]byte, 1<<20)
-	n, _ := r.Read(out)
-	return string(out[:n]), ev.GCStats(), evalErr
-}
-
-// InterpreterRun evaluates src with the AST interpreter and returns everything
-// written to stdout plus any runtime error. This is the interpreter half of a
-// conformance case; the AOT half is produced by compiling and running the native
-// binary (the integration test shells out to llc/cc).
-//
-// InterpreterRun is not safe for concurrent use: it redirects the process-wide
-// os.Stdout for the duration of evaluation.
-func InterpreterRun(src string) (stdout string, err error) {
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", fmt.Errorf("pipe: %w", err)
-	}
-	os.Stdout = w
-	_, _, evalErr := EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	out := make([]byte, 1<<20)
-	n, _ := r.Read(out)
-	if evalErr != nil {
-		return string(out[:n]), evalErr
-	}
-	return string(out[:n]), nil
-}
-
 // OracleCheck classifies one case's three legs, writes the verdict onto the
 // result, and returns the drift between what the registry *declared* and what the
 // legs actually showed. An empty slice means the row is honest: the recorded
@@ -202,11 +144,11 @@ func InterpreterRun(src string) (stdout string, err error) {
 // that got *better* fails too — an unrecorded fix is how a ledger turns into fiction
 // (ADR 0186).
 func (c ConformanceCase) OracleCheck(r *ConformanceResult) []string {
-	rep := BuildOracleReport(r.InterpOK, r.InterpOut, r.InterpErr,
-		r.AOTOK, r.AOTOut, r.AOTErr, c.Rules, r.PythonOK, r.PythonOut, r.PythonErr)
+	rep := BuildOracleReport(r.AOTOK, r.AOTOut, r.AOTErr,
+		c.Rules, r.PythonOK, r.PythonOut, r.PythonErr)
 	r.Oracle = rep.Status
-	r.InterpMatchesPython = rep.Legs[0].Matches
-	r.AOTMatchesPython = rep.Legs[1].Matches
+	r.AOTMatchesPython = rep.Legs[0].Matches
+	r.Conformant = c.Asserted && r.AOTMatchesPython
 	r.OracleDeclared = c.Oracle
 	r.OracleReason = c.Reason
 	r.OracleRef = c.Ref
@@ -237,7 +179,7 @@ func (c ConformanceCase) OracleCheck(r *ConformanceResult) []string {
 	}
 	if c.Oracle != "" && r.Oracle != c.Oracle {
 		if r.Oracle == OracleMatch {
-			drift = append(drift, "oracle debt is paid: both backends now print CPython's answer — update the registry (declared "+c.Oracle+")")
+			drift = append(drift, "oracle debt is paid: the compiled leg now prints CPython's answer — update the registry (declared "+c.Oracle+")")
 		} else {
 			drift = append(drift, fmt.Sprintf("declared oracle %q, observed %q (%s)", c.Oracle, r.Oracle, strings.Join(r.OracleNotes, "; ")))
 		}
@@ -258,11 +200,14 @@ func (c ConformanceCase) OracleCheck(r *ConformanceResult) []string {
 	return drift
 }
 
-// leg returns one observed leg by backend name.
+// leg returns one observed leg by backend name. An unknown name is reported as a failure
+// rather than an empty success: a ledger row that pins a leg the harness no longer runs (the
+// interpreter, before ADR 0302 retired it) has to read as drift, because a pin nobody checks
+// is how a ledger starts describing a compiler that does not exist.
 func (r *ConformanceResult) leg(backend string) (ok bool, stdout, stderr string) {
 	switch backend {
 	case "interpreter":
-		return r.InterpOK, r.InterpOut, r.InterpErr
+		return false, "", `no "interpreter" leg: the AST interpreter was retired by ADR 0302 — delete this pin (the compiled leg is the leg that runs)`
 	case "aot":
 		return r.AOTOK, r.AOTOut, r.AOTErr
 	case "python":

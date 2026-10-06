@@ -1,0 +1,33 @@
+# A prefix sign is an operator, so `**` binds first: `-2 ** 2` is `-(2 ** 2)`.
+# Each line is checked against CPython 3.12.3 by the conformance matrix.
+# (roadmap Gap R.177, ADR 0302; owner L4.1)
+
+print(-2 ** 2)        # -4    the reference's rule; both engines used to answer 4 at exit 0
+print(-1 ** 2)        # -1    same shape, and the answer a "sensible" (-1)**2 reading cannot give
+print(-2.5 ** 2)      # -6.25 the float road agrees with the int road
+print(2 ** -1)        # 0.5   the sign on the RIGHT operand still works
+print(2 ** 3 ** 2)    # 512   right-associative, unaffected
+print(-(2 ** 2))      # -4    the spelling that always worked, unchanged
+x = 2
+print(-x ** 2)        # -4    a name, not a literal
+print((-2) ** 2)      # 4     parentheses still mean what they say
+
+# The sign is still a sign everywhere else it was doing its job.
+print(-3)             # -3
+print(0 - 2)          # -2
+xs = [1, 2, 3]
+print(xs[-1])         # 3     a negative subscript is a position, not a bug
+print([1, 2, 3][-1])  # 3     on a literal too
+print("abc"[-1])      # c     and on a text
+s = 0
+for i in range(5, 0, -1):  # a negative step counts DOWN
+    s = s + i
+print(s)              # 15
+# min(-3)/max(-3) are this language's own extension over the reference (which raises
+# TypeError: 'int' object is not iterable), so they are pinned in
+# integration/min_max_values_test.go rather than in a three-engine probe.
+print(str(-7))        # -7    str() of a negated constant
+print(abs(-5))        # 5     the fold the lexer used to do by itself
+print(round(-7))      # -7
+print(-2.5)           # -2.5
+print(0xFF, -0xFF)    # 255 -255   hex keeps its digits, the sign is the operator

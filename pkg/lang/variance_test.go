@@ -341,22 +341,40 @@ func TestVarianceTableIsMachineReadable(t *testing.T) {
 // mismatched class (the runtime half of the same rule).
 func TestVarianceRuntimeNominalCheck(t *testing.T) {
 	src := classHierarchy + "def feed(a: Animal) -> int:\n    return a.speak()\nprint(feed(Puppy()))\n"
-	out, err := InterpreterRun(src)
+	out, err := runGoldenStdout(t, src)
 	if err != nil {
 		t.Fatalf("a Puppy must satisfy an Animal annotation: %v", err)
 	}
 	if !strings.Contains(out, "3") {
 		t.Errorf("output = %q, want the Puppy's 3", out)
 	}
-	// The negative case is evaluated directly (bypassing the static checker) so
-	// the runtime annotation check is what rejects it.
+	// The negative case is a program the analyser refuses, and that is the stronger answer: the
+	// interpreter used to run this and reject the Rock at the call, while the compiled backend
+	// refuses the source, at the argument, with the reason. `Rock` never reaches a parameter typed
+	// `Animal`, and the reader learns it at 18:11 instead of at exit 4 with a traceback.
 	bad := classHierarchy + "def feed(a: Animal) -> int:\n    return a.speak()\nprint(feed(Rock()))\n"
-	prog, perr := Parse(bad)
-	if perr != nil {
-		t.Fatalf("parse: %v", perr)
+	res, cerr := Compile(bad)
+	msg := ""
+	if cerr != nil {
+		msg = cerr.Error()
+	} else if res != nil {
+		// Compile hands back the checker's diagnostics without failing on them — the CLI is what
+		// turns an error-level diagnostic into exit 2, and JIT refuses outright. That the two entry
+		// points of the one backend answer "does this program compile?" differently is filed as its
+		// own gap; the assertion below reads whichever of the two carried the sentence.
+		for _, d := range res.Diagnostics {
+			if d.Level == LevelError {
+				msg = d.Msg
+			}
+		}
 	}
-	if _, rerr := NewEvaluator().EvalProgram(prog); rerr == nil || !strings.Contains(rerr.Error(), "type mismatch") {
-		t.Fatalf("a Rock must be rejected by an Animal annotation, got %v", rerr)
+	if msg == "" {
+		t.Fatal("a Rock reached an Animal parameter with nothing said about it; nominal class types must refuse it")
+	}
+	for _, want := range []string{"Animal", "Rock", "nominal"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal for feed(Rock()) does not mention %q: %q", want, msg)
+		}
 	}
 }
 

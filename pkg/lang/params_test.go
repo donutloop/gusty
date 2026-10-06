@@ -266,13 +266,13 @@ func TestReboundParamSemantics(t *testing.T) {
 		{"def outer(n):\n    def inner(m):\n        m = m * 3\n        return m\n    return inner(n)\nouter(2)\n", 6},
 	}
 	for _, tc := range cases {
-		v, _, err := EvalExpr(tc.src)
+		v, _, err := evalGolden(t, tc.src)
 		if err != nil {
-			t.Errorf("EvalExpr(%q): %v", tc.src, err)
+			t.Errorf("evalGolden(t, %q): %v", tc.src, err)
 			continue
 		}
 		if v != tc.want {
-			t.Errorf("EvalExpr(%q) = %d, want %d", tc.src, v, tc.want)
+			t.Errorf("evalGolden(t, %q) = %d, want %d", tc.src, v, tc.want)
 		}
 	}
 }

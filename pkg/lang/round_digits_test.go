@@ -193,9 +193,9 @@ func TestTheDigitCountIsCheckedAsAnInteger(t *testing.T) {
 }
 
 // trapText is a raised program as the CLI writes it: a typed raise carries its class and its
-// message in two fields, an ordinary EvalError in one, and a test that compared only `Msg` would
+// message in two fields, an ordinary TrapError in one, and a test that compared only `Msg` would
 // read a typed TypeError as empty.
-func trapText(e *EvalError) string {
+func trapText(e *TrapError) string {
 	if e.ExnType != "" {
 		return e.ExnType + ": " + e.ExnMsg
 	}

@@ -10,9 +10,12 @@ import (
 )
 
 // oracleMode is the CLI's answer to "does this program behave like Python?" —
-// the same three-leg comparison the conformance harness runs, exposed for one
-// ad-hoc program so an agent can check a construct before trusting it (roadmap
-// L11.9, ADR 0186).
+// the same comparison the conformance harness runs, exposed for one ad-hoc program so an
+// agent can check a construct before trusting it (roadmap L11.9, ADR 0186).
+//
+// Two legs: the program gusty compiles, and the pinned CPython. A third leg used to run the
+// AST interpreter on the same source; ADR 0302 retired that engine, and with it the
+// engine-vs-engine half of the verdict — what remains is the half that ever decided anything.
 //
 // The verdict comes from lang.BuildOracleReport, the identical function the matrix
 // uses, so a program cannot pass here and fail there. Exit codes follow the table
@@ -25,12 +28,10 @@ func oracleMode(src, file string, jsonOut bool) int {
 		return exitUsage
 	}
 
-	interpOut, interpErr := interpLeg(s)
 	aotOut, aotErr := aotLeg(s)
 	pyOut, pyErr := pythonLeg(s)
 
-	rep := lang.BuildOracleReport(interpErr == nil, interpOut, errLine(interpErr),
-		aotErr == nil, aotOut, errLine(aotErr), nil,
+	rep := lang.BuildOracleReport(aotErr == nil, aotOut, errLine(aotErr), nil,
 		pyErr == nil, pyOut, errLine(pyErr))
 
 	if jsonOut {
@@ -41,7 +42,7 @@ func oracleMode(src, file string, jsonOut bool) int {
 		}
 		fmt.Println(string(b))
 	} else {
-		fmt.Printf("oracle: %s (parity %s)\n", rep.Status, yesNo(rep.Parity))
+		fmt.Printf("oracle: %s\n", rep.Status)
 		for _, l := range rep.Legs {
 			state := "ok"
 			if !l.OK {
@@ -87,19 +88,9 @@ func oracleExit(status string) int {
 	}
 }
 
-// interpLeg runs the AST interpreter and records a Go panic instead of dying: a
-// probe that crashes the compiler is a finding, and the harness has to survive it
-// long enough to report the other programs (L11.8).
-func interpLeg(src string) (out string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			out, err = "", fmt.Errorf("compiler panic: %v", r)
-		}
-	}()
-	return lang.InterpreterRun(src)
-}
-
-// aotLeg runs the compiled backend through the same JIT the --aot flag uses.
+// aotLeg runs the compiled backend through the same in-process runner the CLI's run paths use,
+// and records a Go panic instead of dying: a program that crashes the compiler is a finding, and
+// the oracle has to survive it long enough to report what the other legs said (L11.8).
 func aotLeg(src string) (out string, err error) {
 	defer func() {
 		if r := recover(); r != nil {

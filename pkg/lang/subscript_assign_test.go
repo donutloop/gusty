@@ -78,13 +78,13 @@ func TestInterpreterSubscriptAssignment(t *testing.T) {
 		{"xs = [1, 2, 3]\nt = 0\nfor i in range(3):\n    xs[i] = xs[i] + 1\n\nprint(xs)\n", "[2, 3, 4]\n"},
 	}
 	for _, tc := range cases {
-		out, err := InterpreterRun(tc.src)
+		out, err := runGoldenStdout(t, tc.src)
 		if err != nil {
-			t.Errorf("InterpreterRun(%q): %v", tc.src, err)
+			t.Errorf("runGoldenStdout(t, %q): %v", tc.src, err)
 			continue
 		}
 		if out != tc.want {
-			t.Errorf("InterpreterRun(%q) = %q, want %q", tc.src, out, tc.want)
+			t.Errorf("runGoldenStdout(t, %q) = %q, want %q", tc.src, out, tc.want)
 		}
 	}
 }
@@ -95,13 +95,13 @@ func TestInterpreterSubscriptAssignmentErrors(t *testing.T) {
 		{"s = {1, 2}\ns[0] = 5\n", "cannot assign to a set element"},
 	}
 	for _, tc := range cases {
-		_, _, err := EvalExpr(tc.src)
+		_, _, err := evalGolden(t, tc.src)
 		if err == nil {
-			t.Errorf("EvalExpr(%q) should fail", tc.src)
+			t.Errorf("evalGolden(t, %q) should fail", tc.src)
 			continue
 		}
 		if !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("EvalExpr(%q) error = %v, want to contain %q", tc.src, err, tc.want)
+			t.Errorf("evalGolden(t, %q) error = %v, want to contain %q", tc.src, err, tc.want)
 		}
 	}
 }

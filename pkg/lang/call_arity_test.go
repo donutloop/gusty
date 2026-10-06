@@ -39,7 +39,7 @@ func TestACallableFromAVariableIsAskedItsArgumentCount(t *testing.T) {
 		{"a value given twice still names itself", "def g(a):\n    return a\n\nprint(g(1, a=2))\n", "multiple values"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := EvalExpr(tc.src)
+			_, _, err := evalGolden(t, tc.src)
 			if err == nil {
 				t.Fatalf("the program ran to completion — this is the shape that printed a number at exit 0 (Gap R.168)\nsrc: %s", tc.src)
 			}
@@ -50,7 +50,7 @@ func TestACallableFromAVariableIsAskedItsArgumentCount(t *testing.T) {
 			// EvalExpr answers (value, diagnostics, error): the value is the last expression's, not
 			// printed text, so "did it print a digit" is a stdout question — and stdout is empty here
 			// precisely because the raise happened before the print.
-			if ee, isEval := err.(*EvalError); isEval && ee.ExnType != "" && ee.ExnType != "TypeError" {
+			if ee, isEval := err.(*TrapError); isEval && ee.ExnType != "" && ee.ExnType != "TypeError" {
 				t.Errorf("the arity trap raised %q; the reference stops these calls with TypeError-class errors\nsrc: %s", ee.ExnType, tc.src)
 			}
 		})
@@ -111,7 +111,7 @@ func TestTheAritySentenceIsOneSentenceForBothRoads(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := EvalExpr(tc.src)
+			_, _, err := evalGolden(t, tc.src)
 			if err == nil {
 				t.Fatalf("expected an arity error\nsrc: %s", tc.src)
 			}

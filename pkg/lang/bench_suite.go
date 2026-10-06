@@ -1,11 +1,16 @@
 // Package lang — the gusty language toolchain.
 //
 // bench_suite.go turns benchmarking from "one program at a time" into a
-// regression suite: a fixed corpus of compute-heavy programs is measured on
-// both execution backends (AST interpreter and AOT), reported as one stable
-// JSON artifact, and diffed against a committed baseline so a slowdown shows up
-// as a number instead of a hunch. The corpus is also loadable from a directory
-// of .gy files, so the integration/ parity programs double as benchmark cases.
+// regression suite: a fixed corpus of compute-heavy programs is measured on the
+// one execution backend the language has (the LLVM AOT artifact), reported as one
+// stable JSON artifact, and diffed against a committed baseline so a slowdown shows
+// up as a number instead of a hunch. The corpus is also loadable from a directory
+// of .gy files, so the integration/ conformance programs double as benchmark cases.
+//
+// The suite used to measure two engines and report a speedup ratio. ADR 0302 retired
+// the tree-walking interpreter, and with it the ratio: the numbers that describe the
+// compiler are its own execution times and its own build times, which is what the
+// artifact now carries.
 //
 // Determinism rules (the artifact is meant to be diffed):
 //   - cases are always reported sorted by name;
@@ -45,23 +50,22 @@ type BenchCase struct {
 // missing); such a row is kept in the report instead of being dropped, so a
 // suite never silently shrinks.
 type BenchCaseResult struct {
-	Name        string        `json:"name"`
-	Interpreter BenchReport   `json:"interpreter"`
-	AOT         BenchReport   `json:"aot"`
-	Speedup     float64       `json:"speedup"`
-	Profile     []PhaseTiming `json:"profile,omitempty"`
-	Error       string        `json:"error,omitempty"`
+	Name    string      `json:"name"`
+	AOT     BenchReport `json:"aot"`
+	Build   BenchReport `json:"build"`
+	Profile []PhaseTiming `json:"profile,omitempty"`
+	Error   string      `json:"error,omitempty"`
 }
 
-// BenchTotals summarises a suite. GeomeanSpeedup is the geometric mean over
-// cases that ran on both backends — the single number to watch.
+// BenchTotals summarises a suite. AOTMs is the sum of the measured execution times —
+// the single number to watch, because it is the only one the compiler is responsible
+// for; BuildMs is what producing those artifacts cost.
 type BenchTotals struct {
-	Cases          int     `json:"cases"`
-	Ran            int     `json:"ran"`
-	Failed         int     `json:"failed"`
-	InterpreterMs  float64 `json:"interpreter_total_ms"`
-	AOTMs          float64 `json:"aot_total_ms"`
-	GeomeanSpeedup float64 `json:"geomean_speedup"`
+	Cases   int     `json:"cases"`
+	Ran     int     `json:"ran"`
+	Failed  int     `json:"failed"`
+	AOTMs   float64 `json:"aot_total_ms"`
+	BuildMs float64 `json:"build_total_ms"`
 }
 
 // BenchSuite is the machine-readable benchmark artifact.
@@ -169,8 +173,7 @@ func BenchmarkSuite(cases []BenchCase, runs, optLevel int) *BenchSuite {
 	restore := silenceStdout()
 	defer restore()
 
-	var prod, aotSum float64
-	ratios := []float64{}
+	var aotSum, buildSum float64
 	ran := 0
 	for _, c := range sorted {
 		row := BenchCaseResult{Name: c.Name}
@@ -180,20 +183,17 @@ func BenchmarkSuite(cases []BenchCase, runs, optLevel int) *BenchSuite {
 			s.Cases = append(s.Cases, row)
 			continue
 		}
-		row.Interpreter = res.Interpreter
 		row.AOT = res.AOT
-		row.Speedup = res.Speedup
+		row.Build = res.Build
 		row.Profile = res.Profile
-		if row.Interpreter.BestMs > 0 && row.AOT.BestMs > 0 {
-			prod += row.Interpreter.BestMs
+		if row.AOT.BestMs > 0 {
 			aotSum += row.AOT.BestMs
-			ratios = append(ratios, row.Speedup)
+			buildSum += row.Build.BestMs
 		}
 		ran++
 		s.Cases = append(s.Cases, row)
 	}
-	s.Totals = BenchTotals{Cases: len(sorted), Ran: ran, Failed: len(sorted) - ran, InterpreterMs: roundMs(prod), AOTMs: roundMs(aotSum)}
-	s.Totals.GeomeanSpeedup = geomean(ratios)
+	s.Totals = BenchTotals{Cases: len(sorted), Ran: ran, Failed: len(sorted) - ran, AOTMs: roundMs(aotSum), BuildMs: roundMs(buildSum)}
 	return s
 }
 
@@ -202,7 +202,7 @@ func roundMs(f float64) float64 {
 	return math.Round(f*100) / 100
 }
 
-// geomean is the geometric mean of positive speedups (0 for an empty set).
+// geomean is the geometric mean of a set of positive ratios (0 for an empty set).
 func geomean(xs []float64) float64 {
 	if len(xs) == 0 {
 		return 0
@@ -233,8 +233,8 @@ func (s *BenchSuite) JSON() string {
 // BenchBaselineCase is one committed reference measurement.
 type BenchBaselineCase struct {
 	Name          string  `json:"name"`
-	InterpreterMs float64 `json:"interpreter_best_ms"`
 	AOTMs         float64 `json:"aot_best_ms"`
+	BuildMs       float64 `json:"build_best_ms,omitempty"`
 }
 
 // BenchBaseline is a saved suite used as the regression reference.
@@ -259,7 +259,7 @@ func BaselineFromSuite(s *BenchSuite) *BenchBaseline {
 		if c.Error != "" {
 			continue
 		}
-		b.Cases = append(b.Cases, BenchBaselineCase{Name: c.Name, InterpreterMs: c.Interpreter.BestMs, AOTMs: c.AOT.BestMs})
+		b.Cases = append(b.Cases, BenchBaselineCase{Name: c.Name, AOTMs: c.AOT.BestMs, BuildMs: c.Build.BestMs})
 	}
 	sort.Slice(b.Cases, func(i, j int) bool { return b.Cases[i].Name < b.Cases[j].Name })
 	return b
@@ -292,7 +292,7 @@ func LoadBenchBaseline(path string) (*BenchBaseline, error) {
 // more than `tolerance`x the baseline (and slow enough to be signal).
 type BenchRegression struct {
 	Name       string  `json:"name"`
-	Backend    string  `json:"backend"` // "interpreter" | "aot"
+	Backend    string  `json:"backend"` // "aot" — the only leg there is (ADR 0302)
 	BaselineMs float64 `json:"baseline_ms"`
 	CurrentMs  float64 `json:"current_ms"`
 	Ratio      float64 `json:"ratio"`
@@ -306,19 +306,17 @@ type BenchNewCase struct {
 	Suggestion string `json:"suggestion"`
 }
 
-// BenchGate selects which leg of a run the regression gate watches.
+// BenchGate selects which measurement of a run the regression gate watches. There is
+// one execution backend, so there is one gate: the compiled artifact.
 const (
-	BenchGateAOT         = "aot"
-	BenchGateInterpreter = "interpreter"
-	BenchGateBoth        = "both"
+	BenchGateAOT = "aot"
 )
 
-// CompareBenchSuite diffs a suite against a baseline over `gate` ("aot",
-// "interpreter" or "both"). The default gate is the AOT leg: that is the
-// compiler's own performance contract, whereas the tree-walking interpreter's
-// timings swing by tens of percent run to run (GC and allocation churn), which
-// would make an interpreter-leg gate read as noise. Interpreter numbers are
-// still reported — they just do not fail the build.
+// CompareBenchSuite diffs a suite against a baseline over `gate`. "aot" (the default,
+// and the only gate since ADR 0302) watches the compiled artifact — the compiler's own
+// performance contract. An unknown gate name is reported as a regression-free run here
+// and refused by the CLI as a usage error, so a stale `--bench-gate=interpreter` in a
+// script fails loudly at the flag rather than silently gating nothing.
 //
 // tolerance is a multiplier (1.25 = allow 25% slowdown); minMs is the noise
 // floor — a case whose baseline time is below it is never a regression, because
@@ -357,10 +355,7 @@ func CompareBenchSuite(s *BenchSuite, b *BenchBaseline, tolerance, minMs float64
 				})
 			}
 		}
-		if gate == BenchGateBoth || gate == BenchGateInterpreter {
-			check("interpreter", bc.InterpreterMs, c.Interpreter.BestMs)
-		}
-		if gate == BenchGateBoth || gate == BenchGateAOT || gate == "" {
+		if gate == BenchGateAOT || gate == "" {
 			check("aot", bc.AOTMs, c.AOT.BestMs)
 		}
 	}

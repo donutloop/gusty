@@ -28,7 +28,7 @@ func TestBenchCorpusLowers(t *testing.T) {
 			t.Errorf("case %q has no source", c.Name)
 			continue
 		}
-		if _, _, err := EvalExpr(c.Source); err != nil {
+		if _, _, err := evalGolden(t, c.Source); err != nil {
 			t.Errorf("case %q fails on the interpreter: %v", c.Name, err)
 		}
 		res, err := Compile(c.Source)
@@ -84,11 +84,11 @@ func TestBenchmarkSuiteReportsEveryCase(t *testing.T) {
 	if s.Cases[0].Name != "a_loop" || s.Cases[1].Name != "b_loop" || s.Cases[2].Name != "broken" {
 		t.Errorf("rows not sorted by name: %v", []string{s.Cases[0].Name, s.Cases[1].Name, s.Cases[2].Name})
 	}
-	if s.Cases[0].Interpreter.BestMs <= 0 || s.Cases[0].AOT.BestMs <= 0 {
-		t.Errorf("healthy case reported no timings: %+v", s.Cases[0])
+	if s.Cases[0].AOT.BestMs <= 0 {
+		t.Errorf("healthy case reported no run timings: %+v", s.Cases[0])
 	}
-	if s.Cases[0].Speedup <= 0 {
-		t.Errorf("healthy case reported no speedup: %+v", s.Cases[0])
+	if s.Cases[0].Build.TotalMs <= 0 {
+		t.Errorf("healthy case reported no build timing: %+v", s.Cases[0])
 	}
 	if s.Cases[2].Error == "" {
 		t.Errorf("broken case should record an error")
@@ -96,8 +96,8 @@ func TestBenchmarkSuiteReportsEveryCase(t *testing.T) {
 	if s.Totals.Cases != 3 || s.Totals.Ran != 2 || s.Totals.Failed != 1 {
 		t.Errorf("totals = %+v, want 3/2/1", s.Totals)
 	}
-	if s.Totals.GeomeanSpeedup <= 0 {
-		t.Errorf("geomean speedup = %v, want > 0", s.Totals.GeomeanSpeedup)
+	if s.Totals.AOTMs <= 0 || s.Totals.BuildMs <= 0 {
+		t.Errorf("totals report no measured time: %+v", s.Totals)
 	}
 	// The artifact must be valid JSON with the documented keys.
 	var back map[string]any
@@ -120,27 +120,27 @@ func syntheticSuite() *BenchSuite {
 		Runs:          3,
 		OptLevel:      2,
 		Cases: []BenchCaseResult{
-			{Name: "hot", Interpreter: BenchReport{BestMs: 20}, AOT: BenchReport{BestMs: 2}, Speedup: 10},
-			{Name: "tiny", Interpreter: BenchReport{BestMs: 0.2}, AOT: BenchReport{BestMs: 0.05}, Speedup: 4},
+			{Name: "hot", AOT: BenchReport{BestMs: 2}, Build: BenchReport{BestMs: 20}},
+			{Name: "tiny", AOT: BenchReport{BestMs: 0.05}, Build: BenchReport{BestMs: 5}},
 		},
 	}
 }
 
 func TestCompareBenchSuiteGate(t *testing.T) {
 	base := &BenchBaseline{Cases: []BenchBaselineCase{
-		{Name: "hot", InterpreterMs: 20, AOTMs: 2},
-		{Name: "tiny", InterpreterMs: 0.2, AOTMs: 0.05},
+		{Name: "hot", AOTMs: 2, BuildMs: 20},
+		{Name: "tiny", AOTMs: 0.05, BuildMs: 5},
 	}}
 
 	// Same numbers -> no regression.
-	if r, _ := CompareBenchSuite(syntheticSuite(), base, 1.25, DefaultBenchMinMs, BenchGateBoth); len(r) != 0 {
+	if r, _ := CompareBenchSuite(syntheticSuite(), base, 1.25, DefaultBenchMinMs, BenchGateAOT); len(r) != 0 {
 		t.Fatalf("identical suite reported regressions: %+v", r)
 	}
 
 	// A real slowdown on the AOT leg is reported with ratio + suggestion.
 	s := syntheticSuite()
 	s.Cases[0].AOT.BestMs = 4.0 // 2x slower
-	r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateBoth)
+	r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateAOT)
 	if len(r) != 1 {
 		t.Fatalf("regressions = %d, want 1: %+v", len(r), r)
 	}
@@ -154,21 +154,21 @@ func TestCompareBenchSuiteGate(t *testing.T) {
 	// Within tolerance -> clean.
 	s = syntheticSuite()
 	s.Cases[0].AOT.BestMs = 2.3 // 1.15x
-	if r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateBoth); len(r) != 0 {
+	if r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateAOT); len(r) != 0 {
 		t.Errorf("within tolerance reported as regression: %+v", r)
 	}
 
 	// Noise floor: a sub-millisecond case doubling is not a regression.
 	s = syntheticSuite()
 	s.Cases[1].AOT.BestMs = 0.11
-	if r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateBoth); len(r) != 0 {
+	if r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateAOT); len(r) != 0 {
 		t.Errorf("noise-floor case reported as regression: %+v", r)
 	}
 
 	// Missing baseline row -> reported as new, not as a failure.
 	s = syntheticSuite()
-	s.Cases = append(s.Cases, BenchCaseResult{Name: "brand_new", Interpreter: BenchReport{BestMs: 5}, AOT: BenchReport{BestMs: 1}, Speedup: 5})
-	r, news := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateBoth)
+	s.Cases = append(s.Cases, BenchCaseResult{Name: "brand_new", AOT: BenchReport{BestMs: 1}, Build: BenchReport{BestMs: 5}})
+	r, news := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateAOT)
 	if len(r) != 0 {
 		t.Errorf("new case reported as regression: %+v", r)
 	}
@@ -180,7 +180,7 @@ func TestCompareBenchSuiteGate(t *testing.T) {
 	s = syntheticSuite()
 	s.Cases[0].Error = "codegen: unsupported"
 	s.Cases[0].AOT.BestMs = 999
-	if r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateBoth); len(r) != 0 {
+	if r, _ := CompareBenchSuite(s, base, 1.25, DefaultBenchMinMs, BenchGateAOT); len(r) != 0 {
 		t.Errorf("failed case compared: %+v", r)
 	}
 }
@@ -227,11 +227,11 @@ func TestBenchmarkCorpusRuns(t *testing.T) {
 		}
 		t.Fatalf("only %d of %d corpus cases measured", s.Totals.Ran, len(BenchCorpus()))
 	}
-	if s.Totals.AOTMs <= 0 || s.Totals.InterpreterMs <= 0 {
+	if s.Totals.AOTMs <= 0 || s.Totals.BuildMs <= 0 {
 		t.Errorf("totals not measured: %+v", s.Totals)
 	}
 	base := BaselineFromSuite(s)
-	r, newCases := CompareBenchSuite(s, base, DefaultBenchTolerance, DefaultBenchMinMs, BenchGateBoth)
+	r, newCases := CompareBenchSuite(s, base, DefaultBenchTolerance, DefaultBenchMinMs, BenchGateAOT)
 	if len(r) != 0 || len(newCases) != 0 {
 		t.Errorf("a suite must pass its own baseline: %+v %+v", r, newCases)
 	}

@@ -87,7 +87,7 @@ func TestAsyncCoroAwait(t *testing.T) {
     return x + 1
 v = await f(2)
 v`
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("EvalExpr: %v", err)
 	}
@@ -97,7 +97,7 @@ v`
 }
 
 func TestAsyncAwaitPlain(t *testing.T) {
-	v, _, err := EvalExpr("await 5")
+	v, _, err := evalGolden(t, "await 5")
 	if err != nil {
 		t.Fatalf("EvalExpr: %v", err)
 	}
@@ -129,7 +129,7 @@ try:
 except ValueError:
     n = 2
 n`
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("EvalExpr: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestEffectsNeverAwaited(t *testing.T) {
     return 7
 c = f()
 c`
-	if _, _, err := EvalExpr(src); err == nil {
+	if _, _, err := evalGolden(t, src); err == nil {
 		t.Errorf("expected the checker to refuse a coroutine that is never awaited")
 	}
 	diags := Analyze(parseOrFatal(t, src))
@@ -160,7 +160,7 @@ func TestAsyncForCoro(t *testing.T) {
 async for v in [f(1), f(2), f(3)]:
     print(v)
 `
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("EvalExpr: %v", err)
 	}

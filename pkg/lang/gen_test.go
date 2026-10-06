@@ -1,13 +1,10 @@
 package lang
 
-import "fmt"
-import "strings"
-
 import "testing"
 
 func TestGenSum(t *testing.T) {
 	src := "def g():\n    yield 1\n    yield 2\n    yield 3\ns = 0\nfor x in g():\n    s = s + x\ns"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -18,7 +15,7 @@ func TestGenSum(t *testing.T) {
 
 func TestListLit(t *testing.T) {
 	src := "a = [1, 2, 3]\ns = 0\nfor x in a:\n    s = s + x\ns"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -29,7 +26,7 @@ func TestListLit(t *testing.T) {
 
 func TestLenList(t *testing.T) {
 	src := "a = [10, 20, 30]\nlen(a)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -40,7 +37,7 @@ func TestLenList(t *testing.T) {
 
 func TestGenSetComprehensionLen(t *testing.T) {
 	// {x * x} for x in [1, 2, 2] dedups to {1, 4}.
-	if v, _, err := EvalExpr("len({x * x} for x in [1, 2, 2])"); err != nil {
+	if v, _, err := evalGolden(t, "len({x * x} for x in [1, 2, 2])"); err != nil {
 		t.Fatalf("set comprehension: %v", err)
 	} else if v != 2 {
 		t.Fatalf("expected len 2, got %d", v)
@@ -49,7 +46,7 @@ func TestGenSetComprehensionLen(t *testing.T) {
 
 func TestGenDictComprehensionLen(t *testing.T) {
 	// {x: x * 10} for x in [1, 2] builds a 2-entry dict.
-	if v, _, err := EvalExpr("len({x: x * 10} for x in [1, 2])"); err != nil {
+	if v, _, err := evalGolden(t, "len({x: x * 10} for x in [1, 2])"); err != nil {
 		t.Fatalf("dict comprehension: %v", err)
 	} else if v != 2 {
 		t.Fatalf("expected len 2, got %d", v)
@@ -58,13 +55,13 @@ func TestGenDictComprehensionLen(t *testing.T) {
 
 func TestGenDictComprehensionIndex(t *testing.T) {
 	// d[1] over {x: x * 10} for x in [1, 2] maps key 1 -> value 10.
-	if v, _, err := EvalExpr("({x: x * 10} for x in [1, 2])[1]"); err != nil {
+	if v, _, err := evalGolden(t, "({x: x * 10} for x in [1, 2])[1]"); err != nil {
 		t.Fatalf("dict comprehension index: %v", err)
 	} else if v != 10 {
 		t.Fatalf("expected 10, got %d", v)
 	}
 	// missing key errors like a normal dict lookup.
-	if _, _, err := EvalExpr("({x: x * 10} for x in [1, 2])[3]"); err == nil {
+	if _, _, err := evalGolden(t, "({x: x * 10} for x in [1, 2])[3]"); err == nil {
 		t.Fatalf("expected key-not-found error")
 	}
 }
@@ -77,20 +74,20 @@ func TestGenSetComprehensionIndex(t *testing.T) {
 	// compiled tag arm one level below a slot has to answer the same question the same way; where the
 	// docs call it a positional read and both engines read it as a membership one, the roadmap row
 	// measures it (roadmap L11.1, ADR 0251).
-	if v, _, err := EvalExpr("({x * x} for x in [1, 2])[1]"); err != nil {
+	if v, _, err := evalGolden(t, "({x * x} for x in [1, 2])[1]"); err != nil {
 		t.Fatalf("set comprehension index: %v", err)
 	} else if v != 1 {
 		t.Fatalf("expected 1, got %d", v)
 	}
 	// absent member errors.
-	if _, _, err := EvalExpr("({x * x} for x in [1, 2])[5]"); err == nil {
+	if _, _, err := evalGolden(t, "({x * x} for x in [1, 2])[5]"); err == nil {
 		t.Fatalf("expected not-in-set error")
 	}
 }
 
 func TestGenMinSetLiteral(t *testing.T) {
 	// min over a set literal folds its elements.
-	if v, _, err := EvalExpr("min({1, 2, 3})"); err != nil {
+	if v, _, err := evalGolden(t, "min({1, 2, 3})"); err != nil {
 		t.Fatalf("min set: %v", err)
 	} else if v != 1 {
 		t.Fatalf("expected 1, got %d", v)
@@ -99,7 +96,7 @@ func TestGenMinSetLiteral(t *testing.T) {
 
 func TestGenMaxSetLiteral(t *testing.T) {
 	// max over a set literal folds its elements.
-	if v, _, err := EvalExpr("max({1, 2, 3})"); err != nil {
+	if v, _, err := evalGolden(t, "max({1, 2, 3})"); err != nil {
 		t.Fatalf("max set: %v", err)
 	} else if v != 3 {
 		t.Fatalf("expected 3, got %d", v)
@@ -108,13 +105,13 @@ func TestGenMaxSetLiteral(t *testing.T) {
 
 func TestGenLambdaInline(t *testing.T) {
 	// `(lambda x: int: x + 1)(5)` -> 6
-	if v, _, err := EvalExpr("(lambda x: int: x + 1)(5)"); err != nil {
+	if v, _, err := evalGolden(t, "(lambda x: int: x + 1)(5)"); err != nil {
 		t.Fatalf("inline lambda call: %v", err)
 	} else if v != 6 {
 		t.Fatalf("expected 6, got %d", v)
 	}
 	// multi-arg lambda: `(lambda x: int, y: int: x * y)(3, 4)` -> 12
-	if v, _, err := EvalExpr("(lambda x: int, y: int: x * y)(3, 4)"); err != nil {
+	if v, _, err := evalGolden(t, "(lambda x: int, y: int: x * y)(3, 4)"); err != nil {
 		t.Fatalf("multi-arg lambda call: %v", err)
 	} else if v != 12 {
 		t.Fatalf("expected 12, got %d", v)
@@ -123,7 +120,7 @@ func TestGenLambdaInline(t *testing.T) {
 
 func TestGenLambdaNamed(t *testing.T) {
 	// `f = lambda x: int: x * 2\nf(3)` -> 6
-	if v, _, err := EvalExpr("f = lambda x: int: x * 2\nf(3)"); err != nil {
+	if v, _, err := evalGolden(t, "f = lambda x: int: x * 2\nf(3)"); err != nil {
 		t.Fatalf("named lambda: %v", err)
 	} else if v != 6 {
 		t.Fatalf("expected 6, got %d", v)
@@ -132,16 +129,7 @@ func TestGenLambdaNamed(t *testing.T) {
 
 func TestGenStrMethod(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"AbC".upper()`); got != "ABC" {
 		t.Fatalf("expected ABC, got %q", got)
@@ -153,12 +141,7 @@ func TestGenStrMethod(t *testing.T) {
 
 func TestGenDictKeysValues(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -176,12 +159,7 @@ func TestGenDictKeysValues(t *testing.T) {
 
 func TestGenListAppend(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -193,12 +171,8 @@ func TestGenListAppend(t *testing.T) {
 	// `TypeError: 'NoneType' object is not iterable`. Handing back the mutated list was the defect
 	// Gap R.187 files (ADR 0300), and a pinned wrong answer is an acceptance test: it moves to the
 	// reference's verdict, it does not get deleted.
-	prog, err := Parse("sum([1, 2, 3].append(4))")
-	if err != nil {
-		t.Fatalf("parse append sum: %v", err)
-	}
-	if v, err := NewEvaluator().EvalProgram(prog); err == nil {
-		t.Fatalf("append sum: answered %d, the reference raises TypeError because append hands back None", v)
+	if err := goldenRunError(t, "sum([1, 2, 3].append(4))"); err == nil {
+		t.Fatalf("append sum: the program answered, the reference raises TypeError because append hands back None")
 	}
 	// The mutation itself still happens, which is the half of the method that is not the answer.
 	if v := evalInt("xs = [1, 2, 3]\nxs.append(4)\nsum(xs)"); v != 10 {
@@ -208,12 +182,7 @@ func TestGenListAppend(t *testing.T) {
 
 func TestGenDictItemsLen(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -227,12 +196,7 @@ func TestGenDictItemsLen(t *testing.T) {
 
 func TestGenDictMinMaxMethods(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -248,12 +212,7 @@ func TestGenDictMinMaxMethods(t *testing.T) {
 
 func TestGenStrIndex(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -272,12 +231,7 @@ func TestGenStrIndex(t *testing.T) {
 
 func TestGenStrSplitLen(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -291,12 +245,7 @@ func TestGenStrSplitLen(t *testing.T) {
 
 func TestGenStrEq(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -312,12 +261,7 @@ func TestGenStrEq(t *testing.T) {
 
 func TestGenStrBuiltinLen(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -331,16 +275,7 @@ func TestGenStrBuiltinLen(t *testing.T) {
 
 func TestGenStrReplace(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"aXbXc".replace("X", "-")`); got != "a-b-c" {
 		t.Fatalf("replace: expected a-b-c, got %q", got)
@@ -352,12 +287,7 @@ func TestGenStrReplace(t *testing.T) {
 
 func TestGenStrFind(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -376,12 +306,7 @@ func TestGenStrFind(t *testing.T) {
 
 func TestGenStrRfind(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -400,12 +325,7 @@ func TestGenStrRfind(t *testing.T) {
 
 func TestGenStrStartswithEndswith(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -427,12 +347,7 @@ func TestGenStrStartswithEndswith(t *testing.T) {
 
 func TestGenStrCount(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -451,12 +366,7 @@ func TestGenStrCount(t *testing.T) {
 
 func TestGenStrCountStartEnd(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -472,16 +382,7 @@ func TestGenStrCountStartEnd(t *testing.T) {
 
 func TestGenStrLstripRstrip(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"  hi  ".lstrip()`); got != "hi  " {
 		t.Fatalf("lstrip: expected hi  , got %q", got)
@@ -496,16 +397,7 @@ func TestGenStrLstripRstrip(t *testing.T) {
 
 func TestGenStrCapitalize(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"hello".capitalize()`); got != "Hello" {
 		t.Fatalf("capitalize: expected Hello, got %q", got)
@@ -520,16 +412,7 @@ func TestGenStrCapitalize(t *testing.T) {
 
 func TestGenStrTitle(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"hello world".title()`); got != "Hello World" {
 		t.Fatalf("title: expected Hello World, got %q", got)
@@ -544,16 +427,7 @@ func TestGenStrTitle(t *testing.T) {
 
 func TestGenStrSwapcase(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"HeLLo".swapcase()`); got != "hEllO" {
 		t.Fatalf("swapcase: expected hEllO, got %q", got)
@@ -568,12 +442,7 @@ func TestGenStrSwapcase(t *testing.T) {
 
 func TestGenListCount(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -592,12 +461,7 @@ func TestGenListCount(t *testing.T) {
 
 func TestGenStrIsdigit(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -616,12 +480,7 @@ func TestGenStrIsdigit(t *testing.T) {
 
 func TestGenStrIsalpha(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -640,12 +499,7 @@ func TestGenStrIsalpha(t *testing.T) {
 
 func TestGenStrIslowerIsupper(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -670,16 +524,7 @@ func TestGenStrIslowerIsupper(t *testing.T) {
 
 func TestGenStrPartition(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"a-b-c".partition("-")[0]`); got != "a" {
 		t.Fatalf("partition head: expected a, got %q", got)
@@ -697,12 +542,7 @@ func TestGenStrPartition(t *testing.T) {
 
 func TestGenStrIsalnum(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -721,12 +561,7 @@ func TestGenStrIsalnum(t *testing.T) {
 
 func TestGenStrIsspace(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -745,12 +580,7 @@ func TestGenStrIsspace(t *testing.T) {
 
 func TestGenSorted(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -784,16 +614,7 @@ func TestGenSorted(t *testing.T) {
 
 func TestGenStrZfill(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"42".zfill(5)`); got != "00042" {
 		t.Fatalf("zfill: expected 00042, got %q", got)
@@ -808,16 +629,7 @@ func TestGenStrZfill(t *testing.T) {
 
 func TestGenStrLjustRjust(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"ab".ljust(4)`); got != "ab  " {
 		t.Fatalf("ljust: expected ab  2sp, got %q", got)
@@ -832,12 +644,7 @@ func TestGenStrLjustRjust(t *testing.T) {
 
 func TestGenStrMethodIndex(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -853,16 +660,7 @@ func TestGenStrMethodIndex(t *testing.T) {
 
 func TestGenStrRsplit(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"a-b-c".rsplit("-")[0]`); got != "a" {
 		t.Fatalf("rsplit first: expected a, got %q", got)
@@ -877,16 +675,7 @@ func TestGenStrRsplit(t *testing.T) {
 
 func TestGenStrRsplitMaxsplit(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"a-b-c-d".rsplit("-", 1)[0]`); got != "a-b-c" {
 		t.Fatalf("rsplit maxsplit left: expected a-b-c, got %q", got)
@@ -898,16 +687,7 @@ func TestGenStrRsplitMaxsplit(t *testing.T) {
 
 func TestGenStrRemoveprefixSuffix(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"hello".removeprefix("he")`); got != "llo" {
 		t.Fatalf("removeprefix: expected llo, got %q", got)
@@ -925,16 +705,7 @@ func TestGenStrRemoveprefixSuffix(t *testing.T) {
 
 func TestGenStrExpandtabs(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"abc".expandtabs(4)`); got != "abc" {
 		t.Fatalf("expandtabs no tab: expected abc, got %q", got)
@@ -943,16 +714,7 @@ func TestGenStrExpandtabs(t *testing.T) {
 
 func TestGenStrStripChars(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"xxhi xx".strip("x")`); got != "hi " {
 		t.Fatalf("strip chars: expected hi + space, got %q", got)
@@ -964,16 +726,7 @@ func TestGenStrStripChars(t *testing.T) {
 
 func TestGenStrLstripRstripChars(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"xxhi".lstrip("x")`); got != "hi" {
 		t.Fatalf("lstrip chars: expected hi, got %q", got)
@@ -988,16 +741,7 @@ func TestGenStrLstripRstripChars(t *testing.T) {
 
 func TestGenStrSplitMaxsplit(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"a-b-c-d".split("-", 1)[0]`); got != "a" {
 		t.Fatalf("split maxsplit first: expected a, got %q", got)
@@ -1012,16 +756,7 @@ func TestGenStrSplitMaxsplit(t *testing.T) {
 
 func TestGenStrJoin(t *testing.T) {
 	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return e.Repr(v)
+		return goldenRepr(t, src)
 	}
 	if got := evalStr(`"-".join(["a", "b", "c"])`); got != "a-b-c" {
 		t.Fatalf("join: expected a-b-c, got %q", got)
@@ -1036,12 +771,7 @@ func TestGenStrJoin(t *testing.T) {
 
 func TestGenDictGet(t *testing.T) {
 	evalInt := func(src string) int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		e := NewEvaluator()
-		v, err := e.EvalProgram(prog)
+		v, _, err := evalGolden(t, src)
 		if err != nil {
 			t.Fatalf("eval %s: %v", src, err)
 		}
@@ -1064,13 +794,7 @@ func TestGenDictGet(t *testing.T) {
 
 func TestGenTypedExceptions(t *testing.T) {
 	evalErr := func(src string) error {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		_, err = ev.EvalProgram(prog)
-		return err
+		return goldenRunError(t, src)
 	}
 	// raise ValueError caught by `except ValueError` -> no error.
 	if err := evalErr("try:\n    raise ValueError(\"bad\")\nexcept ValueError:\n    1"); err != nil {
@@ -1085,8 +809,8 @@ func TestGenTypedExceptions(t *testing.T) {
 	if err == nil {
 		t.Fatalf("except TypeError should NOT catch ValueError, got nil err")
 	}
-	if ee, ok := err.(*EvalError); !ok || ee.ExnType != "ValueError" || ee.ExnMsg != "bad value" {
-		t.Fatalf("expected EvalError ValueError/bad value, got %v", err)
+	if ee, ok := err.(*TrapError); !ok || ee.ExnType != "ValueError" || ee.ExnMsg != "bad value" {
+		t.Fatalf("expected TrapError ValueError/bad value, got %v", err)
 	}
 	// a later matching clause catches.
 	if err := evalErr("try:\n    raise KeyError(\"k\")\nexcept ValueError:\n    0\nexcept KeyError:\n    3"); err != nil {
@@ -1099,199 +823,48 @@ func TestGenTypedExceptions(t *testing.T) {
 }
 
 func TestGenGeneratorExpr(t *testing.T) {
-	evalList := func(src string) []int64 {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		rv, err := ev.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		o, ok := ev.heap[rv]
-		if !ok || o.kind != "list" {
-			t.Fatalf("expected list, got kind=%v", o.kind)
-		}
-		return o.elems
-	}
+	evalList := func(src, want string) { goldenReprIs(t, src, want) }
 	// generator expression maps each element.
-	if got := evalList("(x * 2 for x in [1, 2, 3])"); len(got) != 3 || got[0] != 2 || got[1] != 4 || got[2] != 6 {
-		t.Fatalf("map generator: got %v", got)
-	}
+	evalList("(x * 2 for x in [1, 2, 3])", "[2, 4, 6]")
 	// generator expression with an if filter.
-	if got := evalList("(x for x in [1, 2, 3] if x > 1)"); len(got) != 2 || got[0] != 2 || got[1] != 3 {
-		t.Fatalf("filter generator: got %v", got)
-	}
+	evalList("(x for x in [1, 2, 3] if x > 1)", "[2, 3]")
 	// generator over a range-like list.
-	if got := evalList("(x * x for x in [1, 2, 3])"); len(got) != 3 || got[0] != 1 || got[1] != 4 || got[2] != 9 {
-		t.Fatalf("square generator: got %v", got)
-	}
+	evalList("(x * x for x in [1, 2, 3])", "[1, 4, 9]")
 }
 
 func TestGenReversed(t *testing.T) {
-	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		rv, err := ev.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		o := ev.heap[rv]
-		if o.kind == "str" {
-			return o.sval
-		}
-		if o.kind == "list" {
-			var parts []string
-			for _, el := range o.elems {
-				if s, ok := ev.heap[el]; ok {
-					parts = append(parts, fmt.Sprintf("%v", s.fval))
-				} else {
-					parts = append(parts, fmt.Sprintf("%v", el))
-				}
-			}
-			return "[" + strings.Join(parts, " ") + "]"
-		}
-		t.Fatalf("unexpected kind %q", o.kind)
-		return ""
-	}
-	if got := evalStr("reversed([1, 2, 3])"); got != "[3 2 1]" {
-		t.Fatalf("reversed list: got %q", got)
-	}
-	if got := evalStr("reversed(\"abc\")"); got != "cba" {
-		t.Fatalf("reversed string: got %q", got)
+	// These two cases used to walk the interpreter's heap to tell a string from a list of
+	// elements. What they were asking — does `reversed` reverse, and does the answer keep its
+	// type — is answerable from outside: the value the program hands back, and its type name.
+	goldenReprIs(t, "reversed([1, 2, 3])", "[3, 2, 1]")
+	goldenReprIs(t, `reversed("abc")`, "cba")
+	if got := goldenType(t, `reversed("abc")`); got != "str" {
+		t.Errorf("reversed of a string stayed %q, want str (reversing a str must not become a list)", got)
 	}
 }
 
 func TestGenEnumerate(t *testing.T) {
-	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		rv, err := ev.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		o := ev.heap[rv]
-		if o.kind != "list" {
-			t.Fatalf("expected list, got kind %q", o.kind)
-		}
-		var parts []string
-		for _, el := range o.elems {
-			if p, ok := ev.heap[el]; ok && p.kind == "list" {
-				parts = append(parts, "[")
-				for _, e2 := range p.elems {
-					if s, ok := ev.heap[e2]; ok {
-						parts = append(parts, fmt.Sprintf("%v", s.fval))
-					} else {
-						parts = append(parts, fmt.Sprintf("%v", e2))
-					}
-				}
-				parts = append(parts, "]")
-			}
-		}
-		return strings.Join(parts, " ")
-	}
-	if got := evalStr("enumerate([10, 20, 30])"); got != "[ 0 10 ] [ 1 20 ] [ 2 30 ]" {
-		t.Fatalf("enumerate list: got %q", got)
-	}
+	goldenReprIs(t, "enumerate([10, 20, 30])", "[[0, 10], [1, 20], [2, 30]]")
 }
 
 func TestGenZip(t *testing.T) {
-	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		rv, err := ev.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		o := ev.heap[rv]
-		if o.kind != "list" {
-			t.Fatalf("expected list, got kind %q", o.kind)
-		}
-		var parts []string
-		for _, el := range o.elems {
-			if p, ok := ev.heap[el]; ok && p.kind == "list" {
-				parts = append(parts, "[")
-				for _, e2 := range p.elems {
-					if s, ok := ev.heap[e2]; ok {
-						parts = append(parts, fmt.Sprintf("%v", s.fval))
-					} else {
-						parts = append(parts, fmt.Sprintf("%v", e2))
-					}
-				}
-				parts = append(parts, "]")
-			}
-		}
-		return strings.Join(parts, " ")
-	}
-	if got := evalStr("zip([1, 2], [10, 20])"); got != "[ 1 10 ] [ 2 20 ]" {
-		t.Fatalf("zip lists: got %q", got)
-	}
+	goldenReprIs(t, "zip([1, 2], [10, 20])", "[[1, 10], [2, 20]]")
 }
 
 func TestGenForStr(t *testing.T) {
-	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		rv, err := ev.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		o := ev.heap[rv]
-		if o.kind != "list" {
-			t.Fatalf("expected list, got kind %q", o.kind)
-		}
-		var parts []string
-		for _, el := range o.elems {
-			if s, ok := ev.heap[el]; ok && s.kind == "str" {
-				parts = append(parts, s.sval)
-			}
-		}
-		return strings.Join(parts, " ")
-	}
-	// for x in "abc" yields each char as a string.
-	if got := evalStr("r = []\nfor x in \"abc\":\n    r.append(x)\nr"); got != "a b c" {
-		t.Fatalf("for str: got %q", got)
-	}
+	// for x in "abc" yields each character as a string of its own.
+	goldenReprIs(t, "r = []\nfor x in \"abc\":\n    r.append(x)\nr", "['a', 'b', 'c']")
 }
 
 func TestGenIntFloat(t *testing.T) {
-	evalStr := func(src string) string {
-		prog, err := Parse(src)
-		if err != nil {
-			t.Fatalf("parse %s: %v", src, err)
-		}
-		ev := NewEvaluator()
-		rv, err := ev.EvalProgram(prog)
-		if err != nil {
-			t.Fatalf("eval %s: %v", src, err)
-		}
-		return fmt.Sprintf("%v", rv)
+	goldenReprIs(t, `int("42")`, "42")
+	goldenReprIs(t, "int(3.9)", "3")
+	goldenReprIs(t, `float("2.5")`, "2.5")
+	if got := goldenType(t, "int(\"42\")"); got != "int" {
+		t.Errorf("int of a numeric string is %q, want int", got)
 	}
-	if got := evalStr("int(\"42\")"); got != "42" {
-		t.Fatalf("int string: got %q", got)
-	}
-	if got := evalStr("int(3.9)"); got != "3" {
-		t.Fatalf("int float: got %q", got)
-	}
-	// float("2.5") returns a heap float object; check its fval.
-	prog, _ := Parse("float(\"2.5\")")
-	ev := NewEvaluator()
-	rv, _ := ev.EvalProgram(prog)
-	if o, ok := ev.heap[rv]; !ok || o.kind != "float" || o.fval != 2.5 {
-		t.Fatalf("float string: got id %v kind=%v", rv, o.kind)
+	if got := goldenType(t, `float("2.5")`); got != "float" {
+		t.Errorf("float of a numeric string is %q, want float", got)
 	}
 }
 
@@ -1308,7 +881,7 @@ def main():
         return x
 main()
 `
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("with: %v", err)
 	}
@@ -1330,7 +903,7 @@ def main():
         return 7
 main()
 `
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("with normal exit: %v", err)
 	}
@@ -1353,7 +926,7 @@ def main():
     return len(g)
 main()
 `
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("yield from: %v", err)
 	}
@@ -1372,7 +945,7 @@ def main():
     return len(g)
 main()
 `
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("yield from range: %v", err)
 	}

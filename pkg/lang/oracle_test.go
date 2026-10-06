@@ -7,66 +7,68 @@ import (
 	"testing"
 )
 
-// The oracle leg (roadmap L11.9, ADR 0186).
+// The oracle leg (roadmap L11.9, ADR 0186; two legs since ADR 0302 retired the AST interpreter).
 //
-// The classification functions here are the whole point of the third leg, so they
-// are tested the way the rest of the toolchain is: with the cases that must *fail*,
-// not only the ones that pass. A harness that can only report success is a harness
-// that reports success for the wrong answer — which is precisely the bug L11.9 was
-// written to catch (print(True) == "1" sat in a green build for 100+ ADRs).
+// The classification functions here decide what a row of the conformance matrix *means*, so they
+// are tested the way the rest of the toolchain is: with the cases that must fail, not only the ones
+// that pass. A harness that can only report success is a harness that reports success for the wrong
+// answer — which is precisely the bug L11.9 was written to catch (print(True) == "1" sat in a green
+// build for 100+ ADRs, because the only other thing it could compare against agreed).
+//
+// With one backend the oracle is not a tiebreaker, it is the whole verdict: a row is `match` only
+// when the compiled program prints what CPython prints.
 
-func reportFor(interpOK bool, interp, interpErr string, aotOK bool, aot, aotErr string, pyOK bool, py, pyErr string, rules []string) OracleReport {
-	return BuildOracleReport(interpOK, interp, interpErr, aotOK, aot, aotErr, rules, pyOK, py, pyErr)
+func reportFor(aotOK bool, aot, aotErr string, pyOK bool, py, pyErr string, rules []string) OracleReport {
+	return BuildOracleReport(aotOK, aot, aotErr, rules, pyOK, py, pyErr)
 }
 
-func TestOracleReportMatchWhenBothBackendsPrintPythonsAnswer(t *testing.T) {
-	rep := reportFor(true, "True\n", "", true, "True\n", "", true, "True\n", "", nil)
+func TestOracleReportMatchWhenTheCompiledLegPrintsPythonsAnswer(t *testing.T) {
+	rep := reportFor(true, "True\n", "", true, "True\n", "", nil)
 	if rep.Status != OracleMatch {
 		t.Fatalf("status = %q, want %q", rep.Status, OracleMatch)
 	}
-	if !rep.Parity {
-		t.Errorf("parity = false, want true")
-	}
-	for _, want := range []string{"interpreter", "aot", "python"} {
-		l, ok := rep.Leg(want)
-		if !ok {
+	for _, want := range []string{"aot", "python"} {
+		if _, ok := rep.Leg(want); !ok {
 			t.Fatalf("missing leg %s", want)
 		}
-		if want != "python" && !l.Matches {
-			t.Errorf("leg %s: matches_python = false, want true", want)
-		}
+	}
+	l, _ := rep.Leg("aot")
+	if !l.Matches {
+		t.Errorf("the compiled leg printed the oracle's answer and does not say so: %+v", l)
 	}
 	if len(rep.Notes) != 0 {
 		t.Errorf("a matching row should carry no notes, got %v", rep.Notes)
 	}
 }
 
-// TestOracleReportTwoBackendsAgreeingOnWrongAnswerIsDebt is the regression the whole
-// item exists for: interpreter and AOT print "1", CPython prints "True".
-func TestOracleReportTwoBackendsAgreeingOnWrongAnswerIsDebt(t *testing.T) {
-	rep := reportFor(true, "1\n", "", true, "1\n", "", true, "True\n", "", nil)
+// TestOracleReportTheOldParityTrapIsGone records why this item exists. The bug it was written for
+// was `print(True)` answering "1" on both engines for 100+ ADRs: two implementations agreeing is
+// not evidence, and the matrix only saw the truth because a third leg disagreed with both.
+//
+// One backend remains, so the trap cannot recur in the same shape — but its successor can: an
+// answer the compiler agrees with itself about. The oracle leg is now the *only* verdict a row can
+// carry, which is why these classification functions matter more than they did, not less.
+func TestOracleReportAgreeingWithItselfIsDebt(t *testing.T) {
+	rep := reportFor(true, "1\n", "", true, "True\n", "", nil)
 	if rep.Status != OracleDebt {
-		t.Fatalf("status = %q, want %q — parity must never be enough", rep.Status, OracleDebt)
+		t.Fatalf("status = %q, want %q — the compiler agreeing with itself is not a verdict", rep.Status, OracleDebt)
 	}
-	if !rep.Parity {
-		t.Errorf("parity = false; the backends do agree, that is the problem")
+	if rep.Legs[0].Matches {
+		t.Errorf("the compiled leg disagrees with the oracle and may not report a match: %+v", rep.Legs[0])
 	}
-	if rep.Legs[0].Matches || rep.Legs[1].Matches {
-		t.Errorf("neither leg matches the oracle, so neither may report a match: %+v", rep.Legs)
-	}
-	if len(rep.Notes) != 2 {
-		t.Errorf("want one note per disagreeing backend, got %v", rep.Notes)
+	if len(rep.Notes) != 1 {
+		t.Errorf("want one note for the disagreeing leg, got %v", rep.Notes)
 	}
 }
 
 func TestOracleReportRefusalIsDebtNotPass(t *testing.T) {
-	// The compiled backend refuses the program; the interpreter and CPython agree.
-	rep := reportFor(true, "[1, 'a']\n", "", false, "", "codegen: unsupported expression", true, "[1, 'a']\n", "", nil)
+	// The compiled backend refuses the program while CPython runs it.
+	rep := reportFor(false, "", "codegen: unsupported expression", true, "[1, 'a']\n", "", nil)
 	if rep.Status != OracleDebt {
 		t.Fatalf("status = %q, want %q: a refusal is a divergence, not a skip", rep.Status, OracleDebt)
 	}
-	if rep.Legs[1].OK || rep.Legs[1].Matches {
-		t.Errorf("a leg that failed may not be reported as ok or matching: %+v", rep.Legs[1])
+	if rep.Legs[0].OK || rep.Legs[0].Matches {
+		t.Errorf("a leg that failed may not be reported as ok or matching: %+v", rep.Legs[0])
 	}
 	if !strings.Contains(strings.Join(rep.Notes, "; "), "compiled leg failed") {
 		t.Errorf("notes should say which leg failed: %v", rep.Notes)
@@ -80,23 +82,20 @@ func TestOracleReportALegThatDiedViolentlyIsStillNotAMatch(t *testing.T) {
 	// test; the fixture at the CLI level had to change when the bug went away, so the contract
 	// is pinned here, where a violent leg can be described exactly.
 	panicText := "panic: runtime error: index out of range [-1]\n\ngoroutine 1 [running]:"
-	rep := reportFor(true, "3\n", "", false, "", panicText, true, "3\n", "", nil)
+	rep := reportFor(false, "", panicText, true, "3\n", "", nil)
 	if rep.Status == OracleMatch {
 		t.Fatalf("a program whose compiled leg panicked may not be reported as a match: %+v", rep)
 	}
-	if rep.Legs[1].OK || rep.Legs[1].Matches {
-		t.Errorf("a panicked leg may not be ok or matching: %+v", rep.Legs[1])
+	if rep.Legs[0].OK || rep.Legs[0].Matches {
+		t.Errorf("a panicked leg may not be ok or matching: %+v", rep.Legs[0])
 	}
-	if !strings.Contains(rep.Legs[1].Error, "panic:") {
-		t.Errorf("the panic text has to survive into the report so it is readable: %q", rep.Legs[1].Error)
-	}
-	if rep.Parity {
-		t.Errorf("parity between one leg and a corpse is not parity: %+v", rep)
+	if !strings.Contains(rep.Legs[0].Error, "panic:") {
+		t.Errorf("the panic text has to survive into the report so it is readable: %q", rep.Legs[0].Error)
 	}
 }
 
 func TestOracleReportNotApplicableOnlyWhenTheOracleCannotJudge(t *testing.T) {
-	rep := reportFor(true, "3\n", "", true, "3\n", "", false, "", "Traceback: SyntaxError", nil)
+	rep := reportFor(true, "3\n", "", false, "", "Traceback: SyntaxError", nil)
 	if rep.Status != OracleNA {
 		t.Fatalf("status = %q, want %q", rep.Status, OracleNA)
 	}
@@ -104,7 +103,7 @@ func TestOracleReportNotApplicableOnlyWhenTheOracleCannotJudge(t *testing.T) {
 		t.Errorf("an NA row must say why there is no verdict: %v", rep.Notes)
 	}
 	// A compiler panic is recorded like any other leg failure: the report survives it.
-	rep = reportFor(true, "3\n", "", false, "", "compiler panic: index out of range [-1]", true, "3\n", "", nil)
+	rep = reportFor(false, "", "compiler panic: index out of range [-1]", true, "3\n", "", nil)
 	if rep.Status != OracleDebt {
 		t.Errorf("a compiler panic should be debt, got %q", rep.Status)
 	}
@@ -173,15 +172,15 @@ func TestOracleCheckDebtNeedsReasonOwnerAndPin(t *testing.T) {
 		}
 	}
 	c.Reason, c.Ref = "bools print as 1", "roadmap L11.2"
-	c.Pins = []OraclePin{{Backend: "interpreter", Stdout: "1\n"}, {Backend: "aot", Stdout: "1\n"}}
-	// The legs print "1" and CPython prints "True": still debt, and the pins match,
-	// so the row is honest and reports nothing.
-	r := &ConformanceResult{InterpOK: true, InterpOut: "1\n", AOTOK: true, AOTOut: "1\n", PythonOK: true, PythonOut: "True\n"}
+	c.Pins = []OraclePin{{Backend: "aot", Stdout: "1\n"}}
+	// The compiled leg prints "1" and CPython prints "True": still debt, and the pin matches, so
+	// the row is honest and reports nothing.
+	r := &ConformanceResult{AOTOK: true, AOTOut: "1\n", PythonOK: true, PythonOut: "True\n"}
 	if drift := c.OracleCheck(r); len(drift) != 0 {
 		t.Errorf("an accurately pinned debt row should report no drift, got %v", drift)
 	}
-	if r.InterpMatchesPython || r.AOTMatchesPython {
-		t.Errorf("neither backend prints Python's answer, so neither may claim a match: interp=%v aot=%v", r.InterpMatchesPython, r.AOTMatchesPython)
+	if r.AOTMatchesPython {
+		t.Errorf("the backend does not print Python's answer, so it may not claim a match")
 	}
 }
 
@@ -190,10 +189,9 @@ func TestOracleCheckDebtNeedsReasonOwnerAndPin(t *testing.T) {
 func TestOracleCheckFailsWhenADebtIsPaid(t *testing.T) {
 	c := ConformanceCase{
 		ID: "programs/x", Name: "x.gy", Oracle: OracleDebt, Reason: "r", Ref: "L11.2",
-		Pins: []OraclePin{{Backend: "interpreter", Stdout: "1\n"}, {Backend: "aot", Stdout: "1\n"}},
+		Pins: []OraclePin{{Backend: "aot", Stdout: "1\n"}},
 	}
 	r := &ConformanceResult{
-		InterpOK: true, InterpOut: "True\n",
 		AOTOK: true, AOTOut: "True\n",
 		PythonOK: true, PythonOut: "True\n",
 	}
@@ -202,7 +200,7 @@ func TestOracleCheckFailsWhenADebtIsPaid(t *testing.T) {
 	if !strings.Contains(joined, "debt is paid") {
 		t.Fatalf("a closed debt must fail with 'debt is paid', got %v", drift)
 	}
-	for _, want := range []string{"pin says the interpreter leg prints", "pin says the aot leg prints"} {
+	for _, want := range []string{"pin says the aot leg prints"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("the stale pins should also be reported (%s): %v", want, drift)
 		}
@@ -220,20 +218,16 @@ func TestOracleCheckPinsCatchEveryKindOfLegDrift(t *testing.T) {
 		want string
 	}{
 		{"stdout moved",
-			base(OraclePin{Backend: "interpreter", Stdout: "1\n"}),
-			ConformanceResult{InterpOK: true, InterpOut: "one\n", AOTOK: true, AOTOut: "1\n", PythonOK: true, PythonOut: "True\n"},
-			"pin says the interpreter leg prints"},
+			base(OraclePin{Backend: "aot", Stdout: "1\n"}),
+			ConformanceResult{AOTOK: true, AOTOut: "one\n", PythonOK: true, PythonOut: "True\n"},
+			"pin says the aot leg prints"},
 		{"a leg that used to fail now runs",
 			base(OraclePin{Backend: "aot", Missing: true}),
-			ConformanceResult{InterpOK: true, InterpOut: "1\n", AOTOK: true, AOTOut: "1\n", PythonOK: true, PythonOut: "True\n"},
-			"the refusal is gone"},
-		{"a leg that used to run now fails",
-			base(OraclePin{Backend: "interpreter", Stdout: "1\n"}),
 			ConformanceResult{AOTOK: true, AOTOut: "1\n", PythonOK: true, PythonOut: "True\n"},
-			"but it failed"},
+			"the refusal is gone"},
 		{"the failure changed shape",
 			base(OraclePin{Backend: "aot", Missing: true, Err: "compiler panic"}),
-			ConformanceResult{InterpOK: true, InterpOut: "1\n", AOTErr: "codegen: unsupported expression", PythonOK: true, PythonOut: "True\n"},
+			ConformanceResult{AOTErr: "codegen: unsupported expression", PythonOK: true, PythonOut: "True\n"},
 			"pin says the aot leg fails with"},
 	}
 	for _, tc := range cases {
@@ -249,7 +243,6 @@ func TestOracleCheckAppliesTheDeclaredComparisonRules(t *testing.T) {
 		ID: "p", Name: "p.gy", Oracle: OracleMatch, Rules: []string{RuleSetOrder},
 	}
 	r := &ConformanceResult{
-		InterpOK: true, InterpOut: "{3, 1, 2}\n",
 		AOTOK: true, AOTOut: "{1, 2, 3}\n",
 		PythonOK: true, PythonOut: "{2, 3, 1}\n",
 	}
@@ -259,8 +252,8 @@ func TestOracleCheckAppliesTheDeclaredComparisonRules(t *testing.T) {
 	if r.Oracle != OracleMatch {
 		t.Errorf("status = %q, want match", r.Oracle)
 	}
-	if !r.InterpMatchesPython || !r.AOTMatchesPython {
-		t.Errorf("both legs should match under the rule: interp=%v aot=%v", r.InterpMatchesPython, r.AOTMatchesPython)
+	if !r.AOTMatchesPython {
+		t.Errorf("the compiled leg should match under the rule")
 	}
 	// The rule list the row was judged under is echoed into the result, so a reader
 	// (or a stub check that drops the rule) can see exactly what was normalised.
@@ -396,7 +389,7 @@ func TestBuildOracleReportKeepsAnOldOracleDiagnosingItself(t *testing.T) {
 	// The python leg died on a SyntaxError: the row is not_applicable (no oracle
 	// answer exists), and the note must say the oracle may be the problem rather than
 	// leaving a reader to conclude the compiler regressed.
-	rep := BuildOracleReport(true, "42\n", "", true, "42\n", "", nil, false, "", "line 1: SyntaxError: invalid syntax")
+	rep := BuildOracleReport(true, "42\n", "", nil, false, "", "line 1: SyntaxError: invalid syntax")
 	if rep.Status != OracleNA {
 		t.Fatalf("status = %s, want %s", rep.Status, OracleNA)
 	}

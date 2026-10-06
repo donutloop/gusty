@@ -71,7 +71,7 @@ func TestSemicolonIsNotADiagnostic(t *testing.T) {
 				t.Errorf("%q recorded %q at %d:%d; a separator must record nothing", src, d.Msg, d.Span.Line, d.Span.Col)
 			}
 		}
-		if _, _, err := EvalExpr(src); err != nil {
+		if _, _, err := evalGolden(t, src); err != nil {
 			t.Errorf("%q: interpreter: %v", src, err)
 		}
 	}
@@ -102,7 +102,7 @@ func TestEmptyStatementIsAParseError(t *testing.T) {
 			}
 			// The interpreter reads the same verdict: a program the parser rejects does not
 			// run half of.
-			if _, _, ierr := EvalExpr(tc.src); ierr == nil {
+			if _, _, ierr := evalGolden(t, tc.src); ierr == nil {
 				t.Errorf("%q: interpreter accepted a program the parser rejected", tc.src)
 			}
 		})

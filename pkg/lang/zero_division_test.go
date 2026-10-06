@@ -17,22 +17,11 @@ import (
 // uncatchable: `except ZeroDivisionError:` matches on the class, and there wasn't one.
 
 // zdInterp runs src through the interpreter, returning what it printed and the error.
+// zdInterp answers what a program printed and how it failed, the compiled program judged against
+// the record the retired engine left behind (ADR 0302).
 func zdInterp(t *testing.T, src string) (string, error) {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	_, _, evalErr := EvalExpr(src)
-	os.Stdout = old
-	w.Close()
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("read pipe: %v", err)
-	}
-	return buf.String(), evalErr
+	return runGoldenStdout(t, src)
 }
 
 // zdBuild runs src through the full compiled pipeline and runs the binary.
@@ -87,9 +76,9 @@ func TestDivisionByZeroRaisesATypedExceptionInTheInterpreter(t *testing.T) {
 			if err == nil {
 				t.Fatalf("the interpreter accepted a division by zero; it printed %q", out)
 			}
-			var evalErr *EvalError
+			var evalErr *TrapError
 			if !errors.As(err, &evalErr) {
-				t.Fatalf("want an *EvalError, got %T: %v", err, err)
+				t.Fatalf("want an *TrapError, got %T: %v", err, err)
 			}
 			if evalErr.ExnType != tc.class {
 				t.Errorf("class = %q, want %q — an untyped error cannot be caught by `except %s:`",
@@ -142,7 +131,7 @@ func TestDivisionByZeroIsCatchableInTheInterpreter(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a ValueError arm swallowed a ZeroDivisionError; stdout was %q", out)
 	}
-	var evalErr *EvalError
+	var evalErr *TrapError
 	if !errors.As(err, &evalErr) || evalErr.ExnType != "ZeroDivisionError" {
 		t.Fatalf("want the ZeroDivisionError to propagate, got %v (%T)", err, err)
 	}

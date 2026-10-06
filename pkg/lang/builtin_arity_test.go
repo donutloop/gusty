@@ -114,7 +114,7 @@ func TestBuiltinWithoutAnArgumentNeverPanics(t *testing.T) {
 						t.Fatalf("interpreter panicked on %q: %v (ADR 0166 exit 2)", src, p)
 					}
 				}()
-				_, _, _ = EvalExpr(src)
+				_, _, _ = evalGolden(t, src)
 			}()
 			// The compiler must not panic either. Refusing is allowed; dying is not.
 			func() {

@@ -6,7 +6,7 @@ import "testing"
 // `f(a, b)` (roadmap L5.3).
 func TestTrailingCommaCall(t *testing.T) {
 	src := "def f(a, b):\n    return a + b\nf(1, 2,)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -18,7 +18,7 @@ func TestTrailingCommaCall(t *testing.T) {
 // TestTrailingCommaList verifies `[1, 2,]` parses and produces a 2-element list.
 func TestTrailingCommaList(t *testing.T) {
 	src := "a = [1, 2,]\nlen(a)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestTrailingCommaList(t *testing.T) {
 // TestTrailingCommaDict verifies `{1: 2,}` parses and produces a 1-entry dict.
 func TestTrailingCommaDict(t *testing.T) {
 	src := "a = {1: 2,}\nlen(a)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestTrailingCommaDict(t *testing.T) {
 // TestTrailingCommaSet verifies `{1, 2,}` parses and produces a 2-element set.
 func TestTrailingCommaSet(t *testing.T) {
 	src := "a = {1, 2,}\nlen(a)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestTrailingCommaSet(t *testing.T) {
 // as a 1-tuple (Python semantics).
 func TestTrailingCommaTuple(t *testing.T) {
 	src := "a = (1, 2,)\nlen(a)"
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestTrailingCommaTuple(t *testing.T) {
 		t.Fatalf("got %d, want 2", v)
 	}
 	src1 := "a = (1,)\nlen(a)"
-	v1, _, err := EvalExpr(src1)
+	v1, _, err := evalGolden(t, src1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -86,7 +86,7 @@ def area(p):
         case _:
             return 0
 area(Point(3, 4))`
-	v, _, err := EvalExpr(src)
+	v, _, err := evalGolden(t, src)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}

@@ -680,23 +680,6 @@ func logicWordErr(n *BinOp) error {
 	return fmt.Errorf("`%s %s %s` chooses between two values whose kinds this pass cannot state in one word: the answer is one operand or the other, and which one is a run-time fact. Printing the verdict the operator is not would be the wrong answer this backend refuses to ship (ADR 0166), and choosing the value needs the value word that carries its own tag — roadmap L11.1's tagged value word, Gap R.147. Write both operands in the same shape, test with `if`/`else` and bind the value there, or print it (the print door renders a chosen operand by its kind)", exprSurface(n.L), n.Op, exprSurface(n.R))
 }
 
-// logicChosen boxes the operand an `and`/`or` hands back when the source wrote that operand as a verdict.
-// A verdict is the 1/0 the comparison produced, and the question 「is this a bool?» is asked of the
-// expression — but the expression that has to answer is the operand the test *chose*, which for a run-time
-// test is not knowable by the print door's conservative rule (ADR 0257, Gap R.125). Here the program has
-// just run the test, so the answer is available: the operand that won is asked, and a verdict enters
-// through the same box a container slot gives it (ADR 0259), which every numeric question still unboxes.
-// `x = True` / `print(x or 2)` is `True` and `print(1 or True)` stays `1` — the pair ADR 0261 refuses to
-// break, and the pair the compiled backend renders from the tag it selects (roadmap Gap R.147, ADR 0269).
-func (e *Evaluator) logicChosen(chosen Expr, v int64) int64 {
-	if e.isHandle(v) {
-		return v
-	}
-	if IsBoolExpr(chosen, e.boolEnv()) {
-		return e.allocBool(v)
-	}
-	return v
-}
 
 // logicFoldConst answers the fold paths: what operand an `and`/`or` of two values the source wrote hands
 // back. Before this the folders answered the verdict, so `print(len("" or "abc"))` and every index, repeat

@@ -168,7 +168,7 @@ func TestACalledDefNameKeepsTheCheckedRoadIsTheLadderRule(t *testing.T) {
 			// Arity is answered by the checker in this language (`verify: function "f" accepts 1
 			// argument, got more`), not by a run-time trap, so the contract to hold is that *some*
 			// stage refuses — the failure mode this row guards is silence: `2` and `0` at exit 0.
-			_, _, err := EvalExpr(tc.src)
+			_, _, err := evalGolden(t, tc.src)
 			if err == nil {
 				t.Fatalf("the program ran to completion; the arity question was dropped and this is the shape that printed `2` and `0` at exit 0 (Gap R.168)\nsrc: %s", tc.src)
 			}

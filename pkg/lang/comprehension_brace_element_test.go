@@ -156,7 +156,7 @@ func TestBraceElementComprehensionRunsLikeCPython(t *testing.T) {
 		{"a set element keeps its own members", "s = [{1, 2}, {3}]\nprint(len(s[0]), len(s[1]))\n", "2 1\n", false},
 		{"nested display elements", "d = [{1, 2}, [3]]\nprint(len(d), len(d[0]), len(d[1]))\n", "2 2 1\n", false},
 	} {
-		out, err := InterpreterRun(tc.src)
+		out, err := runGoldenStdout(t, tc.src)
 		if err != nil {
 			t.Fatalf("%s: interpreter: %v", tc.name, err)
 		}
@@ -217,7 +217,7 @@ func TestComprehensionOverAOneKindContainerTagsItsElement(t *testing.T) {
 		{"dict_values_all_text", "d = {}\nd[\"a\"] = 1\nout = [v for v in d]\nprint(out)\nprint(out[0])\n", "['a']\na\n"},
 		{"grown_int_list", "xs = []\nxs.append(1)\nxs.append(2)\nout = [x * 2 for x in xs]\nprint(out)\nprint(out[1])\n", "[2, 4]\n4\n"},
 	} {
-		out, err := InterpreterRun(tc.src)
+		out, err := runGoldenStdout(t, tc.src)
 		if err != nil {
 			t.Fatalf("%s: interpreter: %v", tc.name, err)
 		}
@@ -260,7 +260,7 @@ func TestComprehensionOverAMixedContainerTagsItsLoopVariable(t *testing.T) {
 		{"mixed_dict_values_asked_as_keys", "d = {1: \"x\", \"k\": 2}\nout = [v for v in d]\nprint(out)\n", "[1, 'k']\n"},
 		{"mixed_dict_into_a_dict", "d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = {k: 1 for k in d}\nprint(out)\nprint(len(out))\n", "{'a': 1, 2: 1}\n2\n"},
 	} {
-		out, err := InterpreterRun(tc.src)
+		out, err := runGoldenStdout(t, tc.src)
 		if err != nil {
 			t.Fatalf("%s: interpreter: %v", tc.name, err)
 		}
@@ -293,7 +293,7 @@ func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
 		{"text_set_into_a_dict", "sa = {\"a\", \"b\"}\nout = {x: 1 for x in sa}\nprint(len(out))\nprint(out[\"b\"])\n", "2\n1\n"},
 		{"mixed_dict_keys_into_a_list", "d = {}\nd[\"a\"] = 1\nd[2] = \"b\"\nout = [k for k in d]\nprint(out)\n", "['a', 2]\n"},
 	} {
-		out, err := InterpreterRun(tc.src)
+		out, err := runGoldenStdout(t, tc.src)
 		if err != nil {
 			t.Fatalf("%s: interpreter: %v", tc.name, err)
 		}

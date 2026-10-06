@@ -32,18 +32,6 @@ const (
 // a list and `str` of that list agree.
 func (f ValueForm) QuotesText() bool { return f == FormRepr }
 
-// renderOf is the interpreter's half of the pair. Repr is already the single renderer that
-// print, str() and the REPL echo share, so str is it unchanged; repr differs only where
-// Python's own pair differs — a text hands back its quoted form. Everything else delegates,
-// which is the whole point of putting the pair in one function instead of two.
-func (e *Evaluator) renderOf(v int64, form ValueForm) string {
-	if form.QuotesText() {
-		if o, ok := e.heap[v]; ok && o.kind == "str" {
-			return pyReprString(o.sval)
-		}
-	}
-	return e.Repr(v)
-}
 
 // renderPair lowers str(x) and repr(x) in the compiled backend onto the printers the module
 // already has, by pointing those printers at a capture buffer instead of at stdout
