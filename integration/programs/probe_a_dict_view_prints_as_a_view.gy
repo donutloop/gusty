@@ -1,0 +1,24 @@
+# A dict view prints as a VIEW, not as a list (roadmap Gap R.182, owner L11.1; ADR 0296)
+#
+# Three bugs on one row. Before this change:
+#   print({"a": 1}.keys())      reference dict_keys(['a'])    --interp ['a']    --aot 0
+#   print({1: 2}.values())      reference dict_values([2])    --interp [2]      --aot EXIT 2
+# The compiled fold rendered a folded literal as the ADDRESS of a compile-time global and handed it to
+# a heap walker -- rt_print_list_mixed(i32 @.lst1, i32 0) -- which is exit 2, ADR 0166's own-bug code.
+# And neither engine said the wrapper word that tells a view apart from a list.
+#
+# A view stays a list-SHAPED object (sum/min/max/len/for/in all keep working on it); only its
+# rendering knows it is a view. items() stays a refusal on the compiled leg until L11.3 gives a pair
+# a value to be, which is why it is not in this file.
+print({"a": 1}.keys())
+print({"a": 1, "b": 2}.keys())
+print({"a": 1}.values())
+print({1: 2}.values())
+print({1: "a"}.values())
+print({}.keys())
+print({}.values())
+print(sum({1: 2, 3: 4}.keys()))
+print(max({1: 2, 3: 4}.keys()))
+print(min({1: 2, 3: 4}.keys()))
+print([1, 2])
+print({"a": 1})

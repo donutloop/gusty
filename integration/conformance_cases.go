@@ -149,6 +149,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// text's index, the void 0, a verdict 1 — instead of rendering it.
 		// Gap R.180 + Gap R.181 / ADR 0291 + ADR 0257, owner L11.1.
 		"probe_a_set_counts_and_a_get_shows_its_kind",
+		// A dict view prints as a VIEW: dict_keys(['a']), not ['a']. The compiled leg printed the
+		// HANDLE (0) for keys() and spent exit 2 for values() of an int-valued dict -- a folded literal
+		// rendered as a global address fed to a heap walker. The view keeps its list kind so sum/min/
+		// max keep working; only the rendering knows it is a view. Gap R.182 / ADR 0296, owner L11.1.
+		"probe_a_dict_view_prints_as_a_view",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

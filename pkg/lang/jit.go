@@ -112,6 +112,8 @@ type obj struct {
 	mname  string           // method name (kind=method)
 	recv   int64            // bound receiver id (0 = unbound)
 	base   int64            // base class id (kind=class) for inheritance
+	view   string           // for kind=list: the dict-view wrapper word the reference renders with, "" for a plain list
+	pair   bool             // a two-element list standing in for a tuple, rendered (a, b) (roadmap L11.3)
 	elems  []int64          // list elements (kind=list)
 	dvals  []int64          // dict values parallel to elems keys (kind=dict)
 	sval   string           // string value (kind=str)
@@ -608,7 +610,21 @@ func (e *Evaluator) Repr(id int64) string {
 		case "list":
 			parts := make([]string, 0, len(o.elems))
 			for _, el := range o.elems {
+				if po, isPair := e.heap[el]; isPair && po.pair {
+					// items() stores each pair as its own two-element object (there is no tuple
+					// value yet, roadmap L11.3); the reference renders it (k, v).
+					parts = append(parts, "("+e.reprNested(po.elems[0])+", "+e.reprNested(po.elems[1])+")")
+					continue
+				}
 				parts = append(parts, e.reprNested(el))
+			}
+			// A dict view is NOT a list and the reference says so in the rendering itself:
+			// dict_keys(['a']), dict_values([1]), dict_items([('a', 1)]). Both engines built a plain
+			// list and printed ['a'], which loses a distinction the language actually has. The object
+			// stays kind=list so every list-shaped consumer (sum, min, max, len, for, in) keeps
+			// working; only the rendering knows it is a view (roadmap Gap R.182).
+			if o.view != "" {
+				return o.view + "(" + "[" + strings.Join(parts, ", ") + "]" + ")"
 			}
 			return "[" + strings.Join(parts, ", ") + "]"
 		case "dict":
@@ -3889,11 +3905,16 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 		if len(args) != 0 {
 			return 0, &EvalError{Msg: "items() takes no arguments"}
 		}
+		// A view, not a list (Gap R.182). Its pairs are still list objects, because this backend has
+		// no tuple value yet (roadmap L11.3); the reference renders them `(k, v)`, and the view's own
+		// rendering above is where that difference is recorded.
 		listID := e.allocObj("list")
 		lo := e.heap[listID]
+		lo.view = "dict_items"
 		for i, k := range o.elems {
 			pairID := e.allocObj("list")
 			p := e.heap[pairID]
+			p.pair = true
 			p.elems = append(p.elems, k, o.dvals[i])
 			lo.elems = append(lo.elems, pairID)
 		}
@@ -3902,8 +3923,10 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 		if len(args) != 0 {
 			return 0, &EvalError{Msg: "keys() takes no arguments"}
 		}
+		// A view: still a list-shaped object, with the wrapper word the reference renders (Gap R.182).
 		listID := e.allocObj("list")
 		lo := e.heap[listID]
+		lo.view = "dict_keys"
 		lo.elems = append(lo.elems, o.elems...)
 		return listID, nil
 	case "values":
@@ -3912,6 +3935,7 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 		}
 		listID := e.allocObj("list")
 		lo := e.heap[listID]
+		lo.view = "dict_values"
 		lo.elems = append(lo.elems, o.dvals...)
 		return listID, nil
 	case "get":

@@ -563,6 +563,15 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A dict view prints as a **view** (ADR 0296, closing `Gap R.182`). `print({"a": 1}.keys())` printed `0` on
+the compiled leg — the heap handle through `%d` — and `print({1: 2}.values())` handed the address of a
+compile-time global to a heap walker, which is **exit 2**, the compiler's own bug on a two-line program. Both
+engines also printed a bare `['a']` where the reference prints `dict_keys(['a'])`, so the two backends agreed
+and only the oracle leg could see the third defect. A view is now a list-shaped value that carries its own
+name: `sum`, `max`, `min`, `for` and `in` keep working on it, and only the rendering knows it is not a list.
+`items()` still refuses on the compiled leg, because a key/value pair has no value representation until
+L11.3 — refusing is honest where a plausible-looking `[(…)]` would be fabricated.
+
 A set counts **distinct** members, and a `dict.get` answers with the kind its **slot** has (ADR 0295,
 closing `Gap R.180` and `Gap R.181`). Both were wrong numbers at exit 0 that no amount of correct-looking
 test data would catch: `len({1, 2})` answers `2` on any implementation, so only a *duplicate* reveals that the

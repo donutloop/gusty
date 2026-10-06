@@ -804,6 +804,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_dict_view_prints_as_a_view",
+        "name": "probe_a_dict_view_prints_as_a_view.gy",
+        "source": "# A dict view prints as a VIEW, not as a list (roadmap Gap R.182, owner L11.1; ADR 0296)\n#\n# Three bugs on one row. Before this change:\n#   print({\"a\": 1}.keys())      reference dict_keys(['a'])    --interp ['a']    --aot 0\n#   print({1: 2}.values())      reference dict_values([2])    --interp [2]      --aot EXIT 2\n# The compiled fold rendered a folded literal as the ADDRESS of a compile-time global and handed it to\n# a heap walker -- rt_print_list_mixed(i32 @.lst1, i32 0) -- which is exit 2, ADR 0166's own-bug code.\n# And neither engine said the wrapper word that tells a view apart from a list.\n#\n# A view stays a list-SHAPED object (sum/min/max/len/for/in all keep working on it); only its\n# rendering knows it is a view. items() stays a refusal on the compiled leg until L11.3 gives a pair\n# a value to be, which is why it is not in this file.\nprint({\"a\": 1}.keys())\nprint({\"a\": 1, \"b\": 2}.keys())\nprint({\"a\": 1}.values())\nprint({1: 2}.values())\nprint({1: \"a\"}.values())\nprint({}.keys())\nprint({}.values())\nprint(sum({1: 2, 3: 4}.keys()))\nprint(max({1: 2, 3: 4}.keys()))\nprint(min({1: 2, 3: 4}.keys()))\nprint([1, 2])\nprint({\"a\": 1})\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "dict_keys(['a'])\ndict_keys(['a', 'b'])\ndict_values([1])\ndict_values([2])\ndict_values(['a'])\ndict_keys([])\ndict_values([])\n4\n3\n1\n[1, 2]\n{'a': 1}\n",
+      "aot_ok": true,
+      "aot_stdout": "dict_keys(['a'])\ndict_keys(['a', 'b'])\ndict_values([1])\ndict_values([2])\ndict_values(['a'])\ndict_keys([])\ndict_values([])\n4\n3\n1\n[1, 2]\n{'a': 1}\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "dict_keys(['a'])\ndict_keys(['a', 'b'])\ndict_values([1])\ndict_values([2])\ndict_values(['a'])\ndict_keys([])\ndict_values([])\n4\n3\n1\n[1, 2]\n{'a': 1}\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3784,7 +3807,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3445846888/136/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix386547414/137/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3798,7 +3821,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3445846888/136/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix386547414/137/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4639,11 +4662,11 @@
       ]
     }
   ],
-  "rows": 161,
+  "rows": 162,
   "skipped": 35,
-  "pass": 126,
+  "pass": 127,
   "fail": 0,
-  "oracle_match": 111,
+  "oracle_match": 112,
   "oracle_debt": 29,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

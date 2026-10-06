@@ -973,6 +973,12 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a dict view prints as a view**: `./build/pyre --aot --eval 'print({"a": 1}.keys())'` exits 0 with
+  `dict_keys(['a'])`, matching the interpreter and the reference (`Gap R.182` / ADR 0296). Before this the
+  compiled leg printed the heap HANDLE (`0`), and `print({1: 2}.values())` emitted
+  `rt_print_list_mixed(i32 @.lst1, i32 0)` — a global address handed to a heap walker, **exit 2**. Both
+  engines had also printed a bare `['a']`, so parity was satisfied and only the oracle leg saw the missing
+  wrapper word. A view stays a list-shaped object, so `sum`/`max`/`min`/`for`/`in` keep working on it.
 - **a set counts distinct members and a `dict.get` prints the kind its slot holds**: `--aot --eval
   'print(len({1, 2, 2, 3}))'` exits 0 with `3` and `print({1: "a"}.get(1))` with `a` (`Gap R.181` /
   `Gap R.180` / ADR 0295). Before this the static set global reserved a slot per SOURCE element — `len({1, 1, 1})`

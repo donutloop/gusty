@@ -1230,6 +1230,29 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### A dict view is not a list
+
+`d.keys()`, `d.values()` and `d.items()` answer a **dict view**, and a view says so when it prints
+(`Gap R.182`, ADR 0296):
+
+```
+print({"a": 1}.keys())            # dict_keys(['a'])
+print({"a": 1, "b": 2}.keys())    # dict_keys(['a', 'b'])
+print({"a": 1}.values())          # dict_values([1])
+print({1: "a"}.values())          # dict_values(['a'])
+print({}.keys())                  # dict_keys([])
+print(sum({1: 2, 3: 4}.keys()))   # 4      — a view is list-SHAPED: sum/min/max/sorted/for/in all work
+print([1, 2])                     # [1, 2] — and a list still prints as a list
+```
+
+Both engines print all of this identically, at exit 0. A view is a list-shaped value that carries its own
+name: everything you can do to a list you can do to a view, and only its rendering differs.
+
+`d.items()` answers `dict_items([('a', 1), ('b', 2)])` on the interpreter; the compiled leg **refuses** it,
+because its elements are key/value pairs and this backend has no pair value yet (`Gap R.126`/
+roadmap L11.3 owns tuples). Refusing is the honest answer — inventing a bracket-shaped value would be a
+fabricated representation.
+
 ### What a set counts, and what a `dict.get` answers with
 
 A set has one member per distinct value, and a literal with duplicates collapses — in both backends, in the

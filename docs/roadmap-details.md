@@ -7946,3 +7946,46 @@ the ladder forbids trading an answer for a refusal. It stays wrong, on its own r
 **Measurement.** HEAD-baseline binary (`git worktree`): **22** subtest failures on the new tables, green
 here. Whole-corpus sweep of 171 programs: the only movements are this cycle's own probe — including an
 INTERP movement, which is how the `get`-default bug surfaced after the fact rather than before it.
+
+### Gap R.182 — a dict view printed as a list, and as a handle, and one shape as exit 2 (partially CLOSED by ADR 0296, owner L11.1)
+
+The third cycle running where the interesting defect is the one **both backends agreed on**:
+
+```
+print({"a": 1}.keys())     CPython dict_keys(['a'])   --interp ['a']   --aot 0      handle through %d
+print({1: 2}.values())     CPython dict_values([2])   --interp [2]     --aot EXIT 2 rt_print_list_mixed(i32 @.lst1, …)
+print({1: "a"}.values())   CPython dict_values(['a']) --interp ['a']   --aot 0
+```
+
+**The representation question came first, and I got it wrong on the first try.** The obvious move was to
+give a view its own object kind (`dict_keys`, `dict_values`, `dict_items`) and render on that. Four
+pre-existing tests broke immediately — `sum({1:2,3:4}.keys())` raised `sum expects a list or set`, and `min`
+and `max` had the same gate. There are sixteen `kind == "list"` sites in the evaluator, and a view is
+list-shaped at every one of them. The right shape is: keep `kind: "list"`, add a `view` field carrying the
+wrapper word, and let only the rendering read it. `kind` was the wrong axis for one word.
+
+**`containerOperand`, not `g.value`** — and this is the second cycle in a row I reached for the wrong one.
+A view over an **int-valued** dict folds to a literal that `g.value` renders as the address of a
+compile-time global; handing `@.lst1` to `rt_print_list_mixed` is exactly the exit-2 shape ADR 0188 removed
+for literals. My first version of the print arm used `g.value` and reproduced the bug on the very shape the
+row was named for. The `Comp` arm two lines above already used `containerOperand`; read it first.
+
+**Print dispatch switches on node type, so an unlisted node type is silently invisible.** A
+`{"a":1}.keys()` call fell through to the numeric road and printf'd the handle. Same failure shape as
+`Gap R.179`'s slice arm directly above this one. Two rows now, one mechanism.
+
+**IR comments are code — the second consecutive cycle.** A comment containing backticks inside the Go raw
+string holding the module gave `expected ';', found dict_keys`, a *Go* parse error before any IR existed.
+
+**What stayed a refusal.** `items()` prints `dict_items([('a', 1)])` on the interpreter and refuses on the
+compiled leg, because a pair has no value representation until L11.3. Inventing a `[(…)]` from list
+internals would be a fabricated representation; a test asserts the printer does not claim `items()` while
+the fold refuses it.
+
+**Two pins moved rather than being deleted.** `TestDictMethods` asserted `values repr "[1, 2]"`; CPython
+says `dict_values([1, 2])`. `sorted(view)` and `list(view)` are refusals from *other* roads (verified
+unchanged on a HEAD build), so they are reported by a logging test, not pinned as if correct — and must be
+promoted, not deleted, when those roads lift.
+
+**Measurement.** HEAD-baseline build: **10** subtest failures on the new table, green here. Sweep of 172
+programs: the only movement is this cycle's own probe.

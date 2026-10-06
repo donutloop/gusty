@@ -1048,7 +1048,10 @@ func TestDictMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("values: %v", err)
 	}
-	if s := ev.Repr(v); s != "[1, 2]" {
+	if s := ev.Repr(v); s != "dict_values([1, 2])" {
+		// This pin read "[1, 2]", which is what this backend used to print. CPython prints
+		// dict_values([1, 2]) — a dict view is not a list and says so in its own rendering — so the
+		// pin moved rather than being deleted (roadmap Gap R.182, ADR 0296).
 		t.Fatalf("values repr %q", s)
 	}
 }

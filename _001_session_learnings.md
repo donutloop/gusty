@@ -8020,3 +8020,43 @@ tells the next cycle to *move* the rows, not delete them.
 Reused `referenceOut`/`compiledOut`/`parseExprForTest` instead of redefining them (only after two build
 failures from redefining/ mis-arity'ing them — I keep reaching for helpers that already exist and must grep
 first). `llc-20` has no `--module`; `mustVerifyWithLLC` already exists.
+
+## Cycle: a dict view prints as a view (Gap R.182 partially closed; ADR 0296)
+
+**Three bugs, and the parity matrix saw the most important one.** `--aot` printed the heap HANDLE (`0`) for
+`{"a":1}.keys()`, spent **exit 2** for `{1:2}.values()`, and both engines printed a bare `['a']` where
+CPython prints `dict_keys(['a'])`. Third cycle running where the real defect is the one both backends agree
+on; the oracle leg keeps paying for itself.
+
+**Choose the representation before writing the fix, and let tests falsify it.** My first move was to give
+views their own object kind. Four pre-existing tests broke instantly — `sum`/`min`/`max` gate on
+`kind == "list"`, and there are sixteen such sites. A view is list-shaped everywhere except in what it says
+when printed, so the fix is `kind: "list"` + a `view` field read only by the renderer. Had I written the
+tests after the change, the four breakages would have looked like *my* tests being wrong.
+
+**Second consecutive cycle of `g.value` vs `containerOperand`.** A folded container literal renders as the
+*address* of a compile-time global; any runtime helper that walks `@heap` needs `containerOperand` to
+materialise it. My print arm used `g.value` and re-created the exit-2 shape on the exact program the row is
+named for. The `Comp` arm two lines above already got it right. When adding an arm beside existing ones,
+read what the neighbours call, not just what they match.
+
+**Print dispatch is a node-type switch; an unlisted type is invisible, not wrong.** A `keys()` call fell to
+the numeric road and printf'd a handle. That's `Gap R.179` (slices) and now this — same mechanism, two rows.
+Suspect the print road whenever a new expression shape prints a number it shouldn't.
+
+**IR comments are code, again.** Backticks in an emitted-module comment broke the Go raw string
+(`expected ';', found dict_keys`) — a Go parse error before any IR existed. Same lesson as last cycle,
+learned a second time.
+
+**Refusals from other roads: report, don't pin.** `sorted(view)` and `list(view)` refuse AOT — I verified on
+a HEAD build that they refused *before* my change, so they're someone else's open road. A logging test
+reports them and says "move me when this starts working"; pinning them as expected-refusals would freeze
+another cycle's work, and deleting them would hide it.
+
+**Two pins moved, none deleted.** `TestDictMethods` had `[1, 2]` for `.values()`; CPython says
+`dict_values([1, 2])`. Cycle 16's thirteen pins, cycle 20's `2 ** -1`, now this: a pin that records a bug is
+a bug with a test around it, and it moves with a comment saying why.
+
+**Process.** Baseline proof: 10 failures on a `git worktree` build of HEAD, 0 here. Sweep of 172 programs:
+only the new probe moved. One commit: rule + both engines + both test files + probe + ADR 0296 + docs +
+tracker.

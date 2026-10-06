@@ -157,6 +157,13 @@ entry:
 @.fmtlopen = private unnamed_addr constant [2 x i8] c"[\00"
 @.fmtsep = private unnamed_addr constant [3 x i8] c", \00"
 @.fmtlclose = private unnamed_addr constant [2 x i8] c"]\00"
+; The words a dict view renders with -- dict_keys(['a']), not ['a'] -- so the distinction the
+; reference draws between a view and a list has somewhere to live in the compiled module too
+; (roadmap Gap R.182).
+@.fmtdictkeys = private unnamed_addr constant [11 x i8] c"dict_keys(\00"
+@.fmtdictvalues = private unnamed_addr constant [13 x i8] c"dict_values(\00"
+@.fmtdictitems = private unnamed_addr constant [12 x i8] c"dict_items(\00"
+@.fmtdictclose = private unnamed_addr constant [2 x i8] c")\00"
 @.fmti = private unnamed_addr constant [3 x i8] c"%d\00"
 @.fmtnl = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.fmtnone = private unnamed_addr constant [5 x i8] c"None\00"
@@ -6438,6 +6445,32 @@ func (g *irGen) powerOperandKind(e Expr) string {
 		return "float"
 	}
 	return ""
+}
+
+// dictViewElems is the print road's question about `d.keys()` and `d.values()`: what element list does
+// this expression lower to, if it is a view at all. Asked of the SAME call shape the fold in the call road
+// recognises, so the printer can never claim a kind the fold did not produce (Gap R.182). `items()` is
+// excluded: its elements are pairs, which this backend has no tuple value for (roadmap L11.3).
+func (g *irGen) dictViewElems(e Expr) ([]Expr, string, bool) {
+	call, ok := e.(*Call)
+	if !ok || len(call.Args) != 0 {
+		return nil, "", false
+	}
+	attr, isAttr := call.Fn.(*Attr)
+	if !isAttr || attr.Name == nil {
+		return nil, "", false
+	}
+	dl, isDict := attr.Obj.(*DictLit)
+	if !isDict {
+		return nil, "", false
+	}
+	switch attr.Name.Value {
+	case "keys":
+		return dl.Keys, "keys", true
+	case "values":
+		return dl.Vals, "values", true
+	}
+	return nil, "", false
 }
 
 // listLiteralOf reads the list literal an expression lowers to: the node itself when the source spelled
@@ -13277,6 +13310,25 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return "", herr
 				}
 				b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
+				continue
+			}
+			// A DICT VIEW (`keys()`, `values()`) lowers through the call road to a heap LIST of the
+			// dict's keys or values — and print never learned, so printf's %d printed the handle: `0`
+			// where the reference prints `dict_keys(['a'])` (roadmap Gap R.182, ADR 0291's arrangement).
+			// The reference's wrapper word is a separate row; the wrong number goes first.
+			if cv, word, isView := g.dictViewElems(a); isView {
+				// containerOperand, not g.value: a view over an INT-valued dict folds to a literal that
+				// g.value renders as the ADDRESS of a compile-time global, and feeding that to
+				// rt_print_list_mixed is the exit-2 shape ADR 0188 removed for literals.
+				h, verr := g.containerOperand(b, &ListLit{Elems: cv})
+				if verr != nil {
+					return "", verr
+				}
+				// The reference names the WRAPPER in the rendering — `dict_keys(['a'])`, not `['a']` —
+				// so the compiled leg prints the word, the list, and the closing paren (Gap R.182).
+				b.WriteString(fmt.Sprintf("  call void @rt_out_txt(i8* getelementptr inbounds ([%d x i8], [%d x i8]* @.%s, i32 0, i32 0))\n", len(word)+1, len(word)+1, "fmtdict"+word))
+				b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
+				b.WriteString("  call void @rt_out_txt(i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.fmtdictclose, i32 0, i32 0))\n")
 				continue
 			}
 			if comp, ok := a.(*Comp); ok {
