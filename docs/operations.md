@@ -968,6 +968,11 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- **a ternary with text arms prints the text**: `print("y" if 1 else "n")` exits 0 with `y` on both engines
+  (`Gap R.173` / ADR 0290, paying `Gap R.127`'s text half). The compiled leg printed the arm's **`@str_tab`
+  position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
+  ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
+  debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
 - **a text predicate prints a verdict**: `print("abc".startswith("ab"))` exits 0 with `True` on both
   engines, not with the `1` the fold holds (`Gap R.172` / ADR 0289). The eight methods already answered
   correctly and still answer correctly as numbers (`"1".isdigit() + 1` is `2`) — only the print road had

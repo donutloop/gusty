@@ -550,6 +550,19 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A ternary with **text arms** prints the text, not the intern table's position (ADR 0290, closing `Gap R.173`
+and paying `Gap R.127`'s text half). `print("y" if 1 else "n")` exited 0 with `0`, and
+`print("big" if x > 2 else "small")` with `0` or `1` depending on which way the test went — those digits are
+the slots `y`, `big` and `small` hold in `@str_tab`, and they were printed because **four** different
+"what kind is this expression?" predicates in the compiled backend (`stringVal`, `exprIsString`,
+`printsAsInternedStr`, `methodReturnsStr`) had no ternary arm. ADR 0262 had already established the rule — a
+ternary hands back one of its arms, so the answer's kind is the arm's kind — but applied it only to numbers.
+Fixing three of the four changed nothing: `print` folds through `stringVal` first. That is the "one road" rule
+with the quantifier made explicit. The run-time-test pair is now a real `select` over interned indices (legal
+because interning is idempotent), while a constant test still evaluates only the arm that runs. A container
+arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
+it.
+
 A text predicate prints a **verdict** (ADR 0289, closing `Gap R.172`). `print("abc".startswith("ab"))` said
 `1` and `print("abc".isdigit())` said `0` on **both** engines at exit 0. The eight methods — `startswith`,
 `endswith`, `isdigit`, `isalpha`, `isalnum`, `isspace`, `islower`, `isupper` — had been answering correctly

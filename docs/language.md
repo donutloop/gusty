@@ -1161,6 +1161,23 @@ to its annotation is a `type mismatch` error. `any` (dynamic) accepts
 everything. Because the interpreter stores booleans as plain integers, `int`
 and `bool` annotations accept either kind.
 
+### Ternaries (`a if test else b`)
+
+A ternary hands back **one of its arms**, so its kind is that arm's kind (ADR 0262's rule, applied to texts
+by `Gap R.173` / ADR 0290):
+
+```
+print("big" if x > 2 else "small")   # big or small — the word, not an intern table position
+print(1 if 0 else 2.5)               # 2.5
+print(True if x else False)          # True
+```
+
+When the test is a value the source wrote, only the arm that **runs** is evaluated — `print("a" if 1 else
+shout())` does not call `shout`. When the test is a run-time fact, the arms must agree on a kind: a function
+whose returns are `"yes"` and `0` is not a text-returning function, and a pair of arms that disagree on a
+word is refused rather than guessed (ADR 0262). A **container** arm still refuses — a container's compiled
+value is a global, and L11.1's tagged value word owns that half (`Gap R.128`).
+
 ### Text predicates
 
 `s.startswith(p)`, `s.endswith(p)`, `s.isdigit()`, `s.isalpha()`, `s.isalnum()`, `s.isspace()`,

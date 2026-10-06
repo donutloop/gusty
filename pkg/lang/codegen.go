@@ -4839,6 +4839,15 @@ func (g *irGen) exprIsString(e Expr) bool {
 	case *Slice:
 		// s[a:b] of a string is a string whatever the bounds are, constant or not (ADR 0229).
 		return g.exprIsString(v.Obj)
+	case *CondExpr:
+		// A ternary's answer IS one of its arms, so "is it text" is the arm's answer — the same
+		// rule ADR 0262 uses to choose the answer's WORD (roadmap L11.6, Gap R.102), asked here of
+		// the text domain so the operation path and the print path ask one question (ADR 0229).
+		// A constant test settles which arm runs; otherwise only arms that agree are text.
+		if taken, ok := constantTestArm(v); ok {
+			return g.exprIsString(taken)
+		}
+		return g.exprIsString(v.If) && g.exprIsString(v.Else)
 	case *Index:
 		// A subscript of a string the compiler can name is text (ADR 0225), and so is an element
 		// of a string container: that is what lets `xs = [s[1]]` remember that its elements are
@@ -4963,6 +4972,24 @@ func (g *irGen) scanStringAttrs(className string, st Stmt) {
 	}
 }
 
+// returnExprIsText is `methodReturnsStr`'s question for an expression the pre-scan can only read
+// structurally: at this point in the pass the per-function records (`strVals`, `internedVars`) do not
+// exist yet, so the answer comes from the shape of the arm and from the parameter annotations.
+func returnExprIsText(e Expr, strParams map[string]bool) bool {
+	switch t := e.(type) {
+	case *StrLit, *FString:
+		return true
+	case *Name:
+		return strParams[t.Value]
+	case *CondExpr:
+		if taken, ok := constantTestArm(t); ok {
+			return returnExprIsText(taken, strParams)
+		}
+		return returnExprIsText(t.If, strParams) && returnExprIsText(t.Else, strParams)
+	}
+	return false
+}
+
 func methodReturnsStr(fd *FuncDef) bool {
 	if fd.ReturnAnno != nil && fd.ReturnAnno.Kind == KindString {
 		return true
@@ -4987,6 +5014,19 @@ func methodReturnsStr(fd *FuncDef) bool {
 					found = true
 				case *Name:
 					if strParams[e.Value] {
+						found = true
+					}
+				case *CondExpr:
+					// `return "even" if x % 2 == 0 else "odd"` returns a TEXT, and a body that says so
+					// must register the function in `strFuncs` or its caller prints the @str_tab POSITION:
+					// `print(f(4))`/`print(f(5))` answered `0`/`1` where the reference prints
+					// even/odd (Gap R.173, ADR 0290). Asked of the arms, which is the same rule ADR 0262
+					// uses to choose a ternary's word — a ternary hands back one of its arms, so the body's
+					// kind is the arm's kind. A constant test settles which arm runs; a run-time test needs
+					// both arms to agree, because a function whose two returns disagree on kind is not a
+					// string-returning function (the rule that keeps a `return "a"`/`return 0` body out of
+					// the table at all).
+					if returnExprIsText(e, strParams) {
 						found = true
 					}
 				}
@@ -5991,6 +6031,23 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 		return "", false
 	case *StrLit:
 		return n.Value, true
+	case *CondExpr:
+		// A ternary hands back one of its arms, so a constant test settles the value: `"y" if 1 else "n"`
+		// IS "y", and folding it lets the print road write the word instead of the @str_tab POSITION the
+		// `value()` road produces for a text (Gap R.173, ADR 0290). Only the arm that RUNS is folded — the
+		// reference does not evaluate the other one, and ADR 0262 already reads a constant-test ternary as
+		// the arm that runs when it chooses the answer's word.
+		if taken, ok := constantTestArm(n); ok {
+			return g.stringVal(taken)
+		}
+		// A run-time test folds only when BOTH arms fold to the same text; two different texts under a
+		// run-time test is a value the compiler cannot name, and guessing one would be a wrong answer.
+		if tThen, ok := g.stringVal(n.If); ok {
+			if tElse, ok2 := g.stringVal(n.Else); ok2 && tElse == tThen {
+				return tThen, true
+			}
+		}
+		return "", false
 	case *Slice:
 		// compile-time string slice fold: s[a:b:c] where the source and all
 		// bounds are compile-time constants. Mirrors the interpreter's Python
@@ -13918,6 +13975,11 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 // single-quoted strings the way Python does (roadmap Gap I.2).
 func (g *irGen) printsAsInternedStr(e Expr) bool {
 	switch v := e.(type) {
+	case *StrLit:
+		// A text literal prints as its text, via rt_print_str on the index `value()` interns it to.
+		// This case looks obvious in hindsight and was missing, which is why the ternary arm below
+		// could ask "are both arms text?" of two StrLits and be told no (Gap R.173, ADR 0290).
+		return true
 	case *Name:
 		return g.internedVars[v.Value]
 	case *Attr:
@@ -13966,6 +14028,18 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 			return true
 		}
 		return false
+	case *CondExpr:
+		// A ternary hands back one of its arms, so its kind is the arm's kind — the same rule
+		// ADR 0262 already applies to the answer's WORD (roadmap L11.6, Gap R.102), asked here of
+		// the text domain. When the test is a value the source wrote, only the arm that RUNS is the
+		// answer. When it is a run-time fact, both arms must agree, which is the conservatism ADR
+		// 0257 already uses for a verdict's arms. Answering "not text" here printed the @str_tab
+		// POSITION: `print("y" if 1 else "n")` said `0` and `print("big" if x > 2 else "small")`
+		// said `0` where the reference prints the word (Gap R.173, ADR 0290).
+		if taken, ok := constantTestArm(v); ok {
+			return g.printsAsInternedStr(taken)
+		}
+		return g.printsAsInternedStr(v.If) && g.printsAsInternedStr(v.Else)
 	case *Index:
 		// A subscript of a string is a one-character string (ADR 0225), so printing it is a
 		// text question. Answering with %d printed the interned index: `print(s[1])` said `0`.
@@ -17248,3 +17322,6 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 	}
 	return nil
 }
+
+// dbgTernaryPred is the debug switch for the ternary-text investigation.
+const dbgTernaryPred = true

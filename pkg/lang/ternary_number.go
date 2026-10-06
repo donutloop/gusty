@@ -127,6 +127,33 @@ func (g *irGen) ternaryI32(b *strings.Builder, n *CondExpr) (string, error) {
 	case ternaryBothAreDoubles, ternaryArmDisagrees:
 		return "", ternaryWordErr(n, k)
 	}
+	// Two TEXT arms take the same select an int pair takes, and they need it: `value()` renders a text as
+	// its @str_tab index, so without this the index was printed as a number and
+	// `print("big" if x > 2 else "small")` answered `0` at exit 0 where the reference prints `big`
+	// (Gap R.173, ADR 0290).
+	//
+	// Asking the pair together rather than each arm separately is what makes the select legal: each side
+	// interns independently and both are free to allocate, so interleaving a store-bearing arm with the
+	// other's test would let one branch skip the other's interning. The arms are evaluated first and
+	// joined after, exactly as the number roads below do. Interning is idempotent (rt_str_intern2 returns
+	// an existing slot), so whichever branch runs, both texts name the same index.
+	if g.printsAsInternedStr(n.If) && g.printsAsInternedStr(n.Else) {
+		cond, cerr := g.truthyValue(b, n.Cond)
+		if cerr != nil {
+			return "", cerr
+		}
+		tThen, terr := g.value(b, n.If)
+		if terr != nil {
+			return "", terr
+		}
+		tElse, eerr := g.value(b, n.Else)
+		if eerr != nil {
+			return "", eerr
+		}
+		t := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, cond, tThen, tElse))
+		return t, nil
+	}
 	cond, err := g.truthyValue(b, n.Cond)
 	if err != nil {
 		return "", err

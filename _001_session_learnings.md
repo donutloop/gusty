@@ -7723,3 +7723,51 @@ keeps a class's own `isdigit` printing `1` — the receiver is asked before the 
 **Instruments.** Pre-cycle binary built from `HEAD` in a `git worktree` (not a remembered `/tmp` copy) printed
 `1/0/1/0/1/2` for the probe's six lines. Suite green; 165-file sweep moved nothing but the new probe; matrix
 155 → 156 rows, 119 → 120 parity, 104 → 105 `match`, 0 fail, 0 drift.
+
+---
+
+## Cycle: a ternary's kind is its arms' kind, asked of texts too (Gap R.173 closed, Gap R.127 paid; ADR 0290)
+
+**What shipped.** `print("y" if 1 else "n")` printed `0`, `print("big" if x > 2 else "small")` printed `0` or
+`1`, and a ternary-returning function made `print(f(4))`/`print(f(5))` print `0`/`1`. Those digits are the
+`@str_tab` slots the texts interned into — the compiled leg printed the intern table's **position**. The
+`.upper()` row printed *nothing at all*: an index handed to the text printer finds no bytes.
+
+**The rule already existed; its domain was too narrow.** ADR 0262 established "a ternary hands back one of its
+arms, so the answer's kind is the arm's kind" for **numbers**. Four predicates ask "what kind is this
+expression?" — `stringVal`, `exprIsString`, `printsAsInternedStr`, `methodReturnsStr` — and none had a
+`*CondExpr` arm. Lesson: when a rule is discovered for one domain, enumerate the **predicates** that ask the
+same question in other domains, and grep for the *question*, not for the bug.
+
+**"Ask one predicate" needs the quantifier made explicit.** My first fix added the ternary arm to
+`exprIsString` + `printsAsInternedStr` and the measured output **did not move** — `print` folds through
+`stringVal` first, so three of four fixes accomplished nothing. A partial fix that looks like a fix is the most
+expensive kind: it consumes the review attention an honest "still broken" would not.
+
+**A predicate with a hole in its obvious base case.** `printsAsInternedStr` consulted `internedVars`,
+`strFuncs`, `strAttrs`, min/max and `str`/`repr`, and had **no `*StrLit` case** — a literal text was "not
+text". Harmless until something asked about a pair of them. Found only because the ternary arm exposed it.
+
+**Emitted shape, pinned.** A constant test folds to the running arm, so `print("a" if 1 else shout())` does
+not call `shout` (side-effect counting, both engines). A run-time test lowers both arms and joins them with
+`select i1 %c, i32 %then, i32 %els` — legal only because `rt_str_intern2` is idempotent. Evaluating arms
+**together** rather than interleaved with the join keeps a branch from skipping the other's interning.
+
+**Errors I made, named.**
+- Put a debug `if` between `switch v := e.(type) {` and its first `case` — the guard must be the first
+  statement; four cascading syntax errors. Traces belong *inside* a case.
+- One `edit` call carried **two edits into the same function** and the second deleted an unrelated
+  `ReturnAnno` guard. Multiple changes to one function are one edit; I caught it reading the diff, and the
+  suite did not.
+- Pinned a row I could not fix (a text ternary in a **container slot** still prints `[1]`), then moved it to a
+  named still-owed test after measuring it byte-identical on the pre-cycle binary.
+- `readFile` doesn't exist in `integration`; `os.ReadFile` returns `[]byte`, which the helper didn't take.
+
+**Refused rather than faked:** container arms (a container global in a select operand is ADR 0234's compiler
+bug) and a text in an untagged container slot. Both belong to L11.1's tagged value word; the tests say so
+rather than claiming them, and one fails loudly if the new branch ever emits a module llc rejects.
+
+**Instruments.** Pre-cycle binary from `HEAD` in a `git worktree` fails 7 of 23 new rows. Suite green; 166-file
+sweep moved only the intended probes. Matrix 120 → 121 parity, 36 → 35 skipped, 105 → 106 `match` —
+`probe_ternary_text_arms.gy` was **promoted out of the debt ledger**, taking its `0\n2\n` pin and its exit-6
+entry with it (ADR 0261's rule, applied a third time).

@@ -7598,3 +7598,66 @@ tagged value word.
 `/tmp` copy): it printed `1/0/1/0/1/2` for the probe's six lines where the reference prints
 `True/False/True/False/True/2`. Suite green; 165-file sweep against it moved nothing except the new probe.
 Matrix 155 → 156 rows, 119 → 120 parity, 104 → 105 `match`, 0 fail, 0 drift.
+
+---
+
+### Gap R.173 — a ternary with text arms printed the intern table's position (CLOSED by ADR 0290, owner L11.1)
+
+Found by the 2026-07-06 surface sweep, and another case of **both engines' behaviour being invisible**: exit
+0, a well-formed module, and a digit that looks like an answer.
+
+| program | CPython | `--interp` | `--aot` before | `--aot` after |
+| --- | --- | --- | --- | --- |
+| `print("y" if 1 else "n")` | `y` | `y` | `0` | `y` |
+| `print("y" if 0 else "n")` | `n` | `n` | `2` | `n` |
+| `x = 5` / `print("big" if x > 2 else "small")` | `big` | `big` | `0` | `big` |
+| `x = 1` / same | `small` | `small` | `1` | `small` |
+| ternary-returning `f` / `print(f(4))`, `print(f(5))` | `even`,`odd` | ✓ | `0`,`1` | `even`,`odd` |
+| `print(["y" if 1 else "n"])` | `['y']` | `['y']` | `[0]` | `['y']` |
+| `print(("big" if x > 1 else "small").upper())` | `BIG` | `BIG` | *empty* | `BIG` |
+| `print(7 if 1 else 9)` / `print(1 if 0 else 2.5)` | `7` / `2.5` | ✓ | ✓ | ✓ |
+
+Those digits are the `@str_tab` slots `y`, `big`, `small` interned into. The `.upper()` row printed **nothing
+at all** — an index handed to the text printer finds no bytes.
+
+**The rule already existed; only its domain was too narrow.** ADR 0262 (Gap R.102) established that *a ternary
+hands back one of its arms, so the answer's kind and word are facts about the arms* — and applied it to
+numbers. Four predicates in the compiled backend ask "what kind is this expression?", and none had a
+`*CondExpr` arm: `stringVal` (print's constant fold), `exprIsString` (every operation path),
+`printsAsInternedStr` (the print formatter choice), `methodReturnsStr` (the `strFuncs` pre-scan). The
+function-return row is the one that proves the count: `print(f(4))` printed `0` because the **caller** could
+not see that `f` returns text.
+
+**"One road" needs the quantifier made explicit.** My first fix added the ternary arm to `exprIsString` and
+`printsAsInternedStr` and the measured output did not move — `print` folds via `stringVal` *before* asking
+either. Three of four predicates fixed, no change. A rule stated as "ask one predicate" has to be checked as
+"find every predicate that asks it", and the way to find them is to grep for the question, not for the bug.
+
+**`printsAsInternedStr` had no `*StrLit` case.** It consulted `internedVars`, `strFuncs`, `strAttrs`, min/max
+and `str`/`repr`, and answered "not text" for a literal text — harmless until something asked it about a pair
+of them. Found only because the ternary arm exposed it, which is a good argument for writing the second caller
+of a predicate rather than trusting the first's coverage.
+
+**The emitted shape.** A constant test folds to the arm that runs, so `print("a" if 1 else shout())` never
+calls `shout` — pinned by side-effect counting on both engines. A run-time test lowers both arms and joins them
+with `select i1 %c, i32 %then, i32 %els`; legal because `rt_str_intern2` is idempotent (it returns an existing
+slot), so both branches name the same index for the same text. Evaluating the arms **together** rather than
+interleaving them with the join is what keeps one branch from skipping the other's interning.
+
+**Errors made, all named.** Inserting a debug `if` between `switch v := e.(type) {` and its first `case` (Go
+requires the guard to be the first statement) produced four cascading syntax errors. Two edits to one function
+— while adding the `*CondExpr` case to `methodReturnsStr` I deleted the unrelated `ReturnAnno` string check in
+the same call; caught by reading the diff, not by the suite. I pinned a container-slot row I could not fix and
+moved it to a named still-owed test after measuring it byte-identical on the pre-cycle binary. `readFile` did
+not exist in `integration` (use `os.ReadFile`, which returns `[]byte`).
+
+**What stays owed.** A **container** arm: a container's compiled value is a global's address, so a select
+operand over containers reproduces Gap R.128's `global variable reference must have pointer type`. And a text
+ternary in a **container slot** under a run-time test still prints `[1]` — the slot holds the index and carries
+no tag. Both are L11.1's tagged value word, and `TestAContainerArmTernaryIsNotAnsweredByTheTextRoad` fails if
+the new branch ever emits an invalid module.
+
+**Measurement, not memory.** Pre-cycle binary built from `HEAD` in a `git worktree` fails 7 of the 23 new rows
+(`0`, `1`, `[0]`, empty). Suite green; 166-file sweep moved only the intended probes. Matrix 156 rows,
+120 → 121 parity, 36 → 35 skipped, 105 → 106 `match`, 0 fail, 0 drift — the promoted probe left the debt
+ledger with its `0\n2\n` pin and its exit-6 entry (ADR 0261).
