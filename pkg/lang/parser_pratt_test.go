@@ -18,6 +18,19 @@ func renderPratt(e Expr) string {
 		return "true"
 	case *UnOp:
 		return "(" + n.Op + " " + renderPratt(n.X) + ")"
+	case *ChainCompare:
+		// A chain renders flat, because that is what it IS: three operands and two operators in one
+		// node, each middle operand read once. The nested form this test used to assert,
+		// `((a < b) < c)`, is the bug L12.1 / Gap R.53 records — comparing an int against a boolean.
+		out := ""
+		for i, o := range n.Ops {
+			if i == 0 {
+				out = "(" + renderPratt(n.Operands[0]) + " " + o + " " + renderPratt(n.Operands[i+1])
+				continue
+			}
+			out += " " + o + " " + renderPratt(n.Operands[i+1])
+		}
+		return out + ")"
 	case *BinOp:
 		return "(" + renderPratt(n.L) + " " + n.Op + " " + renderPratt(n.R) + ")"
 	case *CondExpr:
@@ -60,13 +73,16 @@ func TestPrattPrecedence(t *testing.T) {
 		// comparison binds looser than additive
 		{"a < b + c", "(a < (b + c))"},
 		{"a + b == c", "((a + b) == c)"},
-		{"a < b < c", "((a < b) < c)"},
-		{"a == b != c", "((a == b) != c)"},
+		// Chains are ONE node over n operands and n-1 operators, not nested BinOps: `a < b < c` asks
+		// `a < b` and `b < c` and reads `b` once. The nested shape used to be asserted here, which is
+		// how the bug had a passing test (roadmap L12.1 / Gap R.53, ADR 0288).
+		{"a < b < c", "(a < b < c)"},
+		{"a == b != c", "(a == b != c)"},
 		{"a in b", "(a in b)"},
 		{"a not in b", "(a not in b)"},
 		{"a is b", "(a is b)"},
 		{"a is not b", "(a is not b)"},
-		{"a is b == c", "((a is b) == c)"},
+		{"a is b == c", "(a is b == c)"},
 		// logical operators
 		{"a and b", "(a and b)"},
 		{"a and b or c", "((a and b) or c)"},

@@ -154,6 +154,13 @@ func (env BoolEnv) of(e Expr, depth int) bool {
 		return env.of(t.Value, depth)
 	case *Call:
 		return env.callReturnsBool(t, depth)
+	case *ChainCompare:
+		// A comparison chain answers the conjunction of its links, and every link is a comparison, so
+		// the chain's own answer is a verdict — printed True/False, not the 1/0 the slot holds
+		// (ADR 0257's rule, roadmap L12.1 / Gap R.53, ADR 0288). Without this the print road falls
+		// through to printf("%d") and `print(1 < 2 < 3)` answers `1`, which is the same wrong answer
+		// the chain itself fixes, arriving from the other end.
+		return true
 	}
 	return false
 }

@@ -620,6 +620,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_comparison_chains",
+        "name": "probe_comparison_chains.gy",
+        "source": "# What CPython prints for these lines (python3, 3.12):\n#\n#   True\n#   False\n#   True\n#   False\n#   False\n#   True\n#\n# `a \u003c b \u003c c` is Python's own construct: two questions — `a \u003c b` and `b \u003c c` — answered together, with the\n# middle operand evaluated ONCE. This grammar parsed the chain left-associatively as `(a \u003c b) \u003c c`, which\n# compares an int against a boolean, and this front end ANSWERS that question rather than refusing it. So\n# both engines printed the wrong verdict at exit 0, agreeing with each other and disagreeing with the\n# reference, on the most ordinary comparison in the language (roadmap L12.1 / Gap R.53, ADR 0288).\n#\n# `print(1 \u003c 2 \u003c 3)` was the accidental pass — the nested reading gives True too. The rows below are the\n# ones where the two readings disagree, which is why they are the rows that matter.\nprint(1 \u003c 2 \u003c 3)\nprint(3 \u003c 2 \u003c 1)\nprint(1 \u003c 2 \u003e 1)\nprint(1 \u003e 2 \u003c 3)\nx = 50\nprint(1 \u003c x \u003c 10)\nprint(1 \u003c 2 \u003c 3 \u003c 1)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "True\nFalse\nTrue\nFalse\nFalse\nFalse\n",
+      "aot_ok": true,
+      "aot_stdout": "True\nFalse\nTrue\nFalse\nFalse\nFalse\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "True\nFalse\nTrue\nFalse\nFalse\nFalse\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3640,7 +3663,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3624699405/129/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3487904771/130/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3654,7 +3677,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3624699405/129/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3487904771/130/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4495,11 +4518,11 @@
       ]
     }
   ],
-  "rows": 154,
+  "rows": 155,
   "skipped": 36,
-  "pass": 118,
+  "pass": 119,
   "fail": 0,
-  "oracle_match": 103,
+  "oracle_match": 104,
   "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

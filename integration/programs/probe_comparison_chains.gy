@@ -1,0 +1,24 @@
+# What CPython prints for these lines (python3, 3.12):
+#
+#   True
+#   False
+#   True
+#   False
+#   False
+#   True
+#
+# `a < b < c` is Python's own construct: two questions — `a < b` and `b < c` — answered together, with the
+# middle operand evaluated ONCE. This grammar parsed the chain left-associatively as `(a < b) < c`, which
+# compares an int against a boolean, and this front end ANSWERS that question rather than refusing it. So
+# both engines printed the wrong verdict at exit 0, agreeing with each other and disagreeing with the
+# reference, on the most ordinary comparison in the language (roadmap L12.1 / Gap R.53, ADR 0288).
+#
+# `print(1 < 2 < 3)` was the accidental pass — the nested reading gives True too. The rows below are the
+# ones where the two readings disagree, which is why they are the rows that matter.
+print(1 < 2 < 3)
+print(3 < 2 < 1)
+print(1 < 2 > 1)
+print(1 > 2 < 3)
+x = 50
+print(1 < x < 10)
+print(1 < 2 < 3 < 1)

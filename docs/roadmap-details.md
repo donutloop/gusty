@@ -3342,7 +3342,7 @@ guarantees before anyone writes another constant table.
 
 <a id="l12-1"></a>
 
-### L12.1 — comparison chains
+### L12.1 — comparison chains (CLOSED by ADR 0288)
 
 `(a < b) < c` is what the current grammar means, and `True < 3` is a comparison gusty will happily
 answer. The single-line form that makes Python's rule work is a parse- and AST-level change: a
@@ -3555,7 +3555,7 @@ listed fails, as does a listed construct that the oracle says is wrong.
 
 <a id="gap-r-53"></a>
 
-### Gap R.53 — comparison chains answer the wrong value on both backends (found by the 2026-10-01 surface survey)
+### Gap R.53 — comparison chains answer the wrong value on both backends (CLOSED by ADR 0288; found by the 2026-10-01 surface survey)
 
 ```
 x = 5
@@ -3571,6 +3571,44 @@ The chain is left-associative, so `1 < x < 3` is `(1 < x) < 3`: an `int` compare
 boolean, which gusty answers rather than refusing. Note which test would not have caught it:
 `print(1 < 2 < 3)` prints `True` — the accidental pass. Owner L12.1; the AST-level fix and why a
 `and` desugaring was rejected are in [L12.1](#l12-1).
+
+**Closed by ADR 0288 (2026-07-06).** The chain is now a node of its own — `ChainCompare{Ops, Operands}` —
+built by the parser when it sees a run of comparison operators, exactly as L12.1 specified, and the
+nested-`BinOp` shape that produced these answers no longer exists in the grammar.
+
+Measured before the fix, both engines, exit 0, no refusal:
+
+| program | CPython | both backends |
+| --- | --- | --- |
+| `3 < 2 < 1` | `False` | `True` |
+| `1 < 2 > 1` | `True` | `False` |
+| `1 > 2 < 3` | `False` | `True` |
+| `1 < 2 < 3 < 1` | `False` | `True` |
+| `x = 50` / `1 < x < 10` | `False` | `True` |
+| `if 1 < 5 < 3:` | out | in |
+
+Four of six probe lines were wrong; the fifth (`1 < 2 < 3`) was right **for the wrong reason**, which is
+why the repro table needed chains the nested reading gets *wrong* rather than chains that merely look
+representative.
+
+**L12.1's rejected alternative came back to bite in the middle of the fix.** The compiled lowering first
+handed each comparison link the *original* operand expressions, which re-evaluated a middle operand for
+every neighbour: `print(1 < g() < 10)` printed the call's output **three times** at exit 0. That is the
+same failure mode as the desugaring L12.1 refused, arriving through the code written to fix it. The
+compiled form now stores each repeated operand into a local slot once and reads the slot, so "evaluated
+once" is a property of the emitted IR; the test counts an effectful middle operand's output on both engines.
+
+**Two holes sat under the one the row named.** The print road asked `printsAsBool` and got "not a bool" for
+a chain, so a chain's verdict printed through `printf("%d")` as `1` (ADR 0257's rule, one road over). And
+`xs[1]` inside a chain refused with `index of a non-literal variable` where the same program written as a
+single comparison answered `True`: ADR 0243's literal-slot fold was consulted in the `Index` road's
+mixed-list branch and not before its refusal — the choke-point lesson again.
+
+**What stays refused.** A chain whose operand is a **container**: a container literal's compiled value is
+the address of a compile-time global and the slot is an `i32` alloca, so the store would read
+`store i32 @.lst1, i32* %_chain1` — ADR 0234's compiler bug for an ordinary program. The interpreter chains
+over containers normally; the compiled leg declines in words, and the row's test fails if that refusal ever
+silently becomes a number. Owner of the remainder: L11.1's tagged value word.
 
 <a id="gap-r-54"></a>
 

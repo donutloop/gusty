@@ -7622,3 +7622,60 @@ nothing forever — is now enforced by a test that fails when someone forgets.
 **Instruments.** Suite green; the new table fails against the stashed baseline with the real
 `index out of range [0] with length 0`; 164-file sweep moved nothing except the promoted probe; exit-2
 reachability is now a 21-spelling integration table rather than an assumption.
+
+---
+
+## Cycle: a comparison chain is one node over n operands (L12.1 / Gap R.53 closed; ADR 0288)
+
+**What shipped.** `a < b < c` is Python's construct — `a < b` **and** `b < c`, middle operand read **once** —
+and the grammar had been folding it left-associatively into `(a < b) < c`, which compares an int against a
+boolean. This front end *answers* that question rather than refusing it, so four of six probe lines printed
+the opposite verdict at exit 0 on **both** engines: `print(1 > 2 < 3)` → `True` (Python `False`),
+`print(1 < 2 > 1)` → `False` (Python `True`), `if 1 < 5 < 3:` took the branch. Fixed with L12.1's own design:
+a `ChainCompare` node carrying n operands and n−1 operators.
+
+**The accidental pass, and what it teaches about test tables.** `print(1 < 2 < 3)` printed `True` — correct,
+and for the wrong reason. The row the roadmap already flagged is now the rule I apply: **a table must contain
+cases the bug gets wrong**, not cases that merely look representative. Half my table is chains whose nested
+reading flips the verdict; without those, the whole change could have shipped while the grammar stayed broken.
+
+**L12.1's rejected desugaring came back through the fix itself.** The compiled lowering first handed each link
+the *original* operand nodes, so `print(1 < g() < 10)` printed the call's output **three times** at exit 0 —
+exactly the double-evaluation the desugaring was rejected for, re-imported by the code written to prevent it.
+The compiled form now stores each repeated operand into a local slot once and reads the slot; a test counts an
+effectful middle operand's output on both engines. Lesson: when a design note says "don't do X", check whether
+your implementation is doing X in a different place.
+
+**Two more holes sat under the one the row named.**
+- The **print** road asked `printsAsBool` and got "not a bool" (the outer node was a `BinOp`), so a chain's
+  verdict printed through `printf("%d")` as `1` — the same wrong number, arriving from the print side.
+- `xs[1]` inside a chain refused with `index of a non-literal variable` where the identical program written as
+  one comparison answered `True`. ADR 0243's literal-slot fold was consulted only in the `Index` road's
+  mixed-list branch, not before its refusal. Third cycle in a row confirming: **put the answer at the choke
+  point, not beside the consumer that happened to be measured.**
+
+**Errors I made, all named.**
+- **`not in` / `is not` became unparseable** (5 tests) because I built the chain *before* the step that consumes
+  the second token. Caught only by precedence tests I did not write.
+- **I pinned a wrong answer in my own table**: `print(1 not in [2] == 1)` as `True`, reasoned out from
+  precedence. CPython answers `False` — the chain shares `[2]`, so the second link is `[2] == 1`. The row now
+  records the measured value and says the draft was a guess. Measurement beats arithmetic, including my own.
+- **Invalid IR, twice**: `___chain1` (the backend appends `_` to the name, mine already had one) and
+  `i32* _chain1` (an alloca'd local is `%_name`; `%` is the register sigil). Both llc-only — the module verifier
+  never sees them, so "it verifies" was never the evidence I thought it was.
+- **A slot that lost its records**: a bare alloca + raw load made a container subscript unanswerable; binding
+  the operand to an ordinary local *name* and carrying `containerLits`/`staticLists`/`staticDicts`/`staticSets`
+  restored it. Also needed `g.numCtx` set for the chain — the comparison roads read it to know which operator an
+  operand is being lowered for.
+- **Syntax slips caught by the compiler, not by reading**: two `default:` clauses in one type switch (my
+  insertion landed after the existing label) and a duplicated `return` left behind when I stripped a debug
+  `Printf` by string substitution. Debug prints are cheaper to remove by line-index than by text-match.
+
+**Refused rather than faked:** a chain with a **container** operand. A container literal's compiled value is a
+global's address; the slot is an `i32` alloca; the store would be `store i32 @.lst1, i32* %_chain1` — ADR 0234's
+compiler bug. The interpreter answers it; the compiled leg declines naming the missing representation, and the
+test fails if that refusal ever silently becomes a number.
+
+**Instruments.** Suite green (the two `Index`-road and `Index`-fold changes were the risky part — a 164-file
+sweep against the pre-cycle binary moved nothing but the new probe); matrix 154 → 155 rows, 118 → 119 parity,
+103 → 104 `match`, 0 fail, 0 drift; the pre-cycle binary got four of the probe's six lines wrong.

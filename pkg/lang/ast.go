@@ -372,6 +372,29 @@ type SetLit struct {
 func (n *SetLit) Span() Span { return n.Src }
 func (n *SetLit) exprNode()  {}
 
+// ChainCompare is Python's comparison chain: `a < b < c`, `1 <= x < 10`, `a == b != c`. It is a
+// SEPARATE node from BinOp because it is a different program: `a < b < c` asks two questions — `a < b`
+// and `b < c` — and answers their conjunction, with the MIDDLE OPERAND EVALUATED ONCE. Parsing it as
+// `(a < b) < c` (what left-associativity gives, and what this grammar did until ADR 0288) compares an
+// int against a boolean, which this front end answers rather than refusing, so `print(1 > 2 < 3)`
+// printed `True` where CPython prints `False` and `print(1 < 2 > 1)` printed `False` where CPython
+// prints `True` (roadmap L12.1 / Gap R.53).
+//
+// The chain is kept as parallel operands/operators rather than desugared to `a < b and b < c`, which is
+// L12.1's explicit decision: `and` short-circuits, and a chain with a call in the middle must call it
+// exactly once — a careless desugaring calls it twice, and short-circuiting also skips the tail
+// comparisons the reference still runs. Both slices have len(ops)+1 == len(ops)+1 operands; the single
+// `Src` is the chain's own extent.
+type ChainCompare struct {
+	Ops      []string `json:"ops"`
+	Operands []Expr   `json:"operands"`
+	Src      Span     `json:"span,omitempty"`
+	Ty       string   `json:"inferred,omitempty"`
+}
+
+func (n *ChainCompare) Span() Span { return n.Src }
+func (n *ChainCompare) exprNode()  {}
+
 type BinOp struct {
 	Op  string `json:"op"`
 	L   Expr   `json:"left"`

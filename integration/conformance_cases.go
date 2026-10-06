@@ -103,6 +103,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `return s`, `repr` through a name, and `"x" + str(v)` all printed the interned index (`0`, `0`, `2`)
 		// at exit 0 where the reference and the interpreter print `3`, `3`, `x3` (roadmap Gap R.170, ADR 0286).
 		"probe_a_rendering_bound_to_a_name",
+		// Comparison chains: `1 > 2 < 3` is Python's construct — `1 > 2` AND `2 < 3`, the middle operand
+		// read once — and this grammar parsed it as `(1 > 2) < 3`, comparing an int against a boolean,
+		// which this front end answers rather than refusing. Four of these six lines printed the wrong
+		// verdict at exit 0 on BOTH engines, agreeing with each other and disagreeing with the reference
+		// (roadmap L12.1 / Gap R.53, ADR 0288).
+		"probe_comparison_chains",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

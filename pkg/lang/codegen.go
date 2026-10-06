@@ -9520,6 +9520,19 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					return g.dictIndex(dl, key)
 				}
 			}
+			// A name whose container the program spelled out and never changed answers from the
+			// literal, whatever the kind maps happen to record: the mixed-list arm above consults this
+			// fold and the arms below do not, so a chain — which lowers each operand through an
+			// ordinary `value` read rather than through the comparison's own context — reached the
+			// refusal for `0 < xs[1] < 3` while the same program written as one comparison did not
+			// (roadmap L12.1 / Gap R.53, ADR 0288). Asking the fold here is the choke-point form of
+			// ADR 0243's promise: the slot holds that number, so the answer is the number.
+			if v, ok := g.numericElemUse(b, n); ok {
+				return v, nil
+			}
+			if v, ok := g.numericSlotUse(b, obj.Value, n); ok {
+				return v, nil
+			}
 			return "", fmt.Errorf("index of a non-literal variable")
 
 		case *Attr:
@@ -9702,9 +9715,248 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// (The callable positions — a lambda called directly, bound as a decorator, or handed to the
 		// closure road — register their FuncDef at their own sites and never come through here.)
 		return "", fmt.Errorf("codegen: a lambda used as a value has no compiled representation: it is declared, not assigned, so there is no slot to read and no number, text or container to be — the reference answers `print(lambda x: x)` with a function object and the interpreter prints `<closure>`, while a lambda that is called (`g = lambda x: x * 3` / `g(4)`, or passed to a function) is answered by both engines (roadmap Gap R.150, Gap R.151, ADR 0283)")
+	case *ChainCompare:
+		// The comparison roads read g.numCtx to know which operator an operand is being lowered for;
+		// a chain must set it, or a container subscript inside a chain loses the answer its
+		// single-comparison form had (roadmap L12.1 / Gap R.53, ADR 0288).
+		prev := g.numCtx
+		if len(n.Ops) > 0 {
+			g.numCtx = &BinOp{Op: n.Ops[0], Src: n.Src}
+		}
+		out, err := g.chainValue(b, n)
+		g.numCtx = prev
+		return out, err
 	default:
 		return "", fmt.Errorf("codegen: unsupported expression %T", e)
 	}
+}
+
+// chainValue lowers Python's comparison chain (`a < b < c`, `1 <= x < 10`) into the compiled module.
+// Each operand is STORED ONCE into a fresh local slot and every link reads the slots, which is what
+// makes "the middle operand is evaluated once" a property of the emitted IR rather than a hope about
+// road order (roadmap L12.1 / Gap R.53, ADR 0288). The links are then combined with `and`, and that is
+// safe here for a reason the rejected parser-level desugaring did not have: by the time the `and` runs,
+// every operand has already been evaluated into its slot, so there is no side effect left for
+// short-circuiting to skip. Rewriting the source expressions instead — `a < b and b < c` over the
+// ORIGINAL nodes — is what would have evaluated a call in the middle of a chain twice.
+//
+// Before this the grammar's left-associativity made the chain `(a < b) < c`, an int compared against a
+// boolean, which this backend answers rather than refusing: `print(1 > 2 < 3)` printed True where
+// CPython prints False and `print(1 < 2 > 1)` printed False where CPython prints True.
+func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) {
+	if len(n.Operands) != len(n.Ops)+1 || len(n.Ops) == 0 {
+		return "", fmt.Errorf("codegen: malformed comparison chain")
+	}
+	words := make([]string, len(n.Operands))
+	operandName := make([]string, len(n.Operands))
+	for i, o := range n.Operands {
+		if chainOperandIsCheap(o) {
+			// A literal or a plain name reads a value and does nothing else, so it may be lowered
+			// at each use; giving it a slot would add a store, and a store is a chance to be
+			// reordered relative to the statement the chain sits in.
+			w, err := g.value(b, o)
+			if err != nil {
+				return "", err
+			}
+			words[i] = w
+			continue
+		}
+		// A non-cheap operand is bound to an ordinary LOCAL NAME and read back as one, rather than to a
+		// bare alloca handed to the comparison roads. The roads ask a name about the container records
+		// beside it (`dictVals`, `listVars`, the tagged-slot tables); a synthetic alloca with no name
+		// behind it answered `index of a non-literal variable` for `0 < xs[1] < 3`, which the baseline
+		// printed `True` for — a regression my own first version shipped (roadmap L12.1 / Gap R.53,
+		// ADR 0288). Going through a name keeps every one of those records reachable.
+		g.ldN++
+		// A CONTAINER operand cannot be slotted at all in this backend: a list/set/dict literal lowers
+		// to the address of a compile-time global (`@.lst1`) and an alloca'd local is an `i32` slot, so
+		// the store becomes `store i32 @.lst1, i32* %_chain1` — the shape llc rejects with "global
+		// variable reference must have pointer type", which ADR 0234 already named a compiler bug for an
+		// ordinary program. Refusing in words is the honest answer; the interpreter chains over
+		// containers fine, and L11.1's tagged value word is what lets the compiled leg do the same
+		// (roadmap L12.1 / Gap R.53, ADR 0288).
+		if g.chainOperandIsContainer(o) {
+			return "", fmt.Errorf("codegen: a container operand of a comparison chain would store a container global into an i32 slot; the interpreter chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)")
+		}
+		slot := fmt.Sprintf("chain%d", g.ldN)
+		if !g.allocd[slot] {
+			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", slot))
+			g.gcReg(b, slot)
+			g.allocd[slot] = true
+		}
+		w, err := g.value(b, o)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", w, slot))
+		ld := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, slot))
+		words[i] = ld
+		// The name this slot answers for, so a link's operand is a plain name read — and the records
+		// the comparison roads consult for a NAME are copied across, because `0 < xs[1] < 3` asks the
+		// middle operand the same questions `0 < xs[1]` does and a slot with no records behind it
+		// answered `index of a non-literal variable` where the baseline answered True (a regression my
+		// first version shipped; roadmap L12.1 / Gap R.53, ADR 0288).
+		g.carryOperandRecords(o, slot)
+		operandName[i] = slot
+	}
+	// Each link is lowered through the ordinary comparison road, so a chain gets the int, text,
+	// float, container and tagged-slot answers of an ordinary comparison rather than a second set
+	// that can disagree with the first.
+	// Each link is lowered through the ordinary comparison road, so a chain gets the int, text,
+	// float, container and tagged-slot answers of an ordinary comparison rather than a second set
+	// that can disagree with the first.
+	//
+	// The links are built over PLACEHOLDER nodes carrying the already-computed word, NOT over the
+	// original operand expressions. Lowering `n.Operands[i]` again would re-run it: my first version
+	// did exactly that and `print(1 < g() < 10)` printed the call's output THREE times at exit 0 —
+	// the precise bug L12.1 exists to prevent, re-imported by the code that was written to fix it
+	// (roadmap L12.1 / Gap R.53, ADR 0288). The comparison roads only ever ask a placeholder for its
+	// word, which the slot above has already produced.
+	linkExprs := make([]Expr, len(n.Ops))
+	for i, op := range n.Ops {
+		// A middle operand that was slotted is read as the NAME of its slot, so the comparison road
+		// asks it the same questions it asks any local; a cheap operand keeps its original node.
+		lh, rh := linkOperand(n.Operands[i], words[i], operandName[i], n.Src), linkOperand(n.Operands[i+1], words[i+1], operandName[i+1], n.Src)
+
+		linkExprs[i] = &BinOp{Op: op, L: lh, R: rh, Src: n.Src}
+	}
+	var acc string
+	for i := range linkExprs {
+		lw, err := g.value(b, linkExprs[i])
+		if err != nil {
+			return "", err
+		}
+		if acc == "" {
+			acc = lw
+			continue
+		}
+		// `and` of two verdicts, both of whose operands are already computed: the conjunction
+		// cannot skip work the reference would have done.
+		t := g.newTmp()
+		b.WriteString(fmt.Sprintf("  %s = and i32 %s, %s\n", t, acc, lw))
+		acc = t
+	}
+	return acc, nil
+}
+
+// carryOperandRecords copies the per-name facts codegen's comparison roads look up from an operand to
+// the slot that now stands for it. Only the records the comparison road actually consults, and only
+// when the operand is a name: the point is that reading the slot asks exactly the questions reading the
+// original operand asked, so a chain cannot lose an answer the single comparison had.
+func (g *irGen) carryOperandRecords(from Expr, to string) {
+	nm, isName := from.(*Name)
+	if !isName || nm.Value == to {
+		return
+	}
+	if g.listVars[nm.Value] {
+		g.listVars[to] = true
+	}
+	if g.mixedLists[nm.Value] {
+		g.mixedLists[to] = true
+	}
+	if g.runtimeDicts[nm.Value] {
+		g.runtimeDicts[to] = true
+	}
+	if g.mixedDicts[nm.Value] {
+		g.mixedDicts[to] = true
+	}
+	if g.runtimeSets[nm.Value] {
+		g.runtimeSets[to] = true
+	}
+	if g.mixedSets[nm.Value] {
+		g.mixedSets[to] = true
+	}
+	if g.strVals != nil {
+		if v, ok := g.strVals[nm.Value]; ok {
+			g.strVals[to] = v
+		}
+	}
+	if g.dictVals != nil {
+		if dv, ok := g.dictVals[nm.Value]; ok {
+			g.dictVals[to] = dv
+		}
+	}
+	// The literal-backed container records are the ones the Index road's fold reads
+	// (`staticElemExpr` walks a name through containerLits/staticLists/staticDicts/staticSets), and
+	// without them `0 < xs[1] < 3` refused with `index of a non-literal variable` where the baseline
+	// answered True — a regression my own first version shipped (Gap R.53, ADR 0288).
+	if lit, ok := g.containerLits[nm.Value]; ok {
+		g.containerLits[to] = lit
+	}
+	if lit, ok := g.staticLists[nm.Value]; ok {
+		g.staticLists[to] = lit
+	}
+	if lit, ok := g.staticDicts[nm.Value]; ok {
+		g.staticDicts[to] = lit
+	}
+	if lit, ok := g.staticSets[nm.Value]; ok {
+		g.staticSets[to] = lit
+	}
+	if g.taggedVars[nm.Value] {
+		g.taggedVars[to] = true
+		if g.taggedOrigin != nil {
+			g.taggedOrigin[to] = g.taggedOrigin[nm.Value]
+		}
+	}
+	if g.boolVars[nm.Value] {
+		g.boolVars[to] = true
+	}
+	if g.noneVars[nm.Value] {
+		g.noneVars[to] = true
+	}
+}
+
+// chainOperandIsContainer recognises the operand shapes whose compiled value is a container GLOBAL
+// rather than a word: the literals themselves, and a name the program bound to one of those kinds.
+func (g *irGen) chainOperandIsContainer(e Expr) bool {
+	switch e.(type) {
+	case *ListLit, *DictLit, *SetLit, *Tuple:
+		return true
+	}
+	nm, ok := e.(*Name)
+	if !ok {
+		return false
+	}
+	if g.listVars[nm.Value] || g.runtimeDicts[nm.Value] || g.runtimeSets[nm.Value] ||
+		g.mixedLists[nm.Value] || g.mixedDicts[nm.Value] || g.mixedSets[nm.Value] {
+		return true
+	}
+	if _, has := g.containerLits[nm.Value]; has {
+		return true
+	}
+	if _, has := g.staticLists[nm.Value]; has {
+		return true
+	}
+	if _, has := g.staticDicts[nm.Value]; has {
+		return true
+	}
+	if _, has := g.staticSets[nm.Value]; has {
+		return true
+	}
+	return false
+}
+
+// linkOperand picks the expression a chain link reads: the ORIGINAL node when the operand was cheap
+// (a literal or a name — re-lowering it is free and keeps every record the comparison roads consult),
+// and the slot's NAME when the operand had to be evaluated once into a slot. Returning the original node
+// in the second case is what re-ran a call for every link that read it.
+func linkOperand(orig Expr, word, name string, src Span) Expr {
+	if name != "" {
+		return &Name{Value: name, Src: src}
+	}
+	return orig
+}
+
+// chainOperandIsCheap reports whether an operand can be lowered at each of its uses without changing
+// the program: a literal or a plain name reads a value and does nothing else. A call, an index or an
+// attribute has to be slotted, because reading it twice is the very bug this exists to fix.
+func chainOperandIsCheap(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *FloatLit, *StrLit, *BoolLit, *NoneLit, *Name:
+		return true
+	}
+	return false
 }
 
 // foldConstInt evaluates e to a compile-time integer constant using the

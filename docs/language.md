@@ -1161,6 +1161,22 @@ to its annotation is a `type mismatch` error. `any` (dynamic) accepts
 everything. Because the interpreter stores booleans as plain integers, `int`
 and `bool` annotations accept either kind.
 
+### Comparison chains
+
+`a < b < c` is one construct, not two nested comparisons: it asks `a < b` **and** `b < c` and reads the
+middle operand **once**. So does `1 <= x < 10`, `a == b != c`, `1 < 2 < 3 < 4`, and a chain may mix the
+operators (`2 == 2 <= 3`, `1 is 1 < 2`). The answer is a verdict, so `print(1 < 2 < 3)` prints `True`.
+
+A chain's operands may be anything a comparison accepts, including something computed: with
+`print(1 < g() < 10)` the reference calls `g` exactly once, and both engines match it. A chain whose middle
+operand is a **container** answers on the interpreter and refuses on the compiled leg, where a container is a
+global rather than a word — `Gap R.53` keeps that half open until L11.1's tagged value word lands.
+
+`a < b and b < c` is **not** a chain: it is two comparisons joined by `and`, and `and` short-circuits. Before
+ADR 0288 the grammar parsed chains left-associatively as `(a < b) < c`, which compares an int against a
+boolean — a question this front end answers rather than refusing, so `print(1 > 2 < 3)` printed `True` where
+Python prints `False`.
+
 ### Control flow
 
 ```

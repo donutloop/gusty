@@ -968,6 +968,12 @@ against its own ability to fail).
   `str()`/`repr()` return. A caller that reaches `rt_str_ptr` prints text and one that reaches
   `printf`'s `%d` does not, so the rendering path is checkable from `--emit-llvm` without running the
   program (roadmap L11.2, ADR 0281, closing `Gap R.163`).
+- **comparison chains answer like the reference**: `a < b < c` is one construct asking two questions with
+  the middle operand read once, so `print(1 > 2 < 3)` exits 0 with `False` on both engines (`L12.1` /
+  `Gap R.53` / ADR 0288). Four of the six probe lines printed the opposite verdict at exit 0 before this,
+  both engines agreeing with each other and not with Python — the class a harness reads as success, since
+  there is no refusal, no crash and no odd digit to notice. A chain whose middle operand is a container
+  exits **1** on the compiled leg naming the missing representation.
 - **a builtin called with no argument never crashes the compiler**: `int()`, `float()`, `bool()` and
   `str()` answer the reference's `0`/`0.0`/`False`/empty text on both engines, and `ord()`, `chr()`, `abs()`
   and `repr()` raise the reference's own `TypeError` sentence at exit 3 (`Gap R.131` / ADR 0287). Before

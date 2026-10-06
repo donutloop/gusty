@@ -550,6 +550,21 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+Comparison chains answer what Python answers (ADR 0288, closing `L12.1` / `Gap R.53`). `a < b < c` is one
+construct — `a < b` **and** `b < c`, with the middle operand evaluated **once** — and the grammar had been
+folding it left-associatively into `(a < b) < c`, comparing an int against a boolean. Because this front end
+*answers* that question instead of refusing it, both engines printed the opposite verdict at exit 0:
+`print(1 > 2 < 3)` said `True` where Python says `False`, `print(1 < 2 > 1)` said `False` where Python says
+`True`, and `if 1 < 5 < 3:` took the branch. `print(1 < 2 < 3)` said `True` too — the accidental pass, and the
+reason a chain table must contain chains the nested reading gets *wrong*. The fix is L12.1's own design: a
+comparison node carrying n operands and n−1 operators, **not** a desugaring to `a < b and b < c`, which would
+run a call in the middle twice and let `and` skip the tail comparisons. The compiled leg gets "evaluated once"
+by storing each operand into a local slot and reading the slot — and my first version of that handed the links
+the *original* expressions, printing a middle call's output three times at exit 0: the bug re-imported by its
+own fix. A chain over a **container** operand refuses on the compiled leg rather than emitting
+`store i32 @.lst1, i32* %_chain1` (ADR 0234's compiler bug); the interpreter answers it, and L11.1's tagged
+value word owns the rest.
+
 A builtin called with **no argument** is asked which kind of call it is, before its operand is reached
 (ADR 0287, closing `Gap R.131`). `print(int())` died with a Go stack trace and **exit 2** — the code the
 exit-code contract reserves for a compiler bug — and so did `float()`, `bool()`, `str()`, `ord()`, `chr()`,

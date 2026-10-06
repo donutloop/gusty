@@ -1775,6 +1775,14 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 		return 0, exnError("NameError", "name '"+n.Value+"' is not defined")
 	case *BinOp:
 		return e.evalBin(n)
+	case *ChainCompare:
+		// Python's chain: `a < b < c` is `a < b` AND `b < c`, with the middle operand evaluated ONCE.
+		// The chain is walked rather than desugared to `and`, because `and` short-circuits and Python
+		// does not: with a call in the middle of a chain the reference calls it exactly once and does
+		// not skip the later comparisons (roadmap L12.1 / Gap R.53, ADR 0288). Each link asks the same
+		// question evalBin asks of an ordinary comparison, so a chain gets the int, text, float and
+		// container answers for free instead of a second set.
+		return e.evalChain(n)
 	case *UnOp:
 		v, err := e.eval(n.X)
 		if err != nil {
@@ -2463,6 +2471,39 @@ func (e *Evaluator) dunderCall(self int64, name string, args ...int64) (int64, b
 		return 0, true, err
 	}
 	return rv, true, nil
+}
+
+// evalChain walks a comparison chain. The middle operands are evaluated here, once each, and handed to
+// both neighbours; the first and last operands are evaluated once too, by the same walk. A chain that
+// fails at any link answers False without skipping the remaining evaluations the reference still makes
+// — which is why this is a loop over values rather than a fold of lazily-and-ed comparisons.
+func (e *Evaluator) evalChain(n *ChainCompare) (int64, error) {
+	if len(n.Operands) != len(n.Ops)+1 || len(n.Ops) == 0 {
+		return 0, &EvalError{Msg: "malformed comparison chain"}
+	}
+	vals := make([]int64, len(n.Operands))
+	for i, op := range n.Operands {
+		v, err := e.eval(op)
+		if err != nil {
+			return 0, err
+		}
+		vals[i] = v
+	}
+	// A chain answers a VERDICT, and a verdict in this interpreter is a boxed bool so that print
+	// spells True/False rather than the 1/0 the slot holds (ADR 0257). Returning the bare word made
+	// `print(1 < 2 < 3)` print `1`, which is the same class of wrong answer the chain itself fixes.
+	verdict := int64(1)
+	for i, cmp := range n.Ops {
+		link := &BinOp{Op: cmp, L: &IntLit{Value: vals[i]}, R: &IntLit{Value: vals[i+1]}, Src: n.Src}
+		r, err := e.evalBin(link)
+		if err != nil {
+			return 0, err
+		}
+		if !e.truthy(r) {
+			verdict = 0
+		}
+	}
+	return e.allocBool(verdict), nil
 }
 
 func (e *Evaluator) evalBin(n *BinOp) (int64, error) {

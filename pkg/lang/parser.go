@@ -1491,8 +1491,16 @@ func (p *parser) parseExprPrec(minPrec prec) (Expr, error) {
 		if !ok || opPrec < minPrec {
 			break
 		}
-		p.next()
-		// Two-token comparison operators.
+		// Comparison CHAINS: `a < b < c` is Python's own construct, not two comparisons nested, and it
+		// is recognised here rather than left to the loop's left-associativity because the loop's shape
+		// is the bug — `(a < b) < c` asks a question about a boolean that the reference never asks
+		// (roadmap L12.1 / Gap R.53, ADR 0288). Only the FIRST comparison of a run is seen here: by the
+		// time the second operator is next, `lhs` is the chain node this branch builds.
+		p.next() // consume the operator (and, below, any second token of a two-word one)
+		// Two-token comparison operators. This runs BEFORE the chain is built, because `not in` and
+		// `is not` are two tokens and the chain helper is handed the finished word: skipping it left
+		// `1 not in [1]` and `1 is not 2` unparseable, which is a worse bug than the one being fixed
+		// (roadmap L12.1 / Gap R.53, ADR 0288).
 		switch op {
 		case "not in":
 			// binaryOp returned "not in" only when the next token is `in`.
@@ -1502,6 +1510,19 @@ func (p *parser) parseExprPrec(minPrec prec) (Expr, error) {
 				p.next()
 				op = "is not"
 			}
+		}
+		// Comparison CHAINS: `a < b < c` is Python's own construct, not two comparisons nested, and it
+		// is recognised here rather than left to the loop's left-associativity because the loop's shape
+		// is the bug — `(a < b) < c` asks a question about a boolean that the reference never asks
+		// (roadmap L12.1 / Gap R.53, ADR 0288). Only the FIRST comparison of a run reaches here: after
+		// this branch, `lhs` is the chain node and the next operator belongs to it, not to the loop.
+		if opPrec == precCompare && isCompareOp(op) {
+			chain, err := p.parseChainCompare(op, lhs, t.Span)
+			if err != nil {
+				return nil, err
+			}
+			lhs = chain
+			continue
 		}
 		rhsPrec := opPrec
 		if !rightAssoc {
@@ -1522,6 +1543,52 @@ func (p *parser) parseExprPrec(minPrec prec) (Expr, error) {
 		}
 	}
 	return lhs, nil
+}
+
+// isCompareOp reports whether an operator can appear in a Python comparison chain. The set is exactly
+// the operators the comparison precedence level holds; `:=` and the boolean words are not in it.
+func isCompareOp(op string) bool {
+	switch op {
+	case "==", "!=", "<", "<=", ">", ">=", "in", "not in", "is", "is not":
+		return true
+	}
+	return false
+}
+
+// parseChainCompare consumes the rest of a run of comparison operators and returns the chain node.
+// `first` is the operator already consumed, `firstLeft` its left operand, and `start` the chain's
+// beginning span. Each operand is parsed at precCompare+1 so that a nested non-comparison operator
+// (`a < b + c`) still binds inside an operand, and so a `not`/`and`/`or` beyond the run stops it:
+// `a < b and b < c` is TWO chains joined by `and`, which is what the reference means too.
+func (p *parser) parseChainCompare(first string, firstLeft Expr, start Span) (Expr, error) {
+	ops := []string{first}
+	// The operator that started the chain is already consumed by the caller, so its right operand is
+	// the next thing to read — and the chain continues from there.
+	r, err := p.parseExprPrec(precCompare + 1)
+	if err != nil {
+		return nil, err
+	}
+	operands := []Expr{firstLeft, r}
+	for {
+		t := p.peek()
+		nextOp, opPrec, _, ok := p.binaryOp(t)
+		if !ok || opPrec != precCompare || !isCompareOp(nextOp) {
+			break
+		}
+		p.next()
+		nr, err := p.parseExprPrec(precCompare + 1)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, nextOp)
+		operands = append(operands, nr)
+	}
+	if len(ops) == 1 {
+		// Not a chain after all: one operator is exactly a BinOp, and building a ChainCompare for it
+		// would give every ordinary comparison in the language a second codegen path to get wrong.
+		return &BinOp{Op: ops[0], L: operands[0], R: operands[1], Src: start}, nil
+	}
+	return &ChainCompare{Ops: ops, Operands: operands, Src: start}, nil
 }
 
 // parsePrefix parses a prefix (unary `not` / `-`) expression or an atom.
