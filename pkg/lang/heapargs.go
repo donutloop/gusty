@@ -3325,8 +3325,13 @@ func (g *irGen) textOrderSide(e Expr) bool {
 // either way is a run-time question with three possible answers, and the only thing that settles it is
 // the tag the object carries (roadmap L11.1, Gap R.82).
 type orderSide struct {
-	e         Expr   // the operand itself
-	ix        *Index // non-nil when the object has to be asked, i.e. the side is a slot read
+	e  Expr   // the operand itself
+	ix *Index // non-nil when the object has to be asked, i.e. the side is a slot read
+	// pairName is a name the pair road bound (`n = xs[0]`, a loop element over a container that mixes
+	// kinds). Its payload means a different thing per kind, so the ordering asks the tag the same way a
+	// slot read does — which is the difference between `n > 7` answering and comparing the interned index
+	// of "a" as a number (roadmap L11.1, Gap R.148).
+	pairName  string
 	fromTag   bool   // the side's kinds come from the object: no literal describes the slots (Gap R.93)
 	canText   bool   // the side can report text
 	canNum    bool   // the side can report a number
@@ -3343,8 +3348,12 @@ type orderSide struct {
 // number?": a register for a slot the object has to be asked about, and a settled yes or no for
 // anything the compiler already read. The chain that decides the arms folds on these, so a side read
 // off the literal never costs a test at run time (roadmap L11.1, Gap R.82).
+// asksTag reports that this side's kind is a run-time fact the door has to test: either a slot read out of
+// an object, or a name the pair road bound. Both carry a tag register; neither is settled at compile time.
+func (s *orderSide) asksTag() bool { return s.ix != nil || s.pairName != "" }
+
 func (s *orderSide) textTest() string {
-	if s.ix == nil {
+	if !s.asksTag() {
 		if s.tagC == int32(TagStr) {
 			return "true"
 		}
@@ -3354,7 +3363,7 @@ func (s *orderSide) textTest() string {
 }
 
 func (s *orderSide) numberTest() string {
-	if s.ix == nil {
+	if !s.asksTag() {
 		if s.tagC == int32(TagInt) || s.tagC == int32(TagBool) || s.tagC == int32(TagFloat) {
 			return "true"
 		}
@@ -3364,14 +3373,14 @@ func (s *orderSide) numberTest() string {
 }
 
 func (s *orderSide) definitelyNotText() bool {
-	if s.ix == nil {
+	if !s.asksTag() {
 		return s.tagC != int32(TagStr)
 	}
 	return !s.canText
 }
 
 func (s *orderSide) definitelyNotNumber() bool {
-	if s.ix == nil {
+	if !s.asksTag() {
 		return s.tagC != int32(TagInt) && s.tagC != int32(TagBool) && s.tagC != int32(TagFloat)
 	}
 	return !s.canNum
@@ -3446,6 +3455,16 @@ func (g *irGen) orderSlotIsObject(ix *Index) bool {
 // the compiler already knows the tag of.
 func (g *irGen) orderShapeOf(e Expr) orderSide {
 	s := orderSide{e: e}
+	// A name the pair road bound is an ordering side whose kind the run time owns: the payload is a float
+	// box, an interned text or the number, and only the tag says which. It walks the same three arms a slot
+	// read out of an object walks, so `n > 7` compares numbers or raises the reference's own sentence for
+	// the kind it found rather than keeping one word for the operand (roadmap L11.1, Gap R.148).
+	if nm, isName := e.(*Name); isName && g.taggedVars[nm.Value] && g.taggedOrigin != nil {
+		switch g.taggedOrigin[nm.Value] {
+		case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith, taggedOriginSlot, taggedOriginLoop:
+			return orderSide{e: e, pairName: nm.Value, fromTag: true, canNum: true, canText: true, ok: true}
+		}
+	}
 	if ix, isIdx := e.(*Index); isIdx {
 		if g.orderSlotIsObject(ix) {
 			// No literal describes this slot, so the compiler has no list of kinds to read: the side may
@@ -3550,7 +3569,7 @@ func (g *irGen) taggedOrderApplies(n *BinOp) bool {
 	if !ls.ok || !rs.ok {
 		return false
 	}
-	if ls.ix == nil && rs.ix == nil {
+	if !ls.asksTag() && !rs.asksTag() {
 		return false
 	}
 	// A side whose kind the object reports names itself in the raise sentence, which names *two* types
@@ -3569,7 +3588,13 @@ func (g *irGen) taggedOrderApplies(n *BinOp) bool {
 // orderTagOf reads the tag one side reports, together with its payload. A side the compiler already
 // read has no tag to ask and leaves the register empty, which the arm tests below read as "settled".
 func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
-	if s.ix == nil {
+	if !s.asksTag() {
+		return true
+	}
+	if s.pairName != "" {
+		// A pair-bound name already carries both words; the door reads them from the name's own slots.
+		payload, tag := g.numericPairRegs(b, s.pairName)
+		s.payload, s.tag = payload, tag
 		return true
 	}
 	var payload, tag string
@@ -3591,7 +3616,7 @@ func (g *irGen) orderTagOf(b *strings.Builder, s *orderSide) bool {
 // orderAskTags reads each slot side's tag once, in the block the comparison starts in, and records the
 // two tests the arms and the raise sentence branch on.
 func (g *irGen) orderAskTags(b *strings.Builder, s *orderSide) {
-	if s.ix == nil || s.tag == "" {
+	if !s.asksTag() || s.tag == "" {
 		return
 	}
 	s.tagIsText = g.newTmp()
@@ -3641,7 +3666,7 @@ func (g *irGen) orderIsNum(b *strings.Builder, tag string) string {
 // raise arm — which the gate above makes unreachable, but the arm still has to end somewhere legal
 // rather than run off the end of the block (ADR 0166's rule against inventing an operand).
 func (g *irGen) orderDoubleTo(b *strings.Builder, s *orderSide, cur string) (string, string, error) {
-	if s.ix == nil {
+	if !s.asksTag() {
 		d := g.floatValue(b, s.e)
 		if d == "" {
 			return "", "", g.floatOperandRefusal(s.e)
@@ -4536,9 +4561,55 @@ func (g *irGen) taggedDoubleFromObject(b *strings.Builder, ix *Index, n *BinOp, 
 	if !ok || payload == "" || tag == "" {
 		return "", false, nil
 	}
+	return g.taggedDoubleFromPair(b, payload, tag, ix.Span(), n, side, otherName, sentence)
+}
+
+// pairDoubleInCtx lifts a pair-bound name into the double an operator wants, asking the per-tag arms the
+// slot read already walks — which is the difference between `n / 4` answering 1.75 and a text slot
+// answering the interned index of "a" as a number. The other operand's kind comes from where the operator
+// spelled it, and the sentence is CPython's for this operator with that kind (ADR 0253, ADR 0252).
+func (g *irGen) pairDoubleInCtx(b *strings.Builder, e Expr) (string, bool, error) {
+	n := g.numCtx
+	if n == nil {
+		return "", false, nil
+	}
+	other := "int"
+	for _, side := range []Expr{n.L, n.R} {
+		if side != e {
+			if k := g.numericUseKind(side); k != "" {
+				other = k
+			} else if _, isIx := side.(*Index); !isIx {
+				if d := g.floatValue(b, side); d == "" {
+					return "", false, nil // an operand whose kind would make the message a guess
+				}
+			}
+		}
+	}
+	slotOnLeft := n.L == e
+	sentence := func(kindName string) (string, string) {
+		if slotOnLeft {
+			return unsupportedNumberOp(n.Op, kindName, other)
+		}
+		return unsupportedNumberOp(n.Op, other, kindName)
+	}
+	nm, isName := e.(*Name)
+	if !isName {
+		return "", false, nil
+	}
+	payload, tag := g.numericPairRegs(b, nm.Value)
+	return g.taggedDoubleFromPair(b, payload, tag, e.Span(), n, e, other, sentence)
+}
+
+// taggedDoubleFromPair is the same door asked of a pair it is handed rather than one it reads out of a
+// slot: the float arm unboxes, the int/bool arm converts, and every other tag raises the sentence CPython
+// writes for this operator and that kind. A name the pair road bound (`n = xs[0]`, a loop element over a
+// container that mixes kinds) has no word to widen — the payload is a float box, an interned text, or the
+// number, and only the tag says which — so the float domain reaches it here, through the arms the slot read
+// already walks, rather than through a second lift that guesses (roadmap L11.1, Gap R.148; ADR 0253's
+// per-kind raise, ADR 0252's closed tag set).
+func (g *irGen) taggedDoubleFromPair(b *strings.Builder, payload, tag string, sp Span, n *BinOp, side Expr, otherName string, sentence func(string) (string, string)) (string, bool, error) {
 	g.heapUsed = true
 	g.floatFmtUsed = true
-	sp := ix.Span()
 	if n != nil {
 		sp = n.Span()
 	}

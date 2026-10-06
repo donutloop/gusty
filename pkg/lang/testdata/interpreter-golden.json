@@ -40537,6 +40537,313 @@
    "err": "eval error: unsupported operand type(s) for -: 'set' and 'int'",
    "exnType": "TypeError",
    "exnMsg": "unsupported operand type(s) for -: 'set' and 'int'"
+  },
+  "d = {}\nd[\"k\"] = 9\nn = d[\"k\"]\nprint(n / 3)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "3.0\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n + 2.5)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: can only concatenate str (not \"float\") to str",
+   "exnType": "TypeError",
+   "exnMsg": "can only concatenate str (not \"float\") to str"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n - 1 + 0.5)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: unsupported operand type(s) for -: 'str' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "unsupported operand type(s) for -: 'str' and 'int'"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n / 4)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: unsupported operand type(s) for /: 'str' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "unsupported operand type(s) for /: 'str' and 'int'"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n > 2.5)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: '>' not supported between instances of 'str' and 'float'",
+   "exnType": "TypeError",
+   "exnMsg": "'>' not supported between instances of 'str' and 'float'"
+  },
+  "xs = []\nxs.append(-8)\nn = xs[0]\nprint(n / 4)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "-2.0\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nfor v in xs:\n    print(v / 2)\n": {
+   "repr": "0",
+   "type": "int",
+   "int": 0,
+   "hasInt": true,
+   "stdout": "3.5\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd = 2.5\nprint(n < d)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "False\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nh = n / 2\nprint(h)\nprint(h + 1)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "3.5\n4.5\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nif n > 2.5:\n    print(\"big\")\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "big\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(2.5 - n)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "-4.5\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n * 2.5)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "17.5\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n + 2.5)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "9.5\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 0)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: division by zero",
+   "exnType": "ZeroDivisionError",
+   "exnMsg": "division by zero"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 0.0)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: float division by zero",
+   "exnType": "ZeroDivisionError",
+   "exnMsg": "float division by zero"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 2.5)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "2.8\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 4)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "1.75\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n < 2.5)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "False\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n == 2.5)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "False\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n > 2.5)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "True\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(round(n / 4))\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "2\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nxs.append(9)\ni = 1\nn = xs[i]\nprint(n / 3)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "3.0\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7.5)\nn = xs[0]\nprint(n / 2)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "3.75\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7.5)\nn = xs[0]\nprint(n > 7)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "True\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint(n / 4)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: unsupported operand type(s) for /: 'NoneType' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "unsupported operand type(s) for /: 'NoneType' and 'int'"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(n / 2)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "0.5\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append([1])\nn = xs[0]\nprint(n / 4)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: unsupported operand type(s) for /: 'list' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "unsupported operand type(s) for /: 'list' and 'int'"
+  },
+  "xs = []\nxs.append([7, 8])\nn = xs[0][1]\nprint(n / 2)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "4.0\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append({\"k\": 1})\nn = xs[0]\nprint(n / 4)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: unsupported operand type(s) for /: 'dict' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "unsupported operand type(s) for /: 'dict' and 'int'"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(7 > n)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: '>' not supported between instances of 'int' and 'str'",
+   "exnType": "TypeError",
+   "exnMsg": "'>' not supported between instances of 'int' and 'str'"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n > 7)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: '>' not supported between instances of 'str' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "'>' not supported between instances of 'str' and 'int'"
+  },
+  "xs = []\nxs.append(5)\nfor v in xs:\n    print(v > 3)\n": {
+   "repr": "0",
+   "type": "int",
+   "int": 0,
+   "hasInt": true,
+   "stdout": "True\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(5)\nn = xs[0]\nwhile n > 3:\n    n = n - 1\nprint(n)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "3\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nif n > 1 and n < 9:\n    print(\"mid\")\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "mid\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(7 > n)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "False\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n > 7)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "False\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n >= 7)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "True\n",
+   "hasStdout": true
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint(n >= 1)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: '>=' not supported between instances of 'NoneType' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "'>=' not supported between instances of 'NoneType' and 'int'"
+  },
+  "xs = []\nxs.append([1])\nn = xs[0]\nprint(n > 2)\n": {
+   "int": 0,
+   "hasInt": false,
+   "err": "eval error: '>' not supported between instances of 'list' and 'int'",
+   "exnType": "TypeError",
+   "exnMsg": "'>' not supported between instances of 'list' and 'int'"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(n > 3)\n": {
+   "repr": "None",
+   "type": "None",
+   "int": 281474976710657,
+   "hasInt": true,
+   "stdout": "True\n",
+   "hasStdout": true
   }
  },
  "meta": {

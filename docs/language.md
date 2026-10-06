@@ -3075,6 +3075,32 @@ program wrote. `+`, `*` and `%` are the exception, and an honest one: CPython an
 `"%d" % 3`, and this backend builds none of those from a slot yet (roadmap Gap R.82, Gap R.165), so those
 positions refuse in words rather than raise where the reference answered a value (roadmap L11.1, Gap R.146).
 
+The name reaches the **double** domain the same way — by its tag, not by a cast (ADR 0305, closing roadmap
+Gap R.148):
+
+```python
+xs = []
+xs.append(7)
+n = xs[0]
+print(n / 4)      # 1.75
+print(n >= 7)     # True
+print(n + 2.5)    # 9.5
+xs = []
+xs.append(7.5)
+n = xs[0]
+print(n / 2)      # 3.75 — a float slot unboxes, it does not read its handle as a number
+xs = []
+xs.append("a")
+n = xs[0]
+print(n > 7)      # TypeError: '>' not supported between instances of 'str' and 'int'
+print(7 > n)      # TypeError: '>' not supported between instances of 'int' and 'str'
+```
+
+An ordering names **both** operand types in source order, which is one of the reasons a pair enters through
+the tag-reading doors rather than through a widening: a lift would compare the interned index of `"a"` as a
+number and answer `True` where the reference stops the program. What still refuses is a position that keeps one
+word for the value — `float(n)`, `sum([n])`, `abs(n)`, `[n]`, `min(n, 3)`, an f-string field (Gap R.146).
+
 ## Builtins
 
 Names are resolved by the checker before codegen runs. Every built-in call name comes from

@@ -250,6 +250,20 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 		{"augmented product onto it", built + "n = xs[0][0] * 2\nn *= 2\nprint(n)\n", "28\n"},
 		{"augmented with a double", built + "n = xs[0][0] * 2\nn += 0.5\nprint(n)\n", "14.5\n"},
 		{"read again after the rebinding", built + "n = xs[0][0] * 2\nn += 1\nprint(n > 14)\n", "True\n"},
+		{
+			// Gap R.148's two shapes, moved out of the refusal table below when the float door opened
+			// (ADR 0304): the division asks the tag and the ordering asks it twice, once per side.
+			"divided by a literal", built + "n = xs[0][0] * 2\nprint(n / 4)\n", "3.5\n",
+		},
+		{
+			"ordered against a float variable", built + "n = xs[0][0] * 2\nd = 2.5\nprint(n > d)\n", "True\n",
+		},
+		{
+			"a slot-bound name divided by a literal", "xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 4)\n", "1.75\n",
+		},
+		{
+			"a slot-bound name ordered against an int literal", "xs = []\nxs.append(7)\nn = xs[0]\nprint(n >= 7)\n", "True\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -274,18 +288,20 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 // the refusal's own sentence written into the row and the reference's answer checked live. Two shapes are owed and are named here rather than answered
 // wrongly: a position that takes a whole *value* — a builtin's argument, a container's element, an `and`'s
 // operand — has nowhere to put the tag (that is the same missing word Gap R.139 names on the calling
-// side); and a pair-bound name that enters the float domain beside a variable, or against a text, or
-// through `/`, is refused by the road it takes rather than answered by the pair. A tuple unpacking is the
-// third family and is Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road
-// stores a double into the i32 slot a tagged name owns, which is the module `llc` rejects, so these
-// shapes must stay refusals until the pair reaches them.
+// side). The float domain is no longer on this table: Gap R.148's shapes are answered by the tag-selected
+// arms (ADR 0304), and they sit in the answer table above. A tuple unpacking is the other family and is
+// Gap R.144's own row. Exit 2 is forbidden in every row (ADR 0166): the float road once stored a double
+// into the i32 slot a tagged name owns, which is the module `llc` rejects, so every shape here must stay a
+// refusal — not a broken module — until the pair reaches it.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "holds the answer of arithmetic over a slot"},
 		{"handed to min", built + "n = xs[0][0] * 2\nprint(min(n, 3))\n", "holds the answer of arithmetic over a slot"},
 		{"an element of a list", built + "n = xs[0][0] * 2\nprint([n])\n", "holds the answer of arithmetic over a slot"},
-		{"divided by a literal", built + "n = xs[0][0] * 2\nprint(n / 4)\n", "cannot be compiled"},
-		{"ordered against a float variable", built + "n = xs[0][0] * 2\nd = 2.5\nprint(n > d)\n", "cannot be compiled"},
+		// `n / 4` and `n > d` were on this table, and both are answered now: a pair-bound name reaches the
+		// double domain through the tag-selected arms a slot read walks (the float arm unboxes, the int/bool
+		// arm converts, every other kind raises CPython's own sentence), so the two shapes Gap R.148 was
+		// filed with left the refusal table for the answer table above (ADR 0304, roadmap L11.1).
 		{"unpacked from a tuple", built + "a, b = xs[0][0] + 1, xs[0][1] + 2\nprint(a)\n", "cannot reach into"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

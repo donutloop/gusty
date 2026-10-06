@@ -842,7 +842,10 @@ from such a slot, and of a loop variable stepping over a container that mixes ki
 module's one tag-reading printer (`rt_str_of_value` → `rt_print_mixed_value`), so `str(v)` can never
 disagree with `print(v)` (ADR 0303). The same pair answers arithmetic where the operator cannot
 answer a non-number: `n - 1`, `-n` and `n // 2` for `n = xs[0]` sum the number the tag says and raise
-CPython's own sentence, per kind, when the slot holds a text or a container (ADR 0304). What still refuses is a
+CPython's own sentence, per kind, when the slot holds a text or a container (ADR 0304) — and it reaches the
+double domain the same way, by its tag: `n / 4` is `1.75`, `n >= 7` is `True`, `n + 2.5` is `9.5`, and a text
+slot in an ordering raises `'>' not supported between instances of 'str' and 'int'` naming both types in source
+order (ADR 0305). What still refuses is a
 position that keeps **one word** for a whole value — `n + 1`, `abs(n)`, `[n]`, `min(n, 3)` — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
 R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, and `print(f"{xs}")` is Gap

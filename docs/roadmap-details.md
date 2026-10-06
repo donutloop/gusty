@@ -8464,3 +8464,55 @@ concatenate two texts); refine the proof so `+` opens (`xs.append(7)` says nothi
 pass is program-wide for a reason, and the gate is now asserted directly so a widening fails a decision row);
 specialise the name's kind at its binding (ADR 0172's latest-binding rule, and Gap R.142's heap-handle print,
 are the cautionary record); let the message be generic.
+
+### ADR 0305 — the double domain (2026-08-03, L11.1 / Gap R.148)
+
+**The measurement, and the asymmetry that made the row look arbitrary.** ADR 0304 had opened `-`, unary `-`
+and `//` for a pair-bound name, and two neighbouring shapes still refused while a third answered:
+
+```console
+$ gusty --eval 'xs = []\nxs.append(7)\nn = xs[0]\nprint(n / 4)'
+gustyc: jit: codegen: … this position needs a tagged value word (roadmap L11.1, Gap R.146)
+$ gusty --eval 'xs = []\nxs.append(7)\nn = xs[0]\nprint(2.5 - n)'
+-4.5
+```
+
+Same name, same pair, same value. The difference was which road the expression happened to take: an int
+literal on the right keeps a BinOp on the i32 road, whose pair-name operand the road refuses (correctly —
+one word cannot hold a pair); a float literal promotes the whole expression, and the double road's other
+operand being a literal meant the pair reached a path that asked the tag. `n > 7` and `n > 2.5` split the
+same way.
+
+**The tempting fix, caught by its own test.** Both roads have a lift available — `rt_lift_num(payload, tag)` —
+and the first implementation called it. It printed `1.75` for `n / 4`, and it printed `0.0` for `float(n)`
+where the slot held `"a"`: **the lift unboxes a float box and `sitofp`s everything else**, so an interned
+string index becomes a plausible number at exit 0. That is the family Gap R.38 and Gap R.95 keep filing, and
+the failure showed up as one of this ADR's own rows — which is the argument for writing the trap table before
+the door, not after it.
+
+**The fix is routing, not machinery.** No new runtime code. Two doors that already read tags were pointed at
+names:
+
+- `taggedDoubleFromObject` (ADR 0253's per-kind float raise, with its zero guard *inside* each arm because
+  `division by zero` versus `float division by zero` is a tag fact) split into the `*Index` wrapper and
+  `taggedDoubleFromPair`, which is what a name can supply.
+- The ordering door (ADR 0250/ADR 0252) gained `orderSide.pairName`. Its side predicates ask *`asksTag()`* now
+  rather than *`ix != nil`* — six tests — because "the kind is a run-time fact" and "the operand is a slot
+  read" stopped being the same question the moment a name could carry a pair. This is the change to know when
+  reading that door later.
+
+The ordering's raise is the reason the pair had to enter *that* door specifically: `'>' not supported between
+instances of 'int' and 'str'` and `… of 'str' and 'int'` are two sentences, chosen by which side the pair was
+on. A lift-and-compare road cannot say either.
+
+**Paid rows are what a ledger is for.** Two pre-existing tables asserted the old refusal, and both are the
+shape this cycle answers: `integration/pair_binding_test.go`'s `n / 4` / `n > d` rows moved from its refusal
+table to its answer table, and `pkg/lang/mixed_list_test.go` lost its `for x in xs: print(x > 2)` refusal row
+to `pair_number_float_test.go`'s trap table (the number element compares, the text element raises). The drift
+ratchet separately reported `n - 1 + 0.5` as paid and refused to let the run pass until the row was deleted.
+
+**What stays refused, on purpose.** `float(n)`, `sum([n])`, `abs(n)`, `[n]`, `min(n, 3)` and an f-string field
+(Gap R.146). `float(n)` is the instructive case: it looks free, `rt_lift_num` would answer it, and for a slot
+holding `"a"` the answer is `0.0` where CPython has `ValueError: could not convert string to float: 'a'`.
+Taking that deal would mean a debt row for a wrong answer at exit 0 — and wrong answers, unlike refusals, are
+not counted by `compiled refusals this run`, so they do not show up when the suite drifts.

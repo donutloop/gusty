@@ -7490,6 +7490,19 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 			fmt.Fprintf(b, "  %s = load double, double* %%_%s\n", t, n.Value)
 			return t
 		}
+		// A name the pair road bound — an arithmetic answer, a slot read, a loop element over a container
+		// that mixes kinds — has no single word to widen: the payload beside its tag is a float BOX handle,
+		// an interned text index, or the number itself, and only the tag says which. The float domain reaches
+		// it through the same per-tag arms a slot read walks: the float arm unboxes, the int/bool arm
+		// converts, and every other tag raises the sentence CPython writes for THIS operator and that kind
+		// (roadmap L11.1, Gap R.148 — the row that kept `n / 4` and `n > 2.5` refusing while `2.5 - n`
+		// answered). A widening that merely called `rt_lift_num` here would print the interned index of a
+		// text as a number, which is the wrong-answer-at-exit-0 family this loop keeps filing.
+		if g.taggedVars[n.Value] && g.taggedOrigin != nil && g.numCtx != nil {
+			if d, okD, derr := g.pairDoubleInCtx(b, e); derr == nil && okD && d != "" {
+				return d
+			}
+		}
 		t := g.newTmp()
 		fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, n))
 		return t
@@ -14560,6 +14573,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		}
 		if len(c.Args) != 1 {
 			return "", fmt.Errorf("float expects one argument")
+		}
+		// A name the pair road bound has no one word to widen — the payload beside its tag is a float box,
+		// an interned text, or the number, and only the tag says which. `rt_lift_num` answers the double and
+		// raises CPython's own sentence for a kind that has no number in it (roadmap L11.1, Gap R.148).
+		if nm, isName := c.Args[0].(*Name); isName && g.taggedVars[nm.Value] {
+			p, t := g.numericPairRegs(b, nm.Value)
+			return g.liftPair(b, p, t), nil
 		}
 		if il, ok := c.Args[0].(*IntLit); ok {
 			return fmt.Sprintf("%d", il.Value), nil

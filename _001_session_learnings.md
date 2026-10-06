@@ -8462,3 +8462,38 @@ did not recognise the name.
 - **Measured after the cycle:** record 5525 (+24 harvested from the pre-retirement recorder), `pkg/lang` drift
   337 (+3), `integration` drift 21, CPython debt 7, 296 ADRs to 0304 — and the snapshot table corrected, since
   it had drifted (it claimed 294 ADRs / highest 0302 / 5478 sources).
+
+---
+
+## Cycle — a pair-bound name enters the double domain by way of the tag (ADR 0305, Gap R.148 closed)
+
+**Feature (roadmap L11.1, Gap R.148).** `print(n / 4)` and `print(n > d)` were refused while `print(2.5 - n)`
+answered, for the same `n = xs[0]`. The asymmetry was road luck: an int literal on the right keeps the BinOp on
+the i32 road (which refuses a pair correctly), a float literal promotes to the double road (which happened to
+ask the tag).
+
+- **The lift is a trap, literally.** The first implementation called `rt_lift_num(payload, tag)` — the obvious
+  door — and it printed `1.75` for `n / 4`, and `0.0` for `float(n)` with a **text** in the slot: the lift
+  unboxes a float box and `sitofp`s every other tag, so an interned string index becomes a plausible number at
+  exit 0. The wrong answer surfaced as a failing row in the trap table I had written *first*. Rule worth keeping:
+  **write the per-kind trap rows before the door, not after** — a door that only answers is unmeasurable.
+- **Routing, not machinery: zero new runtime code.** `taggedDoubleFromObject` (ADR 0253's per-kind float raise,
+  zero guard inside each arm) split into an `*Index` wrapper plus `taggedDoubleFromPair`; the ordering door
+  (ADR 0250/0252) gained a `pairName` side. Both doors already knew how to raise the reference's sentence per
+  kind — the cycle pointed them at names.
+- **A predicate drift to remember:** the ordering door asked `s.ix == nil` in six places to mean "this side's
+  kind is settled". With a pair-carrying name that is false but `ix` is still nil, so the meaning moved to
+  `asksTag()`. When a struct field starts standing in for a *property*, name the property.
+- **The ordering's sentence proves the door choice.** `'>' not supported between instances of 'int' and 'str'`
+  vs `… of 'str' and 'int'` differ by which side the pair was on — a lift-and-compare road cannot produce
+  either, which is the test for "did I enter the right door or just a door that compiles".
+- **Paying a row means editing the tests that pinned the old refusal** — not deleting them:
+  `integration/pair_binding_test.go` moved `n / 4` / `n > d` from its refusal table to its answer table;
+  `pkg/lang/mixed_list_test.go` lost `for x in xs: print(x > 2)` to the new trap table. The drift ratchet
+  independently reported `n - 1 + 0.5` as paid and held the run red until the row was deleted.
+- **Refusals that stay, on purpose:** `float(n)`, `sum([n])`, `abs(n)`, `[n]`, `min(n, 3)`, f-string fields
+  (Gap R.146). `float(n)` is the instructive one — the lift answers it, and for a text slot answers `0.0`
+  where CPython raises `ValueError: could not convert string to float: 'a'`. A debt row for a wrong answer at
+  exit 0 is still a wrong answer, and unlike refusals it is not counted by `compiled refusals this run`.
+- **Ledger state after the cycle:** record 5565, `pkg/lang` drift 338 (two L13.1 echo-silence rows added),
+  `integration` drift 21, CPython debt 7, 297 ADR files to 0305. `go test -tags=llvm20 ./...` green.
