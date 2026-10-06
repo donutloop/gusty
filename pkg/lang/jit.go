@@ -2174,6 +2174,17 @@ func (e *Evaluator) evalComp(c *Comp) (int64, error) {
 	if o != nil && o.kind == "dict" {
 		items = o.elems
 	}
+	// A TEXT is an object too, but its characters live in `sval` and never in `elems`, so a
+	// comprehension over one found no elements at all and answered [] -- silently, at exit 0,
+	// where the reference answers ['a', 'b', 'c'] and the compiled leg at least refuses. The `for`
+	// statement beside this already splits a text per rune; the comprehension asks the same
+	// question the same way (roadmap Gap R.185).
+	if o != nil && o.kind == "str" {
+		items = nil
+		for _, r := range o.sval {
+			items = append(items, e.allocStr(string(r)))
+		}
+	}
 	var rh int64
 	switch c.Kind {
 	case CompList:
@@ -4532,6 +4543,15 @@ func (e *Evaluator) evalCall(n *Call) (int64, error) {
 				}
 				if o, ok := e.heap[lo]; ok && (o.kind == "list" || o.kind == "set") {
 					vals = append([]int64(nil), o.elems...)
+				} else if o, ok := e.heap[lo]; ok && o.kind == "str" {
+					// A text is an ITERABLE, not a scalar: max("abc") is 'c' and min("abc") is 'a',
+					// the reference comparing the characters. This arm treated a str as a one-element
+					// collection and handed back the whole string -- a wrong answer at exit 0, on the
+					// leg where the compiled backend at least refuses (roadmap Gap R.185). Iterating
+					// per rune, the same question the `for` statement and the comprehension ask.
+					for _, r := range o.sval {
+						vals = append(vals, e.allocStr(string(r)))
+					}
 				} else {
 					// A bare scalar is a one-element collection, and it is the *expression* that says
 					// what it holds: `max(True)` chose the verdict CPython prints, so the candidate

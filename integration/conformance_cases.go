@@ -463,6 +463,10 @@ func conformanceMerged() []lang.ConformanceCase {
 // conformanceProbes to conformanceStandalone, so it becomes parity surface.
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
+		// A text used as an iterable — a comprehension over one, and max/min of one. The interpreter
+		// answered [] and the whole string; it now answers the characters the reference answers, and the
+		// compiled leg's refusal is RECORDED rather than pinned as a limit. Gap R.185 / ADR 0298.
+		"probe_a_text_iterates_one_character_at_a_time",
 		// A bool handed to a function and printed there. The parameter's slot holds the 1 the
 		// comparison produced and nothing says it was ever a verdict, so both backends print 1
 		// where CPython prints True (roadmap Gap R.111, filed by ADR 0257).
@@ -659,6 +663,15 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "CPython and the interpreted leg print 3, d, ['b'], 5.0 and [[1, 2]]; the compiled leg spends exit 1 on the first of them, because a chosen operand that is not a number has no word to travel in outside the print door, where the tag can travel beside the payload",
 		ref:    "roadmap Gap R.147 (owed half, owned by L11.1's tagged value word) and Gap R.146; docs/adr/0269, Consequences",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "3\nd\n['b']\n5.0\n[[1, 2]]\n"}, {Backend: "aot", Missing: true, Err: "requires an inline list/dict/set literal"}}},
+	// A text used as an iterable: CPython and the interpreted leg answer the characters; the compiled
+	// leg spends exit 1 because a comprehension iterable and an iterable builtin argument cannot be a
+	// text there at all. Before this row the interpreter answered [] for the comprehensions and the
+	// whole string for max/min — a WRONG answer at exit 0, which the pin below now forbids.
+	// Gap R.185 / ADR 0298, owner L11.1 and L11.5.
+	"programs/probe_a_text_iterates_one_character_at_a_time": {oracle: lang.OracleDebt,
+		reason: "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the interpreted leg now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
+		ref:    "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "['a', 'b', 'c']\n['a', 'c']\n['aa', 'bb']\n[]\n4\n['a', 'b', 'c']\nc\na\nc\nZ\n3\n1\n5\na\nb\nc\n"}, {Backend: "aot", Missing: true, Err: "comprehension iterable must be an inline list literal, range(), or a container variable"}}},
 	"programs/probe_pair_from_a_tuple_unpack": {oracle: lang.OracleDebt,
 		reason: "CPython prints 8 and the interpreted leg prints 8; the compiled leg spends exit 1 on the unpacking, because a tuple target binds its names through the ordinary numeric road, which refuses the slot it cannot see into — the plain assignment takes the pair road since ADR 0267 and the unpacking does not",
 		ref:    "roadmap Gap R.144 (measured landing ADR 0267); docs/adr/0267, Consequences",

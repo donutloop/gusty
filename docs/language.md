@@ -1230,6 +1230,29 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### A text iterates one character at a time
+
+A text is an **iterable**, so the roads that iterate one answer the same thing (`Gap R.185`, ADR 0298):
+
+```
+print([c for c in "abc"])              # ['a', 'b', 'c']
+print([c for c in "abc" if c != "b"])  # ['a', 'c']
+print([c + c for c in "ab"])           # ['aa', 'bb']
+print([c for c in ""])                 # []
+print(sorted([c for c in "cba"]))      # ['a', 'b', 'c']
+print(max("abc"))                      # c       the CHARACTERS are compared
+print(min("abc"))                      # a
+for c in "abc":                        # a, b, c — `for`, a comprehension and max/min cannot disagree
+    print(c)
+```
+
+Iteration is per **code point**, so `max("aé")` is `é` and not a stray byte. (Measuring a text — `len`,
+`s[i]` — is still bytewise and is `Gap N.2`'s open row; this row does not claim it.)
+
+The compiled leg **refuses** a comprehension whose iterable is a text, and refuses `max`/`min` of one, at
+exit 1 with a sentence naming what it cannot lower. That is owed work (`L11.1`), not a limit: before this
+row the *interpreter* answered `[]` and `abc` at exit 0, which is a wrong number rather than a refusal.
+
 ### Truth of a text, and what a string method answers with
 
 `not` asks the same question an `if` asks, for every kind, and a text-returning string method prints its

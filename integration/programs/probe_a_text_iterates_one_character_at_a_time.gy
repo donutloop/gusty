@@ -1,0 +1,29 @@
+# A text iterates one character at a time (roadmap Gap R.185, owner L11.1/L11.5; ADR 0298)
+#
+# Both were WRONG answers at exit 0 on the interpreter, where the compiled leg at least refused:
+#   [c for c in "abc"]     CPython ['a', 'b', 'c']   --interp []      characters live in the object's
+#                                                                     sval field, never in elems, so the
+#                                                                     comprehension found nothing at all
+#   max("abc") / min("abc")  CPython c / a           --interp abc     a text fell through to the
+#                                                                     bare-scalar arm: one-element collection
+#
+# The `for` statement already iterated a text per rune. Three roads asked "iterate this text" and got two
+# different answers -- ADR 0279/0280's one-question rule, applied to iteration.
+#
+# The compiled leg still refuses these (exit 1, honest) until L11.1's container read lands; a refusal is
+# allowed and an invented answer is not, so this file's compiled leg is checked, not pinned.
+print([c for c in "abc"])
+print([c for c in "abc" if c != "b"])
+print([c + c for c in "ab"])
+print([c for c in ""])
+print(len([c for c in "abcd"]))
+print(sorted([c for c in "cba"]))
+print(max("abc"))
+print(min("abc"))
+print(max("cba"))
+print(min("Za"))
+print(max([1, 2, 3]))
+print(min([1, 2, 3]))
+print(max(3, 5))
+for c in "abc":
+    print(c)

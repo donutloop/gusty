@@ -563,6 +563,15 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A text iterates **one character at a time** (ADR 0298, closing `Gap R.185`). `[c for c in "abc"]` answered
+`[]` on the interpreter at **exit 0** — not a refusal, not a trap, just an empty list a program would happily
+iterate and never enter — and `max("abc")` answered `abc`, the whole string, because a text fell through to
+the arm that treats anything unrecognised as a one-element collection. `for c in "abc"` had always been right
+beside them: three roads asked "iterate this text" and read two different stores. All three now range over
+the text per code point, so `max("aé")` is `é`. The compiled leg still refuses at exit 1 with a sentence
+naming what it cannot lower — owed to `L11.1` — and was deliberately *not* brought into agreement by taking
+the interpreter's new answer away.
+
 A text answers **truth** like any other value, and a string method answers with its own kind (ADR 0297,
 closing `Gap R.183` and `Gap R.184`). `print(not "x")` said `True` on the compiled leg while `if "x":` —
 asking the same question about the same value two lines away — said truthy: `not` used a helper that compares

@@ -8029,3 +8029,49 @@ been trimmed.
 **Measurement.** HEAD-baseline build: **24** subtest failures on the new tables, green here. Sweep of 173
 programs: the only movement is this cycle's own probe. `print("a\tb".expandtabs())` still refuses AOT —
 unchanged by this row, and untouched rather than quietly widened.
+
+### Gap R.185 — a text used as an iterable answered nothing, or everything (CLOSED by ADR 0298, owner L11.1 / L11.5)
+
+```
+[c for c in "abc"]        CPython ['a','b','c']   --interp []      exit 0   --aot refuses (exit 1)
+[c for c in "abc" if …]   CPython ['a','c']       --interp []      exit 0   --aot refuses
+max("abc") / min("abc")   CPython c / a           --interp abc     exit 0   --aot refuses
+for c in "abc": print(c)  CPython a,b,c           --interp ✅ already correct
+```
+
+**An empty result is the most dangerous wrong answer.** `[]` at exit 0 is indistinguishable from an empty
+iterable: no trap, no refusal, no odd output — the program just never enters its loop. `max("abc")` → `abc`
+was the same class with a more plausible face. The sweep found both because it prints every line, and a line
+that prints `[]` where the reference prints three characters is only visible side by side.
+
+**The interpreter's object has two element stores** — `elems` for containers, `sval` for texts — and both
+broken roads did `if h, ok := e.heap[it]; ok { items = h.elems }`. A text *is* in the heap, so `ok` was true,
+`elems` was empty, and the road concluded "zero items" with full confidence. The `for` statement had the text
+arm and had been right all along. Three roads, one question, two answers: the ADR 0279/0280 rule about kinds,
+applied to iteration.
+
+**`min`/`max`'s bug was an `else`.** The road guarded dicts, handled list/set, and sent *everything else* to
+"a bare scalar is a one-element collection". A text landed there and became a one-element collection whose one
+element was the whole string — and because the comparison machinery then compared that single candidate, the
+answer looked perfectly reasonable. Every `else` in a kind dispatch is a wrong answer waiting; this one now
+has a text arm in front of it.
+
+**Per rune, not per byte**, because `max("aé")` is `é` in the reference and a byte iteration answers a
+fragment of a code point. One `range` over the Go string costs nothing and matches the `for` road beside it.
+The measurement side (`len`, `s[i]`) is still bytewise — that is `Gap N.2` / L11.5 and this row does not
+claim it.
+
+**The refusal on the compiled leg was left alone, on purpose.** The tempting symmetry move was to make
+`--interp` refuse too so the two engines "agreed". Rejected: it would fix a wrong number by deleting a
+correct answer, which the ladder forbids. The compiled leg's exit 1 with a sentence naming what it cannot
+lower is the contract's honest failure, and the row records it as owed to L11.1.
+
+**Ledger mechanics that earned their keep.** `TestRecordCitationsResolveToRealPrograms` failed while the row
+existed without its probe — an unfilled claim becomes a build failure, not prose. And my first registration
+put the probe in `conformanceStandalone()` (parity surface, `Shared: true`), so `TestConformanceMatrix`
+correctly failed it for interp≠aot; the program belongs in `conformanceProbes()` with an
+`OraclePin{Backend: "aot", Missing: true, …}` recording the refusal. A program whose compiled leg refuses is
+a *recorded divergence*, never a parity row.
+
+**Measurement.** HEAD-baseline build (`git worktree`): **13** subtest failures on the new tables, green here.
+Matrix now 164 rows / 128 pass / 36 skipped / 30 debt / 0 fail / 0 drift.

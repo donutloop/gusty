@@ -3223,6 +3223,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_text_iterates_one_character_at_a_time",
+        "name": "probe_a_text_iterates_one_character_at_a_time.gy",
+        "source": "# A text iterates one character at a time (roadmap Gap R.185, owner L11.1/L11.5; ADR 0298)\n#\n# Both were WRONG answers at exit 0 on the interpreter, where the compiled leg at least refused:\n#   [c for c in \"abc\"]     CPython ['a', 'b', 'c']   --interp []      characters live in the object's\n#                                                                     sval field, never in elems, so the\n#                                                                     comprehension found nothing at all\n#   max(\"abc\") / min(\"abc\")  CPython c / a           --interp abc     a text fell through to the\n#                                                                     bare-scalar arm: one-element collection\n#\n# The `for` statement already iterated a text per rune. Three roads asked \"iterate this text\" and got two\n# different answers -- ADR 0279/0280's one-question rule, applied to iteration.\n#\n# The compiled leg still refuses these (exit 1, honest) until L11.1's container read lands; a refusal is\n# allowed and an invented answer is not, so this file's compiled leg is checked, not pinned.\nprint([c for c in \"abc\"])\nprint([c for c in \"abc\" if c != \"b\"])\nprint([c + c for c in \"ab\"])\nprint([c for c in \"\"])\nprint(len([c for c in \"abcd\"]))\nprint(sorted([c for c in \"cba\"]))\nprint(max(\"abc\"))\nprint(min(\"abc\"))\nprint(max(\"cba\"))\nprint(min(\"Za\"))\nprint(max([1, 2, 3]))\nprint(min([1, 2, 3]))\nprint(max(3, 5))\nfor c in \"abc\":\n    print(c)\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the interpreted leg now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
+        "ref": "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "['a', 'b', 'c']\n['a', 'c']\n['aa', 'bb']\n[]\n4\n['a', 'b', 'c']\nc\na\nc\nZ\n3\n1\n5\na\nb\nc\n"
+          },
+          {
+            "backend": "aot",
+            "error": "comprehension iterable must be an inline list literal, range(), or a container variable",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "['a', 'b', 'c']\n['a', 'c']\n['aa', 'bb']\n[]\n4\n['a', 'b', 'c']\nc\na\nc\nZ\n3\n1\n5\na\nb\nc\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "codegen: comprehension iterable must be an inline list literal, range(), or a container variable",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "['a', 'b', 'c']\n['a', 'c']\n['aa', 'bb']\n[]\n4\n['a', 'b', 'c']\nc\na\nc\nZ\n3\n1\n5\na\nb\nc\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython prints the characters — ['a', 'b', 'c'] and then c, a, c, Z — and the interpreted leg now prints the same; the compiled leg spends exit 1 on the first line, because a comprehension iterable that is a text and an iterable builtin argument that is a text have no lowering there at all, where the for statement has always walked one rune at a time",
+      "oracle_ref": "roadmap Gap R.185 (the interpreter half, closed) and L11.1 (the compiled half, owed); Gap N.2 owns the code-point measurement; docs/adr/0298",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: codegen: comprehension iterable must be an inline list literal, range(), or a container variable"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_through_a_call",
         "name": "probe_bool_through_a_call.gy",
         "source": "# A bool that travels through a call. Verdicts print True/False where they are written\n# (probe_bool_value.gy), but a function's parameter holds the 1 the comparison produced\n# and nothing says what it used to be, so this prints 1 where CPython prints True\n# (roadmap Gap R.111, filed by ADR 0257).\ndef show(f):\n    print(f)\n\nshow(1 == 1)\nshow(True)\n",
@@ -3830,7 +3872,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3831656502/138/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1018724312/138/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3844,7 +3886,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3831656502/138/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1018724312/138/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4685,12 +4727,12 @@
       ]
     }
   ],
-  "rows": 163,
-  "skipped": 35,
+  "rows": 164,
+  "skipped": 36,
   "pass": 128,
   "fail": 0,
   "oracle_match": 113,
-  "oracle_debt": 29,
+  "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

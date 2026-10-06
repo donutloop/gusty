@@ -973,6 +973,14 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a text iterates one character at a time on the interpreter**: `--interp --eval
+  'print([c for c in "abc"])'` exits 0 with `['a', 'b', 'c']` and `print(max("abc"))` with `c` (`Gap
+  R.185` / ADR 0298). Before this the interpreter answered `[]` and `abc` — a WRONG answer at exit 0, no
+  refusal, no trap: an empty list is indistinguishable from an empty iterable, so a program iterated it and
+  never entered. `for c in "abc"` had always been correct beside it, which is the whole defect: three roads
+  asked "iterate this text" and two of them read the container store, where a text keeps its characters
+  elsewhere. The compiled leg still refuses these at exit 1 naming what it cannot lower — owed to `L11.1`,
+  and deliberately NOT matched by making the interpreter refuse too.
 - **a text answers truth like any other value and a string method prints its text**: `--aot --eval
   'print(not "x")'` exits 0 with `False` and `'print("ab".zfill(5))'` with `000ab` (`Gap R.183` /
   `Gap R.184` / ADR 0297). Before this the compiled leg said `True` for `not "x"` while `if "x":` beside it

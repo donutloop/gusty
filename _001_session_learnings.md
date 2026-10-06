@@ -8093,3 +8093,36 @@ doing its job — a row is a claim, and one test turns unfilled claims into buil
 **Process.** Baseline proof: 24 failures on a `git worktree` build of HEAD, 0 here. 173-program sweep: only
 this cycle's probe moved. `expandtabs` with a tab in the receiver still refuses AOT — measured as pre-existing
 and left alone rather than folded into a row it doesn't belong to.
+
+## Cycle: a text iterates one character at a time (Gap R.185 closed; ADR 0298)
+
+**The scariest wrong number so far: `[]` at exit 0.** `[c for c in "abc"]` answered an empty list. No trap,
+no refusal, no odd output — a program iterates that and never enters its body, and the exit code is clean.
+`max("abc")` → `abc` (the whole string) was the same class wearing a plausible face. An empty result is the
+worst failure mode a road can have, because "no items" and "I couldn't see the items" look identical.
+
+**Two stores, one `ok`.** The interpreter's object keeps container elements in `elems` and text characters in
+`sval`. Both broken roads wrote `if h, ok := heap[it]; ok { items = h.elems }` — a text *is* in the heap, so
+`ok` succeeded, `elems` was empty, and the road confidently reported zero items. `for c in "abc"` had the text
+arm and had been correct the whole time. Three roads ask "iterate this"; two read the wrong store. Same
+conclusion as ADR 0279/0280 from a new direction: one question, one predicate — here, one iteration helper.
+
+**An `else` in a kind dispatch is a wrong answer waiting to happen.** `min`/`max` guarded dicts, handled
+list/set, and sent everything else to "a bare scalar is a one-element collection". A text became a
+one-element collection containing the whole string, then the comparison dutifully returned it. When you add a
+kind, audit every `else` that would silently swallow it.
+
+**Refusal symmetry is a trap.** The tempting "fix" for a compiled-leg refusal is to make the interpreter
+refuse too, so the engines agree. That converts a wrong number into a *lost answer* — the ladder's forbidden
+move. I fixed the side emitting the wrong number, left the honest exit-1 refusal alone, and recorded the
+compiled half as owed to L11.1.
+
+**Ledger machinery caught me twice, which is the point.** A row citing a probe that didn't exist yet failed
+the build (`TestRecordCitationsResolveToRealPrograms`) — an unfilled claim is a failure, not prose. Then I
+registered the probe in `conformanceStandalone()` and `TestConformanceMatrix` failed it for interp≠aot,
+correctly: a program whose compiled leg refuses is a *recorded divergence* → `conformanceProbes()` + an
+`OraclePin{Backend:"aot", Missing:true, Err:...}`. Parity rows are for programs both engines answer.
+
+**Process.** Baseline: 13 failures on a HEAD worktree build, 0 here. Two failed-then-fixed registrations, one
+misfiled ADR number (0299 → the next free 0298), one unused-variable caught by `go vet` before commit.
+Suite green; matrix 164/128/36, 30 debt, 0 fail, 0 drift.
