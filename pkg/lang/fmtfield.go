@@ -185,3 +185,49 @@ func (e *Evaluator) containerTypeName(v int64) string {
 	}
 	return "list"
 }
+
+// inPlaceMutations is the one list of receiver methods that CHANGE their receiver and hand back
+// nothing. It is a table rather than a switch in each road because two roads must agree on it: the
+// call road, which lowers the mutation and produces no value, and the print/str()/REPL road, which
+// has to know that the absence of a value is the void and not a number. When they disagreed, the
+// interpreter printed the container -- `[1, 2]` for `xs.append(2)` -- and the compiled leg emitted a
+// printf with a missing operand, which llc rejects (roadmap Gap R.187, ADR 0300).
+//
+// `pop` and `popitem` are deliberately NOT here: they remove something AND answer with it, which is
+// the whole reason `while xs: x = xs.pop()` exists.
+var inPlaceMutations = map[string]bool{
+	"append":  true,
+	"extend":  true,
+	"insert":  true,
+	"sort":    true,
+	"reverse": true,
+	"add":     true,
+	"discard": true,
+	"remove":  true,
+	"update":  true,
+	"clear":   true,
+}
+
+// callIsInPlaceMutation asks whether a call is a receiver method that answers the void. It reads the
+// call's SHAPE -- an attribute call on something that actually is a container -- because a program
+// may define its own `add`, and a user function of that name answers whatever its body returns.
+func (g *irGen) callIsInPlaceMutation(c *Call) bool {
+	attr, ok := c.Fn.(*Attr)
+	if !ok {
+		return false
+	}
+	if !inPlaceMutations[attr.Name.Value] {
+		return false
+	}
+	// A method on a container literal or a recorded container variable is the language's own mutator;
+	// a method on a string, a class instance or a user object is somebody else's method entirely.
+	if exprIsContainerShape(attr.Obj) {
+		return true
+	}
+	if _, isName := attr.Obj.(*Name); isName {
+		// A variable the container records know about: the same records the call road consulted to
+		// decide it was a mutation at all, so the two roads cannot disagree about who answered.
+		return g.nameIsContainerRecorded(attr.Obj)
+	}
+	return false
+}

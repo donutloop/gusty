@@ -3668,7 +3668,14 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 		// The argument's own expression decides whether the slot says bool: xs.append(True) and
 		// xs.append(1 == 1) are both verdicts, and xs.append(n) is not (Gap R.111/R.112, ADR 0259).
 		o.elems = append(o.elems, e.slotVal(args[0], v))
-		return recv, nil
+		// The answer is the VOID, not the container. `list.append` mutates in place and hands back
+		// None, and a program that prints the call sees `None`; handing back `recv` was an answer the
+		// reference does not give, at exit 0, and the compiled leg handed the print door no value at
+		// all -- `printf(..., i32 )`, an invalid module and exit 2 (roadmap Gap R.187, ADR 0300).
+		// The comment here used to read "returns the (updated) list handle, so the REPL can show the
+		// resulting list": that is the REPL's convenience buying a language-level wrong answer, and
+		// the REPL echoes the STATEMENT's value, which is exactly what the reference says is None.
+		return e.noneVal, nil
 	case "pop":
 		// l.pop() removes and returns the last element; l.pop(i) removes and returns
 		// element i (negative counts from the end), like Python. This is how a program
@@ -3843,11 +3850,12 @@ func (e *Evaluator) callSetMethod(recv int64, name string, args []Expr) (int64, 
 			// Value equality, so s.add(True) on a set holding 1 is a no-op like Python's, and the
 			// member already there keeps the spelling it arrived with (Gap R.112, ADR 0259).
 			if e.eqVal(x, v) {
-				return recv, nil // sets are a set: adding twice is a no-op
+				return e.noneVal, nil // sets are a set: adding twice is a no-op, and the answer is still the void
 			}
 		}
 		o.elems = append(o.elems, v)
-		return recv, nil
+		// `set.add` answers None (Gap R.187, ADR 0300) -- see list.append for the whole rule.
+		return e.noneVal, nil
 	case "discard", "remove":
 		if len(args) != 1 {
 			return 0, exnError("TypeError", name+"() takes exactly 1 argument")
@@ -3859,16 +3867,18 @@ func (e *Evaluator) callSetMethod(recv int64, name string, args []Expr) (int64, 
 		for i, x := range o.elems {
 			if x == v {
 				o.elems = append(o.elems[:i], o.elems[i+1:]...)
-				return recv, nil
+				return e.noneVal, nil
 			}
 		}
 		if name == "remove" {
 			return 0, exnError("KeyError", "remove(): element not in set")
 		}
-		return recv, nil // discard is silent about absence, like Python
+		// discard is silent about absence, like Python -- and silent about success too: the answer
+		// is the void on every path (Gap R.187, ADR 0300).
+		return e.noneVal, nil
 	case "clear":
 		o.elems = nil
-		return recv, nil
+		return e.noneVal, nil
 	}
 	return 0, exnError("TypeError", "no such set method "+name)
 }

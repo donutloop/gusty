@@ -8139,3 +8139,65 @@ feature, the comparison must be exact-but-for-the-newline. Same trap ADR 0297 re
 **Measurement.** HEAD-baseline build (`git worktree` at `102e739`) prints `3.5` / `7` / `255` / `3.5` on
 both engines for the four headline shapes — the new tables all fail there and pass here. Matrix now
 165 rows / 128 pass / 37 skipped / 31 debt / 0 fail / 0 drift.
+
+### Gap R.187 — a container method that mutates in place hands back the container, not the void (CLOSED by ADR 0300, owner L12.11)
+
+```
+program                     CPython                              --interp before   --aot before
+print(xs.append(2))         None                                 [1, 2]  exit 0    exit 2 (invalid module)
+print(s.add(2))             None                                 {1, 2}  exit 0    exit 2
+print(s.discard(1))         None                                 set()   exit 0    exit 2
+print(s.remove(1))          None                                 {2}     exit 0    refuses
+sum([1,2,3].append(4))      TypeError: 'NoneType' … not iterable 10      exit 0    —
+print(xs.pop())             2                                      2  ✅             2  ✅
+```
+
+**One line, two failure classes, and the loud-looking one was the less dangerous.** The compiled leg's
+exit 2 is at least honest — something says it is broken. The interpreter's `[1, 2]` at exit 0 has no
+diagnostic, no exit code, no parity signal, and `sum([1,2,3].append(4))` answering **10** is a value a
+program can *depend on* that the reference refuses to produce at all.
+
+**The mutation was never wrong; only the answer the statement throws away was.** That is why this shipped:
+a program writes `xs.append(2)`, not `print(xs.append(2))`. A defect on a value nobody reads can live for
+the entire life of a language unless someone asks what the reference answers for the read nobody does.
+
+**`printf(i8* @.fmt1, i32 )` — a call with a missing operand.** The `append` road returned `("", nil)`:
+correct for the *statement*, whose value nobody wants, and a silently-malformed instruction for the
+*expression*. A textual emitter has no type system to notice "I opened an operand slot and filled it with
+nothing"; the only net is LLVM's verifier, one subprocess away. This is the standing argument for treating
+exit 2 as a forbidden class rather than a bug class: the emitter's own errors are invisible until they are
+external.
+
+**Void lives in `isNoneExpr`, and that is why this was one fix, not six.** The predicate already knew
+`NoneLit`, None-valued names, functions whose bodies return nothing, all-None `min`/`max`, and a folded
+`dict.get` miss (ADR 0291). A mutator is the same fact about another call shape. Before, the call road
+lowered a mutation to "no value" and the print road assumed anything returned was a number: two roads each
+half-right, producing invalid IR together. Now one `map[string]bool` is read by both, so a mutator cannot be
+lowered as a void and printed as a value.
+
+**Keyed on the shape of the call, not the spelling of a name.** `inPlaceMutations` holds names, but the
+predicate fires only for an attribute call whose receiver *is* a container — a literal, or a name the
+container records know. Name-only dispatch is how `xs.sort()` used to be diagnosed as a *string* method
+(ADR 0191). `TestAUserMethodNamedAppendKeepsItsOwnAnswer` pins that `class Bag: def append(self, x):
+return 7` still answers 7.
+
+**`pop` is not a mutator in this sense, and needed a test that says so.** It removes AND answers with what
+it removed; `while xs: x = xs.pop()` is the idiom that proves it. Sweeping it into the void table would
+look like consistency and break a working program, so `TestPopStillAnswersWithWhatItTook` exists to fail.
+
+**Two pre-existing pins asserted the wrong answer, and both moved rather than being deleted.**
+`TestGenListAppend` asserted `sum([1,2,3].append(4)) == 10` — a verdict the reference cannot produce. And
+the comment on the list road said *"returns the (updated) list handle, so the REPL can show the resulting
+list"*: the REPL echoes the final `ExprStmt`'s value, which in the reference *is* None for that program, so
+the convenience was buying a language-level wrong answer and no test depended on it except one that had
+baked it in.
+
+**Refusal symmetry declined (third time; ADR 0298's rule).** The compiled leg refuses `s.remove(1)` over a
+*name* — it folds container methods only over a literal written at the call. Recorded as owed to L12.11 /
+Gap R.63 rather than matched by making the interpreter refuse. The genuinely MISSING compiled mutators
+(`extend`, `insert`, `update`, `clear`, dict `pop`, `popitem`) are a reference-runs/we-refuse gap with its
+own row and owner — bundling them here would have made one commit do two jobs.
+
+**Measurement.** HEAD-baseline build (`git worktree` at `72c170c`): `append`, `add` and `discard` all spend
+**exit 2** with an `llc` operand error, and 11 unit assertions fail on the new tables; green here. Matrix
+now 166 rows / 128 pass / 38 skipped / 32 debt / 0 fail / 0 drift.

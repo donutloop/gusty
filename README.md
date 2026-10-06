@@ -563,6 +563,18 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A method that **changes a container in place answers the void** (ADR 0300, closing `Gap R.187`).
+`print(xs.append(2))` printed `[1, 2]` on the interpreter at **exit 0** and made the compiled leg emit
+`printf(i8* @.fmt1, i32 )` — a call with a *missing operand*, which `llc` rejects — so the same one-line
+program spent **exit 2**, the forbidden class. `add`, `discard`, `remove` and `clear` were the same, and
+`sum([1, 2, 3].append(4))` answered **10** where the reference raises `TypeError: 'NoneType' object is not
+iterable`. The mutation was never wrong; only the answer the statement throws away was, which is exactly
+why nobody hit it — a program writes `xs.append(2)`, not `print(xs.append(2))`. The fix is one table both
+roads read, keyed on the *shape* of the call: the interpreter's `return recv, nil` ("so the REPL can show
+the resulting list") went, and the print door asks `isNoneExpr`, which already knew a folded `dict.get`
+miss was a void (ADR 0291). `pop` and `popitem` still answer with what they removed — `while xs:
+x = xs.pop()` is why — and your own method named `append` keeps its own answer.
+
 An f-string's **format spec is part of the program** (ADR 0299, advancing `L12.8` / `Gap R.60`).
 `stripFormatSpec` used to cut the `:` suffix off and drop it on the floor — no AST field ever held it —
 so `f"{3.5:.2f}"` printed `3.5`, `f"{7:05d}"` printed `7`, `f"{255:x}"` printed `255` and `f"{3.5:>6}"`

@@ -8173,3 +8173,41 @@ new tables demand `3.50`/`00007`/`ff`/`··3.5` — all new tables fail there, p
 (`f"val={n:>3}"` → `val=7`) was a pinned wrong answer and moved to `val=  7`, not deleted. Matrix
 165/128/37, 31 debt, 0 fail, 0 drift. Five intermediate Go-syntax breakages from script-based edits, each
 caught by `go build` before any test ran.
+
+## Cycle: an in-place container mutation answers the void (Gap R.187 closed; ADR 0300)
+
+**One line of source, two failure classes, and the scary one was the quiet one.** `print(xs.append(2))`
+made the compiled leg emit `printf(i8* @.fmt1, i32 )` — an operand slot filled with nothing — so `llc`
+rejected the module: **exit 2**. Meanwhile the interpreter printed `[1, 2]` at **exit 0**, and
+`sum([1,2,3].append(4))` answered **10** where CPython raises `TypeError: 'NoneType' object is not
+iterable`. The exit-2 case announces itself; the exit-0 case is a value programs can build on.
+
+**A defect on a value nobody reads can live forever.** The mutation was always right; only the answer the
+statement discards was wrong, and no program writes `print(xs.append(2))`. The only way these surface is
+asking "what does the reference answer for the read nobody performs?" — which is what a sweep is for.
+
+**`("", nil)` is correct for a statement and malformed for an expression.** The append road had every right
+to return nothing; the print door had no idea nothing was coming and assumed a number. Two roads each
+half-right compose into invalid IR. The fix that generalises is not "return something" but "make the one
+predicate print/str/REPL already consult know the fact" — `isNoneExpr` already knew `NoneLit`, None names,
+void functions, all-None min/max and a folded `dict.get` miss (ADR 0291). A mutator is the same fact, one
+more call shape, and the table is read by *both* roads so they cannot disagree.
+
+**Comments are where stale designs hide.** The list road said *"returns the (updated) list handle, so the
+REPL can show the resulting list"* — but the REPL echoes the final `ExprStmt`'s value, which in the
+reference **is** None for that program. The convenience was buying a language-level wrong answer, and
+nothing depended on it except `TestGenListAppend`, which had baked the wrongness into an assertion
+(`sum(...) == 10`). Both moved to the reference's verdict; neither was deleted.
+
+**Anything plausible that touches a working road needs its own test.** Sweeping `pop` into the void table
+would have looked consistent and broken `while xs: x = xs.pop()`, so `TestPopStillAnswersWithWhatItTook`
+exists before it can happen. Same for name-based dispatch: keyed on the *shape* of the call, so
+`class Bag: def append(...)` keeps its own answer (ADR 0191's `xs.sort()`-as-string-method bug was exactly
+receiver-blindness).
+
+**Process.** Baseline at `72c170c`: exit 2 on append/add/discard, 11 unit assertions failing, 0 here. One
+helper-signature slip (`cpythonPlainOut` returns `(string, bool)`, not an exit code) and one
+`declared and not used` caught by the compiler before tests ran. Suite green; matrix 166/128/38, 32 debt,
+0 fail, 0 drift. Bundling discipline held: the *missing* compiled mutators (`extend`, `insert`, `update`,
+`clear`, dict `pop`, `popitem`) are a reference-runs/we-refuse gap and got named as L12.11's row rather than
+smuggled into a void-answer commit.

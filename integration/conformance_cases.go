@@ -463,6 +463,11 @@ func conformanceMerged() []lang.ConformanceCase {
 // conformanceProbes to conformanceStandalone, so it becomes parity surface.
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
+		// An in-place container mutation answers the void. The interpreter used to answer the
+		// container itself -- [1, 2] for `print(xs.append(2))` at exit 0 -- and the compiled leg
+		// emitted a printf with a MISSING operand, which llc rejects: exit 2, the forbidden class.
+		// Gap R.187, ADR 0300, owner L12.11.
+		"probe_an_in_place_mutation_answers_none",
 		// An f-string's format spec and conversion. The interpreter answers every field the way the
 		// reference does; the compiled leg answers the constant ones and refuses a field it cannot
 		// read at compile time. Before this the spec was cut off at parse time and both engines
@@ -680,6 +685,17 @@ var oracleLedger = map[string]oracleDecl{
 	// constant value to apply it to. Before this row the interpreter printed the PLAIN number for
 	// all of them at exit 0 — a wrong answer the two-engine parity could not see.
 	// Gap R.186 / ADR 0299, owner L12.8 (with L11.1 for the compiled half).
+	// An in-place container mutation: CPython and the interpreted leg answer None for `append`,
+	// `add`, `discard`, `remove`, `sort` and `reverse`, and answer the item for `pop`; the compiled
+	// leg prints None for the ones it lowers and spends exit 1 on a set method over a NAME, because
+	// it folds container methods only over a literal written at the call. Before this row the
+	// interpreter answered the CONTAINER at exit 0 and the compiled leg emitted `printf(..., i32 )`
+	// -- an invalid module, exit 2.
+	// Gap R.187 / ADR 0300, owner L12.11 (the compiled half, owed).
+	"programs/probe_an_in_place_mutation_answers_none": {oracle: lang.OracleDebt,
+		reason: "CPython prints None for every in-place mutation and the item for `pop`, and the interpreted leg prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
+		ref:    "roadmap Gap R.187 (the void half, closed) and L12.11 / Gap R.63 (the receiver table, owed); docs/adr/0300",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "None\n[1, 2]\nNone\nNone\n1\nNone\n{1, 2}\nNone\n{1}\nNone\nset()\nNone\n[5, 6]\n[1, 2]\n"}, {Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
 	"programs/probe_a_format_spec_formats": {oracle: lang.OracleDebt,
 		reason: "CPython renders every field — 3.50, 00007, ff, 1,234.00, the alignment — and the interpreted leg prints the same; the compiled leg spends exit 1 on the first field whose value it cannot read at compile time, because a spec is applied by the shared engine where the digits are known, and a field naming a variable is not known there",
 		ref:    "roadmap Gap R.186 and L12.8 (the compiled half, owed); docs/adr/0299",

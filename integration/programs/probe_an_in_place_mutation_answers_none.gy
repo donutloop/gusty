@@ -1,0 +1,30 @@
+# An in-place container mutation answers the void, on both engines.
+# Each line is checked against CPython 3.12.3 by the conformance matrix.
+# (roadmap Gap R.187, ADR 0300)
+
+xs = [1]
+print(xs.append(2))          # None    -- was [1, 2] on the interpreter and exit 2 on the compiled leg
+print(xs)                    # [1, 2]  -- and the mutation itself still happened
+print(xs.sort())             # None    -- already right before this row; kept so the family is one table
+print(xs.reverse())          # None
+print(xs.pop())              # 1       -- pop is NOT a void mutator: it answers WITH the item it took
+
+s = {1}
+print(s.add(2))              # None    -- was {1, 2}
+print(s)                     # {1, 2}
+print(s.discard(2))          # None    -- was set(); discard is silent about absence too
+print(s)                     # {1, 2}
+print(s.remove(1))           # None    -- was {2}
+print(s)                     # {2}
+
+d = {"a": 1}
+print(d.get("zzz"))          # None    -- ADR 0291's void, the sibling rule this row extends
+
+ys = [5]
+ys.append(6)
+print(ys)                    # [5, 6]  -- the statement form, which was never the problem
+
+zs = []
+zs.append(1)
+zs.append(2)
+print(zs)                    # [1, 2]

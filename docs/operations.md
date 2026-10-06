@@ -973,6 +973,15 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **an in-place container mutation answers the void**: `--interp --file` on `print(xs.append(2))` exits 0
+  with `None`, and so does `--aot` (`Gap R.187` / ADR 0300). Before this the interpreter answered the
+  container — `[1, 2]`, `{1, 2}`, `set()` — at **exit 0**, `sum([1,2,3].append(4))` answered **10** where
+  the reference raises `TypeError: 'NoneType' object is not iterable`, and the compiled leg emitted
+  `printf(i8* @.fmt1, i32 )` — a call with a **missing operand**, which `llc` rejects, spending **exit 2**,
+  the forbidden class, on a one-line program. The mutation was never broken; only the answer the statement
+  throws away was, which is why it survived: a program writes `xs.append(2)`, not `print(xs.append(2))`.
+  `pop`/`popitem` still answer WITH what they removed (`while xs: x = xs.pop()` depends on it), and a user
+  method named `append` keeps its own answer — the table keys on the call's shape, not the spelling.
 - **an f-string's format spec formats**: `--interp --eval 'print(f"{3.5:.2f}")'` exits 0 with `3.50`, and
   `f"{7:05d}"` with `00007`, `f"{255:x}"` with `ff`, `f"{3.5:>6}"` with the padding (`Gap R.186` /
   ADR 0299). Before this the spec was cut off at parse time and never stored, so **both** engines printed

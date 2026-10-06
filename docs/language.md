@@ -1230,6 +1230,43 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### A method that changes a container in place answers None
+
+`append`, `extend`, `insert`, `sort`, `reverse`, `add`, `discard`, `remove`, `update` and `clear` change
+their receiver and hand back **nothing** — the same void as a builtin with no answer (`Gap R.187`, ADR
+0300):
+
+```
+xs = [1]
+print(xs.append(2))     # None    the list still GREW; only the answer is the void
+print(xs)               # [1, 2]
+print(xs.sort())        # None
+print(xs.reverse())     # None
+s = {1}
+print(s.add(2))         # None
+print(s.discard(2))     # None    silent about absence, and silent about success
+print(s.remove(1))      # None
+print({"a": 1}.get("z"))  # None   ADR 0291's sibling rule: a missing key is a void too
+```
+
+Because the answer is the void, the call is **not a value**: `sum([1, 2, 3].append(4))` is the
+reference's `TypeError: 'NoneType' object is not iterable`, not `10`.
+
+`pop` and `popitem` are the mutators that *are* expressions — they answer with what they removed, which
+is what makes `while xs: x = xs.pop()` work:
+
+```
+xs = [1, 2]
+print(xs.pop())         # 2
+print(xs.pop(0))        # 1
+```
+
+A method of your own named `append` keeps its own answer: the void belongs to the language's container
+methods, recognised by the *shape* of the call, not by the spelling of a name. The compiled leg still
+refuses, at exit 1, the mutators it cannot lower over a variable (`extend`, `insert`, `update`, `clear`,
+dict `pop`, `popitem`, `s.remove(1)` over a name) — those methods do not exist there yet and are owed to
+`L12.11` / `Gap R.63`; what changed here is that the ones which do exist answer correctly.
+
 ### An f-string's format spec and conversion
 
 A field may carry a **format spec** after a `:` and a **conversion** `!r` / `!s` before it. Both are part

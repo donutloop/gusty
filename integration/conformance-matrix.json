@@ -3223,6 +3223,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_an_in_place_mutation_answers_none",
+        "name": "probe_an_in_place_mutation_answers_none.gy",
+        "source": "# An in-place container mutation answers the void, on both engines.\n# Each line is checked against CPython 3.12.3 by the conformance matrix.\n# (roadmap Gap R.187, ADR 0300)\n\nxs = [1]\nprint(xs.append(2))          # None    -- was [1, 2] on the interpreter and exit 2 on the compiled leg\nprint(xs)                    # [1, 2]  -- and the mutation itself still happened\nprint(xs.sort())             # None    -- already right before this row; kept so the family is one table\nprint(xs.reverse())          # None\nprint(xs.pop())              # 1       -- pop is NOT a void mutator: it answers WITH the item it took\n\ns = {1}\nprint(s.add(2))              # None    -- was {1, 2}\nprint(s)                     # {1, 2}\nprint(s.discard(2))          # None    -- was set(); discard is silent about absence too\nprint(s)                     # {1, 2}\nprint(s.remove(1))           # None    -- was {2}\nprint(s)                     # {2}\n\nd = {\"a\": 1}\nprint(d.get(\"zzz\"))          # None    -- ADR 0291's void, the sibling rule this row extends\n\nys = [5]\nys.append(6)\nprint(ys)                    # [5, 6]  -- the statement form, which was never the problem\n\nzs = []\nzs.append(1)\nzs.append(2)\nprint(zs)                    # [1, 2]\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython prints None for every in-place mutation and the item for `pop`, and the interpreted leg prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
+        "ref": "roadmap Gap R.187 (the void half, closed) and L12.11 / Gap R.63 (the receiver table, owed); docs/adr/0300",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "None\n[1, 2]\nNone\nNone\n1\nNone\n{1, 2}\nNone\n{1}\nNone\nset()\nNone\n[5, 6]\n[1, 2]\n"
+          },
+          {
+            "backend": "aot",
+            "error": "folds container methods only over a literal",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "None\n[1, 2]\nNone\nNone\n1\nNone\n{1, 2}\nNone\n{1}\nNone\nset()\nNone\n[5, 6]\n[1, 2]\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "None\n[1, 2]\nNone\nNone\n1\nNone\n{1, 2}\nNone\n{1}\nNone\nset()\nNone\n[5, 6]\n[1, 2]\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython prints None for every in-place mutation and the item for `pop`, and the interpreted leg prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
+      "oracle_ref": "roadmap Gap R.187 (the void half, closed) and L12.11 / Gap R.63 (the receiver table, owed); docs/adr/0300",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: remove() on \"s\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"s\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_a_format_spec_formats",
         "name": "probe_a_format_spec_formats.gy",
         "source": "# An f-string's format spec and conversion, on the programs that used to print the plain number.\n# Every line is checked against CPython 3.12.3 by the conformance matrix; the interpreter answers\n# all of them and the compiled leg answers the constant ones and refuses the rest by name.\n# (roadmap Gap R.186 / L12.8, ADR 0299)\n\nprint(f\"{3.5:.2f}\")        # 3.50      -- was 3.5 on BOTH engines at exit 0\nprint(f\"{3.5:.0f}\")        # 4\nprint(f\"{2.5:.0f}\")        # 2         -- banker's rounding, the reference's rule\nprint(f\"{7:05d}\")          # 00007\nprint(f\"{-4:05d}\")         # -0004     -- padding AFTER the sign, and the width counts the sign\nprint(f\"{255:x}\")          # ff        -- a presentation type the old parser never kept\nprint(f\"{1234:,.2f}\")      # 1,234.00\nprint(f\"{3.5:\u003e6}|\")        #     3.5|  -- alignment\nprint(f\"{3.5:\u003c6}|\")        # 3.5   |\nprint(f\"{3.5:*^7}|\")       # **3.5**|  -- fill and align together\nprint(f\"{0.25:.2%}\")       # 25.00%\nprint(f\"{3.14159:.3e}\")    # 3.142e+00\nprint(f\"{2}\")              # 2         -- an int's empty spec is its digits\nprint(f\"{2.0}\")            # 2.0       -- a float's is its repr; the two MUST differ\nprint(f\"{7!r}\")            # 7         -- the conversion, which the parser also dropped\nprint(f\"{3.5!r:\u003e8}|\")      #      3.5| -- the spec applied to the conversion's text\nn = 7\nprint(f\"{n:05d}\")          # 00007     -- a name, formatted\nprint(f\"{n + 1:04d}\")      # 0008      -- an expression, formatted\nprint(f\"pi={3.14159:.2f} e={2.71828:.2f}\")  # pi=3.14 e=2.72 -- two fields, one string\n",
@@ -3914,7 +3956,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2585544973/138/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1700431936/138/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3928,7 +3970,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2585544973/138/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1700431936/138/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4769,12 +4811,12 @@
       ]
     }
   ],
-  "rows": 165,
-  "skipped": 37,
+  "rows": 166,
+  "skipped": 38,
   "pass": 128,
   "fail": 0,
   "oracle_match": 113,
-  "oracle_debt": 31,
+  "oracle_debt": 32,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

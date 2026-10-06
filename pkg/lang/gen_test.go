@@ -187,9 +187,22 @@ func TestGenListAppend(t *testing.T) {
 		}
 		return v
 	}
-	// sum([1, 2, 3].append(4)) -> 1 + 2 + 3 + 4 = 10
-	if v := evalInt("sum([1, 2, 3].append(4))"); v != 10 {
-		t.Fatalf("append sum: expected 10, got %d", v)
+	// A mutator answers the VOID, so it cannot be fed to `sum`. This pin used to assert
+	// `sum([1, 2, 3].append(4)) == 10` -- an answer the reference refuses to give at all, because
+	// `list.append` returns None and `sum(None)` is
+	// `TypeError: 'NoneType' object is not iterable`. Handing back the mutated list was the defect
+	// Gap R.187 files (ADR 0300), and a pinned wrong answer is an acceptance test: it moves to the
+	// reference's verdict, it does not get deleted.
+	prog, err := Parse("sum([1, 2, 3].append(4))")
+	if err != nil {
+		t.Fatalf("parse append sum: %v", err)
+	}
+	if v, err := NewEvaluator().EvalProgram(prog); err == nil {
+		t.Fatalf("append sum: answered %d, the reference raises TypeError because append hands back None", v)
+	}
+	// The mutation itself still happens, which is the half of the method that is not the answer.
+	if v := evalInt("xs = [1, 2, 3]\nxs.append(4)\nsum(xs)"); v != 10 {
+		t.Fatalf("append then sum: got %d, want 10", v)
 	}
 }
 

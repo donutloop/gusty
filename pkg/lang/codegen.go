@@ -15189,6 +15189,17 @@ func (g *irGen) isNoneExpr(e Expr) bool {
 	case *Name:
 		return g.noneVars[v.Value]
 	case *Call:
+		// A method that mutates its receiver in place answers the VOID, not the container: `append`,
+		// `add`, `discard`, `remove`, `clear` all hand back None in the reference. The mutation roads
+		// lower to no value at all in this backend -- which is correct for the statement `xs.append(2)`
+		// and left the PRINT door emitting `printf(i8* @.fmt1, i32 )`, a call with a missing operand
+		// that llc rejects as an invalid module, so the program spent exit 2 (ADR 0166's forbidden
+		// class). The answer is asked of the CALL SHAPE here, in the one predicate print, str() and
+		// the REPL already consult, so the void cannot be lowered without being recognised.
+		// Roadmap Gap R.187, ADR 0300 -- the same rule as a builtin that hands back void (ADR 0291).
+		if g.callIsInPlaceMutation(v) {
+			return true
+		}
 		if nm, ok := v.Fn.(*Name); ok {
 			if fd, ok2 := g.fds[nm.Value]; ok2 && !fdReturnsValue(fd) {
 				return true
