@@ -7835,3 +7835,50 @@ Removed, and filed as **Gap R.178** with a test that logs when one side is close
 `integration` subtest failures with the new tables; all green here. Whole-corpus sweep (169 programs) moved
 only the new probe. Two pins moved because they recorded the bug: `TestEvalPower` asserted `2 ** -1 == 0`
 with the misleading comment, now asserts the float `0.5`.
+
+### Gap R.179 — a slice of a container spent exit 2, then printed its handle, then dropped its tags (CLOSED by ADR 0294, owner L11.1)
+
+Found by the 2026-07-06 surface sweep. One row, **three** independent defects, and `--interp` answered every
+shape correctly the whole time — which is what makes this row a parity-matrix blind spot rather than a
+parity-matrix finding:
+
+```
+print([1, 2, 3][1:])    CPython [2, 3]   --interp [2, 3]   --aot  EXIT 2   rt_slice(i32 @.lst1, …)
+print([1, 2, 3][1:])    CPython [2, 3]   --interp [2, 3]   --aot  "1"      printf("%d", <heap handle>)
+print(["a","b"][1:])    CPython ['b']    --interp ['b']    --aot  "[1]"    rt_slice copied payloads, not tags
+```
+
+**Bug one is cycle 19's bug with a different helper.** A container literal lowers to the *address* of a
+compile-time global (`@.lst1`); `rt_slice` walks `@heap` by index and wants a handle. The comprehension road
+~230 lines away had already solved exactly this (ADR 0234): consult the literal records, and if the operand
+is a literal, *build* a real heap object and slice that. I wrote a new predicate instead of reading the road
+beside me first, then read it. `listLiteralOf` now claims both spellings — the literal node the source wrote
+(`[1,2,3][1:]`) and a name the records hold a literal for — because the crashing shape has no name.
+
+**Bug two says something about the print road's shape, not just this node.** Print dispatches per node type
+(`*Name` + `listVars`, `*Comp`, `sorted(...)`); a node type nobody listed is invisible to it and falls through
+to the numeric road. `*Slice` was invisible. The arm went in front of the numeric road, beside the `sorted`
+and `Comp` arms, and asks the *shared* `isContainerExpr` — which is also what `xs[0] == [1, 2]` and
+`2 in xs[0]` consult, so the answer stays one answer (ADR 0279/0280's rule again).
+
+**Bug three is the one worth reading twice.** `rt_slice`'s copy loop moved payload words and never touched
+`@heap_tags`, so a slice of interned texts printed each element's INDEX. ADR 0187 says the operation that
+writes a slot's payload writes its tag; this builder had simply never been asked. The tempting call was to
+leave it for L11.1's tagged value word — "the redesign will make this impossible". Rejected: it prints a
+wrong number at exit 0 **today**, in a program the reference runs, at exit 0, with both engines disagreeing
+and neither saying anything.
+
+**IR comments are code.** Adding two `getelementptr`s to `@heap_tags` meant adding an explanatory comment
+*inside a Go raw string holding a module*. A backtick in the comment turned the whole package into a Go
+syntax error (`expected ';', found print`) before a single instruction was emitted. IR comments get the same
+review as IR instructions.
+
+**Measurement.** Baseline binary from `HEAD` in a `git worktree`: **15** subtest failures on the new
+`pkg/lang` table (the exit-2 shapes surface as refusals inside Go tests, so the IR-shape assertion is what
+catches them — `rt_slice(i32 @` in the module, and `@heap_tags` missing from `rt_slice`'s body). Whole-corpus
+sweep, 170 programs, zero unintended movements. Probe
+`programs/probe_a_slice_of_a_container.gy` runs byte-identical on all three engines.
+
+**Deliberately not touched:** `print(len([1, 2, 3][1:]))` still refuses, because `len` asks for an inline
+literal — a different road, a different row. Closing the slice must not launder an unrelated refusal into a
+guess.

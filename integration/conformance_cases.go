@@ -136,6 +136,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// backends agreed on the wrong answers, so only the oracle leg could see them
 		// (roadmap Gap R.176, ADR 0292/0293).
 		"probe_a_power_answers_the_right_kind",
+		// A slice of a container answers the LIST. Three bugs on one row, none of them in the
+		// interpreter: the literal's GLOBAL ADDRESS went where rt_slice wants a heap handle (llc
+		// rejected the module — exit 2, ADR 0166); print then took the numeric road and printf'd the
+		// handle as `1`; and rt_slice copied payloads without their tags, so a slice of texts printed
+		// the interned INDEX — `[1]` where the reference prints ['b'] (ADR 0187's pairing rule).
+		// Gap R.179 / ADR 0187, owner L11.1.
+		"probe_a_slice_of_a_container",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

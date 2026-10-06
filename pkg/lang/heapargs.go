@@ -2101,6 +2101,14 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 		return true
 	case *Name:
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
+	case *Slice:
+		// A SLICE of a container is a container: `[1, 2, 3][1:]` lowers to `rt_slice`, which hands
+		// back a heap handle, and printf's `%d` printed that handle as `1` where the reference prints
+		// `[2, 3]` (Gap R.179). A text slice is answered by the text road beside this, so ask the base.
+		if lit, ok := g.stringVal(n.Obj); ok && lit != "" {
+			return false
+		}
+		return g.isContainerExpr(n.Obj)
 	case *Index:
 		// An element that holds another container is a container: the slot stores its handle, and
 		// the tag the builder wrote says so (ADR 0239). Reading it is the question this answers —

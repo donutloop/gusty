@@ -973,6 +973,13 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a slice of a container answers the list, never its handle**: `./build/pyre --aot --eval 'print([1, 2, 3][1:])'`
+  exits 0 with `[2, 3]`, and `print(["a", "b"][1:])` exits 0 with `['b']` (`Gap R.179` / ADR 0294). Before
+  this the same source handed llc `call i32 @rt_slice(i32 @.lst1, …)` — a global address where a heap handle
+  belongs, **exit 2** — and the two shapes that did compile printed `1`: printf's `%d` on the handle, and, for
+  texts, the interned INDEX, because `rt_slice` copied element payloads and never their tags. The interpreter
+  answered every one of them correctly throughout, so the parity matrix saw nothing and only the oracle leg
+  could.
 - **a power answers the kind the reference answers with**: `print(2 ** -1)` exits 0 with `0.5` and
   `print(4 ** 0.5)` with `2.0` on both engines (`Gap R.176` / ADR 0293). Before this, both backends answered
   `0` for a negative int exponent (under a comment claiming Python does that) and the compiled leg pushed

@@ -2942,10 +2942,18 @@ body:
   %srcdp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %p, i32 0, i32 2
   %src = getelementptr [256 x i32], [256 x i32]* %srcdp, i32 0, i32 %i
   %v = load i32, i32* %src
+  ; ADR 0187 pairing rule, which this builder had never followed: the operation that writes a
+  ; slot payload writes its tag. rt_slice copied payloads into the new handle and left heap_tags
+  ; at whatever the reused heap slot held last, so a slice of texts rendered the interned INDEX as
+  ; a number where the reference prints the quoted text (roadmap Gap R.179).
+  %srctgtp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %h, i32 %i
+  %sv = load i32, i32* %srctgtp
   %dstp = getelementptr {i32, i32, [256 x i32]}, {i32, i32, [256 x i32]}* %np, i32 0, i32 2
   %c = load i32, i32* %cd
   %dst = getelementptr [256 x i32], [256 x i32]* %dstp, i32 0, i32 %c
   store i32 %v, i32* %dst
+  %dsttgtp = getelementptr [1024 x [256 x i32]], [1024 x [256 x i32]]* @heap_tags, i32 0, i32 %nh, i32 %c
+  store i32 %sv, i32* %dsttgtp
   %c1 = add i32 %c, 1
   store i32 %c1, i32* %cd
   %i1 = add i32 %i, %stp
@@ -6395,6 +6403,36 @@ func (g *irGen) powerOperandKind(e Expr) string {
 	return ""
 }
 
+// listLiteralOf reads the list literal an expression lowers to: the node itself when the source spelled
+// one, and the recorded literal when the program bound one to a name and never rebound it.
+func (g *irGen) listLiteralOf(e Expr) *ListLit {
+	if lit, ok := e.(*ListLit); ok {
+		return lit
+	}
+	if nm, ok := e.(*Name); ok {
+		if g.builtinShadowed(nm.Value) {
+			return nil
+		}
+		return g.staticLists[nm.Value]
+	}
+	return nil
+}
+
+// staticHandleName is the question the comprehension road asks before it walks a container and the slice
+// road asks before it calls `rt_slice`: does this expression lower to a COMPILE-TIME GLOBAL (`@.lstN`)
+// rather than a heap handle? If so the caller must build a real heap object before handing it to a
+// runtime helper, because those walk `@heap` by index and a global address is not one.
+func (g *irGen) staticHandleName(e Expr) string {
+	switch v := e.(type) {
+	case *Name:
+		if g.builtinShadowed(v.Value) {
+			return ""
+		}
+		return v.Value
+	}
+	return ""
+}
+
 // isFloat reports whether expression e produces a float (double) value.
 func (g *irGen) isFloat(e Expr) bool {
 	switch n := e.(type) {
@@ -9711,6 +9749,21 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		objReg, err := g.value(b, n.Obj)
 		if err != nil {
 			return "", err
+		}
+		// A container LITERAL lowers to the ADDRESS of a compile-time global (`@.lst1`), which is not a
+		// heap handle, and `rt_slice` walks the heap — so `print([1, 2, 3][1:])` emitted
+		// `call i32 @rt_slice(i32 @.lst1, …)` and llc rejected the compiler's own module (exit 2, which
+		// ADR 0166 counts as OUR bug). The comprehension road beside this one already solved it (ADR
+		// 0234): ask the literal records, and if the operand is one, BUILD it as a real heap object
+		// first and slice that (roadmap Gap R.179).
+		// The base may be a literal NODE (`[1, 2, 3][1:]`) or a NAME the records hold a literal for
+		// (`xs = [1, 2, 3]` / `xs[1:]`); both lower to a global address and both need a heap object.
+		if lit := g.listLiteralOf(n.Obj); lit != nil {
+			built, berr := g.heapListFrom(b, lit, "")
+			if berr != nil {
+				return "", berr
+			}
+			objReg = built
 		}
 		lowReg := "0"
 		highReg := "0"
@@ -13176,6 +13229,19 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			// rendered `{1, 2}` and a dict comp `{1: 2}`, not `[1, 2]`, which is what made
 			// `print({x for x in [3, 1, 2]})` a question about the comprehension's kind and not
 			// only about its elements (roadmap Gap J.2, ADR 0234).
+			// A slice of a container lowers to `rt_slice`, whose answer is a heap HANDLE; printf's %d
+			// printed that handle as `1` where the reference prints `[2, 3]`. Ask before the numeric
+			// road does, the same way the comprehension and sorted() arms beside this do (Gap R.179).
+			if sl, ok := a.(*Slice); ok && g.isContainerExpr(sl.Obj) && !g.printsAsInternedStr(a) {
+				// Lower the slice itself — `containerOperand` answers "not a container" for a *Slice,
+				// and the answer here is the handle `rt_slice` returns.
+				h, herr := g.value(b, a)
+				if herr != nil {
+					return "", herr
+				}
+				b.WriteString(fmt.Sprintf("  call void @rt_print_list_mixed(i32 %s, i32 0)\n", h))
+				continue
+			}
 			if comp, ok := a.(*Comp); ok {
 				h, cerr := g.containerOperand(b, a)
 				if cerr != nil {

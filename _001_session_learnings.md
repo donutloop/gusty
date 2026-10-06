@@ -7938,3 +7938,43 @@ R.177 and R.178 filed).
 `-(2 ** 2)` and answers `-4`, and `2 ** -1 ** 2` is `2` where the reference says `0.5` — a parser precedence
 fact no amount of arithmetic fixing touches (**Gap R.177**, owner L5.1). Also measured: a compiled
 integer above `2**31 - 1` prints `0` through `%d`, which is Gap R.133's i32 word, not a new defect.
+
+## Cycle: a slice of a container answers the list (Gap R.179 closed; ADR 0294)
+
+**Three bugs on one row, and the interpreter had none of them.** `print([1, 2, 3][1:])` spent **exit 2** on
+the compiled leg (`rt_slice(i32 @.lst1, …)` — a global address where a heap handle belongs); after that
+fix, `print` took the numeric road and printf'd the handle, printing `1`; and `print(["a","b"][1:])` printed
+`[1]`, the interned texts' INDEXES, because `rt_slice`'s copy loop moved payloads and never touched
+`@heap_tags`. `--interp` was right on all three throughout, so the parity matrix was structurally blind and
+only the oracle leg could see any of it.
+
+**Read the road beside you before writing a new one.** The comprehension lowering ~230 lines away had already
+solved "this expression lowers to `@.lstN`, and the helper wants a handle" (ADR 0234: consult the literal
+records, build a real heap object, use that). I invented a predicate first, then found the existing answer.
+When a mechanism looks new, grep for the same *shape* of problem — "what else feeds a runtime helper a
+lowered container?" — before designing.
+
+**Print dispatch is a per-node-type switch, so a new node type is silently invisible to it.** `*Slice` had no
+arm and fell through to the numeric road, which is how a *list* printed as `1`. Two rules follow: the arm
+goes **before** the numeric road (like `sorted`/`Comp` beside it), and it asks the shared `isContainerExpr`
+rather than a private copy, because that predicate also answers `xs[0] == [1, 2]` and `2 in xs[0]`.
+
+**ADR 0187's pairing rule had an unobeyed builder.** "The operation that writes a slot's payload writes its
+tag" — `rt_slice` never did. The seductive option was deferring it to L11.1's tagged value word. Rejected:
+it prints a wrong number at exit 0 *today*, silently. "A later redesign will make this impossible" is not a
+reason to keep shipping an impossible thing now; and the rule already existed, so the fix was four lines.
+
+**IR comments are code.** A backtick inside an explanatory comment in the Go raw string holding the module
+broke the *package* (`expected ';', found print`) before any IR was produced. Same for a stray `;`. Comments
+inside emitted-IR literals get reviewed like instructions.
+
+**Test-helper hygiene, again, and again at a cost.** I redefined `referenceOut` (already in
+`container_arith_test.go`), and mis-arity'd `compiledOut` (1 result) against `compiledOutOrRefusal` (2, the
+second meaning *refused*) three times over — each mis-use would have silently asserted the wrong thing. Also
+`llc-20` has no `--module` flag; `mustVerifyWithLLC` already exists in the package and uses
+`-filetype=null -relocation-model=pic`. Grep for the helper before writing the check.
+
+**Baseline proof, again earning its keep.** A `git worktree` build of `HEAD` produced **15** failures on the
+new table; here, zero. The exit-2 shapes don't fail as exit-2 inside Go tests (a refusal comes back first),
+so the table also asserts the IR shape textually: no `rt_slice(i32 @`, and `@heap_tags` present in the
+helper's body. Sweep of 170 programs: no unintended movements, only the new probe.

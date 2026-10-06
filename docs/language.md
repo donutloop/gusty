@@ -1230,6 +1230,31 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### A slice of a container
+
+`xs[1:]`, `xs[:2]`, `xs[::2]` answer a new container on both engines (`Gap R.179`, ADR 0294) — a list, with
+the reference's rendering, and not the machine's handle for it:
+
+```
+print([1, 2, 3][1:])       # [2, 3]
+print([1, 2, 3][:2])       # [1, 2]
+print([1, 2, 3][::2])      # [1, 3]
+print([1, 2, 3][-1:])      # [3]
+print([][:])               # []
+print(["a", "b"][1:])      # ['b']        — the text keeps its tag, so it prints as text
+print([1, "a", None][1:])  # ['a', None]
+print("abcdef"[2:])        # cdef         — a text slice belongs to the text road
+print([1, 2, 3][0])        # 1            — a subscript belongs to the element road
+```
+
+Slice parts are all optional and negative bounds count from the end, as they do in the reference. The
+compiled form allocates a fresh heap object and copies **payload and tag together**: an element whose value
+is an interned text, a float or a nested container prints the same way in the slice as in the original.
+
+`len(...)` of a slice still refuses — `len` asks for an inline literal, which is a separate road (`Gap E`
+and L11.1's tagged value word cover it), and closing the slice did not quietly turn that refusal into a
+guess.
+
 ### A container in a numeric operand
 
 A list, dict, set or tuple has no number to do arithmetic **with**, so it never reaches an LLVM arithmetic

@@ -1,0 +1,25 @@
+# A slice of a container answers the list, not the handle and not the tags it dropped
+# (roadmap Gap R.179, owner L11.1; ADR 0187's pairing rule, ADR 0234's literal question).
+#
+# Three bugs sat on this one row, and the interpreter had none of them:
+#   * `[1, 2, 3][1:]` lowered to `rt_slice(i32 @.lst1, ...)` — a GLOBAL ADDRESS where a heap handle
+#     belongs — and llc rejected the compiler's own module, which ADR 0166 counts as exit 2;
+#   * once it compiled, `print` took the numeric road and printf'd the HANDLE: `1`;
+#   * `rt_slice` copied element payloads but never their tags, so a slice of texts printed the
+#     interned INDEX: `["a", "b"][1:]` said `[1]` where the reference says ['b'].
+#
+# A text slice and a plain subscript are answered by the roads beside these, and still answer.
+print([1, 2, 3][1:])
+print([1, 2, 3][:2])
+print([1, 2, 3][::2])
+print([1, 2, 3][-1:])
+print([1, 2, 3][1:2])
+print([][:])
+print(["a", "b"][1:])
+print(["a", "b", "c"][::2])
+print([1, "a", None][1:])
+print([True, 2][0:])
+print("abcdef"[2:])
+print("abcdef"[1:3])
+print([1, 2, 3][0])
+print([1, 2, 3][-1])

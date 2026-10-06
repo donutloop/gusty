@@ -563,6 +563,16 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A slice of a container answers the **list**, not the machine's handle for it (ADR 0294, closing `Gap
+R.179`). `print([1, 2, 3][1:])` was three bugs at once, none of them in the interpreter: the container
+literal lowered to the **address of a compile-time global** and went into `rt_slice` where a heap handle
+belongs, so llc rejected our own module (exit 2); once that was fixed, `print` took the numeric road and
+printf'd the handle — `1` at exit 0; and `rt_slice` copied element payloads **without their tags**, so
+`print(["a", "b"][1:])` printed the interned text's INDEX — `[1]` where the reference prints `['b']`. The
+last one is ADR 0187's pairing rule ("the operation that writes a slot's payload writes its tag") violated by
+a runtime builder that had simply never been asked to follow it. Deferring a wrong number because a redesign
+will eventually make it impossible is how wrong numbers survive.
+
 `x ** y` answers the kind the **reference** answers with (ADR 0293, closing `Gap R.176`). `print(2 ** -1)`
 said `0` on both engines and `print(4 ** 0.5)` said `1` — both at exit 0, both engines agreeing, which is
 the configuration a parity matrix is blind to. The rule is not "either side has a dot": `int ** int` is an
