@@ -306,7 +306,6 @@ func TestTheDoubleDomainStillRefusesThePositionsThatTakeOneWord(t *testing.T) {
 		{"float(n)", numFloatSlot + "print(float(n))\n"},
 		{"a sum element", numFloatSlot + "print(sum([n]))\n"},
 		{"an abs operand", "xs = []\nxs.append(-7)\nn = xs[0]\nprint(abs(n))\n"},
-		{"a list element", numFloatSlot + "print([n])\n"},
 		{"a min argument", numFloatSlot + "print(min(n, 3))\n"},
 		{"an f-string field", numFloatSlot + "print(f\"{n - 1}\")\n"},
 	} {

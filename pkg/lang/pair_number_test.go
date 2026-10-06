@@ -223,7 +223,6 @@ func TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue(t *testing.T
 		{"repetition", builtIntSlot + "print(n * 2)\n"},
 		{"modulo", builtIntSlot + "print(n % 3)\n"},
 		{"an abs operand", builtIntSlot + "print(abs(n))\n"},
-		{"a list element", builtIntSlot + "print([n])\n"},
 		{"a min argument", builtIntSlot + "print(min(n, 3))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

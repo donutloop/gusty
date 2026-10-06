@@ -368,6 +368,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the compiled backend cannot name are refusals it makes the same way on both halves
 		// (roadmap L11.2, ADR 0258, closing Gap L.2).
 		"probe_render_pair",
+		// A pair-bound name as a container element: the literal is heap-built and the element writes its
+		// payload AND its tag, so `[n]`, `[n, "x", 2, None]` and `y = [n]` read back exactly as the
+		// reference prints them — a text element prints its text, not its interned index, and a float
+		// element its double, not its box handle (roadmap Gap R.146's element half, ADR 0306).
+		"probe_pair_bound_name_enters_a_container",
 		// A bool stored in a container, three engines on one source: the slot carries a bool tag, so
 		// the list, the dict and the str()/repr() of both print `[True, 1]` and `{'k': True}` like
 		// CPython — and the numeric questions still answer as the number (True + 1, [True] == [1],
@@ -675,7 +680,7 @@ var oracleLedger = map[string]oracleDecl{
 		ref:    "roadmap Gap R.51 (closed by ADR 0264); docs/language.md § Standard library",
 		pins:   []lang.OraclePin{{Backend: "aot", Stdout: "2\n-3\n3\n-2\n2\n7\n1\n3.0\n1.4142135623730951\n3.5\n[2, 3]\n2\nTrue\n"}}},
 	"programs/probe_pair_bound_name_takes_a_value": {oracle: lang.OracleDebt,
-		reason: "CPython prints 14, 3, [14], 3 and the reference now prints the same four — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because an argument, a list element and a builtin's argument each keep one word for the value and have nowhere to put the tag the binding carried",
+		reason: "CPython prints 14, 3 and 3 and the reference prints the same — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because a builtin's argument keeps one word for the value and has nowhere to put the tag the binding carried (the list element this program used to pin is parity surface since ADR 0306, in programs/probe_pair_bound_name_enters_a_container.gy)",
 		ref:    "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "holds the answer of arithmetic over a slot"}}},
 	// `and`/`or` choose an operand (Gap R.147, ADR 0269). The print door can render the choice because the

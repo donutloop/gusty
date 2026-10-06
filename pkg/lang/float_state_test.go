@@ -125,29 +125,31 @@ func TestTheFloatRebindingRootsTheBoxItJustMade(t *testing.T) {
 	}
 }
 
-// TestAFloatStateVariableRefusesWhereAPositionKeepsOneWord is the honest half: the state reaching a
-// position with one word is refused by name, never answered with the payload.
-func TestAFloatStateVariableRefusesWhereAPositionKeepsOneWord(t *testing.T) {
+// TestAFloatStateVariableEntersAListByWayOfItsTag is this door's other half, and it changed sides when
+// the container builders learned to ask: an element is no longer a position that keeps one word. The
+// float-state variable used to be refused here, and the shape that stayed impossible is the one this row
+// still rules out — the payload (the box's handle) answering in place of the value, which printed 14 as
+// an int (Gap R.132, ADR 0273's record). What it answers now is what the reference prints.
+func TestAFloatStateVariableEntersAListByWayOfItsTag(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a container element",
 			"x = 8\nx = 2.5\nprint([x, 1])\n",
-			"this position keeps one word",
+			"[2.5, 1]\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Compile(tc.src)
-			if err == nil {
-				t.Fatalf("%s (%q): compiled; want a refusal", tc.name, tc.src)
+			res, err := Compile(tc.src)
+			if err != nil {
+				t.Fatalf("%s refused: %v", tc.name, err)
 			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("%s refused with %q, want it to mention %q", tc.name, err.Error(), tc.want)
+			if out := runIR(t, res.IR); out != tc.want {
+				t.Errorf("the module leg printed %q, want %q", out, tc.want)
 			}
-			for _, bad := range []string{"LLVM ERROR", "verifier", "Instruction does not dominate"} {
-				if strings.Contains(err.Error(), bad) {
-					t.Errorf("%s failed as an IR problem instead of a front-end refusal: %v", tc.name, err)
-				}
+			if out := captureStdout(t, tc.src); out != tc.want {
+				t.Errorf("compiled printed %q, want %q", out, tc.want)
 			}
+			RecordedStdoutIs(t, tc.src, tc.want)
 		})
 	}
 }

@@ -3098,8 +3098,31 @@ print(7 > n)      # TypeError: '>' not supported between instances of 'int' and 
 
 An ordering names **both** operand types in source order, which is one of the reasons a pair enters through
 the tag-reading doors rather than through a widening: a lift would compare the interned index of `"a"` as a
-number and answer `True` where the reference stops the program. What still refuses is a position that keeps one
-word for the value — `float(n)`, `sum([n])`, `abs(n)`, `[n]`, `min(n, 3)`, an f-string field (Gap R.146).
+number and answer `True` where the reference stops the program.
+
+A name the pair road bound is also a **container element** now (ADR 0306). A list literal whose element is such
+a name is built on the heap, and that element writes both of its words — the payload and the tag the objects
+made — so the slot says what it holds:
+
+```python
+xs = []
+xs.append(7)
+n = xs[0]
+print([n])                    # [7]
+print([n, "x", 2, None])      # [7, 'x', 2, None]
+xs = []
+xs.append("a")
+n = xs[0]
+print([n])                    # ['a'] — the tag, not the interned index
+y = [n]
+print(len(y), 7 in y, str(y)) # 1 True [7]
+```
+
+The same rule covers a float, `None`, a `bool` and a nested container in that element position, and the list
+bound to a name keeps working through every read — `len`, subscript, `in`, `append`, `for`, `str`, `repr`, `==`.
+What still refuses is a position that keeps one word for the value — `float(n)`, `abs(n)`, `min(n, 3)`, an
+f-string field, a dict entry or set member (`{"k": n}`, `{n}`), and a literal `sum`/`min`/`max` folds into a
+static array (`sum([n])`) — all owned by Gap R.146, each refusing in a sentence that names the missing half.
 
 ## Builtins
 

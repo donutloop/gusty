@@ -845,8 +845,12 @@ answer a non-number: `n - 1`, `-n` and `n // 2` for `n = xs[0]` sum the number t
 CPython's own sentence, per kind, when the slot holds a text or a container (ADR 0304) — and it reaches the
 double domain the same way, by its tag: `n / 4` is `1.75`, `n >= 7` is `True`, `n + 2.5` is `9.5`, and a text
 slot in an ordering raises `'>' not supported between instances of 'str' and 'int'` naming both types in source
-order (ADR 0305). What still refuses is a
-position that keeps **one word** for a whole value — `n + 1`, `abs(n)`, `[n]`, `min(n, 3)` — and the refusal names
+order (ADR 0305). It is a **container element** too: `print([n])` is `[7]`, `print([n, "x", 2, None])` is
+`[7, 'x', 2, None]`, and a text slot prints `['a']` rather than the interned index it stores, because the
+literal is heap-built and the element writes its payload *and* its tag while the object is marked
+self-describing (ADR 0306). What still refuses is a
+position that keeps **one word** for a whole value — `n + 1`, `abs(n)`, `min(n, 3)`, a dict entry or set member,
+a literal `sum`/`min`/`max` folds — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
 R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, and `print(f"{xs}")` is Gap
 R.114). `--json --eval 'repr("hi")'` reports

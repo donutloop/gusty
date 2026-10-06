@@ -183,7 +183,8 @@ func TestTheOneWordPositionsStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
 		pairNumberBuiltInt + "print(n * 2)\n",
 		pairNumberBuiltInt + "print(n % 3)\n",
 		pairNumberBuiltInt + "print(abs(n))\n",
-		pairNumberBuiltInt + "print([n])\n",
+		// `print([n])` was on this table and is answered since ADR 0306: a container element is no
+		// longer a position that keeps one word. It lives in pair_container_test.go's answer table.
 		pairNumberBuiltInt + "print(min(n, 3))\n",
 	} {
 		path := writeSrc(t, dir, "pairnum_refuse.gy", src)

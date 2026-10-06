@@ -667,6 +667,12 @@ func (g *irGen) heapListFromTagged(b *strings.Builder, ln *ListLit) (string, err
 	h := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
 	for i, el := range ln.Elems {
+		// A pair-bound element writes its own two words; the tag is a register, not a constant.
+		if pv, pt, isPair := g.pairElemPair(b, el); isPair {
+			fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pt)
+			fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pv)
+			continue
+		}
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
@@ -688,6 +694,15 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapList)
 	bits := 0
 	for i, el := range ln.Elems {
+		// A pair-bound element (`[n]` with `n = xs[0]`) is the element the static layout has no
+		// representation for and the ordinary path asks for one word: both words come from the
+		// name's own allocas, and the tag the objects wrote goes to `rt_tag_elem` as the register
+		// it is (roadmap L11.1, Gap R.146, ADR 0187).
+		if pv, pt, isPair := g.pairElemPair(b, el); isPair {
+			fmt.Fprintf(b, "  call void @rt_set_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pv)
+			fmt.Fprintf(b, "  call void @rt_tag_elem(i32 %s, i32 %d, i32 %s)\n", h, i, pt)
+			continue
+		}
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
@@ -715,7 +730,9 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 	// different sink, and a renderer that asks the object can be handed a handle the builder's
 	// scope never saw. Answering [0, 1] for ["a", 1] was the object not saying what it holds
 	// (roadmap L11.2, ADR 0258 — Gap L.2's shape one level down).
-	if g.literalNeedsTags(ln) || literalMixedKinds(ln) {
+	if g.literalNeedsTags(ln) || literalMixedKinds(ln) || g.literalHasPairElement(ln) {
+		// A slot whose tag came from a register says so on the object too, or the printer reads
+		// the list's single kind and answers the payload of a text slot as a number.
 		bits |= 8
 	}
 	if bits != 0 {
@@ -817,6 +834,7 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 			return "", err
 		}
 		if mixed {
+			// A member the pair road bound carries its own tag; the constant is what a literal answers.
 			t, _ := g.elemKindTag(el)
 			fmt.Fprintf(b, "  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %d)\n", h, v, t)
 			idx++
@@ -956,6 +974,64 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 		}
 		for _, v := range n.Vals {
 			if g.floatSlotExpr(v) || isNoneLitExpr(v) || isContainerLiteral(v) || g.boolSlotExpr(v) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// literalHasPairElement asks the third question of a container literal, beside "does it need the heap" and
+// "can its slots say what they hold": is any element a value the compiler cannot write into a static global?
+// A name the pair road bound (`n = xs[0]` over a container the program built) holds a (payload, tag) pair
+// whose words only exist at run time — the static `{count, [N x i32]}` layout has no place for it, and
+// asking its `value()` is the refusal Gap R.146 kept printing for `[n]`, `{"k": n}` and `min([n, 3])`. The
+// heap builder already writes both words per slot (ADR 0187), so the answer is to route the literal there
+// rather than to refuse the element (roadmap L11.1).
+// pairElemPair is the element-side question: does this literal element name a value the pair road bound,
+// and if so what are its two words? The builders below take the tag as a constant, which is right for a
+// literal element and wrong for a pair, whose tag is a register the objects wrote. Passing the register to
+// the same call is the whole difference between `[n]` printing `[7]` and refusing (roadmap L11.1,
+// Gap R.146; ADR 0187's rule that a payload is never written without its tag).
+func (g *irGen) pairElemPair(b *strings.Builder, e Expr) (payload, tag string, ok bool) {
+	nm, isName := e.(*Name)
+	if !isName || g.taggedVars == nil || !g.taggedVars[nm.Value] || g.taggedOrigin == nil {
+		return "", "", false
+	}
+	switch g.taggedOrigin[nm.Value] {
+	case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith, taggedOriginSlot, taggedOriginLoop:
+		payload, tag = g.numericPairRegs(b, nm.Value)
+		return payload, tag, true
+	}
+	return "", "", false
+}
+
+func (g *irGen) literalHasPairElement(e Expr) bool {
+	pairName := func(x Expr) bool {
+		nm, isName := x.(*Name)
+		return isName && g.taggedVars[nm.Value] && g.taggedOrigin != nil
+	}
+	switch n := e.(type) {
+	case *ListLit:
+		for _, el := range n.Elems {
+			if pairName(el) {
+				return true
+			}
+		}
+	case *SetLit:
+		for _, el := range n.Elems {
+			if pairName(el) {
+				return true
+			}
+		}
+	case *DictLit:
+		for _, k := range n.Keys {
+			if pairName(k) {
+				return true
+			}
+		}
+		for _, v := range n.Vals {
+			if pairName(v) {
 				return true
 			}
 		}
@@ -1701,6 +1777,14 @@ func (g *irGen) elemPayloadAndTag(b *strings.Builder, e Expr) (payload, tag stri
 	// the two allocas together and the tag that arrives is the object's own, not a guess.
 	if nm, isName := e.(*Name); isName {
 		if p, t, ok := g.taggedLoopVarRead(b, nm.Value); ok {
+			return p, t, false, nil
+		}
+		// A name the pair road bound — `n = xs[0]` over a container the program built, or an arithmetic
+		// answer — already holds both words, so a container slot can be written from them. Asking this
+		// name for a payload alone is the mistake ADR 0185 forbids and Gap R.146 refuses: the word beside
+		// no tag is a number wearing another object's bits (roadmap L11.1).
+		if g.taggedVars[nm.Value] && g.taggedOrigin != nil {
+			p, t := g.numericPairRegs(b, nm.Value)
 			return p, t, false, nil
 		}
 	}

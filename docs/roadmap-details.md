@@ -8516,3 +8516,58 @@ ratchet separately reported `n - 1 + 0.5` as paid and refused to let the run pas
 holding `"a"` the answer is `0.0` where CPython has `ValueError: could not convert string to float: 'a'`.
 Taking that deal would mean a debt row for a wrong answer at exit 0 — and wrong answers, unlike refusals, are
 not counted by `compiled refusals this run`, so they do not show up when the suite drifts.
+
+### ADR 0306 — the container element asks the tag (2026-08-04, L11.1 / Gap R.146)
+
+**The measurement.** ADR 0305 had just closed the double domain, and the same program still lost its last
+line:
+
+```
+xs = []
+xs.append(7)
+n = xs[0]
+print(n)      # 7        — answers
+print(n - 1)  # 6        — answers (ADR 0304)
+print(n / 4)  # 1.75     — answers (ADR 0305)
+print([n])    # refused  — Gap R.146
+```
+
+The refusal was defensible and looked arbitrary again, in the same way ADR 0304's was: one more position
+that keeps **one word for a whole value**. The difference from the double-domain case is that here the
+position is a *builder*, and builders already have a two-slot layout to write into.
+
+**Why the two lowerings both failed.** A list literal is either a compile-time `@.lstN` global or a heap
+object, and the heap door opens on two questions: does a payload fit an `i32` slot (`literalNeedsHeap`), and
+can a slot say what it holds (`literalNeedsTags`). A pair-bound element answers both wrongly — the payload
+*fits*, but nobody static knows what it means, because a pair's payload is the number for `int`/`bool`, a
+handle on an `@float_box` for a float, an index into `@str_tab` for text, an entry count for a container, and
+only the tag says which.
+
+**The change, and the fact that made it cheap.** The literal goes to the heap builder and the element writes
+both words — `rt_set_elem` with the payload register, `rt_tag_elem` with the tag register — the tag coming
+from `numericPairRegs`, i.e. the name's own tag alloca, instead of `elemTagFor`'s constant. `rt_tag_elem`
+takes an `i32`, and **a register is an `i32`**: no runtime function was added, no tag was invented, no
+signature changed. Three gates gained one disjunct (`literalHasPairElement`); three element loops gained one
+arm; the assignment road got the same arm because `y = [n]` is one element question asked by a different road
+and an element that works only unbound would make `len(y)`, `7 in y` and `for v in y` inexplicable.
+
+**The bit that is easy to forget.** The object has to be marked self-describing (`estrBits |= 8`) or the
+printer reads the list's *one declared kind* across all slots, and `["a"]` — one interned index — prints
+`[0]`. That is Gap R.38's family (a plausible number where the reference has a string) walking in through the
+door this cycle opened, and it is why the text-slot rows are in the integration file too, compared against
+CPython rather than against a hand-typed string. ADR 0258 had learned the same lesson for `str`/`repr`; this
+is the third reason the object and the compiler's scope must agree.
+
+**What was refused rather than half-built.** `{"k": n}`, `{n}`, `d = {"k": n}` and `sum([n])` /
+`min([n, 3])` / `max([n, 3])` keep Gap R.146's sentence. Those roads ask `heapElemKind` for the element
+*before* the tag question is put (a dict interleaves key and value in one array; a set asks per member) or
+fold the elements into a static array that has no tag storage at all. Two attempts to add the arm here were
+reverted inside the cycle: they swallowed `heapElemKind`'s error for a pair side and left the entry's payload
+register empty, which is how a module that `llc` rejects gets written, and ADR 0166 counts exit 2 as the
+compiler's own bug. A refusal that names the missing half is worth more than dead code that pretends the road
+is open.
+
+**Paid rows moved, not deleted.** `pkg/lang/pair_binding_test.go` and `integration/pair_binding_test.go`
+lost their `print([n])` refusal rows to the new answer tables, and `float_state_test.go` (unit + integration)
+turned its `print([x, 1])` refusal row into an answer row (`[2.5, 1]`) that still rules out the failure that
+row was built for: the float box's *handle* printed where the double belongs.

@@ -9788,7 +9788,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// an i32 slot, literalNeedsTags whether a slot can say what it holds. A bool answers the
 		// first yes and the second no — the 0/1 fits, and nothing beside it names it — so asking
 		// only the first kept [True] on the static path, printing [1] (roadmap Gap R.112, ADR 0259).
-		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
 			// A literal that mixes kinds is not a refusal when every slot can be tagged: the tags
 			// carry the meaning the container-wide kind used to. The list branch asked this later
 			// than the dict and set branches did, so `f([1, "a"])` was refused where `f({1: "a"})`
@@ -9808,7 +9808,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// global — that layout is i32-only — so build a heap dict and intern (Gap J.6).
 		// A dict that mixes kinds is not a refusal when every slot can be tagged: it is a
 		// dict with no kind, and the tags carry the meaning (ADR 0232).
-		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
 			if literalMixedKinds(n) && !g.taggableMixedDict(n) {
 				return "", mixedKindErr("dict")
 			}
@@ -9823,7 +9823,7 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// The set gate is the dict gate: a bool's 0/1 fits an i32 slot perfectly and has no way
 		// to say what it is, so the static global path has to hand it to the tagged builder.
 		// Asking literalNeedsHeap alone refused {True, 1} as "either strings or numbers".
-		if literalNeedsHeap(n) || g.literalNeedsTags(n) {
+		if literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
 			if literalMixedKinds(n) && !g.taggableMixedSet(n) {
 				return "", mixedKindErr("set")
 			}
@@ -17146,7 +17146,19 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				// one at a time. print has always chosen its printer from the record kept beside
 				// the compiler; str() and repr() ask the object, so the object has to answer.
 				estrBits := 0
+				// A pair-bound element (`y = [n]` with `n = xs[0]`) is an element whose two words only
+				// exist at run time: the static layout has no place for the tag and `value()` rightly
+				// refuses the name. Both words come from the name's own allocas, and the object is told
+				// to let its slots speak (roadmap L11.1, Gap R.146; ADR 0187, ADR 0232).
+				if g.literalHasPairElement(lit) {
+					mixed = true
+				}
 				for i, el := range lit.Elems {
+					if pv, pt, isPair := g.pairElemPair(b, el); isPair {
+						b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, pt))
+						b.WriteString(fmt.Sprintf("  call void @rt_set_elem(i32 %%h%d, i32 %d, i32 %s)\n", hs, i, pv))
+						continue
+					}
 					// heapElemKind, not value(): an assigned container literal is still a
 					// runtime container, so a string element becomes an index into @str_tab
 					// instead of the global pointer that LLVM rejects in an i32 parameter
@@ -17335,9 +17347,9 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindDict))
 				for i := range dl.Keys {
-					// Keys and values go through the container-word rule: a string becomes its
-					// @str_tab index and the dict's key/value kinds record which side did, so
-					// {"a": 1} and {1: "v"} both build and print like the interpreter does.
+					// A key or value the pair road bound (`d = {"k": n}`) brings its own tag register:
+					// the element has no one word to store, and asking its `value()` is the refusal
+					// Gap R.146 kept for this shape (roadmap L11.1; ADR 0187's payload-never-without-tag).
 					kk, kIsStr, err := g.heapElemKind(b, dl.Keys[i])
 					if err != nil {
 						return err

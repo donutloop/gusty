@@ -8497,3 +8497,58 @@ ask the tag).
   exit 0 is still a wrong answer, and unlike refusals it is not counted by `compiled refusals this run`.
 - **Ledger state after the cycle:** record 5565, `pkg/lang` drift 338 (two L13.1 echo-silence rows added),
   `integration` drift 21, CPython debt 7, 297 ADR files to 0305. `go test -tags=llvm20 ./...` green.
+
+## Cycle — a pair-bound name enters a container by way of its tag (ADR 0306, Gap R.146's list element paid)
+
+**Feature (roadmap L11.1, Gap R.146).** After ADR 0305 the same four-line program answered `print(n)`,
+`print(n - 1)`, `print(n / 4)` and refused `print([n])`. A list literal had two lowerings — a compile-time
+`@.lstN` global, or a heap object opened by "does a payload fit an `i32`?" / "can a slot say what it holds?" —
+and a pair-bound element fell between them: the payload *fits*, but nobody static knows what it means.
+
+- **The cheapest fix in this whole arc, once the right question was asked.** `rt_tag_elem(i32 %h, i32 %i, i32
+  %tag)` takes an `i32`, and **a register is an `i32`**. What a literal element states as a constant, a pair
+  element states as a fact the objects wrote. Zero new runtime code: three gates gained one disjunct
+  (`literalHasPairElement`), three element loops gained one arm, the tag came from `numericPairRegs`. The
+  cycle had been blocked for as long as it looked like a value-model change; it was an arm.
+- **`y = [n]` is the same element question, and has to be paid in the same commit.** The assignment road has
+  its own element loop and its own record of the variable's element kinds. Allowing `[n]` only unbound would
+  have made `len(y)`, `7 in y` and `for v in y` inexplicable — the "one road works" increment is the one that
+  produces bug reports about the other.
+- **The self-describing bit is not decoration.** Without `estrBits |= 8` the printer reads the list's *one
+  declared kind* across every slot, and `["a"]` — one interned index — prints `[0]`. That is Gap R.38's
+  wrong-answer family arriving through the door this cycle opened, and it is the reason the text-slot rows sit
+  in the integration file compared against **CPython**, not against a string I typed. ADR 0258 learned the same
+  lesson for `str`/`repr`; this is the third time the object and the compiler's scope have to be told to agree.
+- **Two attempts at the dict/set arm were reverted inside the cycle.** The dict interleaves key and value in
+  one element array and its builder asks `heapElemKind` for both *before* any tag question is put; my first
+  patch swallowed that error for a pair side and left the payload register empty — the exact shape that writes
+  a module `llc` rejects, and ADR 0166 counts exit 2 as the compiler's own bug. `sum([n])`/`min([n, 3])` are
+  the same story with a static array instead of a table. They keep Gap R.146's refusal: dead code that pretends
+  a road is open is worse than a sentence that says which half is missing.
+- **These shapes had no record, so the reference was the only witness.** Every answer here is a container
+  printing a slot whose kind the compiler could not see, so recording them from the compiled backend would
+  have been circular. I recorded with a `cmd/gustyrecord` rebuilt against the working tree (the old one still
+  called the retired engine's `EvalExpr`), then refused to merge any entry whose stdout differed from what
+  CPython printed for the same source: 27 merged, 8 refusals left unrecorded and pinned with
+  `CompiledRefusal` instead.
+- **Paid rows moved, never deleted.** Four refusal tables pinned `print([n])` (`pkg/lang` + `integration`, in
+  `pair_binding_test.go` and in my own `pair_number*_test.go`), and `float_state_test.go` (both packages)
+  pinned `print([x, 1])`. Each moved into an answer table that still rules out the failure the row was built
+  for — a float box's handle printed where the double belongs.
+- **A new corpus program owes a record before it earns its place.** `TestGCCorpusCollectsAndAgrees` walks the
+  conformance corpus and fails any program with no golden answer, so registering
+  `programs/probe_pair_bound_name_enters_a_container.gy` without recording it broke the suite in a package
+  nothing else in the cycle touched. The recording path stays honest only because each entry is merged after
+  its stdout is compared with what CPython prints for the same source — the assert that guards the merge is the
+  one thing standing between "recorded" and "whatever the compiler did today".
+- **A pinned probe whose shape gets fixed has to change, and its ledger row with it.** `probe_pair_bound_name_takes_a_value.gy`
+  carried `print([n])` as debt; leaving it there would have pinned a refusal the language no longer makes, and
+  the row's `reason` still said "a list element". Both moved: the line lives in the new parity probe, the
+  `reason` names only what still refuses.
+- **One probe rewrite caught a new defect for free.** The first version of the parity program mixed a nested
+  slot read with an earlier text-storing container and refused; the refusal named a container the program never
+  mutated. Reproduced down to `w.append("a")` being the only difference between `[14]` and exit 1, and filed as
+  a fresh row (`Gap R.191`) rather than fixed under this cycle's commit — one feature per commit, and this one
+  is not mine.
+- **Ledger state after the cycle:** record 5593 (+28), `pkg/lang` drift 338, `integration` drift 21, CPython
+  debt 7, 298 ADR files to 0306, corpus 169 rows / the new probe `match` on both legs. `go test -tags=llvm20 ./...` green.

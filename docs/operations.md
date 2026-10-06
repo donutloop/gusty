@@ -569,7 +569,9 @@ handle); the answer **handed to a function** is parity surface since
 `(payload, tag)` pair and the answer's kind comes back in the word the callee stores beside its own `return`,
 `Gap R.139`, ADR 0273); what stays filed beside them is the same name read back where the position asks for one
 static number (`Gap R.143`, `programs/probe_pair_bound_name_as_a_number`), a pair-shaped value handed to a
-position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes_a_value`), and the tuple
+position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes_a_value` — the list element
+`[n]` left that family when the container builders learned to ask the tag, ADR 0306, and is parity surface in
+`pair_container_test.go`), and the tuple
 unpacking that has not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's
 and the interpreted leg's answer against the compiled leg's exit 1. The same shape one statement earlier — the
 assignment that changes a variable's state from int to float — is parity surface since

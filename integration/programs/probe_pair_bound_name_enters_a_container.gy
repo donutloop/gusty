@@ -1,0 +1,41 @@
+# probe_pair_bound_name_enters_a_container.gy — where the pair found somewhere to go.
+#
+# A name the pair road bound carries its kind in the tag beside its payload (ADR 0267), and the positions that
+# ask for one number read it (Gap R.143), the ones that ask for a double reach it by their tags (Gap R.148,
+# ADR 0305), and the printer asks it for a value whose kind the run time decides (ADR 0303). What this program
+# pins is the position that stopped being one of them: a container element. The literal goes to the heap
+# builder and the element writes BOTH of its words — payload through `rt_set_elem`, tag through `rt_tag_elem`,
+# both registers the objects made — and the object is marked self-describing so the printer asks the slots
+# instead of the list's single declared kind (roadmap Gap R.146's element half, ADR 0306).
+#
+# The kinds are chosen so a missing tag cannot hide: a text element prints its interned index (`[0]`) and a
+# float element its box handle if the tag is not written, both at exit 0. The last five lines are the same
+# element question through the assignment road, which has its own element loop — the list bound, measured,
+# asked for membership, read back as the number the tag says it is, and rendered.
+nums = []
+nums.append(7)
+n = nums[0]
+print([n])
+print([n, "x", 2, None])
+words = []
+words.append("a")
+w = words[0]
+print([w])
+print([w, 1, 2.5])
+halves = []
+halves.append(2.5)
+h = halves[0]
+print([h])
+# The nested case (`nested.append([7, 8])` / `d = nested[0][0] * 2` / `print([d])`) answers `[14]` alone and
+# refuses in a program that has put a text in another container earlier — that is Gap R.191, not this row, so
+# the number the assignment road binds comes from an int slot here and the nested shape is pinned in
+# `pkg/lang/pair_binding_test.go`, where the program contains no text container.
+nums2 = []
+nums2.append(14)
+d = nums2[0]
+print([d])
+y = [d]
+print(len(y))
+print(14 in y)
+print(y[0] + 1)
+print(str(y))

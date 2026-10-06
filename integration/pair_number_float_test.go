@@ -196,7 +196,8 @@ func TestTheDoubleDomainStillRefusesTheOneWordPositions(t *testing.T) {
 		numFloatSlotCLI + "print(float(n))\n",
 		numFloatSlotCLI + "print(sum([n]))\n",
 		"xs = []\nxs.append(-7)\nn = xs[0]\nprint(abs(n))\n",
-		numFloatSlotCLI + "print([n])\n",
+		// `print([n])` answers since ADR 0306 — the heap builder writes the element's payload and its
+		// tag — and is pinned in pair_container_test.go against the reference instead.
 		numFloatSlotCLI + "print(min(n, 3))\n",
 		numFloatSlotCLI + "print(f\"{n - 1}\")\n",
 	} {

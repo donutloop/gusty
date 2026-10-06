@@ -254,12 +254,12 @@ func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
 // takes a whole *value* — a builtin's argument, a container's element — has nowhere to put a tag, and says
 // so in words rather than reading the payload alone (roadmap Gap R.146, the same missing word Gap R.139
 // names on the calling side). The `and` row that used to be here answers since ADR 0269 and moved up to the
-// parity table; a row that stops refusing has to move, not disappear.
+// parity table; a row that stops refusing has to move, not disappear. The list-element row moved to
+// TestAPairBoundNameEntersAContainerByWayOfItsTag once the builders learned to ask for the tag (ADR 0306).
 func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n"},
 		{"handed to min", builtList + "n = xs[0][0] * 2\nprint(min(n, 3))\n"},
-		{"an element of a list", builtList + "n = xs[0][0] * 2\nprint([n])\n"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

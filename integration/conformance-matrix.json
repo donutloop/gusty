@@ -2470,6 +2470,26 @@
     },
     {
       "case": {
+        "id": "programs/probe_pair_bound_name_enters_a_container",
+        "name": "probe_pair_bound_name_enters_a_container.gy",
+        "source": "# probe_pair_bound_name_enters_a_container.gy — where the pair found somewhere to go.\n#\n# A name the pair road bound carries its kind in the tag beside its payload (ADR 0267), and the positions that\n# ask for one number read it (Gap R.143), the ones that ask for a double reach it by their tags (Gap R.148,\n# ADR 0305), and the printer asks it for a value whose kind the run time decides (ADR 0303). What this program\n# pins is the position that stopped being one of them: a container element. The literal goes to the heap\n# builder and the element writes BOTH of its words — payload through `rt_set_elem`, tag through `rt_tag_elem`,\n# both registers the objects made — and the object is marked self-describing so the printer asks the slots\n# instead of the list's single declared kind (roadmap Gap R.146's element half, ADR 0306).\n#\n# The kinds are chosen so a missing tag cannot hide: a text element prints its interned index (`[0]`) and a\n# float element its box handle if the tag is not written, both at exit 0. The last five lines are the same\n# element question through the assignment road, which has its own element loop — the list bound, measured,\n# asked for membership, read back as the number the tag says it is, and rendered.\nnums = []\nnums.append(7)\nn = nums[0]\nprint([n])\nprint([n, \"x\", 2, None])\nwords = []\nwords.append(\"a\")\nw = words[0]\nprint([w])\nprint([w, 1, 2.5])\nhalves = []\nhalves.append(2.5)\nh = halves[0]\nprint([h])\n# The nested case (`nested.append([7, 8])` / `d = nested[0][0] * 2` / `print([d])`) answers `[14]` alone and\n# refuses in a program that has put a text in another container earlier — that is Gap R.191, not this row, so\n# the number the assignment road binds comes from an int slot here and the nested shape is pinned in\n# `pkg/lang/pair_binding_test.go`, where the program contains no text container.\nnums2 = []\nnums2.append(14)\nd = nums2[0]\nprint([d])\ny = [d]\nprint(len(y))\nprint(14 in y)\nprint(y[0] + 1)\nprint(str(y))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[7]\n[7, 'x', 2, None]\n['a']\n['a', 1, 2.5]\n[2.5]\n[14]\n1\nTrue\n15\n[14]\n",
+      "python_ok": true,
+      "python_stdout": "[7]\n[7, 'x', 2, None]\n['a']\n['a', 1, 2.5]\n[2.5]\n[14]\n1\nTrue\n15\n[14]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_in_a_container",
         "name": "probe_bool_in_a_container.gy",
         "source": "# What CPython prints for every shape here (python3, 3.12):\n#\n#   [True, 1]\n#   [True]\n#   [False]\n#   {'k': True}\n#   {True}\n#   [1, 2, True]\n#   True\n#   True\n#   True\n#   2\n#   [True, 'a']\n#   {True: 1}\n#   [True, 1, 1]\n#\n# A container slot is allowed to say `bool`. Before this the shape printed the number it is stored\n# as — `[1, 1]` and `{'k': 1}` — and both backends agreed, which is exactly why no two-backend test\n# ever saw it (roadmap Gap R.112, ADR 0259).\n#\n# The rows come in two families. A *literal* slot (`[True, 1]`, `{\"k\": True}`) is a `BoolLit` the tag\n# table can see directly; a slot whose verdict comes from an *expression* — the comparison feeding a\n# `list.append`, the call argument, the ternary among strings, the dict key that is a variable holding\n# a comparison — has to be asked of that expression, through the same `IsBoolExpr` the rendering pair\n# asks (ADR 0257). A list comprehension whose element copies the loop variable is the same question\n# one level indirect: `x` says True only if the item it copied does.\n#\n# What a bool is *not* is the other half of the row: `[True] == [1]` answers True and `True + 1` is 2,\n# because the payload underneath the tag is still the number, and the compiled comparison's numeric\n# family is int, float AND bool.\nprint([True, 1])\nprint([True])\nprint([False])\nprint({\"k\": True})\nprint({True, 1})\nxs = [1, 2]\nb = 1 == 1\nxs.append(b)\nprint(xs)\nprint([True] == [1])\nxs2 = [True, 1]\nprint(xs2[0])\nif xs2[0]:\n    print(True)\nelse:\n    print(False)\nprint(True + 1)\ny = 1 == 1\nprint([True if y else False, \"a\"])\nprint({y: 1})\nprint([x for x in [True, 1, 1]])\n",
@@ -3158,10 +3178,10 @@
       "case": {
         "id": "programs/probe_pair_bound_name_takes_a_value",
         "name": "probe_pair_bound_name_takes_a_value.gy",
-        "source": "# probe_pair_bound_name_takes_a_value.gy — where the pair still has nowhere to go.\n#\n# A name the arithmetic door bound carries its kind in the tag beside its payload (ADR 0267), and the\n# positions that ask for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What is\n# left is the positions that take a whole *value*: a builtin's argument and a container's element. Each has\n# one word for its operand, and the second word — the tag — has no place to be stored, so the compiled leg\n# declines rather than print the payload alone. CPython and the interpreted leg answer all four lines\n# (roadmap Gap R.146, the same missing word Gap R.139 names on the calling side).\n#\n# The `and` line is not part of that debt any more: an operator that chooses an operand can ask the pair\n# directly, and `n and 3` prints CPython's `3` on all three legs (Gap R.147, ADR 0269).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\nprint(min(n, 3))\nprint([n])\nprint(n and 3)\n",
+        "source": "# probe_pair_bound_name_takes_a_value.gy — where the pair still has nowhere to go.\n#\n# A name the arithmetic door bound carries its kind in the tag beside its payload (ADR 0267), and the\n# positions that ask for one number read it (Gap R.143, programs/probe_pair_bound_name_as_a_number). What is\n# left is the positions that take a whole *value*: a builtin's argument keeps one word for its operand, and\n# the second word — the tag — has no place to be stored, so the compiled leg declines rather than print the\n# payload alone. CPython answers both lines (roadmap Gap R.146, the same missing word Gap R.139 names on the\n# calling side).\n#\n# Two lines left this program as the shape they were filed with changed sides. An operator that chooses an\n# operand can ask the pair directly, so `n and 3` prints CPython's `3` (Gap R.147, ADR 0269); and a container\n# element is no longer a one-word position — `[n]` prints `[14]`, the heap builder writing the element's tag\n# beside its payload — so that line lives in programs/probe_pair_bound_name_enters_a_container.gy (Gap R.146's\n# element half, ADR 0306). A dict entry, a set member and a literal `sum`/`min`/`max` folds into a static\n# array still owe the same missing word.\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(abs(n))\nprint(min(n, 3))\nprint(n and 3)\n",
         "asserted": false,
         "oracle": "debt",
-        "reason": "CPython prints 14, 3, [14], 3 and the reference now prints the same four — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because an argument, a list element and a builtin's argument each keep one word for the value and have nowhere to put the tag the binding carried",
+        "reason": "CPython prints 14, 3 and 3 and the reference prints the same — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because a builtin's argument keeps one word for the value and has nowhere to put the tag the binding carried (the list element this program used to pin is parity surface since ADR 0306, in programs/probe_pair_bound_name_enters_a_container.gy)",
         "ref": "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
         "pins": [
           {
@@ -3175,12 +3195,12 @@
       "aot_stdout": "",
       "aot_error": "n holds the answer of arithmetic over a slot the program built at run time, which travels as a (payload, tag) pair: print(n) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go (roadmap L11.1, Gap R.146)",
       "python_ok": true,
-      "python_stdout": "14\n3\n[14]\n3\n",
+      "python_stdout": "14\n3\n3\n",
       "aot_matches_python": false,
       "conformant": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "CPython prints 14, 3, [14], 3 and the reference now prints the same four — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because an argument, a list element and a builtin's argument each keep one word for the value and have nowhere to put the tag the binding carried",
+      "oracle_reason": "CPython prints 14, 3 and 3 and the reference prints the same — its `and` chose the operand the reference hands back since Gap R.147 closed — while the compiled leg spends exit 1 on the first line, because a builtin's argument keeps one word for the value and has nowhere to put the tag the binding carried (the list element this program used to pin is parity surface since ADR 0306, in programs/probe_pair_bound_name_enters_a_container.gy)",
       "oracle_ref": "roadmap Gap R.146 (measured landing ADR 0268); the `and` row this program also pinned is closed by docs/adr/0269",
       "oracle_rules": [
         "set-order"
@@ -3413,7 +3433,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1903835832/138/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4247223543/139/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3426,7 +3446,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1903835832/138/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4247223543/139/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4116,11 +4136,11 @@
       ]
     }
   ],
-  "rows": 167,
+  "rows": 168,
   "skipped": 39,
-  "pass": 128,
+  "pass": 129,
   "fail": 0,
-  "oracle_match": 113,
+  "oracle_match": 114,
   "oracle_debt": 33,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

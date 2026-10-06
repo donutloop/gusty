@@ -297,7 +297,6 @@ func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T)
 	for _, tc := range []struct{ name, src, want string }{
 		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "holds the answer of arithmetic over a slot"},
 		{"handed to min", built + "n = xs[0][0] * 2\nprint(min(n, 3))\n", "holds the answer of arithmetic over a slot"},
-		{"an element of a list", built + "n = xs[0][0] * 2\nprint([n])\n", "holds the answer of arithmetic over a slot"},
 		// `n / 4` and `n > d` were on this table, and both are answered now: a pair-bound name reaches the
 		// double domain through the tag-selected arms a slot read walks (the float arm unboxes, the int/bool
 		// arm converts, every other kind raises CPython's own sentence), so the two shapes Gap R.148 was
