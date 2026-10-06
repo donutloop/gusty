@@ -563,6 +563,17 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A set counts **distinct** members, and a `dict.get` answers with the kind its **slot** has (ADR 0295,
+closing `Gap R.180` and `Gap R.181`). Both were wrong numbers at exit 0 that no amount of correct-looking
+test data would catch: `len({1, 2})` answers `2` on any implementation, so only a *duplicate* reveals that the
+static set global reserved one slot per source element and `len({1, 1, 1})` said `3`. Same for `get` — an
+int-valued dict always looked fine, while `{1: "a"}.get(1)` printed the text's interned INDEX (`0`),
+`{"k": None}.get("k")` printed the void word (`0`) and `{1: True}.get(1)` printed `1`. One of them
+(`{1: True}.get(9, True)`) was wrong on the **interpreter** too, so the two backends agreed on the wrong
+answer and only the oracle leg saw it. The float case (`{1: 1.5}.get(1)` → `1`) stays open as `Gap R.105`
+and is pinned by a test that reports it — not by a refusal, because the interpreter answers it and taking
+that away would be trading an answer for silence.
+
 A slice of a container answers the **list**, not the machine's handle for it (ADR 0294, closing `Gap
 R.179`). `print([1, 2, 3][1:])` was three bugs at once, none of them in the interpreter: the container
 literal lowered to the **address of a compile-time global** and went into `rt_slice` where a heap handle

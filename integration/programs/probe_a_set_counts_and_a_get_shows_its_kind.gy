@@ -1,0 +1,33 @@
+# A set counts distinct members, and a dict.get answers the kind its SLOT holds
+# (roadmap Gap R.180 and Gap R.181, owner L11.1; ADR 0291's void, ADR 0257's verdict rule).
+#
+# Both were compiled-leg wrong numbers at exit 0 that --interp never had, which is what makes them
+# invisible to the two-backend parity matrix and visible to the oracle leg:
+#   * the static set global reserved one slot per SOURCE element, so len({1, 2, 2, 3}) answered 4 —
+#     a set that counted duplicates is a list wearing braces;
+#   * `get` returned the WORD its slot holds and print rendered that: an interned text printed its
+#     index (0), a void printed 0, a verdict printed 1.
+#
+# A set with no duplicates answers 2 on both legs whatever the code does, so only the DUPLICATE
+# rows below distinguish the two. Same for get: an int slot already worked, a text one did not.
+print(len({1, 2, 2, 3}))
+print(len({1, 1, 1}))
+print(len({5, 3, 3, 3, 1}))
+print(len({1, 2}) + len({3, 3}))
+print({1, 2, 2, 3})
+print({1, 1} == {1})
+print(2 in {1, 2, 2, 3})
+print(9 in {1, 2, 2, 3})
+print({1: "a"}.get(1))
+print({1: "a", 2: "b"}.get(1, "z"))
+print({1: "a", 2: "b"}.get(9, "z"))
+print({1: "a"}.get(9, "fallback"))
+print({"k": None}.get("k"))
+print({"k": None}.get("zz", None))
+print({1: True}.get(1))
+print({"k": False}.get("k"))
+print({1: True}.get(9, True))
+print({1: 2}.get(1))
+print({1: "a", 2: 3}.get(2))
+print({1: "a"}.get(9))
+print({"a": "hi"}.get("a"))

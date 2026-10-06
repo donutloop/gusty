@@ -1230,6 +1230,35 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### What a set counts, and what a `dict.get` answers with
+
+A set has one member per distinct value, and a literal with duplicates collapses — in both backends, in the
+same insertion order (`Gap R.181`, ADR 0295):
+
+```
+print(len({1, 2, 2, 3}))         # 3        not 4
+print(len({1, 1, 1}))            # 1        not 3
+print({1, 2, 2, 3})              # {1, 2, 3}
+print({1, 1} == {1})             # True
+print(2 in {1, 2, 2, 3})         # True
+```
+
+`dict.get` answers with the **kind of the slot it read**, or of the default it fell back to (`Gap R.180`):
+
+```
+print({1: "a"}.get(1))            # a        a text, printed as text — not its interned index
+print({1: "a", 2: "b"}.get(9, "z"))  # z      the default, with the default's kind
+print({"k": None}.get("k"))        # None     a void is rendered, not printed as a word
+print({1: True}.get(1))           # True     a verdict is rendered, not printed as 1
+print({1: "a"}.get(9))            # None     a missing key with no default
+print({1: 2}.get(1))              # 2        a number, as it always did
+```
+
+One limitation stays open and is pinned as such: a **float** in a dict slot still prints as a whole number on
+the compiled leg (`{1: 1.5}.get(1)` gives `1`, where the reference and the interpreter give `1.5`) — that is
+`Gap R.105`'s missing tag, and it is covered by a test that reports it rather than by a refusal that would
+hide it.
+
 ### A slice of a container
 
 `xs[1:]`, `xs[:2]`, `xs[::2]` answer a new container on both engines (`Gap R.179`, ADR 0294) — a list, with

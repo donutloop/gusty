@@ -7978,3 +7978,45 @@ second meaning *refused*) three times over — each mis-use would have silently 
 new table; here, zero. The exit-2 shapes don't fail as exit-2 inside Go tests (a refusal comes back first),
 so the table also asserts the IR shape textually: no `rt_slice(i32 @`, and `@heap_tags` present in the
 helper's body. Sweep of 170 programs: no unintended movements, only the new probe.
+
+## Cycle: a set counts distinct members; a `dict.get` answers with its slot's kind (Gap R.180/R.181 closed; ADR 0295)
+
+**Two wrong numbers at exit 0 that a corpus of good programs cannot find.** `len({1, 2})` answers `2`
+regardless of implementation, so a set whose static global reserved one slot per **source** element
+(`len({1,1,1})` → `3`) is only distinguishable when an element repeats. `get` on an int dict always looked
+fine; the text/void/verdict slots each printed their machine WORD (index, `0`, `1`). The sweep is worth its
+cost because it deliberately includes the *degenerate* shape — duplicate element, missing key, default
+argument — and a hand-written list of "interesting" cases systematically omits those.
+
+**The catch that mattered was the one the matrix should have hidden.** `{1: True}.get(9, True)` printed `1`
+on **both** engines. Interp-vs-aot parity was satisfied; only `python3` on the same file said `True`. Root
+cause: the dict *builder* boxes slots with `slotVal` but the `get` **default argument** was returned raw —
+two paths, one boxed. The sweep printed the whole probe file side by side, so an INTERP movement showed up
+even though I'd only intended to fix the compiled leg. When a differential harness only compares two of three
+things, the third is where the bugs are.
+
+**Fixing the producer means checking what the producer STORES.** Deduplicating `setLiteralElems` alone left a
+global that *printed* three members and *counted* four, because `{i32, [N x i32]}` carries its own length and
+`len` loads that field. Fixed `emitSet` to derive `n` from the deduped slice, and pinned the emitted array
+literally (`[3 x i32] [i32 1, i32 2, i32 3]`) — a `len()` assertion would have passed against its own buggy
+printer.
+
+**One lookup, and a test that counts copies.** My first `stringVal` arm re-implemented the key scan. A test
+that fails when `dl.Vals[i].(*StrLit)` appears more than once caught it. The fold knew the key and the printer
+never asked — that *is* the bug class, so a second scan isn't a style nit, it's the seed of the next one.
+
+**Verdict kinds belong to the shared pure predicate**, `BoolEnv.callReturnsBool`, not to a print-road special
+case: interpreter and compiler must answer the same question or a REPL echoes `True` beside a binary echoing
+`1` (ADR 0257/0289's rule).
+
+**Declined the easy win.** `{1: 1.5}.get(1)` prints `1` compiled vs `1.5` from the reference and the
+interpreter. A refusal would make that wrong number stop appearing — and would also take away an answer two
+backends currently produce, which the ladder forbids. Logged it on Gap R.105's record (with the two new
+repro rows) and added `TestDictGetFloatSlotStillOwesItsTag`, which `t.Log`s rather than passing silently and
+tells the next cycle to *move* the rows, not delete them.
+
+**Process notes.** Ran the baseline binary with a **relative** path from inside the worktree — got
+`/bin/b…`, i.e. nothing, for six rows; the absolute-path rule exists for exactly this and I hit it anyway.
+Reused `referenceOut`/`compiledOut`/`parseExprForTest` instead of redefining them (only after two build
+failures from redefining/ mis-arity'ing them — I keep reaching for helpers that already exist and must grep
+first). `llc-20` has no `--module`; `mustVerifyWithLLC` already exists.

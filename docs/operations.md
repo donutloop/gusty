@@ -973,6 +973,14 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a set counts distinct members and a `dict.get` prints the kind its slot holds**: `--aot --eval
+  'print(len({1, 2, 2, 3}))'` exits 0 with `3` and `print({1: "a"}.get(1))` with `a` (`Gap R.181` /
+  `Gap R.180` / ADR 0295). Before this the static set global reserved a slot per SOURCE element — `len({1, 1, 1})`
+  answered `3`, so a set that counted duplicates was a list wearing braces — and `get` returned the WORD its
+  slot holds, printing an interned text's index (`0`), the void (`0`) and a verdict (`1`). The interpreter
+  printed `1` for `{1: True}.get(9, True)` too, so even the two-backend matrix agreed on that one; only
+  CPython on the same file said `True`. `len({1, 2})` answers `2` either way, which is exactly why a corpus
+  of correct-looking programs never finds this and a sweep that repeats an element does.
 - **a slice of a container answers the list, never its handle**: `./build/pyre --aot --eval 'print([1, 2, 3][1:])'`
   exits 0 with `[2, 3]`, and `print(["a", "b"][1:])` exits 0 with `['b']` (`Gap R.179` / ADR 0294). Before
   this the same source handed llc `call i32 @rt_slice(i32 @.lst1, …)` — a global address where a heap handle

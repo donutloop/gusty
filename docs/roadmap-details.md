@@ -5770,6 +5770,22 @@ xs.append(6)
 print({v: v / 2 for v in xs})   # CPython {6: 3.0} · --interp {6: 3.0} · --aot {6: 3}
 ```
 
+**More instances of the same missing pair, measured 2026-07-06 while closing Gap R.180.** The
+comprehension is not the only road that lets a dict value travel without its tag — a dict LITERAL does it
+too, through `get`:
+
+```gusty
+print({1: 1.5}.get(1))         # CPython 1.5 · --interp 1.5 · --aot 1
+print({1: 1.5}.get(9, 2.5))    # CPython 2.5 · --interp 2.5 · --aot 2
+```
+
+The `get` fold returns `g.value(...)` of the slot, and a float slot's value is a BOX HANDLE; the print road
+never learned the expression is a double, so printf's `%d` printed the handle's low word. Gap R.180's text,
+void and verdict halves are fixed (the print, void and verdict predicates now ask the fold's own lookup);
+the float half is this row, unchanged and still wrong, and pinned in `TestDictGetAnswersTheKindItsSlotHas`'s
+successor rather than "fixed" by making the compiled leg refuse — the interpreter answers these, so a
+refusal would trade a wrong number for a lost answer.
+
 The list comprehension on the same loop got it right — `rt_append_tagged` is handed payload *and* tag, and
 the printer renders `3.0` — while `rt_dict_put_tagged` is handed the key's tag honestly and the value's
 absent, so the slot prints as the int 3. The pair is the whole story here (ADR 0238 gave a float element its
@@ -7882,3 +7898,51 @@ sweep, 170 programs, zero unintended movements. Probe
 **Deliberately not touched:** `print(len([1, 2, 3][1:]))` still refuses, because `len` asks for an inline
 literal — a different road, a different row. Closing the slice must not launder an unrelated refusal into a
 guess.
+
+### Gap R.180 + Gap R.181 — a set counted duplicates, and a `dict.get` printed the word its slot holds (CLOSED by ADR 0295, owner L11.1)
+
+Both found by the 2026-07-06 surface sweep, both **compiled-only** (which is what makes a parity matrix
+blind), and both of a shape no corpus of correct-looking programs can surface:
+
+```
+len({1, 2, 2, 3})         CPython 3    --interp 3    --aot 4      one slot per SOURCE element
+len({1, 1, 1})            CPython 1    --interp 1    --aot 3
+{1: "a"}.get(1)           CPython a    --interp a    --aot 0      interned index through %d
+{"k": None}.get("k")      CPython None --interp None --aot 0      the void printed, not rendered
+{1: True}.get(1)          CPython True --interp True --aot 1      the verdict printed, not rendered
+{1: True}.get(9, True)    CPython True --interp 1     --aot 1     BOTH backends — parity agreed on the bug
+```
+
+**The degenerate shape is the test.** `len({1, 2})` answers `2` on every implementation there is; a set that
+counts duplicates is only distinguishable when an element REPEATS. Same with `get`: an int slot always looked
+fine, so four kinds (text, void, verdict, float) each quietly produced their own wrong number. The sweep is
+worth keeping precisely because it includes the repeated element, the missing key and the default argument —
+a hand-written list of shapes tends to contain only the interesting-looking ones.
+
+**The set fix had a half-invisible second half.** Deduplicating `setLiteralElems` alone would have produced a
+global that *prints* three members and *counts* four, because the `{i32, [N x i32]} { i32 N, ... }` shape
+carries its own length and `len` loads the field. `emitSet` derives `n` from the deduplicated slice; the
+IR-shape test asserts the emitted array literally (`[3 x i32] [i32 1, i32 2, i32 3]`) rather than trusting
+`len()` to agree with its own printer.
+
+**One lookup, the fold's own.** `g.dictFoldSlot` answers for the text road, the void road and — via the pure
+`dictFoldSlotOf` inside `BoolEnv.callReturnsBool` — the verdict road. My first draft hand-copied the key scan
+into `stringVal`; the test that counts duplicate slot scans caught it before it could drift. Key-scanning
+code that exists twice is exactly how the fold (which knew the key) and the printer (which never asked)
+diverged.
+
+**The interpreter had two `get` paths and boxed only one.** A dict literal boxes its slots with `slotVal`, so
+a verdict *slot* printed `True`; the *default* argument was returned raw, so `{1: True}.get(9, True)` printed
+`1`. The hit and the miss must produce values of the same kind — one call to the same helper fixes it. This
+was the sweep's most instructive catch because both backends agreed: the interp-vs-aot matrix said nothing,
+and only `python3` on the same file said `True`.
+
+**What I did NOT fix, on purpose.** `{1: 1.5}.get(1)` prints `1` on the compiled leg (`--interp` and the
+reference print `1.5`). That is Gap R.105's missing double tag. Measuring it tempted a refusal, since a
+refusal makes a wrong number stop appearing — but the interpreter answers it, the reference answers it, and
+the ladder forbids trading an answer for a refusal. It stays wrong, on its own row, with
+`TestDictGetFloatSlotStillOwesItsTag` logging until the tag work lands.
+
+**Measurement.** HEAD-baseline binary (`git worktree`): **22** subtest failures on the new tables, green
+here. Whole-corpus sweep of 171 programs: the only movements are this cycle's own probe — including an
+INTERP movement, which is how the `get`-default bug surfaced after the fact rather than before it.

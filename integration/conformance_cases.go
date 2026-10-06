@@ -143,6 +143,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// the interned INDEX — `[1]` where the reference prints ['b'] (ADR 0187's pairing rule).
 		// Gap R.179 / ADR 0187, owner L11.1.
 		"probe_a_slice_of_a_container",
+		// A set counts DISTINCT members and a `dict.get` answers the kind its SLOT holds. Both were
+		// compiled-leg wrong numbers at exit 0 the interpreter never had: the static set global counted
+		// SOURCE elements (len({1,2,2,3}) was 4), and `get` printed the WORD its slot holds — an interned
+		// text's index, the void 0, a verdict 1 — instead of rendering it.
+		// Gap R.180 + Gap R.181 / ADR 0291 + ADR 0257, owner L11.1.
+		"probe_a_set_counts_and_a_get_shows_its_kind",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

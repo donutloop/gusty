@@ -781,6 +781,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_set_counts_and_a_get_shows_its_kind",
+        "name": "probe_a_set_counts_and_a_get_shows_its_kind.gy",
+        "source": "# A set counts distinct members, and a dict.get answers the kind its SLOT holds\n# (roadmap Gap R.180 and Gap R.181, owner L11.1; ADR 0291's void, ADR 0257's verdict rule).\n#\n# Both were compiled-leg wrong numbers at exit 0 that --interp never had, which is what makes them\n# invisible to the two-backend parity matrix and visible to the oracle leg:\n#   * the static set global reserved one slot per SOURCE element, so len({1, 2, 2, 3}) answered 4 —\n#     a set that counted duplicates is a list wearing braces;\n#   * `get` returned the WORD its slot holds and print rendered that: an interned text printed its\n#     index (0), a void printed 0, a verdict printed 1.\n#\n# A set with no duplicates answers 2 on both legs whatever the code does, so only the DUPLICATE\n# rows below distinguish the two. Same for get: an int slot already worked, a text one did not.\nprint(len({1, 2, 2, 3}))\nprint(len({1, 1, 1}))\nprint(len({5, 3, 3, 3, 1}))\nprint(len({1, 2}) + len({3, 3}))\nprint({1, 2, 2, 3})\nprint({1, 1} == {1})\nprint(2 in {1, 2, 2, 3})\nprint(9 in {1, 2, 2, 3})\nprint({1: \"a\"}.get(1))\nprint({1: \"a\", 2: \"b\"}.get(1, \"z\"))\nprint({1: \"a\", 2: \"b\"}.get(9, \"z\"))\nprint({1: \"a\"}.get(9, \"fallback\"))\nprint({\"k\": None}.get(\"k\"))\nprint({\"k\": None}.get(\"zz\", None))\nprint({1: True}.get(1))\nprint({\"k\": False}.get(\"k\"))\nprint({1: True}.get(9, True))\nprint({1: 2}.get(1))\nprint({1: \"a\", 2: 3}.get(2))\nprint({1: \"a\"}.get(9))\nprint({\"a\": \"hi\"}.get(\"a\"))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "3\n1\n3\n3\n{1, 2, 3}\nTrue\nTrue\nFalse\na\na\nz\nfallback\nNone\nNone\nTrue\nFalse\nTrue\n2\n3\nNone\nhi\n",
+      "aot_ok": true,
+      "aot_stdout": "3\n1\n3\n3\n{1, 2, 3}\nTrue\nTrue\nFalse\na\na\nz\nfallback\nNone\nNone\nTrue\nFalse\nTrue\n2\n3\nNone\nhi\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "3\n1\n3\n3\n{1, 2, 3}\nTrue\nTrue\nFalse\na\na\nz\nfallback\nNone\nNone\nTrue\nFalse\nTrue\n2\n3\nNone\nhi\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3761,7 +3784,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix895175299/135/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3445846888/136/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3775,7 +3798,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix895175299/135/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3445846888/136/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4616,11 +4639,11 @@
       ]
     }
   ],
-  "rows": 160,
+  "rows": 161,
   "skipped": 35,
-  "pass": 125,
+  "pass": 126,
   "fail": 0,
-  "oracle_match": 110,
+  "oracle_match": 111,
   "oracle_debt": 29,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

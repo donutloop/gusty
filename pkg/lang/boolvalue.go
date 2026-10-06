@@ -354,6 +354,28 @@ func (env BoolEnv) minMaxChosenIsVerdict(c *Call, wantMin bool, depth int) bool 
 	return env.of(cands[numericWinner(vals, wantMin)], depth)
 }
 
+// dictFoldSlotOf is the pure-AST half of the dict.get fold: the value a literal dict's slot holds for
+// this key, and whether the key is there. The codegen road keeps its own copy because it also reads
+// names the AST alone cannot see; these two must agree on what a literal means (Gap R.180).
+func dictFoldSlotOf(dl *DictLit, key Expr) (Expr, bool) {
+	if il, ok := key.(*IntLit); ok {
+		for i, k := range dl.Keys {
+			if kl, ok := k.(*IntLit); ok && kl.Value == il.Value {
+				return dl.Vals[i], true
+			}
+		}
+		return nil, false
+	}
+	if sl, ok := key.(*StrLit); ok {
+		for i, k := range dl.Keys {
+			if kl, ok := k.(*StrLit); ok && kl.Value == sl.Value {
+				return dl.Vals[i], true
+			}
+		}
+	}
+	return nil, false
+}
+
 // stringBoolMethods are the text methods whose answer is a verdict rather than a value. They are a
 // separate table from boolReturningBuiltins because their callee is not a NAME at all — `s.startswith(p)`
 // parses as Call{Fn: Attr{Obj: s, Name: startswith}} — and the question below is asked of the ATTRIBUTE,
@@ -382,6 +404,22 @@ func (env BoolEnv) callReturnsBool(c *Call, depth int) bool {
 		}
 		if stringBoolMethods[attr.Name.Value] && !env.overloadedReceiver(attr.Obj) {
 			return true
+		}
+		// A dict's `get` answers whatever the SLOT holds. `{1: True}.get(1)` is a verdict — the fold
+		// returns the word a verdict is stored as, and the print road rendering it through printf's %d
+		// printed `1` where the reference prints True (Gap R.180, the verdict half; its text half is in
+		// stringVal). Asked of the AST alone, like every other answer here: the literal dict's own slot,
+		// or the default argument when that is the arm the fold will take.
+		if attr.Name.Value == "get" && (len(c.Args) == 1 || len(c.Args) == 2) {
+			if dl, isDict := attr.Obj.(*DictLit); isDict {
+				if slot, found := dictFoldSlotOf(dl, c.Args[0]); found {
+					return env.of(slot, depth+1)
+				}
+				if len(c.Args) == 2 {
+					return env.of(c.Args[1], depth+1)
+				}
+			}
+			return false
 		}
 		return false
 	}

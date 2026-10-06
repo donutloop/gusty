@@ -5383,13 +5383,24 @@ func dictLiteralVals(dl *DictLit) ([]int64, error) {
 // setLiteralElems returns the integer elements of a set literal, erroring if
 // any element is not a constant integer.
 func setLiteralElems(sl *SetLit) ([]int64, error) {
-	elems := make([]int64, len(sl.Elems))
-	for i, el := range sl.Elems {
+	// A SET has one member per distinct VALUE, so a literal with duplicates collapses. The static
+	// global was built straight from the source elements, which made `len({1, 2, 2, 3})` answer 4 and
+	// `len({1, 1, 1})` answer 3 — a set that printed with braces and behaved like a list (roadmap Gap
+	// R.181). The interpreter deduplicates with `eqVal` and keeps the FIRST spelling inserted (ADR
+	// 0259's `{True, 1}`); this road only admits integer literals, so distinct words are distinct
+	// values here, and insertion order is preserved the same way.
+	seen := make(map[int64]bool, len(sl.Elems))
+	elems := make([]int64, 0, len(sl.Elems))
+	for _, el := range sl.Elems {
 		il, ok := el.(*IntLit)
 		if !ok {
 			return nil, fmt.Errorf("set literal elements must be constant integers")
 		}
-		elems[i] = il.Value
+		if seen[il.Value] {
+			continue
+		}
+		seen[il.Value] = true
+		elems = append(elems, il.Value)
 	}
 	return elems, nil
 }
@@ -5845,7 +5856,9 @@ func (g *irGen) emitSet(sl *SetLit) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	n := len(sl.Elems)
+	// The COUNT the global carries is the deduplicated one, not the number of elements the source
+	// spelled — see setLiteralElems (roadmap Gap R.181).
+	n := len(elems)
 	g.setIdx++
 	name := fmt.Sprintf("@.set%d", g.setIdx)
 	var elemsArr strings.Builder
@@ -6157,6 +6170,30 @@ func (g *irGen) stringVal(e Expr) (string, bool) {
 			// of-range trace and exit 2 (roadmap Gap R.131, ADR 0287).
 			if il, ok := n.Args[0].(*IntLit); ok {
 				return string(rune(il.Value)), true
+			}
+		}
+		// A dict's `get` answers a TEXT when the slot it hits holds one. The fold in the call road
+		// returns `g.value(...)` of that StrLit — an interned index — and if nobody has told `print`
+		// the expression is a string, printf's %d prints the index: `print({1: "a"}.get(1))` said `0`
+		// where the reference says `a` (roadmap Gap R.180, the same arrangement ADR 0291 set for the
+		// missing-key answer). Ask the SAME lookup the fold performs, so the two can never disagree.
+		if attr, isAttr := n.Fn.(*Attr); isAttr && attr.Name.Value == "get" && (len(n.Args) == 1 || len(n.Args) == 2) {
+			if dl, isDict := attr.Obj.(*DictLit); isDict {
+				// One lookup, the fold's own — the key scan lives in g.dictFoldSlot and nowhere else.
+				if slot, found := g.dictFoldSlot(dl, n.Args[0]); found {
+					if txt, isTxt := slot.(*StrLit); isTxt {
+						return txt.Value, true
+					}
+					return "", false
+				}
+				// Missed: the fold answers the DEFAULT, so that is what print must render.
+				if len(n.Args) == 2 {
+					if txt, isTxt := n.Args[1].(*StrLit); isTxt {
+						return txt.Value, true
+					}
+					return g.stringVal(n.Args[1])
+				}
+				return "", false
 			}
 		}
 		// constant-fold string methods: `"AbC".upper()`, `.lower()`, `.strip()`.
@@ -15004,6 +15041,28 @@ func (g *irGen) nameIsContainerRecorded(e Expr) bool {
 // the print road ask ONE predicate — the fold may not answer None where the printer still says 0, and the
 // pair is exactly the ADR 0229 rule about text ("is it text" cannot be yes for one road and no for the
 // other). An argument the fold cannot evaluate is not "absent": it is unknown, and the answer is no.
+// dictFoldSlot is the HIT counterpart of dictFoldMisses: the value the `get` fold would return for
+// this key, and whether the key is there at all. It is the same lookup the fold performs, so the
+// print roads can never claim a kind the answer does not have (roadmap Gap R.180).
+func (g *irGen) dictFoldSlot(dl *DictLit, key Expr) (Expr, bool) {
+	if kv, err := g.constIntVal(key); err == nil {
+		for i, k := range dl.Keys {
+			if il, ok := k.(*IntLit); ok && il.Value == kv {
+				return dl.Vals[i], true
+			}
+		}
+		return nil, false
+	}
+	if sv, ok := stringConst(key, g.builtinShadowed); ok {
+		for i, k := range dl.Keys {
+			if sl, ok := k.(*StrLit); ok && sl.Value == sv {
+				return dl.Vals[i], true
+			}
+		}
+	}
+	return nil, false
+}
+
 func (g *irGen) dictFoldMisses(dl *DictLit, key Expr) bool {
 	if kv, err := g.constIntVal(key); err == nil {
 		for _, k := range dl.Keys {
@@ -15046,9 +15105,21 @@ func (g *irGen) isNoneExpr(e Expr) bool {
 		// same fact that let it answer at all — so the print road has to be told, or it renders
 		// the word: `print({"a": 1}.get("z"))` said `0` where the reference says `None` (Gap R.174,
 		// the print-side half of Gap R.171). Asked of the fold's own condition, not of a guess.
-		if attr, isAttr := v.Fn.(*Attr); isAttr && attr.Name.Value == "get" && len(v.Args) == 1 {
+		//
+		// The same lookup answers for the slot itself and for an explicit default: `{"k": None}.get("k")`
+		// hits a slot holding a void and printed `0`, and `{"k": None}.get("zz", None)` defaults to one
+		// (Gap R.180 — the text half of that row is in stringVal beside this).
+		if attr, isAttr := v.Fn.(*Attr); isAttr && attr.Name.Value == "get" && (len(v.Args) == 1 || len(v.Args) == 2) {
 			if dl, ok := attr.Obj.(*DictLit); ok {
-				return g.dictFoldMisses(dl, v.Args[0])
+				if g.dictFoldMisses(dl, v.Args[0]) {
+					if len(v.Args) == 2 {
+						return g.isNoneExpr(v.Args[1])
+					}
+					return true
+				}
+				if slot, found := g.dictFoldSlot(dl, v.Args[0]); found {
+					return g.isNoneExpr(slot)
+				}
 			}
 		}
 	}

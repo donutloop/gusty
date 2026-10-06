@@ -3933,7 +3933,10 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 			if err != nil {
 				return 0, err
 			}
-			return dv, nil
+			// The DEFAULT is an answer of the same kind as a slot: a dict literal boxes its values with
+			// slotVal, so `{1: True}.get(1)` prints True while `{1: True}.get(9, True)` printed the bare
+			// word 1 — the miss took an unboxed path the hit did not (roadmap Gap R.180).
+			return e.slotVal(args[1], dv), nil
 		}
 		// A missing key with no default hands back NONE, not the number 0. `return 0` here was the
 		// bare-word zero, so `print(d.get("z"))` printed `0` where the reference prints `None` -- the
