@@ -118,8 +118,17 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 			"IndexError", "index out of range"},
 		{"negative position out of range below the slot", "xs = []\nxs.append([7, 8])\nprint(xs[0][-9])\n",
 			"IndexError", "index out of range"},
+		// The INTERPRETED leg answers `KeyError: 'z'` -- a KeyError carries the key's repr (Gap
+		// R.189, ADR 0301). The compiled leg still prints the module's constant "key not found",
+		// because its raise is a compile-time string and naming the key needs the key rendered at run
+		// time, which is L11.1's tagged word; the table runs both legs, so the string below is the
+		// compiled one and integration/key_error_names_the_key_test.go pins the asymmetry.
 		{"missing key below the slot", "d = {}\nd[\"a\"] = [1, 2]\nprint(d[\"z\"][0])\n",
-			"KeyError", "key not found"},
+			// The INTERPRETED KeyError carries the key's repr ('z' here); the compiled leg still
+			// prints the module's constant sentence, because its raise is a compile-time string and
+			// naming the key needs the key rendered at run time -- L11.1's tagged word, and why this
+			// row is PARTIAL rather than closed (Gap R.189, ADR 0301).
+			"KeyError", "'z'"},
 		{"character position out of range", "xs = []\nxs.append(\"ab\")\nprint(xs[0][5])\n",
 			"IndexError", "string index out of range"},
 	} {
@@ -139,8 +148,15 @@ func TestRunTimeBuiltNestedSlotReadsTrapLikeCPython(t *testing.T) {
 			if !strings.Contains(out, "Traceback (most recent call last):") {
 				t.Errorf("the compiled program printed no traceback:\n%s", out)
 			}
-			if !strings.Contains(out, tc.message) {
-				t.Errorf("compiled message missing %q:\n%s", tc.message, out)
+			compiledWant := tc.message
+			if tc.class == "KeyError" && strings.HasPrefix(tc.message, "'") {
+				// Only a KeyError whose message is a QUOTED key is the asymmetry: the compiled leg
+				// cannot render a key at run time. A KeyError with its own sentence ("not in set",
+				// "popitem(): dictionary is empty") is a constant both legs already agree on.
+				compiledWant = "key not found"
+			}
+			if !strings.Contains(out, compiledWant) {
+				t.Errorf("compiled message missing %q:\n%s", compiledWant, out)
 			}
 			if strings.Contains(out, "codegen:") {
 				t.Errorf("the compiled backend refused what the oracle traps on:\n%s", out)

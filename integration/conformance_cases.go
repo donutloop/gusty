@@ -463,6 +463,10 @@ func conformanceMerged() []lang.ConformanceCase {
 // conformanceProbes to conformanceStandalone, so it becomes parity surface.
 func conformanceProbes() []lang.ConformanceCase {
 	names := []string{
+		// A container has the methods the reference's containers have: extend, insert, index, remove,
+		// clear, update, pop, setdefault. Neither engine had any of them, so a program that reads like
+		// Python stopped at the first line. Gap R.188 / Gap R.63, ADR 0301, owner L12.11.
+		"probe_a_container_has_its_methods",
 		// An in-place container mutation answers the void. The interpreter used to answer the
 		// container itself -- [1, 2] for `print(xs.append(2))` at exit 0 -- and the compiled leg
 		// emitted a printf with a MISSING operand, which llc rejects: exit 2, the forbidden class.
@@ -692,6 +696,17 @@ var oracleLedger = map[string]oracleDecl{
 	// interpreter answered the CONTAINER at exit 0 and the compiled leg emitted `printf(..., i32 )`
 	// -- an invalid module, exit 2.
 	// Gap R.187 / ADR 0300, owner L12.11 (the compiled half, owed).
+	// A container's missing methods: CPython and the interpreted leg run all sixteen lines -- the
+	// list grows by extend/insert, empties by clear, finds by index; the dict grows by update,
+	// answers by pop and setdefault, empties by clear. The compiled leg spends exit 1 on the first
+	// one, because it folds a container method only over a literal written at the call. Before this
+	// row every line was `no such list method` / `no such dict method` on BOTH engines -- a missing
+	// answer rather than a wrong one, which is why no pin could have caught it.
+	// Gap R.188 / ADR 0301, owner L12.11 (the compiled half, owed).
+	"programs/probe_a_container_has_its_methods": {oracle: lang.OracleDebt,
+		reason: "CPython runs the whole program and the interpreted leg runs it too -- extend, insert, index, remove, clear on the list and update, pop, setdefault, clear on the dict; the compiled leg spends exit 1 on the first of them, because it folds a container method only over a literal written at the call and the slots a variable holds belong to the runtime",
+		ref:    "roadmap Gap R.188 and Gap R.63 (both engines' receiver tables, owner L12.11); docs/adr/0301",
+		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n[0, 1, 2, 3]\n2\n[1, 2, 3]\n[]\n[1, 2, 3]\n{'a': 1, 'b': 2}\n1\n{'b': 2}\n9\n3\n{'b': 2, 'c': 3}\nNone\n{}\n2\n2\n"}, {Backend: "aot", Missing: true, Err: "folds container methods only over a literal"}}},
 	"programs/probe_an_in_place_mutation_answers_none": {oracle: lang.OracleDebt,
 		reason: "CPython prints None for every in-place mutation and the item for `pop`, and the interpreted leg prints the same; the compiled leg prints None for the mutations it lowers and spends exit 1 on `s.remove(1)` over a name, because it folds a container method only over a literal written at the call, where the slots a variable holds belong to the runtime",
 		ref:    "roadmap Gap R.187 (the void half, closed) and L12.11 / Gap R.63 (the receiver table, owed); docs/adr/0300",

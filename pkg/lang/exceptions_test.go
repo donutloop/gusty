@@ -101,7 +101,10 @@ func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
 	}{
 		{"xs = [1]\nprint(xs[5])\n", "IndexError", "index out of range"},
 		{"xs = [1]\nxs[5] = 2\n", "IndexError", "index out of range"},
-		{"d = {1: 2}\nprint(d[9])\n", "KeyError", "key not found"},
+		// The reference's KeyError names the KEY -- `KeyError: 9`, not a prose "key not found" -- so a
+		// program that catches and prints the exception sees the same thing it would in Python. This pin
+		// asserted the old generic sentence and moved rather than being deleted (Gap R.189, ADR 0301).
+		{"d = {1: 2}\nprint(d[9])\n", "KeyError", "9"},
 		{"s = \"abc\"\ns[0] = \"z\"\n", "TypeError", "strings are immutable"},
 		{"s = {1, 2}\ns[0] = 1\n", "TypeError", "cannot assign to a set element"},
 		{"xs = [1]\nprint(xs[0])\n", "", ""}, // control: this one succeeds

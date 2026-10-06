@@ -1230,6 +1230,43 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### A list and a dict have their methods
+
+The container methods a Python reader writes without thinking exist, and answer what the reference
+answers (`Gap R.188` / `Gap R.63`, ADR 0301). Until this cycle all eight answered `no such list method`
+/
+`no such dict method` on **both** engines:
+
+```
+xs = [1]
+xs.extend([2, 3])     # xs is [1, 2, 3]     accepts a list or a set
+xs.insert(0, 0)       # xs is [0, 1, 2, 3]  an index past either end CLAMPS, it does not fail
+print(xs.index(2))   # 2                   found by VALUE, so [1].index(True) is 0
+xs.remove(0)          # deletes the first match
+xs.clear()            # xs is []
+
+d = {"a": 1}
+d.update({"b": 2})    # {'a': 1, 'b': 2}    an existing key keeps its position, its value is replaced
+print(d.pop("a"))     # 1                   an EXPRESSION: answers with what it removed
+print(d.pop("z", 9)) # 9                   the second argument makes absence a default, not an error
+print(d.setdefault("c", 3))  # 3            AND WRITES it in -- what makes d.setdefault(k, []).append(v) work
+d.clear()             # {}
+```
+
+The methods that **mutate and return nothing** (`extend`, `insert`, `remove`, `clear`, `update`) answer
+`None` like every other in-place mutator; `pop` and `setdefault` are expressions. `list.index` raises
+`ValueError: 5 is not in list` rather than answering `-1` — a `-1` is a legal index, and a program would
+quietly read from the end of the list. `list.remove` raises `ValueError: list.remove(x): x not in list`,
+`dict.pop` raises `KeyError: 'z'` (a `KeyError` carries the **key's repr**: `Gap R.189`).
+
+`d.popitem()` **exists and refuses**, naming the reason: it answers a pair, and this language has no
+tuple value until `L11.3` — answering a two-element list would print `[1, 2]` where the reference prints
+`(1, 2)`. A method that exists is not obliged to answer.
+
+The compiled leg folds a container method only over a literal written at the call, so these over a
+*variable* still refuse at exit 1 — owed to `L12.11`, whose receiver table is the fix (and, per ADR
+0298's rule, not matched by making the interpreter refuse a correct answer).
+
 ### A method that changes a container in place answers None
 
 `append`, `extend`, `insert`, `sort`, `reverse`, `add`, `discard`, `remove`, `update` and `clear` change

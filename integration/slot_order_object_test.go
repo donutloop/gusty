@@ -170,8 +170,9 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 			oracle: "IndexError: list index out of range",
 		},
 		{
-			// The class is the agreement; the wording is gusty's own — CPython quotes the key, the same
-			// recorded wording debt as the out-of-range row above (roadmap Gap R.90).
+			// The CLASS was always the agreement; the wording was gusty's own until ADR 0301 closed the
+			// interpreted half -- a KeyError carries the key's repr (roadmap Gap R.189). The compiled leg
+			// still emits the constant, which is why this row is PARTIAL rather than deleted.
 			name:   "a_missing_key_raises_its_own_key_error",
 			src:    "d = {}\nd[\"a\"] = [1, 2]\nprint(1 if d[\"z\"][0] > 1 else 0)\n",
 			msg:    "KeyError: key not found",
@@ -196,8 +197,16 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 				if strings.Contains(out, "codegen:") {
 					t.Fatalf("%s refused a program the oracle traps on: %s", engine, out)
 				}
-				if !strings.Contains(out, tc.msg) {
-					t.Errorf("%s did not raise %q:\n%s", engine, tc.msg, out)
+				// A KeyError carries the key's REPR, which the INTERPRETED leg now prints from the live
+				// key; the compiled leg's raise is a compile-time constant and still says "key not found"
+				// until the tagged word lets it render a key at run time (Gap R.189 PARTIAL, ADR 0301).
+				// The row's own `oracle` field spells CPython's sentence, so nothing is guessed here.
+				want := tc.msg
+				if engine == "--interp" && tc.oracle != "" && strings.HasPrefix(tc.oracle, "KeyError: '") {
+					want = tc.oracle
+				}
+				if !strings.Contains(out, want) {
+					t.Errorf("%s did not raise %q:\n%s", engine, want, out)
 				}
 				if _, code := cliRunCode(t, engine, path); code != 3 {
 					t.Errorf("%s exited %d, want the trap class 3 (ADR 0166):\n%s", engine, code, out)

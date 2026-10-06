@@ -8201,3 +8201,68 @@ own row and owner — bundling them here would have made one commit do two jobs.
 **Measurement.** HEAD-baseline build (`git worktree` at `72c170c`): `append`, `add` and `discard` all spend
 **exit 2** with an `llc` operand error, and 11 unit assertions fail on the new tables; green here. Matrix
 now 166 rows / 128 pass / 38 skipped / 32 debt / 0 fail / 0 drift.
+
+### Gap R.188 — a container's mutator and lookup methods do not exist on either engine (interpreter half CLOSED by ADR 0301, owner L12.11)
+
+```
+program                CPython                 BOTH engines before
+xs.extend([2,3])       [1, 2, 3]               no such list method
+xs.insert(0,9)         [9, 1]                  no such list method
+xs.index(2)            2                       no such list method
+xs.remove(1) / clear() [2] / []                no such list method
+d.update(o)            {'a':1, 'b':2}          no such dict method
+d.pop(k)               the value               no such dict method
+d.setdefault(k,v)      v, and WRITES it        no such dict method
+d.clear()              {}                      no such dict method
+```
+
+**A missing answer is the class a pin cannot catch.** There was no output to compare, no exit-0 wrong
+number, no parity mismatch — both engines refused identically, which parity reads as agreement. And the
+refusal was the wrong shape twice over: exit 1 on a program the reference runs to completion, with a
+sentence that blamed the program for a feature the language lacked.
+
+**`d.setdefault(k, []).append(v)` is the argument.** Not an exotic corner — how anybody groups rows. A
+language that calls itself Python-like and cannot do that has a surface hole, however good its IR is.
+
+**Four rules the naive version gets wrong, each now pinned:**
+- `insert` **clamps**. `xs.insert(9, 9)` on one element appends; `xs.insert(-9, 0)` prepends. Rejecting an
+  out-of-range index looks more careful and breaks building a list by repeated `insert(n, ...)`.
+- `index` finds by **value equality**, so `[1].index(True)` is `0` — it must agree with `in`, with `count`,
+  and with the dict-key rule ADR 0234 settled. Roads that ask "same element?" separately are where a bool
+  stops being a number for some operations and not others.
+- `index` raises rather than answering `-1`. `-1` is a *legal index*: a program would silently read from
+  the end of the list. That is `str.find`'s contract, not `list.index`'s.
+- A dict is **two parallel slices**. A `pop` that shrinks one and not the other misaligns every later key
+  against the wrong value, and the symptom appears a container later. `dictPut` was already the single
+  write door under an append-counting guard; `dictRemove` sits beside it under the same guard, so the
+  invariant has one owner rather than two that drift.
+
+**`popitem` refuses, and that is the correct answer for a method that exists.** It answers a pair; there is
+no tuple value until L11.3. Returning a two-element list would make `print` show `[1, 2]` where the
+reference shows `(1, 2)` — a wrong answer in a container's clothing, and the kind that gets "fixed" back
+into a defect by whoever notices. Existence does not oblige answering.
+
+**The raises are transcribed, not composed** (ADR 0215): `ValueError: 5 is not in list`,
+`ValueError: list.remove(x): x not in list`, `KeyError: 'z'`, `KeyError: popitem(): dictionary is empty`.
+
+### Gap R.189 — a `KeyError` reported the machine, not the program (interpreted leg CLOSED by ADR 0301, compiled leg owed to L11.1)
+
+```
+d = {}; d["a"]        CPython KeyError: 'a'    --interp before KeyError: key not found
+d = {1:2}; d[9]       CPython KeyError: 9      --interp before KeyError: key not found
+```
+
+A `KeyError`'s argument **is the key**, so its message is the key's repr — quoted for a text (`'z'`, via
+the module's `reprNested`, the same renderer a container element uses) and bare for a number (`9`).
+`key not found` was the implementation talking about its own lookup, and `except KeyError as e: print(e)`
+is a real program that can tell the difference.
+
+**Why PARTIAL and not closed:** the compiled leg's raise is a **compile-time constant string** in the
+module (`raiseTo(..., "KeyError", "key not found", ...)`), so naming the key there means rendering a key at
+run time — the tagged word (L11.1). Two legs that genuinely differ are checked against their own truth, and
+three pre-existing pins that had asserted the generic prose moved to the reference's form rather than being
+deleted. The row states the compiled half as OPEN so nobody reads the interpreter's fix as the feature
+being done.
+
+**Measurement.** HEAD-baseline build (`git worktree` at `6a40431`): 14 assertions fail on the new tables;
+green here. Matrix now 167 rows / 128 pass / 39 skipped / 33 debt / 0 fail / 0 drift.

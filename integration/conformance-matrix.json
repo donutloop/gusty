@@ -3223,6 +3223,48 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_container_has_its_methods",
+        "name": "probe_a_container_has_its_methods.gy",
+        "source": "# A container has the methods the reference's containers have.\n# Each line is checked against CPython 3.12.3 by the conformance matrix.\n# (roadmap Gap R.188 / Gap R.63, ADR 0301; the KeyError sentence is Gap R.189)\n\nxs = [1]\nxs.extend([2, 3])            # the reference has it; neither engine did\nprint(xs)                    # [1, 2, 3]\nxs.insert(0, 0)              # an index past either end clamps, it does not fail\nprint(xs)                    # [0, 1, 2, 3]\nprint(xs.index(2))           # 2       found by VALUE, so [1].index(True) is 0\nxs.remove(0)                 # deletes the first match, answers the void\nprint(xs)                    # [1, 2, 3]\nxs.clear()                   # empties in place\nprint(xs)                    # []\nxs.extend([3, 1, 2])\nxs.sort()\nprint(xs)                    # [1, 2, 3]\n\nd = {\"a\": 1}\nd.update({\"b\": 2})           # writes every pair of another dict\nprint(d)                     # {'a': 1, 'b': 2}\nprint(d.pop(\"a\"))            # 1       an expression: answers WITH what it removed\nprint(d)                     # {'b': 2}\nprint(d.pop(\"zz\", 9))        # 9       the two-argument form makes absence a default, not an error\nprint(d.setdefault(\"c\", 3))  # 3       and WRITES the default in\nprint(d)                     # {'b': 2, 'c': 3}\nprint(d.get(\"nothere\"))      # None    ADR 0291's void\nd.clear()\nprint(d)                     # {}\n\nprint([1, 2, 1].count(1))    # 2\nprint(len({\"a\": 1, \"b\": 2})) # 2\n",
+        "shared": false,
+        "oracle": "debt",
+        "reason": "CPython runs the whole program and the interpreted leg runs it too -- extend, insert, index, remove, clear on the list and update, pop, setdefault, clear on the dict; the compiled leg spends exit 1 on the first of them, because it folds a container method only over a literal written at the call and the slots a variable holds belong to the runtime",
+        "ref": "roadmap Gap R.188 and Gap R.63 (both engines' receiver tables, owner L12.11); docs/adr/0301",
+        "pins": [
+          {
+            "backend": "interpreter",
+            "stdout": "[1, 2, 3]\n[0, 1, 2, 3]\n2\n[1, 2, 3]\n[]\n[1, 2, 3]\n{'a': 1, 'b': 2}\n1\n{'b': 2}\n9\n3\n{'b': 2, 'c': 3}\nNone\n{}\n2\n2\n"
+          },
+          {
+            "backend": "aot",
+            "error": "folds container methods only over a literal",
+            "missing": true
+          }
+        ]
+      },
+      "interp_ok": true,
+      "interp_stdout": "[1, 2, 3]\n[0, 1, 2, 3]\n2\n[1, 2, 3]\n[]\n[1, 2, 3]\n{'a': 1, 'b': 2}\n1\n{'b': 2}\n9\n3\n{'b': 2, 'c': 3}\nNone\n{}\n2\n2\n",
+      "aot_ok": false,
+      "aot_stdout": "",
+      "aot_error": "extend() on \"xs\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"xs\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)",
+      "parity": false,
+      "python_ok": true,
+      "python_stdout": "[1, 2, 3]\n[0, 1, 2, 3]\n2\n[1, 2, 3]\n[]\n[1, 2, 3]\n{'a': 1, 'b': 2}\n1\n{'b': 2}\n9\n3\n{'b': 2, 'c': 3}\nNone\n{}\n2\n2\n",
+      "interp_matches_python": true,
+      "aot_matches_python": false,
+      "oracle": "debt",
+      "oracle_declared": "debt",
+      "oracle_reason": "CPython runs the whole program and the interpreted leg runs it too -- extend, insert, index, remove, clear on the list and update, pop, setdefault, clear on the dict; the compiled leg spends exit 1 on the first of them, because it folds a container method only over a literal written at the call and the slots a variable holds belong to the runtime",
+      "oracle_ref": "roadmap Gap R.188 and Gap R.63 (both engines' receiver tables, owner L12.11); docs/adr/0301",
+      "oracle_rules": [
+        "set-order"
+      ],
+      "oracle_notes": [
+        "compiled leg failed: extend() on \"xs\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"xs\" is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_an_in_place_mutation_answers_none",
         "name": "probe_an_in_place_mutation_answers_none.gy",
         "source": "# An in-place container mutation answers the void, on both engines.\n# Each line is checked against CPython 3.12.3 by the conformance matrix.\n# (roadmap Gap R.187, ADR 0300)\n\nxs = [1]\nprint(xs.append(2))          # None    -- was [1, 2] on the interpreter and exit 2 on the compiled leg\nprint(xs)                    # [1, 2]  -- and the mutation itself still happened\nprint(xs.sort())             # None    -- already right before this row; kept so the family is one table\nprint(xs.reverse())          # None\nprint(xs.pop())              # 1       -- pop is NOT a void mutator: it answers WITH the item it took\n\ns = {1}\nprint(s.add(2))              # None    -- was {1, 2}\nprint(s)                     # {1, 2}\nprint(s.discard(2))          # None    -- was set(); discard is silent about absence too\nprint(s)                     # {1, 2}\nprint(s.remove(1))           # None    -- was {2}\nprint(s)                     # {2}\n\nd = {\"a\": 1}\nprint(d.get(\"zzz\"))          # None    -- ADR 0291's void, the sibling rule this row extends\n\nys = [5]\nys.append(6)\nprint(ys)                    # [5, 6]  -- the statement form, which was never the problem\n\nzs = []\nzs.append(1)\nzs.append(2)\nprint(zs)                    # [1, 2]\n",
@@ -3956,7 +3998,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1700431936/138/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2573380089/138/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3970,7 +4012,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1700431936/138/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2573380089/138/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4811,12 +4853,12 @@
       ]
     }
   ],
-  "rows": 166,
-  "skipped": 38,
+  "rows": 167,
+  "skipped": 39,
   "pass": 128,
   "fail": 0,
   "oracle_match": 113,
-  "oracle_debt": 32,
+  "oracle_debt": 33,
   "oracle_not_applicable": 21,
   "oracle_drift": 0
 }

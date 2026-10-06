@@ -1991,7 +1991,11 @@ func (e *Evaluator) eval(x Expr) (int64, error) {
 					return o.dvals[i], nil
 				}
 			}
-			return 0, exnError("KeyError", "key not found")
+			// The reference's KeyError carries the REPR OF THE KEY, not a prose description of the
+			// failure: `d["a"]` on an empty dict is `KeyError: 'a'`, and a program that catches KeyError and
+			// prints the exception sees the difference. "key not found" was this implementation talking about
+			// the machine rather than the program (ADR 0215's rule for a catchable raise).
+			return 0, exnError("KeyError", e.reprNested(idx))
 		case "set":
 			// Subscripting a set is a documented gusty extension, not Python (docs/language.md § Dicts &
 			// sets, ledger rows `programs/data_b` and `programs/features_b` are `oracle:
@@ -3741,6 +3745,129 @@ func (e *Evaluator) callListMethod(recv int64, name string, args []Expr) (int64,
 			return 0, err
 		}
 		return e.noneVal, nil
+	case "extend":
+		// l.extend(iterable) appends every element of its argument and answers the void, like every
+		// other in-place mutator (Gap R.187's table). It did not exist at all on either engine, so a
+		// program that reads like Python stopped at the first line (Gap R.188 / Gap R.63, ADR 0301).
+		if len(args) != 1 {
+			return 0, exnError("TypeError", "extend() takes exactly one argument")
+		}
+		v, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		src, ok := e.heap[v]
+		if !ok || (src.kind != "list" && src.kind != "set") {
+			// The reference unpacks any iterable, including a text; answering "a text is not iterable"
+			// here would be this language refusing a program it can otherwise run, so the sentence
+			// names what the language lacks rather than what Python has (Gap R.188, ADR 0301).
+			return 0, exnError("TypeError", "extend() argument must be a list or a set")
+		}
+		for _, el := range src.elems {
+			o.elems = append(o.elems, e.slotVal(args[0], el))
+		}
+		return e.noneVal, nil
+	case "insert":
+		// l.insert(i, x) puts x before index i, and — the part a naive index check gets wrong — an
+		// index past either end is NOT an error: it clamps, which is what makes building a list by
+		// repeated insert(n, ...) work.
+		if len(args) != 2 {
+			return 0, exnError("TypeError", "insert() takes exactly 2 arguments")
+		}
+		iv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		if o2, ok := e.heap[iv]; ok && o2.kind == "float" {
+			return 0, exnError("TypeError", "insert() index must be an integer")
+		}
+		i := iv
+		n := int64(len(o.elems))
+		if i < 0 {
+			i += n
+		}
+		if i < 0 {
+			i = 0
+		}
+		if i > n {
+			i = n
+		}
+		xv, err := e.eval(args[1])
+		if err != nil {
+			return 0, err
+		}
+		xv = e.slotVal(args[1], xv)
+		o.elems = append(o.elems, 0)
+		copy(o.elems[i+1:], o.elems[i:])
+		o.elems[i] = xv
+		return e.noneVal, nil
+	case "index":
+		// l.index(value) finds the first match by VALUE equality — so [1].index(True) is 0, the same
+		// identity the `in` road already uses — and raises the reference's own ValueError sentence when
+		// nothing matches rather than answering -1, which would be a value a program could use.
+		if len(args) < 1 || len(args) > 3 {
+			return 0, exnError("TypeError", "index() takes 1 to 3 arguments")
+		}
+		v, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		lo := int64(0)
+		hi := int64(len(o.elems))
+		if len(args) >= 2 {
+			w, err := e.eval(args[1])
+			if err != nil {
+				return 0, err
+			}
+			lo = w
+		}
+		if len(args) == 3 {
+			w, err := e.eval(args[2])
+			if err != nil {
+				return 0, err
+			}
+			hi = w
+		}
+		if lo < 0 {
+			lo += int64(len(o.elems))
+		}
+		if hi < 0 {
+			hi += int64(len(o.elems))
+		}
+		if lo < 0 {
+			lo = 0
+		}
+		if hi > int64(len(o.elems)) {
+			hi = int64(len(o.elems))
+		}
+		for i := lo; i < hi; i++ {
+			if e.eqVal(o.elems[i], v) {
+				return i, nil
+			}
+		}
+		// The reference's sentence, character for character, because a caught ValueError is compared
+		// by programs and by the conformance ledger (ADR 0215).
+		return 0, exnError("ValueError", fmt.Sprintf("%s is not in list", e.Repr(v)))
+	case "remove":
+		// l.remove(x) deletes the first match and answers the void; the difference from set.remove is
+		// the sentence, not the behaviour.
+		if len(args) != 1 {
+			return 0, exnError("TypeError", "remove() takes exactly one argument")
+		}
+		v, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		for i, el := range o.elems {
+			if e.eqVal(el, v) {
+				o.elems = append(o.elems[:i], o.elems[i+1:]...)
+				return e.noneVal, nil
+			}
+		}
+		return 0, exnError("ValueError", "list.remove(x): x not in list")
+	case "clear":
+		o.elems = nil
+		return e.noneVal, nil
 	}
 	return 0, &EvalError{Msg: "no such list method " + name}
 }
@@ -3935,6 +4062,17 @@ func (e *Evaluator) dictPut(o *obj, key, val int64) {
 	o.dvals = append(o.dvals, val)
 }
 
+// dictRemove takes the entry at index i out of BOTH parallel slices at once. A dict is two slices
+// that must stay the same length, so a removal that touches only one silently misaligns every later
+// key against the wrong value -- which is why the same door that owns the write owns the erase
+// (the invariant dict_key_rule_test.go guards; Gap R.188, ADR 0301).
+func (e *Evaluator) dictRemove(o *obj, i int) {
+	last := len(o.dvals) - 1
+	copy(o.dvals[i:], o.dvals[i+1:])
+	o.dvals = o.dvals[:last]
+	o.elems = append(o.elems[:i], o.elems[i+1:]...)
+}
+
 // lessVal reports whether boxed value a is less than b (ints by value, strings by content).
 func (e *Evaluator) lessVal(a, b int64) bool {
 	// False sorts as 0 and True as 1 — the order CPython's sort gives a list of bools — and the
@@ -4016,6 +4154,96 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 		// bare-word zero, so `print(d.get("z"))` printed `0` where the reference prints `None` -- the
 		// same class as a void flowing out of a function (Gap R.171) and the reason voids need a
 		// representation rather than a word (roadmap L11.1, Gap R.174, ADR 0291).
+		return e.noneVal, nil
+	case "update":
+		// d.update(other) writes every pair of another dict into this one, keeping insertion order for
+		// the keys already here and appending the new ones -- the order `print(d)` shows, so the mutator
+		// and the renderer cannot disagree about what happened (Gap R.188 / Gap R.63, ADR 0301).
+		if len(args) != 1 {
+			return 0, exnError("TypeError", "update() takes exactly one argument")
+		}
+		v, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		src, ok := e.heap[v]
+		if !ok || src.kind != "dict" {
+			return 0, exnError("TypeError", "update() argument must be a dict")
+		}
+		for i, k := range src.elems {
+			e.dictPut(o, k, src.dvals[i])
+		}
+		return e.noneVal, nil
+	case "pop":
+		// d.pop(k) removes and ANSWERS with the value -- an expression, not a void mutator -- and
+		// raises the reference's KeyError when the key is absent. d.pop(k, default) answers the default
+		// instead; the two forms differ in whether absence is an error, which is the whole reason both
+		// exist, so they are one road with a branch rather than two methods.
+		if len(args) != 1 && len(args) != 2 {
+			return 0, exnError("TypeError", "pop expected at most 2 arguments")
+		}
+		kv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		for i, k := range o.elems {
+			if e.dictKeyEq(k, kv) {
+				val := o.dvals[i]
+				e.dictRemove(o, i)
+				return val, nil
+			}
+		}
+		if len(args) == 2 {
+			dv, err := e.eval(args[1])
+			if err != nil {
+				return 0, err
+			}
+			return e.slotVal(args[1], dv), nil
+		}
+		return 0, exnError("KeyError", e.reprNested(kv))
+	case "setdefault":
+		// d.setdefault(k[, default]) answers the slot if there is one and WRITES the default in when
+		// there is not -- the write is the difference from get(), and it is what makes the grouping
+		// idiom (`d.setdefault(k, []).append(v)`) terminate at all.
+		if len(args) != 1 && len(args) != 2 {
+			return 0, exnError("TypeError", "setdefault() takes 1 or 2 arguments")
+		}
+		kv, err := e.eval(args[0])
+		if err != nil {
+			return 0, err
+		}
+		for i, k := range o.elems {
+			if e.dictKeyEq(k, kv) {
+				return o.dvals[i], nil
+			}
+		}
+		dv := int64(0)
+		if len(args) == 2 {
+			if dv, err = e.eval(args[1]); err != nil {
+				return 0, err
+			}
+			dv = e.slotVal(args[1], dv)
+		} else {
+			dv = e.noneVal
+		}
+		e.dictPut(o, kv, dv)
+		return dv, nil
+	case "popitem":
+		// d.popitem() removes and answers the LAST pair -- LIFO, not arbitrary, since 3.7 -- and the
+		// answer is a PAIR. This language has no tuple value yet (L11.3), so the pair is answerable
+		// only where a pair can travel; until then the method exists and refuses honestly rather than
+		// answering a list-shaped lie that `print` would render as `[k, v]` instead of `(k, v)`.
+		if len(args) != 0 {
+			return 0, exnError("TypeError", "popitem() takes no arguments")
+		}
+		if len(o.elems) == 0 {
+			return 0, exnError("KeyError", "popitem(): dictionary is empty")
+		}
+		return 0, exnError("NotImplementedError",
+			"popitem() answers a pair, and this language has no tuple value yet (roadmap L11.3)")
+	case "clear":
+		o.elems = nil
+		o.dvals = nil
 		return e.noneVal, nil
 	}
 	return 0, &EvalError{Msg: "no such dict method " + name}

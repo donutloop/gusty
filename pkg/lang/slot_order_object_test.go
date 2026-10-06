@@ -191,7 +191,11 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 		{
 			"a missing key still raises its own KeyError",
 			"d = {}\nd[\"a\"] = [1, 2]\nprint(1 if d[\"z\"][0] > 1 else 0)\n",
-			"KeyError", "key not found",
+			// The INTERPRETED KeyError carries the key's repr ('z' here); the compiled leg still
+			// prints the module's constant sentence, because its raise is a compile-time string and
+			// naming the key needs the key rendered at run time -- L11.1's tagged word, and why this
+			// row is PARTIAL rather than closed (Gap R.189, ADR 0301).
+			"KeyError", "'z'",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -210,8 +214,15 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 			if !strings.Contains(out, "Traceback (most recent call last):") {
 				t.Errorf("the compiled program printed no traceback:\n%s", out)
 			}
-			if !strings.Contains(out, tc.message) {
-				t.Errorf("compiled message missing %q:\n%s", tc.message, out)
+			compiledWant := tc.message
+			if tc.class == "KeyError" && strings.HasPrefix(tc.message, "'") {
+				// Only a KeyError whose message is a QUOTED key is the asymmetry: the compiled leg
+				// cannot render a key at run time. A KeyError with its own sentence ("not in set",
+				// "popitem(): dictionary is empty") is a constant both legs already agree on.
+				compiledWant = "key not found"
+			}
+			if !strings.Contains(out, compiledWant) {
+				t.Errorf("compiled message missing %q:\n%s", compiledWant, out)
 			}
 		})
 	}

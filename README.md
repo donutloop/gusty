@@ -563,6 +563,20 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A list and a dict have **the methods their reference's containers have** (ADR 0301, closing `Gap R.188`
+and advancing `Gap R.63` / `L12.11`). `xs.extend([2, 3])`, `xs.insert(0, 9)`, `xs.index(2)`,
+`xs.remove(x)`, `xs.clear()`, `d.update(o)`, `d.pop(k)`, `d.setdefault(k, v)` and `d.clear()` all answered
+`no such list method` / `no such dict method` on **both** engines. That is a *missing* answer rather than
+a wrong one — the class no pin can catch, because there was no output to compare — and the exit-1 sentence
+blamed the program for a feature the language lacked. `d.setdefault(k, []).append(v)`, which is how
+anybody groups rows, now works; `index` finds by value equality (so `[1].index(True)` is `0`) and raises
+`ValueError: 5 is not in list` rather than answering `-1`, which is a legal index a program would obey
+into reading from the end of the list; `insert` clamps rather than validating. `d.popitem()` **exists and
+refuses**, naming why: it answers a pair, and there is no tuple value until `L11.3` — answering a list
+would print `[1, 2]` where the reference prints `(1, 2)`. Along the way a `KeyError` learned to name the
+**key** (`KeyError: 'a'`) on the leg that can: the compiled leg's raise is a module constant, and that
+half is filed as `Gap R.189` PARTIAL rather than left looking closed.
+
 A method that **changes a container in place answers the void** (ADR 0300, closing `Gap R.187`).
 `print(xs.append(2))` printed `[1, 2]` on the interpreter at **exit 0** and made the compiled leg emit
 `printf(i8* @.fmt1, i32 )` — a call with a *missing operand*, which `llc` rejects — so the same one-line

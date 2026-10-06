@@ -1,0 +1,32 @@
+# A container has the methods the reference's containers have.
+# Each line is checked against CPython 3.12.3 by the conformance matrix.
+# (roadmap Gap R.188 / Gap R.63, ADR 0301; the KeyError sentence is Gap R.189)
+
+xs = [1]
+xs.extend([2, 3])            # the reference has it; neither engine did
+print(xs)                    # [1, 2, 3]
+xs.insert(0, 0)              # an index past either end clamps, it does not fail
+print(xs)                    # [0, 1, 2, 3]
+print(xs.index(2))           # 2       found by VALUE, so [1].index(True) is 0
+xs.remove(0)                 # deletes the first match, answers the void
+print(xs)                    # [1, 2, 3]
+xs.clear()                   # empties in place
+print(xs)                    # []
+xs.extend([3, 1, 2])
+xs.sort()
+print(xs)                    # [1, 2, 3]
+
+d = {"a": 1}
+d.update({"b": 2})           # writes every pair of another dict
+print(d)                     # {'a': 1, 'b': 2}
+print(d.pop("a"))            # 1       an expression: answers WITH what it removed
+print(d)                     # {'b': 2}
+print(d.pop("zz", 9))        # 9       the two-argument form makes absence a default, not an error
+print(d.setdefault("c", 3))  # 3       and WRITES the default in
+print(d)                     # {'b': 2, 'c': 3}
+print(d.get("nothere"))      # None    ADR 0291's void
+d.clear()
+print(d)                     # {}
+
+print([1, 2, 1].count(1))    # 2
+print(len({"a": 1, "b": 2})) # 2

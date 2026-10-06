@@ -8211,3 +8211,40 @@ helper-signature slip (`cpythonPlainOut` returns `(string, bool)`, not an exit c
 0 fail, 0 drift. Bundling discipline held: the *missing* compiled mutators (`extend`, `insert`, `update`,
 `clear`, dict `pop`, `popitem`) are a reference-runs/we-refuse gap and got named as L12.11's row rather than
 smuggled into a void-answer commit.
+
+## Cycle: a container has the methods its reference's containers have (Gap R.188 + Gap R.189; ADR 0301)
+
+**A missing answer is invisible to every check that works.** Eight methods — `extend`, `insert`, `index`,
+`remove`, `clear`, `update`, `pop`, `setdefault` — were absent on BOTH engines. Parity saw agreement. No
+pin could have caught it: there was no output to compare. The exit-1 sentence `no such list method extend`
+also blamed the author for a feature the language never had. Sweeping "programs a Python reader writes
+without thinking" is the only detector, and `d.setdefault(k, []).append(v)` (how anybody groups rows) is
+the test case that settles whether the surface is real.
+
+**Four rules the naive implementation gets wrong, each now pinned:**
+- `insert` **clamps**; it does not validate. Raising on `xs.insert(9, 9)` looks careful and breaks a real
+  idiom.
+- `index` finds by **value equality** — `[1].index(True)` is `0` — because it has to agree with `in` and
+  `count`. Every road that asks "same element?" separately is a place a bool stops being a number.
+- `index` **raises** rather than answering `-1`: `-1` is a legal index, so a program would silently read
+  from the end of the list. That's `str.find`'s contract, not `list.index`'s.
+- A dict is **two parallel slices**. A `pop` shrinking one only misaligns every later key, with the symptom
+  surfacing a container later. `dictPut` already had an append-counting guard; `dictRemove` went beside it
+  under the same guard rather than becoming a second hand-written edit.
+
+**A method may exist and refuse.** `popitem` answers a pair; there is no tuple value until L11.3. Returning
+a list would print `[1, 2]` where the reference prints `(1, 2)` — a wrong answer in a container's clothing,
+and the kind a later reader "fixes" back into a defect. Existence does not oblige answering.
+
+**A `KeyError`'s message is the key's repr, and one leg genuinely can't do it.** `KeyError: 'a'` (quoted —
+I reused `reprNested`, the same renderer a container element uses, so quoting rules stay in one place). The
+compiled leg's raise is a module constant, so that half became `Gap R.189` **PARTIAL** with each leg checked
+against its own truth — a row that hides a half-done fix is worse than one that admits it. Three pins that
+had asserted `key not found` moved to the reference's wording; none deleted.
+
+**Process notes.** My first pass edited two *different* test tables that share a struct shape and I
+"fixed" the wrong one twice — reading the actual row (it already had an `oracle` field carrying CPython's
+sentence) beat guessing. One regex table-rewrite corrupted a test file; I `git checkout`ed it and made a
+one-line surgical change instead. Two heredoc escaping failures moved the row-authoring into real `.py`
+files, which is where ledger rows with quotes inside them belong. Baseline (`6a40431`): 14 failing
+assertions on the new tables, 0 here. Matrix 167/128/39, 33 debt, 0 fail, 0 drift.

@@ -973,6 +973,17 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a container has the methods the reference's containers have**: `--interp --file` on
+  `xs.extend([2,3])`, `xs.insert(0,9)`, `xs.index(2)`, `xs.remove(x)`, `xs.clear()`, `d.update(o)`,
+  `d.pop(k)`, `d.setdefault(k, v)` and `d.clear()` exits 0 with the reference's answer (`Gap R.188` /
+  `Gap R.63` / ADR 0301). All eight answered `no such list method` / `no such dict method` on **both**
+  engines — a **missing** answer rather than a wrong one, which is the class a pin cannot catch: there was
+  no output to compare, and the exit-1 sentence blamed the program for a feature the language lacked.
+  `d.setdefault(k, []).append(v)` — how anybody groups rows — now works. `d.popitem()` **exists and
+  refuses** naming the reason: it answers a pair, and there is no tuple value until `L11.3`; answering a
+  list would print `[1, 2]` for what the reference renders `(1, 2)`. Raises carry the reference's own
+  sentences (`ValueError: 5 is not in list`, `KeyError: 'z'`). The compiled leg still refuses these over
+  a *variable* at exit 1 — owed to `L12.11`.
 - **an in-place container mutation answers the void**: `--interp --file` on `print(xs.append(2))` exits 0
   with `None`, and so does `--aot` (`Gap R.187` / ADR 0300). Before this the interpreter answered the
   container — `[1, 2]`, `{1, 2}`, `set()` — at **exit 0**, `sum([1,2,3].append(4))` answered **10** where
