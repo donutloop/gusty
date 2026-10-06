@@ -2490,6 +2490,26 @@
     },
     {
       "case": {
+        "id": "programs/probe_fstring_field_asks_the_tag",
+        "name": "probe_fstring_field_asks_the_tag.gy",
+        "source": "# probe_fstring_field_asks_the_tag.gy — an interpolated field asks the tag.\n#\n# print(n), str(n), repr(n) and the REPL prompt all ask the module's ONE tag-reading printer for a value whose\n# kind the run time decides (ADR 0303), and a container element does too (ADR 0306). This program pins the\n# position that stopped being a refusal most recently: an f-string field. The print road builds ONE printf\n# format string, and every arm of its field chain asked the field for a single word — so a name the pair road\n# bound had nowhere to put its tag and the field refused, while a lift would have printed a text field's\n# interned index or a float field's box handle, at exit 0 (roadmap L11.1, Gap R.146's rendering positions;\n# ADR 0307, ADR 0303's one door, ADR 0265's per-kind arithmetic door).\n#\n# The kinds below are chosen so a missing tag cannot hide: the text lines would print `0` and the float line\n# a heap handle if the field ever read the payload alone. The `!r` lines are the conversion the road used to\n# throw away — `f\"{x!r}\"` printed NOTHING at exit 0 for any field that was not a literal, and\n# `print(f\"{'a'!r}\")` spent the contract's forbidden exit 2 (Gap R.192).\nxs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n}\")\nprint(f\"[{n}]\")\nprint(f\"{n}-{n}\")\nprint(f\"{n - 1}\")\nwords = []\nwords.append(\"a\")\nw = words[0]\nprint(f\"{w}\")\nprint(f\"x{w}y\")\nhalves = []\nhalves.append(2.5)\nh = halves[0]\nprint(f\"{h}\")\nnothing = []\nnothing.append(None)\nz = nothing[0]\nprint(f\"{z}\")\nflags = []\nflags.append(True)\nf0 = flags[0]\nprint(f\"{f0}\")\nnested = []\nnested.append([1, 2])\nc = nested[0]\nprint(f\"{c}\")\nprint(f\"{w!r}\")\nname = \"hi\"\nprint(f\"{name!r}\")\nprint(f\"[{name!r}]\")\nprint(f\"{name!s}\")\nprint(f\"{'a'!r}\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "7\n[7]\n7-7\n6\na\nxay\n2.5\nNone\nTrue\n[1, 2]\n'a'\n'hi'\n['hi']\nhi\n'a'\n",
+      "python_ok": true,
+      "python_stdout": "7\n[7]\n7-7\n6\na\nxay\n2.5\nNone\nTrue\n[1, 2]\n'a'\n'hi'\n['hi']\nhi\n'a'\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_in_a_container",
         "name": "probe_bool_in_a_container.gy",
         "source": "# What CPython prints for every shape here (python3, 3.12):\n#\n#   [True, 1]\n#   [True]\n#   [False]\n#   {'k': True}\n#   {True}\n#   [1, 2, True]\n#   True\n#   True\n#   True\n#   2\n#   [True, 'a']\n#   {True: 1}\n#   [True, 1, 1]\n#\n# A container slot is allowed to say `bool`. Before this the shape printed the number it is stored\n# as — `[1, 1]` and `{'k': 1}` — and both backends agreed, which is exactly why no two-backend test\n# ever saw it (roadmap Gap R.112, ADR 0259).\n#\n# The rows come in two families. A *literal* slot (`[True, 1]`, `{\"k\": True}`) is a `BoolLit` the tag\n# table can see directly; a slot whose verdict comes from an *expression* — the comparison feeding a\n# `list.append`, the call argument, the ternary among strings, the dict key that is a variable holding\n# a comparison — has to be asked of that expression, through the same `IsBoolExpr` the rendering pair\n# asks (ADR 0257). A list comprehension whose element copies the loop variable is the same question\n# one level indirect: `x` says True only if the item it copied does.\n#\n# What a bool is *not* is the other half of the row: `[True] == [1]` answers True and `True + 1` is 2,\n# because the payload underneath the tag is still the number, and the compiled comparison's numeric\n# family is int, float AND bool.\nprint([True, 1])\nprint([True])\nprint([False])\nprint({\"k\": True})\nprint({True, 1})\nxs = [1, 2]\nb = 1 == 1\nxs.append(b)\nprint(xs)\nprint([True] == [1])\nxs2 = [True, 1]\nprint(xs2[0])\nif xs2[0]:\n    print(True)\nelse:\n    print(False)\nprint(True + 1)\ny = 1 == 1\nprint([True if y else False, \"a\"])\nprint({y: 1})\nprint([x for x in [True, 1, 1]])\n",
@@ -3433,7 +3453,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4247223543/139/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix641942111/140/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3446,7 +3466,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix4247223543/139/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix641942111/140/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4136,11 +4156,11 @@
       ]
     }
   ],
-  "rows": 168,
+  "rows": 169,
   "skipped": 39,
-  "pass": 129,
+  "pass": 130,
   "fail": 0,
-  "oracle_match": 114,
+  "oracle_match": 115,
   "oracle_debt": 33,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

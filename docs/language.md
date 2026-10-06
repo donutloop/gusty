@@ -3120,9 +3120,32 @@ print(len(y), 7 in y, str(y)) # 1 True [7]
 
 The same rule covers a float, `None`, a `bool` and a nested container in that element position, and the list
 bound to a name keeps working through every read — `len`, subscript, `in`, `append`, `for`, `str`, `repr`, `==`.
-What still refuses is a position that keeps one word for the value — `float(n)`, `abs(n)`, `min(n, 3)`, an
-f-string field, a dict entry or set member (`{"k": n}`, `{n}`), and a literal `sum`/`min`/`max` folds into a
-static array (`sum([n])`) — all owned by Gap R.146, each refusing in a sentence that names the missing half.
+
+An **f-string field** asks the same question and gets the same answer (ADR 0307): the field goes through the
+module's one tag-reading printer — the door `print()`, `str()` and `repr()` use — so the field, `str(n)` and
+`print(n)` cannot disagree about `6` versus `6.0`, and a text field prints its text rather than its interned
+index:
+
+```python
+xs = []
+xs.append(7)
+n = xs[0]
+print(f"{n}")          # 7
+print(f"[{n}]")        # [7]
+print(f"{n - 1}")      # 6
+xs = []
+xs.append("a")
+n = xs[0]
+print(f"x{n}y")        # xay
+print(f"{n!r}")        # 'a' — `!r` asks the same printer with the quote flag
+x = 2.5
+print(f"{x!r}")        # 2.5 — a conversion of a variable used to print nothing at all
+```
+
+What still refuses is a position that keeps one word for the value — `float(n)`, `abs(n)`, `min(n, 3)`, a
+dict entry or set member (`{"k": n}`, `{n}`), a literal `sum`/`min`/`max` folds into a static array
+(`sum([n])`), and an f-string used as a **value** (`s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()`)
+— all owned by Gap R.146, each refusing in a sentence that names the missing half.
 
 ## Builtins
 

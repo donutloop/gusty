@@ -154,7 +154,8 @@ func TestCLIDoubleDomainOfASlotBoundNameNeverEscapesAsAnExitTwo(t *testing.T) {
 		"xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(n / 4)\n",
 		numFloatSlotCLI + "print(float(n))\n",
 		numFloatSlotCLI + "print(sum([n]))\n",
-		numFloatSlotCLI + "print(f\"{n - 1}\")\n",
+		// `print(f"{n - 1}")` answers since ADR 0307 — an f-string field asks the module's ONE
+		// tag-reading printer — and is pinned against the reference in pair_fstring_test.go.
 	} {
 		path := writeSrc(t, dir, "pairfloat_noexit2.gy", src)
 		if out, code := cliRunCode(t, "--file", path); code == 2 {
@@ -199,7 +200,8 @@ func TestTheDoubleDomainStillRefusesTheOneWordPositions(t *testing.T) {
 		// `print([n])` answers since ADR 0306 — the heap builder writes the element's payload and its
 		// tag — and is pinned in pair_container_test.go against the reference instead.
 		numFloatSlotCLI + "print(min(n, 3))\n",
-		numFloatSlotCLI + "print(f\"{n - 1}\")\n",
+		// `print(f"{n - 1}")` answers since ADR 0307 — an f-string field asks the module's ONE
+		// tag-reading printer — and is pinned against the reference in pair_fstring_test.go.
 	} {
 		path := writeSrc(t, dir, "pairfloat_refuse.gy", src)
 		got, code := cliRunMerged(t, "--file", path)

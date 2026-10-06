@@ -1841,6 +1841,13 @@
    "stdout": "14\n8\n-7\n5\n15\n15.0\n42\n3\n[1, 2]\n{5, 6}\n",
    "type": "None"
   },
+  "# probe_fstring_field_asks_the_tag.gy \u2014 an interpolated field asks the tag.\n#\n# print(n), str(n), repr(n) and the REPL prompt all ask the module's ONE tag-reading printer for a value whose\n# kind the run time decides (ADR 0303), and a container element does too (ADR 0306). This program pins the\n# position that stopped being a refusal most recently: an f-string field. The print road builds ONE printf\n# format string, and every arm of its field chain asked the field for a single word \u2014 so a name the pair road\n# bound had nowhere to put its tag and the field refused, while a lift would have printed a text field's\n# interned index or a float field's box handle, at exit 0 (roadmap L11.1, Gap R.146's rendering positions;\n# ADR 0307, ADR 0303's one door, ADR 0265's per-kind arithmetic door).\n#\n# The kinds below are chosen so a missing tag cannot hide: the text lines would print `0` and the float line\n# a heap handle if the field ever read the payload alone. The `!r` lines are the conversion the road used to\n# throw away \u2014 `f\"{x!r}\"` printed NOTHING at exit 0 for any field that was not a literal, and\n# `print(f\"{'a'!r}\")` spent the contract's forbidden exit 2 (Gap R.192).\nxs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n}\")\nprint(f\"[{n}]\")\nprint(f\"{n}-{n}\")\nprint(f\"{n - 1}\")\nwords = []\nwords.append(\"a\")\nw = words[0]\nprint(f\"{w}\")\nprint(f\"x{w}y\")\nhalves = []\nhalves.append(2.5)\nh = halves[0]\nprint(f\"{h}\")\nnothing = []\nnothing.append(None)\nz = nothing[0]\nprint(f\"{z}\")\nflags = []\nflags.append(True)\nf0 = flags[0]\nprint(f\"{f0}\")\nnested = []\nnested.append([1, 2])\nc = nested[0]\nprint(f\"{c}\")\nprint(f\"{w!r}\")\nname = \"hi\"\nprint(f\"{name!r}\")\nprint(f\"[{name!r}]\")\nprint(f\"{name!s}\")\nprint(f\"{'a'!r}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "7\n[7]\n7-7\n6\na\nxay\n2.5\nNone\nTrue\n[1, 2]\n'a'\n'hi'\n['hi']\nhi\n'a'\n",
+   "type": "None"
+  },
   "# probe_pair_bound_name_as_a_number.gy \u2014 a name the pair road bound is read as a number.\n#\n# The arithmetic a slot's answer takes travels to the binding as a (payload, tag) pair (ADR 0267), and\n# this program asks every position that wants one static number to read it: an operand of a sum, a\n# negation, an ordering, a condition's head, a `while` head, an `and`, `str`, an f-string field, and the\n# target of an augmented assignment. Each of them refused one commit ago with the missing pair named\n# (roadmap Gap R.143); every line now answers the same on CPython, `--interp` and `--aot`.\n#\n# A float is bound beside an int on purpose: the tag is what decides `17.5` from `17`, and a position\n# that read the payload alone would print the box handle underneath it. What this program does *not*\n# ask is a position that takes a whole value \u2014 a builtin's argument, a container's element, an `and`'s\n# operand \u2014 which is the next door over (Gap R.146, programs/probe_pair_bound_name_takes_a_value).\nxs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint(n + 1)\nprint(n - 1)\nprint(-n)\nprint(n > 13)\nprint(13 > n)\nprint(1 if n > 1 else 0)\nif n:\n    print(\"truthy\")\ni = 0\nwhile n > 0 and i < 2:\n    print(n)\n    i = i + 1\n    n = n - 1\nprint(str(n))\nprint(f\"[{n}]\")\nq = xs[0][1] * 3\nq += 1\nprint(q)\nr = xs[0][0] * 2.5\nprint(str(r))\nprint(r > 17)\nprint(f\"{r}\")\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -8693,6 +8700,13 @@
    "hasStdout": true,
    "int": 281474976710657,
    "stdout": "[9]\n",
+   "type": "None"
+  },
+  "d = {}\nd[\"k\"] = 9\nn = d[\"k\"]\nprint(f\"{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "9\n",
    "type": "None"
   },
   "d = {}\nd[\"k\"] = 9\nn = d[\"k\"]\nprint(n - 1)\n": {
@@ -24424,6 +24438,20 @@
    "hasInt": false,
    "int": 0
   },
+  "print(f\"{'a'!r}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "'a'\n",
+   "type": "None"
+  },
+  "print(f\"{'a'!s}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "a\n",
+   "type": "None"
+  },
   "print(f\"{1 + 2}\")": {
    "hasInt": true,
    "hasStdout": true,
@@ -24438,6 +24466,13 @@
    "int": 281474976710657,
    "repr": "None",
    "stdout": "1.5\n",
+   "type": "None"
+  },
+  "print(f\"{3.5:.2f}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "3.50\n",
    "type": "None"
   },
   "print(f\"{True}\")": {
@@ -29770,6 +29805,20 @@
    "stdout": "7\n",
    "type": "None"
   },
+  "s = \"a\"\nprint(f\"{s!r}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "'a'\n",
+   "type": "None"
+  },
+  "s = \"a\"\nprint(f\"{s!s}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "a\n",
+   "type": "None"
+  },
   "s = \"ab1\"\nprint(s.isalpha())\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -29953,6 +30002,13 @@
    "int": 281474976710658,
    "repr": "hello",
    "type": "str"
+  },
+  "s = \"hi\"\nprint(f\"[{s!r}]\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "['hi']\n",
+   "type": "None"
   },
   "s = \"h\u00e9llo\"\nprint(len(s))\n": {
    "hasStdout": true,
@@ -30724,6 +30780,34 @@
    "frontEnd": true,
    "hasInt": false,
    "int": 0
+  },
+  "sb = []\nsb.append(\"a\")\nn = sb[0]\nprint(f\"x{n}y\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "xay\n",
+   "type": "None"
+  },
+  "sb = []\nsb.append(\"a\")\nn = sb[0]\nprint(f\"{n!r}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "'a'\n",
+   "type": "None"
+  },
+  "sb = []\nsb.append(\"a\")\nn = sb[0]\nprint(f\"{n!s}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "a\n",
+   "type": "None"
+  },
+  "sb = []\nsb.append(\"a\")\nn = sb[0]\nprint(f\"{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "a\n",
+   "type": "None"
   },
   "set()\n": {
    "hasInt": true,
@@ -34068,6 +34152,13 @@
    "stdout": "-2.5\n",
    "type": "None"
   },
+  "x = 2.5\nprint(f\"{x!r}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "2.5\n",
+   "type": "None"
+  },
   "x = 2.5\nprint(str(x))\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -34454,6 +34545,20 @@
    "int": 281474976710657,
    "repr": "None",
    "stdout": "-7\n",
+   "type": "None"
+  },
+  "x = 7\nprint(f\"{x!r}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "7\n",
+   "type": "None"
+  },
+  "x = 7\nprint(f\"{x!s}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "7\n",
    "type": "None"
   },
   "x = 7\nprint(x % 0)\n": {
@@ -37902,6 +38007,13 @@
    "stdout": "[2.5]\n",
    "type": "None"
   },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(f\"{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "2.5\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(n - 1)\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -38214,6 +38326,14 @@
    "int": 281474976710657,
    "repr": "None",
    "stdout": "[1, 4]\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(5)\nfor v in xs:\n    print(f\"v={v}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "v=5\n",
    "type": "None"
   },
   "xs = []\nxs.append(5)\nfor v in xs:\n    print(v > 3)\n": {
@@ -38613,6 +38733,76 @@
    "stdout": "[7]\n",
    "type": "None"
   },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"[{n}]\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "[7]\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{-n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "-7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n - 1}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "6\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n / 2}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "3.5\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n // 2}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "3\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n == 7}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "True\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n!r}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{n}-{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "7-7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"{round(n / 2)}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "4\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(7)\nn = xs[0]\nprint(n * 2.5)\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -38911,6 +39101,13 @@
    "stdout": "[None]\n",
    "type": "None"
   },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint(f\"{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "None\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(None)\nn = xs[0]\nprint(n / 4)\n": {
    "err": "eval error: unsupported operand type(s) for /: 'NoneType' and 'int'",
    "exnMsg": "unsupported operand type(s) for /: 'NoneType' and 'int'",
@@ -38952,6 +39149,13 @@
    "hasStdout": true,
    "int": 281474976710657,
    "stdout": "[True]\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint(f\"{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "True\n",
    "type": "None"
   },
   "xs = []\nxs.append(True)\nn = xs[0]\nprint(n - 1)\n": {
@@ -39022,6 +39226,13 @@
    "hasStdout": true,
    "int": 281474976710657,
    "stdout": "[[1, 2]]\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nprint(f\"{n}\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "stdout": "[1, 2]\n",
    "type": "None"
   },
   "xs = []\nxs.append([1, 2])\nprint(1 if xs[0] == [1, 2] else 0)\nprint(1 if xs[0] != [1, 2] else 0)\n": {

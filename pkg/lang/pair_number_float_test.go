@@ -298,16 +298,18 @@ func TestTheDoubleDomainOfASlotBoundNameBranchesOnTheTag(t *testing.T) {
 }
 
 // TestTheDoubleDomainStillRefusesThePositionsThatTakeOneWord is the half this cycle did not open, so that
-// the next one cannot quietly re-pin it as a pass: `float(n)`, a `sum` element, an `abs` operand, an f-string
-// field and a list element each keep ONE word for the value, and the sentence names the origin it was bound
-// from — never a loop the program does not contain (Gap R.38).
+// the next one cannot quietly re-pin it as a pass: `float(n)`, a `sum` element, an `abs` operand and a `min`
+// argument each keep ONE word for the value, and the sentence names the origin it was bound from — never a
+// loop the program does not contain (Gap R.38). The f-string field and the list element left this table when
+// those roads learned to ask the tag (ADR 0306, ADR 0307).
 func TestTheDoubleDomainStillRefusesThePositionsThatTakeOneWord(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		{"float(n)", numFloatSlot + "print(float(n))\n"},
 		{"a sum element", numFloatSlot + "print(sum([n]))\n"},
 		{"an abs operand", "xs = []\nxs.append(-7)\nn = xs[0]\nprint(abs(n))\n"},
 		{"a min argument", numFloatSlot + "print(min(n, 3))\n"},
-		{"an f-string field", numFloatSlot + "print(f\"{n - 1}\")\n"},
+		// `print(f"{n - 1}")` was on this table and answers since ADR 0307: an f-string field asks the
+		// module's one tag-reading printer, so it is pinned in pair_fstring_test.go's answer table.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := Compile(tc.src)

@@ -8571,3 +8571,61 @@ is open.
 lost their `print([n])` refusal rows to the new answer tables, and `float_state_test.go` (unit + integration)
 turned its `print([x, 1])` refusal row into an answer row (`[2.5, 1]`) that still rules out the failure that
 row was built for: the float box's *handle* printed where the double belongs.
+
+### ADR 0307 — the f-string field asks the tag (2026-08-04, L11.1 / Gap R.146's rendering positions, Gap R.192)
+
+**The measurement.** ADR 0306 had just paid the container element, and the same four-line program still lost
+one shape:
+
+```
+xs = []
+xs.append(7)
+n = xs[0]
+print(n)        # 7        — answers (ADR 0303)
+print([n])      # [7]      — answers (ADR 0306)
+print(f"{n}")   # refused  — Gap R.146's last rendering position
+```
+
+While measuring it, two further answers fell out of the same road, and these were worse than a refusal:
+
+```
+x = 7      →  print(f"{x!r}")   printed NOTHING, at exit 0
+print(f"{'a'!r}")                spent exit 2 — llc rejected @.fmt1, [0 x i8] against a [4 x i8] use
+```
+
+**Why the road broke that way.** The print road builds ONE printf format string for the whole line, and every
+arm of its field chain asked the field for a single word: `%d` for a number, `%s` over `rt_str_ptr` for an
+interned text. A pair-bound name has two words and its payload means a different thing per kind, so the field
+either refused (the honest case) or — for a conversion — went to the compile-time spec engine, which answers
+`""` for a field it cannot see. An empty answer with the exit code of success is exactly what the drift
+machinery cannot see, because `compiled refusals this run` only counts refusals.
+
+**The change.** The field asks the module's one tag-reading printer — `rt_str_of_value(payload, tag, quote)`
+capturing what `rt_print_mixed_value` writes, the door ADR 0303 established for `str()`/`repr()`/the prompt —
+and contributes `%s` over those bytes. A field built *over* a pair (`n - 1`, `-n`, `n // 2`) reaches the same
+door through ADR 0265's arithmetic road, so the field, `print()` and `str()` cannot disagree; an operator that
+road will not vouch for (`+`, `%` over slots whose kind is a run-time fact) answers "not proven" and the field
+keeps the refusal it has always printed. `!r` is the same call with the quote flag — quoting is the printer's
+job, and the flag already existed — and the spec engine is narrowed to the fields it can actually read
+(`fieldIsConstantLiteral`), which is the guard ADR 0299 left out.
+
+**Why the arm runs before the spec/conversion branch.** A field that asked for `!r` is still a rendering, and
+a chain that tests for "did the source ask for a conversion?" first hands it to a folder. The order is now:
+pair door (spec only when there is no format spec) → spec/conversion engine for literals → the ordinary
+per-kind arms.
+
+**The IR is the assertion.** A pair field must reach `printf` as bytes. The unit test pins that the module
+asks `rt_str_of_value`, `rt_print_mixed_value` and `rt_str_ptr`, and that no `printf` call after the field
+carries an `i32 %` operand — a payload in that slot is the wrong answer this cycle exists to keep impossible,
+and the shape (a number where the reference has `a`, at exit 0) is Gap R.38's family.
+
+**What stayed refused, and why that is right.** `s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()` and
+`print(f"{n:>.2f}")`. The first three are the same program asking for an f-string as a **value**, which this
+backend has no representation for (`value()` answers "f-string requires a constant expression"); the fourth
+asks a format spec of a value the module cannot see, which is ADR 0299's refusal, correctly kept. And
+`Gap R.114` had to be re-measured: since this cycle a *pair* field answers, so `print(f"{xs}", xs)` over a
+plain container variable now prints `0 [1, 2]` at exit 0 — the row's status clause said "refused, not answered
+wrongly" and that is no longer true, so the row says what it prints instead.
+
+**Paid rows moved, not deleted.** `print(f"{n - 1}")` was a refusal row in `pkg/lang/pair_number_float_test.go`
+and `integration/pair_number_float_test.go`; both moved to this cycle's answer tables.

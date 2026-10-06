@@ -8552,3 +8552,42 @@ and a pair-bound element fell between them: the payload *fits*, but nobody stati
   is not mine.
 - **Ledger state after the cycle:** record 5593 (+28), `pkg/lang` drift 338, `integration` drift 21, CPython
   debt 7, 298 ADR files to 0306, corpus 169 rows / the new probe `match` on both legs. `go test -tags=llvm20 ./...` green.
+
+## Cycle — an f-string field asks the tag (ADR 0307, Gap R.146's rendering positions; Gap R.192 closed)
+
+**Feature (roadmap L11.1).** After ADR 0306 the program answered `print(n)`, `print([n])`, `print(n / 4)` and
+still refused `print(f"{n}")`. The print road builds one printf format string per line, and each arm of its
+field chain asked the field for a single word.
+
+- **Two exit-0/exit-2 defects fell out of measuring a refusal.** Probing the field road turned up
+  `x = 7` / `print(f"{x!r}")` printing **nothing at all at exit 0**, and `print(f"{'a'!r}")` spending **exit 2**
+  (`@.fmt1 = private constant [0 x i8]` against a `[4 x i8]` use). Neither had ever been reported, because a
+  blank answer with the exit code of success is invisible to `compiled refusals this run` and an exit-2 on an
+  `!r` nobody typed is invisible to a corpus. Rule worth keeping: **when you open one road, sweep the arms
+  beside it** — the arms were the bug report.
+- **A fold that answers `""` for an unreadable input is worse than a refusal.** The conversion went to the
+  compile-time spec engine, which returns the empty text for a field it cannot see and the road accepted it.
+  ADR 0299 narrowed that engine for *specs* and left the *conversion* door open; `fieldIsConstantLiteral` is
+  the missing guard. The general form: a folder must be able to say "not mine", and the caller must treat that
+  as a routing question, not an answer.
+- **Quoting is the printer's job.** `rt_str_of_value(payload, tag, quote)` already had the flag `repr()` uses;
+  the f-string road had been splicing quote characters into a format-string global instead. One flag, no new
+  runtime function, and the exit 2 disappeared.
+- **Order the chain by what the source asked for, not by what is cheap to test.** The pair arm now runs
+  **before** the spec/conversion branch: a field that asked for `!r` is still a rendering. Chaining
+  "did the source ask for a conversion?" first hands the value to a folder, which is how the blank got written.
+- **`rt_lift_num` is still the trap.** It was the tempting route for `f"{n - 1}"` (one double, one `%.17g`) and
+  it converts every non-float payload — a text field would print its interned index as a number, at exit 0. The
+  arithmetic road ADR 0265 built is the one that knows what each tag means, so `f"{n - 1}"` and `print(n - 1)`
+  cannot disagree, and `f"{n + 1}"` keeps the refusal the operator already had.
+- **Re-measure the neighbours when a road starts answering.** `Gap R.114` claimed "the shape is refused, not
+  answered wrongly". With the pair road open, `print(f"{xs}", xs)` over a plain container variable prints
+  `0 [1, 2]` at exit 0 and `print(f"{d}")` prints `1`. The row's status clause is now what it actually prints;
+  a tracker that says "refused" where the binary prints a number is how wrong answers get inherited.
+- **A stale `/tmp/gustyc` is a false measurement.** Half-way through I read refusals from a binary built before
+  the edit and spent a cycle hunting a road that was already fixed; the marker build (returning an error with
+  its own name in it) is what settled it. Rebuild, then measure — and prefer a marker that *names* the arm.
+- **Ledger state after the cycle:** record 5623 (+30, each merged entry's stdout compared with CPython before
+  the merge), `pkg/lang` drift 338, `integration` drift 21, CPython debt 7, 299 ADR files to 0307, conformance
+  corpus 169 rows with `programs/probe_fstring_field_asks_the_tag.gy` `match` on both legs.
+  `go test -tags=llvm20 ./...` green.

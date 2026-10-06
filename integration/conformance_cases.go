@@ -373,6 +373,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// reference prints them — a text element prints its text, not its interned index, and a float
 		// element its double, not its box handle (roadmap Gap R.146's element half, ADR 0306).
 		"probe_pair_bound_name_enters_a_container",
+		// An interpolated field asks the tag: `f"{n}"` over a name the pair road bound prints what the
+		// reference prints — the text, not its interned index, the double, not its box handle — because the
+		// field goes through the module's ONE tag-reading printer, and `!r` asks that door with the quote
+		// flag instead of being thrown away at parse time (roadmap Gap R.146's rendering positions,
+		// Gap R.192; ADR 0307, ADR 0303's one printer).
+		"probe_fstring_field_asks_the_tag",
 		// A bool stored in a container, three engines on one source: the slot carries a bool tag, so
 		// the list, the dict and the str()/repr() of both print `[True, 1]` and `{'k': True}` like
 		// CPython — and the numeric questions still answer as the number (True + 1, [True] == [1],

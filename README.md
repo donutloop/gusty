@@ -848,9 +848,13 @@ slot in an ordering raises `'>' not supported between instances of 'str' and 'in
 order (ADR 0305). It is a **container element** too: `print([n])` is `[7]`, `print([n, "x", 2, None])` is
 `[7, 'x', 2, None]`, and a text slot prints `['a']` rather than the interned index it stores, because the
 literal is heap-built and the element writes its payload *and* its tag while the object is marked
-self-describing (ADR 0306). What still refuses is a
+self-describing (ADR 0306). It is an **f-string field** as well: `print(f"{n}")` is `7`, `print(f"{n - 1}")` is
+`6`, a text field prints `xay` rather than the interned index, and `!r` asks the same printer with the quote
+flag — the field, `str(n)` and `print(n)` are one renderer pointed at three sinks, which also ended a
+conversion that printed nothing at exit 0 and a quoted literal that `llc` rejected outright (ADR 0307,
+Gap R.192). What still refuses is a
 position that keeps **one word** for a whole value — `n + 1`, `abs(n)`, `min(n, 3)`, a dict entry or set member,
-a literal `sum`/`min`/`max` folds — and the refusal names
+a literal `sum`/`min`/`max` folds, an f-string used as a value — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
 R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, and `print(f"{xs}")` is Gap
 R.114). `--json --eval 'repr("hi")'` reports

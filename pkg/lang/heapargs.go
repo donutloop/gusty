@@ -5031,6 +5031,51 @@ func orderKindSlot(name string, isDict bool) string {
 // the pair — otherwise the ordinary road already gets the kind right — and anything the pairing cannot
 // name (a call, an attribute) declines, which leaves the existing refusal in place rather than
 // replacing a precise diagnostic with a wrong number.
+// fieldIsConstantLiteral reports the only f-string fields the compile-time spec engine can read: the literals
+// whose digits it writes itself. Everything else — a variable, a call, an arithmetic expression — has to reach
+// one of the value doors below, because the engine returns the empty text for a field it cannot see and used to
+// answer `f"{x!r}"` with nothing at all, at exit 0, for every variable in the language (roadmap Gap R.186,
+// Gap R.192; ADR 0299's spec engine).
+// fieldWantsPrinterQuotes reports the f-string fields whose `!r` is a rendering rather than a fold: a text
+// the intern table already holds, or any expression the print road renders as interned text. Those go through
+// `rt_str_of_value` with the quote flag — the door `repr()` uses — instead of having quote characters spliced
+// into the module's format-string global (roadmap Gap R.192, a measured exit 2; ADR 0303's one printer).
+func (g *irGen) fieldWantsPrinterQuotes(e Expr) bool {
+	if _, isLit := e.(*StrLit); isLit {
+		return true
+	}
+	if _, known := g.stringVal(e); known {
+		return true
+	}
+	return g.printsAsInternedStr(e)
+}
+
+func fieldIsConstantLiteral(e Expr) bool {
+	switch e.(type) {
+	case *IntLit, *FloatLit, *StrLit:
+		return true
+	}
+	return false
+}
+
+// filedPairOf is the f-string field's version of the same question print asks: does this expression travel
+// as a (payload, tag) pair, and if so what are its two words? Two sources. A name the pair road bound reads
+// its own two allocas; an expression built over one (`n - 1`, `-n`, `n // 2`) goes through the arithmetic
+// door print uses, so the field, `print()` and `str()` cannot disagree about `6` versus `6.0` — and an
+// operator that door will not vouch for (`+` over a slot whose kind is a run-time fact) answers not-ok and
+// the field keeps the refusal it has always printed, rather than reading a payload alone (roadmap L11.1,
+// Gap R.146's rendering positions; ADR 0303's one printer, ADR 0265's per-kind door).
+func (g *irGen) filedPairOf(b *strings.Builder, e Expr) (payload, tag string, ok bool, err error) {
+	if nm, isName := e.(*Name); isName && (g.numericPairVar(nm.Value) || (g.taggedVars != nil && g.taggedVars[nm.Value])) {
+		payload, tag = g.numericPairRegs(b, nm.Value)
+		return payload, tag, true, nil
+	}
+	if g.taggedVars == nil {
+		return "", "", false, nil
+	}
+	return g.taggedArithPair(b, e)
+}
+
 func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok bool, err error) {
 	var op int
 	var l, r Expr

@@ -13138,12 +13138,45 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						fmtLit += strings.ReplaceAll(part.Lit, "%", "%%")
 						continue
 					}
+					// A name the pair road bound — from a slot read, a loop variable, an arithmetic
+					// answer or a call — contributes the digits the module's ONE tag-reading printer
+					// writes for its (payload, tag) pair, which is the same helper `str()` calls: the
+					// field, `str(n)` and `print(n)` cannot disagree about `7` versus `7.0`, and a text
+					// slot contributes its text rather than its interned index. A field that asked for
+					// `!r` asks the same door with the quote flag on, which is what `repr()` does — so
+					// `f"{n!r}"` writes `'a'` where it used to write nothing at all (roadmap L11.1,
+					// Gap R.146's rendering positions; ADR 0303's one door, ADR 0187's pair). A field
+					// that asked for a FORMAT SPEC still goes to the spec engine below: this door renders
+					// a value, it does not pad one.
+					if part.Spec == "" {
+						if fp, ft, isPair, perr := g.filedPairOf(b, part.Expr); perr != nil {
+							return "", perr
+						} else if isPair {
+							quote := "0"
+							if part.Conv == ConvRepr {
+								quote = "1"
+							}
+							fmtLit += "%s"
+							sv := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %s, i32 %s)\n", sv, fp, ft, quote))
+							sp := g.newTmp()
+							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, sv))
+							operands = append(operands, "i8* "+sp)
+							continue
+						}
+					}
 					// A field that ASKED for a format is answered by the shared spec engine, at
 					// compile time where the value is a constant and by refusing where it is not.
 					// Falling through to the plain %d/%s below is the defect this row exists to end:
 					// `f"{3.5:.2f}"` printed `3.5` here and on the interpreter at exit 0, and the two
 					// engines agreeing is exactly why parity never saw it (Gap R.186, ADR 0299).
-					if part.Spec != "" || part.Conv != ConvNone {
+					// A TEXT field asked for `!r` is not folded into the format string: quoting is the
+					// printer's job, and the door below asks it with the quote flag on. Embedding the quoted
+					// literal in `@.fmtN` is what made `print(f"{'a'!r}")` spend the contract's forbidden exit 2
+					// — `@.fmt1` came out `[0 x i8]` against a `[4 x i8]` use, which `llc` rejects (roadmap
+					// Gap R.192; ADR 0166's rule, ADR 0303's one door).
+					printerQuotes := part.Spec == "" && part.Conv == ConvRepr && g.fieldWantsPrinterQuotes(part.Expr)
+					if !printerQuotes && (part.Spec != "" || (part.Conv != ConvNone && fieldIsConstantLiteral(part.Expr))) {
 						lit, ok := g.formatFieldConst(part)
 						if !ok {
 							return "", fmt.Errorf("codegen: the format spec %q needs a value this backend "+
@@ -13153,6 +13186,12 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 						continue
 					}
 					if part.Expr != nil {
+						// A name the pair road bound — from a slot read, a loop variable, an arithmetic
+						// answer or a call — contributes the digits the module's ONE tag-reading printer
+						// writes for its (payload, tag) pair, which is the same helper `str()` calls: the
+						// field, `str(n)` and `print(n)` cannot disagree about `14` versus `14.0`, and a
+						// text slot contributes its text rather than its interned index (roadmap L11.1,
+						// Gap R.146's rendering positions; ADR 0303's one door, ADR 0187's pair).
 						if exprIsContainerShape(part.Expr) {
 							// A container interpolated into an f-string is a heap object, and this road
 							// builds ONE printf format string: the only words it can hand printf are an
@@ -13165,19 +13204,6 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							// reference (Gap R.186 / Gap R.60's remainder, ADR 0299, owed to L11.1).
 							return "", fmt.Errorf("codegen: an f-string field that is a container has no word to " +
 								"travel in beside the text around it (AOT backend)")
-						}
-						if nm, isName := part.Expr.(*Name); isName && g.numericPairVar(nm.Value) {
-							// An interpolated name the arithmetic door bound contributes the digits the
-							// printer writes for its (payload, tag) pair — the same helper str() calls,
-							// so the field, `str(n)` and `print(n)` agree on `14` versus `14.0`
-							// (roadmap L11.1, Gap R.143).
-							fmtLit += "%s"
-							p, t := g.numericPairRegs(b, nm.Value)
-							sv := g.newTmp()
-							b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %s, i32 0)\n", sv, p, t))
-							sp := g.newTmp()
-							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, sv))
-							operands = append(operands, "i8* "+sp)
 						} else if g.isFloat(part.Expr) {
 							// %s of rt_fmt_double's text, not %.17g: Python's str(0.1) is
 							// "0.1" and str(2.0) is "2.0".
@@ -13198,6 +13224,16 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 							vv, err := g.value(b, part.Expr)
 							if err != nil {
 								return "", err
+							}
+							// `!r` of a text asks the module's one printer with the quote flag on — the same
+							// door `repr()` uses — rather than the raw bytes `!s` wants. The conversion used to
+							// be answered with an empty string here, at exit 0, for any field that was not a
+							// literal (roadmap Gap R.186, Gap R.192; ADR 0303's one door).
+							if part.Conv == ConvRepr {
+								g.heapUsed = true
+								qv := g.newTmp()
+								b.WriteString(fmt.Sprintf("  %s = call i32 @rt_str_of_value(i32 %s, i32 %d, i32 1)\n", qv, vv, int(TagStr)))
+								vv = qv
 							}
 							sp := g.newTmp()
 							b.WriteString(fmt.Sprintf("  %s = call i8* @rt_str_ptr(i32 %s)\n", sp, vv))
