@@ -3914,7 +3914,11 @@ func (e *Evaluator) callDictMethod(recv int64, name string, args []Expr) (int64,
 			}
 			return dv, nil
 		}
-		return 0, nil
+		// A missing key with no default hands back NONE, not the number 0. `return 0` here was the
+		// bare-word zero, so `print(d.get("z"))` printed `0` where the reference prints `None` -- the
+		// same class as a void flowing out of a function (Gap R.171) and the reason voids need a
+		// representation rather than a word (roadmap L11.1, Gap R.174, ADR 0291).
+		return e.noneVal, nil
 	}
 	return 0, &EvalError{Msg: "no such dict method " + name}
 }

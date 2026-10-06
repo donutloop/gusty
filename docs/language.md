@@ -1178,6 +1178,25 @@ whose returns are `"yes"` and `0` is not a text-returning function, and a pair o
 word is refused rather than guessed (ADR 0262). A **container** arm still refuses — a container's compiled
 value is a global, and L11.1's tagged value word owns that half (`Gap R.128`).
 
+### `None` from a lookup
+
+`d.get(key)` with the key **absent** and no default hands back `None` — not the number `0`
+(`Gap R.174`, ADR 0291):
+
+```
+print({"a": 1}.get("z"))        # None
+print({"a": 1}.get("z", 42))    # 42   — an explicit default is returned as written
+v = {"a": 1}.get("z")
+print(v == None)                 # True
+print(v == 0)                    # False
+```
+
+The compiled backend folds a container method over a **literal written at the call**. A container bound to a
+**name** (`d = {"a": 1}` / `d.get("a")`) is answered by the interpreter and declined by the compiled leg, which
+names the receiver and the representation it waits for; a dict whose **answer is a text**
+(`print({1: "x"}.get(1))`) still prints `0` there. Both are owed to L11.1's tagged value word and are pinned as
+still-owed rather than claimed.
+
 ### Text predicates
 
 `s.startswith(p)`, `s.endswith(p)`, `s.isdigit()`, `s.isalpha()`, `s.isalnum()`, `s.isspace()`,

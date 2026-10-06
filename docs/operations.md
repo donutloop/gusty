@@ -973,6 +973,12 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a missing dict key answers `None`**: `print({"a": 1}.get("z"))` exits 0 with `None` on both engines
+  (`Gap R.174` / ADR 0291). The interpreter returned the bare word `0` — so `print(v == 0)` also answered
+  `True` where the reference answers `False` — and the compiled leg refused the program with
+  `get: key not found and no default` although its own fold already knew the key was absent. A container
+  method over a **name** exits **1**, and the refusal now says "the program bound `d` to a container" rather
+  than the old "string method keys on non-constant string" (Gap R.38).
 - **a text predicate prints a verdict**: `print("abc".startswith("ab"))` exits 0 with `True` on both
   engines, not with the `1` the fold holds (`Gap R.172` / ADR 0289). The eight methods already answered
   correctly and still answer correctly as numbers (`"1".isdigit() + 1` is `2`) — only the print road had

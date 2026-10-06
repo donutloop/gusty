@@ -118,6 +118,11 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// VERDICT in both backends, but the print road never asked about a method call, so each line
 		// printed the 0/1 WORD it holds: True as `1`, False as `0`, on both engines (Gap R.172, ADR 0289).
 		"probe_a_text_predicate_prints_a_verdict",
+		// `d.get(key)` with the key absent hands back None. The interpreter returned the bare word 0
+		// and printed `0`; the compiled leg refused the program with `get: key not found and no
+		// default` although its own fold already knew the key was absent. Four of these six lines were
+		// wrong on the pre-cycle interpreter, `v == 0` among them (Gap R.174, ADR 0291).
+		"probe_dict_get_answers_none",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

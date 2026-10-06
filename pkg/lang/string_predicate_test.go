@@ -144,7 +144,10 @@ func TestThePredicateRefusalIsStillHonest(t *testing.T) {
 			if !refused {
 				return // answered: fine, an answer is never worse than a refusal
 			}
-			if !strings.Contains(out, "string method") {
+			// The wording is "string-method ... on a receiver that is not a text the compiler can
+			// read" (Gap R.174 renamed it, because calling a DICT a "non-constant string" was a lie
+			// about the program); match the stem, not the whole phrase.
+			if !strings.Contains(out, "string-method") && !strings.Contains(out, "string method") {
 				t.Errorf("refusal %q does not name what the program asked for (Gap R.38)", out)
 			}
 		})

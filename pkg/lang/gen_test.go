@@ -1040,8 +1040,12 @@ func TestGenDictGet(t *testing.T) {
 	if got := evalInt(`{"a": 1}.get("b", 9)`); got != 9 {
 		t.Fatalf("get default: expected 9, got %d", got)
 	}
-	if got := evalInt(`{"a": 1}.get("b")`); got != 0 {
-		t.Fatalf("get no-default absent: expected 0, got %d", got)
+	// A missing key with no default hands back NONE, not the number 0. This row pinned the bare word
+	// 0, which is what the void LOOKED like before it had a representation: `print({"a": 1}.get("b"))`
+	// answered `0` where the reference answers `None` (Gap R.174, ADR 0291). Asked as the reference
+	// asks it — `== None` — because the word is exactly the thing the bug was made of.
+	if got := captureStdout(t, "v = {\"a\": 1}.get(\"b\")\nprint(v == None)\n"); got != "True\n" {
+		t.Fatalf("get no-default absent: expected None, got %q", got)
 	}
 }
 

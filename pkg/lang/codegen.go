@@ -9964,6 +9964,29 @@ func (g *irGen) carryOperandRecords(from Expr, to string) {
 	}
 }
 
+// nameHoldsContainer reports whether the program bound a name to a list, dict or set — the same
+// records the iteration, subscript and length roads consult, asked here so a diagnostic cannot call a
+// dict a string.
+func (g *irGen) nameHoldsContainer(nm string) bool {
+	if g.runtimeDicts[nm] || g.mixedDicts[nm] || g.runtimeSets[nm] || g.mixedSets[nm] ||
+		g.listVars[nm] || g.mixedLists[nm] {
+		return true
+	}
+	if _, ok := g.containerLits[nm]; ok {
+		return true
+	}
+	if _, ok := g.staticLists[nm]; ok {
+		return true
+	}
+	if _, ok := g.staticDicts[nm]; ok {
+		return true
+	}
+	if _, ok := g.staticSets[nm]; ok {
+		return true
+	}
+	return false
+}
+
 // chainOperandIsContainer recognises the operand shapes whose compiled value is a container GLOBAL
 // rather than a word: the literals themselves, and a name the program bound to one of those kinds.
 func (g *irGen) chainOperandIsContainer(e Expr) bool {
@@ -11449,7 +11472,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 				if len(c.Args) == 2 {
 					return g.value(b, c.Args[1])
 				}
-				return "", fmt.Errorf("get: key not found and no default")
+				// A missing key with no default hands back NONE — the reference's answer, and the
+				// interpreter's since this cycle. Refusing here (`get: key not found and no default`)
+				// turned a program CPython prints `None` for into an error at exit 1, while the fold
+				// already had every fact it needed: the key is absent, so the answer is void. The void
+				// lowers to the word 0 and `isNoneExpr` renders it `None` through rt_print_none, which is
+				// the same arrangement ADR 0172 set for a void return (roadmap Gap R.174, ADR 0291).
+				return g.value(b, &NoneLit{})
 			default:
 				return "", fmt.Errorf("unsupported dict method %s", attr.Name.Value)
 			}
@@ -11483,7 +11512,15 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					return r, nil
 				}
 			}
-			return "", fmt.Errorf("string method %s on non-constant string", attr.Name.Value)
+			// A NAME bound to a container is not a string with a value the compiler cannot read, and
+			// saying "string method keys on non-constant string" about `d = {"a": 1}` / `d.keys()`
+			// describes a program the author did not write (Gap R.38's rule). The records that decide
+			// this are the same ones the loop and subscript roads read, so the refusal cannot disagree
+			// with the codegen beside it (roadmap Gap R.174, ADR 0291).
+			if nm, ok2 := attr.Obj.(*Name); ok2 && g.nameHoldsContainer(nm.Value) {
+				return "", fmt.Errorf("%s() on %q, which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and %q is a name whose slots the runtime owns — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)", attr.Name.Value, nm.Value, nm.Value)
+			}
+			return "", fmt.Errorf("string-method %s on a receiver that is not a text the compiler can read: %s (roadmap Gap I.2, ADR 0166)", attr.Name.Value, g.exprSummary(attr.Obj))
 		}
 		switch attr.Name.Value {
 		case "upper":
@@ -14238,6 +14275,31 @@ func (g *irGen) nameIsContainerRecorded(e Expr) bool {
 		g.mixedLists[nm.Value] || g.mixedDicts[nm.Value] || g.mixedSets[nm.Value] || g.unionVars[nm.Value]
 }
 
+// dictFoldMisses asks the question the dict-literal `get` fold already answered: is this key absent from
+// the literal written at the call? It is a separate function rather than an inline test so the fold and
+// the print road ask ONE predicate — the fold may not answer None where the printer still says 0, and the
+// pair is exactly the ADR 0229 rule about text ("is it text" cannot be yes for one road and no for the
+// other). An argument the fold cannot evaluate is not "absent": it is unknown, and the answer is no.
+func (g *irGen) dictFoldMisses(dl *DictLit, key Expr) bool {
+	if kv, err := g.constIntVal(key); err == nil {
+		for _, k := range dl.Keys {
+			if il, ok := k.(*IntLit); ok && il.Value == kv {
+				return false
+			}
+		}
+		return true
+	}
+	if sv, ok := stringConst(key, nil); ok {
+		for _, k := range dl.Keys {
+			if sl, ok := k.(*StrLit); ok && sl.Value == sv {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 func (g *irGen) isNoneExpr(e Expr) bool {
 	switch v := e.(type) {
 	case *NoneLit:
@@ -14253,6 +14315,16 @@ func (g *irGen) isNoneExpr(e Expr) bool {
 			// 0, and without this answer print said 0 rather than None (roadmap Gap R.73).
 			if (nm.Value == "min" || nm.Value == "max") && !g.builtinShadowed(nm.Value) && g.minMaxCallReturnsNone(v) {
 				return true
+			}
+		}
+		// `d.get(key)` over a literal dict with the key absent lowers to the void word, because
+		// that is what a void is in this backend. The fold KNOWS the key is absent — it is the
+		// same fact that let it answer at all — so the print road has to be told, or it renders
+		// the word: `print({"a": 1}.get("z"))` said `0` where the reference says `None` (Gap R.174,
+		// the print-side half of Gap R.171). Asked of the fold's own condition, not of a guess.
+		if attr, isAttr := v.Fn.(*Attr); isAttr && attr.Name.Value == "get" && len(v.Args) == 1 {
+			if dl, ok := attr.Obj.(*DictLit); ok {
+				return g.dictFoldMisses(dl, v.Args[0])
 			}
 		}
 	}

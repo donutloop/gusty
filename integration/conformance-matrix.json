@@ -689,6 +689,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_dict_get_answers_none",
+        "name": "probe_dict_get_answers_none.gy",
+        "source": "# What CPython prints for these lines (python3, 3.12):\n#\n#   1\n#   None\n#   42\n#   None\n#   True\n#   False\n#\n# `d.get(key)` with the key absent hands back NONE. Both engines had a hole in the one place a dict lookup\n# answers \"not there\": the interpreter wrote `return 0, nil` — the bare word a void used to be — so\n# `print(d.get(\"z\"))` answered `0`, and the compiled leg refused the whole program with\n# `get: key not found and no default` even though its own fold already knew the key was absent. Both are\n# the same representation Gap R.171 caught leaving a function body, reached from a builtin instead\n# (roadmap Gap R.174, ADR 0291).\n#\n# The `== 0` line is here because a void that PRINTS as 0 also COMPARES like one to a program that asks;\n# the reference says None is not 0, and that answer is the observable that tells the two apart.\nprint({\"a\": 1}.get(\"a\"))\nprint({\"a\": 1}.get(\"z\"))\nprint({\"a\": 1}.get(\"z\", 42))\nprint({1: \"x\"}.get(9))\nv = {\"a\": 1}.get(\"z\")\nprint(v == None)\nprint(v == 0)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "1\nNone\n42\nNone\nTrue\nFalse\n",
+      "aot_ok": true,
+      "aot_stdout": "1\nNone\n42\nNone\nTrue\nFalse\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "1\nNone\n42\nNone\nTrue\nFalse\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3669,7 +3692,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3695107407/131/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1917535652/132/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3683,7 +3706,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3695107407/131/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1917535652/132/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4524,11 +4547,11 @@
       ]
     }
   ],
-  "rows": 156,
+  "rows": 157,
   "skipped": 35,
-  "pass": 121,
+  "pass": 122,
   "fail": 0,
-  "oracle_match": 106,
+  "oracle_match": 107,
   "oracle_debt": 29,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

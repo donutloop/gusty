@@ -7661,3 +7661,53 @@ the new branch ever emits an invalid module.
 (`0`, `1`, `[0]`, empty). Suite green; 166-file sweep moved only the intended probes. Matrix 156 rows,
 120 → 121 parity, 36 → 35 skipped, 105 → 106 `match`, 0 fail, 0 drift — the promoted probe left the debt
 ledger with its `0\n2\n` pin and its exit-6 entry (ADR 0261).
+
+---
+
+### Gap R.174 — a missing dict key answered 0, and the refusal called a dict a string (CLOSED by ADR 0291, owner L11.1)
+
+Found by the 2026-07-06 surface sweep. One row of the probe makes the size of it:
+
+```
+v = {"a": 1}.get("z")
+print(v == None)     CPython True    pre-cycle interpreter False
+print(v == 0)        CPython False   pre-cycle interpreter True
+```
+
+The void was the word `0`, so a program could not even **test** for the missing key. Meanwhile the compiled
+leg refused the same program with `get: key not found and no default` — refusing a fact its own fold had just
+walked the literal to establish.
+
+**Gap R.171, again from a different producer.** That row was a void leaving a *function body*; this is a void
+leaving a *builtin* (`callDictMethod`'s `get` ended `return 0, nil`). The lesson generalises: enumerate the
+**producers** of a representation, not just the sites that print it. Anywhere the language means "there is no
+value" and writes `0`, the program will print `0` and compare equal to `0`.
+
+**A refusal is a road that has to read the program too.** The container-method road is entered whenever
+`stringVal(attr.Obj)` fails — which a name bound to a dict does for exactly the same reason a runtime string
+does. So `d.keys()` printed *"string method keys on non-constant string"*. `nameHoldsContainer` now consults
+the tables the iteration, subscript and length roads already read (`runtimeDicts`, `mixedDicts`, `runtimeSets`,
+`mixedSets`, `listVars`, `mixedLists`, the four static-literal tables), so a diagnostic cannot contradict the
+codegen beside it. ADR 0229's "one predicate per question" applies to messages as well as to values.
+
+**The fold and the printer share one predicate.** `isNoneExpr`'s new `Call` arm asks `dictFoldMisses` — the
+same function the `get` fold used to decide it had no match — rather than re-deriving it. A key the fold cannot
+evaluate is *unknown*, not absent, and the answer is "not None": the conservatism that keeps a guess from
+becoming a printed value (ADR 0229, which this row enforces a fourth time).
+
+**Errors made.** Three rows I originally wrote into the both-engines table (int-keyed value, text default,
+None inside a list) are the tagged-word wall, not this fix — measured byte-identical on the pre-cycle binary
+and moved to `TestADictAnswerThatIsATextStillOwesItsWord`, which logs when the compiled leg starts answering
+them. Two existing pins broke **correctly**: `TestGenDictGet` had asserted `get("b") == 0` through a helper
+that reads a raw word — pinning through the buggy representation is how the bug stayed legal — and a refusal
+test matched the literal phrase "string method" that this ADR renames, so it was checking a wording rather than
+a contract. And a refusal printed `codegen: codegen: …`, caught by printing the message instead of reading the
+format string.
+
+**What stays refused.** Container methods over a **name** (the interpreter answers; the compiled leg declines
+naming the receiver and the missing representation), and a dict whose **answer is a text**
+(`print({1: "x"}.get(1))` → `0`). Both are L11.1's tagged value word.
+
+**Measurement, not memory.** Pre-cycle binary from `HEAD` in a `git worktree`: interpreter `1/0/42/0/False/True`
+against the reference `1/None/42/None/True/False`. Suite green; 167-file sweep moved nothing but the new probe;
+matrix 156 → 157 rows, 121 → 122 parity, 106 → 107 `match`, 0 fail, 0 drift.

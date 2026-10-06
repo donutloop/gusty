@@ -7771,3 +7771,44 @@ rather than claiming them, and one fails loudly if the new branch ever emits a m
 sweep moved only the intended probes. Matrix 120 → 121 parity, 36 → 35 skipped, 105 → 106 `match` —
 `probe_ternary_text_arms.gy` was **promoted out of the debt ledger**, taking its `0\n2\n` pin and its exit-6
 entry with it (ADR 0261's rule, applied a third time).
+
+---
+
+## Cycle: a missing dict key answers None, and a refusal calls a dict a dict (Gap R.174 closed; ADR 0291)
+
+**What shipped.** `print({"a": 1}.get("z"))` answered `0` on the interpreter — so `print(v == 0)` answered
+`True` where the reference answers `False`, and a program could not even **test** for the missing key — while
+the compiled leg refused the same program with `get: key not found and no default`, although its own fold had
+just walked the literal to establish the key was absent. Third defect: `d = {"a": 1}` / `d.keys()` was refused
+as *"string method keys on non-constant string"*, calling a dict a string to its author's face.
+
+**Gap R.171 from a new producer.** That row was a void leaving a function body; this one leaves a builtin
+(`return 0, nil`). Generalised lesson: when a representation is wrong, enumerate the **producers** of it, not
+only the sites that consume it. Anywhere the language means "no value" and writes `0`, the program prints `0`
+*and compares equal to 0* — the equality rows are the ones that make this observable rather than cosmetic, and
+they are why "just let print special-case 0" is not a fix (`0` is a legitimate dict value).
+
+**A refusal is a road that has to read the program too.** The container-method road is entered when
+`stringVal` fails — and a dict name fails it for the same reason a runtime string does. The fix is
+`nameHoldsContainer`, reading the exact tables the iteration/subscript/length roads read, so a message cannot
+contradict the codegen beside it. ADR 0229's "one predicate per question" now covers diagnostics.
+
+**Fold and printer share one predicate.** `isNoneExpr`'s new `Call` arm calls `dictFoldMisses` — the same
+function the fold used — instead of re-deriving "was the key there". And a key the fold cannot evaluate is
+*unknown*, not absent: the answer is "not None", which is the conservatism that stops a guess becoming a
+printed value.
+
+**Errors I made, named.**
+- Three both-engines rows (int-keyed value, text default, None in a list) are the tagged-word wall, not this
+  fix. I measured them byte-identical on the pre-cycle binary and moved them to a named still-owed test that
+  logs when the compiled leg starts answering, instead of pinning `0` or faking a fix.
+- Two existing pins broke **correctly**, which is worth reading twice: `TestGenDictGet` had asserted
+  `get("b") == 0` through a helper that reads a raw word — **pinning through the buggy representation is how a
+  bug stays legal** — and a refusal test matched the literal phrase "string method", checking a wording rather
+  than a contract. Both moved to questions the reference answers.
+- A refusal printed `codegen: codegen: …`; caught by *printing* the message rather than reading the format
+  string (cycle 14's leaked-module lesson again).
+
+**Instruments.** Pre-cycle binary from `HEAD` in a `git worktree`: interpreter `1/0/42/0/False/True` against
+the reference `1/None/42/None/True/False` — four of six wrong. Suite green; 167-file sweep moved nothing but
+the new probe; matrix 156 → 157 rows, 121 → 122 parity, 106 → 107 `match`, 0 fail, 0 drift.

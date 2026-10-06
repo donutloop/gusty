@@ -563,6 +563,16 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A dict lookup with nothing to find hands back **`None`** (ADR 0291, closing `Gap R.174`).
+`print({"a": 1}.get("z"))` answered `0` on the interpreter, so `print(v == 0)` answered `True` where the
+reference answers `False` — a program could not even *test* for the missing key — while the compiled leg
+refused the whole program with `get: key not found and no default`, although its own fold already knew the key
+was absent. Both are the same representation `Gap R.171` caught leaving a function body: a void written as the
+word `0`, reached this time from a builtin. The third defect was only visible in the refusal —
+`d = {"a": 1}` / `d.keys()` was answered with *"string method keys on non-constant string"*, calling a dict a
+string in a message quoted back to the author. That road now asks the same records the iteration and subscript
+roads read before it speaks, so a diagnostic cannot contradict the codegen beside it.
+
 A text predicate prints a **verdict** (ADR 0289, closing `Gap R.172`). `print("abc".startswith("ab"))` said
 `1` and `print("abc".isdigit())` said `0` on **both** engines at exit 0. The eight methods — `startswith`,
 `endswith`, `isdigit`, `isalpha`, `isalnum`, `isspace`, `islower`, `isupper` — had been answering correctly

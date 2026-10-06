@@ -1,0 +1,25 @@
+# What CPython prints for these lines (python3, 3.12):
+#
+#   1
+#   None
+#   42
+#   None
+#   True
+#   False
+#
+# `d.get(key)` with the key absent hands back NONE. Both engines had a hole in the one place a dict lookup
+# answers "not there": the interpreter wrote `return 0, nil` — the bare word a void used to be — so
+# `print(d.get("z"))` answered `0`, and the compiled leg refused the whole program with
+# `get: key not found and no default` even though its own fold already knew the key was absent. Both are
+# the same representation Gap R.171 caught leaving a function body, reached from a builtin instead
+# (roadmap Gap R.174, ADR 0291).
+#
+# The `== 0` line is here because a void that PRINTS as 0 also COMPARES like one to a program that asks;
+# the reference says None is not 0, and that answer is the observable that tells the two apart.
+print({"a": 1}.get("a"))
+print({"a": 1}.get("z"))
+print({"a": 1}.get("z", 42))
+print({1: "x"}.get(9))
+v = {"a": 1}.get("z")
+print(v == None)
+print(v == 0)
