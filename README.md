@@ -563,6 +563,18 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+`x ** y` answers the kind the **reference** answers with (ADR 0293, closing `Gap R.176`). `print(2 ** -1)`
+said `0` on both engines and `print(4 ** 0.5)` said `1` — both at exit 0, both engines agreeing, which is
+the configuration a parity matrix is blind to. The rule is not "either side has a dot": `int ** int` is an
+int only when the exponent is non-negative, so `2 ** -1` is the float `0.5`; a float anywhere makes the
+answer a float, so `2.0 ** 10` is `1024.0` and not `1024`. The compiled leg's root cause was **one missing
+token** — `**` was absent from the operator list that tells `print` what kind an expression answers with —
+so `llvm.pow.f64` computed the right double and the caller truncated it back through `fptosi` into `%d`.
+`0 ** -1` now raises the reference's own `ZeroDivisionError` from a **run-time** guard (so a base bound to a
+name traps exactly as a literal does), and `(-8) ** (1/3)` and `2 ** 100` are refused in words — a complex
+value and an unbounded integer are things this language does not have, and `inf`, `nan` or a wrapped `0`
+are not substitutes for either.
+
 A container in a numeric operand raises or refuses — it never spends the contract's **exit 2** (ADR 0292,
 closing `Gap R.175`). `print([0] * 3)`, `print([1, 2] + [3])`, `print([1] / 2)`, `print([1] - [2])`,
 `print({1: 2} * 2)`, `print([] < {})` and ten siblings emitted a module `llc-20` rejected —

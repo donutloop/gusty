@@ -1,0 +1,43 @@
+# What CPython prints for this program (python3, 3.12):
+#
+#   8
+#   0.5
+#   0.25
+#   2.0
+#   1024.0
+#   512
+#   ZeroDivisionError: 0.0 cannot be raised to a negative power
+#
+# `x ** y` answers an int or a float, and which one it answers with is a RULE about the operands, not
+# "either side is written with a dot":
+#
+#   int ** int with a non-negative exponent -> int     (`2 ** 3` is `8`)
+#   int ** int with a NEGATIVE exponent      -> float   (`2 ** -1` is `0.5`, not `0`)
+#   anything float                           -> float   (`4 ** 0.5` is `2.0`, `2.0 ** 10` is `1024.0`)
+#   base 0 with a negative exponent          -> ZeroDivisionError
+#
+# Before this program existed the compiled leg answered EVERY `**` through `fptosi` and `%d`, because `**`
+# was missing from the list of operators that tell `print` what kind an expression answers with: the
+# correct double came out of `llvm.pow.f64` and was thrown away, so `print(4 ** 0.5)` said `1`. The
+# interpreter had the other half wrong — `if r < 0 { return 0, nil }`, under a comment claiming it mirrored
+# Python's `int ** int` — so `print(2 ** -1)` said `0`. Both backends agreed on the wrong answers, which is
+# why the two-backend parity matrix saw nothing and only the oracle leg could (roadmap Gap R.176, ADR 0293).
+#
+# The last two lines are the reference's own raise, catchable and worded as the reference words it. The
+# zero-base test is written with a variable base on purpose: the compiled leg's check is a RUNTIME guard,
+# so `z = 0` / `z ** -1` traps exactly as the literal does.
+print(2 ** 3)
+print(2 ** -1)
+print(2 ** -2)
+print(4 ** 0.5)
+print(2.0 ** 10)
+print(2 ** 3 ** 2)
+try:
+    print(0 ** -1)
+except ZeroDivisionError:
+    print("ZeroDivisionError: 0.0 cannot be raised to a negative power")
+z = 0
+try:
+    print(z ** -1)
+except ZeroDivisionError:
+    print("raised through a bound name too")

@@ -735,6 +735,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_power_answers_the_right_kind",
+        "name": "probe_a_power_answers_the_right_kind.gy",
+        "source": "# What CPython prints for this program (python3, 3.12):\n#\n#   8\n#   0.5\n#   0.25\n#   2.0\n#   1024.0\n#   512\n#   ZeroDivisionError: 0.0 cannot be raised to a negative power\n#\n# `x ** y` answers an int or a float, and which one it answers with is a RULE about the operands, not\n# \"either side is written with a dot\":\n#\n#   int ** int with a non-negative exponent -\u003e int     (`2 ** 3` is `8`)\n#   int ** int with a NEGATIVE exponent      -\u003e float   (`2 ** -1` is `0.5`, not `0`)\n#   anything float                           -\u003e float   (`4 ** 0.5` is `2.0`, `2.0 ** 10` is `1024.0`)\n#   base 0 with a negative exponent          -\u003e ZeroDivisionError\n#\n# Before this program existed the compiled leg answered EVERY `**` through `fptosi` and `%d`, because `**`\n# was missing from the list of operators that tell `print` what kind an expression answers with: the\n# correct double came out of `llvm.pow.f64` and was thrown away, so `print(4 ** 0.5)` said `1`. The\n# interpreter had the other half wrong — `if r \u003c 0 { return 0, nil }`, under a comment claiming it mirrored\n# Python's `int ** int` — so `print(2 ** -1)` said `0`. Both backends agreed on the wrong answers, which is\n# why the two-backend parity matrix saw nothing and only the oracle leg could (roadmap Gap R.176, ADR 0293).\n#\n# The last two lines are the reference's own raise, catchable and worded as the reference words it. The\n# zero-base test is written with a variable base on purpose: the compiled leg's check is a RUNTIME guard,\n# so `z = 0` / `z ** -1` traps exactly as the literal does.\nprint(2 ** 3)\nprint(2 ** -1)\nprint(2 ** -2)\nprint(4 ** 0.5)\nprint(2.0 ** 10)\nprint(2 ** 3 ** 2)\ntry:\n    print(0 ** -1)\nexcept ZeroDivisionError:\n    print(\"ZeroDivisionError: 0.0 cannot be raised to a negative power\")\nz = 0\ntry:\n    print(z ** -1)\nexcept ZeroDivisionError:\n    print(\"raised through a bound name too\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "8\n0.5\n0.25\n2.0\n1024.0\n512\nZeroDivisionError: 0.0 cannot be raised to a negative power\nraised through a bound name too\n",
+      "aot_ok": true,
+      "aot_stdout": "8\n0.5\n0.25\n2.0\n1024.0\n512\nZeroDivisionError: 0.0 cannot be raised to a negative power\nraised through a bound name too\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "8\n0.5\n0.25\n2.0\n1024.0\n512\nZeroDivisionError: 0.0 cannot be raised to a negative power\nraised through a bound name too\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3715,7 +3738,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3043061719/133/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix108498333/134/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3729,7 +3752,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3043061719/133/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix108498333/134/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4570,11 +4593,11 @@
       ]
     }
   ],
-  "rows": 158,
+  "rows": 159,
   "skipped": 35,
-  "pass": 123,
+  "pass": 124,
   "fail": 0,
-  "oracle_match": 108,
+  "oracle_match": 109,
   "oracle_debt": 29,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

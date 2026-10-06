@@ -973,6 +973,15 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a power answers the kind the reference answers with**: `print(2 ** -1)` exits 0 with `0.5` and
+  `print(4 ** 0.5)` with `2.0` on both engines (`Gap R.176` / ADR 0293). Before this, both backends answered
+  `0` for a negative int exponent (under a comment claiming Python does that) and the compiled leg pushed
+  every power through `fptosi` + `%d` — `print(2.0 ** 10)` said `1024` where the reference says `1024.0`,
+  `print(4 ** 0.5)` said `1`. `**` was simply absent from the operator list that tells `print` what kind an
+  expression answers with, and both engines agreed on the truncation, so only the oracle leg could see it.
+  `0 ** -1` exits **3** with the reference's own `ZeroDivisionError` (catchable, literal or bound base);
+  `(-8) ** (1/3)` and `2 ** 100` exit **1** naming what is missing — a complex value, an unbounded integer —
+  rather than printing the `nan` / wrapped `0` the machine would hand back.
 - **a container in a numeric operand never spends exit 2**: `./build/pyre --aot --eval 'print([0] * 3)'` and
   fifteen siblings (`[1, 2] + [3]`, `[1] - [2]`, `[1] / 2`, `{1: 2} * 2`, `[1] + {}`, `[] < {}`, …) exited
   **2** — `llc-20` refusing OUR module (`mul i32 @.lst1, 3`, `add i32 @.lst1, @.lst2`,

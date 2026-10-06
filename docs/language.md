@@ -1197,6 +1197,39 @@ names the receiver and the representation it waits for; a dict whose **answer is
 (`print({1: "x"}.get(1))`) still prints `0` there. Both are owed to L11.1's tagged value word and are pinned as
 still-owed rather than claimed.
 
+### What kind a power answers with
+
+`x ** y` answers an **int** or a **float**, and which one is a rule about the operands, not about how they
+are written (`Gap R.176`, ADR 0293):
+
+```
+print(2 ** 3)        # 8          int ** int, exponent >= 0
+print(2 ** -1)       # 0.5        int ** int, NEGATIVE exponent -> a float, not 0
+print(2 ** -2)       # 0.25
+print(4 ** 0.5)      # 2.0        anything float -> a float
+print(2.0 ** 10)     # 1024.0     note the .0 — the reference keeps it
+print(2 ** 3 ** 2)   # 512        right associative, and still an int
+print(0 ** 0)        # 1
+```
+
+Both engines agree with the reference on every line. Two shapes are **not** answered, because there is
+nothing correct to answer with:
+
+```
+print(0 ** -1)          # ZeroDivisionError: 0.0 cannot be raised to a negative power
+print((-8) ** (1/3))    # refused: the reference answers a COMPLEX number, which this language has no value for
+print(2 ** 100)         # refused: the reference has arbitrary-precision integers; this backend is bounded
+```
+
+The `ZeroDivisionError` is a real trap — catchable with `except ZeroDivisionError:`, on both engines, with
+the reference's own wording — and it fires whether the base is a literal or a name bound to `0`, because
+the check is emitted at run time. The refusals name what is missing rather than printing the `inf`, `nan`
+or wrapped `0` the machine would hand back.
+
+The compiled integer is 32 bits, so `2 ** 31` refuses there while the interpreter (64-bit) answers it; the
+interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
+the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
+
 ### A container in a numeric operand
 
 A list, dict, set or tuple has no number to do arithmetic **with**, so it never reaches an LLVM arithmetic

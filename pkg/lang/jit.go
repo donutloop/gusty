@@ -3,6 +3,7 @@ package lang
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"math/rand"
 	"os"
 	"reflect"
@@ -2768,33 +2769,53 @@ func (e *Evaluator) evalBin(n *BinOp) (int64, error) {
 		}
 		return boolVal(orderedBy(n.Op, ord)), nil
 	case "**":
+		// `0 ** -n` is the reference's ZeroDivisionError, asked BEFORE either arm runs: the float road
+		// answers `0.0 ** -1` with `inf` (pow's own answer) and the int road with 0, and the reference
+		// raises for the int spelling too — one sentence for both, measured (Gap R.176, ADR 0293).
+		if powerNegativeExponentFromZeroFor(l, r, e) {
+			return 0, exnError("ZeroDivisionError", "0.0 cannot be raised to a negative power")
+		}
 		if lf, ok := e.floatOf(l); ok {
 			rf, rfok := e.floatOf(r)
 			if !rfok {
 				rf = float64(r)
 			}
+			if raised, ok := powerComplexResult(lf, rf); ok {
+				_ = raised
+				return 0, powerComplexRefusal()
+			}
 			return e.allocFloat(math.Pow(lf, rf)), nil
 		}
 		if rf, ok := e.floatOf(r); ok {
+			if raised, ok := powerComplexResult(float64(l), rf); ok {
+				_ = raised
+				return 0, powerComplexRefusal()
+			}
+			// An INT base with a FLOAT exponent answers a float, whatever the exponent's own kind: the
+			// old code reached here and, for a whole exponent, the caller's int path truncated it.
 			return e.allocFloat(math.Pow(float64(l), rf)), nil
 		}
-		// exact integer power (binary exponentiation); negative exponents
-		// yield 0 for an integer result, mirroring Python's int ** int.
+		// `int ** int`. A NEGATIVE exponent does NOT answer an int: `2 ** -1` is the float `0.5`. The
+		// line that used to sit here was `if r < 0 { return 0, nil }` under a comment saying it mirrored
+		// Python's `int ** int` — it mirrored nothing, and both backends agreed on the 0, so parity could
+		// not see it and only the oracle leg could (roadmap Gap R.176, ADR 0293).
 		if r < 0 {
-			return 0, nil
+			return e.allocFloat(math.Pow(float64(l), float64(r))), nil
 		}
-		base, exp := l, r
-		res := int64(1)
-		for exp > 0 {
-			if exp&1 != 0 {
-				res *= base
-			}
-			exp >>= 1
-			if exp > 0 {
-				base *= base
-			}
+		// The exact integer power, in a width that can SAY when it has left the machine's word. The
+		// reference has arbitrary-precision integers, so `2 ** 100` is a 31-digit number and both
+		// backends answering `0` was a wrong number at exit 0 — the wrap is invisible to parity because
+		// both sides wrap alike. A bounded integer is this language's design; a silently WRAPPING one is
+		// not, so the overflow is refused in words (roadmap Gap R.176, ADR 0293).
+		acc := new(big.Int).Exp(big.NewInt(l), big.NewInt(r), nil)
+		// The interpreter's int is a full 64-bit word, so it refuses only where IT leaves the word; the
+		// compiled leg, whose int is an i32, refuses far sooner (Gap R.133, owner L12.12). Both refuse in
+		// words rather than printing a wrapped number.
+		if !acc.IsInt64() {
+			return 0, exnError("OverflowError", "the exponent leaves the language's bounded integer: "+
+				fmt.Sprintf("%d ** %d is %s, which does not fit a 64-bit word, and this backend declines rather than print a wrapped number (roadmap Gap R.176)", l, r, acc.String()))
 		}
-		return res, nil
+		return acc.Int64(), nil
 	}
 	return 0, &EvalError{Msg: "unsupported operator " + n.Op}
 }

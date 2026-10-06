@@ -3,6 +3,7 @@ package lang
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"reflect"
 	"sort"
 	"strconv"
@@ -4253,6 +4254,9 @@ type irGen struct {
 	// floatUnlowerable records that a float arm reached an operand it could not lift, which the caller
 	// turns into a front-end refusal instead of an instruction with an empty operand (Gap R.88).
 	floatUnlowerable string
+	// powerReadersInstalled keeps the shared power predicates' name-reader wired once per generator
+	// (installPowerReaders), so a second call cannot leave a stale closure over the previous module.
+	powerReadersInstalled bool
 	// doubleDomain counts the emissions that asked for a double. The numeric door answers a slot read
 	// of a container the program built with one, and only a caller that can hold a double may take it:
 	// an int-domain sink — a call argument, an augmented assignment, str()'s argument, a container
@@ -6259,6 +6263,138 @@ func floatConst(v float64) string {
 	return f
 }
 
+// powerAnswersDouble is the `**` answer kind, asked of the same table the arithmetic roads use. It is a
+// method rather than a call into power_kind.go's free function because the answer depends on what the
+// RECORDS know about a name: `x ** -1` where `x = 2` is the float 0.5, and a name this pass cannot name is
+// conservatively a double, because a double printed where an int was due is caught by the verifier while an
+// int truncated out of a correct double is the silent wrong number this row removes (Gap R.176, ADR 0293).
+func (g *irGen) powerAnswersDouble(n *BinOp) bool {
+	if g.floatUnlowerable != "" {
+		// already refusing something; do not compound it with a guess
+		return true
+	}
+	return powerAnswerIsFloat(n.L, n.R, g.powerOperandKind)
+}
+
+// intPowerOverflow asks whether a literal `a ** b` would leave the 64-bit word, so the compiled leg can
+// REFUSE instead of wrapping. The reference has arbitrary-precision integers — `2 ** 100` is a 31-digit
+// number — and both backends printed `0` for it at exit 0, which is a wrong answer with a plausible face.
+// A bounded integer is this language's defensible 2026 design (docs/roadmap-details.md's Phase 12 note); a
+// silently WRAPPING one is not, and the wrap is invisible to parity because both backends wrap the same way.
+func (g *irGen) intPowerOverflow(l, r Expr) (string, bool) {
+	lv, lok := intLiteralOf(l)
+	rv, rok := intLiteralOf(r)
+	if !lok || !rok || rv < 0 {
+		return "", false
+	}
+	// The WORD, not int64: the compiled `int` is an i32 (Gap R.133, owner L12.12), so `2 ** 31` is already
+	// past it, and answering -2147483648 is the wrap this refusal exists to stop. Measuring the wrong word
+	// would refuse `2 ** 100` while letting `2 ** 32` print `0`.
+	acc := new(big.Int).Exp(big.NewInt(lv), big.NewInt(rv), nil)
+	if acc.IsInt64() && acc.Int64() >= math.MinInt32 && acc.Int64() <= math.MaxInt32 {
+		return "", false
+	}
+	return acc.String(), true
+}
+
+// intLiteralOf reads an int literal, including a negated one, which is how the parser stores `-3`.
+func intLiteralOf(e Expr) (int64, bool) {
+	switch v := e.(type) {
+	case *IntLit:
+		return v.Value, true
+	case *UnOp:
+		if v.Op == "-" {
+			if x, ok := intLiteralOf(v.X); ok {
+				return -x, true
+			}
+		}
+		if v.Op == "+" {
+			return intLiteralOf(v.X)
+		}
+	}
+	return 0, false
+}
+
+// floatPowerNeedsZeroGuard asks whether the runtime zero-power trap has to be emitted ahead of
+// `llvm.pow.f64`. It is emitted for every float `**`, because `pow(0, -1)` answers `inf` instead of
+// trapping and an unchecked `inf` reaching printf is the exit-0 wrong number Gap R.176 removes. The
+// compile-time claim alone was not enough: it can only see a literal base, and `z = 0` / `print(z ** -1)`
+// is the same program to the reference.
+func (g *irGen) floatPowerNeedsZeroGuard(n *BinOp) bool {
+	// A pair that is provably safe skips the guard: a base literal known to be non-zero, or an exponent
+	// literal known to be non-negative. Anything else pays two fcmps.
+	if lb, ok := powerNumericLiteral(n.L, g.powerOperandKind); ok && lb != 0 {
+		return false
+	}
+	if eb, ok := powerNumericLiteral(n.R, g.powerOperandKind); ok && eb >= 0 {
+		return false
+	}
+	return true
+}
+
+// installPowerReaders gives the shared power predicates a way to read a NAME: `z = 0` / `print(z ** -1)`
+// is the same program to the reference as `print(0 ** -1)`, and a predicate that can only see literals
+// answers `inf` for one and raises for the other. The reader is scoped to this generator's module
+// constants, so a name it cannot resolve stays unknown rather than becoming a guess.
+func (g *irGen) installPowerReaders() {
+	if g.powerReadersInstalled {
+		return
+	}
+	g.powerReadersInstalled = true
+	consts := g.moduleConsts
+	kindOfIntValue = func(e Expr) (int64, bool) {
+		nm, ok := e.(*Name)
+		if !ok || consts == nil {
+			return 0, false
+		}
+		v, ok := consts[nm.Value]
+		if !ok {
+			return 0, false
+		}
+		return intLiteralOfAny(v)
+	}
+}
+
+// powerOperandKind names an operand's numeric family for the power rule// powerOperandKind names an operand's numeric family for the power rule: a float variable, an int variable,
+// or "" when this pass cannot say — and "" means the caller treats it as possibly-a-float.
+func (g *irGen) powerOperandKind(e Expr) string {
+	switch e.(type) {
+	case *IntLit:
+		return "int"
+	case *FloatLit:
+		return "float"
+	case *BoolLit:
+		return "bool"
+	case *StrLit:
+		return "str"
+	}
+	if nm, ok := e.(*Name); ok {
+		if g.builtinShadowed(nm.Value) {
+			return ""
+		}
+		if g.floatVars != nil && g.floatVars[nm.Value] {
+			return "float"
+		}
+		// A name bound to an int LITERAL in the module environment is an int; anything else this pass
+		// cannot name, and the caller treats the unknown as possibly-a-float.
+		if e2, ok := g.moduleConsts[nm.Value]; ok {
+			switch e2.(type) {
+			case *IntLit:
+				return "int"
+			case *FloatLit:
+				return "float"
+			case *BoolLit:
+				return "bool"
+			}
+		}
+		return ""
+	}
+	if g.isFloat(e) {
+		return "float"
+	}
+	return ""
+}
+
 // isFloat reports whether expression e produces a float (double) value.
 func (g *irGen) isFloat(e Expr) bool {
 	switch n := e.(type) {
@@ -6299,6 +6435,14 @@ func (g *irGen) isFloat(e Expr) bool {
 		switch n.Op {
 		case "+", "-", "*", "%", "//":
 			return g.isFloat(n.L) || g.isFloat(n.R)
+		case "**":
+			// `**` answers a float whenever the reference does, which is NOT "either side is written
+			// with a dot": `2 ** -1` is the float 0.5 with two int literals, and `2.0 ** 10` is a float
+			// the reference renders `1024.0`. `**` was absent from this list, so the correct double that
+			// `llvm.pow.f64` computed came back through `fptosi` and printed with `%d` — `print(4 ** 0.5)`
+			// said `1` where the reference says `2.0`, and both backends agreed on the truncation, so only
+			// the oracle leg could see it (roadmap Gap R.176, ADR 0293).
+			return g.powerAnswersDouble(n)
 		}
 		return false
 	case *Index:
@@ -7570,6 +7714,24 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 	prev := g.numCtx
 	g.numCtx = n
 	defer func() { g.numCtx = prev }()
+	// `**` refuses two shapes before any instruction is built, because `llvm.pow.f64` answers both with a
+	// number the reference never produces: `0 ** -1` comes back `inf` (which the caller then truncated to
+	// `2147483647`) and `(-8) ** (1/3)` comes back `nan` where the reference has a COMPLEX number. The
+	// first is the reference's own ZeroDivisionError, catchable and worded as it words it; the second is
+	// refused in words, because this language has no complex value to answer with (Gap R.176, ADR 0293).
+	if n.Op == "**" {
+		g.installPowerReaders()
+		// The zero-base raise is emitted as a RUNTIME guard in the `**` case below, which is what lets a
+		// base the compiler cannot see at compile time — a parameter, a slot, a name bound in a `try:`
+		// arm — raise the same way a literal does. Doing it here instead left the frame's `ret` naming a
+		// temporary that was allocated but never written: `use of undefined value ’%t3’`, llc rejecting
+		// OUR module, which ADR 0166 counts as exit 2.
+		if powerComplexIsAsked(n.L, n.R, g.powerOperandKind) {
+			g.floatUnlowerable = floatLowerCompleteMarker + fmt.Sprintf("`%s` is a negative base raised to a fractional power, which the reference answers with a complex number", exprSurface(n))
+			g.noteUnlowered(n, fmt.Errorf("`%s` is a negative base raised to a fractional power: the reference answers a complex number ((1.0000000000000002+1.7320508075688772j) for `(-8) ** (1/3)`), and this language has no complex value — the compiled leg declines rather than print NaN (roadmap Gap R.176, ADR 0166)", exprSurface(n)))
+			return ""
+		}
+	}
 	l := g.floatValue(b, n.L)
 	r := g.floatValue(b, n.R)
 	if l == "" || r == "" {
@@ -7649,6 +7811,27 @@ func (g *irGen) floatBinOp(b *strings.Builder, n *BinOp) string {
 		fmt.Fprintf(b, "  %s = fadd double %s, %s\n", sum, rm, r)
 		fmt.Fprintf(b, "  %s = select i1 %s, double %s, double %s\n", t, adj, sum, rm)
 	case "**":
+		// `pow(0, -1)` is not an error to LLVM: `llvm.pow.f64` answers `inf`, which the caller then
+		// truncated to `2147483647` and printed at exit 0. The reference raises ZeroDivisionError, so the
+		// test is ours to emit — on the LIFTED values, which is what lets a base the compiler could not
+		// see at compile time (`z = 0` / `print(z ** -1)`, a parameter, a slot) raise the same way a
+		// literal does (Gap R.176, ADR 0293).
+		if g.floatPowerNeedsZeroGuard(n) {
+			zeroBase := g.newTmp()
+			fmt.Fprintf(b, "  %s = fcmp oeq double %s, 0.000000e+00\n", zeroBase, l)
+			g.markI1(zeroBase)
+			negExp := g.newTmp()
+			fmt.Fprintf(b, "  %s = fcmp olt double %s, 0.000000e+00\n", negExp, r)
+			g.markI1(negExp)
+			both := g.newTmp()
+			fmt.Fprintf(b, "  %s = and i1 %s, %s\n", both, zeroBase, negExp)
+			g.markI1(both)
+			// branchRaise closes the guard's own two blocks and returns the block the continuation runs
+			// in; the write continues into the SAME builder afterwards, exactly as the `/` guards beside
+			// this do. Swapping in a fresh builder here swallowed the `pow` call and left the caller's
+			// `%t3` undefined — llc rejecting OUR module, which ADR 0166 counts as exit 2.
+			g.branchRaise(b, both, "ZeroDivisionError", "0.0 cannot be raised to a negative power", n.Span(), "pow0")
+		}
 		fmt.Fprintf(b, "  %s = call double @llvm.pow.f64(double %s, double %s)\n", t, l, r)
 	case "==":
 		bt := g.newTmp()
@@ -8675,6 +8858,13 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// holding text, None or a container raises the TypeError CPython raises for this operator and
 		// that kind. The gate sits above the ordinary arithmetic lowering on purpose — that path reads
 		// the payload as a number, which is what this door exists to stop (roadmap L11.1, Gap R.88).
+		// A negative base to a fractional exponent is a COMPLEX number in the reference
+		// (`(-8) ** (1/3)` is `(1.0000000000000002+1.7320508075688772j`). This language has no complex
+		// value, so the shape is refused in words rather than answered with `nan`, which is what
+		// `llvm.pow.f64` returns and what both backends printed at exit 0 (Gap R.176, ADR 0293).
+		if n.Op == "**" && powerComplexIsAsked(n.L, n.R, g.powerOperandKind) {
+			return "", fmt.Errorf("`%s` is a negative base raised to a fractional power, which the reference answers with a complex number; this language has no complex value, and `llvm.pow.f64` would answer NaN (roadmap Gap R.176, ADR 0166)", exprSurface(n))
+		}
 		if g.taggedNumberUseApplies(n) {
 			switch n.Op {
 			case "+", "-", "*", "/", "//", "%", "**":
@@ -9009,17 +9199,19 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 					}
 				case "**":
 					if rv >= 0 {
-						base, exp := lv, rv
-						res = 1
-						for exp > 0 {
-							if exp&1 != 0 {
-								res *= base
-							}
-							exp >>= 1
-							if exp > 0 {
-								base *= base
-							}
+						// The fold has to see the overflow the binary-exponentiation loop hid: `2 ** 62`
+						// folded to `0` because the multiply wrapped past 1<<62 in silence, and `0` is a
+						// number the reference never produces. Refusing the fold keeps the value honest
+						// and lets the runtime guard below answer in words (Gap R.176, ADR 0293).
+						acc := new(big.Int).Exp(big.NewInt(lv), big.NewInt(rv), nil)
+						// The WORD the backend actually has — an i32 (Gap R.133) — not int64: `2 ** 31`
+						// folded to -2147483648 through this line, and a negative answer to a positive
+						// exponent is a number the reference never produces.
+						if !acc.IsInt64() || acc.Int64() < math.MinInt32 || acc.Int64() > math.MaxInt32 {
+							folded = false
+							break
 						}
+						res = acc.Int64()
 						folded = true
 					}
 				case "and", "or":
@@ -9246,6 +9438,18 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			b.WriteString(fmt.Sprintf("  %s = select i1 %s, i32 %s, i32 %s\n", t, adj, sum, rm))
 			return t, nil
 		case "**":
+			// Reaching THIS case means the power rule said the answer is an int — a non-negative exponent
+			// on int operands. The two cases the reference refuses are guarded rather than run: `0 ** -n`
+			// (which pow() answers with `inf` and the old code printed as `2147483647` after `fptosi`
+			// saturated) and a base whose magnitude would overflow the word, which used to wrap to 0 in
+			// silence (Gap R.176, ADR 0293).
+			// The zero-base raise for the i32 road is likewise the runtime guard's job (see the double
+			// road above): `pow(0, -1)` answers inf, and the guard below tests both signs at run time so
+			// a base the compiler cannot see is trapped too.
+			if ex, ok := g.intPowerOverflow(n.L, n.R); ok {
+				return "", fmt.Errorf("`%s` overflows the language's bounded integer: %s is %s, which does not fit a 64-bit word. The reference has arbitrary-precision integers and answers %s; this backend declines rather than print a wrapped number (roadmap Gap R.176, ADR 0166)",
+					exprSurface(n), exprSurface(n.L), exprSurface(n.R), ex)
+			}
 			ld := g.newTmp()
 			fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", ld, l)
 			rd := g.newTmp()

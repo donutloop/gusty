@@ -130,6 +130,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// for OUR bug. Every line here is a pair the reference raises for, so both engines now raise the
 		// reference's own sentence (roadmap Gap R.175, ADR 0292).
 		"probe_a_container_in_arithmetic",
+		// `x ** y` answers an int or a float, and the compiled leg answered EVERY power through
+		// `fptosi` + `%d` — `print(4 ** 0.5)` said `1` where the reference says `2.0` — while the
+		// interpreter answered `0` for `print(2 ** -1)` under a comment claiming Python does that. Both
+		// backends agreed on the wrong answers, so only the oracle leg could see them
+		// (roadmap Gap R.176, ADR 0292/0293).
+		"probe_a_power_answers_the_right_kind",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

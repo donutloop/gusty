@@ -1441,10 +1441,21 @@ func TestEvalPower(t *testing.T) {
 		t.Fatalf("2 ** 10 = %d err %v, want 1024", v, err)
 	}
 
-	// negative integer exponent yields 0 (int result), like Python's 2 ** -1 -> int floor
-	v, _, err = EvalExpr("2 ** -1")
-	if err != nil || v != 0 {
-		t.Fatalf("2 ** -1 = %d err %v, want 0", v, err)
+	// A NEGATIVE integer exponent answers a FLOAT, not 0. `2 ** -1` is `0.5` in the reference; the pin
+	// here used to be `want 0` with the comment "yields 0 (int result), like Python's 2 ** -1 -> int
+	// floor", which describes an operation Python does not have — both backends agreed with the test and
+	// disagreed with CPython, so only the oracle leg could see it (roadmap Gap R.176, ADR 0293).
+	progNeg, perr := Parse("2 ** -1")
+	if perr != nil {
+		t.Fatalf("parse: %v", perr)
+	}
+	evNeg := NewEvaluator()
+	vn, nerr := evNeg.EvalProgram(progNeg)
+	if nerr != nil {
+		t.Fatalf("2 ** -1: %v", nerr)
+	}
+	if nf, isFloat := evNeg.floatOf(vn); !isFloat || nf != 0.5 {
+		t.Fatalf("2 ** -1 = %d (float=%v), want the float 0.5", vn, nf)
 	}
 
 	// float power: 2.0 ** 3.0 == 8.0

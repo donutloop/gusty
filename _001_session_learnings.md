@@ -7884,3 +7884,57 @@ answer rows, 3 still-refused rows with a promotion log), `integration/container_
 `programs/probe_a_container_in_arithmetic.gy` registered in `conformanceStandalone()`. `except <Type> as e`
 does not parse — a separate gap, filed next; the probe avoids it and says why. Suite green, `gofmt`/`go vet`
 clean.
+
+## Cycle: a power answers the kind the reference answers with (Gap R.176 closed; ADR 0293)
+
+**The finding.** Five shapes answered a number CPython never produces, at exit 0, with **both engines
+agreeing**: `2 ** -1` → `0` (both), `4 ** 0.5` → `1` (compiled), `2.0 ** 10` → `1024` (compiled),
+`0 ** -1` → `inf`/`2147483647` (compiled), `2 ** 100` → `0` (both). Parity was blind; the oracle leg found
+all of them.
+
+**One missing token caused half of it.** `isFloat`'s `*BinOp` arm listed `"+", "-", "*", "%", "//"` and not
+`"**"`. Nothing told `print` a power answers a double, so `llvm.pow.f64`'s correct result went through
+`fptosi` into `%d`. Two backends, two wrong answers, one word. When a feature is dispatched through an
+operator table, the table is the bug: grep the operator lists for the operator you are fixing before
+believing the arithmetic is wrong.
+
+**The mirror-image bug on the other side, defended by a comment that lied.** `if r < 0 { return 0, nil }`
+with *"negative exponents yield 0 for an integer result, mirroring Python's int \*\* int"*. Python has no
+such operation. A comment that asserts what CPython does, written without running CPython, is a
+third-hand account — and `TestEvalPower` had pinned `want 0` from it, so the codebase had three copies of
+the same invention (the comment, the code, the test). Same lesson as Gap R.172's thirteen pins.
+
+**Guard placement cost two exit-2 regressions.** (1) An early `return "0.0"` from `floatBinOp`'s pre-pass
+left the function frame's `ret double %t3` naming a temporary that was allocated but never written —
+*use of undefined value '%t3'*. (2) Swapping in a fresh `strings.Builder` after `branchRaise` swallowed the
+`pow` call and produced the identical symptom. Both are ADR 0138's rule: `branchRaise` returns the block the
+continuation runs in; keep writing into the same builder. The final shape puts the `0 ** -n` trap at **run
+time**, which also fixes `z = 0` / `print(z ** -1)` — a compile-time claim can only see a literal base.
+
+**Measure the word the backend actually holds.** The compiled `int` is an `i32` (Gap R.133), the
+interpreter's is 64-bit. My first overflow refusal measured int64, so `2 ** 31` still printed
+`-2147483648` — a negative answer to a positive exponent — while `2 ** 100` correctly refused. A refusal
+that misses the boundary it exists to protect is worse than no refusal, because it reads as fixed.
+
+**Over-claiming again, caught by existing tests.** The first draft of the answer-kind rule returned "float"
+for any operand it could not name: `print(2 ** 3 ** 2)` became `512.0` and `print((2 and 3) ** 2)` became
+`9.0`. `TestExecPower` caught the first, my own new row the second. Same direction as cycle 19's two
+regressions — an answer becoming a wrong number — which is now the third cycle running where the *existing*
+suite caught what my new tables missed.
+
+**A fix I reverted, and why it is the right call.** Go's `math.Pow` and the host libm the compiled leg
+reaches through `llvm.pow.f64` are one ULP apart (`2 ** 1.5` → `…3bcc` vs `…3bcd`), so the engines differ in
+the last printed digit. I wrote a refinement (exact integer powers × `math.Sqrt`, accepted only within four
+ULPs of libm). It fixed the row I was chasing and moved 21 divergences on a 110-point grid to *different*
+rows. Removed; filed as Gap R.178 with a test that logs when one side is closed without the other. Fixing
+the set of wrong rows is the goal, not fixing the row under the lamp.
+
+**Process that worked.** Baseline proof again: 18 `pkg/lang` + 9 `integration` failures on a `git worktree`
+build of `HEAD`, all green on the new binary. The 169-program sweep moved only the new probe. One commit
+carried code + rule file + both test files + probe + ADR 0293 + docs + four ledger rows (R.176 closed,
+R.177 and R.178 filed).
+
+**Found on the way, filed not fixed.** `-2 ** 2` answers `4` on both engines; the reference parses
+`-(2 ** 2)` and answers `-4`, and `2 ** -1 ** 2` is `2` where the reference says `0.5` — a parser precedence
+fact no amount of arithmetic fixing touches (**Gap R.177**, owner L5.1). Also measured: a compiled
+integer above `2**31 - 1` prints `0` through `%d`, which is Gap R.133's i32 word, not a new defect.

@@ -7776,3 +7776,62 @@ exit **2**; the new pkg/lang tables fail there with 29 subtest failures and pass
 whole-corpus sweep (168 files) moved only `sequence_ops.gy`, whose compiled leg changed refusal *wording*
 (it had been reaching the `str * int` message; it now stops at `[1] + [2]` first) — its `debt` row still has `{aot:
 Missing}`, and its reason now names the exit-2 half as closed.
+
+### Gap R.176 — `x ** y` answered an int where the reference answers a float (CLOSED by ADR 0293, owner L11.6)
+
+Found by the 2026-07-06 arithmetic sweep, and the most instructive wrong-number-in-this-stretch because
+**both engines agreed on every one of them**:
+
+```
+print(2 ** -1)      CPython 0.5            both engines 0                int road returned 0 for a negative exponent
+print(4 ** 0.5)     CPython 2.0            interpreted 2.0  compiled 1   fptosi truncated llvm.pow.f64
+print(2.0 ** 10)    CPython 1024.0         compiled 1024                 printed through %d
+print(0 ** -1)      CPython raises         compiled inf → 2147483647     pow's own answer, truncated
+print(2 ** 100)     CPython a 31-digit int both engines 0                the multiply wrapped in silence
+```
+
+**One missing token caused the compiled half.** `isFloat`'s `*BinOp` arm listed
+`case "+", "-", "*", "%", "//"` and did not list `"**"`. Nothing downstream ever learned a power answers a
+double, so the correct value from `llvm.pow.f64` was truncated into `%d`. One word, two wrong answers per
+backend, and no test in a 150-row matrix could see it because both backends were wrong the same way. The
+oracle leg — CPython run on the same source — is the only instrument that found it.
+
+**The interpreter had the mirror-image bug, with a comment that lied.** `if r < 0 { return 0, nil }` under
+"negative exponents yield 0 for an integer result, mirroring Python's int `**` int". Python has no such
+operation; `2 ** -1` is `0.5`. The rule that actually decides it is in `pkg/lang/power_kind.go`, asked once
+by the print formatter, the double road, the i32 road and the constant fold (ADR 0279/0280's one-question
+rule — the print formatter and the arithmetic disagreeing is precisely how `print(4 ** 0.5)` could say `1`
+while the arithmetic underneath was right).
+
+**Guard placement cost two exit-2 regressions.** The `0 ** -n` raise first went into `floatBinOp`'s
+pre-pass with an early `return "0.0"`, which left the enclosing function frame's `ret double %t3` naming a
+temporary that had been allocated but never written — llc: *use of undefined value '%t3'*, our module, exit
+2. Then a `strings.Builder` swap after `branchRaise` swallowed the `pow` call and produced the identical
+symptom. Both are the same lesson as ADR 0138: `branchRaise` returns the block the continuation runs in and
+the write must continue into the **same** builder. Final shape: the raise is a **run-time** guard (two
+`fcmp`s, an `and`, `branchRaise`) — which is also what lets `z = 0` / `print(z ** -1)` trap like the
+literal, something a compile-time claim cannot do.
+
+**The overflow refusal has to measure the word the backend actually holds.** The compiled `int` is an
+`i32` (Gap R.133) and the interpreter's is 64-bit. Measuring int64 refused `2 ** 100` while letting
+`2 ** 31` print `-2147483648` — a negative answer to a positive exponent — and `2 ** 32` print `0`. Both
+now refuse at their own boundary, quoting the true value, and the constant fold **declines** rather than
+fold a wrapped number so the road below can name it.
+
+**Two regressions from over-claiming, same shape as Gap R.175's.** The first draft of the answer-kind rule
+answered "float" for any operand whose kind it could not name, which turned `print(2 ** 3 ** 2)` into
+`512.0` and `print((2 and 3) ** 2)` into `9.0`. A nested `**` now answers the same question recursively, and
+an unnameable **base** with a provably non-negative exponent stays an int. Caught by `TestExecPower` and a
+new row; the ladder's rule again — an answer may not become a wrong number on the way to fixing one.
+
+**A fix I tried and removed.** The interpreter's `math.Pow` and the host libm the compiled leg reaches
+through `llvm.pow.f64` are one ULP apart (`…3bcc` vs `…3bcd` for `2 ** 1.5`), so the two engines differ in
+the LAST printed digit. I wrote a refinement (exact integer powers × `math.Sqrt`, accepted only within a few
+ULPs of libm). It fixed `2 ** 1.5` and broke 21 rows of a 110-point grid on *different* lines than it fixed.
+Removed, and filed as **Gap R.178** with a test that logs when one side is closed without the other. A
+"fix" that changes which rows are wrong is not a fix.
+
+**Measurement, not memory.** Pre-cycle binary from `HEAD` in a `git worktree`: **18** `pkg/lang` and **9**
+`integration` subtest failures with the new tables; all green here. Whole-corpus sweep (169 programs) moved
+only the new probe. Two pins moved because they recorded the bug: `TestEvalPower` asserted `2 ** -1 == 0`
+with the misleading comment, now asserts the float `0.5`.
