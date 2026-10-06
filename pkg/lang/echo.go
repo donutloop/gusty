@@ -118,6 +118,14 @@ func (g *irGen) echoStmt(b *strings.Builder, e Expr) error {
 		_, verr := g.value(b, e)
 		return verr
 	}
+	// A value the container answers for gets its kind from the tag, at run time, from the same table the
+	// operand-type messages read. The form table below can name the shape but not the kind of a slot, and
+	// `gusty: result object True` is a prompt describing its own blind spot (roadmap L13.1).
+	if p, t, okPair := g.pairForEcho(b, e); okPair {
+		g.echoUsed = true
+		fmt.Fprintf(b, "  call void @rt_echo_pair(i32 %s, i32 %s, i32 0)\n", p, t)
+		return nil
+	}
 	out, handled, err := g.renderPair(b, e, FormStr, e.Span())
 	if err != nil {
 		// The pair found a form and the road to it failed (a refusal inside a container build,
@@ -288,6 +296,30 @@ entry:
   call i64 @write(i32 2, i8* %kind, i64 %kl)
   call i64 @write(i32 2, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.echo.sp, i32 0, i32 0), i64 1)
   call i64 @write(i32 2, i8* %p, i64 %n)
+  call i64 @write(i32 2, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.echo.nl, i32 0, i32 0), i64 1)
+  ret void
+}
+
+; rt_echo_pair announces a value whose kind is a RUN-TIME fact: the (payload, tag) pair a container
+; slot read produced. The kind is asked of the tag — the same table the operand-type messages read —
+; rather than guessed by the compiler, because a slot that holds True today holds 1 tomorrow and a
+; prompt that says the word object for both is reporting the compiler's blind spot instead of the
+; program's value (roadmap ADR 0259's rule for what a slot IS, applied to the prompt; ADR 0302's echo).
+define internal void @rt_echo_pair(i32 %v, i32 %t, i32 %quote) {
+entry:
+  store i32 0, i32* @rt_cap_len
+  store i32 1, i32* @rt_capturing
+  call void @rt_print_mixed_value(i32 %v, i32 %t, i32 %quote)
+  %n = load i32, i32* @rt_cap_len
+  store i32 0, i32* @rt_capturing
+  %buf = bitcast [65536 x i8]* @rt_cap to i8*
+  %kind = call i8* @rt_kind_name(i32 %t)
+  %kl = call i64 @strlen(i8* %kind)
+  %nl64 = zext i32 %n to i64
+  call i64 @write(i32 2, i8* getelementptr inbounds ([15 x i8], [15 x i8]* @rt.echo.hdr, i32 0, i32 0), i64 14)
+  call i64 @write(i32 2, i8* %kind, i64 %kl)
+  call i64 @write(i32 2, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.echo.sp, i32 0, i32 0), i64 1)
+  call i64 @write(i32 2, i8* %buf, i64 %nl64)
   call i64 @write(i32 2, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @rt.echo.nl, i32 0, i32 0), i64 1)
   ret void
 }

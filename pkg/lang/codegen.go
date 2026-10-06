@@ -3888,6 +3888,14 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		if !needHeap {
 			g.globals.WriteString(heapRuntimeIR)
 		}
+		// The pair half of the echo announces a value's kind from its tag, and the tag vocabulary lives in
+		// the tagged-arithmetic block (`rt_kind_name`) — the one table the operand-type messages read, so
+		// the prompt, a TypeError and a container printer call a slot the same thing (ADR 0259). A
+		// referenced internal function that was never emitted is the module llc rejects (ADR 0173), so the
+		// block rides with the echo the way it rides with the heap.
+		if !g.arithUsed && !runtimeBlockReferenced(numArithRuntimeIR, bodyText) {
+			g.globals.WriteString(numArithRuntimeIR)
+		}
 		g.globals.WriteString(echoRuntimeIR)
 	}
 	// The precise-root stack runtime (ADR 0181) is emitted whether or not the program
@@ -17042,6 +17050,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// means nothing without its tag, so both travel and print(y) dispatches on the tag
 					// instead of guessing a kind (roadmap L11.1, ADR 0241).
 					g.bindTaggedVar(b, nm.Value, v, t)
+					g.recordSlotOrigin(nm.Value)
 					return nil
 				}
 				if dictName, mixed := g.mixedDictIndexRead(ix); mixed {
@@ -17052,6 +17061,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 						return err
 					}
 					g.bindTaggedVar(b, nm.Value, val, tag)
+					g.recordSlotOrigin(nm.Value)
 					return nil
 				}
 				if listName, mixed := g.mixedIndexRead(ix); mixed {
@@ -17062,6 +17072,7 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					// Rebinding over a container or a tagged value: the door frees the old heap slot and
 					// marks the root dead, the way every other immediate binding does.
 					g.bindTaggedVar(b, nm.Value, val, tag) // the tagged slot is written too (ADR 0228)
+					g.recordSlotOrigin(nm.Value)
 					return nil
 				}
 			}
@@ -17079,6 +17090,14 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 			}
 			if handled, aerr := g.bindArithmeticPair(b, nm.Value, n.Value); aerr != nil {
 				return aerr
+			} else if handled {
+				return nil
+			}
+			// `n = xs[0]` over a container the program built: the kind lives in the object, so the binding
+			// carries the tag beside the payload or the name means nothing on its own (ADR 0185, applied
+			// by the one binding road that had not asked — roadmap L11.1, Gap R.146).
+			if handled, perr := g.bindSlotReadPair(b, nm.Value, n.Value); perr != nil {
+				return perr
 			} else if handled {
 				return nil
 			}
@@ -18027,6 +18046,13 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  %s = call i32 @rt_tag_of(i32 %s, i32 %s)\n", tagT, hVal, pos))
 				b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s_tag\n", tagT, loopVar))
 				g.taggedVars[loopVar] = true
+				if g.taggedOrigin == nil {
+					g.taggedOrigin = map[string]string{}
+				}
+				// Recorded so a refusal this variable may meet later can say "a loop stepped over it"
+				// truthfully, rather than a fallback sentence guessing at a loop the program never wrote
+				// (roadmap Gap R.38, L11.1).
+				g.taggedOrigin[loopVar] = taggedOriginLoop
 			}
 			g.loopStack = append(g.loopStack, loopInfo{breakLabel: endL, continueLabel: incL})
 			for _, s := range n.Body {

@@ -1520,7 +1520,9 @@ func (g *irGen) mixedDictPair(b *strings.Builder, dictName string, key Expr, sp 
 	if !ok {
 		return "", "", fmt.Errorf("codegen: reading %q from a dict whose values are of more than one kind needs a key whose kind the compiler can prove; a bool, float or container key needs the tagged value word (roadmap L11.1, ADR 0232)", dictName)
 	}
-	g.checkKeyReadTagged(b, h, kv, kt, nil, sp)
+	// The key's own expression travels so a missing key raises the reference's sentence — `KeyError: 'z'`,
+	// the key's repr — rather than the module's generic prose (roadmap Gap R.189).
+	g.checkKeyReadTagged(b, h, kv, kt, key, sp)
 	val = g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, h, kv, kt)
 	tag = g.newTmp()
@@ -1574,7 +1576,12 @@ func mixedReadErr(what string) error {
 // wants a number from it: printing dispatches on the tag, but arithmetic and calls have no
 // tag to carry (roadmap L11.1, ADR 0185).
 func mixedTaggedVarErr(name string) error {
-	return fmt.Errorf("codegen: %s comes from a loop over a mixed list; print(%s) works, but using it as a number needs a tagged value (roadmap L11.1)", name, name)
+	// The historical sentence was "comes from a loop over a mixed list", which is only true of the loop
+	// road that sets the status without an origin. Every road that binds a pair now records where it came
+	// from (taggedOrigin), so this is the genuine unknown case: say what is known — the value's kind lives
+	// beside it, in the object it was read out of — and name neither a loop nor a container the reader may
+	// not have written (roadmap Gap R.38, L11.1).
+	return fmt.Errorf("codegen: %s holds a value whose kind lives beside it rather than in it, so this position cannot ask what it is: print(%s) dispatches on the tag, and a position that keeps one word for its operand has nowhere to put the second one — this position needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1)", name, name)
 }
 
 // Where a tagged variable's (payload, tag) pair came from. The refusal a tagged name meets in a
@@ -1598,6 +1605,16 @@ const (
 	// taggedOriginParamArith is the pair a name holds when the body computed it out of a PARAMETER
 	// (`y = x + 1` / `return y`): arithmetic yes, run-time container no.
 	taggedOriginParamArith = "arithmetic over a parameter the caller supplied"
+	// taggedOriginSlot is the pair a plain binding took from a slot read — `n = xs[0]` over a container
+	// the program built — where no arithmetic, parameter or loop is involved. The name exists because the
+	// refusal it prevents was real: a program with no loop anywhere was told its value "comes from a loop
+	// over a mixed list", which is Gap R.38's defect (a message that describes a program the reader cannot
+	// find) reproduced by a fallback sentence rather than by a pasted template.
+	taggedOriginSlot = "a slot the program built at run time, read by position"
+	// taggedOriginLoop is the pair a `for`/comprehension loop variable takes over a container that mixes
+	// kinds. Recorded rather than inferred: "comes from a loop" is true only when a loop bound it, and the
+	// door that knows whether a loop ran is the door that should say so.
+	taggedOriginLoop = "the element a loop stepped over a container that mixes kinds"
 )
 
 // taggedVarErr is mixedTaggedVarErr in the honest voice: the same refusal, worded for the door that
@@ -1615,6 +1632,10 @@ func (g *irGen) taggedVarErr(name string) error {
 		// integer", which is a story about a different program — `y = x` / `return y` has no other arm at
 		// all — and a refusal that describes a program the reader cannot find is Gap R.38's own defect.
 		return fmt.Errorf("%s is a parameter the call site handed a double, so it arrives as a (payload, tag) pair and its kind lives beside it, not in the value: print(%s), a binding and the positions that read one number ask the tag, and this position keeps one word for its operand, so the tag has nowhere to go — the answer's kind is what the argument was, which is a run-time question this position cannot ask (roadmap L11.1, Gap R.146, Gap R.38)", name, name)
+	case taggedOriginSlot:
+		return fmt.Errorf("%s holds %s, which travels as a (payload, tag) pair: the object the slot was read out of says which kind it is, print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go — this position needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1, Gap R.146)", name, taggedOriginSlot, name)
+	case taggedOriginLoop:
+		return fmt.Errorf("%s is %s, so it travels as a (payload, tag) pair: print(%s) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go — using it as a number needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1, Gap R.146)", name, taggedOriginLoop, name)
 	case taggedOriginFloat:
 		return fmt.Errorf("%s holds %s: the variable was bound to a number and rebound to a double, so its value travels as a (payload, tag) pair whose payload is a float box, print(%s) asks the tag, and this position keeps one word for its operand (roadmap L11.6, Gap R.155)", name, taggedOriginFloat, name)
 	}
@@ -2970,7 +2991,10 @@ func (g *irGen) slotReadUnderTag(b *strings.Builder, base, baseTag string, ix *I
 
 	// ---- the dict arm: the entry whose key is the (payload, tag) pair, and the value one word past it.
 	fmt.Fprintf(b, "%s:\n", dictArm)
-	g.checkKeyReadTagged(b, base, key, keyTag, nil, sp)
+	// The key expression rides along so the raise can name the key (Gap R.189): the payload-and-tag pair
+	// says which entry was asked for, and the program's own key expression says what to call it in the
+	// message. `ix.Idx`, not `key` — `key` here is the IR value the payload arrived in.
+	g.checkKeyReadTagged(b, base, key, keyTag, ix.Idx, sp)
 	dv := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", dv, base, key, keyTag)
 	dt := g.newTmp()
@@ -3184,7 +3208,7 @@ func (g *irGen) containerSlotRead(b *strings.Builder, base, kind string, key Exp
 			// A key: found by the payload-and-tag rule equality uses, and the value sits one word
 			// past it — rt_get_elem with the key as an index would read the key back and call it a
 			// value, which is what rt_dict_get_tagged and rt_dict_value_tag exist to avoid.
-			g.checkKeyReadTagged(b, base, kv, kt, nil, sp)
+			g.checkKeyReadTagged(b, base, kv, kt, key, sp)
 			val = g.newTmp()
 			fmt.Fprintf(b, "  %s = call i32 @rt_dict_get_tagged(i32 %s, i32 %s, i32 %s)\n", val, base, kv, kt)
 			tag = g.newTmp()
@@ -5179,6 +5203,43 @@ func (g *irGen) liftPair(b *strings.Builder, payload, tag string) string {
 // bindArithmeticPair is the pair road of an assignment, asked the same way from the plain statement and
 // from an augmented one: when the ordinary numeric road would refuse the expression, ask the objects and
 // bind the name with the pair the answer arrived in (roadmap L11.1, ADR 0267).
+// bindSlotReadPair is `n = xs[0]` over a container the program BUILT (`xs = []` / `xs.append(3)`), where
+// the element's kind is a fact about the object rather than about the literal. The pair door the print
+// dispatch, the comparisons and `len` already use answers it, and binding only the payload would leave a
+// number wearing another object's bits — the interned index of a text reads back as the integer 4 (ADR
+// 0185's rule, applied to the one binding road that had not been taken). `n = xs[0][0] * 2` has always
+// come through bindArithmeticPair; the plain read had nowhere to go, so `str(n)` refused and `n + 1`
+// blamed a loop that was never written (roadmap L11.1, Gap R.146, ADR 0302's diagnostic pass).
+func (g *irGen) bindSlotReadPair(b *strings.Builder, name string, e Expr) (bool, error) {
+	p, t, ok := g.runtimeSlotPairDeep(b, e)
+	if !ok {
+		return false, nil
+	}
+	g.bindTaggedVar(b, name, p, t)
+	if g.taggedOrigin == nil {
+		g.taggedOrigin = map[string]string{}
+	}
+	g.taggedOrigin[name] = taggedOriginSlot
+	// The payload may be a float box or a container handle, both of which are heap objects: the slot is a
+	// root for as long as the name holds it (ADR 0181's rule for every handle-carrying store).
+	g.gcReg(b, name)
+	return true, nil
+}
+
+// recordSlotOrigin says where a name's pair came from when the door that bound it read a slot. The
+// origin is what lets a later refusal name the truth (taggedVarErr); a binding that leaves it unset
+// falls through to a sentence that has to guess, and the guess it used to make — "comes from a loop
+// over a mixed list" — was false for every program with no loop in it (roadmap Gap R.38).
+func (g *irGen) recordSlotOrigin(name string) {
+	if g.taggedOrigin == nil {
+		g.taggedOrigin = map[string]string{}
+	}
+	if g.taggedOrigin[name] != "" {
+		return
+	}
+	g.taggedOrigin[name] = taggedOriginSlot
+}
+
 func (g *irGen) bindArithmeticPair(b *strings.Builder, name string, e Expr) (bool, error) {
 	if !g.arithWouldRefuse(e) {
 		return false, nil

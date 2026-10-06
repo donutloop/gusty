@@ -965,10 +965,23 @@ and a developer can regenerate them, but nobody can use them to make a red suite
 
 | Artifact | What it holds | Who checks it |
 |---|---|---|
-| `pkg/lang/testdata/interpreter-golden.json` | 5478 sources with the answer the retired engine gave: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record |
-| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (340 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
+| `pkg/lang/testdata/interpreter-golden.json` | 5501 sources with the answer the retired engine gave: value repr, type name, program stdout, trap class and message, whether the shared front end refused the source | every case that asks about a source; **a missing entry fails the case**, so deleting coverage is not possible by deleting a record |
+| `pkg/lang/testdata/interpreter-golden-drift.json` | the sources where the compiled answer differs from the record (334 rows) | the package's `TestMain`, both ways: a new divergence fails, and a divergence that silently went away fails until its row is deleted |
 | `integration/testdata/interpreter-golden-drift.json` | the same, for the programs the CLI suite asks about (21 rows) | `integration`'s `TestMain` |
 | `integration/testdata/cpython-debt.json` | the sources where the compiled answer differs from **CPython**, with the reference's answer, the compiled answer, a `why`, and the **roadmap row that owns the fix** | `TestMain`, both ways as above, plus: an unowned row fails, and a row whose case stopped running fails |
+
+Two facts in that machinery matter to an agent reading the JSON, because both are answers it would otherwise
+have to guess at.
+
+- **A snippet's announced value, and where its type comes from.** `--json --eval` reports `result` and `type`
+  when the module can report a final expression, and `type` is asked of the value's **tag, at run time** — the
+  same table a `TypeError` message reads — so `xs = [True, 1]` / `xs[0]` reports
+  `{"result": "True", "type": "bool"}` and `xs[1]` reports `{"result": "1", "type": "int"}` (ADR 0303). A
+  snippet whose value the module cannot render reports neither member: silence, never a guess, and never the
+  word `object` standing in for a kind the compiler could not see.
+- **The suite publishes how soft its landings were.** The run prints `compiled refusals this run: N`. An honest
+  refusal is a filed gap, not a pass — a green suite whose `N` has grown has lost coverage. Read `N` as a
+  coverage number, not a warning count.
 
 Rules these files are built to obey, and the reason each exists:
 

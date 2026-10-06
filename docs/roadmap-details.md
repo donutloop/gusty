@@ -8355,3 +8355,60 @@ stays open because naming a key you cannot see means rendering a value whose kin
 same missing word as L11.1, which is why the row keeps `L11.1` as its owner rather than being closed as
 "mostly done". `integration/slot_order_object_test.go` accepts the generic sentence on that road and counts
 it as a filed gap, so the remaining half is visible without pinning a wrong answer as correct.
+
+### ADR 0303 — the rendering positions ask the tag (2026-08-03, L11.1 / L13.1)
+
+**The measurement.** Two refusals that had outlived their own reasoning:
+
+```console
+$ gusty --eval 'xs = []\nxs.append("a")\nprint(str(xs[0]))'
+gustyc: jit: codegen: repr of an element read is not implemented
+$ gusty --eval 'n = 1\nprint(str(n))'          # n bound from a slot, not a literal
+gustyc: jit: codegen: str on non-integer
+```
+
+with `print(xs[0])` answering `a` all along. Both refusals came from one place — the compile-time str/repr
+table, which has rows for an integer, a text, `None`, a verdict and the container literals — and both values
+are exactly the ones whose kind the run time decides.
+
+**Root cause, and why the fix is a routing rule rather than a feature.** The rendering pair and the tagged
+value word are the same feature seen from two ends: both ask *what is this value*, and the answer has always
+been the tag beside the payload in the object. `print` had been asking it for a dozen ADRs (`print(x)` and
+`str(x)` are the same printer with the quote flag set — ADR 0185). `str(x)` went to a road that guesses, and
+refused whatever it could not guess. So the rule is now **one door**: `rt_print_mixed_value` pointed at
+stdout for `print`, at the capture buffer for `str`/`repr` (`rt_str_of_value`), and at the capture buffer plus
+the tag-named kind for the prompt (`rt_echo_pair`); a container's own slots answer for themselves through
+`rt_str_of_container`, because only the object knows how its slots are stored. ADR 0258 exists to keep a
+second renderer dead — two number formatters once disagreed about a container and `str([1, 2])` answered `0`.
+
+**The bug the fallback clause wrote.** `n = xs[0]` bound a bare payload, so `str(n)` refused — with a sentence
+inherited from a clause that fires for both a slot binding and a loop variable:
+
+> `n comes from a loop over a mixed list`
+
+in a program with no loop. That is `Gap R.38`'s defect produced not by a pasted template but by a fallback
+choosing a story it had been handed; it is fixed in the same place, by giving the roads a record of what they
+bound (`taggedOrigin`) and asking it at refusal time. The sibling half of that defect — a name bound from a
+slot read answering `0` where the reference answers `None` (`Gap R.171`'s shape through a binding) — is fixed
+by the pair binding itself, because the payload alone is a number wearing another object's bits: the interned
+index of `"a"` is a small integer.
+
+**The prompt's kind, which is where the second half of this cycle went.** The cycle opened the door and shipped
+with the JSON reporting `type: object` for slot reads — a wrong answer at exit 0, of the family roadmap Gap R.38
+and Gap R.95 keep filing. The fix passes the *tag* to the runtime and asks the module's own kind table
+(`rt_kind_name`) at run time, so the prompt, a `TypeError` message and a container's printer cannot call one
+value by two names. Cost, recorded: any module that echoes a pair now drags the tagged-arithmetic block in for
+`rt_kind_name` — a few hundred bytes of IR against one tag vocabulary (ADR 0259's argument, run in the other
+direction).
+
+**Alternatives rejected.** Widening the static table (that is how the bug got made — every extension is another
+way to disagree with `print`); answering with the plain payload when the kind is unknown (ADR 0258's silent-
+truncation class); keeping `object` in the prompt; giving the echo its own kind→name table (two vocabularies
+describing one value); leaving `n = xs[0]` payload-only and explaining it in prose (a payload-only binding is
+not a refused program, it is a wrong-typed one).
+
+**What still refuses, and where it is owed.** `n + 1`, `abs(n)`, `[n]`, `min(n, 3)` — the positions that keep
+one word for a whole value — now refuse with sentences that name the value's origin and the missing word
+(`Gap R.146` under `L11.1`); the prompt still declines a user-defined call (`L13.1`); and a literal `None`
+passed to a user function still arrives as the bare word `0` (`Gap R.171`), because the parameter has no tag
+beside it — the renderer is paid, the call boundary is not.

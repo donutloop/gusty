@@ -3020,6 +3020,33 @@ the annotation surface.
 - Arithmetic on non-numeric operands reports a diagnostic (suppressed inside
   untyped function bodies, which fall back to dynamic dispatch).
 
+## `str(v)` and `repr(v)` ask the same door `print` asks
+
+A value's kind lives beside its payload, in the object — and for a slot the program built at run time, only
+the tag can say what it holds. `print(x)` has always asked the tag. `str(x)` and `repr(x)` ask **the same
+printer**, pointed at a buffer instead of at stdout, with one flag deciding whether a text writes its
+characters or its quoted repr (ADR 0185, ADR 0258, ADR 0303):
+
+```python
+xs = []
+xs.append(3)
+xs.append("a")
+xs.append([1, 2])
+xs.append(None)
+print(str(xs[0]), str(xs[1]), str(xs[2]), str(xs[3]))   # 3 a [1, 2] None
+print(repr(xs[1]))                                      # 'a'
+n = xs[1]
+print(str(n))                                           # a
+for v in xs:
+    print(repr(v))                                      # 3, 'a', [1, 2], None
+```
+
+So the answer to `str(v)` never disagrees with what `print(v)` wrote, and a container's slots answer for
+themselves — only the object knows how its own slots are stored. What still refuses is a position that keeps
+**one word** for a whole value (`n + 1`, `abs(n)`, `[n]`, `min(n, 3)`): the refusal names what the value is and
+where it came from, and roadmap L11.1 owns the missing word. A *name* bound from a slot carries its tag with
+it, and a refusal never claims a value "comes from a loop" unless a loop bound it (Gap R.38).
+
 ## Builtins
 
 Names are resolved by the checker before codegen runs. Every built-in call name comes from

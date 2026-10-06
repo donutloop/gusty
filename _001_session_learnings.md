@@ -8376,3 +8376,51 @@ the missing-record path converts an afternoon of one-missing-source-per-run into
 `HasGoldenAnswer` precisely so it could report *all* ten unrecorded programs at once; and the shell's quoting
 inside a Python heredoc will happily write a Go string literal with a real newline in it, so multi-line Go
 strings go through the `edit` tool or a real `.py` file.
+
+---
+
+## Cycle — `str()` and `repr()` answer for a value whose kind the run time decides (ADR 0303)
+
+**Feature (roadmap L11.1 / L13.1, closing the renderer half of Gap R.171 and taking Gap R.146 / R.189
+further).** Two refusals that had outlived their own reasoning — `str(xs[0])` over a container the program
+built refused with `repr of an element read is not implemented`, and `str(n)` for a name bound from a slot
+refused with `str on non-integer` — while `print(xs[0])` had been answering correctly for a dozen ADRs. Both
+went to the compile-time str/repr table, which has rows for an integer, a text, `None`, a verdict and the
+container literals, i.e. for exactly the values whose kind the compiler can see.
+
+- **Decision: one door, not one more renderer.** `rt_print_mixed_value` is pointed at stdout for `print`, at the
+  capture buffer for `str`/`repr` (`rt_str_of_value`), and at the capture buffer *plus the tag-named kind* for the
+  prompt (`rt_echo_pair`). The `quote` flag is the str/repr half of the pair (ADR 0185). A container's own slots
+  answer through `rt_str_of_container` — only the object knows how its slots are stored. ADR 0258 exists to keep
+  a second renderer dead; this cycle is that ADR applied to the road `str()` takes.
+- **`n = xs[0]` was binding one word.** A payload without its tag is a number wearing another object's bits (the
+  interned index of `"a"` *is* a small integer), so the name was unusable everywhere except where the tag is
+  re-derived. `bindSlotReadPair` now writes both words, as ADR 0185 always required. `TestThePairBindingWritesBoth
+  Words` asserts the tag alloca is written — the regression there is silent.
+- **A fallback clause can write a lie.** The refusal for a one-word position is assembled by a clause that fires
+  for a loop variable *and* a slot binding, and it said `n comes from a loop over a mixed list` in a program with
+  no loop — `Gap R.38`'s defect produced not by a pasted template but by a fallback choosing a story it was handed.
+  Roads now record what they bound (`taggedOriginSlot` / `taggedOriginLoop`) and the sentence asks the record; a
+  test fails if the word "loop" appears for a program that has none.
+- **The prompt's `type` was reporting the compiler's blind spot.** After shipping the door, `--json --eval` of
+  `xs = [True, 1]` / `xs[0]` answered `"type": "object"`. A wrong answer at exit 0 is exactly the family Gaps R.38
+  and R.95 keep filing, and the fix is not a better guess: pass the tag to the runtime and ask `rt_kind_name`, the
+  table the operand-type messages already read, so the prompt, a `TypeError` and a container printer cannot call one
+  value by two names. Cost recorded in the ADR: echoing a pair now drags `numArithRuntimeIR` into the module.
+- **`KeyError` names its key on two more doors** (`Gap R.189`): `heapargs.go` was passing `nil` for the key
+  expression on the pair roads; threading it makes `d = {}` / `print(str(d["z"]))` raise `KeyError: 'z'` and the
+  tag-gated dict read raise `KeyError: 'k'`.
+- **Ledger hygiene, measured:** four drift rows went *paid* by this cycle (two `KeyError` messages, one echoed
+  value, one trap message) and the ratchet refused to let the suite pass until they were deleted — `GUSTY_GOLDEN_UPDATE=1`
+  rewrote 340 → 334. The record grew 5478 → 5501 as the new tests' sources were harvested from the pre-change
+  binary. The pattern to keep: **the ratchet's "PAID debt still on the ledger" failure is a good sign** — it is the
+  case where a fix lands and the tracker notices.
+- **Refusal-wording pins are a real API.** Four pre-existing tests pinned the substring `needs a tagged value` in
+  loop-variable refusals; rewriting the sentences to name the true origin broke them. The right move was to keep the
+  phrase *and* the truth ("needs a tagged value word, the one that carries the kind beside the payload"), not to
+  relax the pins — a pin on wording is how a diagnostic keeps its contract.
+- **Still owed:** `n + 1`, `abs(n)`, `[n]`, `min(n, 3)` (the one-word positions, `Gap R.146` under `L11.1`); the
+  prompt's silent user call (`L13.1`); and `def f(v): return str(v)` with `f(None)` answering `0` (`Gap R.171`) —
+  the renderer is paid, the **call boundary** is not, because a literal `None` crosses into a user function with no
+  tag beside it. That last distinction is the cycle's finding worth keeping: fixing the printer does not fix a value
+  that arrives undressed.

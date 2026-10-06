@@ -531,34 +531,6 @@
     "actual": "jit: codegen: pop() on \"d\", which the program bound to a container rather than a text: the compiled backend folds container methods only over a literal written at the call, and \"d\" is a name whose slots the runtime owns — CPython answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.174, ADR 0166)"
   },
   {
-    "source": "d = {1: 10, 2: 20}\nd[1]",
-    "reason": "the echoed value differs from the record",
-    "expected": "10"
-  },
-  {
-    "source": "d = {1: 100, 2: 200}\nd[2]",
-    "reason": "the echoed value differs from the record",
-    "expected": "200"
-  },
-  {
-    "source": "d = {}\nd[\"a\"] = 4\nprint(d[\"z\"] / 2)\n",
-    "reason": "the trap's class or message differs from the record",
-    "expected": "KeyError: 'z'",
-    "actual": "KeyError: key not found"
-  },
-  {
-    "source": "d = {}\nd[\"a\"] = [1, 2]\nprint(1 if d[\"z\"][0] \u003e 1 else 0)\n",
-    "reason": "the trap's class or message differs from the record",
-    "expected": "KeyError: 'z'",
-    "actual": "KeyError: key not found"
-  },
-  {
-    "source": "d = {}\nd[\"a\"] = [1, 2]\nprint(d[\"z\"][0])\n",
-    "reason": "the trap's class or message differs from the record",
-    "expected": "KeyError: 'z'",
-    "actual": "KeyError: key not found"
-  },
-  {
     "source": "def add(a, b):\n    return a + b\nadd(3, 4)",
     "reason": "the echoed value differs from the record",
     "expected": "7"
@@ -1128,11 +1100,6 @@
     "source": "len({x: x * 10} for x in [1, 2])",
     "reason": "the echoed value differs from the record",
     "expected": "2"
-  },
-  {
-    "source": "lst = [10, 20, 30]\nlst[1]",
-    "reason": "the echoed value differs from the record",
-    "expected": "20"
   },
   {
     "source": "max({1, 2, 3})",

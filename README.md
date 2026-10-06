@@ -836,10 +836,15 @@ underneath the value — while `str({1})`, `str(set())` and `str(1.5)` refused o
 module it rejected, and a text built at run time printed `(null)` inside a container because only the
 compiler had ever been able to produce a repr. Three container builders wrote per-slot tags without
 saying so on the object, so `print(["a", 1])` was right while `str(["a", 1])` answered `[0, 1]` from
-the same object; objects now describe their own slots on every assignment path. A value whose kind no
-expression names is refused in words with exit 1 and the missing half named — never the number
-underneath (the residual shapes are Gap R.115, a container returned from a function is Gap R.67's, a
-tuple is L11.3's, and `print(f"{xs}")` is Gap R.114). `--json --eval 'repr("hi")'` reports
+the same object; objects now describe their own slots on every assignment path. A value whose kind is a **run-time** fact asks
+the same door: `str()` and `repr()` of a slot read out of a container the program built, of a name bound
+from such a slot, and of a loop variable stepping over a container that mixes kinds all route through the
+module's one tag-reading printer (`rt_str_of_value` → `rt_print_mixed_value`), so `str(v)` can never
+disagree with `print(v)` (ADR 0303). What still refuses is a position that keeps **one word** for a whole
+value — `n + 1`, `abs(n)`, `[n]`, `min(n, 3)` — and the refusal names what the value is and where it came
+from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
+R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, and `print(f"{xs}")` is Gap
+R.114). `--json --eval 'repr("hi")'` reports
 `{"result": "'hi'", "type": "str"}`, and `programs/probe_render_pair.gy` is `match` on all three legs.
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and

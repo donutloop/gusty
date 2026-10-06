@@ -216,7 +216,21 @@ func requireReferenceTrapOrHonestRefusal(t *testing.T, src, classAndMessage stri
 	a := ReferenceAgreement{PythonTrap: "raises " + classAndMessage, Compiled: out, Code: code}
 	switch {
 	case code == 3 && strings.Contains(out, classAndMessage):
-		requireReferenceAgreement(t, src, ReferenceAgreement{PythonTrap: "", Python: "", Compiled: out, Code: 3}, roadmap, why)
+		// The compiled run raised the reference's own class and message. That IS the agreement this row
+		// claims, so it is asserted directly — the agreement comparison below is for programs that print,
+		// and routing a trap through it asked for a debt row describing a correct answer (which is how
+		// this branch was first caught: every correctly-trapping case failed, and no case could pass).
+		markDebtExercised(ReferenceDebt{
+			Source:   src,
+			Python:   "raises " + classAndMessage,
+			Compiled: "exit 3 " + quoteShort(firstLineOf(out)),
+			Roadmap:  roadmap,
+			Why:      why,
+		})
+		if row, ok := loadReferenceDebt(t)[src]; ok {
+			t.Errorf("%s: the compiled run now raises the reference's %q, but %s still carries a debt row (%s → %s, owed by %s) — delete it",
+				src, classAndMessage, referenceDebtFile, row.Python, row.Compiled, row.Roadmap)
+		}
 		return
 	case code == 1 && refusesHonestly(out):
 		// The case asked, which is what "exercised" means: it put the program to the reference and to
