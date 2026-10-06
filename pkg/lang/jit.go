@@ -374,6 +374,20 @@ func (e *Evaluator) holdsValue(name string) bool {
 	return false
 }
 
+// zfillTo pads a numeric-looking text with leading zeros to width, CPython's way: after any leading
+// sign, so "-42" at width 5 is "-0042" and not "00-42". Both engines had their own left-pad and agreed
+// with each other rather than with the reference (roadmap Gap R.183, ADR 0297).
+func zfillTo(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	pad := strings.Repeat("0", width-len(s))
+	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
+		return s[:1] + pad + s[1:]
+	}
+	return pad + s
+}
+
 func (e *Evaluator) allocObj(kind string) int64 {
 	e.nextID++
 	e.allocCount++
@@ -3492,8 +3506,10 @@ func (e *Evaluator) callStrMethod(recv int64, name string, args []Expr) (int64, 
 		if len(s) >= width {
 			return e.allocStr(s), nil
 		}
-		pad := strings.Repeat("0", width-len(s))
-		return e.allocStr(pad + s), nil
+		// CPython pads AFTER a leading sign, so "-42".zfill(5) is "-0042" and not "00-42" — the
+		// zeros go between the sign and the digits. Both engines padded on the left unconditionally,
+		// so they agreed with each other and disagreed with the reference (roadmap Gap R.183).
+		return e.allocStr(zfillTo(s, width)), nil
 	case "ljust":
 		// s.ljust(width) -> pad with spaces on the right to width.
 		if len(args) != 1 {

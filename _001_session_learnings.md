@@ -8060,3 +8060,36 @@ a bug with a test around it, and it moves with a comment saying why.
 **Process.** Baseline proof: 10 failures on a `git worktree` build of HEAD, 0 here. Sweep of 172 programs:
 only the new probe moved. One commit: rule + both engines + both test files + probe + ADR 0296 + docs +
 tracker.
+
+## Cycle: a text answers truth, a string method answers with its kind (Gap R.183/R.184 closed; ADR 0297)
+
+**The bug is a shared helper being used as two different predicates.** `not` called `asI1`, whose job is
+`icmp ne i32 <word>, 0` — correct for numbers, nonsense for anything stored as a handle or an interned index.
+`not "x"` tested the intern slot. The tell that should have been enough on its own: `if "x":` in the same
+program answered correctly, because the test road uses `truthyValue`. When two roads ask "is this true?" and
+disagree, the disagreement *is* the defect — pin it as a test (I did: the `not` rows now cross-check against
+the `if` rows).
+
+**A hand-maintained capability list is the bug, not the missing names.** The print road listed three
+text-returning methods against an operation switch with fourteen — and that three-name literal appeared
+**twice** in `codegen.go`. Nine methods printed their intern index (`0` for `"ab".zfill(5)`). The fix is not
+adding nine names; it's one derived predicate plus a test that fails if the literal list comes back. When you
+find a table that must mirror another table, delete one of them.
+
+**Fourth cycle running: the interesting bug is the one both backends agree on.** `"-42".zfill(5)` → `00-42`
+in interp *and* aot; parity satisfied; only CPython on the same file said `-0042`. Two independent left-pads
+are one blind spot; one shared `zfillTo` makes it unrepresentable. Keep asking "would parity notice?" — if
+not, the oracle leg is the only instrument and it should be pointed at the shape deliberately.
+
+**A test that trims away the thing under test.** `"ab".ljust(4)`'s whole answer is the trailing spaces, and
+my shared `strings.TrimSpace` comparison would have made that row pass no matter what. Those rows now ask the
+reference for a `repr()` and compare quoted output. Generalise a helper across rows only after checking no
+row's signal lives in the part you strip.
+
+**A citation check caught me filing before writing.** `TestRecordCitationsResolveToRealPrograms` failed
+because the roadmap row I'd just added quoted a probe I hadn't written yet. That's the ledger's machine path
+doing its job — a row is a claim, and one test turns unfilled claims into build failures rather than prose.
+
+**Process.** Baseline proof: 24 failures on a `git worktree` build of HEAD, 0 here. 173-program sweep: only
+this cycle's probe moved. `expandtabs` with a tab in the receiver still refuses AOT — measured as pre-existing
+and left alone rather than folded into a row it doesn't belong to.

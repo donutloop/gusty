@@ -973,6 +973,12 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a text answers truth like any other value and a string method prints its text**: `--aot --eval
+  'print(not "x")'` exits 0 with `False` and `'print("ab".zfill(5))'` with `000ab` (`Gap R.183` /
+  `Gap R.184` / ADR 0297). Before this the compiled leg said `True` for `not "x"` while `if "x":` beside it
+  answered correctly (the `not` road compared the INTERN SLOT against zero), and nine text-returning methods
+  printed the intern INDEX — `0` — because the print road listed three of the fourteen the fold implements,
+  in a list that existed twice. `"-42".zfill(5)` gave `00-42` on BOTH engines, so parity could not see it.
 - **a dict view prints as a view**: `./build/pyre --aot --eval 'print({"a": 1}.keys())'` exits 0 with
   `dict_keys(['a'])`, matching the interpreter and the reference (`Gap R.182` / ADR 0296). Before this the
   compiled leg printed the heap HANDLE (`0`), and `print({1: 2}.values())` emitted

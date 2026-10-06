@@ -154,6 +154,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// rendered as a global address fed to a heap walker. The view keeps its list kind so sum/min/
 		// max keep working; only the rendering knows it is a view. Gap R.182 / ADR 0296, owner L11.1.
 		"probe_a_dict_view_prints_as_a_view",
+		// A text answers truth like the reference and a string method prints its TEXT rather than the
+		// intern INDEX. `not "x"` said True compiled (asI1 compared the intern slot to zero) while
+		// `if "x":` beside it answered correctly; the print road listed 3 of the fold's 14 text-returning
+		// methods -- twice -- so zfill/ljust/rjust printed 0; and "-42".zfill(5) gave 00-42 on BOTH
+		// engines, which parity could not see. Gap R.183 + Gap R.184 / ADR 0297, owner L11.1/L11.2.
+		"probe_a_text_answers_truth_and_its_methods_print",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

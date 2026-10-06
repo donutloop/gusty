@@ -4829,11 +4829,8 @@ func (g *irGen) exprIsString(e Expr) bool {
 		// A string method on a string receiver returns a string: `get()[1].upper()` is text, and
 		// the print path and the operation path must ask that question the same way or one of them
 		// renders the interned index as a number (ADR 0229).
-		if at, ok := v.Fn.(*Attr); ok && len(v.Args) == 0 && g.exprIsString(at.Obj) {
-			switch at.Name.Value {
-			case "upper", "lower", "strip":
-				return true
-			}
+		if at, ok := v.Fn.(*Attr); ok && g.exprIsString(at.Obj) && g.textMethodAnswersText(at.Name.Value, len(v.Args)) {
+			return true
 		}
 		// str(n) is text whatever n is (ADR 0229): the print path and the operation path ask
 		// one predicate, or a number's digits come out as an index. repr is text for the same
@@ -9690,7 +9687,17 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		case "not":
 			// `not` yields a boolean *value* (printable, storable), so it returns the
 			// interpreter's i32 0/1 rather than a bare i1.
-			p := g.asI1(b, x)
+			//
+			// Ask the SAME road an `if` test asks. `asI1` compares the lowered word against zero,
+			// which is right for a number and wrong for anything whose value is a HANDLE or an
+			// INTERNED INDEX: `not "x"` tested the intern slot, said "that word is zero", and
+			// answered True where the reference answers False — at exit 0, while `if "x":` beside it
+			// answered correctly (roadmap Gap R.183).
+			tv, terr := g.truthyValue(b, n.X)
+			if terr != nil {
+				return "", terr
+			}
+			p := g.asI1(b, tv)
 			if p == "true" {
 				return "0", nil
 			}
@@ -12524,13 +12531,13 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 			if werr != nil {
 				return "", fmt.Errorf("zfill: codegen folds only a constant width arg")
 			}
-			pad := int(wv) - len(v)
-			if pad <= 0 {
+			if int(wv) <= len(v) {
 				// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
 				return g.internStr(b, v), nil
 			}
-			// A string produced by a call is an @str_tab index, not the address of a global (Gap R.42, ADR 0224).
-			return g.internStr(b, strings.Repeat("0", pad)+v), nil
+			// One rule with the interpreter — zfillTo pads after a leading sign, which neither
+			// engine did when each padded on its own (roadmap Gap R.183, ADR 0297).
+			return g.internStr(b, zfillTo(v, int(wv))), nil
 		case "removeprefix", "removesuffix":
 			// removeprefix strips the given prefix from the receiver;
 			// removesuffix strips the suffix, mirroring strings.TrimPrefix/TrimSuffix.
@@ -14823,6 +14830,22 @@ func (g *irGen) setExn(b *strings.Builder, code int, typeName, msg string, sp Sp
 // string table: an element read from a string container, or a loop variable walking one.
 // Those print as their own text, while the container itself prints as a list of
 // single-quoted strings the way Python does (roadmap Gap I.2).
+// textMethodAnswersText is the print road's question about a string method: does this call hand back a
+// TEXT (an @str_tab index) rather than a number, a verdict or a list? The table must be the FOLD's own —
+// every method the operation path implements that returns text. Three names listed here against fourteen
+// implemented there is how "ab".zfill(5) printed the intern INDEX (0) where the reference prints 000ab,
+// and how the same three-name list existed twice (roadmap Gap R.183; ADR 0229's rule that print and the
+// operation ask one predicate).
+func (g *irGen) textMethodAnswersText(name string, argc int) bool {
+	switch name {
+	case "upper", "lower", "strip", "lstrip", "rstrip", "capitalize", "title", "swapcase", "expandtabs":
+		return argc == 0
+	case "replace", "removeprefix", "removesuffix", "ljust", "rjust", "zfill", "join":
+		return argc == 1
+	}
+	return false
+}
+
 func (g *irGen) printsAsInternedStr(e Expr) bool {
 	switch v := e.(type) {
 	case *StrLit:
@@ -14848,11 +14871,8 @@ func (g *irGen) printsAsInternedStr(e Expr) bool {
 		// A string method on a string receiver — `get()[1].upper()` — also prints as text. The
 		// print path and the operation path ask this question of the same predicate, or one of
 		// them renders the interned index as a number (ADR 0229).
-		if at, ok := v.Fn.(*Attr); ok && len(v.Args) == 0 && g.exprIsString(at.Obj) {
-			switch at.Name.Value {
-			case "upper", "lower", "strip":
-				return true
-			}
+		if at, ok := v.Fn.(*Attr); ok && g.exprIsString(at.Obj) && g.textMethodAnswersText(at.Name.Value, len(v.Args)) {
+			return true
 		}
 		// min/max of texts returns one of those texts. It is still an @str_tab index; answering
 		// "not text" here printed the intern table position instead of the word chosen (Gap R.73).

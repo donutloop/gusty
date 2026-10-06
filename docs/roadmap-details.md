@@ -7989,3 +7989,43 @@ promoted, not deleted, when those roads lift.
 
 **Measurement.** HEAD-baseline build: **10** subtest failures on the new table, green here. Sweep of 172
 programs: the only movement is this cycle's own probe.
+
+### Gap R.183 + Gap R.184 — `not` read the intern slot, nine text methods printed their index, and `zfill` padded the wrong side of a sign (CLOSED by ADR 0297, owner L11.1 / L11.2)
+
+Found by the 2026-07-06 surface sweep, and the fourth consecutive row whose best finding is a bug **both
+backends agree on**:
+
+```
+print(not "x")          CPython False   --interp False   --aot True     asI1 compared the INTERN SLOT to 0
+print("ab".zfill(5))    CPython 000ab   --interp 000ab   --aot 0        print listed 3 of the fold's 14 text methods
+print("ab".ljust(4))    CPython 'ab  '  --interp 'ab  '  --aot 0        same table
+print("-42".zfill(5))   CPython -0042   --interp 00-42   --aot 00-42    BOTH engines — parity blind
+```
+
+**`asI1` is a number's predicate and was being used as a truth predicate.** `not` took the already-lowered
+register and emitted `icmp ne i32 %t1, 0`. For an interned text that word is the @str_tab slot, so `not "x"`
+tested whether the text had been interned at index zero. The tell is that the same program answered two
+different questions in one file: `if "x":` — which goes through `truthyValue` — said truthy, and `print(not
+"x")` said True. Any truth test must go through `truthyValue`; `asI1` should only ever be handed what
+`truthyValue` produced.
+
+**The duplicated capability table is the actual finding.** The print road carried a hand-maintained list of
+text-returning methods — `case "upper", "lower", "strip":` — against a fourteen-case operation `switch`
+below it, and the same three-name literal was in `codegen.go` TWICE. Nine methods printed their index. A
+print-side list maintained by hand against an operation-side switch is always a subset of it; the table is
+now derived once (`textMethodAnswersText`) and a test fails if the literal reappears.
+
+**Two left-pads that agree with each other are a parity blind spot.** Both backends padded `"-42"` on the
+left, so both produced `00-42` and the interp-vs-aot matrix was satisfied. One `zfillTo` shared by both
+backends makes the divergence unrepresentable — the same argument ADR 0279/0280 make about one question per
+expression, applied to a string rule.
+
+**A test that would have asserted nothing.** `print("ab".ljust(4))`'s answer is `'ab  '`; running it through
+`strings.TrimSpace` — which every other row in the file needs — makes the padding vanish and the row pass
+whatever the compiler does. Those rows ask the reference for a `repr()` rendering instead and compare the
+quoted form. `compiledOut` returning `"ab  "` vs a reference `"ab  "` is only meaningful if neither side has
+been trimmed.
+
+**Measurement.** HEAD-baseline build: **24** subtest failures on the new tables, green here. Sweep of 173
+programs: the only movement is this cycle's own probe. `print("a\tb".expandtabs())` still refuses AOT —
+unchanged by this row, and untouched rather than quietly widened.

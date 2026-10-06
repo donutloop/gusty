@@ -827,6 +827,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_text_answers_truth_and_its_methods_print",
+        "name": "probe_a_text_answers_truth_and_its_methods_print.gy",
+        "source": "# A text answers truth, and a string method prints its TEXT (roadmap Gap R.183 + R.184, ADR 0297)\n#\n# Three wrong numbers at exit 0, none of them visible to a two-backend parity matrix:\n#   print(not \"x\")         CPython False   --aot True     the `not` road asked asI1, which compares the\n#                                          #                lowered word to zero — for a text that reads the\n#                                          #                INTERN SLOT, and `if \"x\":` beside it answered right\n#   print(\"ab\".zfill(5))   CPython 000ab   --aot 0        the print road listed 3 text-returning methods\n#                                          #                (upper/lower/strip) where the fold implements 14,\n#                                          #                and that three-name list existed TWICE\n#   print(\"-42\".zfill(5))  CPython -0042   BOTH engines 00-42   each padded the whole string, so the\n#                                          #                zeros landed between the sign and the digits\nprint(not \"x\")\nprint(not \"\")\nprint(not \"0\")\nprint(not None)\nprint(not 0)\nprint(not 3)\nprint(not [])\nprint(not [1])\nif \"x\":\n    print(\"truthy\")\nelse:\n    print(\"falsy\")\nprint(\"ab\".zfill(5))\nprint(\"42\".zfill(5))\nprint(\"abc\".zfill(1))\nprint(repr(\"ab\".ljust(4)))\nprint(repr(\"ab\".rjust(4)))\nprint(\"abc\".capitalize())\nprint(\"a b\".title())\nprint(\"ab\".swapcase())\nprint(\"abc\".replace(\"b\", \"X\"))\nprint(\"abc\".removeprefix(\"a\"))\nprint(\"abc\".count(\"b\"))\nprint(\"abc\".startswith(\"a\"))\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "False\nTrue\nFalse\nTrue\nTrue\nFalse\nTrue\nFalse\ntruthy\n000ab\n00042\nabc\n'ab  '\n'  ab'\nAbc\nA B\nAB\naXc\nbc\n1\nTrue\n",
+      "aot_ok": true,
+      "aot_stdout": "False\nTrue\nFalse\nTrue\nTrue\nFalse\nTrue\nFalse\ntruthy\n000ab\n00042\nabc\n'ab  '\n'  ab'\nAbc\nA B\nAB\naXc\nbc\n1\nTrue\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "False\nTrue\nFalse\nTrue\nTrue\nFalse\nTrue\nFalse\ntruthy\n000ab\n00042\nabc\n'ab  '\n'  ab'\nAbc\nA B\nAB\naXc\nbc\n1\nTrue\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3807,7 +3830,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix386547414/137/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3831656502/138/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3821,7 +3844,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix386547414/137/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3831656502/138/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4662,11 +4685,11 @@
       ]
     }
   ],
-  "rows": 162,
+  "rows": 163,
   "skipped": 35,
-  "pass": 127,
+  "pass": 128,
   "fail": 0,
-  "oracle_match": 112,
+  "oracle_match": 113,
   "oracle_debt": 29,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

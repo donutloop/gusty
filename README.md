@@ -563,6 +563,15 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A text answers **truth** like any other value, and a string method answers with its own kind (ADR 0297,
+closing `Gap R.183` and `Gap R.184`). `print(not "x")` said `True` on the compiled leg while `if "x":` —
+asking the same question about the same value two lines away — said truthy: `not` used a helper that compares
+the lowered word against zero, which is right for a number and, for a text, reads the intern slot. Nine text-
+returning methods printed the intern **INDEX** (`0` for `"ab".zfill(5)`) because the print road knew three
+methods where the fold implements fourteen, in a list that existed twice. And `"-42".zfill(5)` answered
+`00-42` on **both** engines — the reference says `-0042` — so the parity matrix reported nothing and only the
+oracle leg saw it; the rule now lives in one function both backends call.
+
 A dict view prints as a **view** (ADR 0296, closing `Gap R.182`). `print({"a": 1}.keys())` printed `0` on
 the compiled leg — the heap handle through `%d` — and `print({1: 2}.values())` handed the address of a
 compile-time global to a heap walker, which is **exit 2**, the compiler's own bug on a two-line program. Both

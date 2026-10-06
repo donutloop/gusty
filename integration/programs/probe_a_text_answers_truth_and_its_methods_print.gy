@@ -1,0 +1,35 @@
+# A text answers truth, and a string method prints its TEXT (roadmap Gap R.183 + R.184, ADR 0297)
+#
+# Three wrong numbers at exit 0, none of them visible to a two-backend parity matrix:
+#   print(not "x")         CPython False   --aot True     the `not` road asked asI1, which compares the
+#                                          #                lowered word to zero — for a text that reads the
+#                                          #                INTERN SLOT, and `if "x":` beside it answered right
+#   print("ab".zfill(5))   CPython 000ab   --aot 0        the print road listed 3 text-returning methods
+#                                          #                (upper/lower/strip) where the fold implements 14,
+#                                          #                and that three-name list existed TWICE
+#   print("-42".zfill(5))  CPython -0042   BOTH engines 00-42   each padded the whole string, so the
+#                                          #                zeros landed between the sign and the digits
+print(not "x")
+print(not "")
+print(not "0")
+print(not None)
+print(not 0)
+print(not 3)
+print(not [])
+print(not [1])
+if "x":
+    print("truthy")
+else:
+    print("falsy")
+print("ab".zfill(5))
+print("42".zfill(5))
+print("abc".zfill(1))
+print(repr("ab".ljust(4)))
+print(repr("ab".rjust(4)))
+print("abc".capitalize())
+print("a b".title())
+print("ab".swapcase())
+print("abc".replace("b", "X"))
+print("abc".removeprefix("a"))
+print("abc".count("b"))
+print("abc".startswith("a"))

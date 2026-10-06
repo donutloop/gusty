@@ -1230,6 +1230,38 @@ The compiled integer is 32 bits, so `2 ** 31` refuses there while the interprete
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
+### Truth of a text, and what a string method answers with
+
+`not` asks the same question an `if` asks, for every kind, and a text-returning string method prints its
+text rather than the number the compiler stores for it (`Gap R.183`, ADR 0297):
+
+```
+print(not "x")        # False      a NON-EMPTY text is truthy — even "0" and "False"
+print(not "0")        # False      the text "0" is not the number 0
+print(not "")         # True
+print(not None)       # True
+print(not [1])        # False
+if "x":               # truthy     the `if` and the `not` cannot disagree about one value
+    print("truthy")
+print("ab".zfill(5))          # 000ab
+print("abc".zfill(1))         # abc
+print(repr("ab".ljust(4)))    # 'ab  '
+print(repr("ab".rjust(4)))    # '  ab'
+print("abc".capitalize())     # Abc
+print("a b".title())          # A B
+print("ab".swapcase())        # AB
+print("abc".count("b"))       # 1     a method that answers a NUMBER still answers a number
+print("abc".startswith("a"))  # True  and one that answers a verdict answers a verdict
+```
+
+`zfill` pads on the side of the digits CPython does, after a leading sign (`Gap R.184`):
+
+```
+print("-42".zfill(5))   # -0042    the zeros go BETWEEN the sign and the digits
+print("+42".zfill(5))   # +0042
+print("42".zfill(5))    # 00042
+```
+
 ### A dict view is not a list
 
 `d.keys()`, `d.values()` and `d.items()` answer a **dict view**, and a view says so when it prints
