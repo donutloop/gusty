@@ -8412,3 +8412,55 @@ one word for a whole value — now refuse with sentences that name the value's o
 (`Gap R.146` under `L11.1`); the prompt still declines a user-defined call (`L13.1`); and a literal `None`
 passed to a user function still arrives as the bare word `0` (`Gap R.171`), because the parameter has no tag
 beside it — the renderer is paid, the call boundary is not.
+
+### ADR 0304 — the arithmetic positions of a slot-bound name (2026-08-03, L11.1 / Gap R.146)
+
+**The measurement.** ADR 0303 bound the pair for `n = xs[0]`, and the rendering positions opened. The
+arithmetic ones did not:
+
+```console
+$ gusty --eval 'xs = []\nxs.append(7)\nn = xs[0]\nprint(-n)'
+gustyc: jit: codegen: n holds a slot the program built at run time, read by position, which travels as a
+(payload, tag) pair … this position needs a tagged value word (roadmap L11.1, Gap R.146)
+```
+
+with CPython answering `-7`, and `print(xs[0] - 1)` — the *same* sum with the read inline, no binding —
+already working. The pair existed; the door just did not recognise the name.
+
+**Root cause, in one predicate.** `numericPairVar` answers "may this name enter the tagged arithmetic door",
+and it admitted only origins whose tag is a *proof*: `taggedOriginArith`, `taggedOriginFloat`, and the two
+parameter origins. Those tags can say `int` or `float` and nothing else, so a position that keeps one word
+for its operand could be handed `rt_lift_num` and never wonder what the payload meant. A slot's tag is not a
+proof — it is what the objects decided, and it can say `str`, `NoneType`, `list`, `dict`, `set`. Admitting it
+blindly is how `n - 1` on a text slot sums the interned index of `"a"`, prints a number, and exits 0 — the
+exact family Gap R.38 and Gap R.95 keep filing.
+
+**The decision is per operator, not per name.** `arithWouldRefuse` now also admits a `taggedVars` name, and
+`taggedArithPair`'s existing per-operator guard does the discriminating:
+
+| Operator | Door? | Why |
+|---|---|---|
+| `-`, unary `-`, `//` | always | no operand pair makes these answer a non-number — they answer a number or raise, and the raise is the reference's own sentence read off the tag |
+| `+`, `*` | only under ADR 0265's proof | CPython **answers** `"a" + "b"` and `[1] * 2`; this backend builds neither from a slot (Gap R.82), so answering a raise would be the worse wrong program |
+| `%` | only under the same proof | `"%d" % 3` is CPython's printf form and answers a *text* (Gap R.165) |
+
+No new runtime code was needed: the door has had an arm per kind since ADR 0265, and ADR 0266 had already
+written the per-kind negation sentences. The cycle is a routing decision — which is the shape most of L11.1's
+remaining rows turn out to be.
+
+**Traps are the safety half, and they are asserted by class *and* message.** A door that raised
+`TypeError: x` would pass a test that only asked for "some TypeError", and uncatchable prose is how a language
+loses `except`. The suite compares word for word: `unsupported operand type(s) for -: 'str' and 'int'`,
+`bad operand type for unary -: 'NoneType'`, `'set'`, `'list'`, `'dict'`, and both `ZeroDivisionError` wordings
+reached through a slot — each also caught by the `except` arm the program wrote (ADR 0228).
+
+**Ledger evidence.** Three new rows in `pkg/lang/testdata/interpreter-golden-drift.json`: two are L13.1's
+filed silence (a snippet ending in a call echoes nothing), and one is honest new debt — `n - 1 + 0.5` is
+CPython's `6.5` and the compiled leg refuses, because a pair-bound name cannot enter the float domain. That is
+Gap R.148's existing row, and the ledger names the owner rather than the run quietly dropping the case.
+
+**Alternatives rejected.** Admit every tagged name to every operator (wrong answers at exit 0, and a refusal to
+concatenate two texts); refine the proof so `+` opens (`xs.append(7)` says nothing about the next append — the
+pass is program-wide for a reason, and the gate is now asserted directly so a widening fails a decision row);
+specialise the name's kind at its binding (ADR 0172's latest-binding rule, and Gap R.142's heap-handle print,
+are the cautionary record); let the message be generic.

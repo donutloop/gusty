@@ -3047,6 +3047,34 @@ themselves — only the object knows how its own slots are stored. What still re
 where it came from, and roadmap L11.1 owns the missing word. A *name* bound from a slot carries its tag with
 it, and a refusal never claims a value "comes from a loop" unless a loop bound it (Gap R.38).
 
+### A name bound from a container slot can be used as a number
+
+A slot the program built at run time carries its kind beside its payload, so a name bound from one keeps that
+kind and can be asked for a number (ADR 0303's binding, ADR 0304's door):
+
+```python
+xs = []
+xs.append(7)
+n = xs[0]
+print(n - 1)     # 6
+print(-n)        # -7
+print(n // 2)    # 3
+xs = []
+xs.append(2.5)
+n = xs[0]
+print(n - 1)     # 1.5 — a float slot keeps its float
+xs = []
+xs.append("a")
+n = xs[0]
+print(n - 1)     # TypeError: unsupported operand type(s) for -: 'str' and 'int'
+```
+
+The operators that answer a number or raise (`-`, unary `-`, `//`) ask the tag whatever the slot holds, and the
+raise is the reference's own sentence naming the kind the slot really holds — catchable by the `except` arm the
+program wrote. `+`, `*` and `%` are the exception, and an honest one: CPython answers `"a" + "b"`, `[1] * 2` and
+`"%d" % 3`, and this backend builds none of those from a slot yet (roadmap Gap R.82, Gap R.165), so those
+positions refuse in words rather than raise where the reference answered a value (roadmap L11.1, Gap R.146).
+
 ## Builtins
 
 Names are resolved by the checker before codegen runs. Every built-in call name comes from

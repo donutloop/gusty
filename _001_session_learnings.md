@@ -8424,3 +8424,41 @@ container literals, i.e. for exactly the values whose kind the compiler can see.
   the renderer is paid, the **call boundary** is not, because a literal `None` crosses into a user function with no
   tag beside it. That last distinction is the cycle's finding worth keeping: fixing the printer does not fix a value
   that arrives undressed.
+
+---
+
+## Cycle — a name bound from a slot answers the positions that need a number (ADR 0304)
+
+**Feature (roadmap L11.1, Gap R.146's arithmetic half).** ADR 0303 gave `n = xs[0]` its tag; the arithmetic
+positions still refused — `print(-n)` with Gap R.146's sentence while CPython answered `-7`, and while the
+*same* sum written inline (`print(xs[0] - 1)`) had worked for a dozen ADRs. The pair existed; one predicate
+did not recognise the name.
+
+- **The gate was a proof, and it should have been a question.** `numericPairVar` admitted only origins whose
+  tag can say `int` or `float` and nothing else. A slot's tag is not a proof, it is a fact the objects decided —
+  so the right shape is two questions, not one: *may this name enter the door at all* (any tagged name), and
+  *is its tag a proof* (the operators where raising where CPython answered would be the worse wrong program).
+  `arithWouldRefuse` widened; `taggedArithPair`'s per-operator guard did the rest, unchanged.
+- **Per operator, never per name.** `-`, unary `-`, `//` take the door whatever the slot holds, because no
+  operand pair makes them answer a non-number. `+`, `*`, `%` stay behind ADR 0265's program-wide number proof:
+  CPython answers `"a" + "b"`, `[1] * 2` and `"%d" % 3`, and this backend builds none of those from a slot
+  (Gap R.82, Gap R.165). So Gap R.146 stays open for `n + 1`, `n * 2`, `n % 3` — with a test that asks the gate
+  **directly**, so a future widening of `+` fails a decision row instead of silently changing which programs compile.
+- **A trap is the safety half of every widening.** Admitting a slot's tag to arithmetic without asserting the
+  raise **by class and message, per kind** is how a language ends up summing the interned index of `"a"` and
+  printing a number at exit 0. The suite compares word for word — `'str'`, `'NoneType'`, `'list'`, `'dict'`,
+  `'set'`, both `ZeroDivisionError` wordings — and each raise is additionally caught by the `except` the program
+  wrote (ADR 0228), because a raise a helper performed for itself is unreachable to the programmer.
+- **Two ledger accidents to remember, both near-misses, both caught by the harness rather than by luck:**
+  1. Merging harvested answers into `pkg/lang/testdata/interpreter-golden.json` with a script that assumed the
+     wrong top-level shape truncated the record to 26 entries. `git checkout --` restored it; the file is
+     `{"entries": …, "meta": …}`, and a merge must verify the count *after* writing.
+  2. `GUSTY_GOLDEN_UPDATE=1` under a `-run` **subset** rewrote the drift ledger down to the three rows that
+     subset saw — 334 rows nearly lost. The ledger writer has no subset-safe mode: **never regenerate a ledger
+     under `-run`**; regenerate on the whole package (or hand-append in the row schema), and assert the row count.
+- **Honest new debt beats a dropped case.** `n - 1 + 0.5` is CPython's `6.5` and the compiled leg refuses it:
+  a pair-bound name cannot enter the float domain. That is Gap R.148's existing row, and the row went on the
+  drift ledger with that attribution rather than the case being trimmed out of the table to make it green.
+- **Measured after the cycle:** record 5525 (+24 harvested from the pre-retirement recorder), `pkg/lang` drift
+  337 (+3), `integration` drift 21, CPython debt 7, 296 ADRs to 0304 — and the snapshot table corrected, since
+  it had drifted (it claimed 294 ADRs / highest 0302 / 5478 sources).

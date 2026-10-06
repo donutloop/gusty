@@ -1858,6 +1858,22 @@
     "actual": "jit: codegen: the left operand an element read of \"/\" has no number the compiled backend can lift: a slot whose kind only the object knows is answered for equality, printing, membership and length, and a numeric use of it is answered where the compiler can settle the result's kind — this one needs the run-time tag to decide it, which is the tagged value word still owed here (roadmap L11.1, Gap R.82, ADR 0166)"
   },
   {
+    "source": "xs = []\nxs.append(7)\nfor v in xs:\n    print(-v)\n",
+    "reason": "the echoed value differs from the record",
+    "expected": "0"
+  },
+  {
+    "source": "xs = []\nxs.append(7)\nfor v in xs:\n    print(v - 1)\n",
+    "reason": "the echoed value differs from the record",
+    "expected": "0"
+  },
+  {
+    "source": "xs = []\nxs.append(7)\nn = xs[0]\nprint(n - 1 + 0.5)\n",
+    "reason": "the compiled backend cannot build a program the engine ran",
+    "expected": "result \"None\"",
+    "actual": "jit: codegen: any cannot be compiled: n holds a slot the program built at run time, read by position, which travels as a (payload, tag) pair: the object the slot was read out of says which kind it is, print(n) asks the tag, and this position keeps one word for its operand, so the tag has nowhere to go — this position needs a tagged value word, the one that carries the kind beside the payload (roadmap L11.1, Gap R.146)"
+  },
+  {
     "source": "ys = [1, 2, 3]\nzs = [y for y in ys if y \u003e 1]\nzs",
     "reason": "the compiled backend cannot build a program the engine ran",
     "expected": "result \"[2, 3]\"",

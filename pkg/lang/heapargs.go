@@ -5045,8 +5045,13 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 		return g.indexKindIsRuntimeObject(n)
 	case *Name:
 		// A name the arithmetic door bound carries its kind in the object, and the ordinary numeric
-		// road refuses it for exactly that reason — so the door is the road for it too.
-		return g.numericPairVar(n.Value)
+		// road refuses it for exactly that reason — so the door is the road for it too. A name bound
+		// from a SLOT asks the same door: the pair is already bound (ADR 0303), the tag says which of
+		// the families the payload means, and `rt_num_arith` raises CPython's own sentence per kind when
+		// the slot holds something without a sign. That widening is the one L11.1 owes this position
+		// (Gap R.146); `+`, `*` and `%` stay behind the number proof below, because the reference ANSWERS
+		// `"a" + "b"` and `[1] * 2` and this backend builds neither from a slot (Gap R.82).
+		return g.numericPairVar(n.Value) || g.taggedVars[n.Value]
 	}
 	return false
 }
