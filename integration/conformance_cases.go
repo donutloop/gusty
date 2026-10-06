@@ -109,6 +109,10 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// verdict at exit 0 on BOTH engines, agreeing with each other and disagreeing with the reference
 		// (roadmap L12.1 / Gap R.53, ADR 0288).
 		"probe_comparison_chains",
+		// A text predicate — startswith, endswith, isdigit, isalpha and their siblings — answers a
+		// VERDICT in both backends, but the print road never asked about a method call, so each line
+		// printed the 0/1 WORD it holds: True as `1`, False as `0`, on both engines (Gap R.172, ADR 0289).
+		"probe_a_text_predicate_prints_a_verdict",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both

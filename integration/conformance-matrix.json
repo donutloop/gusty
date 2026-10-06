@@ -643,6 +643,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_text_predicate_prints_a_verdict",
+        "name": "probe_a_text_predicate_prints_a_verdict.gy",
+        "source": "# What CPython prints for these lines (python3, 3.12):\n#\n#   True\n#   False\n#   True\n#   False\n#   True\n#   True\n#\n# `s.startswith(p)`, `isdigit`, `isalpha` and their five siblings have ALWAYS answered a verdict in both\n# backends — the same 0/1 a comparison answers with. Only the printer never learned, because a method call's\n# callee is an attribute (`Call{Fn: Attr{...}}`) and the print road's \"is this a bool?\" question gave up at\n# its first line on anything that was not a plain name. So each line exited 0 with the WORD it holds:\n# `True` printed as `1`, `False` as `0`, on BOTH engines, agreeing with each other and disagreeing with\n# Python. That is ADR 0257's bug, reported once for comparisons and silently still open for methods\n# (roadmap Gap R.172, ADR 0289).\n#\n# A verdict is also still a NUMBER: `True + 1` is 2 and `[True] == [1]` is True, so the last line pins that\n# fixing the rendering did not break the arithmetic (ADR 0259's int/bool/float family).\nprint(\"abc\".startswith(\"ab\"))\nprint(\"abc\".startswith(\"z\"))\nprint(\"abc\".endswith(\"bc\"))\nprint(\"12a\".isdigit())\nprint(\"abc\".isalpha())\nprint(\"1\".isdigit() + 1)\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "True\nFalse\nTrue\nFalse\nTrue\n2\n",
+      "aot_ok": true,
+      "aot_stdout": "True\nFalse\nTrue\nFalse\nTrue\n2\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "True\nFalse\nTrue\nFalse\nTrue\n2\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3663,7 +3686,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3487904771/130/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2696349526/131/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3677,7 +3700,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3487904771/130/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix2696349526/131/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4518,11 +4541,11 @@
       ]
     }
   ],
-  "rows": 155,
+  "rows": 156,
   "skipped": 36,
-  "pass": 119,
+  "pass": 120,
   "fail": 0,
-  "oracle_match": 104,
+  "oracle_match": 105,
   "oracle_debt": 30,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

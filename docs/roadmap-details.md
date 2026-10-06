@@ -7541,3 +7541,60 @@ assignment — a fresh ID with its own evidence, not a clause hidden inside this
 the intended probe (`0/0/2` → `3/3/x3`). The new unit table was run against the stashed baseline first and
 failed there with `--aot printed "0", want "3"` — a test that cannot fail is a comment. Matrix 154 → 155 rows,
 117 → 118 parity, 102 → 103 `match`, 0 fail, 0 drift.
+
+---
+
+### Gap R.172 — a text predicate printed the word it holds (CLOSED by ADR 0289, owner L11.1)
+
+Found by the 2026-07-06 surface sweep, in the family this loop keeps tripping over: **both engines agreed
+with each other and disagreed with the reference, at exit 0, with no refusal and no odd digit.**
+
+| program | CPython | both backends before | after |
+| --- | --- | --- | --- |
+| `print("abc".startswith("ab"))` | `True` | `1` | `True` |
+| `print("abc".startswith("z"))` | `False` | `0` | `False` |
+| `print("abc".endswith("bc"))` | `True` | `1` | `True` |
+| `print("12a".isdigit())` | `False` | `0` | `False` |
+| `print("abc".isalpha())` | `True` | `1` | `True` |
+| `isalnum`, `isspace`, `islower`, `isupper` | verdicts | `1`/`0` | verdicts |
+| `print("abc".upper())` | `ABC` | `ABC` | `ABC` |
+| `print("1".isdigit() + 1)` | `2` | `2` | `2` |
+
+**The methods were never wrong.** `callStrMethod` and the codegen string-method road both fold each of the
+eight to the same 0/1 a comparison produces. The single question `IsBoolExpr` — asked by both backends *and*
+by the CLI's `--json` report before choosing `rt_print_bool` over `printf("%d")` — opened with
+`nm, ok := c.Fn.(*Name); if !ok { return false }`. A method call's callee is `Attr{Obj, Name}`, so the
+question died on line one, before any table was read. ADR 0257 reported the bug once, for comparisons, and
+the same hole under methods went unmeasured for eight constructs.
+
+**Thirteen pins had made it legal.** `integration/lang_test.go` carried
+`assertOutput(t, `+"`print(\"123\".isdigit())`"+`, "1\n")` under the comment "isdigit folds to 1 or 0" — a
+wrong answer recorded as the contract, green for years, and ready to block this fix as a regression. They
+moved to the reference's answer in the same commit. This is the second time a "characterising test" of a
+fold turned out to be pinning the *bug*: the fold is an implementation detail, the printed answer is the
+contract.
+
+**Why a table and not a rule.** The obvious predicate — "an attribute whose name starts with `is`" — would
+capture the next method added and print `True` for a text. `stringBoolMethods` is only the eight both
+backends actually implement, so `isnumeric`/`isdecimal`/`istitle`/`isprintable`/`isidentifier`/`casefold`
+still raise the reference's `AttributeError` rather than being promised by a table that cannot deliver. And
+the receiver is asked first: `class Box: def isdigit(self): return 1` prints `1`, because what a class's own
+method returns is a fact about the class body — the same dunder evidence that keeps `print(a < 4)` printing
+`1` for dunder.gy (ADR 0257).
+
+**Errors in the tests, recorded.** I pinned `"ab".join(["x","y"])` as `xy` when the answer is `xaby` (the
+separator is the receiver) — both engines were right and my row was wrong. I wrote the "returned by a
+function" row as `def check(s): return s.isalpha()`, which is the *parameter-receiver* program the compiled
+leg refuses, not the constant-receiver program I meant to test. And I first wrote the compiled-refusal test
+for both engines, then measured that `--interp` answers `True` and scoped it to `--aot`: a test that assumes
+a refusal must first measure who refuses.
+
+**What stays refused.** A **parameter** as the receiver (`def check(s): return s.startswith("x")`) has no
+compile-time text for the fold, so the compiled leg exits 1 naming the method while the interpreter answers
+`True`. Byte-identical to the pre-cycle binary, pinned as exit 1-and-never-exit-2, and owned by L11.1's
+tagged value word.
+
+**Measurement, not memory.** Built the pre-cycle binary from `HEAD` in a `git worktree` (not a remembered
+`/tmp` copy): it printed `1/0/1/0/1/2` for the probe's six lines where the reference prints
+`True/False/True/False/True/2`. Suite green; 165-file sweep against it moved nothing except the new probe.
+Matrix 155 → 156 rows, 119 → 120 parity, 104 → 105 `match`, 0 fail, 0 drift.

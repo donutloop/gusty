@@ -1,0 +1,25 @@
+# What CPython prints for these lines (python3, 3.12):
+#
+#   True
+#   False
+#   True
+#   False
+#   True
+#   True
+#
+# `s.startswith(p)`, `isdigit`, `isalpha` and their five siblings have ALWAYS answered a verdict in both
+# backends — the same 0/1 a comparison answers with. Only the printer never learned, because a method call's
+# callee is an attribute (`Call{Fn: Attr{...}}`) and the print road's "is this a bool?" question gave up at
+# its first line on anything that was not a plain name. So each line exited 0 with the WORD it holds:
+# `True` printed as `1`, `False` as `0`, on BOTH engines, agreeing with each other and disagreeing with
+# Python. That is ADR 0257's bug, reported once for comparisons and silently still open for methods
+# (roadmap Gap R.172, ADR 0289).
+#
+# A verdict is also still a NUMBER: `True + 1` is 2 and `[True] == [1]` is True, so the last line pins that
+# fixing the rendering did not break the arithmetic (ADR 0259's int/bool/float family).
+print("abc".startswith("ab"))
+print("abc".startswith("z"))
+print("abc".endswith("bc"))
+print("12a".isdigit())
+print("abc".isalpha())
+print("1".isdigit() + 1)

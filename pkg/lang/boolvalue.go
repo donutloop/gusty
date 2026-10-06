@@ -181,6 +181,15 @@ func (env BoolEnv) overloadedComparison(t *BinOp) bool {
 	return env.Instance(t.L) || env.Instance(t.R)
 }
 
+// overloadedReceiver asks whether the object of a method call is an instance of a class the program
+// defined. Such a receiver's `.startswith` is the program's OWN attribute, not the text method, and its
+// value is whatever that method returns — an int when the method returns 1. This is the same dunder
+// evidence that keeps `print(a < 4)` printing 1 for dunder.gy (ADR 0257): an answer the front end reads
+// from a class body belongs to the class, not to the table.
+func (env BoolEnv) overloadedReceiver(x Expr) bool {
+	return env.Instance != nil && env.Instance(x)
+}
+
 // constantTestArm reports the arm a ternary will run when its test is a value the source already
 // wrote — `True`, `0`, `None`, `""`, the empty container. Truthiness here is Python's, and it is the
 // same list the language’s own truth test uses: a verdict, a nonzero number, any non-empty value.
@@ -345,7 +354,37 @@ func (env BoolEnv) minMaxChosenIsVerdict(c *Call, wantMin bool, depth int) bool 
 	return env.of(cands[numericWinner(vals, wantMin)], depth)
 }
 
+// stringBoolMethods are the text methods whose answer is a verdict rather than a value. They are a
+// separate table from boolReturningBuiltins because their callee is not a NAME at all — `s.startswith(p)`
+// parses as Call{Fn: Attr{Obj: s, Name: startswith}} — and the question below is asked of the ATTRIBUTE,
+// which every one of those eight answers with yes-or-no in both backends. The list is only what both
+// paths actually implement: `isnumeric` and friends belong to the rows that owe them (ADR 0257's rule
+// that a table never promises an answer the backends cannot give).
+var stringBoolMethods = map[string]bool{
+	"startswith": true,
+	"endswith":   true,
+	"isdigit":    true,
+	"isalpha":    true,
+	"isalnum":    true,
+	"isspace":    true,
+	"islower":    true,
+	"isupper":    true,
+}
+
 func (env BoolEnv) callReturnsBool(c *Call, depth int) bool {
+	// A method call is a verdict when the METHOD's own name says so. `s.startswith(p)` is a question
+	// about s, and both backends already answer it with the 0/1 a comparison answers with — only the
+	// print road never learned, so `print("abc".startswith("ab"))` printed `1` where Python prints
+	// True (roadmap L11.1 step 2, ADR 0257's rule; measured as Gap R.172, ADR 0289).
+	if attr, isAttr := c.Fn.(*Attr); isAttr {
+		if attr.Name == nil {
+			return false
+		}
+		if stringBoolMethods[attr.Name.Value] && !env.overloadedReceiver(attr.Obj) {
+			return true
+		}
+		return false
+	}
 	nm, ok := c.Fn.(*Name)
 	if !ok {
 		return false

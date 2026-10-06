@@ -609,40 +609,43 @@ func TestExecStrSwapcase(t *testing.T) {
 }
 
 func TestExecStrIsdigit(t *testing.T) {
-	// isdigit folds to 1 or 0
-	assertOutput(t, `print("123".isdigit())`, "1\n")
-	assertOutput(t, `print("12a".isdigit())`, "0\n")
+	// isdigit answers a verdict, and a verdict PRINTS True/False (ADR 0257).
+	// These pins once expected `1`/`0` — a wrong answer recorded as the expected one
+	// (Gap R.172, ADR 0289)
+	assertOutput(t, `print("123".isdigit())`, "True\n")
+	assertOutput(t, `print("12a".isdigit())`, "False\n")
 }
 
 func TestExecStrIsalpha(t *testing.T) {
-	// isalpha folds to 1 or 0
-	assertOutput(t, `print("abc".isalpha())`, "1\n")
-	assertOutput(t, `print("ab1".isalpha())`, "0\n")
+	// isalpha answers a verdict (ADR 0257; these pins once said 1/0)
+	assertOutput(t, `print("abc".isalpha())`, "True\n")
+	assertOutput(t, `print("ab1".isalpha())`, "False\n")
 }
 
 func TestExecStrIslowerIsupper(t *testing.T) {
-	// islower/isupper fold to 1 or 0
-	assertOutput(t, `print("abc".islower())`, "1\n")
-	assertOutput(t, `print("Abc".islower())`, "0\n")
-	assertOutput(t, `print("ABC".isupper())`, "1\n")
+	// islower/isupper answer a verdict (ADR 0257; these pins once said 1/0)
+	assertOutput(t, `print("abc".islower())`, "True\n")
+	assertOutput(t, `print("Abc".islower())`, "False\n")
+	assertOutput(t, `print("ABC".isupper())`, "True\n")
 }
 
 func TestExecStrIsalnum(t *testing.T) {
-	// isalnum folds to 1 or 0
-	assertOutput(t, `print("abc123".isalnum())`, "1\n")
-	assertOutput(t, `print("abc!".isalnum())`, "0\n")
+	// isalnum answers a verdict (ADR 0257; these pins once said 1/0)
+	assertOutput(t, `print("abc123".isalnum())`, "True\n")
+	assertOutput(t, `print("abc!".isalnum())`, "False\n")
 }
 
 func TestExecStrIsspace(t *testing.T) {
-	// isspace folds to 1 or 0
-	assertOutput(t, `print("   ".isspace())`, "1\n")
-	assertOutput(t, `print(" a ".isspace())`, "0\n")
+	// isspace answers a verdict (ADR 0257; these pins once said 1/0)
+	assertOutput(t, `print("   ".isspace())`, "True\n")
+	assertOutput(t, `print(" a ".isspace())`, "False\n")
 }
 
 func TestExecStrStartswithEndswith(t *testing.T) {
-	// startswith/endswith fold to 1 or 0
-	assertOutput(t, `print("hello".startswith("he"))`, "1\n")
-	assertOutput(t, `print("hello".endswith("he"))`, "0\n")
+	// startswith/endswith answer a verdict, so they print True/False and not the 0/1 the
+	// fold holds (Gap R.172, ADR 0257/0289)
+	assertOutput(t, `print("hello".startswith("he"))`, "True\n")
+	assertOutput(t, `print("hello".endswith("he"))`, "False\n")
 }
 
 func TestExecStrCount(t *testing.T) {

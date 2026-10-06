@@ -7679,3 +7679,47 @@ test fails if that refusal ever silently becomes a number.
 **Instruments.** Suite green (the two `Index`-road and `Index`-fold changes were the risky part — a 164-file
 sweep against the pre-cycle binary moved nothing but the new probe); matrix 154 → 155 rows, 118 → 119 parity,
 103 → 104 `match`, 0 fail, 0 drift; the pre-cycle binary got four of the probe's six lines wrong.
+
+---
+
+## Cycle: a text predicate prints a verdict (Gap R.172 closed; ADR 0289)
+
+**What shipped.** `print("abc".startswith("ab"))` printed `1` and `print("abc".isdigit())` printed `0` at
+exit 0 on **both** engines. The eight text predicates — `startswith`, `endswith`, `isdigit`, `isalpha`,
+`isalnum`, `isspace`, `islower`, `isupper` — had always answered with the same 0/1 a comparison answers with,
+so the *answer* was right and only the **rendering** was wrong. Fix: the print road's single "is this a bool?"
+question now asks the METHOD's own name when the callee is an attribute, and asks the RECEIVER first.
+
+**The bug was one line, and it was in a place a table can hide.** `IsBoolExpr`'s `*Call` arm opened
+`nm, ok := c.Fn.(*Name); if !ok { return false }`. A method call is `Call{Fn: Attr{…}}`, so the question died
+before any table was read. ADR 0257 had reported this exact bug for comparisons; the same hole under the
+*method* road went unmeasured for eight constructs. Lesson: when a predicate is fixed for one shape of a node,
+enumerate the other shapes of the same node — `Call{Fn: Name}` and `Call{Fn: Attr}` are one node.
+
+**Thirteen tests had pinned the bug as the contract.** `integration/lang_test.go` asserted
+`print("123".isdigit())` → `1\n` under the comment "isdigit folds to 1 or 0". Those went green, and would have
+blocked this fix as a regression. They moved to the reference's answer in the same commit. Second time a
+"characterising test" of a **fold** turned out to pin the bug: a fold is an implementation detail; the printed
+answer is the contract. Comments that describe the mechanism ("folds to 1 or 0") rather than the requirement
+("prints True") are a smell.
+
+**Errors in my own tests, all named.**
+- I pinned `"ab".join(["x","y"])` as `xy`; the answer is `xaby` — the separator is the receiver. Both engines
+  were right and my row was wrong. A row that disagrees with `python3` is a bug in the test, *especially* in a
+  test written to guard against my own mistake.
+- I wrote the "returned by a function" row as `def check(s): return s.isalpha()`, which is the
+  parameter-receiver program the compiled leg **refuses** — not the constant-receiver program I meant to cover.
+- I first wrote the refusal test for both engines, then measured that `--interp` answers `True` (it evaluates
+  the receiver at run time) and scoped it to `--aot`. A test that assumes a refusal must first measure who refuses.
+
+**Kept narrow on purpose.** "Attribute name starts with `is`" was the tempting rule; it would capture the next
+method added and print `True` for a text. `stringBoolMethods` is only the eight both backends implement, so
+`isnumeric`/`isdecimal`/`istitle`/`isprintable`/`isidentifier`/`casefold` keep raising the reference's
+`AttributeError` instead of being promised by a table that cannot deliver. `TestAPredicateIsNotConfusedWithAValueMethod`
+(`upper`, `strip`, `replace`, `join`, `count`, `find`) is the guard, and `TestAPredicateOnAnInstanceIsNotAssumedAVerdict`
+keeps a class's own `isdigit` printing `1` — the receiver is asked before the table, same dunder evidence as
+`print(a < 4)` printing `1` for dunder.gy.
+
+**Instruments.** Pre-cycle binary built from `HEAD` in a `git worktree` (not a remembered `/tmp` copy) printed
+`1/0/1/0/1/2` for the probe's six lines. Suite green; 165-file sweep moved nothing but the new probe; matrix
+155 → 156 rows, 119 → 120 parity, 104 → 105 `match`, 0 fail, 0 drift.

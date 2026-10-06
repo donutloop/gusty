@@ -1161,6 +1161,21 @@ to its annotation is a `type mismatch` error. `any` (dynamic) accepts
 everything. Because the interpreter stores booleans as plain integers, `int`
 and `bool` annotations accept either kind.
 
+### Text predicates
+
+`s.startswith(p)`, `s.endswith(p)`, `s.isdigit()`, `s.isalpha()`, `s.isalnum()`, `s.isspace()`,
+`s.islower()` and `s.isupper()` answer a **verdict**, so they print `True` / `False` — not the `1` / `0`
+they are stored as (ADR 0257's rule; `Gap R.172`, ADR 0289). A verdict is still a number where a number is
+asked: `"1".isdigit() + 1` is `2`, and `[True] == [1]` is `True`.
+
+A predicate works on a text the compiler can see, including one bound to a name
+(`s = "abc"` / `print(s.isalpha())`). A **parameter** as the receiver is refused by the compiled leg — it
+has no compile-time text to fold — while the interpreter answers it normally; the row stays open with
+L11.1's tagged value word.
+
+A class the program defines may use one of these eight names for its own attribute; what its method returns
+is then what prints, exactly as with an overloaded comparison.
+
 ### Comparison chains
 
 `a < b < c` is one construct, not two nested comparisons: it asks `a < b` **and** `b < c` and reads the

@@ -550,6 +550,19 @@ the test does reach runs exactly once — which the compiled leg had been gettin
 running the excluded operand and once by evaluating the tested one twice, because a `select` between two
 operands evaluates both and the truth and the value were each lowered on their own.
 
+A text predicate prints a **verdict** (ADR 0289, closing `Gap R.172`). `print("abc".startswith("ab"))` said
+`1` and `print("abc".isdigit())` said `0` on **both** engines at exit 0. The eight methods — `startswith`,
+`endswith`, `isdigit`, `isalpha`, `isalnum`, `isspace`, `islower`, `isupper` — had been answering correctly
+all along, with the same 0/1 a comparison answers with; only the printer never learned, because a method
+call's callee is an *attribute* (`Call{Fn: Attr{…}}`) and the "is this a bool?" question gave up on its very
+first line for anything that was not a plain name. So the answer was right and its rendering was wrong — the
+one thing every check misses: exit 0, a valid module, a plausible digit. Thirteen tests in
+`integration/lang_test.go` had pinned `1`/`0` as the *expected* output, with a comment explaining the fold as
+though it were the contract; those pins moved to the reference's answer in the same commit, because a pinned
+wrong answer is the wrong answer with a green check. The predicate table asks the method's own name, and asks
+the **receiver** first: `class Box: def isdigit(self): return 1` prints `1`, since what a class's own method
+returns is a fact about that class body (ADR 0257's dunder rule).
+
 Comparison chains answer what Python answers (ADR 0288, closing `L12.1` / `Gap R.53`). `a < b < c` is one
 construct — `a < b` **and** `b < c`, with the middle operand evaluated **once** — and the grammar had been
 folding it left-associatively into `(a < b) < c`, comparing an int against a boolean. Because this front end
