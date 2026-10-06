@@ -973,6 +973,15 @@ against its own ability to fail).
   position** — `0`, `1`, `2` — because four different "what kind is this expression?" predicates had no
   ternary arm, so nothing said the answer was text. Its `probe_ternary_text_arms.gy` row moved from recorded
   debt to parity. A **container** arm still exits non-zero in words (`Gap R.128`, owner L11.1).
+- **a container in a numeric operand never spends exit 2**: `./build/pyre --aot --eval 'print([0] * 3)'` and
+  fifteen siblings (`[1, 2] + [3]`, `[1] - [2]`, `[1] / 2`, `{1: 2} * 2`, `[1] + {}`, `[] < {}`, …) exited
+  **2** — `llc-20` refusing OUR module (`mul i32 @.lst1, 3`, `add i32 @.lst1, @.lst2`,
+  `sitofp i32 @.lst1 to double`) — which ADR 0166 reserves for a bug of ours, so an agent scripting the
+  toolchain could not tell "my program is wrong" from "the compiler is broken" (`Gap R.175` / ADR 0292).
+  Each shape now leaves at **3** where CPython raises (the reference's own sentence, catchable by
+  `except TypeError:`) or at **1** where CPython answers and no runtime sequence helper exists. The
+  interpreter answers the answered half (`[0, 0, 0]`, `[1, 2, 3]`, `True`); the compiled half waits for
+  L11.1's tagged value word. A container as a **call argument** is unaffected — `half([1.5])` = `0.75`.
 - **a missing dict key answers `None`**: `print({"a": 1}.get("z"))` exits 0 with `None` on both engines
   (`Gap R.174` / ADR 0291). The interpreter returned the bare word `0` — so `print(v == 0)` also answered
   `True` where the reference answers `False` — and the compiled leg refused the program with

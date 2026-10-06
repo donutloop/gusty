@@ -1197,6 +1197,44 @@ names the receiver and the representation it waits for; a dict whose **answer is
 (`print({1: "x"}.get(1))`) still prints `0` there. Both are owed to L11.1's tagged value word and are pinned as
 still-owed rather than claimed.
 
+### A container in a numeric operand
+
+A list, dict, set or tuple has no number to do arithmetic **with**, so it never reaches an LLVM arithmetic
+instruction (`Gap R.175`, ADR 0292). What happens instead is decided by the reference, line by line:
+
+```
+print([1] - [2])    # TypeError: unsupported operand type(s) for -: 'list' and 'list'
+print([1] / 2)      # TypeError: unsupported operand type(s) for /: 'list' and 'int'
+print([1] + {})     # TypeError: can only concatenate list (not "dict") to list
+print({} + [])      # TypeError: unsupported operand type(s) for +: 'dict' and 'list'
+print([] < {})      # TypeError: '<' not supported between instances of 'list' and 'dict'
+```
+
+Every one of those is a real trap on **both** engines: `except TypeError:` catches it, and the message is
+CPython's own words, so printing the exception prints what `python3` prints. Note that `+` follows the
+**left** operand's type — a list defines concatenation and refuses the other type, a dict does not define
+concatenation at all — so rows three and four are not mirrors of each other.
+
+Where the reference **answers** and this backend has no sequence helper, the compiled leg says so instead
+of inventing a value; the interpreter, which has the semantics, answers:
+
+```
+print([0] * 3)        # interpreter: [0, 0, 0]      compiled: refuses, naming the missing repeat helper
+print([1, 2] + [3])   # interpreter: [1, 2, 3]      compiled: refuses, naming the missing concatenate helper
+print([1] < [2])      # interpreter: True           compiled: refuses, naming the missing order helper
+```
+
+These are owed to L11.1's tagged value word and are pinned as still-owed. Two things are deliberately
+**not** included, because their kind belongs to someone else and each was measured breaking an answer:
+
+- a **container passed as an argument** — `def half(xs): return xs[0] / 2` with `half([1.5])` = `0.75`;
+  a container is a legal argument, only an arithmetic *operand* is not;
+- a **comparison over two names** of the same kind — `a = [1]` / `b = [2]` / `print(a < b)` = `True`, the
+  tagged order road's question.
+
+A **text** repeated by an int (`"ab" * 2` = `abab`) is answered by the interpreter; the compiled leg's
+refusal of it predates this section (Gap R.82) and is unchanged.
+
 ### Text predicates
 
 `s.startswith(p)`, `s.endswith(p)`, `s.isdigit()`, `s.isalpha()`, `s.isalnum()`, `s.isspace()`,

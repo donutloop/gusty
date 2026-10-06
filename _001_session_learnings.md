@@ -7812,3 +7812,75 @@ printed value.
 **Instruments.** Pre-cycle binary from `HEAD` in a `git worktree`: interpreter `1/0/42/0/False/True` against
 the reference `1/None/42/None/True/False` — four of six wrong. Suite green; 167-file sweep moved nothing but
 the new probe; matrix 156 → 157 rows, 121 → 122 parity, 106 → 107 `match`, 0 fail, 0 drift.
+
+## Cycle: a container in a numeric operand raises or refuses, and never spends exit 2 (Gap R.175 closed; ADR 0292)
+
+**The finding.** Seven shapes exited **2** on `--aot` while `--interp` answered all of them:
+`print([0] * 3)` → `mul i32 @.lst1, 3`, `print([1, 2] + [3])` → `add i32 @.lst1, @.lst2`,
+`print([1] / 2)` → `sitofp i32 @.lst1 to double`, plus `[1] - [2]`, `{1: 2} * 2`, `[1] + {}`, `[] < {}`.
+Exit 2 is ADR 0166's code for *our* bug, so an agent could not tell "my program has a type error" from "the
+compiler is broken" — and the module llc rejected was ours, not the program's.
+
+**The cause is the same representation for the third time.** `value()` renders a container literal as the
+**address** of a compile-time global. ADR 0288 met it in a comparison chain's operand, ADR 0290 in a ternary's
+arm, this cycle in an arithmetic operand and a `sitofp` lift. Three faces of L11.1's tagged value word, found
+from three different doors — which is the argument for sweeping a *surface* rather than a bug.
+
+**Split raise-vs-refuse by the reference, not by what this road lacks.** The obvious fix (refuse everything
+with no helper) would have replaced CPython's sentence with ours on five of seven shapes, and
+`except TypeError as e: print(e)` reads whatever we invent. So the guard asks the reference per operator and
+per pair: raise where it raises, refuse where it answers and nothing can build the answer. `[1] + {}` and
+`{} + []` are **not** mirrors — a list defines concatenation and refuses the other type, a dict does not
+define it at all — so those two sentences came off a live `python3`, not off symmetry. My first table pinned
+the dict row as the mirror and the test's own freshness check (`want != r.want` → "the row is stale") caught it.
+
+**Two regressions, both from over-claiming, both caught only by *existing* tests.**
+- A container arm at the double lift refused `def half(xs): return xs[0] / 2` / `half([1.5])` = `0.75`. The
+  lift is shared with the **call-argument** path, where `isFloat` describes the callee's *return* and not the
+  argument. A container is a legal *argument*; only an arithmetic *operand* has no container reading. The
+  guard now requires `g.numCtx != nil`.
+- Claiming the comparison family refused `a = [1]` / `b = [2]` / `print(a < b)` = `True`, which the tagged
+  order door three lines above owns. Declining a same-kind comparison restored the answer.
+  Both are the ladder's forbidden direction — an answer becoming a refusal — and neither showed up in the
+  tests I wrote for the fix, because I wrote those tests after the guard. A regression suite you author
+  after the change audits the change, not the codebase.
+
+**A raise inside an expression must finish the block properly.** `raiseTo` terminates the block with a `br`,
+so the caller's next instruction dangled after a terminator, and returning `"0"` where the caller splices
+after a `double` gave `fdiv double 0, %t1` — *integer constant must have integer type*: the same exit-2 class
+the row exists to eliminate, reintroduced by the fix. The arm opens its own label and returns `0.0`.
+
+**Debug technique that worked, and the one that didn't.** Adding a `runtime.Callers` stack print inside the
+guard located the call-argument path in one run (the pre-existing `dbgStack` pattern in `heapargs.go`). What
+did not work: adding *several* traces plus a new import in one pass — `codegen.go` ended up unrecoverable and
+was restored with `git checkout`, losing the uncommitted cycle work. Traces are cheap; uncommitted work is
+not. Commit a checkpoint before a debugging detour.
+
+**`*` was three rules, not one, and the lookups lied about the multiplier.** `[0] * 3` answers, `{1: 2} * 2`
+says the generic unsupported-operand sentence, and a **sequence** facing a non-int says its own
+`can't multiply sequence by non-int of type 'X'` — with the **multiplier's** type. The road's two existing
+kind lookups answer `""`/`"int"` for a float, a text and `None`, so `[1] * 2.0`, `[1] * "x"` and `[1] * None`
+each first raised a sentence quoting `'int'`, a type nobody wrote (Gap R.38 again). `{} * []` names `'dict'` —
+the **left**, the `__mul__` Python tried and failed — so `{} * []` and `[1] * {}` are not mirrors; the row I
+wrote from symmetry failed its own "the row is stale against the reference" check. Rule for the next cycle:
+when an operator's message names a type, check which operand's type it is *before* writing the table.
+
+**A test that cannot fail is a comment — checked again.** The new tables went into a `git worktree` build of
+`HEAD`: **34** subtest failures in `pkg/lang`, **22** exit-2 failures in `integration`, all pass on the
+new binary. The first attempt at this printed `0 / 0` because a bad relative path had silently skipped the
+copy — a baseline that fails nothing is a baseline that proves nothing, so the counts are written down here
+next to the rule. `TestContainerArithmeticRaiseArmsRunOnBothEngines` needed care: a `try:` arm that never
+runs prints *nothing*, so "both engines agree" would pass on two silent programs — it now requires the arms
+to have fired, and asks the reference to run the same source.
+
+**Sweep discipline paid off immediately.** The 168-file corpus moved exactly one program, `sequence_ops.gy`,
+whose compiled leg changed refusal *wording* (it stopped at `[1] + [2]` instead of reaching the old
+`str * int` message). Its `{aot: Missing}` debt pin still holds, so its reason text was edited to say the
+exit-2 half is closed rather than leaving a stale explanation.
+
+**Instruments.** Pre-cycle binary from `HEAD` in a `git worktree`; 16-shape exit-code sweep, all at exit 2
+before and 1/3 after. New: `pkg/lang/container_arith_test.go` (9 raise rows against a live `python3`, 4
+answer rows, 3 still-refused rows with a promotion log), `integration/container_arith_test.go`,
+`programs/probe_a_container_in_arithmetic.gy` registered in `conformanceStandalone()`. `except <Type> as e`
+does not parse — a separate gap, filed next; the probe avoids it and says why. Suite green, `gofmt`/`go vet`
+clean.

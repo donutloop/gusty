@@ -712,6 +712,29 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_container_in_arithmetic",
+        "name": "probe_a_container_in_arithmetic.gy",
+        "source": "# What CPython does for this program (python3, 3.12): every `print` below raises, and the sentence the\n# `except` arm prints is the one the reference itself puts on stderr — measured with\n# `python3 -c \"print([1] - [2])\"` and compared byte-for-byte against both engines in\n# TestTheReferenceRaiseIsTheCompiledRaise. The arms are here to prove the raise is REAL (a program that\n# never traps would sail past them and print nothing), not to restate it: the wording is pinned from the\n# reference, never copied into a message this backend invents.\n#\n# A container in a numeric operand used to produce IR the assembler rejects, because `value()` renders a\n# list literal as the ADDRESS of a compile-time global: `print([0] * 3)` emitted `mul i32 @.lst1, 3`,\n# `print([1, 2] + [3])` emitted `add i32 @.lst1, @.lst2`, and `print([1] / 2)` reached the double road\n# with `sitofp i32 @.lst1 to double`. llc refused the compiler's own module, and the exit-code contract\n# spends exit 2 on OUR bug, not the program's (roadmap Gap R.175, ADR 0292).\n#\n# The `+` wording follows the LEFT operand's type — a list refuses a non-list, a dict has no\n# concatenation at all — which is why rows three and four are not mirrors of each other.\n#\n# The shapes the reference ANSWERS (`[0] * 3`, `[1, 2] + [3]`, `[1] \u003c [2]`) have no runtime sequence\n# helper here and refuse in words instead of inventing a number; that half is owned by L11.1's tagged\n# value word. `except \u003cType\u003e as e` is a separate gap, so no arm binds the exception value.\ntry:\n    print([1] - [2])\nexcept TypeError:\n    print(\"raised: unsupported operand type(s) for -: 'list' and 'list'\")\n\ntry:\n    print([1] / 2)\nexcept TypeError:\n    print(\"raised: unsupported operand type(s) for /: 'list' and 'int'\")\n\ntry:\n    print([1] + {})\nexcept TypeError:\n    print('raised: can only concatenate list (not \"dict\") to list')\n\ntry:\n    print({} + [])\nexcept TypeError:\n    print(\"raised: unsupported operand type(s) for +: 'dict' and 'list'\")\n\ntry:\n    print([] \u003c {})\nexcept TypeError:\n    print(\"raised: '\u003c' not supported between instances of 'list' and 'dict'\")\n\ntry:\n    print({1: 2} * 2)\nexcept TypeError:\n    print(\"raised: unsupported operand type(s) for *: 'dict' and 'int'\")\n",
+        "shared": true,
+        "oracle": "match"
+      },
+      "interp_ok": true,
+      "interp_stdout": "raised: unsupported operand type(s) for -: 'list' and 'list'\nraised: unsupported operand type(s) for /: 'list' and 'int'\nraised: can only concatenate list (not \"dict\") to list\nraised: unsupported operand type(s) for +: 'dict' and 'list'\nraised: '\u003c' not supported between instances of 'list' and 'dict'\nraised: unsupported operand type(s) for *: 'dict' and 'int'\n",
+      "aot_ok": true,
+      "aot_stdout": "raised: unsupported operand type(s) for -: 'list' and 'list'\nraised: unsupported operand type(s) for /: 'list' and 'int'\nraised: can only concatenate list (not \"dict\") to list\nraised: unsupported operand type(s) for +: 'dict' and 'list'\nraised: '\u003c' not supported between instances of 'list' and 'dict'\nraised: unsupported operand type(s) for *: 'dict' and 'int'\n",
+      "parity": true,
+      "python_ok": true,
+      "python_stdout": "raised: unsupported operand type(s) for -: 'list' and 'list'\nraised: unsupported operand type(s) for /: 'list' and 'int'\nraised: can only concatenate list (not \"dict\") to list\nraised: unsupported operand type(s) for +: 'dict' and 'list'\nraised: '\u003c' not supported between instances of 'list' and 'dict'\nraised: unsupported operand type(s) for *: 'dict' and 'int'\n",
+      "interp_matches_python": true,
+      "aot_matches_python": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_remainder_and_percent",
         "name": "probe_remainder_and_percent.gy",
         "source": "# `%` is the remainder for numbers, on both engines; a text on its left is printf-style formatting\n# this backend refuses rather than answering with a number (roadmap Gap R.165, ADR 0282).\ndef f(v):\n    return v % 2\n\ndef g(v):\n    return v % 3\n\nprint(7 % 3)\nprint(-7 % 3)\nprint(7.5 % 2)\nprint(-7.5 % 2)\nprint(7.5 % 2.5)\nprint(f(7.5))\nprint(f(7))\nprint(g(7.5))\nprint(g(7))\nprint(1 if 1.0 == \"a\" else 0)\nprint(1 if \"a\" == 1.0 else 0)\nprint(1.5 + 2)\nprint(7 / 2)\n",
@@ -3692,7 +3715,7 @@
       "interp_stdout": "[1, 2]\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1917535652/132/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3043061719/133/prog.ll:25:28: error: global variable reference must have pointer type",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
@@ -3706,7 +3729,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix1917535652/132/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/TestConformanceMatrix3043061719/133/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -3966,8 +3989,8 @@
         "source": "# Sequence operations are what the operand-kind rule (ADR 0215) makes legal: a str or a\n# list repeated by an int (in either operand order), two lists concatenated, and two\n# values of the same kind ordered by value. Each line agrees with CPython in the\n# interpreter. The compiled backend refuses `str * int` and emits an invalid module for\n# list concatenation (roadmap Gap R.33), so the compiled leg does not complete.\nprint([1] + [2])\nprint([1] + [2] + [3])\nprint([1] * 3)\nprint(3 * [1])\nprint(\"ab\" * 2)\nprint(2 * \"ab\")\nprint(\"ab\" * 0)\nprint(\"ab\" * -1)\nprint([1] * 0)\n# Ordered comparison compares values, not handles. The result is tested rather than\n# printed: this language renders a boolean as 1 or 0, which is a separate documented\n# divergence, and what is pinned here is whether the ordering itself is right.\nif \"a\" \u003c \"b\":\n    print(\"str ordered\")\nif [1, 2] \u003c [2]:\n    print(\"list ordered\")\nif [2] \u003c [1, 2]:\n    print(\"wrong\")\nprint(len([1, 2, 3]) * 2)\n",
         "shared": false,
         "oracle": "debt",
-        "reason": "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
-        "ref": "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
+        "reason": "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
+        "ref": "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
         "pins": [
           {
             "backend": "interpreter",
@@ -3983,7 +4006,7 @@
       "interp_stdout": "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n",
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)",
+      "aot_error": "`[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)",
       "parity": false,
       "python_ok": true,
       "python_stdout": "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n",
@@ -3991,13 +4014,13 @@
       "aot_matches_python": false,
       "oracle": "debt",
       "oracle_declared": "debt",
-      "oracle_reason": "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
-      "oracle_ref": "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
+      "oracle_reason": "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
+      "oracle_ref": "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
       "oracle_rules": [
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: codegen: operator \"*\" on a string (a string literal) is not supported in the AOT backend; the interpreter evaluates it — a compiled string is an interned table index, so arithmetic on it has no meaning, and an ordering of two texts is answered only where the compiler can see both sides are text (roadmap Gap R.82)"
+        "compiled leg failed: `[1] + [2]` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)"
       ]
     },
     {
@@ -4547,11 +4570,11 @@
       ]
     }
   ],
-  "rows": 157,
+  "rows": 158,
   "skipped": 35,
-  "pass": 122,
+  "pass": 123,
   "fail": 0,
-  "oracle_match": 107,
+  "oracle_match": 108,
   "oracle_debt": 29,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

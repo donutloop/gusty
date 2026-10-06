@@ -563,6 +563,19 @@ because interning is idempotent), while a constant test still evaluates only the
 arm still refuses — that half belongs to L11.1's tagged value word, and the test says so rather than claiming
 it.
 
+A container in a numeric operand raises or refuses — it never spends the contract's **exit 2** (ADR 0292,
+closing `Gap R.175`). `print([0] * 3)`, `print([1, 2] + [3])`, `print([1] / 2)`, `print([1] - [2])`,
+`print({1: 2} * 2)`, `print([] < {})` and ten siblings emitted a module `llc-20` rejected —
+`mul i32 @.lst1, 3`, `add i32 @.lst1, @.lst2`, `sitofp i32 @.lst1 to double` — because `value()` renders a
+container literal as the **address** of a compile-time global rather than a value. Exit 2 is reserved for a
+bug of **ours**, so a harness could not distinguish "the compiler is broken" from "my program has a type
+error", and `--interp` answered every one of them correctly. The split follows the **reference**, not what
+this backend lacks: where CPython raises, both engines raise CPython's own sentence (exit 3, catchable, so
+`print(e)` prints what `python3` prints); where CPython answers and no sequence helper exists, the compiled
+leg declines in words (exit 1) and the interpreter answers. Two things were deliberately left alone after
+each was measured breaking an answer: a container as a **call argument** (`half([1.5])` = `0.75`) and a
+**comparison over two names** (`a < b` = `True`, the tagged order road's question).
+
 A dict lookup with nothing to find hands back **`None`** (ADR 0291, closing `Gap R.174`).
 `print({"a": 1}.get("z"))` answered `0` on the interpreter, so `print(v == 0)` answered `True` where the
 reference answers `False` — a program could not even *test* for the missing key — while the compiled leg

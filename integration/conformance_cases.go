@@ -123,6 +123,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// default` although its own fold already knew the key was absent. Four of these six lines were
 		// wrong on the pre-cycle interpreter, `v == 0` among them (Gap R.174, ADR 0291).
 		"probe_dict_get_answers_none",
+		// A container in a numeric operand emitted IR the assembler rejects — `mul i32 @.lst1, 3` for
+		// `print([0] * 3)`, `add i32 @.lst1, @.lst2` for `print([1, 2] + [3])`, `sitofp i32 @.lst1 to
+		// double` for `print([1] / 2)` — because `value()` renders a list literal as the ADDRESS of a
+		// compile-time global. llc refused the compiler's own module, and exit 2 is the contract's code
+		// for OUR bug. Every line here is a pair the reference raises for, so both engines now raise the
+		// reference's own sentence (roadmap Gap R.175, ADR 0292).
+		"probe_a_container_in_arithmetic",
 		// A builtin called with no argument is a CONSTRUCTOR for four of them — int(), float(), bool(),
 		// str() answer `0`, `0.0`, `False` and the empty text — and an arity error for the rest: ord(),
 		// chr(), abs() and repr() raise in the reference and raise here too. All are settled on both
@@ -768,8 +775,8 @@ var oracleLedger = map[string]oracleDecl{
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2, 3]\n2\n3\n4\n5\n[1, 2]\n"}, {Backend: "aot", Missing: true}}},
 
 	"programs/sequence_ops": {oracle: lang.OracleDebt,
-		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend refuses `str * int` outright (an honest refusal) and emits a module llc rejects for list concatenation and repeat — \"global variable reference must have pointer type\" — so the compiled leg never completes",
-		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16); ADR 0215",
+		reason: "the interpreter and CPython agree on all thirteen lines, but the compiled backend has no sequence lowering: it refuses `str * int` (an honest refusal, Gap R.82) and refuses list concatenation and repeat in words (Gap R.175) where it used to emit a module llc rejects — \"global variable reference must have pointer type\" — so the compiled leg never completes either way, and now completes the refusal without spending exit 2",
+		ref:    "roadmap Gap R.33 (sequence operations in codegen, same signature as Gap R.16) and Gap R.175 (the exit-2 half, ADR 0292); ADR 0215",
 		pins:   []lang.OraclePin{{Backend: "interpreter", Stdout: "[1, 2]\n[1, 2, 3]\n[1, 1, 1]\n[1, 1, 1]\nabab\nabab\n\n\n[]\nstr ordered\nlist ordered\n6\n"}, {Backend: "aot", Missing: true}}},
 	// Gap R.36 + R.39 closed (ADR 0228): the parity assertion for this program is that both backends
 	// print `1` and then raise the class CPython raises. The oracle leg itself exits 1 (an uncaught

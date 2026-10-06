@@ -7711,3 +7711,68 @@ naming the receiver and the missing representation), and a dict whose **answer i
 **Measurement, not memory.** Pre-cycle binary from `HEAD` in a `git worktree`: interpreter `1/0/42/0/False/True`
 against the reference `1/None/42/None/True/False`. Suite green; 167-file sweep moved nothing but the new probe;
 matrix 156 → 157 rows, 121 → 122 parity, 106 → 107 `match`, 0 fail, 0 drift.
+
+### Gap R.175 — a container in a numeric operand spent the contract's exit 2 (CLOSED by ADR 0292, owner L11.1)
+
+Found by the 2026-07-06 arithmetic sweep, and the loudest kind of finding this stretch: **seven shapes exited
+2**, the code ADR 0166 reserves for *our* bug, while `--interp` answered every one of them correctly.
+
+```
+print([0] * 3)        mul i32 @.lst1, 3              exit 2   interpreter: [0, 0, 0]
+print([1, 2] + [3])   add i32 @.lst1, @.lst2         exit 2   interpreter: [1, 2, 3]
+print([1] / 2)        sitofp i32 @.lst1 to double    exit 2   raises TypeError
+print([] < {})        icmp over two global addrs     exit 2   raises TypeError
+```
+
+**The cause is one representation, again.** `value()` renders a container literal as the **address** of a
+compile-time global (`@.lst1`), because there is no value representation to give it. Any arithmetic or
+comparison instruction that receives one is malformed. This is L11.1's tagged value word wearing a third
+face — after the container-operand comparison chain (ADR 0288) and the text in an untagged slot (ADR 0290).
+The LLVM verifier was again *not* the safety net: `llc-20` rejects the module first, so what is pinned here
+is the emitted shape and the exit code, not a verifier pass.
+
+**The split is chosen by the reference, not by this road.** The tempting fix — refuse everything with no
+helper — would have replaced CPython's sentence with ours on five of the seven, and a program that catches
+`TypeError` and prints the exception reads invented text (ADR 0215). So the guard asks CPython first, per
+operator and per pair: *raise* where the reference raises (`[1] - [2]`, `[1] / 2`, `[1] % 2`, `{1: 2} * 2`,
+`{1} * 2`, `[1] + {}`, `{} + []`, `[] < {}`, `[1] < 2`), *refuse* where it answers and there is nothing to
+build the answer with (`[0] * 3`, `3 * [0]`, `[1, 2] + [3]`, `[1] < [2]`). Two of those sentences differ only
+by the left operand's type — a list says `can only concatenate list (not "dict") to list`, a dict says the
+generic `unsupported operand type(s) for +: 'dict' and 'list'` — which is exactly the kind of fact a table
+written from symmetry gets wrong; both were transcribed from a live `python3`.
+
+**Two regressions, both from over-claiming, both caught by an existing test.** (1) A container arm at the
+`sitofp` lift refused `def half(xs): return xs[0] / 2` with `half([1.5])`, which answers `0.75`: the lift is
+shared with the **call-argument** path, where `isFloat` describes the callee's *return*, not the argument. A
+container is a legal argument; only an arithmetic *operand* has no legal container reading, so the guard
+requires `g.numCtx != nil`. (2) Claiming the comparison family refused `a = [1]` / `b = [2]` / `print(a < b)`,
+which printed `True` — the tagged order door three lines above owns a same-kind comparison. Both are the
+ladder's forbidden direction (an answer becoming a refusal), and both stayed refused until the existing
+suites failed them; my own new tables did not catch either, because I wrote them after.
+
+**A raise from inside an expression has to finish the block.** `raiseTo` ends the block in a `br`, so the
+double-domain caller's next instruction landed after a terminator, and returning `"0"` for a value the caller
+splices after a `double` produced `fdiv double 0, %t1` — *integer constant must have integer type*, i.e. the
+same exit-2 class the row exists to remove. The arm now opens its own label and returns `0.0`, the shape the
+min/max kind trap already uses.
+
+**`*` needed a table of its own, and four lookups lied.** The reference spells multiplication three ways
+and the one it picks is a fact about the **left** operand: `[0] * 3` answers (refused here, no helper),
+`{1: 2} * 2` says the generic `unsupported operand type(s) for *: 'dict' and 'int'`, and a **sequence**
+facing a non-int says its own `can't multiply sequence by non-int of type 'X'` — where `'X'` is the
+**multiplier's** type. The two kind-lookups already on that road (`numericUseKind`, `containerKindName`)
+answer `""` or `"int"` for a float, a text and `None`, so `[1] * 2.0`, `[1] * "x"` and `[1] * None` all
+initially raised the generic sentence quoting `'int'` — a type the author never wrote, which is exactly what
+Gap R.38 forbids. `multiplierKindName` now names `float` / `str` / `NoneType` / the container families.
+And `{} * []` names `'dict'`, the **left**, because that is the `__mul__` the reference tried and failed —
+so the rows are not mirrors, and the one written from symmetry failed its own freshness check.
+
+**What stays refused.** `[0] * 3`, `3 * [0]`, `[1, 2] + [3]` and `[1] < [2]` — pairs the reference **answers**
+— remain compiled-leg refusals naming the missing helper. They belong to L11.1's tagged value word, and the
+tests log a promotion when the leg starts answering rather than claiming it now.
+
+**Measurement, not memory.** Pre-cycle binary from `HEAD` in a `git worktree`: all sixteen sweep shapes at
+exit **2**; the new pkg/lang tables fail there with 29 subtest failures and pass here. Suite green; the
+whole-corpus sweep (168 files) moved only `sequence_ops.gy`, whose compiled leg changed refusal *wording*
+(it had been reaching the `str * int` message; it now stops at `[1] + [2]` first) — its `debt` row still has `{aot:
+Missing}`, and its reason now names the exit-2 half as closed.

@@ -7516,6 +7516,47 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		g.noteUnlowered(e, fmt.Errorf("codegen: %s cannot be lifted to a double: it is a text, and the only text-to-number roads this backend builds are int(), float() and round(); printf-style %% formatting is owed (roadmap L11.2, Gap R.165, ADR 0166)", g.exprSummary(e)))
 		return ""
 	}
+	// A CONTAINER has no double to widen from either, and the shape here was worse than the text case
+	// above: `print([1] / 2)` emitted `sitofp i32 @.lst1 to double`, because `value()` renders a list
+	// literal as the address of a compile-time global. llc rejected the compiler's own module and the
+	// exit-code contract called a program the reference stops with a TypeError a compiler bug
+	// (roadmap Gap R.175, ADR 0292). Refused AT THE LIFT, the same choke point the text guard above
+	// occupies — not beside whichever caller happened to be measured.
+	// The guard belongs to an ARITHMETIC context: `g.numCtx` is set around the operands of a numeric
+	// operator and empty when a value is simply being lifted for a call argument. `def half(xs):
+	// return xs[0] / 2` with `half([1.5])` lowers the LIST as an argument through this lift — a
+	// container is a legal argument, its slots are what the body reads — and refusing it there turned a
+	// working 0.75 into a refusal, which the ladder forbids. Only an operand an operator is about to do
+	// arithmetic WITH has no legal container reading.
+	if g.arithOperandIsContainer(e) && g.numCtx != nil && !comparisonOpForTextGuard(g.numCtx) {
+		k := g.containerKindName(e)
+		if k == "" {
+			k = "container"
+		}
+		// Where the reference RAISES for this operator and pair, the lift raises too — a compile-time
+		// refusal for `[1] / 2` would put our words where the reference has a sentence of its own
+		// (`unsupported operand type(s) for /: 'list' and 'int'`), and a program that catches
+		// TypeError would not run (ADR 0215). The refusal below is only for a pair the reference
+		// answers and this backend cannot build.
+		if g.containerRaisesForPair(g.numCtx.Op, g.numCtx.L, g.numCtx.R) {
+			multiplier := multiplierKindNameOf(g, otherOperandOfNumeric(g.numCtx, e))
+			class, msg := containerNumberOp(g.numCtx.Op, multiplier, g.containerKindName(g.numCtx.L), g.containerKindName(g.numCtx.R))
+			// raiseTo closes the block (it ends in a `br` to the handler), so the label the caller's
+			// next instruction lands on has to be opened here — the same shape the min/max kind trap
+			// uses when it raises from inside an expression. Without it the fadd the caller goes on to
+			// emit dangles after a terminator, which is what llc then rejects.
+			g.raiseTo(b, exnCode(class), class, msg, g.numCtx.Span())
+			ok := g.newLabel("containerarith")
+			fmt.Fprintf(b, "%s:\n", ok)
+			// The caller is in the DOUBLE domain and will splice this string after a `double`, so it
+			// must be a double constant: `fdiv double 0, %t1` is llc saying "integer constant must
+			// have integer type", and a raise means the value is never read anyway.
+			return "0.0"
+		}
+		g.floatUnlowerable = floatLowerCompleteMarker + fmt.Sprintf("%s is a %s, which has no double to widen from — the reference stops with a TypeError of its own, and this backend builds no number from a %s", g.exprSummary(e), k, k)
+		g.noteUnlowered(e, fmt.Errorf("codegen: %s cannot be lifted to a double: it is a %s, and the only container-to-number roads this backend builds are len() and an explicit int()/float() cast (roadmap L11.1, Gap R.175, ADR 0166)", g.exprSummary(e), k))
+		return ""
+	}
 	t := g.newTmp()
 	fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, e))
 	return t
@@ -8769,6 +8810,59 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 			// a program the reference stops with one sentence. The raise names the operand's kind in
 			// CPython's wording, source-ordered, so the program can catch what it actually did
 			// (`except TypeError:` runs on both engines). (roadmap Gap R.150, Gap R.151, ADR 0283)
+			// A CONTAINER in a numeric operand is the same class of mistake, and was worse than the
+			// function case beside it: `value()` renders a list literal as the ADDRESS of a compile-time
+			// global, so `print([0] * 3)` emitted `mul i32 @.lst1, 3`, `print([1, 2] + [3])` emitted
+			// `add i32 @.lst1, @.lst2`, and `print([1] / 2)` reached the double road with
+			// `sitofp i32 @.lst1 to double`. llc rejected the compiler's own module each time, and the
+			// exit-code contract spends exit 2 on OUR bug, not the program's (ADR 0166).
+			//
+			// Two answers, split by what the REFERENCE does rather than by what this road lacks:
+			//   - where CPython raises (`[1] - [2]`, `{1: 2} * 2`, `[1] + {}`, `[] < {}`), raise its own
+			//     sentence, so `except TypeError:` runs on both engines (ADR 0215);
+			//   - where CPython ANSWERS (`[0] * 3`, `[1, 2] + [3]`, `[1] < [2]`), decline in words — the
+			//     backend builds no runtime list-repeat or concatenate helper, and a container global in
+			//     an arithmetic operand is the invalid IR this row exists to remove. Answering a number
+			//     there would be the wrong-number class ADR 0166 counts as our bug.
+			//
+			// A PARAMETER and a subscript are deliberately NOT claimed here: their kind belongs to the
+			// caller and to the slot roads, which already answer (`def half(xs): return xs[0] / 2` with
+			// `half([1.5])` = 0.75) or refuse with a message naming the slot they could not read. An
+			// answer may not become a refusal, and a precise diagnostic may not become a vague one.
+			for _, side := range []Expr{n.L, n.R} {
+				if !g.arithOperandIsContainer(side) {
+					continue
+				}
+				other := "int"
+				if k := g.numericUseKind(otherOperand(n, side)); k != "" {
+					other = k
+				}
+				// `list + dict` is `can only concatenate list (not "dict") to list`, and naming the other
+				// side "int" there would describe a program the author did not write (Gap R.38).
+				if ok := g.containerKindName(otherOperand(n, side)); ok != "" {
+					other = ok
+				}
+				if n.Op == "*" {
+					// `*`'s sentence quotes the MULTIPLIER's type (`can't multiply sequence by non-int
+					// of type 'str'`), and the two lookups above answer "" or "int" for a text, a float
+					// and None — which would print a type the author never wrote (Gap R.38).
+					other = g.multiplierKindName(otherOperand(n, side))
+				}
+				if g.containerRaisesForPair(n.Op, n.L, n.R) {
+					class, msg := containerNumberOp(n.Op, other, g.containerKindName(n.L), g.containerKindName(n.R))
+					g.raiseTo(b, exnCode(class), class, msg, n.Span())
+					return "0", nil
+				}
+				// Two same-kind containers in a COMPARISON are the tagged order door's question, and it
+				// answered `a = [1]` / `b = [2]` / `print(a < b)` before this row existed: declining here
+				// turned that True into a refusal, which the ladder forbids. Claim only what this road
+				// would otherwise put a container global into — an arithmetic operator, or a comparison
+				// over LITERALS that no other door lowered.
+				if isCompareOpForContainer(n.Op) && !exprIsContainerShape(n.L) && !exprIsContainerShape(n.R) {
+					continue
+				}
+				return "", fmt.Errorf("`%s` has no compiled lowering: the backend builds no runtime list-concatenate, sequence-repeat or container-ordering helper, and a container lowers to the address of a compile-time global rather than a number this road can carry — the interpreter answers this program, and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.175, ADR 0166)", exprSurface(n))
+			}
 			for _, side := range []Expr{n.L, n.R} {
 				kindName, isValue := g.valueWithNoSign(side)
 				if !isValue {
@@ -9962,6 +10056,366 @@ func (g *irGen) carryOperandRecords(from Expr, to string) {
 	if g.noneVars[nm.Value] {
 		g.noneVars[to] = true
 	}
+}
+
+// orFallback keeps a diagnostic from naming an empty type.
+func orFallback(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
+}
+
+// otherOperandOfNumeric is otherOperand for an operand already known to be one side of the BinOp.
+func otherOperandOfNumeric(n *BinOp, e Expr) Expr {
+	if n == nil {
+		return e
+	}
+	if n.L == e {
+		return n.R
+	}
+	return n.L
+}
+
+// isCompareOpForContainer is the ordering operators, spelled for the guard above.
+func isCompareOpForContainer(op string) bool {
+	switch op {
+	case "<", "<=", ">", ">=":
+		return true
+	}
+	return false
+}
+
+// containerKindOf names a container for the raise/answer split: a literal by its node, and a NAME by
+// asking the caller-supplied reader. A comparison over two variables is an ordinary program the reference
+// orders happily, so a predicate that could only read literals would raise where the reference answers.
+func containerKindOf(e Expr, ofName func(string) string) string {
+	if k := containerShapeOf(e); k != "" {
+		return k
+	}
+	nm, ok := e.(*Name)
+	if !ok || ofName == nil {
+		return ""
+	}
+	return ofName(nm.Value)
+}
+
+// arithOperandIsContainer asks the numeric road's question: would this operand lower to a CONTAINER
+// rather than to a number? Only an operand whose kind this pass can SEE is claimed — a parameter's kind
+// belongs to whoever calls, and a subscript's to the slot roads beside this one, which already answer or
+// refuse with a message naming the slot. Claiming either turned a working answer into a refusal
+// (`def half(xs): return xs[0] / 2` with `half([1.5])` = 0.75) and a precise diagnostic into a vague one.
+func (g *irGen) arithOperandIsContainer(e Expr) bool {
+	switch e.(type) {
+	case *ListLit, *DictLit, *SetLit, *Tuple:
+		return true
+	}
+	nm, ok := e.(*Name)
+	if !ok {
+		return false
+	}
+	if g.builtinShadowed(nm.Value) || g.paramNameOf(nm) {
+		return false
+	}
+	switch nm.Value {
+	case "list", "dict", "set", "tuple":
+		// spelled builtins, not a container the program bound
+		return false
+	}
+	return g.nameHoldsContainer(nm.Value)
+}
+
+// paramNameOf asks whether an expression is a plain name the enclosing function received as a
+// parameter — a value whose kind this road cannot see, because the caller writes it.
+func (g *irGen) paramNameOf(e Expr) bool {
+	nm, ok := e.(*Name)
+	if !ok || g.curFunc == "" {
+		return false
+	}
+	fd, known := g.fds[g.curFunc]
+	if !known {
+		return false
+	}
+	for _, p := range fd.Params {
+		if p.Name == nm.Value {
+			return true
+		}
+	}
+	return false
+}
+
+// containerShapeOf names a container literal's family, so `+` can ask whether the two sides are the SAME
+// kind: the reference concatenates list+list and tuple+tuple and refuses list+dict.
+// isContainerRepeatOp is the `*` test the raise's wording needs.
+func isContainerRepeatOp(op string) bool { return op == "*" }
+
+// multiplierKindNameOf asks the generator when it is in reach and falls back to the node alone.
+func multiplierKindNameOf(g *irGen, e Expr) string {
+	if g == nil {
+		if _, ok := e.(*FloatLit); ok {
+			return "float"
+		}
+		if _, ok := e.(*StrLit); ok {
+			return "str"
+		}
+		return "int"
+	}
+	return g.multiplierKindName(e)
+}
+
+// multiplierIsPlainInt says whether the non-container side of a `*` is an int literal (or a name the
+// records call an int), which is the ONLY multiplier the reference lets a sequence or mapping see without
+// raising. Written as its own predicate because the answer separates a refusal (`[0] * 3`, which the
+// reference answers and this road cannot build) from a raise (`[1] * 2.0`, which the reference raises for)
+// and getting it backwards turns a working `[0] * 3` into a TypeError.
+func multiplierIsPlainInt(l, r Expr) bool {
+	other := l
+	if containerShapeOf(l) != "" {
+		other = r
+	}
+	switch v := other.(type) {
+	case *IntLit:
+		return true
+	case *UnOp:
+		// `-3` is still an int multiplier: `[0] * -3` is the empty list in the reference.
+		return (v.Op == "-" || v.Op == "+") && multiplierIsPlainInt(v.X, v.X)
+	}
+	return false
+}
+
+// multiplierIsNotAnInt is the reference's test, spelled for `*`: the sequence's own __mul__ complains
+// "non-int" for anything that is not an int — a float, a text, a container, None. `other` is the NAME the
+// raise quotes, so a name the road could not resolve arrives as "int" and stays on the generic road.
+func multiplierIsNotAnInt(other string) bool {
+	switch other {
+	case "int", "":
+		return false
+	}
+	return true
+}
+
+func containerShapeOf(e Expr) string {
+	switch e.(type) {
+	case *ListLit:
+		return "list"
+	case *DictLit:
+		return "dict"
+	case *SetLit:
+		return "set"
+	case *Tuple:
+		return "tuple"
+	}
+	return ""
+}
+
+func exprIsContainerShape(e Expr) bool {
+	return containerShapeOf(e) != ""
+}
+
+// containerRaisesForPair is the reference's own judgement, asked once: does CPython stop with a TypeError
+// for THIS operator on THIS pair? Two nested gates inverted this and turned `{1: 2} * 2`'s TypeError into a
+// sentence about our own missing helper, which puts our words where the reference has words of its own.
+func (g *irGen) containerRaisesForPair(op string, l, r Expr) bool {
+	ofName := func(n string) string { return g.nameContainerKind(n) }
+	switch op {
+	case "-", "/", "//", "%", "**":
+		// No container meaning whatever the other side is: `[1] - [2]` and `[1] / 2` both raise.
+		return true
+	case "*":
+		// Only the SEQUENCES repeat: `[0] * 3` answers `[0, 0, 0]` (refused here, not answered), while
+		// `{1: 2} * 2` and `{1} * 2` raise `unsupported operand type(s) for *: 'dict' and 'int'`.
+		lk, rk := containerKindOf(l, ofName), containerKindOf(r, ofName)
+		if lk == rk && lk != "" {
+			// Two containers on both sides is not the reference's repeat at all: a sequence times a
+			// sequence is `can't multiply sequence by non-int of type 'list'`, which this road raises.
+			return lk == "list" || lk == "tuple" || lk == "dict" || lk == "set"
+		}
+		// Exactly one side is a container. Whether the reference RAISES depends on what the OTHER side
+		// is, and `[0] * 3` — which the reference answers — must not be swept into the raise: an int
+		// multiplier is the sequence repeat (refused, no helper), anything else is a raise.
+		if multiplierIsPlainInt(l, r) {
+			k := lk
+			if k == "" {
+				k = rk
+			}
+			return k == "dict" || k == "set"
+		}
+		// The multiplier is a float, a text, a container, or something whose kind this pass cannot pin
+		// — the reference raises for every family here (`can't multiply sequence by non-int of type
+		// 'float'`, and the mapping types have no __mul__ at all).
+		return true
+	// [multiplier kind recorded for the raise's sentence]
+	case "+":
+		// A container with a non-container, or two different container kinds, is `can only
+		// concatenate`; the same kind concatenates and the reference answers.
+		lk, rk := containerKindOf(l, ofName), containerKindOf(r, ofName)
+		if lk == "" || rk == "" {
+			return true
+		}
+		return lk != rk
+	case "<", ">", "<=", ">=":
+		// Only a MIXED pair raises: container against number, or `[] < {}` across kinds. Two
+		// same-kind containers ORDER, and the tagged door above answers that for names
+		// (`a = [1]` / `b = [2]` / `print(a < b)` is True, as it was before this row).
+		lk, rk := containerKindOf(l, ofName), containerKindOf(r, ofName)
+		if lk == "" && rk == "" {
+			// Neither side is a container at all: not this road's question.
+			return false
+		}
+		if lk == "" || rk == "" {
+			// Exactly one side is a container — the MIXED pair the reference stops with
+			// `'<' not supported between instances of 'list' and 'int'`.
+			return true
+		}
+		return lk != rk
+	}
+	// NOT a comparison the tagged order road can answer. `a = [1]` / `b = [2]` / `print(a < b)` is an
+	// ordinary program this backend ordered before the row existed, and its own door is asked three
+	// lines above this guard; claiming everything from here would turn that answer into a raise. Only a
+	// MIXED pair — container against number, or across kinds — is CPython's TypeError.
+	return false
+}
+
+// containerNumberOp spells CPython's own complaint. Which sentence it is, is a fact about the OPERATOR:
+// `+` reads `can only concatenate list (not "dict") to list`, the comparisons read `'<' not supported
+// between instances of 'list' and 'dict'`, and everything else reads `unsupported operand type(s) for
+// -: 'list' and 'list'` (ADR 0215's rule that the reference's wording is the wording).
+func containerNumberOp(op, other, leftKind, rightKind string) (string, string) {
+	if op == "*" && (leftKind == "list" || leftKind == "tuple") && multiplierIsNotAnInt(other) {
+		// A sequence DOES define __mul__, so it refuses a non-int multiplier with its own sentence
+		// rather than the generic one — measured for a float (`can't multiply sequence by non-int of
+		// type 'float'`), for a dict, and for a text. The type it quotes is the MULTIPLIER's, which is
+		// why `other` is asked rather than inferred from the container's own kind.
+		return "TypeError", fmt.Sprintf("can't multiply sequence by non-int of type '%s'", other)
+	}
+	if op == "*" && (leftKind == "dict" || leftKind == "set") && rightKind != "" && multiplierIsNotAnInt(rightKind) {
+		// `{} * []` says `'dict'`, not `'list'`: the reference names the type whose __mul__ was tried
+		// and failed, which for a mapping-times-something pair is the MAPPING on the left. Measured,
+		// because the obvious reading (name the other operand) gets this row backwards.
+		return "TypeError", fmt.Sprintf("can't multiply sequence by non-int of type '%s'", leftKind)
+	}
+	if op == "+" && leftKind == "list" {
+		// The reference spells `+` two ways, and which one it uses is a fact about the LEFT operand's
+		// type, not the operator alone: a list says `can only concatenate list (not "dict") to list`
+		// because list defines __add__ and refuses the other type, while a dict or set does not define
+		// concatenation at all and says the generic `unsupported operand type(s) for +: 'dict' and
+		// 'list'`. Measured, not remembered (ADR 0215).
+		self := leftKind
+		if self == "" {
+			self = other
+		}
+		return "TypeError", fmt.Sprintf("can only concatenate %s (not %q) to %s", self, other, self)
+	}
+	a, b := leftKind, rightKind
+	if a == "" {
+		a = other
+	}
+	if b == "" {
+		b = other
+	}
+	switch op {
+	case "<", ">", "<=", ">=":
+		return "TypeError", fmt.Sprintf("'%s' not supported between instances of '%s' and '%s'", op, a, b)
+	}
+	return "TypeError", fmt.Sprintf("unsupported operand type(s) for %s: '%s' and '%s'", op, a, b)
+}
+
+// containerKindName spells a container the way the reference names its type in a TypeError.
+// multiplierKindName names the multiplier's type for a raise's sentence: a container family, or the
+// primitive the reference would name (`float`, `str`). `containerKindName` alone answers "" for `2.0`,
+// and the fallback `'int'` would put the wrong type in the message.
+func (g *irGen) multiplierKindName(e Expr) string {
+	switch e.(type) {
+	case *FloatLit:
+		return "float"
+	case *StrLit:
+		return "str"
+	case *BoolLit:
+		return "bool"
+	case *NoneLit:
+		return "NoneType"
+	}
+	if k := g.containerKindName(e); k != "" {
+		return k
+	}
+	if nm, ok := e.(*Name); ok && !g.builtinShadowed(nm.Value) {
+		if g.floatVars[nm.Value] {
+			return "float"
+		}
+		if g.exprIsString(nm) {
+			return "str"
+		}
+	}
+	return "int"
+}
+
+func (g *irGen) containerKindName(e Expr) string {
+	if k := containerShapeOf(e); k != "" {
+		return k
+	}
+	nm, ok := e.(*Name)
+	if !ok {
+		return ""
+	}
+	if _, is := g.staticDicts[nm.Value]; is {
+		return "dict"
+	}
+	if g.runtimeDicts[nm.Value] || g.mixedDicts[nm.Value] {
+		return "dict"
+	}
+	if _, is := g.staticSets[nm.Value]; is {
+		return "set"
+	}
+	if g.runtimeSets[nm.Value] || g.mixedSets[nm.Value] {
+		return "set"
+	}
+	return "list"
+}
+
+// nameContainerKind names what a NAME holds, from the same records the iteration, subscript and length
+// roads read, or "" when this pass cannot say. It is the reader the raise/answer split asks about a
+// variable, so `a = [1]` / `b = [2]` / `print(a < b)` is not mistaken for a pair that raises.
+func (g *irGen) nameContainerKind(nm string) string {
+	if g.builtinShadowed(nm) || g.paramNameByName(nm) {
+		return ""
+	}
+	switch nm {
+	case "list", "dict", "set", "tuple":
+		return ""
+	}
+	if !g.nameHoldsContainer(nm) {
+		return ""
+	}
+	if g.runtimeDicts[nm] || g.mixedDicts[nm] {
+		return "dict"
+	}
+	if _, is := g.staticDicts[nm]; is {
+		return "dict"
+	}
+	if g.runtimeSets[nm] || g.mixedSets[nm] {
+		return "set"
+	}
+	if _, is := g.staticSets[nm]; is {
+		return "set"
+	}
+	return "list"
+}
+
+// paramNameByName is nameHoldsContainer's question for the enclosing function's own parameter list.
+func (g *irGen) paramNameByName(nm string) bool {
+	if g.curFunc == "" {
+		return false
+	}
+	fd, known := g.fds[g.curFunc]
+	if !known {
+		return false
+	}
+	for _, p := range fd.Params {
+		if p.Name == nm {
+			return true
+		}
+	}
+	return false
 }
 
 // nameHoldsContainer reports whether the program bound a name to a list, dict or set — the same

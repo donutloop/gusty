@@ -1,0 +1,48 @@
+# What CPython does for this program (python3, 3.12): every `print` below raises, and the sentence the
+# `except` arm prints is the one the reference itself puts on stderr — measured with
+# `python3 -c "print([1] - [2])"` and compared byte-for-byte against both engines in
+# TestTheReferenceRaiseIsTheCompiledRaise. The arms are here to prove the raise is REAL (a program that
+# never traps would sail past them and print nothing), not to restate it: the wording is pinned from the
+# reference, never copied into a message this backend invents.
+#
+# A container in a numeric operand used to produce IR the assembler rejects, because `value()` renders a
+# list literal as the ADDRESS of a compile-time global: `print([0] * 3)` emitted `mul i32 @.lst1, 3`,
+# `print([1, 2] + [3])` emitted `add i32 @.lst1, @.lst2`, and `print([1] / 2)` reached the double road
+# with `sitofp i32 @.lst1 to double`. llc refused the compiler's own module, and the exit-code contract
+# spends exit 2 on OUR bug, not the program's (roadmap Gap R.175, ADR 0292).
+#
+# The `+` wording follows the LEFT operand's type — a list refuses a non-list, a dict has no
+# concatenation at all — which is why rows three and four are not mirrors of each other.
+#
+# The shapes the reference ANSWERS (`[0] * 3`, `[1, 2] + [3]`, `[1] < [2]`) have no runtime sequence
+# helper here and refuse in words instead of inventing a number; that half is owned by L11.1's tagged
+# value word. `except <Type> as e` is a separate gap, so no arm binds the exception value.
+try:
+    print([1] - [2])
+except TypeError:
+    print("raised: unsupported operand type(s) for -: 'list' and 'list'")
+
+try:
+    print([1] / 2)
+except TypeError:
+    print("raised: unsupported operand type(s) for /: 'list' and 'int'")
+
+try:
+    print([1] + {})
+except TypeError:
+    print('raised: can only concatenate list (not "dict") to list')
+
+try:
+    print({} + [])
+except TypeError:
+    print("raised: unsupported operand type(s) for +: 'dict' and 'list'")
+
+try:
+    print([] < {})
+except TypeError:
+    print("raised: '<' not supported between instances of 'list' and 'dict'")
+
+try:
+    print({1: 2} * 2)
+except TypeError:
+    print("raised: unsupported operand type(s) for *: 'dict' and 'int'")
