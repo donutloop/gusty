@@ -8,7 +8,7 @@ import (
 // slot_order_object_test.go — the ordering comparison of a slot **no literal describes**, at the CLI
 // and against CPython (roadmap L11.1, Gap R.93; ADR 0252).
 //
-// The sibling unit file pins the same claim through Compile/EvalExpr; this one runs the shipped binary
+// The sibling unit file pins the same claim through the record; this one runs the shipped binary
 // on both legs and the oracle on the same source, so a door that only works inside the compiler's own
 // test harness cannot pass. The shapes are the ones Gap R.93 measured as a *verdict for a TypeError*:
 //
@@ -228,7 +228,7 @@ func TestSlotOrderOfAnUnliteralisedSlotTrapsLikeCPython(t *testing.T) {
 }
 
 // TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable holds the raise to being an exception: the program
-// can catch it, so the compiled leg leaves through the same exit class as the interpreter and not
+// can catch it, so the compiled leg leaves through the same exit class as the record and not
 // through a crash (roadmap ADR 0166, Gap R.37's rule that a trap must be a trap).
 func TestSlotOrderOfAnUnliteralisedSlotTrapIsCatchable(t *testing.T) {
 	src := "xs = []\nxs.append(3)\ntry:\n    print(1 if xs[0] > \"a\" else 0)\nexcept TypeError:\n    print(\"caught\")\n"
@@ -273,7 +273,7 @@ func TestSlotOrderOfABoolSlotNamesBool(t *testing.T) {
 // the lowering underneath, through the shipped binary, and holds the *current* answer so a divergence
 // cannot silently widen or quietly "pass" a CPython comparison it does not pass: roadmap Gap R.97 (a
 // slot against a slot of containers the program built) and Gap R.83 (the other operand's kind being
-// unprovable). Today the interpreter traps exactly as the oracle does and the compiled leg answers a
+// unprovable). Today the record traps exactly as the oracle does and the compiled leg answers a
 // verdict — that disagreement *is* the row, and the row is where it stays written until someone closes
 // it (Gap R.37's rule: a known wrong answer needs a failing check somewhere, not a comment). Neither
 // leg may exit 2.
@@ -307,8 +307,8 @@ func TestSlotOrderOfTwoUnliteralisedSlotsStaysFiledNotFixed(t *testing.T) {
 			// compiled program traps with the same class and words, refuses the shape by name, or the
 			// disagreement sits on the reference-debt ledger with the roadmap row that owes it. The
 			// retired engine's side of that story is preserved in the golden record and its own ledger.
-			interpOut, interpCode := cliRunMerged(t, "--aot", path)
-			requireReferenceTrapOrHonestRefusal(t, tc.src, tc.oracle, interpOut, interpCode, tc.gap,
+			compiledOut, compiledCode := cliRunMerged(t, "--aot", path)
+			requireReferenceTrapOrHonestRefusal(t, tc.src, tc.oracle, compiledOut, compiledCode, tc.gap,
 				"an ordering between two values whose kinds are run-time facts")
 			out, code := cliRunCode(t, "--aot", path)
 			if code == 2 {

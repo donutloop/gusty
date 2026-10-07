@@ -107,7 +107,7 @@ What an agent can still see is the artifact — `--emit-llvm 'xs = [1.5]'` conta
 float_container_elements.gy` is the three-engine source that the matrix runs. The refusals that
 remain (a nested container, a bool) name the missing mechanism and the roadmap item, and are pinned
 by name rather than by prose: `TestMixedContainersStillRefuseWhatNoTagDescribes`,
-`TestInterpreterAnswersWhatTheCompilerRefuses`.
+`TestCompiledAnswersWhatTheCompilerRefuses`.
 
 ## Codegen and IR implications
 

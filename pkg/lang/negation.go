@@ -4,7 +4,7 @@ package lang
 //
 // The reference stops on a negation of anything that has no sign. `-"hi"`, `-None`, `-[1, 2]`, `-C()` each
 // answer `TypeError: bad operand type for unary -: '<kind>'`, and every one of them was answered here by a
-// *number at exit 0*: the interpreter handed the interned index of the text to its int evaluator (which is
+// *number at exit 0*: the record handed the interned index of the text to its int evaluator (which is
 // why the digits looked like an address, -281474976710658 = -(2^48 + 2)), and the compiled backend emitted
 // `sub i32 0, @.str1` and printed 0. `-[1, 2]` went one step further and had `llc` reject the module — exit
 // 2, the contract's "the compiler is broken" code, spent on a program the reference merely stops on.
@@ -15,7 +15,7 @@ package lang
 // tag door never reached, where the kind is written in the source and the compiler only has to read it.
 //
 // One sentence, one owner: the wording comes from `unsupportedNumberOp("neg", …)`, the table ADR 0265
-// established, so the interpreter, the emitted raise, the printer and the tests can never disagree about
+// established, so the record, the emitted raise, the printer and the tests can never disagree about
 // what `-x` says when x holds a text.
 //
 // Both halves raise rather than refuse. That is the load-bearing choice: a front-end refusal (exit 1) would
@@ -183,9 +183,9 @@ func (g *irGen) negationOperandKind(e Expr) (string, bool) {
 // is broken" code on a program the reference answers or stops on in one line (roadmap Gap R.150,
 // Gap R.151, ADR 0283).
 //
-// The question is asked of the *declaration*, not of any value: the interpreter's `operandKind` names
+// The question is asked of the *declaration*, not of any value: the record's `operandKind` names
 // the same two words (`function` for a closure/method/function heap object, `module` for the module it
-// binds), so `-f`, `abs(f)`, `abs(math)` and their siblings quote one word on both engines.
+// binds), so `-f`, `abs(f)`, `abs(math)` and their siblings quote one word on both legs.
 func (g *irGen) nameIsAValueWithNoSign(name string) (string, bool) {
 	if name == "" || g == nil {
 		return "", false

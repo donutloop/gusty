@@ -9,7 +9,7 @@ import (
 
 // TestComprehensionCallsMatchCPythonOnAllThreeLegs is the integration half of the runtime
 // comprehension feature (roadmap L11.7, ADR 0192). The AOT path folded constant elements and
-// stopped, so [f(x) for x in range(5)] refused while the interpreter ran it — a two-backends,
+// stopped, so [f(x) for x in range(5)] refused while the record ran it — a two-backends,
 // one-language situation the corpus had never exercised, because every comprehension in it had a
 // constant element. Expectations are CPython's, transcribed from running the same source.
 func TestComprehensionCallsMatchCPythonOnAllThreeLegs(t *testing.T) {

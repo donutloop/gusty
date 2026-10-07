@@ -7,7 +7,7 @@ import (
 
 // Gap R.50 (ADR 0236): a tie goes to the nearest EVEN value.
 //
-// round(2.5) answered 3 on both backends. Neither answer was a guess — each was the honest output of
+// Before ADR 0236, round(2.5) answered 3 on the compiled backend. Neither answer was a guess — each was the honest output of
 // a correct implementation of the *wrong* rule: `math.Round` in the evaluator (ties away from zero)
 // and `@llvm.round.f64` in the compiled runtime (the same). Two independent implementations of one
 // wrong idea is precisely what a parity matrix reads as agreement, and it is why this file asserts
@@ -17,7 +17,7 @@ import (
 // constant fold (`floatEval`) and the runtime intrinsic — and the fold was wrong for literals while
 // the call was wrong for variables. A change that fixes only one leaves half of every program wrong.
 
-func TestRoundTiesToEvenInBothBackends(t *testing.T) {
+func TestRoundTiesToEvenOnTheCompiledBackend(t *testing.T) {
 	cases := []struct{ expr, want string }{
 		{"round(0.5)", "0"},
 		{"round(1.5)", "2"},
@@ -50,9 +50,9 @@ func TestRoundTiesToEvenInBothBackends(t *testing.T) {
 	}
 }
 
-func TestRoundTiesToEvenInTheInterpreter(t *testing.T) {
-	// The same table through the evaluator, so the two implementations of the rule are pinned to the
-	// same numbers rather than to each other.
+func TestRoundTiesToEvenAgainstTheRecord(t *testing.T) {
+	// The same table on the record leg, so the fold and the runtime intrinsic are pinned to the same
+	// numbers rather than to each other.
 	for _, tc := range []struct {
 		expr string
 		want int64
@@ -67,7 +67,7 @@ func TestRoundTiesToEvenInTheInterpreter(t *testing.T) {
 	} {
 		v := evalStr(t, "x = "+tc.expr+"\nprint(x)\nx\n")
 		if v != tc.want {
-			t.Errorf("interpreter %s = %d, want %d", tc.expr, v, tc.want)
+			t.Errorf("record leg %s = %d, want %d", tc.expr, v, tc.want)
 		}
 	}
 }

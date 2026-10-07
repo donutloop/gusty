@@ -8,7 +8,7 @@ package integration
 // double never left the one-word road and the double was truncated into it before the floor ran. `print(f(5))`
 // and `print(f(5.0))` printed `2` and `2` for CPython's `2` and `2.0`, `print(modop(7.5, 2))` printed `1` for
 // `1.5`, `print(modop(-7.5, 2))` printed `1` for `0.5`, and a forwarded `print(outer(5.0))` printed `2` — all
-// at **exit 0**. The interpreter's answers were right on every one of them, which is the whole finding.
+// at **exit 0**. The record's answers were right on every one of them, which is the whole finding.
 //
 // Three claims, three tables:
 //
@@ -140,7 +140,7 @@ func floorParity() []struct{ name, src, want string } {
 		{
 			// A *call*'s answer as one arm of a pair expression: roadmap Gap R.164's other half, ADR 0280.
 			// ADR 0273 read a pair answer at `return other(v)` and nowhere wider, so `f(7.5)` printed nothing
-			// at exit 1 on the compiled leg while the interpreter printed 3.5 — both legs are checked.
+			// at exit 1 on the compiled leg while the record printed 3.5 — both legs are checked.
 			"a call answer as an arm",
 			"def other(w):\n    return w % 3\n\ndef f(v):\n    return (v // 2) + other(v)\n\nprint(f(7.5))\nprint(f(7))\n", "4.5\n4\n",
 		},

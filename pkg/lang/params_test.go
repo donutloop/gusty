@@ -250,7 +250,7 @@ print(scale(1.5))
 }
 
 // TestReboundParamSemanticsBothWays is the behaviour, on the path that runs source
-// directly: the interpreter is the reference here, and every case below is one the
+// directly: the record is the reference here, and every case below is one the
 // compiled backend used to get wrong without a diagnostic.
 func TestReboundParamSemantics(t *testing.T) {
 	cases := []struct {

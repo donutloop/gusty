@@ -104,7 +104,7 @@ func TestComprehensionElementsMatchCPython(t *testing.T) {
 }
 
 // TestComprehensionShapesStillRefusedHonestly pins what the compiled backend still declines, and that
-// it declines by naming the missing promise. CPython answers these and the interpreter answers them
+// it declines by naming the missing promise. CPython answers these and the record answers them
 // too; the compiled leg must refuse (exit 1) and never exit 2, which would be the compiler rejecting
 // its own module rather than the program.
 func TestComprehensionShapesStillRefusedHonestly(t *testing.T) {
@@ -299,7 +299,7 @@ func TestComprehensionOverAMixedContainerMatchesCPython(t *testing.T) {
 }
 
 // TestComprehensionOverAMixedContainerStillRefusesHonestly keeps the shapes the tagged loop variable
-// does not reach. Each is answered by CPython and by the interpreter; the compiled backend declines by
+// does not reach. Each is answered by CPython and by the record; the compiled backend declines by
 // naming the promise it is missing, and never by exiting 2.
 func TestComprehensionOverAMixedContainerStillRefusesHonestly(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -423,10 +423,10 @@ func TestComprehensionOverAOneKindContainerMatchesCPython(t *testing.T) {
 }
 
 // TestComprehensionOverAMixedContainerFailsLikeCPython — `xs = [1, "a"]; [x + 0 for x in xs]` is
-// CPython's `TypeError: can only concatenate str (not "int") to str`, and the interpreter raises it:
+// CPython's `TypeError: can only concatenate str (not "int") to str`, and the record raises it:
 // the tagged element reached the `+` as what it is. The compiled backend never gets that far, because
 // the same shape is the refusal above; the row only checks that neither engine exits 0 with a value,
-// and that the interpreter's own failure names what CPython names.
+// and that the record's own failure names what CPython names.
 func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"text_element_in_addition", "xs = [1, \"a\"]\nxs.append(2)\nout = [x + 0 for x in xs]\nprint(out)\n", "can only concatenate str"},
@@ -470,7 +470,7 @@ func TestComprehensionOverAMixedContainerFailsLikeCPython(t *testing.T) {
 // And the entry write asked `elemKindTag` for the tag of a key that is the loop variable of a text
 // container, which answers *int* — so the interned index went in as an integer, `print(out)` wrote
 // `{0: 1}`, and `out["a"]`, which looks text up by index and tag together, died with `KeyError: key not
-// found` while the interpreter and CPython both printed 1.
+// found` while the record and CPython both printed 1.
 func TestDictComprehensionEntriesCarryTheirOwnKeysAndValues(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{

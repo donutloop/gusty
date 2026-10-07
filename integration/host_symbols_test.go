@@ -14,15 +14,15 @@ import (
 // TestHostSymbolNamedProgramRuns is the compiled leg of the Gap R.4 fix: a program whose
 // functions are named after symbols the host ABI owns — `sync`, `write`, `read`, `open`,
 // `time`, `exit`, `main` — used to be emitted under those very names, and the linker answered
-// its own calls from libc. The interpreter printed the program's values, the compiled binary
+// its own calls from libc. the record printed the program's values, the compiled binary
 // printed the C library's, and the toolchain reported success.
 func TestHostSymbolNamedProgramRuns(t *testing.T) {
 	src := readProgramSrc("host_symbol_names")
 	want := "1\n2\n3\n4\n5\n6\n7\n28\n6\n7\n"
 
-	interp := runInterp(t, src)
-	if interp != want {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", interp, want)
+	recordOut := runCompiled(t, src)
+	if recordOut != want {
+		t.Errorf("the record leg output =\n%q\nwant\n%q", recordOut, want)
 	}
 	aot, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {

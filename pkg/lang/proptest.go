@@ -3,7 +3,7 @@ package lang
 // PropGen is a deterministic property-based whole-program generator. It builds
 // random *Program ASTs over the AOT+interpreter *shared* lowering surface and
 // renders them back to canonical source via Format, so a property test can run
-// the same source through BOTH backends (the tree-walking interpreter and the
+// the same source through the compiled backend (the tree-walking interpreter and the
 // LLVM AOT compiler) and compare stdout. This directly guards the two-backend
 // semantics-drift risk the roadmap calls out.
 //
@@ -69,7 +69,7 @@ func newPropGen(seed int64, g PropGrammar) *propGen {
 
 // PropSource deterministically generates n whole-program sources for a seed.
 // Each generated program is rendered canonical gusty source; parse the source
-// and run it through both backends to compare parity.
+// and run it through the compiled backend to compare parity.
 func PropSource(seed int64, n int, g PropGrammar) []string {
 	out := make([]string, 0, n)
 	gen := newPropGen(seed, g)
@@ -126,7 +126,7 @@ func (g *propGen) freshName(kind string) string {
 	}
 }
 
-// propKindOf classifies a generated expression the way the interpreter would see it:
+// propKindOf classifies a generated expression the way the record would see it:
 // "list" for a list literal, "int" for anything numeric. The generator needs this
 // because it used to bind a list to a name and then read that name as an operand of
 // `+`, which is not a program the language accepts — it printed a number anyway until
@@ -315,7 +315,7 @@ func (g *propGen) genTopAtom() Expr {
 	}
 }
 
-// genNumericTopAtom is genTopAtom restricted to values the interpreter will accept
+// genNumericTopAtom is genTopAtom restricted to values the record will accept
 // as an operand of arithmetic: literals, len() of a list, and globals recorded numeric.
 func (g *propGen) genNumericTopAtom() Expr {
 	switch r := g.r.Float64(); {

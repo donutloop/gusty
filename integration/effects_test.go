@@ -9,7 +9,7 @@
 //	v = f(2)
 //	print(v)
 //
-// The interpreter printed `<coro>` (a coroutine handle printed as a value), the
+// the record printed `<coro>` (a coroutine handle printed as a value), the
 // compiled backend printed `2` (it ran the body eagerly at the call), and CPython
 // printed a coroutine repr plus a RuntimeWarning. Two backends that disagree with
 // each other is exactly what the parity matrix is built to catch — and it caught

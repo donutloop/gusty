@@ -316,7 +316,7 @@ func analyzeProgram(prog *Program) *SemanticAnalyzer {
 	// bound somewhere at top level is a module name, dynamically typed until inferred.
 	an.collectModuleBindings(prog.Stmts)
 	// Module-level definitions that claim a built-in's name. They are legal (ADR 0199), but a
-	// call above them means two different things to the two backends, so the checker keeps their
+	// call above them means two different things to the compiled backend, so the checker keeps their
 	// positions to be able to say so (Gap R.12, ADR 0205).
 	an.predeclaredDefs = map[string]*FuncDef{}
 	for nm, fd := range an.moduleDefs {
@@ -338,7 +338,7 @@ func analyzeProgram(prog *Program) *SemanticAnalyzer {
 	an.scope.define("list", TFunc(nil, TList(TDyn())))
 	an.scope.define("dict", TFunc(nil, TDict(TDyn(), TDyn())))
 	// Every built-in call name must be predeclared, or `print(sum(xs))` is rejected as an
-	// undefined name even though both backends implement `sum`. The names come from one
+	// undefined name even though the compiled backend implement `sum`. The names come from one
 	// table (pkg/lang/predeclared.go) shared with the codegen guard; names the checker
 	// already gave a precise type above keep it.
 	for _, nm := range predeclaredCallables() {
@@ -405,7 +405,7 @@ func (an *SemanticAnalyzer) addDiagFull(d Diagnostic) {
 //	def is_odd(n):
 //	    ...
 //
-// Both backends run that program — codegen resolves a call by name, which the module
+// The compiled backend run that program — codegen resolves a call by name, which the module
 // already knows — while the checker called it `undefined name "is_odd"` and the compiled
 // path refused to build it at all (Gap R.6, ADR 0197).
 //

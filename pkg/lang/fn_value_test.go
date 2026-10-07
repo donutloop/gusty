@@ -82,7 +82,7 @@ func firstLines(ir string, n int) string {
 }
 
 // TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes is Gap R.151's own table: the negation and
-// `abs` roads raise CPython's sentence with CPython's word, on both engines, rather than reaching the
+// `abs` roads raise CPython's sentence with CPython's word, on both legs, rather than reaching the
 // arithmetic the door exists to guard.
 func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 	head := "def f(x):\n    return x * 2\n\n"
@@ -123,7 +123,7 @@ func TestTheNumericDoorNamesAFunctionTheWayTheReferenceDoes(t *testing.T) {
 	}
 }
 
-// TestADeclaredNameReadIsNotANameErrorOnTheInterpreter is the interpreter half: a program that just
+// TestADeclaredNameReadIsNotANameErrorOnTheInterpreter is the record half: a program that just
 // declared `f` does not get `NameError: name 'f' is not defined` for reading it. That wrong *class* is
 // the catchability defect ADR 0211 and ADR 0228 count as a misclassing — `except TypeError:` matched
 // neither arm, because NameError matched neither either.
@@ -174,7 +174,7 @@ func TestACalledDefNameKeepsTheCheckedRoadIsTheLadderRule(t *testing.T) {
 			}
 			msg := err.Error()
 			// Two stages may answer this, and they use different words: the checker says
-			// `function "f" expects 1 argument, got 0`, the interpreter's own call road says
+			// `function "f" expects 1 argument, got 0`, the record's own call road says
 			// `missing argument x`. Either is a refusal; the failure this row guards is neither — a
 			// program that runs and prints a number (Gap R.168's measured `2` and `0`).
 			if !strings.Contains(msg, tc.wantSub) {

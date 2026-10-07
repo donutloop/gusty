@@ -425,7 +425,7 @@ func repeatParamTypes(n int) string {
 }
 
 // resolveDecorators resolves the decorated function value for a FuncDef with
-// decorators, applying decorators in source order (matching the interpreter:
+// decorators, applying decorators in source order (matching the record:
 // @dec1 @dec2 def f == f = dec2(dec1(f))). AOT currently supports identity
 // decorators (`def dec(g): return g`); wrapping/transform decorators that call
 // or transform the decorated function are rejected with a clear codegen error

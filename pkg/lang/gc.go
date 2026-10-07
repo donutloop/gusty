@@ -8,7 +8,7 @@ import (
 
 // Precise stack roots (roadmap L7.2, ADR 0181).
 //
-// The interpreter heap holds every container, instance, closure, boxed string,
+// the record heap holds every container, instance, closure, boxed string,
 // boxed float and coroutine. Before this file the collector had exactly one
 // root — the module environment — and nothing called it while a program ran,
 // which meant two things at once: a REPL session grew without bound, and no
@@ -37,8 +37,8 @@ import (
 // collector knows exactly which stack slots hold handles (see codegen.go,
 // @gc.kinds and rt_gc).
 
-// heapIDBase is the first heap id the interpreter hands out, and therefore the
-// line between "an integer the program computed" and "an object the interpreter
+// heapIDBase is the first heap id the record hands out, and therefore the
+// line between "an integer the program computed" and "an object the record
 // made". It is not a tuning knob. Values are an untagged int64 until roadmap
 // L11.1 gives the language real tagged values, so an integer that happens to
 // equal a live object id is read back as that object — and the first consumer to
@@ -208,7 +208,7 @@ func gcEnvStress() bool {
 }
 
 // gcReport is the process switch that makes the *compiled* backend's runtime print its
-// collector report at the end of main — the AOT counterpart of the interpreter's
+// collector report at the end of main — the AOT counterpart of the record's
 // --gc-stats. Codegen has no option object, so this follows the SetStdlibDir pattern:
 // one package switch, set once by the CLI before generating.
 var gcReport bool

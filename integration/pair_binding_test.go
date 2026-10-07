@@ -102,7 +102,7 @@ func TestARebindingRetiresTheTagAtTheCLI(t *testing.T) {
 
 // TestAContainerRebindingRetiresTheTextBindingToo is the row Gap R.145 filed and ADR 0270 paid. It used to
 // be a filed-not-fixed table pinning the compiled leg's `text` — the print dispatch reading the
-// interned-text record the earlier binding left behind, at exit 0, beside the interpreter and CPython
+// interned-text record the earlier binding left behind, at exit 0, beside the record and CPython
 // printing `[1, 2]`. It now asserts the reference's answer on both legs, and fails the day a binding path
 // starts leaving a status behind again (roadmap Gap R.145, ADR 0270).
 func TestAContainerRebindingRetiresTheTextBindingToo(t *testing.T) {

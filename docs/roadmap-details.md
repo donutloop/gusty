@@ -1269,7 +1269,7 @@ Each is a concrete, reproducible defect with the shape to fix it.
   - Tests: `none_values.gy` in the conformance corpus (38 cases), plus
     `TestNoneSingletonSemantics`, `TestNoneSurvivesGC`, `TestVoidFunctionYieldsNone`,
     `TestCompiledNoneUsesTheRuntimeSingleton`, `TestNoneEqualityIsStaticButNotLazy`,
-    `TestNoneVarIsClearedByReassignment`, `TestNoneValuesInterpreter/AOT`, `TestNoneIsNotZero`,
+    `TestNoneVarIsClearedByReassignment`, `TestNoneValuesOnTheCompiledBackend/AOT`, `TestNoneIsNotZero`,
     `TestVoidCallSideEffectsStay`, `TestCLIEvalDoesNotEchoVoid`.
   - Still open and deliberately out of scope: bools print `1`/`0` rather than `True`/`False`,
     and strings inside containers print unquoted (`[1, None]` → `[1, None]`, `[a, b]`). Tracked
@@ -2363,7 +2363,7 @@ every edge that leaves an accepting arm — the fall-through into `finally`, and
 or `continue` that would otherwise escape it, with `irGen.handledArms` telling the codegen when it is
 in an arm and `funcDef` zeroing that for a nested function. What is deliberately not cleared is an
 arm's own `raise` and the no-arm-matched re-raise, so the exception that is genuinely travelling still
-travels; `TestUncaughtTrapStillTrapsOnBothBackends` is the control that a mute-shaped "fix" could not
+travels; `TestUncaughtTrapStillTrapsOnTheCompiledBackend` is the control that a mute-shaped "fix" could not
 pass. Eleven shapes now print the same thing on the interpreter, the compiled binary and CPython
 (`integration/exception_clear_test.go`), and the module shape is pinned too
 (`pkg/lang/exception_clear_test.go`).
@@ -6735,7 +6735,7 @@ it cannot otherwise carry (`@rt_float_new`, tag `1`), and only then falling back
 with tag `0`. `t += i / 2` is exactly that shape — the left half is a pair the rebinding already owns, the
 right half is a quotient the ordinary road answers as a double — and the accumulator prints CPython's `6.5`
 where it used to exit 1. `TestAFloatRebindingBindsThePairRatherThanWideningTheStore` holds the row on both
-engines, and the CLI twin is `TestTheReferenceAndBothEnginesHandTheSameNumber`.
+engines, and the CLI twin is `TestTheReferenceAndBothLegsHandTheSameNumber`.
 
 ### Gap R.158 — a float-state variable handed to a function is refused (CLOSED by ADR 0276, owner L11.6, measured landing ADR 0274)
 
@@ -6761,7 +6761,7 @@ ordinary road refuse this argument* but *would it refuse it, or answer a double 
 recorded bindings are that evidence — `x = 8` then `x = 2.5` is a variable the pair road binds (ADR 0274) —
 and handing it over is the same missing word one position further out. `5.0` on both engines, pinned by
 `TestAFloatRebindingBindsThePairRatherThanWideningTheStore` and at the CLI by
-`TestTheReferenceAndBothEnginesHandTheSameNumber`; the float-from-birth twin closed in the same commit, as
+`TestTheReferenceAndBothLegsHandTheSameNumber`; the float-from-birth twin closed in the same commit, as
 Gap P.1's last line.
 
 ### Gap R.159 — a float-state variable as a container element is refused (OPEN, owner L11.6, measured landing ADR 0274)
@@ -8274,9 +8274,9 @@ independent implementations. That claim is gone: there is one implementation, an
 every case is either a **record** (what the retired engine said) or **CPython**. Those are not the same kind
 of evidence, and pretending they are is how a suite starts certifying its own assumptions.
 
-The three legs, and what each can now prove:
+The witnesses — one backend, and the two things it is measured against:
 
-| Leg | What it is | Strength | Weakness it cannot hide |
+| Witness | What it is | Strength | Weakness it cannot hide |
 |---|---|---|---|
 | compiled run | parse → check → codegen → `llc`/`cc` → the artifact | the thing users run | — |
 | retired-engine record | `pkg/lang/testdata/interpreter-golden.json`, 5478 sources | cheap, deterministic, offline, diffable | an *answer*, not a definition — the retired engine was wrong sometimes |
@@ -8310,6 +8310,39 @@ generated corpus against CPython continuously, so the "compiled vs reference" le
 retired engine used to provide and the record becomes a cache rather than a witness. Owner would be a
 Phase 12 tooling row; the registry (`integration/conformance_cases.go`) already stores per-leg expectations,
 so the missing piece is the runner and a policy for programs CPython cannot parse.
+
+**Closed by ADR 0308 (2026-08-06): the vocabulary, and the guard that keeps it.** The row's owed half was
+language, not execution. What was done:
+
+- `AGENTS.md` — the file that *is* the loop's contract — opened with "Two execution paths — both are
+  first-class" and named `pkg/lang/jit.go`/`EvalExpr` as where a feature is implemented first. A cycle
+  reading it would have rebuilt the engine. It now states one backend and two witness legs, and its
+  testing rule asks for a record-leg case and a reference-leg case instead of an interpreter case.
+- `roadmap.md` gained a **Witness vocabulary** section (`record leg` / `reference leg` / `both legs`) that
+  the `Path` column and every pre-retirement `Free text` cell are read through. Rows were not rewritten
+  wholesale — a measurement taken with two engines is evidence about those two engines — but every
+  *present-tense* claim in the tracker's prose, `docs/language.md`, `docs/operations.md` and `README.md`
+  was restated, as were ~500 test comments and failure messages and the CLI's flag descriptions
+  (`--bench`, `--bench-suite`, `--bench-gate`, `--oracle` all advertised an interpreter leg).
+- Names that lied were renamed, not re-explained: `zdInterp`→`zdRun`, `boolInterp`→`boolRun`,
+  `edInterp`→`edRun`, `negInterp`→`negRun`, `interpRun`→`compiledRun`, `interpReport`→`compiledReport`,
+  `interpWant`→`recordWant`, `Test…InBothBackends`→`Test…OnTheCompiledBackend`,
+  `Test…OnBothEngines`→`Test…OnBothLegs`, and `pkg/lang/jit_test.go`→`pkg/lang/compiled_eval_test.go`.
+  `jit_llvm.go` keeps its name — that one is an execution engine that exists.
+- `pkg/lang/witness_claim_test.go` is the ratchet. `testdata/witness-banned-phrases.txt` lists the claims
+  ("on both engines", "both backends print", "the interpreter prints", `EvalExpr`, `pkg/lang/jit.go`),
+  `testdata/witness-history-markers.txt` lists what makes a line history instead (`was`, `used to`,
+  `before`, `retir`, `measured 20`, …). A line matching a phrase without a marker fails the suite; a flag
+  description may name the interpreter only to retire it; `pkg/lang/jit.go` must stay deleted. The lists
+  are data, so tightening the rule is an edit to a ledger and not to a test, and the guard skips its own
+  file by name — a mass restatement that ate the rules it enforces is exactly how this kind of check dies.
+- Three assertions that the retirement had left **unable to fail** were deleted rather than kept:
+  `integration/text_truth_test.go` ran `cliTextOut(t, "--aot", src)` twice and announced that "the
+  compiled path agreed with each other"; `integration/for_container_literal_test.go` asserted
+  `byEngine["--aot"] != byEngine["--aot"]`; `pkg/lang/runtime_block_emit_test.go` hid a refusal-wording
+  assertion behind `if true { return }`. A check whose operands are the same expression is not a check,
+  and a comment that points at an engine nobody can run is not evidence (ADR 0166's "cannot fail" family;
+  Gap R.38 for the refusal wording).
 
 ### L13.1 — the prompt should report what a call evaluated to (owner: L11.1)
 

@@ -132,7 +132,7 @@ func TestTextOrderingMatchesCPython(t *testing.T) {
 
 // What the ordering door still will not answer, kept honest at the CLI: it must name the half that is
 // missing, stay in the refusal exit class (never 2, which ADR 0166 reserves for the compiler's own
-// mistake), and leave the interpreter answering the program.
+// mistake), and leave the record answering the program.
 func TestTextOrderingStillRefusedHonestly(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{

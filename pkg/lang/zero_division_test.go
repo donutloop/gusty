@@ -16,10 +16,10 @@ import (
 // interpreter raised an error with a message and no exception class, which made the trap
 // uncatchable: `except ZeroDivisionError:` matches on the class, and there wasn't one.
 
-// zdInterp runs src through the interpreter, returning what it printed and the error.
-// zdInterp answers what a program printed and how it failed, the compiled program judged against
+// zdRun runs src through the record, returning what it printed and the error.
+// zdRun answers what a program printed and how it failed, the compiled program judged against
 // the record the retired engine left behind (ADR 0302).
-func zdInterp(t *testing.T, src string) (string, error) {
+func zdRun(t *testing.T, src string) (string, error) {
 	t.Helper()
 	return runGoldenStdout(t, src)
 }
@@ -52,7 +52,7 @@ func zdBuild(t *testing.T, name, src string) (int, string, string) {
 
 // The table CPython is the reference for: shape, expected class, expected message. The
 // message is pinned too, because a trap whose wording drifts from the reference is a trap
-// nobody can grep a codebase for — and because the interpreter's old text ("division by zero"
+// nobody can grep a codebase for — and because the record's old text ("division by zero"
 // for a float floor division) shows how quietly the wording alone had gone wrong.
 var zdCases = []struct {
 	name    string
@@ -69,10 +69,10 @@ var zdCases = []struct {
 	{"divisor computed at run time", "def z():\n    return 0\n\nx = 5\nprint(x / z())\n", "ZeroDivisionError", "division by zero"},
 }
 
-func TestDivisionByZeroRaisesATypedExceptionInTheInterpreter(t *testing.T) {
+func TestDivisionByZeroRaisesATypedExceptionOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range zdCases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := zdInterp(t, tc.src)
+			out, err := zdRun(t, tc.src)
 			if err == nil {
 				t.Fatalf("the interpreter accepted a division by zero; it printed %q", out)
 			}
@@ -119,15 +119,15 @@ func TestDivisionByZeroTrapsInTheCompiledBackend(t *testing.T) {
 
 // A trap is only a trap if the language can handle it. This is the requirement the untyped
 // errors failed: the handler must run, and a handler for the *wrong* class must not.
-func TestDivisionByZeroIsCatchableInTheInterpreter(t *testing.T) {
+func TestDivisionByZeroIsCatchableOnTheCompiledBackend(t *testing.T) {
 	src := "x = 3\ntry:\n    print(x / 0)\nexcept ZeroDivisionError:\n    print(\"handled\")\n"
-	if out, err := zdInterp(t, src); err != nil || out != "handled\n" {
-		t.Fatalf("interpreter: got %q (err %v), want \"handled\\n\"", out, err)
+	if out, err := zdRun(t, src); err != nil || out != "handled\n" {
+		t.Fatalf("the record leg: got %q (err %v), want \"handled\\n\"", out, err)
 	}
 	// A handler for the wrong class must not swallow it: the exception has to keep going,
 	// not be collected by the first arm it meets.
 	miss := "x = 3\ntry:\n    print(x % 0)\nexcept ValueError:\n    print(\"wrong\")\n"
-	out, err := zdInterp(t, miss)
+	out, err := zdRun(t, miss)
 	if err == nil {
 		t.Fatalf("a ValueError arm swallowed a ZeroDivisionError; stdout was %q", out)
 	}

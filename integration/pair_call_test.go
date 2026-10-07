@@ -248,7 +248,7 @@ func TestACalledSlotTrapIsCatchableAtTheCLI(t *testing.T) {
 // reference answers and the reference prints, where the compiled leg declines with the half that is
 // missing named — the shape the scan's gate closes rather than an answer built from a payload alone.
 func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
-	for _, tc := range []struct{ name, src, interpWant, refusal string }{
+	for _, tc := range []struct{ name, src, compiledWant, refusal string }{
 		{
 			// An argument that is itself a pair-returning call: the inner answer's tag belongs to the
 			// inner call, and the outer parameter would take one word for a value that has two.
@@ -280,8 +280,8 @@ func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			gy := writeSrc(t, dir, "pair_call_refusal.gy", tc.src)
-			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.interpWant {
-				t.Fatalf("the reference was expected to print %q, said %q (ok %v)\nsrc: %s", tc.interpWant, py, ok, tc.src)
+			if py, ok := cpythonPlainOut(t, dir, tc.src); !ok || py != tc.compiledWant {
+				t.Fatalf("the reference was expected to print %q, said %q (ok %v)\nsrc: %s", tc.compiledWant, py, ok, tc.src)
 			}
 			out, code := cliRunCode(t, "--aot", "--file", gy)
 			if code == 2 {
@@ -291,7 +291,7 @@ func TestThePairCallRefusesWhatItCannotNameAtTheCLI(t *testing.T) {
 			// with the missing half named. Which of the two a row does is pinned by its `refusal` column
 			// below, so a refusal here is still checked for its words — it is only no longer a failure of
 			// *this* assertion, which used to ask the retired engine's leg and read the compiled one.
-			checkCompiledRow(t, out, code, tc.src, tc.interpWant)
+			checkCompiledRow(t, out, code, tc.src, tc.compiledWant)
 			out, code = cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
 				t.Fatalf("--aot: exit 2 where the front end should refuse (ADR 0166):\n%s", out)

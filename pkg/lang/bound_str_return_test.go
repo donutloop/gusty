@@ -172,7 +172,7 @@ func isPlainIntegerLine(s string) bool {
 }
 
 // compiledOut lowers src and runs the module under lli, failing the test if the compiler refused or the
-// program exited non-zero. The interpreter helper is captureStdout (jit_test.go); this is its compiled
+// program exited non-zero. the record helper is captureStdout (jit_test.go); this is its compiled
 // twin, named for the question it asks.
 func compiledOut(t *testing.T, src string) string {
 	t.Helper()

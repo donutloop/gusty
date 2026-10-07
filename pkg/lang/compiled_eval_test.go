@@ -311,7 +311,7 @@ func TestEvalDictSetIndexLen(t *testing.T) {
 		t.Fatalf("got %d, want 3", v)
 	}
 	// A set subscript is the documented gusty extension: the subscript is a member the set is asked
-	// about, and the answer is that member. Pinned on both engines because the compiled tag arm below a
+	// about, and the answer is that member. Pinned on both legs because the compiled tag arm below a
 	// slot reads a set slot the same way (roadmap L11.1, ADR 0251; docs/language.md § Dicts & sets).
 	v, _, err = evalGolden(t, "{1, 2, 3}[2]")
 	if err != nil {
@@ -904,7 +904,7 @@ func TestEvalAndOrFloorDiv(t *testing.T) {
 	if v != 0 {
 		t.Fatalf("0 and 7 got %d, want 0", v)
 	}
-	// floor division mirrors integer division in the interpreter.
+	// floor division mirrors integer division in the record.
 	v, _, err = evalGolden(t, "9 // 2")
 	if err != nil {
 		t.Fatalf("floor div err: %v", err)
@@ -1098,7 +1098,7 @@ func TestEvalRound(t *testing.T) {
 	// constant-folded math.Round" — an accurate description of two backends agreeing on the wrong rule.
 	// CPython's answers, not our own: a tie goes to the nearest EVEN value. This table used to read
 	// {3, 4, 2, -3} — the away-from-zero rule, asserted by the only test that looked, and agreed with
-	// itself across both backends so the parity matrix never noticed (roadmap Gap R.50, ADR 0236).
+	// itself across the compiled backend so the parity matrix never noticed (roadmap Gap R.50, ADR 0236).
 	// Each answer is now its own compiled run, checked against what the engine recorded.
 	for i, src := range []string{"round(2.5)", "round(3.9)", "round(2.4)", "round(-2.5)"} {
 		want := []string{"2", "4", "2", "-2"}
@@ -1172,7 +1172,7 @@ print(f"x={x}")`)
 	}
 	// f-string with multiple parts and a format spec is supported
 	// A format spec is HONOURED, not stripped. This pin used to assert `val=7` — the padding the
-	// spec asked for simply never happened, on both engines, at exit 0, which is the whole defect
+	// spec asked for simply never happened, on both legs, at exit 0, which is the whole defect
 	// Gap R.186 files (ADR 0299). CPython answers `val=  7` for `f"val={n:>3}"`, and a pinned wrong
 	// answer is an acceptance test that moves when the road lifts; it does not get deleted.
 	out = captureStdout(t, `n = 7
@@ -1305,7 +1305,7 @@ func TestEvalPower(t *testing.T) {
 
 	// A NEGATIVE integer exponent answers a FLOAT, not 0. `2 ** -1` is `0.5` in the reference; the pin
 	// here used to be `want 0` with the comment "yields 0 (int result), like Python's 2 ** -1 -> int
-	// floor", which describes an operation Python does not have — both backends agreed with the test and
+	// floor", which describes an operation Python does not have — the compiled backend agreed with the test and
 	// disagreed with CPython, so only the oracle leg could see it (roadmap Gap R.176, ADR 0293).
 	progNeg, perr := Parse("2 ** -1")
 	if perr != nil {

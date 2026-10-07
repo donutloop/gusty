@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -135,7 +136,19 @@ func errText(err error) string {
 	if err == nil {
 		return ""
 	}
-	return err.Error()
+	return normalizeRunPaths(err.Error())
+}
+
+// runPathRE matches the per-run temporary directory that `llc` echoes back inside its own
+// diagnostics (`/tmp/TestConformanceMatrix641942111/140/prog.ll:25:28: …`).
+var runPathRE = regexp.MustCompile(`/tmp/Test[A-Za-z]*[0-9]+`)
+
+// normalizeRunPaths keeps the committed artifact diffable. A leg's error text is stored in
+// `conformance-matrix.json` and read back as a machine answer, so a per-run temp path in it made the
+// artifact change on every run for no reason an agent could act on — the diff said "the compiled leg
+// failed differently" when nothing had (an artifact that cannot be compared is not machine-readable).
+func normalizeRunPaths(s string) string {
+	return runPathRE.ReplaceAllString(s, "/tmp/<run>")
 }
 
 var (
@@ -212,7 +225,7 @@ func buildConformanceMatrix(t *testing.T) lang.ConformanceMatrix {
 //     declares, with its reason, owner and per-leg pins still true.
 //
 // Contract 1 is the one that survived ADR 0302's removal of the AST interpreter: the parity
-// contract it replaces ("the two backends print the same bytes") could not see a wrong answer
+// contract it replaces ("the compiled backend prints the same bytes") could not see a wrong answer
 // the compiled path shared, which is the hole L11.9's oracle leg was built to close (ADR 0186). The
 // artifact goes to integration/conformance-matrix.json for agent and script consumption.
 func TestConformanceMatrix(t *testing.T) {

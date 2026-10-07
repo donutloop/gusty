@@ -42,7 +42,7 @@ func TestOracleReportMatchWhenTheCompiledLegPrintsPythonsAnswer(t *testing.T) {
 }
 
 // TestOracleReportTheOldParityTrapIsGone records why this item exists. The bug it was written for
-// was `print(True)` answering "1" on both engines for 100+ ADRs: two implementations agreeing is
+// was `print(True)` answering "1" on both legs for 100+ ADRs: two implementations agreeing is
 // not evidence, and the matrix only saw the truth because a third leg disagreed with both.
 //
 // One backend remains, so the trap cannot recur in the same shape — but its successor can: an

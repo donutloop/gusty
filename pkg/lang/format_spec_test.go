@@ -2,7 +2,7 @@ package lang
 
 // Gap R.185's sibling: an f-string's format spec used to be cut off at parse time and thrown away,
 // so every rendering road answered the PLAIN value — `f"{3.5:.2f}"` printed `3.5` where the reference
-// prints `3.50`, `f"{7:05d}"` printed `7`, `f"{255:x}"` printed `255` — on BOTH backends, at exit 0.
+// prints `3.50`, `f"{7:05d}"` printed `7`, `f"{255:x}"` printed `255` — on the compiled backend, at exit 0.
 // Parity could not see a single one because the engines agreed; only the oracle leg looked.
 //
 // These tables pin the shared spec engine itself. Every expectation was read from

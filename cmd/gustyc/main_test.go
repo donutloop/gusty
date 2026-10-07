@@ -888,6 +888,26 @@ func TestCLIShowBackendGoesToStderr(t *testing.T) {
 // retirement and points at the document that explains it. The flags that named the surviving backend
 // stay accepted — an agent's existing command line should keep working, and naming the engine that is
 // the only one is not an error worth a non-zero exit.
+// TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone is the same rule one layer down: `--bench-gate`
+// still accepted the gate names that belonged to the retired engine, and an unknown gate name made
+// lang.CompareBenchSuite watch nothing — a green gate that gated nothing is the failure ADR 0166
+// counts as ours, and a script left saying --bench-gate=interpreter must hear about it at the flag.
+func TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone(t *testing.T) {
+	for _, gate := range []string{"interpreter", "both", "interp"} {
+		got, code := cliCombined(t, "--bench-suite", "--bench-gate", gate, "--bench-runs", "1")
+		if code != 4 {
+			t.Errorf("--bench-gate %s: exit = %d, want 4 (usage) — output %q", gate, code, got)
+		}
+		if !strings.Contains(got, "not a gate") || !strings.Contains(got, "0302") {
+			t.Errorf("--bench-gate %s: the error must name the missing gate and the retirement, got %q", gate, got)
+		}
+	}
+	// The surviving gate keeps working, including the empty default.
+	if _, code := cliCombined(t, "--bench-suite", "--bench-gate", "aot", "--bench-runs", "1"); code != 0 {
+		t.Errorf("--bench-gate aot: exit = %d, want 0", code)
+	}
+}
+
 func TestCLIRetiredInterpFlagIsAUsageError(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "p.gy")
@@ -959,7 +979,7 @@ func TestCLIGCStats(t *testing.T) {
 		t.Fatalf("collector report belongs on stderr, got %q", stderr.String())
 	}
 	// Once, on the tool channel, in the compiled runtime's own words. The CLI used to render the
-	// interpreter's counters beside the program's, so one run announced two collections (ADR 0181).
+	// record's counters beside the program's, so one run announced two collections (ADR 0181).
 	if n := strings.Count(stderr.String(), "gc: backend="+lang.BackendName); n != 1 {
 		t.Errorf("the collector reported %d times for one run, want once: %q", n, stderr.String())
 	}

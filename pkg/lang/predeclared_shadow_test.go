@@ -6,8 +6,8 @@ import (
 )
 
 // A built-in name belongs to the program that claims it (ADR 0199) — but only from its definition
-// onwards, because that is when the binding exists. Above the definition the two backends meant two
-// different things: the interpreter, executing in order, still reached the built-in, while codegen —
+// onwards, because that is when the binding exists. Above the definition the compiled backend meant two
+// different things: the record, executing in order, still reached the built-in, while codegen —
 // which emits every function before the module body — resolved the call to the program's own
 // definition. One file, two outputs (roadmap Gap R.12, ADR 0205). The checker now refuses the program
 // where the ambiguity is written.

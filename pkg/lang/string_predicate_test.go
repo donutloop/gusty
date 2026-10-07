@@ -3,14 +3,14 @@ package lang
 // Text predicates print a verdict, not the word the fold holds (Gap R.172, ADR 0289).
 //
 // `s.startswith(p)`, `s.endswith(p)`, `isdigit`, `isalpha`, `isalnum`, `isspace`, `islower`, `isupper` are
-// eight questions the language already asks as yes-or-no, and BOTH backends already answered each with the
+// eight questions the language already asks as yes-or-no, and the compiled backend already answered each with the
 // same 0/1 a comparison answers with. Only the print road never learned, because a method call's callee is
 // not a `*Name` — `"abc".startswith("ab")` parses as `Call{Fn: Attr{Obj: "abc", Name: startswith}}` — and
 // `callReturnsBool` bailed on the very first line for anything that was not a plain name. So the answer was
-// right and its RENDERING was wrong on both engines at exit 0:
+// right and its RENDERING was wrong on both legs at exit 0:
 //
-//	print("abc".startswith("ab"))   CPython True   both backends 1
-//	print("abc".isdigit())          CPython False  both backends 0
+//	print("abc".startswith("ab"))   CPython True   the compiled backend 1
+//	print("abc".isdigit())          CPython False  the compiled backend 0
 //
 // which is ADR 0257's bug, reported once for comparisons and silently still open for methods. The tests
 // below pin it against `python3` for every method, in every position a verdict can sit in.

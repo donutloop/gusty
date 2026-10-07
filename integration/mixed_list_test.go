@@ -11,7 +11,7 @@ import (
 // expectation column is CPython's own output, checked against both of our backends (ADR 0184).
 // Before @heap_tags, every row here failed to compile on the AOT path with "a compiled list
 // holds either strings or numbers, not both".
-func TestMixedListsMatchCPythonOnBothBackends(t *testing.T) {
+func TestMixedListsMatchCPythonOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct {
 		src  string
 		want string

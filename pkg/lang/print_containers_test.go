@@ -49,7 +49,7 @@ func TestContainerLiteralsPrintThroughTheRuntimePrinters(t *testing.T) {
 }
 
 // The three empty containers print CPython's own spellings. These were the answers the two-leg
-// matrix could not see: the interpreter said set(), the compiled binary said 0, and parity was
+// matrix could not see: the record said set(), the compiled binary said 0, and parity was
 // green because the legs were never compared to anything outside the project.
 func TestEmptyContainersPrintAsContainers(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{

@@ -57,10 +57,13 @@ Every dynamic runtime value in the AOT IR is a tagged two-word value:
 %obj = type {i32, i32} ; {kind tag, payload}
 ```
 
-- The **tag** word is a canonical kind constant from the shared dynamic type
-  model (`pkg/lang/value.go`). Both the AOT runtime and the interpreter heap
-  derive their tags from this single table, so the dynamic type model is
-  shared by construction.
+- The **tag** word is a canonical kind constant from the one dynamic type model
+  (`pkg/lang/value.go`). The compiled runtime and the retired AST interpreter's
+  heap both derived their tags from this table, which is how the model was
+  cross-checked while two implementations existed; with one backend the table is
+  the definition, and `lang.ValueTagNames()`, the `--lang` listing and the schema
+  documents below are pinned to it so no dispatch can mean something else by a
+  number (ADR 0302, ADR 0308).
 - The **payload** word is either a heap handle (for reference kinds:
   str/list/dict/set/tuple/class/instance/method/closure/exn/module) or the raw
   immediate (for int/bool/None).
@@ -77,9 +80,11 @@ i1    @rt_obj_is(%obj, i32 tag)        ; test the kind tag
 Dynamic method dispatch wraps the receiver instance handle as
 `{tag=TagInstance, payload=handle}`, verifies the tag (`rt_obj_is`), extracts
 the payload (`rt_obj_payload`), then reads the class-id from instance slot 0
-and switches on it. The interpreter mirrors the same tags via `obj.tag()` /
-`tagOfVal`, so dispatch behaves identically on both backends (verified by the
-`TestParityObjTaggedDispatch` parity test).
+and switches on it. The retired AST interpreter mirrored the same tags via its `obj.tag()` /
+`tagOfVal`, which is how the tag table was checked while two implementations existed; with one
+backend the table itself is the pinned artifact — `lang.ValueTagNames()`, the `--lang` listing and
+the schema document below are asserted to agree with it, so a dispatch cannot disagree with a
+number (ADR 0302, ADR 0308).
 
 Canonical kind tags (value.go):
 

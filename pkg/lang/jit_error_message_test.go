@@ -55,7 +55,7 @@ func TestJITErrorListsEveryMessage(t *testing.T) {
 }
 
 // The span is in the text, which is what makes a refusal actionable from a file position alone —
-// and it is how the `;` disagreement (Gap R.72) finally became readable: the interpreter ran
+// and it is how the `;` disagreement (Gap R.72) finally became readable: the record ran
 // `x = 5; print(x+1)` while the compiled path refused it, and the only thing missing was the
 // sentence naming the character.
 func TestJITErrorNamesTheSpanOfWhatItRejected(t *testing.T) {

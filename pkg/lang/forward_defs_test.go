@@ -10,7 +10,7 @@ import (
 // when it is defined — so two functions that call each other, or a helper declared
 // below the code that uses it, are ordinary programs. The checker walked the file in
 // order and called that `undefined name "is_odd"`, and the compiled path refused to build
-// it at all while the interpreter ran it happily (Gap R.6, ADR 0197).
+// it at all while the record ran it happily (Gap R.6, ADR 0197).
 
 func hasMsg(diags []Diagnostic, want string) bool {
 	for _, d := range diags {

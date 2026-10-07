@@ -48,13 +48,13 @@ func TestFloatAndKindAnswersMatchCPython(t *testing.T) {
 	}
 }
 
-// TestFloatContainersAnswerOnBothBackends is the exit-code half of the contract, flipped by ADR
+// TestFloatContainersAnswerOnTheCompiledBackend is the exit-code half of the contract, flipped by ADR
 // 0233: a float now has a representation in a container slot — the handle of a float box, tagged
 // TagFloat, compared by rt_payload_eq and rendered by the mixed printer — so the shapes this test
 // held as refusals are expected to compile and print CPython's answer. The two failure modes stay
 // forbidden: exit 2 (the compiler rejecting its own module) and exit 0 with an answer nobody
 // checked against the oracle. The oracle leg is now in the table rather than assumed.
-func TestFloatContainersAnswerOnBothBackends(t *testing.T) {
+func TestFloatContainersAnswerOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"literal_list_float_eq", "print(1 if [1] == [1.0] else 0)\n", "1\n"},
 		{"literal_list_float_eq_rev", "print(1 if [1.0] == [1] else 0)\n", "1\n"},
@@ -91,12 +91,12 @@ func TestFloatContainersAnswerOnBothBackends(t *testing.T) {
 	}
 }
 
-// TestInterpreterAnswersWhatTheCompilerRefuses keeps the other half of the record: every shape the
+// TestCompiledAnswersWhatTheCompilerRefuses keeps the other half of the record: every shape the
 // compiled leg still refuses has an answer on the human path, so the gap is a codegen hole (roadmap
 // L11.1's nested containers) and not a semantic decision. These assertions are CPython's, asserted
-// on the interpreter alone — a two-engine table would hide the compiled hole behind the interpreter's
+// on the record alone — a two-engine table would hide the compiled hole behind the record's
 // answer, which is the thing this file's rule forbids.
-func TestInterpreterAnswersWhatTheCompilerRefuses(t *testing.T) {
+func TestCompiledAnswersWhatTheCompilerRefuses(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"nested_list_equality", "print(1 if [[1, 2]] == [[1, 2]] else 0)\n", "1\n"},
 		{"nested_dict_value", "d = {\"a\": [1, 2]}\nprint(d)\n", "{'a': [1, 2]}\n"},
@@ -106,10 +106,10 @@ func TestInterpreterAnswersWhatTheCompilerRefuses(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "floats.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", path)
 			if code != 0 {
-				t.Fatalf("interp exited %d:\n%s", code, cliRun(t, "--aot", path))
+				t.Fatalf("the compiled run exited %d:\n%s", code, cliRun(t, "--aot", path))
 			}
 			if out != tc.want {
-				t.Fatalf("interp printed %q, want CPython's %q", out, tc.want)
+				t.Fatalf("the compiled run printed %q, want CPython's %q", out, tc.want)
 			}
 			if _, aotCode := cliRunCode(t, "--aot", path); aotCode == 2 {
 				t.Fatalf("the compiled leg rejected its own module for %q (ADR 0166):\n%s", tc.src, cliRun(t, "--aot", path))
@@ -118,7 +118,7 @@ func TestInterpreterAnswersWhatTheCompilerRefuses(t *testing.T) {
 	}
 }
 
-// TestNestedContainersAnswerOnBothBackends is roadmap L11.1 step 2, the half the float commit left
+// TestNestedContainersAnswerOnTheCompiledBackend is roadmap L11.1 step 2, the half the float commit left
 // open: an element that is itself a container. The slot holds the inner object's handle and the
 // slot's tag is what routes the print to rt_print_container_value and the comparison to
 // rt_container_eq, both at run time — which is the only sound place to make that choice, because
@@ -130,7 +130,7 @@ func TestInterpreterAnswersWhatTheCompilerRefuses(t *testing.T) {
 // string table, because the inner list had been built claiming one element kind), and
 // `for row in [[1, 2], [3, 4]]` printed 0 and 1 (the handles, because the unrolled body printed
 // the element without its tag). Both are pinned as answers now.
-func TestNestedContainersAnswerOnBothBackends(t *testing.T) {
+func TestNestedContainersAnswerOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"list_of_lists", "print([[1, 2], [3, 4]])\n", "[[1, 2], [3, 4]]\n"},
 		{"list_of_lists_and_a_number", "print([[1, 2], 3])\n", "[[1, 2], 3]\n"},
@@ -215,7 +215,7 @@ func TestNestedShapesThatStillRefuse(t *testing.T) {
 				t.Fatalf("%q refused with %q, want it to mention %q", tc.src, msg, tc.want)
 			}
 			// The compiled leg refuses; that is a codegen hole, not a semantic decision of the
-			// language, so the human path must still be standing: the interpreter either answers
+			// language, so the human path must still be standing: the record either answers
 			// or fails cleanly, never with exit 2.
 			if iout, icode := cliRunCode(t, "--aot", path); icode == 2 {
 				t.Fatalf("the interpreter exited 2 on %q:\n%s", tc.src, iout)

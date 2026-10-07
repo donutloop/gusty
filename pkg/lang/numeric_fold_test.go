@@ -8,7 +8,7 @@ import (
 // numeric_fold_test.go — the numeric folds ask each element what it is.
 //
 // sum, min and max over an inline literal are compile-time folds, and the fold used to ask nothing
-// of the elements: `total += el` in the interpreter added raw handles (so sum([1.5, 2.5]) printed
+// of the elements: `total += el` in the record added raw handles (so sum([1.5, 2.5]) printed
 // 562949953421319, the bits of a float box read as an int, and sum([[1], [2]]) printed a list
 // handle where CPython raises TypeError), and the compiled fold collected float values only when
 // *every* element was a float literal — a single integer in the list sent the whole sum through the
@@ -19,7 +19,7 @@ import (
 // min([2.5, 1]) is the integer 1 — printing 1.0 for the second is the same truncation error in
 // the other direction (roadmap L11.1, L11.6; ADR 0221's float rules).
 
-func TestNumericFoldsAnswerBothBackends(t *testing.T) {
+func TestNumericFoldsAnswersOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"print(sum([1.5, 2.5]))\n", "4.0\n"},
 		{"print(sum([1, 2.5]))\n", "3.5\n"},
@@ -69,7 +69,7 @@ func TestNumericFoldsRefuseWhatTheyCannotAnswer(t *testing.T) {
 			t.Errorf("%q failed as an IR problem instead of a front-end refusal: %v", tc.src, err)
 		}
 	}
-	// The interpreter, whose elements are boxed values, raises what CPython raises.
+	// the record, whose elements are boxed values, raises what CPython raises.
 	for _, tc := range []struct{ src, want string }{
 		{"print(sum([[1], [2]]))\n", "unsupported operand type(s) for +: 'int' and 'list'"},
 		{"print(sum([\"a\"]))\n", "unsupported operand type(s) for +: 'int' and 'str'"},

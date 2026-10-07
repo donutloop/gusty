@@ -4,7 +4,7 @@ package integration
 // reference, on the compiled path (roadmap Gaps R.89 and R.137, ADR 0266).
 //
 // Every row is the same source run three ways: CPython, `gustyc --file <path> --aot`, and `gustyc
-// --file <path> -aot`. The legs are forced explicitly — a bare `--file` is the interpreter's default, and
+// --file <path> -aot`. The legs are forced explicitly — a bare `--file` is the record's default, and
 // `-aot` written after the path becomes the flag's value rather than the compiled leg.
 //
 // The two classes of verdict are kept apart on purpose:
@@ -94,9 +94,9 @@ func TestBothEnginesRaiseTheReferenceSentenceOnEveryTrap(t *testing.T) {
 	}
 }
 
-// TestTheNegationTrapIsCatchableOnBothEngines: the reference's TypeError is an event a program can catch,
+// TestTheNegationTrapIsCatchableOnBothLegs: the reference's TypeError is an event a program can catch,
 // and so is this one — the arm runs, the trailer runs, and the exit class is the ordinary one.
-func TestTheNegationTrapIsCatchableOnBothEngines(t *testing.T) {
+func TestTheNegationTrapIsCatchableOnBothLegs(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
 			"a text literal",
@@ -183,7 +183,7 @@ func TestNegationOfANumberAnswersOnEveryEngine(t *testing.T) {
 
 // TestTheNegationCorpusProgramPrintsWhatTheLedgerSays runs the registered conformance file through the compiled path
 // and against the reference: programs/negation_names_the_kind.gy is `oracle: match`, which is a claim
-// about all three engines, and this is where it is checked rather than asserted.
+// about both legs, and this is where it is checked rather than asserted.
 func TestTheNegationCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 	src := readProgram(t, "negation_names_the_kind.gy")
 	want := "-7\n-1.5\n-1\n-7\n-4\n" +

@@ -81,7 +81,7 @@ func TestBuiltinArityTrapAtTheCLI(t *testing.T) {
 			if !strings.Contains(pyOut, "TypeError") {
 				t.Fatalf("row is stale: python3 does not raise TypeError for %q (%s)", r.src, pyOut)
 			}
-			// The interpreter raises the reference's sentence and exits 3 (a trap the reference traps on).
+			// The record raises the reference's sentence and exits 3 (a trap the reference traps on).
 			p := writeSrc(t, dir, "arity", r.src)
 			out, code := cliRunMerged(t, "--aot", "--file", p)
 			if code == 2 {

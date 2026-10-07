@@ -82,7 +82,7 @@ type BenchSuite struct {
 
 // BenchCorpus returns the built-in benchmark corpus: compute-heavy programs
 // that stress a different part of each backend per case. Every program must
-// lower on both backends (asserted by TestBenchCorpusLowers).
+// lower on the compiled backend (asserted by TestBenchCorpusLowers).
 func BenchCorpus() []BenchCase {
 	return []BenchCase{
 		{
@@ -151,7 +151,7 @@ func BenchDir(dir string) ([]BenchCase, error) {
 	return cases, nil
 }
 
-// BenchmarkSuite measures every case on both backends. It never aborts on a
+// BenchmarkSuite measures every case on the compiled backend. It never aborts on a
 // single case: a case that fails is recorded with Error and the run continues,
 // so a capability gap on one program cannot hide the other numbers.
 //
@@ -317,8 +317,9 @@ const (
 // CompareBenchSuite diffs a suite against a baseline over `gate`. "aot" (the default,
 // and the only gate since ADR 0302) watches the compiled artifact — the compiler's own
 // performance contract. An unknown gate name is reported as a regression-free run here
-// and refused by the CLI as a usage error, so a stale `--bench-gate=interpreter` in a
-// script fails loudly at the flag rather than silently gating nothing.
+// and refused by the CLI as a usage error (`TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone`), so a
+// stale `--bench-gate=interpreter` in a script fails loudly at the flag rather than silently
+// gating nothing — the permissive default here is the second line of defence, not the first.
 //
 // tolerance is a multiplier (1.25 = allow 25% slowdown); minMs is the noise
 // floor — a case whose baseline time is below it is never a regression, because

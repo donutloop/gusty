@@ -22,7 +22,7 @@ import (
 //     container, numbers that could be ints or floats at once) the program is refused at the front end.
 //     The refusal rows below record the answer CPython prints beside them, which is what makes each one
 //     a gap rather than a limitation the program deserves.
-func TestSlotOrderingAnswersInBothEngines(t *testing.T) {
+func TestSlotOrderingAnswersOnBothLegs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string

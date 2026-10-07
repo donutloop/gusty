@@ -151,10 +151,10 @@ func goldenLookup(t errorReporter, src string) goldenEntry {
 
 // --- the divergence ledger -------------------------------------------------------------------
 //
-// The record and the compiled backend do not agree about every source yet. Where they disagree —
+// The record and the compiled backend does not agree about every source yet. Where they disagree —
 // a value the compiler prints as `0` where the engine answered `cba`, a snippet the compiler
 // cannot build at all — the case neither fails nor passes: it is *recorded* as a divergence and
-// skipped with the reason in its message, and TestInterpreterGoldenDrift then holds that set
+// skipped with the reason in its message, and TestCompiledGoldenDrift then holds that set
 // against testdata/interpreter-golden-drift.json.
 //
 // That ledger is the point of the arrangement:
@@ -575,7 +575,7 @@ func resultRepr(res *JITResult) string {
 
 func trimNL(s string) string { return strings.TrimRight(s, "\n") }
 
-// sameTypeName reconciles the interpreter's type vocabulary with the runtime's. The builtin names
+// sameTypeName reconciles the record's type vocabulary with the runtime's. The builtin names
 // agree; the container spellings and the void do not.
 func sameTypeName(recorded, reported string) bool {
 	if recorded == reported {

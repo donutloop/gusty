@@ -30,9 +30,9 @@ async def g():
 
 print(await g())
 `
-	interpreted := runInterp(t, src)
+	interpreted := runCompiled(t, src)
 	if strings.TrimSpace(interpreted) != "ok" {
-		t.Errorf("interpreted output = %q, want ok", interpreted)
+		t.Errorf("the record leg output = %q, want ok", interpreted)
 	}
 	compiled, err := runAOTWithTimeout(t, src, 120*time.Second)
 	if err != nil {
@@ -47,7 +47,7 @@ print(await g())
 }
 
 // TestStringReturningFunctionRunsEverywhere is the await-free repro that re-scoped the gap: the same
-// source printed `h i` on the interpreter and in CPython while the compiled leg died in llc.
+// source printed `h i` on the record and in CPython while the compiled leg died in llc.
 func TestStringReturningFunctionRunsEverywhere(t *testing.T) {
 	src := `def txt():
     return "hi"

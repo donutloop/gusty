@@ -88,7 +88,7 @@ No flag, schema or exit-code change: the feature removes refusals. What an agent
 artifact — `--emit-llvm 'print([[1, 2]])'` contains a `rt_alloc(i32 1)` for the inner list, a
 `rt_tag_elem(…, i32 5)` for its slot, and a call to `rt_print_container_value`; the refusals that
 remain name the missing mechanism and the roadmap item that owns it. The shapes are pinned by name,
-not by prose: `TestNestedContainersAnswerOnBothBackends` and
+not by prose: `TestNestedContainersAnswerOnTheCompiledBackend` and
 `TestNestedShapesThatStillRefuse` (integration, three engines with CPython as the oracle),
 `TestNestedContainersPrintTheirOwnContents` (compiled module + interpreter), and
 `programs/nested_data.gy` as ledger parity surface.

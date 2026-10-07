@@ -9,7 +9,7 @@ import (
 
 // Integration coverage for roadmap Gap R.23 (ADR 0222): a deferred `finally` body runs on every
 // exit from its `try`, on the compiled path, and an `except` arm catches exceptions rather than
-// transfers. Both backends were wrong in the same way, which is exactly what the parity contract
+// transfers. The compiled backend were wrong in the same way, which is exactly what the parity contract
 // cannot see; every expectation below is the answer CPython gives for that source.
 
 type deferredCase struct {
@@ -128,7 +128,7 @@ var deferredCases = []deferredCase{
 	},
 }
 
-func TestDeferredBodiesMatchCPythonOnBothEngines(t *testing.T) {
+func TestDeferredBodiesMatchCPythonOnBothLegs(t *testing.T) {
 	dir := t.TempDir()
 	for _, tc := range deferredCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -149,7 +149,7 @@ func TestDeferredBodiesMatchCPythonOnBothEngines(t *testing.T) {
 	}
 }
 
-func TestUncaughtExceptionAfterDeferredBodiesTrapsOnBothEngines(t *testing.T) {
+func TestUncaughtExceptionAfterDeferredBodiesTrapsOnBothLegs(t *testing.T) {
 	src := "def f() -> int:\n    try:\n        x = 1 / 0\n    finally:\n        print(\"fin\")\n    return 0\n\nprint(f())\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "trap_after_finally.gy")

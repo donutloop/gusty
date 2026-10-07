@@ -2,15 +2,17 @@ package lang
 
 import "fmt"
 
-// ValueTag is the canonical numeric tag for a dynamic value kind. Both the
-// AOT runtime IR (%obj tagged values) and the interpreter heap derive their
-// tags from this single table, so AOT and interpreter agree on the dynamic
-// type model by construction: the codegen emits the same constants into the
-// LLVM IR that the interpreter uses when tagging heap objects.
+// ValueTag is the canonical numeric tag for a dynamic value kind. The compiled
+// runtime IR (%obj tagged values) and the retired engine's heap both derived
+// their tags from this single table — which is how the dynamic type model was
+// cross-checked while two implementations existed — and with one backend the
+// table is the thing itself: codegen emits these constants into the LLVM IR, and
+// the schema document, `--lang` and lang.ValueTagNames() are pinned to them so no
+// dispatch can quietly mean something else by a number.
 type ValueTag int
 
 // Canonical dynamic-kind tags. These are the values placed in the `tag` word
-// of an `%obj` tagged runtime value and mirrored by the interpreter's
+// of an `%obj` tagged runtime value and mirrored by the record's
 // obj.tag/tagOfVal. Keep the numeric values fixed: the AOT runtime IR and the
 // interpreter both read them from this table, so renumbering here would
 // silently change the wire format.

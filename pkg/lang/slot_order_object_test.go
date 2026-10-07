@@ -29,13 +29,13 @@ import (
 //
 //	xs = []
 //	xs.append([3, "a"])
-//	print(1 if xs[0][0] > 1 else 0)   # 1 on all three engines, was exit 1 compiled
+//	print(1 if xs[0][0] > 1 else 0)   # 1 on both legs, was exit 1 compiled
 //
-// Both engines below, and CPython in the sibling integration file: parity rows, the traps that must be
+// Both legs below, and CPython in the sibling integration file: parity rows, the traps that must be
 // raised rather than refused, the refusals that remain, and an IR row that fails if the module stops
 // branching on the tag.
 
-func TestSlotOrderOfAnUnliteralisedSlotAnswersInBothEngines(t *testing.T) {
+func TestSlotOrderOfAnUnliteralisedSlotAnswersOnBothLegs(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the container `append` built, against a number the compiler read.
 		{"appended int above a number", "xs = []\nxs.append(3)\nprint(1 if xs[0] > 1 else 0)\n", "1\n"},

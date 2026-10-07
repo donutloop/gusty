@@ -12,7 +12,7 @@ import (
 // which never looks at TokError, carried on parsing both statements anyway. The result was one source
 // line with three verdicts: `--interp` printed CPython's answer, `--jit`/`--aot` refused the program
 // because JITWithOptions fails on any error diagnostic, and `--emit-llvm` emitted and verified a module
-// that ran. The same program, three engines, three stories — which is what an agent comparing backends
+// that ran. The same program, both legs, three stories — which is what an agent comparing backends
 // reads as a backend bug and burns a round on.
 //
 // The answer (ADR 0242): `;` is the on-line spelling of the newline that would otherwise separate the
@@ -21,7 +21,7 @@ import (
 // statement `x = 1;;y = 2` is a parse error wherever a syntax rule lives — not a diagnostic that one
 // entry point enforces and another ignores.
 
-func TestSemicolonSeparatesStatementsOnBothBackends(t *testing.T) {
+func TestSemicolonSeparatesStatementsOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"two_statements", "x = 5; print(x + 1)\n", "6\n"},
 		{"three_statements", "a = 1; b = 2; print(a + b)\n", "3\n"},
@@ -100,7 +100,7 @@ func TestEmptyStatementIsAParseError(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("%q refused with %q, want it to mention %q", tc.src, err.Error(), tc.want)
 			}
-			// The interpreter reads the same verdict: a program the parser rejects does not
+			// The record reads the same verdict: a program the parser rejects does not
 			// run half of.
 			if _, _, ierr := evalGolden(t, tc.src); ierr == nil {
 				t.Errorf("%q: interpreter accepted a program the parser rejected", tc.src)

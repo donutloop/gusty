@@ -9,11 +9,11 @@ import (
 // A dict is a key → value mapping, and this is the file that holds the interpreter to it (roadmap
 // Gaps R.118 and R.120, ADR 0260).
 //
-// The interpreter grew a dict by appending: `o.elems = append(o.elems, key)` for the literal, the
+// the record grew a dict by appending: `o.elems = append(o.elems, key)` for the literal, the
 // comprehension and the copy alike. A key written twice therefore made two entries, both printed and
 // both counted, while the compiled backend — whose fold deduplicates keys and whose runtime
 // `rt_dict_put_tagged` updates in place — answered CPython's line all along. That arrangement is the
-// reason this file exists: the two backends disagreed, so a parity test could have caught it, and
+// reason this file exists: the compiled backend disagreed, so a parity test could have caught it, and
 // none did, because nothing had ever built a dict with a repeated key.
 //
 // The rules the rows keep, all of them CPython's and taken from `python3` on the same source:
@@ -97,7 +97,7 @@ func TestADictComprehensionWithATextKeyIsRefusedByCodegenOnly(t *testing.T) {
 	const src = "d = {\"k\": v for v in [1, 2, 3]}\nprint(d)\nprint(d[\"k\"], len(d))\n"
 	const want = "{'k': 3}\n3 1\n"
 	if got := captureStdout(t, src); got != want {
-		t.Errorf("interpreter = %q, want %q (ADR 0260 put the entry; the interpreter owes CPython's line)", got, want)
+		t.Errorf("the record leg = %q, want %q (ADR 0260 put the entry; the record owes CPython's line)", got, want)
 	}
 	_, err := Compile(src)
 	if err == nil {

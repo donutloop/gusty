@@ -7,7 +7,7 @@ import (
 
 // Tests for Gap R.35 (roadmap), ADR 0220: a name a function reads that is neither local nor
 // captured is looked up in the MODULE — at call time, so the binding may sit below the def.
-// CPython does this, the interpreter now does, and the checker stopped refusing these programs.
+// CPython does this, the record now does, and the checker stopped refusing these programs.
 // The compiled backend cannot reach a module binding at all, which is why the corpus case for this
 // is a debt row (programs/probe_module_scope.gy) rather than a parity case.
 
@@ -127,7 +127,7 @@ func TestModuleScopeShapesCheckClean(t *testing.T) {
 		"G = 2\n\ndef outer() -> int:\n    def inner() -> int:\n        return G\n    return inner()\n\nprint(outer())\n",
 	} {
 		if diags := checkDiags(t, src); scopeHasDiag(diags, LevelError, "undefined name") {
-			t.Fatalf("the checker refused a program the interpreter runs: diags=%v\nsource:\n%s", diags, src)
+			t.Fatalf("the checker refused a program the record answers: diags=%v\nsource:\n%s", diags, src)
 		}
 	}
 }
@@ -143,7 +143,7 @@ func TestUnboundReadFromAFunctionIsACatchableNameError(t *testing.T) {
 	// A function reading a name the module never binds is a program the checker refuses — before
 	// the run, at the line, with the binding named. That is a strictly better answer than the one
 	// this case originally pinned (the retired engine ran the program and raised at the call, and
-	// the golden records that refusal sentence, because EvalExpr verified first too); what both
+	// the golden records that refusal sentence, because the retired engine verified first too); what both
 	// agree on, and what this holds, is that the program never gets to print a blank and exit 0.
 	src := "def g() -> int:\n    return nowhere\n\nprint(g())\n"
 	_, err := Compile(src)

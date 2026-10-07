@@ -56,9 +56,9 @@ func logicParity() []struct{ name, src, want string } {
 	}
 }
 
-// TestTheReferenceAndBothEnginesPrintTheSameOperand is the parity table: one source, three engines, the same
+// TestTheReferenceAndBothLegsPrintTheSameOperand is the parity table: one source, both legs, the same
 // bytes, no exit but 0.
-func TestTheReferenceAndBothEnginesPrintTheSameOperand(t *testing.T) {
+func TestTheReferenceAndBothLegsPrintTheSameOperand(t *testing.T) {
 	for _, tc := range logicParity() {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -87,7 +87,7 @@ func TestTheReferenceAndBothEnginesPrintTheSameOperand(t *testing.T) {
 // a run-time fact and the position keeps one word, the compiled leg spends exit 1 — the capability class —
 // naming both operands and the missing word, while the reference and the reference answer.
 func TestTheCompiledLegRefusesWhatItCannotState(t *testing.T) {
-	for _, tc := range []struct{ name, src, want, interp string }{
+	for _, tc := range []struct{ name, src, want, recordWant string }{
 		{
 			"a text bound to a name",
 			"x = 0\nz = x or \"d\"\nprint(z)\n",
@@ -110,7 +110,7 @@ func TestTheCompiledLegRefusesWhatItCannotState(t *testing.T) {
 			// The reference's answer is the row's claim; the compiled leg owes those bytes or an honest
 			// refusal, and the refusal's wording is what the rest of this case checks.
 			out0, code0 := cliReport(t, "--aot", "--file", gy)
-			checkCompiledRow(t, out0, code0, tc.src, tc.interp)
+			checkCompiledRow(t, out0, code0, tc.src, tc.recordWant)
 			out, code := cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
 				t.Fatalf("the compiled leg spent the compiler-is-broken class on an ordinary program (ADR 0166):\n%s", out)
@@ -225,12 +225,12 @@ func shortCircuitParity() []struct{ name, src, want string } {
 	}
 }
 
-// TestTheReferenceShortCircuitsAndSoDoBothEngines is the three-engine row: one source, the reference's bytes,
+// TestTheReferenceShortCircuitsAndSoDoesTheCompiledBackend is the three-engine row: one source, the reference's bytes,
 // the reference and the compiled leg (roadmap Gap R.149, ADR 0275). A leg that evaluated the skipped
 // operand prints an extra `boom` line, and a leg that evaluated the tested operand twice prints it twice —
 // both are caught by comparing bytes with the reference, which is why the expected text is the reference's
 // and not the compiler's.
-func TestTheReferenceShortCircuitsAndSoDoBothEngines(t *testing.T) {
+func TestTheReferenceShortCircuitsAndSoDoesTheCompiledBackend(t *testing.T) {
 	for _, tc := range shortCircuitParity() {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

@@ -11,7 +11,7 @@ import (
 // byte, and the wrong type spread to every use — `s[0] + s[2]` printed 196, `s[1] == "b"` printed 0,
 // `len(s[1])` and `s[1].upper()` and `ord(s[1])` trapped.
 
-func TestStringSubscriptMatchesCPythonOnBothEngines(t *testing.T) {
+func TestStringSubscriptMatchesCPythonOnBothLegs(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"positive", "s = \"abc\"\nprint(s[1])\n", "b\n"},
 		{"negative", "s = \"abc\"\nprint(s[-1])\n", "c\n"},
@@ -40,10 +40,10 @@ func TestStringSubscriptMatchesCPythonOnBothEngines(t *testing.T) {
 	}
 }
 
-// TestInterpreterStringSubscriptFollowsTheOracle covers the half the compiled leg still refuses: the
-// expectations are CPython's, asserted on the interpreter alone, so the gap in the other leg stays
+// TestCompiledStringSubscriptFollowsTheOracle covers the half the compiled leg still refuses: the
+// expectations are CPython's, asserted on the record alone, so the gap in the other leg stays
 // visible instead of being averaged away by a two-engine table.
-func TestInterpreterStringSubscriptFollowsTheOracle(t *testing.T) {
+func TestCompiledStringSubscriptFollowsTheOracle(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"concat_of_two_chars", "s = \"abc\"\nprint(s[0] + s[2])\n", "ac\n"},
 		{"len_of_a_char", "s = \"abc\"\nprint(len(s[1]))\n", "1\n"},
@@ -58,10 +58,10 @@ func TestInterpreterStringSubscriptFollowsTheOracle(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "sub.gy", tc.src)
 			out, code := cliRunCode(t, "--aot", path)
 			if code != 0 {
-				t.Fatalf("interp exited %d:\n%s", code, out)
+				t.Fatalf("the compiled run exited %d:\n%s", code, out)
 			}
 			if out != tc.want {
-				t.Fatalf("interp printed %q, want CPython's %q", out, tc.want)
+				t.Fatalf("the compiled run printed %q, want CPython's %q", out, tc.want)
 			}
 		})
 	}
@@ -98,7 +98,7 @@ func TestCompiledStringSubscriptHolesRefuseWithAMessage(t *testing.T) {
 }
 
 // TestUncaughtTrapClassesOnAnOutOfRangeCharSubscript pins the three exit classes for one program
-// rather than asserting an average: CPython raises IndexError (exit 1), the interpreter traps (class
+// rather than asserting an average: CPython raises IndexError (exit 1), the record traps (class
 // 3 per docs/operations.md), and the compiled leg refuses at compile time (class 1) because the index
 // is a constant — that last one is roadmap Gap R.37, a compile-time-known trap that should be a
 // runtime trap, and the assertion says so instead of hiding it.

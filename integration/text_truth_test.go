@@ -84,8 +84,10 @@ func TestCLIStringMethodsAnswerText(t *testing.T) {
 	}
 }
 
-// The sign rule the compiled path had wrong TOGETHER, which is the class the parity matrix cannot see.
-func TestCLIZfillPadsAfterTheSignOnBothEngines(t *testing.T) {
+// The sign rule both engines used to get wrong TOGETHER — the class an engine-vs-engine parity matrix
+// cannot see, and the reason this row keeps its own test rather than a matrix entry (ADR 0302 retired
+// the second engine; the reference is what the compiled path is checked against now).
+func TestCLIZfillPadsAfterTheSignAgainstTheReference(t *testing.T) {
 	for _, src := range []string{
 		`print("-42".zfill(5))`,
 		`print("+42".zfill(5))`,
@@ -95,14 +97,15 @@ func TestCLIZfillPadsAfterTheSignOnBothEngines(t *testing.T) {
 			continue
 		}
 		want = strings.TrimSpace(want)
-		oi, ci := cliTextOut(t, "--aot", src)
-		oa, ca := cliTextOut(t, "--aot", src)
-		if strings.TrimSpace(oi) != want || strings.TrimSpace(oa) != want {
-			t.Fatalf("%s: interp %q / aot %q, reference %q — the compiled path padded the whole string and "+
-				"agreed with each other instead (Gap R.184)", src, strings.TrimSpace(oi), strings.TrimSpace(oa), want)
+		// One run of the one backend: the second run this case used to make was the retired
+		// interpreter's, and a harness that compares an artifact with it twice cannot fail.
+		out, code := cliTextOut(t, "--aot", src)
+		if got := strings.TrimSpace(out); got != want {
+			t.Fatalf("%s: compiled %q, reference %q — the compiled path padded the whole string and "+
+				"agreed with itself instead (Gap R.184)", src, got, want)
 		}
-		if ci != 0 || ca != 0 {
-			t.Fatalf("%s: exit %d/%d where the reference exits 0", src, ci, ca)
+		if code != 0 {
+			t.Fatalf("%s: exit %d where the reference exits 0", src, code)
 		}
 	}
 }

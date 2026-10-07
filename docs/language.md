@@ -4,12 +4,13 @@
 
 There is one execution path in this language: check → LLVM codegen → `llc`/`cc` → the artifact. The AST
 interpreter that used to run `--eval`, the REPL and `--interp` is retired (ADR 0302), so a passage below
-that says "the interpreter answers X" is one of two things, and the sentence's own tense tells you which:
+that says "the record answers X" is one of two things, and the sentence's own tense tells you which:
 
-- **history** ("the interpreter answered `[]` here, which is why the shape is a defect"): keep it — that is
+- **history** ("the record answered `[]` here, which is why the shape is a defect"): keep it — that is
   the measurement the row was filed from, and the answer itself is preserved, per source, in
   `pkg/lang/testdata/interpreter-golden.json`;
-- **a live claim** ("supported in both the interpreter and the AOT backend"): read it as *the compiled
+- **a live claim** ("supported in both the record and the compiled backend"), left over from the two-engine
+  wording: read it as *the compiled
   backend is what runs, and the record is what the language owes there*. Where the two differ, the case is
   a row in `testdata/interpreter-golden-drift.json`, not a passing test, and where the compiled answer also
   differs from CPython it is a row in `integration/testdata/cpython-debt.json` naming the roadmap row that
@@ -29,7 +30,7 @@ str`. The `any` annotation accepts any inferred type. Runtime enforcement
 
 ## Comprehensions
 
-List, dict, and set comprehensions are supported on both backends. Dict/set comprehensions use
+List, dict, and set comprehensions are supported on the compiled backend. Dict/set comprehensions use
 `for` inside the braces, Python-style: `{x: x*2 for x in [1,2,3]}` builds a
 dict, `{x for x in [1,2]}` a set. The `if` filter is the comprehension's on every kind —
 `{x for x in xs if x > 1}` parses (ADR 0234). See ADR 0095.
@@ -150,11 +151,11 @@ Builtins include `len`, `print`, `range`, `min`, `max`, `zip`, `int`,
 `all`, `chr`, `ord`, `round`, `floor`, `ceil`, `sqrt`, and the string methods
 `upper`/`lower`/`capitalize`/`title`/`swapcase`. `any(iter)` is 1 if any element is truthy;
 `all(iter)` is 1 if all are; `chr(n)` makes the single-char string for a
-codepoint; `ord(s)` reads the first char's codepoint. In the AOT codegen, `chr(n)` folds a constant codepoint to a single-character string global and `ord(s)` folds a constant string to its first-byte codepoint (mirroring the interpreter's `sval[0]`), both as literal folds.
+codepoint; `ord(s)` reads the first char's codepoint. In the AOT codegen, `chr(n)` folds a constant codepoint to a single-character string global and `ord(s)` folds a constant string to its first-byte codepoint (mirroring the record's `sval[0]`), both as literal folds.
 
 `round(x)` is the nearest-value rule with **ties to even** — IEEE `roundTiesToEven`, the rule CPython
 uses: `round(0.5)` and `round(1.5)` are `0` and `2`, `round(2.5)` and `round(3.5)` are both `2`, and
-`round(-2.5)` is `-2`. An integer argument is returned unchanged. Both backends ask for the named
+`round(-2.5)` is `-2`. An integer argument is returned unchanged. The compiled backend ask for the named
 IEEE operation rather than implementing a rounding rule — `math.RoundToEven` in the evaluator,
 `llvm.roundeven.f64` (and the same fold for a constant) in the compiled backend — because two
 independent implementations of "half away from zero" agreed with each other for as long as nobody
@@ -182,11 +183,11 @@ point, so a digit count of `324` or more is the identity; and `10^309` is beyond
 double, so a digit count of `-309` or below answers zero with the sign kept — which is what CPython
 answers there too. Infinity and NaN are handed back (`round(inf, 2)` is `inf`).
 
-A digit count that is not an integer is CPython's `TypeError`, **raised** on both engines and
+A digit count that is not an integer is CPython's `TypeError`, **raised** on both legs and
 catchable on both — `round(2.345, 1.5)` gives `'float' object cannot be interpreted as an integer`
 under `--interp` and `--aot`, and a `try`/`except TypeError` takes the branch on each (exit 3, not a
 refusal: ADR 0166 keeps exit 1 for programs the reference itself rejects). `round()` with no argument
-and `round(x, 1, 2)` with three answer an arity error in one shared sentence on both engines;
+and `round(x, 1, 2)` with three answer an arity error in one shared sentence on both legs;
 four other builtins (`int`, `float`, `ord`, `chr`) still panic the evaluator on that shape and are
 roadmap Gap R.131's.
 
@@ -222,9 +223,9 @@ call boundary. Compiled, the pair is `llvm.floor.f64`/`llvm.ceil.f64` carried in
 float road lifts it back with `sitofp` — ADR 0243's (payload, widen) step for an element, for the same
 reason.
 
-**Every bad argument is a raise the reference wrote, on both backends** (exit 3, catchable by class):
+**Every bad argument is a raise the reference wrote, on the compiled backend** (exit 3, catchable by class):
 
-| program | both engines and CPython |
+| program | both legs and CPython |
 |---|---|
 | `floor("a")`, `sqrt("a")` | `TypeError: must be real number, not str` |
 | `ceil(None)` | `TypeError: must be real number, not NoneType` |
@@ -238,7 +239,7 @@ family (`'str' object cannot be interpreted as an integer`, ADR 0263): the two s
 pair, and a program's `except` matches on the text a user reads. `sqrt` of a negative is a *run-time*
 raise, not a compile-time refusal — `try: sqrt(n) except ValueError:` has to stay writable — and
 `OverflowError` is in the exception table (tag 9) so `except OverflowError:` means the same thing on all
-three engines. `floor()`, `floor(1, 2)` and the like answer one shared arity sentence per name, exit 1
+both legs. `floor()`, `floor(1, 2)` and the like answer one shared arity sentence per name, exit 1
 compiled and exit 3 interpreted, and exit 2 nowhere (ADR 0211).
 
 Two walls stay open, both filed with a pin per leg rather than smoothed over. **Past the compiled int
@@ -266,7 +267,7 @@ Collection happens at **safe points**: statement boundaries reached with no
 expression evaluation in flight, from a construct that declared its roots — plus the
 body of a call that *is* the whole statement (`work()`, `total = helper(x)`). The
 watermark rule keeps it sound: anything allocated after the last safe point is
-unconditionally live, because the interpreter may still hold it in a register.
+unconditionally live, because the record may still hold it in a register.
 
 Observable consequences, and the limits, in one place:
 
@@ -372,7 +373,7 @@ separators, mirroring Python's syntax:
 
 Misplaced separators (`1__0`, `1_`, `0x_`) are a lexical error. Hex/binary/
 octal literals are integer-only. Values are computed exactly at lex time, so
-the interpreter and the AOT backend agree on `0xFF + 0b101 + 0o17 + 1_000`.
+the record and the AOT backend agree on `0xFF + 0b101 + 0o17 + 1_000`.
 
 **The exponent form is not in the number lexer yet**: `1e18`, `1.5e-3` and `2E8` are a parse error on both
 engines (`parse error at 1:8: expected ")"`, exit 1) where CPython parses them as `1e+18`, `0.0015` and
@@ -464,7 +465,7 @@ Any expression on its own line.
 ### `print(*args, sep=" ", end="\n")`
 
 `print` is the builtin that writes to stdout, with Python's separator and
-terminator semantics — identical in the interpreter and the AOT backend
+terminator semantics — identical on the record and the AOT backend
 (ADR 0165):
 
 ```python
@@ -481,16 +482,16 @@ print("a", "b", sep="|", end="?")   # a|b?  — `end` replaces the newline entir
 - **A container prints as a container, however it is written** (ADR 0188): a list, dict or set
   reaches `print` as a literal (`print([1, 2])`, `print([])`, `print({})`, `print({"a": 1})`) or
   as a constructor (`print(list())`, `print(dict())`, `print(set())` — the empty set has no
-  literal spelling), and both backends call the same runtime printers that a container variable
+  literal spelling), and the compiled backend call the same runtime printers that a container variable
   uses. What it must never print is its own representation: not the handle (`0`), not the static
   elements global, and not the interned indices a recycled heap slot happened to inherit — all
   of which happened here, in programs that compiled, verified and exited 0.
 - **Known divergence (Gap L.5, pinned by `programs/probe_print_atomic.gy`):** an argument
   whose own evaluation prints — a call that prints — does *not* keep its place in the line.
-  Both backends write each argument as they evaluate it, so
+  The compiled backend write each argument as they evaluate it, so
   `print("got", twice(21))` where `twice` prints `<< 21 >>` emits `got << 21 >>` then `42`,
   where Python emits `<< 21 >>` then `got 42`: Python evaluates every argument and only then
-  writes one line. The two backends interleave it identically, which is exactly why parity
+  writes one line. the compiled backend interleave it identically, which is exactly why parity
   could not see it; the CPython oracle leg can (ADR 0186).
 - `sep` and `end` must be keyword arguments; any other keyword is an error
   (`print got an unexpected keyword argument "junk"`). In the AOT backend they
@@ -520,7 +521,7 @@ for i in range(3):
     print(i)
 ```
 
-Supported in both the interpreter and the LLVM AOT codegen path.
+Supported in the compiled backend, and recorded against it.
 
 ### Import / modules
 
@@ -608,7 +609,7 @@ list was a wrong answer hiding behind an invalid module.
 The `if` belongs to the comprehension, on every kind:
 `{x for x in xs if x > 1}` and `{k: k * 2 for k in ks if k > 1}` parse. They used not to — the
 iterable was parsed as a full expression, and a full expression is a ternary, which read the
-comprehension's `if` as its own and demanded an `else` (`expected keyword "else"`, on both backends,
+comprehension's `if` as its own and demanded an `else` (`expected keyword "else"`, on the compiled backend,
 while `[x for x in xs if x > 1]` worked: the brace branches had simply never been given the
 `or`-precedence fix the list branch already had).
 
@@ -626,7 +627,7 @@ evaluated it and the record still holds its answer.
 ### Multi-argument range iterables (comprehensions)
 
 List comprehensions over `range(start, stop)` and `range(start, stop, step)`
-are supported in both the interpreter and the LLVM AOT codegen. The iterable
+are supported in the compiled backend. The iterable
 range accepts one, two, or three constant arguments:
 
 - `range(stop)` → `0..stop-1`
@@ -654,11 +655,11 @@ global struct with the same shape as a list literal:
 
 `(elem for var in iter [if cond])` is a generator expression: it yields
 `elem` for each element of `iter` bound to `var`, optionally filtered by
-`cond`. In the interpreter it evaluates eagerly to a list of the yielded
+`cond`. on the record it evaluates eagerly to a list of the yielded
 values, so it can be consumed by a `for x in gen:` loop or a `list(gen)`
 call. Example: `(x * 2 for x in [1, 2, 3] if x > 1)` → `[4, 6]`. Generator
 expressions and generator functions (`yield`) evaluate eagerly to runtime
-heap lists in both the interpreter and the AOT codegen; see ADR 0081.
+heap lists in the compiled backend and in the record of what the retired engine answered; see ADR 0081.
 
 ## Every statement has a position (L8.5, ADR 0231)
 
@@ -725,7 +726,7 @@ pinned per leg rather than skipped.
 
 Every place that tests a value — `if`/`elif`/`else`, `while`, the ternary
 condition, `and`/`or`/`not`, a comprehension's `if` clause, a `match` guard — uses
-the same rule, and both backends implement it identically:
+the same rule, and the compiled backend implement it identically:
 
 | Value | Truth |
 |---|---|
@@ -760,7 +761,7 @@ kind. A shape none of the three roads can state is refused by naming both operan
 (`roadmap L11.1 … Gap R.147`) rather than answered with the `1` that stood here before — which is Gap
 R.146's one-word position and L11.1's tagged value word, not a syntax problem.
 
-**The test decides whether the other operand runs at all** — on both engines, and this is a promise a
+**The test decides whether the other operand runs at all** — on both legs, and this is a promise a
 program may rely on:
 
 ```gy
@@ -819,7 +820,7 @@ side, so the notebook and the printer cannot disagree about what the name holds.
 ## None
 
 `None` is a real value — a singleton with its own dynamic type (`None`, value tag
-`TagNone`) — and not the integer `0`. Both backends agree, and the AOT backend allocates it
+`TagNone`) — and not the integer `0`. The compiled backend agree, and the AOT backend allocates it
 once as a heap object of kind 4 rather than reserving an integer, because every `i32` is a
 legal integer and no bit pattern is free to mean "no value" (ADR 0172).
 
@@ -873,7 +874,7 @@ How each backend gets there is an implementation detail, but a load-bearing one
 neither may be fed to the other's instruction, so conditions go through a
 normalising helper (`truthOperand`) and containers/strings are tested by *length*
 (`rt_list_len` / `rt_dict_len` / `rt_set_len`, or the compile-time length of a
-literal) rather than by handle. In the interpreter a condition asks the heap object
+literal) rather than by handle. on the record a condition asks the heap object
 behind a handle, never the handle itself.
 
 ### Dicts & sets (LLVM codegen)
@@ -884,7 +885,7 @@ Each dict/set literal is emitted as a dedicated global struct (`{i32 count,
 [n x i32] keys, [n x i32] vals}` for dicts; `{i32 count, [n x i32] elems}`
 for sets). Constant-key lookup resolves at compile time; like lists, these
 literals must be used inline (no assignment-to-variable indirection) in the
-codegen path. The interpreter indexes dicts/sets at runtime and is unchanged.
+codegen path. the record indexes dicts/sets at runtime and is unchanged.
 
 > **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
 > `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it
@@ -892,7 +893,7 @@ codegen path. The interpreter indexes dicts/sets at runtime and is unchanged.
 > `TypeError: 'set' object is not subscriptable` (with a syntax warning calling out the missing comma),
 > so programs that use it are recorded `oracle: not_applicable` in the conformance ledger — the CPython
 > leg cannot reach the rest of the file — which makes the extension a deliberate difference rather than
-> an unnoticed one (ADR 0186, ledger rows `programs/data_b` and `programs/features_b`). Both backends
+> an unnoticed one (ADR 0186, ledger rows `programs/data_b` and `programs/features_b`). The compiled backend
 > read a set the same way at every depth, including a set held in a container slot (ADR 0251); neither
 > one reads it by position, whatever an older draft of this paragraph said.
 
@@ -937,7 +938,7 @@ interpreter grew its dicts by appending instead, so `{"a": 1, "a": 2}` held two 
 and both counted while the compiled backend — whose fold deduplicates keys — answered CPython's line: the
 two engines disagreed about an ordinary dictionary, and no program in the corpus had written one.
 
-Rules that both backends implement:
+Rules that the compiled backend implement:
 
 - **`{}` is an empty dict.** The interpreter used to classify it as an empty set (so
   `d = {}` then `d[k] = v` failed with `not in set`) while the AOT treated the same
@@ -951,7 +952,7 @@ Rules that both backends implement:
   index takes the exception path instead of writing past the elements. Assigning to a
   set element or a string index is rejected (`TypeError` / `strings are immutable`).
 - **A negative subscript counts from the end — for positions only.** `xs[-1]`, `xs[-1] = v`,
-  `xs.pop(-1)`, `l[-2:]` and `"abc"[-1]` mean what they mean in Python, and both backends and
+  `xs.pop(-1)`, `l[-2:]` and `"abc"[-1]` mean what they mean in Python, and the compiled backend and
   CPython agree (`programs/negative_index.gy`, ADR 0210). Dict and set subscripts are keys, so
   they keep their sign: `d = {-1: "minus"}` then `d[-1]` is `"minus"`, not the last entry. A
   container *literal* with a negative constant subscript is folded at compile time; that shape
@@ -959,11 +960,11 @@ Rules that both backends implement:
 - A container produced by a call (`d = make(3)`) is iterated through the runtime
   length, like any other container variable.
 - **A subscript of a string is a one-character string** (ADR 0225). `s[1]` is `b`, not `98`:
-  the character is text in both backends, so it compares with text, concatenates, takes methods, and
+  the character is text in the compiled backend, so it compares with text, concatenates, takes methods, and
   `s[1] == 98` is false the way CPython says it is. A string is counted in **code points** wherever
   position is asked about — `s[i]`, `s[a:b]`, `len(s)`, `ord(s)` — so `len("café")` is 4 and
   `"café"[3]` is `é`; a byte-wise slice could also cut a character in half. An out-of-range character
-  subscript traps as `IndexError` on both backends.
+  subscript traps as `IndexError` on the compiled backend.
 
 - **A string is an index into a table the runtime can add to** (ADR 0229, ADR 0230). A compiled
   string value is an index into the program's string table, and the table grows while the program
@@ -992,14 +993,14 @@ Rules that both backends implement:
   the variable inside the body does not move the iteration (ADR 0196).
 
   Three limits belong to the compiled backend and are stated rather than approximated: case folding
-  covers ASCII and `strip` trims the ASCII whitespace set (the interpreter folds and trims the full
+  covers ASCII and `strip` trims the ASCII whitespace set (the record folds and trims the full
   Unicode sets); `str(<float>)` refuses rather than truncate a float it cannot yet hold (L11.6);
   and `%s` formatting does not exist at all (Gap R.31). A program that creates more distinct strings
   than the table holds (4096) raises `RuntimeError`, which it can catch — the alternative, which used
   to happen, was silently reusing an entry and printing a different string than the program built.
 - **Containers hold strings.** `xs = ["a", "b"]`, `xs.append("s")`, `xs[0] = "s"`,
   `s.add("q")`, `d["k"] = 1`, `d[1] = "v"`, `"a" in xs`, `for x in xs`, `len`, indexing
-  and printing all work in both backends. **A string value is an index into a runtime interned
+  and printing all work in the compiled backend. **A string value is an index into a runtime interned
   table** (ADR 0224): the address of a literal belongs only to the places that ask for bytes — a
   `printf` format, an argument to `rt_str_*`, a compile-time fold — so `x == "hi"`, `"a" in xs`,
   `self.w = "hi"` and a method's `-> str` result are all i32-to-i32 operations. Interning a
@@ -1019,14 +1020,14 @@ Rules that both backends implement:
  A verdict writes its own name wherever the front end can see the expression that made it —
   `print(True)` is `True`, `print(1 == 1)` is `True`, `str(True)` is `'True'` (a real string, so
   `.lower()` works on it), and an f-string interpolates `True`/`False` — while the value behind it
-  stays the untagged `0`/`1` both backends have always used (ADR 0257). Where the front end cannot
+  stays the untagged `0`/`1` the compiled backend has always used (ADR 0257). Where the front end cannot
   see the expression — inside a container, where only the slot is left — the slot carries the tag that
   says so, so `print([True, 1])` is `[True, 1]`, `print({"k": True})` is `{'k': True}`,
   `print({True, 1})` is `{True}` and `str([True, 1])` is the same text, because print and the pair are
   one table (ADR 0258, ADR 0259; Gap R.112). One rendering is still owed for the reason ADR 0257
   records: **a bool passed to a function prints `1`** (a parameter is a fresh binding the caller's
   expression never travels with — Gap R.111). Inside containers strings are quoted as Python does.
-  Sets iterate in **insertion order** in both backends — deterministic, and identical between
+  Sets iterate in **insertion order** in the compiled backend — deterministic, and identical between
   them, where CPython's order comes from hashing. `{"q", "r"}` prints as `{'q', 'r'}` here.
 
 ### Strings across a function boundary
@@ -1047,7 +1048,7 @@ names = []
 fill(names, "one")
 ```
 
-Supported in both backends: passing a string positionally, by keyword, or as a default; a
+Supported in the compiled backend: passing a string positionally, by keyword, or as a default; a
 `str` annotation; `print(p)`, `len(p)`, `p == "text"`, `p != "text"`, forwarding `p` to another
 function, storing it in a list/dict/set, using it as a membership needle, and returning it
 (`print(echo("yo"))` prints `yo`). Comparison is cheap because interning makes equal text the
@@ -1071,7 +1072,7 @@ in the verifier or answering a table index:
 
 Before this was implemented, `d[1] = 2` did not work at all: the parser accepted the
 statement, consumed `= 2`, and threw it away, so the program ran as if the line were
-absent — on both backends, with no diagnostic.
+absent — on the compiled backend, with no diagnostic.
 
 ### Container methods
 
@@ -1115,7 +1116,7 @@ lst.append(7)
 `import mod` loads `mod.gy`, evaluates it, and binds `mod` to a module
 namespace. Top-level variables and functions of the module are accessed as
 `mod.name` and called as `mod.fn(args)`. A module can itself `import` other
-modules. Imports are evaluated in the interpreter (REPL/--eval path). The AOT backend supports **data imports**: `import mod` loads `mod.gy`, parses + analyzes it, and constant-folds the module's top-level global variables, so `mod.var` reads compile statically to constants. Module function dispatch and non-constant globals are deferred with a clear compile error. Modules may themselves `import other` (nested imports): the nested module's globals are folded recursively and resolve via `other.var` references. Module globals may be strings and use `+` string concatenation. Printing an imported string module global (`print(mod.str)`) emits `printf("%s", i8*)` and outputs the folded string. `len(mod.str)` returns the folded string's length. `ord(mod.str)` returns the folded string's first byte value. `reversed(mod.str)` returns the folded string reversed. Module globals may also be lists (`mod.list`), folded element-wise; `mod.list[i]` indexes into the folded list; `len(mod.list)` returns its length. `sorted(mod.list)` folds the sorted list. `reversed(mod.list)` folds the reversed list. Module globals may also be dicts (`mod.d`), folded key/value-wise; `mod.d[k]` indexes the folded dict by integer key; `len(mod.d)` returns its entry count. Indexed imported dict elements fold in arithmetic (`mod.d[k] + mod.d[j]`). Indexed imported list elements fold in arithmetic (`mod.l[i] + mod.l[j]`).
+modules. Imports are compiled by the one backend (the REPL and `--eval` compile too, since ADR 0302). The AOT backend supports **data imports**: `import mod` loads `mod.gy`, parses + analyzes it, and constant-folds the module's top-level global variables, so `mod.var` reads compile statically to constants. Module function dispatch and non-constant globals are deferred with a clear compile error. Modules may themselves `import other` (nested imports): the nested module's globals are folded recursively and resolve via `other.var` references. Module globals may be strings and use `+` string concatenation. Printing an imported string module global (`print(mod.str)`) emits `printf("%s", i8*)` and outputs the folded string. `len(mod.str)` returns the folded string's length. `ord(mod.str)` returns the folded string's first byte value. `reversed(mod.str)` returns the folded string reversed. Module globals may also be lists (`mod.list`), folded element-wise; `mod.list[i]` indexes into the folded list; `len(mod.list)` returns its length. `sorted(mod.list)` folds the sorted list. `reversed(mod.list)` folds the reversed list. Module globals may also be dicts (`mod.d`), folded key/value-wise; `mod.d[k]` indexes the folded dict by integer key; `len(mod.d)` returns its entry count. Indexed imported dict elements fold in arithmetic (`mod.d[k] + mod.d[j]`). Indexed imported list elements fold in arithmetic (`mod.l[i] + mod.l[j]`).
 
 ### On-disk stdlib modules
 
@@ -1129,7 +1130,7 @@ interpreter and the AOT compiler fold as top-level constants:
 - `import collections` — `EMPTY_DICT`, `EMPTY_LIST`, `ZERO`, `ONE`.
 - `import json` — `NULL` (`None`), `TRUE` (`True`), `FALSE` (`False`).
 
-Reads like `math.PI` resolve to the folded constant in both backends. The interpreter
+Reads like `math.PI` resolve to the folded constant in the compiled backend. the record
 also supports importing function-bearing modules (module functions dispatch at runtime);
 AOT module-function emission is supported: imported modules that define functions are lowered as mangled defines (`mod$fn`), and `mod.fn(args)` calls plus sibling-module calls and bare-name module-global capture are handled by the AOT compiler.
 
@@ -1174,20 +1175,20 @@ def add(a, b):
 - A `def` nested inside a function body is a **closure**: it captures the
   enclosing scope at definition time and can be returned, stored in a
   variable, and called later (`m = add(1); m(2)`). Closures are implemented in
-  the interpreter (REPL / `--eval` path).
+  the compiled backend — the REPL and `--eval` compile too, since ADR 0302.
 - **Decorators** apply before a `def`, one per line: `@dec def f: ...` is
   equivalent to `f = dec(f)` at definition time. Multiple decorators apply
   bottom-up (`@dec1 @dec2 def f` -> `f = dec2(dec1(f))`). A decorator is a
   function/closure that takes the function value and returns the (possibly
-  transformed) value bound to `f`. Decorators are implemented in the interpreter and in AOT: identity decorators are fully supported, the canonical wrapping decorator (a decorator that returns a nested closure capturing the decorated function) is supported in AOT via compile-time specialization; other transform decorators are rejected (ADR 0157).
+  transformed) value bound to `f`. Decorators are implemented on the record and in AOT: identity decorators are fully supported, the canonical wrapping decorator (a decorator that returns a nested closure capturing the decorated function) is supported in AOT via compile-time specialization; other transform decorators are rejected (ADR 0157).
 
 ### Gradual typing
 
 Optional annotations appear on variables (`x: int = 1`), parameters
 (`def f(x: int)`), and returns (`def f() -> int`). Annotations are enforced
-at runtime in the interpreter: a value whose runtime kind is not assignable
+at runtime on the record: a value whose runtime kind is not assignable
 to its annotation is a `type mismatch` error. `any` (dynamic) accepts
-everything. Because the interpreter stores booleans as plain integers, `int`
+everything. Because the record stores booleans as plain integers, `int`
 and `bool` annotations accept either kind.
 
 ### Ternaries (`a if test else b`)
@@ -1221,7 +1222,7 @@ print(v == 0)                    # False
 ```
 
 The compiled backend folds a container method over a **literal written at the call**. A container bound to a
-**name** (`d = {"a": 1}` / `d.get("a")`) is answered by the interpreter and declined by the compiled leg, which
+**name** (`d = {"a": 1}` / `d.get("a")`) is answered by the record and declined by the compiled leg, which
 names the receiver and the representation it waits for; a dict whose **answer is a text**
 (`print({1: "x"}.get(1))`) still prints `0` there. Both are owed to L11.1's tagged value word and are pinned as
 still-owed rather than claimed.
@@ -1241,7 +1242,7 @@ print(2 ** 3 ** 2)   # 512        right associative, and still an int
 print(0 ** 0)        # 1
 ```
 
-Both engines agree with the reference on every line. Two shapes are **not** answered, because there is
+Both legs agree with the reference on every line. Two shapes are **not** answered, because there is
 nothing correct to answer with:
 
 ```
@@ -1250,12 +1251,12 @@ print((-8) ** (1/3))    # refused: the reference answers a COMPLEX number, which
 print(2 ** 100)         # refused: the reference has arbitrary-precision integers; this backend is bounded
 ```
 
-The `ZeroDivisionError` is a real trap — catchable with `except ZeroDivisionError:`, on both engines, with
+The `ZeroDivisionError` is a real trap — catchable with `except ZeroDivisionError:`, on both legs, with
 the reference's own wording — and it fires whether the base is a literal or a name bound to `0`, because
 the check is emitted at run time. The refusals name what is missing rather than printing the `inf`, `nan`
 or wrapped `0` the machine would hand back.
 
-The compiled integer is 32 bits, so `2 ** 31` refuses there while the interpreter (64-bit) answers it; the
+The compiled integer is 32 bits, so `2 ** 31` refuses there while the record (64-bit) answers it; the
 interpreter refuses at `2 ** 63`. Neither wraps in silence. A separate parser row covers `-2 ** 2`, which
 the reference reads as `-(2 ** 2)` = `-4` and this front end currently reads as `4` (`Gap R.177`).
 
@@ -1294,7 +1295,7 @@ tuple value until `L11.3` — answering a two-element list would print `[1, 2]` 
 
 The compiled leg folds a container method only over a literal written at the call, so these over a
 *variable* still refuse at exit 1 — owed to `L12.11`, whose receiver table is the fix (and, per ADR
-0298's rule, not matched by making the interpreter refuse a correct answer).
+0298's rule, not matched by making the record refuse a correct answer).
 
 ### A method that changes a container in place answers None
 
@@ -1337,7 +1338,7 @@ dict `pop`, `popitem`, `s.remove(1)` over a name) — those methods do not exist
 
 A field may carry a **format spec** after a `:` and a **conversion** `!r` / `!s` before it. Both are part
 of the program (`Gap R.185`'s sibling `Gap R.186`, ADR 0299) — they used to be cut off at parse time and
-discarded, which is how `f"{3.5:.2f}"` came to print `3.5` on both engines at exit 0:
+discarded, which is how `f"{3.5:.2f}"` came to print `3.5` on both legs at exit 0:
 
 ```
 print(f"{3.5:.2f}")        # 3.50
@@ -1441,17 +1442,17 @@ print(sum({1: 2, 3: 4}.keys()))   # 4      — a view is list-SHAPED: sum/min/ma
 print([1, 2])                     # [1, 2] — and a list still prints as a list
 ```
 
-Both engines print all of this identically, at exit 0. A view is a list-shaped value that carries its own
+Both legs print all of this identically, at exit 0. A view is a list-shaped value that carries its own
 name: everything you can do to a list you can do to a view, and only its rendering differs.
 
-`d.items()` answers `dict_items([('a', 1), ('b', 2)])` on the interpreter; the compiled leg **refuses** it,
+`d.items()` answers `dict_items([('a', 1), ('b', 2)])` on the record; the compiled leg **refuses** it,
 because its elements are key/value pairs and this backend has no pair value yet (`Gap R.126`/
 roadmap L11.3 owns tuples). Refusing is the honest answer — inventing a bracket-shaped value would be a
 fabricated representation.
 
 ### What a set counts, and what a `dict.get` answers with
 
-A set has one member per distinct value, and a literal with duplicates collapses — in both backends, in the
+A set has one member per distinct value, and a literal with duplicates collapses — in the compiled backend, in the
 same insertion order (`Gap R.181`, ADR 0295):
 
 ```
@@ -1474,13 +1475,13 @@ print({1: 2}.get(1))              # 2        a number, as it always did
 ```
 
 One limitation stays open and is pinned as such: a **float** in a dict slot still prints as a whole number on
-the compiled leg (`{1: 1.5}.get(1)` gives `1`, where the reference and the interpreter give `1.5`) — that is
+the compiled leg (`{1: 1.5}.get(1)` gives `1`, where the reference and the record give `1.5`) — that is
 `Gap R.105`'s missing tag, and it is covered by a test that reports it rather than by a refusal that would
 hide it.
 
 ### A slice of a container
 
-`xs[1:]`, `xs[:2]`, `xs[::2]` answer a new container on both engines (`Gap R.179`, ADR 0294) — a list, with
+`xs[1:]`, `xs[:2]`, `xs[::2]` answer a new container on both legs (`Gap R.179`, ADR 0294) — a list, with
 the reference's rendering, and not the machine's handle for it:
 
 ```
@@ -1522,7 +1523,7 @@ CPython's own words, so printing the exception prints what `python3` prints. Not
 concatenation at all — so rows three and four are not mirrors of each other.
 
 Where the reference **answers** and this backend has no sequence helper, the compiled leg says so instead
-of inventing a value; the interpreter, which has the semantics, answers:
+of inventing a value; the record, which has the semantics, answers:
 
 ```
 print([0] * 3)        # interpreter: [0, 0, 0]      compiled: refuses, naming the missing repeat helper
@@ -1538,7 +1539,7 @@ These are owed to L11.1's tagged value word and are pinned as still-owed. Two th
 - a **comparison over two names** of the same kind — `a = [1]` / `b = [2]` / `print(a < b)` = `True`, the
   tagged order road's question.
 
-A **text** repeated by an int (`"ab" * 2` = `abab`) is answered by the interpreter; the compiled leg's
+A **text** repeated by an int (`"ab" * 2` = `abab`) is answered by the record; the compiled leg's
 refusal of it predates this section (Gap R.82) and is unchanged.
 
 ### Text predicates
@@ -1550,7 +1551,7 @@ asked: `"1".isdigit() + 1` is `2`, and `[True] == [1]` is `True`.
 
 A predicate works on a text the compiler can see, including one bound to a name
 (`s = "abc"` / `print(s.isalpha())`). A **parameter** as the receiver is refused by the compiled leg — it
-has no compile-time text to fold — while the interpreter answers it normally; the row stays open with
+has no compile-time text to fold — while the record answers it normally; the row stays open with
 L11.1's tagged value word.
 
 A class the program defines may use one of these eight names for its own attribute; what its method returns
@@ -1563,8 +1564,8 @@ middle operand **once**. So does `1 <= x < 10`, `a == b != c`, `1 < 2 < 3 < 4`, 
 operators (`2 == 2 <= 3`, `1 is 1 < 2`). The answer is a verdict, so `print(1 < 2 < 3)` prints `True`.
 
 A chain's operands may be anything a comparison accepts, including something computed: with
-`print(1 < g() < 10)` the reference calls `g` exactly once, and both engines match it. A chain whose middle
-operand is a **container** answers on the interpreter and refuses on the compiled leg, where a container is a
+`print(1 < g() < 10)` the reference calls `g` exactly once, and both legs match it. A chain whose middle
+operand is a **container** answers on the record and refuses on the compiled leg, where a container is a
 global rather than a word — `Gap R.53` keeps that half open until L11.1's tagged value word lands.
 
 `a < b and b < c` is **not** a chain: it is two comparisons joined by `and`, and `and` short-circuits. Before
@@ -1595,12 +1596,12 @@ for i in range(n):
 - `for ... in range(a, b)` iterates `i` from `a` to `b-1`.
 - `for x in 5:` iterates `0, 1, 2, 3, 4` — an integer on the right-hand side is a **repeat count**
   (`programs/for_int_count.gy`). The count may be a literal, a variable or an expression; `0` and any
-  negative value run the body zero times, exactly like `range(0)`. Both backends have always agreed on
+  negative value run the body zero times, exactly like `range(0)`. The compiled backend have always agreed on
   this, which is what makes it a feature rather than a bug — but CPython refuses it
   (`'int' object is not iterable`), so it is a declared extension with its own conformance row rather
   than something an agent should discover by accident (ADR 0207, roadmap R.14). It compiles to the same
   counter loop as `range(n)` and is handy precisely where `range` has been claimed by the program itself
-  (ADR 0205). In a comprehension the integer form works in the interpreter
+  (ADR 0205). In a comprehension the integer form works on the record
   (`[x for x in 3]` → `[0, 1, 2]`) while the compiled backend asks for `range(3)`.
 - `for x in [1, 2, 3]:` iterates the elements of a list literal — in the
   interpreter over a boxed list, and in the AOT codegen over an inline list
@@ -1614,14 +1615,14 @@ for i in range(n):
   whole base chain (multi-level). An overridden method can delegate to the base
   implementation with `super()` (valid only inside a method; it resolves methods
   on the base class of the currently-executing class, bound to the current
-  instance). Class support is implemented in the interpreter (REPL/--eval path).
+  instance). Class support is implemented in the compiled backend (the REPL and `--eval` compile too, ADR 0302).
 - **Dynamic dispatch**: a method call on an instance whose class is not statically
   known (e.g. an instance returned by a function or passed as a parameter) resolves
-  the method by the runtime class of the receiver. The interpreter dispatches on the
+  the method by the runtime class of the receiver. the record dispatches on the
   actual instance's class; the AOT/codegen path supports statement-level dynamic
   dispatch on instances and direct method calls.
 - **Operator overloading (dunder dispatch)**: binary operators dispatch to
-  dunder methods on class instances. For `a OP b`, the interpreter calls
+  dunder methods on class instances. For `a OP b`, the record calls
   `__add__`/`__sub__`/`__mul__`/`__truediv__`/`__floordiv__`/`__mod__`/`__pow__`
   on `a` when `a` is an instance, falling back to the reflected method
   (`__radd__`, `__rsub__`, `__rmul__`, `__rtruediv__`, `__rfloordiv__`,
@@ -1634,13 +1635,13 @@ for i in range(n):
   `KeyError`, `IndexError`, `RuntimeError`, `StopIteration`, `ZeroDivisionError`,
   `UnboundLocalError` (ADR 0228) and `OverflowError` (ADR 0264 — the class CPython uses for
   `int(inf)`, which is what makes `except OverflowError:` around a `floor`/`ceil` of a huge double mean
-  the same thing on all three engines). A bare
+  the same thing on both legs). A bare
   `raise` raises `Exception`. `raise IndexError` (the class itself, no call) raises that
   class with no message, and a class derived from an exception is raisable too:
   `class MyError(Exception):` then `raise MyError("x")` / `except MyError:`.
 - **Runtime errors are typed exceptions, so they are catchable.** A list index out of
   range (read *or* write) raises `IndexError`, a missing dict key raises `KeyError`, and
-  assigning to a string index or set element raises `TypeError` — on both backends:
+  assigning to a string index or set element raises `TypeError` — on the compiled backend:
 
   ```py
   xs = [1]
@@ -1661,7 +1662,7 @@ for i in range(n):
   try:
       print(7 % 0)
   except ZeroDivisionError:
-      print("caught")          # both backends, and CPython
+      print("caught")          # the compiled backend, and CPython
   ```
 
   | operation | message |
@@ -1712,20 +1713,20 @@ for i in range(n):
   1
   ```
 
-  Both backends agree on the frame line for the raise itself —
+  The compiled backend agree on the frame line for the raise itself —
   `  File "prog", line 3, in boom` — where `boom` is the enclosing function
-  (`<module>` at top level). The interpreter prints one such frame per stack level; the
+  (`<module>` at top level). the record prints one such frame per stack level; the
   compiled report shows the raise site's own frame until the call-stack line tables of
   L8.5 land.
 - One deliberate divergence: an assignment whose *target kind* is known statically to be
   impossible (`s[0] = "z"` on a string, `s[0] = 1` on a set) is a compile-time diagnostic
-  in the AOT backend (ADR 0166) and a catchable `TypeError` in the interpreter.
-- **The arms of a `try` are tried in the order they are written**, on both backends
+  in the AOT backend (ADR 0166) and a catchable `TypeError` on the record.
+- **The arms of a `try` are tried in the order they are written**, on the compiled backend
   (ADR 0213). `except ValueError:` catches exactly that class; `except Exception:` and a bare
   `except:` catch anything, wherever they appear in the list — an arm after them is unreachable,
   as in Python. An exception no arm matches is **not** dropped: it propagates outward — to an
   enclosing `try`, or out of the function — and if nothing handles it, it is reported and the
-  program fails with the runtime class (exit 3). In the interpreter it surfaces to the caller as
+  program fails with the runtime class (exit 3). on the record it surfaces to the caller as
   an `*EvalError` carrying `ExnType` and `ExnMsg`.
 
   ```py
@@ -1765,14 +1766,14 @@ for i in range(n):
 - **`finally:` is a deferred body: it runs on *every* exit from its `try`** (ADR 0222). Its body
   runs when the `try` completes, when an arm handled the error, when an exception propagates out
   of it, and when the block is left by a `return`, `break` or `continue` — once per exit,
-  innermost first, on both backends:
+  innermost first, on the compiled backend:
 
   ```py
   def f() -> int:
       try:
           return 1
       finally:
-          print("fin")        # fin, then 1 — on both backends, as in CPython
+          print("fin")        # fin, then 1 — on the compiled backend, as in CPython
   ```
 
   Three consequences, each with a test:
@@ -1789,7 +1790,7 @@ for i in range(n):
 - **A compound statement is not a scope** (ADR 0217). Python has one flat scope per `def` and one
   per module, so a name assigned inside a `try` body, an `except` arm, a `finally` clause, a
   `while` body or a `match` arm belongs to the enclosing function or module and is readable after
-  the statement — on both backends:
+  the statement — on the compiled backend:
 
   ```py
   def pick() -> int:
@@ -1818,7 +1819,7 @@ for i in range(n):
       return y          # warning: possibly unbound — correct, the literal arm skips the binding
   ```
 
-  Reading a name that this run never assigned is a `NameError` in the interpreter, matching
+  Reading a name that this run never assigned is a `NameError` on the record, matching
   CPython; the compiled backend currently loads the untouched slot and prints its contents (roadmap
   Gap R.36).
 - **The module is a scope too** (ADR 0220). A name a function reads is looked for in its own frame,
@@ -1877,7 +1878,7 @@ for i in range(n):
   otherwise be whatever the frame previously held. The class follows the frame, as CPython's does: a
   name this frame owns but has not bound is `UnboundLocalError`, a name no frame owns is `NameError`
   (so a module-level `if 0: x = 1` then `print(x)` is a `NameError`). Both are ordinary raises —
-  `try: … except UnboundLocalError:` catches them on the interpreter and on the compiled backend — and
+  `try: … except UnboundLocalError:` catches them on the record and on the compiled backend — and
   both exit 3, the trap code, whichever engine ran the program. A `for` body that runs zero times and a
   `match` that matches nothing leave their captures unbound the same way; a loop variable is bound
   inside its own body, as it must be. Names the checker can prove were assigned cost nothing: no flag,
@@ -1933,12 +1934,12 @@ match p:
   name.
 - A missing attribute, or a subject that is not an instance of the class (or a
   subclass), fails the pattern and the next case is tried.
-- Both backends lower class patterns (ADR 0235). The compiled one asks the instance
+- The compiled backend lower class patterns (ADR 0235). The compiled one asks the instance
   whether it has each attribute — `@inst_set`, written by every attribute store and
   cleared when a heap slot becomes a new instance — because its data words cannot
   tell an attribute that was never written from a stored `0`. ADR 0149 said this was
   interpreter-only; it was, and `case Point(a, b):` on an instance with `x` and `y`
-  answered `pt 0 0` compiled against the interpreter's `no`.
+  answered `pt 0 0` compiled against the record's `no`.
 - A case whose pattern is a call — `case f():` — is expression-equality: the call's
   result is compared to the subject. It is not a class pattern, and the compiled
   backend used to load `f` as if it were a variable (ADR 0235).
@@ -1960,10 +1961,10 @@ match p:
   toward zero, so with mixed signs the answers differ: Python's `-7 // 2` is `-4` and `-7 % 2`
   is `1`, because the remainder carries the *divisor's* sign. The two are only correct together
   — the invariant is `a == (a // b) * b + (a % b)`, which a truncating pair also satisfies, so
-  testing each against its own table can certify a wrong pair. Both backends now emit the
-  correction (`floorDiv`/`floorMod` in the interpreter, an `sdiv`/`srem` plus a `select`
+  testing each against its own table can certify a wrong pair. The compiled backend now emit the
+  correction (`floorDiv`/`floorMod` on the record, an `sdiv`/`srem` plus a `select`
   adjustment in the module, `frem` plus `fadd` for floats), constant folding uses the same pair,
-  and the whole sign grid is checked against CPython on both backends (roadmap Gaps R.28, R.30,
+  and the whole sign grid is checked against CPython on the compiled backend (roadmap Gaps R.28, R.30,
   ADR 0216). An exact float remainder keeps the divisor's sign — `7.5 % -0.5` prints `-0.0`.
 
   **`/=` is true division, so the operator — not the operands — decides the domain** (roadmap Gap P.1,
@@ -2021,7 +2022,7 @@ the first interned string would otherwise be called equal. That is why every ope
 a container slot writes its tag with it (ADR 0187), including the builders a call argument uses.
 
 - **A number equals the same number written the other way** (ADR 0221): `1 == 1.0`, `1.0 == 1`,
-  `0 == -0.0` and `3 == 3.0` are all True, in either operand order, on both backends. An `int`
+  `0 == -0.0` and `3 == 3.0` are all True, in either operand order, on the compiled backend. An `int`
   compared with a `float` is one question about two values, not a comparison of representations;
   the interpreter used to answer `1 == 1.0` with False while answering `1.0 == 1` with True.
   This coercion reaches only numbers: `1 == [1]` and `1.0 == "a"` are False, not errors.
@@ -2100,7 +2101,7 @@ have to compute an integer near 2.8×10^17 *and* land exactly on a live object i
 ### Unary minus asks its operand's kind (`-x`)
 
 `-` is an operator, and an operator is a question about a **kind**. A value that has no sign stops the
-program with the reference's own sentence — on both backends, catchably, at the runtime-error exit class
+program with the reference's own sentence — on the compiled backend, catchably, at the runtime-error exit class
 (roadmap Gaps R.89, R.137, ADR 0266):
 
 ```python
@@ -2120,7 +2121,7 @@ print(-Token())    # TypeError: bad operand type for unary -: 'Token'   — an i
 
 The kind inside the quotes is the operand's real kind, read from the same table the printer, the equality
 and the binary operators read, and the raise is a language event: `try: print(-"hi")
-except TypeError: …` runs the arm on both engines. The name is not a decoration — the reference writes a
+except TypeError: …` runs the arm on both legs. The name is not a decoration — the reference writes a
 *different* sentence for a negation than for a binary minus, so `-x` is its own door rather than `0 - x`
 in a mask (ADR 0265 owns the sentence table).
 
@@ -2130,7 +2131,7 @@ Two rules keep the door honest rather than merely loud:
   shape the reference stops on is never printed (Gap R.37's rule, extended to the last operator that lacked
   it).
 - **A slot is only raised on when the program can be shown to hold no number there.** `xs = ["a"]` /
-  `-xs[i]` raises `'str'` on both engines, because the literal says every slot is a text and the program
+  `-xs[i]` raises `'str'` on both legs, because the literal says every slot is a text and the program
   never stores anything else into `xs`. A container that can also hold a number is left to the tag door
   (ADR 0265) or to the refusal that names the missing half — raising there would answer `TypeError` for
   `xs = [1, "a"]` / `-xs[0]`, which the reference answers `-1`.
@@ -2165,7 +2166,7 @@ Three things the first draft of this door had to get right:
   where the same value under `-` earns `bad operand type for unary -: 'str'`. One sentence table owns both
   (ADR 0265), with `abs` spelled as its own operation rather than borrowed from `unary -`.
 - **A raise, not a refusal.** A program the reference stops on must reach the runtime error exit class, so
-  `try: print(abs("hi")) except TypeError:` runs the handler on both engines. A front-end refusal would be
+  `try: print(abs("hi")) except TypeError:` runs the handler on both legs. A front-end refusal would be
   a compile-time verdict that escapes the arm (ADR 0166's exit-code contract).
 - **Both roads lower the call.** The `i32` road and the `double` road each reach `abs`; the second one
   produces the operand through the float lift, which yields nothing for a text, so `print(abs("hi") * 2.5)`
@@ -2197,7 +2198,7 @@ print(strlen("hello")) # 5
   extra libraries).
 - The AST interpreter dispatches extern calls to a small Go registry mirroring
   the C stdlib (`abs`, `getpid`, `rand`, `strlen`); other externs raise a clear
-  "not available in the interpreter" error.
+  "not available on the record" error.
 - An `extern fn` keeps the **C name** in the emitted module — `declare i32 @strlen(i8*)`,
   called as `@strlen` — because that name is exactly what the declaration binds. Functions the
   program itself defines do not share that namespace: they are emitted as `gy_<name>` (ADR 0198),
@@ -2215,7 +2216,7 @@ print(strlen("hello")) # 5
 Behind the annotations, a value at runtime is one of fifteen kinds, and there is exactly
 one table that says which (ADR 0182): `int`, `float`, `bool`, `None`, `str`, `list`,
 `dict`, `set`, `tuple`, `class`, `instance`, `method`, `closure`, `exn`, `module`. The
-interpreter's heap objects, the compiled runtime's tagged values and the extern-fn ABI all
+record's heap objects, the compiled runtime's tagged values and the extern-fn ABI all
 read those numbers; the compiled heap's own object-header kind is a projection of them
 (`list`, `dict`, `set`, `instance`, with 0 meaning "the compiled backend does not allocate
 this — it is an immediate or an interned string"). `gustyc --lang` prints both tables, and
@@ -2230,7 +2231,7 @@ Inside a container both halves quote, which is why `print(xs)` and `str(xs)` wri
 a list element is always rendered by the `repr` half (ADR 0185's `quote` flag, now carrying the pair).
 
 There is **one renderer per backend**, and `print`, `str()` and a container element are its three
-callers. In the interpreter that renderer is the evaluator's value printer, and `repr()` asks it the
+callers. on the record that renderer is the evaluator's value printer, and `repr()` asks it the
 quoting question a text alone answers differently. In the compiled backend the value printers no
 longer call `printf` at all: every write goes through `rt_out_txt` / `rt_out_int`, which are pointed
 either at stdout or — while `str()`/`repr()` render — at a capture buffer whose bytes come back as an
@@ -2239,7 +2240,7 @@ value by its tag). A form added for `print` is therefore a form the pair has; th
 test (`TestRenderPairIsOneTableNotTwo`) the day a second value renderer appears.
 
 A function whose `return` renders a value **is a string-returning function**, and its callers are told
-so: `def g(): return str(42)` / `print(g())` writes `42` on both backends, and so do `str(x)` of a name,
+so: `def g(): return str(42)` / `print(g())` writes `42` on the compiled backend, and so do `str(x)` of a name,
 `repr(42)`, `str([1, 2])` and `str(None)`, with the answer usable as a binding, an argument to `len`, a
 method receiver and a concat operand (`Gap R.163`, ADR 0281). Before it was, the callee returned the
 interned **index** and the caller printed it with `%d` — `0`, at exit 0, for every one of those shapes.
@@ -2248,7 +2249,7 @@ respects Gap R.6's: a program that defines `str` itself gets its own function, s
 `def str(x): return x + 7` beside that same body answers `49`.
 
 A builtin called with **no argument** is first asked which kind of call it is (ADR 0287). `int()`, `float()`,
-`bool()` and `str()` are constructors and answer `0`, `0.0`, `False` and the empty text on both engines;
+`bool()` and `str()` are constructors and answer `0`, `0.0`, `False` and the empty text on both legs;
 `ord()`, `chr()`, `abs()` and `repr()` convert a required value and raise the reference's own
 `TypeError: <name>() takes exactly one argument (0 given)` (exit 3). They are two rules, not one: the eight
 names share a dispatch, and the reference splits them. `bool(x)` asks the truthiness question — a number by
@@ -2288,17 +2289,17 @@ A `def`'d name is a **declaration, not a variable**, and says so (ADR 0283). Rea
 is asked — `print(f)`, `f + 1`, `xs = [f]`, `str(f)` — is a front-end refusal at exit 1, because a `def`
 allocates no slot to read; an earlier build emitted `load i32, i32* %_f` for that nonexistent slot and left
 through exit 2. A function in a **numeric** position raises instead of refusing, in the reference's words
-on both engines: `abs(f)` → `TypeError: bad operand type for abs(): 'function'`, `-f` →
+on the compiled backend: `abs(f)` → `TypeError: bad operand type for abs(): 'function'`, `-f` →
 `bad operand type for unary -: 'function'`, and an imported module answers `'module'`; each is catchable by
 `except TypeError:`. A name the program *assigned* is a different matter and keeps working — `g = f` then
-`g(21)` answers `42` on the interpreter, `g = lambda x: x * 3` then `g(4)` answers `12` on both engines —
+`g(21)` answers `42` on the record, `g = lambda x: x * 3` then `g(4)` answers `12` on both legs —
 and a body that calls a **parameter** is still refused compiled (`unsupported call "f"`), which is L11.7's
 higher-order limit (`Gap R.167`), as is printing a function object.
 
 Printf-style `%` on a text is **not implemented**, and says so: `print("%.2f" % 3.5)` exits 1 naming
 printf-style formatting and quoting the reference's own `3.50` (`Gap R.165`, ADR 0282). It used to print
 `0.0` at exit 0, because the format string's `@str_tab` index was widened into the double domain and used
-as a remainder's dividend. `%` itself is the remainder and answers on both engines — `7 % 3` is `1`,
+as a remainder's dividend. `%` itself is the remainder and answers on both legs — `7 % 3` is `1`,
 `-7 % 3` is `2`, `7.5 % 2` is `1.5`, `-7.5 % 2` is `0.5`, `7.5 % 2.5` is `0.0` — and a comparison is not a
 numeric use, so `1.0 == "a"` still answers `False`/`0` rather than being refused with the format string.
 
@@ -2316,7 +2317,7 @@ xs.append("v" + str(7))
 print(xs)               # ['v7']        · a text built at run time had no repr: it printed (null)
 ```
 
-`str(x)` of a value the compiler can fold produces the same text on both backends and the same text
+`str(x)` of a value the compiler can fold produces the same text on the compiled backend and the same text
 CPython prints: `str(None)` is `"None"` (not `"0"`), `str(1.5)` is `"1.5"`, and `str("x")` is `x`. A
 folded string may be printed but never stored as a global; where it is stored, the text is interned
 and the handle kept (ADR 0183). A value whose kind **no expression names** — an untagged word the
@@ -2331,7 +2332,7 @@ own tag (ADR 0187/0189). A **float does not fit**, so `xs = [1.5]`, `print([1.5,
 (roadmap L11.6), never emitted as an instruction LLVM has to reject (ADR 0166). The refusal replaces a
 silence that was worse than either: the fold truncated floats to words, so `{1.5} == {1.6}` and
 `{"a": 1.5} == {"a": 1.6}` compiled to **True** and `print(xs[0])` of `[1.5]` printed `1`
-(roadmap Gap R.40, ADR 0226). The interpreter answers all of those correctly today.
+(roadmap Gap R.40, ADR 0226). the record answers all of those correctly today.
 
 An operator between **two operands of different runtime kinds** is not a numeric question:
 `1.0 == [1]` is False, as CPython answers it, decided by kind rather than by coercing a container
@@ -2340,7 +2341,7 @@ exception). Ordering a number against a container is a `TypeError` in CPython an
 because this backend cannot raise a runtime `TypeError` yet (roadmap Gap R.37).
 
 A compiled list can hold numbers, interned strings and `None` together: each element slot
-carries its own tag, so `print([1, "a", None])` gives `[1, 'a', None]` on both backends and on
+carries its own tag, so `print([1, "a", None])` gives `[1, 'a', None]` on the compiled backend and on
 CPython (ADR 0184). What a mixed list may hold is decided by what the tag can honestly describe
 — integers, interned strings, `None` — so `[True, "a"]`, `[1.5, "a"]` and `[[1], "a"]` are still
 reported rather than mis-printed.
@@ -2361,7 +2362,7 @@ spec.
 
 **A container inside a container is read back the same way** (ADR 0239, ADR 0241). The slot holds
 the inner object's *handle*, so the second subscript is a load from the object the first one named,
-and every use of it works — on both backends, at CPython's answer:
+and every use of it works — on the compiled backend, at CPython's answer:
 
 ```gy
 xs = [[1, 2], [3, 4]]
@@ -2442,10 +2443,10 @@ than widened: `xs[i] + 1` would print `2.0` where CPython prints `2`, and that i
 near miss. The same honesty covers a container that was **built rather than spelled out** (`xs = [];
 xs.append([7, 8]); print(xs[0][0])`), which no literal ever described.
 
-The interpreter — boxed values, no static tag needed — answers all of these, which is what keeps the
+the record — boxed values, no static tag needed — answers all of these, which is what keeps the
 refusals roadmap rows rather than mysteries (roadmap L11.1, `docs/roadmap-details.md`). One exception is
 recorded rather than papered over: **unary minus does not consult a tag in either backend**, so `print(-"a")`
-answers `-281474976710658` in the interpreter and `0` compiled, where CPython raises
+answers `-281474976710658` on the record and `0` compiled, where CPython raises
 `TypeError: bad operand type for unary -: 'str'` (roadmap Gap R.89).
 
 **Dicts and sets take the same rule** (ADR 0232). A compiled dict may mix kinds on either side of
@@ -2454,7 +2455,7 @@ an entry and a compiled set may mix kinds among its members, because a slot is a
 
 ```gy
 d = {"a": 1, "b": "x", "c": None}   # values: number, string, None
-print(d)            # {'a': 1, 'b': 'x', 'c': None}   — both backends, and CPython
+print(d)            # {'a': 1, 'b': 'x', 'c': None}   — the compiled backend, and CPython
 print(d["b"])       # x        — the value's slot says it is a string
 for k in d:         # a, b, c — keys carry tags too
     print(k)
@@ -2468,13 +2469,13 @@ A dict or set of a single kind is unaffected: it builds through the plain runtim
 through the static printers, and sets no "my slots describe themselves" bit on the object.
 
 What a mixed container may hold is decided by what a tag can honestly describe — integers,
-interned strings, `None`, floats, bools (stored as the number both backends store them as), and
+interned strings, `None`, floats, bools (stored as the number the compiled backend stores them as), and
 another container. A needle whose kind the compiler cannot prove reports *when the container mixes*
 — `1 in s` where `s` is `{1, 'a'}` and the needle is a call whose return kind nobody knows.
 
 A **float** in a slot is the handle of a *float box* (ADR 0238): a slot is one `i32` word and a
 double does not fit in one, so the bits live beside the heap and the tag says the payload is a box.
-That is what lets the compiled path answer the whole family, byte for byte as the interpreter and
+That is what lets the compiled path answer the whole family, byte for byte as the record and
 CPython do:
 
 ```gy
@@ -2899,7 +2900,7 @@ CPython raises — one side whose kind comes from the object is a chain, two is 
 inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a
 **membership** test or a **loop** whose haystack is such a slot (`7 in xs[0]`, `for v in xs[0]` after
 `xs.append([7, 8])`, which need the object's *kind* where the read asks only its tag), or a **set variable**
-subscripted directly (`sa[0]`, which the interpreter answers by the documented extension and the compiler
+subscripted directly (`sa[0]`, which the record answers by the documented extension and the compiler
 declines, Gap R.94) — all of which need the value word that carries its own tag (roadmap L11.1). A fold (`sum`,
 `min`, `max`) over container elements
 reports too, rather than reaching for the elements' addresses the way CPython raises a `TypeError`.
@@ -2908,7 +2909,7 @@ The tag is what makes a value's kind a fact rather than a guess. What it does no
 value that *is* a tag: a compiled float still has no word to hold it (L11.6), and a bool reaching a
 printer through a call still prints as the number it is stored as — `show(True)` says `1` (Gap R.111;
 the print *rule* landed in ADR 0257, the container tag in ADR 0259, and what neither can reach is the
-argument crossing the boundary) — while a bool in a container slot says `True` on both backends and
+argument crossing the boundary) — while a bool in a container slot says `True` on the compiled backend and
 still answers every numeric question as its number. A container inside a
 container is still a handle in a slot built for a word (L11.1 (5), the tagged value word, which
 also collapses the parallel tag array into the value itself).
@@ -2934,7 +2935,7 @@ Annotations are recursive generic type expressions:
   (`int | float`, `int | str`) gets a tagged `%unionbox` slot: assignment stores
   the runtime member tag (0=int, 1=float, 2=string), and `print` dispatches on
   the live tag to emit `%d`/`%f`/`%s`. Cross-member reassignment under
-  branches/loops prints the currently-stored member, matching the interpreter.
+  branches/loops prints the currently-stored member, matching the record.
 - `Sequence[T]` — a structural protocol bound accepting any list/set/iter/tuple/str
   whose element type is compatible with `T`.
 - `Iterator[T]` / `Iterable[T]` — a lazy producer of `T` (same spelling as
@@ -3013,7 +3014,7 @@ position, protocol kinds recurse on element/param/return shape, and class kinds
 walk the declared base chain. Every rejection carries a `code` (see
 `docs/operations.md`) and an actionable `suggestion`.
 
-The interpreter enforces the same annotation rules at runtime for nominal class
+the record enforces the same annotation rules at runtime for nominal class
 parameters (`a: Animal` rejects a `Rock`), so a violation fails fast in the
 REPL; the AOT backend treats annotations as static-only, exactly like the rest of
 the annotation surface.
@@ -3160,18 +3161,18 @@ error with a span rather than an invalid LLVM module:
 
 If a built-in exists in the language but cannot be lowered yet, codegen refuses with an
 actionable message naming the backend that does support it (ADR 0166), e.g.
-`list(<container>) copies are not supported in the AOT backend yet; the interpreter supports
+`list(<container>) copies are not supported in the AOT backend yet; the record supports
 them — build the container with list() and add elements`.
 
 `type` is a reserved word (annotations), so `type(x)` is not a call in this grammar and is
 not offered in completions.
 
 - `print(x, ...)` — writes each argument to stdout on its own line via
-  `printf`. Multi-argument `print` mirrors the interpreter: one `printf` per
+  `printf`. Multi-argument `print` mirrors the record: one `printf` per
   argument. String arguments (literals, folded string calls like `str(7)`,
   and constant `+` concatenations) use a `%s\n` format; integer arguments
   use `%d\n`. Zero-argument `print()` writes nothing (no `printf`), matching
-  the interpreter's no-op.
+  the record's no-op.
 - `range(n)` — iteration bound for `for` loops.
 - `str(x)` — the value's own text, returned as a string value: printable, comparable,
   subscriptable, case-foldable (`s = str(xs)` then `print(s.upper())` works, ADR 0224/0257).
@@ -3192,7 +3193,7 @@ not offered in completions.
 
 ## Strings
 
-String literals (`"..."`) evaluate to boxed strings in the interpreter:
+String literals (`"..."`) evaluate to boxed strings on the record:
 
 - `+` concatenates strings: `"a" + "b"` → `"ab"`
 - `len(s)` returns the character count
@@ -3220,13 +3221,13 @@ Semantically `+` on two strings is typed `str` (no arithmetic warning).
 
 ## Floats
 
-Float literals (`1.5`, `2.0`) evaluate to boxed floats in the interpreter.
+Float literals (`1.5`, `2.0`) evaluate to boxed floats on the record.
 
 Arithmetic with floats (or float + int) produces a float:
 `+`, `-`, `*`, `/`. Comparisons (`== < <= > >=`) work between floats and ints.
 `print` renders floats with `%g`.
 
-The interpreter applies `-`/`*` to the float64 payload of boxed floats
+the record applies `-`/`*` to the float64 payload of boxed floats
 (not the raw heap handles), so `a = 1.5; b = 2.0` gives `a-b == -0.5`,
 `a*b == 3.0`, `b-a == 0.5` — matching the AOT codegen's `fsub`/`fmul` IR.
 Float `//` floors the quotient (`5.5 // 2.0 == 2.0`), `%` uses `math.Mod`/`frem`,
@@ -3246,7 +3247,7 @@ optional filter (`if`), and collect the element expressions.
     zs = [y for y in [1, 2, 3] if y > 1]
     d  = {k: k * 10 for k in range(2)}
 
-Comprehensions over a `range(...)` work on both backends.
+Comprehensions over a `range(...)` work on the compiled backend.
 
 In the AOT LLVM codegen, a comprehension over an inline list literal or a constant `range(...)`
 folds, and **a folded set/dict comprehension is the literal it denotes** (ADR 0234): the `@.setN` /
@@ -3254,11 +3255,11 @@ folds, and **a folded set/dict comprehension is the literal it denotes** (ADR 02
 a value position — a binding, a `print`, an `in` test or a call argument takes the literal's own
 lowering, which allocates a heap object and writes each slot with its tag. Set comprehensions
 unroll the iteration and deduplicate folded elements; dict comprehensions fold key/value pairs.
-Both are usable with `len(...)` via the `compLen` map, mirroring the interpreter's semantics. A
+Both are usable with `len(...)` via the `compLen` map, mirroring the record's semantics. A
 comprehension whose iterable is a runtime container walks it with the same real loop `for` uses.
 
 **A brace display ends at its brace, and a comprehension's element is one value**
-**(both engines) (ADR 0244)** — Two rules, one row of output. *A `{…}` display* — a
+**(both legs) (ADR 0244)** — Two rules, one row of output. *A `{…}` display* — a
 set or dict literal — *ends at its `}`*: a `for` written after the closing brace
 belongs to whatever encloses the display, not to the display itself. The parser
 used to read `for` after `}` unconditionally, so `[{1,2} for x in [1]]` parsed as a
@@ -3323,7 +3324,7 @@ counterparts, resolved at codegen time:
 - `(s for ...)[key]` on a **set comprehension** is a membership test returning
   the element when present, erroring `not in set` otherwise.
 - `(l for ...)[i]` on a **list comprehension** is the positional GEP+load.
-This mirrors the interpreter's `Index` handling for dict lookup and set
+This mirrors the record's `Index` handling for dict lookup and set
 membership.
 
 ### min / max / abs
@@ -3356,7 +3357,7 @@ names its operand's kind when it is not one.
   intern table (ADR 0248).
 - **What the winner is, everything follows.** `print`, `str()`, `repr()`, an f-string, the tag a container
   slot carries and `--json`'s `"type"` all ask the same question about the chosen candidate, so
-  `str(max([True, 0]))` is `True` and `print([max([True, 0])])` is `[True]` on both engines — while the
+  `str(max([True, 0]))` is `True` and `print([max([True, 0])])` is `[True]` on both legs — while the
   number stays underneath, because a verdict is the number every numeric path reads from it:
   `max([True, 0]) + 1` is `2` and `max([True, 0]) == 1` is `True` (ADR 0259's int/bool/float family).
   A candidate the compiler cannot read — a name it has not folded — leaves the winner to a run-time
@@ -3368,16 +3369,16 @@ names its operand's kind when it is not one.
 - A text candidate beside a number, and a `None` or container candidate beside a number, raises CPython's
   `TypeError` with the operator that actually failed: `min` names `'<'` and `max` names `'>'`. A verdict
   candidate names `'bool'`, not `'int'` — `max(["a", True])` raises `'>' not supported between instances
-  of 'bool' and 'str'` on both engines (ADR 0261, matching ADR 0259's tag). The raise is
-  catchable on both engines. Two containers side by side are CPython's element-wise ordering, which this
-  language does not implement yet (roadmap Gaps R.86, R.97): the interpreter raises, the compiler refuses.
+  of 'bool' and 'str'` on both legs (ADR 0261, matching ADR 0259's tag). The raise is
+  catchable on both legs. Two containers side by side are CPython's element-wise ordering, which this
+  language does not implement yet (roadmap Gaps R.86, R.97): the record raises, the compiler refuses.
   Two runtime candidates whose kinds only the object can reconcile still wait
   for the tagged value word (roadmap Gaps R.107–R.110), and so does a settled `float` beside a settled `int`;
   those refuse in words rather than promote the winner to a double or compare untagged payloads.
 - The AOT codegen treats a single **numeric** scalar argument to `min`/`max` as a
   one-element collection: `min(5)` -> 5, `max(7)` -> 7 (see ADR 0110). A lone text or `None` is the
-  interpreter's one-element collection too, and the compiled half refuses it (Gap R.107/R.108's family).
-Implemented in both the interpreter (REPL/`--eval`) and the LLVM AOT codegen.
+  record's one-element collection too, and the compiled half refuses it (Gap R.107/R.108's family).
+Implemented in the compiled backend — the LLVM AOT codegen that every path, the REPL and `--eval` included, goes through (ADR 0302).
 In the AOT path `min`/`max`/`sum` fold over an **inline list literal** (unrolled
 `icmp`+`select` / `add` chains over the list's global struct). Each element is
 lowered via `g.value`, so runtime-variable elements (`min([a, b])`) work
@@ -3395,7 +3396,7 @@ integer expression and is constant-folded when its argument is a literal.
 `len(enumerate([a, b, c]))` -> 3, `len(zip(a, b))` ->
 `min(len(a), len(b))`, `len(s.partition(sep))` -> 3, and
 `len(s.split(sep))` / `len(s.rsplit(sep))` -> occurrences(sep in s) + 1 —
-all matching the interpreter.
+all matching the record.
 calls (`.keys()` / `.values()`), so `max({1: 2, 3: 4}.keys())` -> 3.
 - The AOT codegen folds constant-index element access into list-producing
   call expressions: `keys()`, `values()`, `sorted(...)` (including
@@ -3421,7 +3422,7 @@ literal parts.
 **String values are UTF-8 text, measured in bytes.** A literal's value is the
 source's own bytes (`"café"` is 5 bytes, and `print` round-trips it), so
 non-ASCII text survives lexing, containers, interning, and printing. Length,
-indexing, and slicing measure **bytes**, not code points, in both backends:
+indexing, and slicing measure **bytes**, not code points, in the compiled backend:
 `len("café")` is 5 where CPython says 4, and `"héllo"[1]` yields the byte 195.
 That is a tracked divergence, not an accident — code-point semantics are a
 representation decision for `len`, `s[i]`, `s[i:j]` and `for c in s` in both
@@ -3452,13 +3453,13 @@ both arguments are string constants (`print("aXbXc".replace("X", "-"))`
 emits the folded global "a-b-c").
 
 `.find(sub)` returns the index of the first occurrence of `sub`, or -1 if
-absent, in **both** paths: the interpreter applies `strings.Index`; the
+absent, in **both** paths: the record applies `strings.Index`; the
 codegen constant-folds it to an `i32` literal when the receiver and argument
 are string constants (`print("abcabc".find("bc"))` emits `i32 1`).
 `"s".ljust(w)` pads the receiver on the right with spaces to width `w`;
 `"s".rjust(w)` pads on the left; both are no-ops when `len(s) >= w`.
 In the AOT codegen, both fold over a constant string receiver and constant
-width to a padded string global, mirroring the interpreter.
+width to a padded string global, mirroring the record.
 `"s".index(sub)` folds to the byte index of `sub` in the receiver
 `"s".expandtabs(w)` folds to a string global: each tab is replaced with the
 `{k: v}.get(key, default)` folds to the matching value or the default in the
@@ -3466,12 +3467,12 @@ AOT codegen: an int/string key looks up the constant dict's key/value pairs
 (not-found returns the default when given).
 spaces to the next tab stop at width `w` (running-column algorithm). Source
 string literals have no escape sequences, so literal receivers contain no
-tabs (no-op); the interpreter can build tabs via `chr(9)`.
-(`strings.Index`); the interpreter raises on not-found, but the AOT codegen
+tabs (no-op); the record can build tabs via `chr(9)`.
+(`strings.Index`); the record raises on not-found, but the AOT codegen
 has no error channel, so it folds to `-1` on not-found (like `find`).
 `"s".zfill(w)` pads the receiver on the left with `0` to width `w` (no-op
 when `len(s) >= w`); the AOT codegen folds it over a constant receiver and
-constant width to a zero-padded string global, mirroring the interpreter.
+constant width to a zero-padded string global, mirroring the record.
 `"s".removeprefix(p)` strips the given prefix from the receiver and
 `"s".removesuffix(s)` strips the suffix (no-op when unmatched, mirroring
 `strings.TrimPrefix`/`TrimSuffix`); the AOT codegen folds both over a
@@ -3484,19 +3485,19 @@ string constants.
 
 `.count(sub[, start[, end]])` returns the number of non-overlapping
 occurrences of `sub` within `s[start:end]`, mirroring Python's
-`str.count(sub, start, end)`. The interpreter applies `strings.Count` on the
+`str.count(sub, start, end)`. the record applies `strings.Count` on the
 sliced substring (`start`/`end` clamped to `[0, len(s)]`); the AOT codegen
 constant-folds only the one-argument form to an `i32` literal when the
 receiver and argument are string constants (`print("ababab".count("ab"))`
 emits `i32 3`).
 
 `.rfind(sub)` returns the index of the last occurrence of `sub`, or -1 if
-absent, in **both** paths: the interpreter applies `strings.LastIndex`; the
+absent, in **both** paths: the record applies `strings.LastIndex`; the
 codegen constant-folds it to an `i32` literal
 (`print("abcabc".rfind("bc"))` emits `i32 4`).
 
 `.capitalize()` uppercases the first rune and lowercases the rest in
-**both** paths via a shared `capitalize` helper: the interpreter calls it
+**both** paths via a shared `capitalize` helper: the record calls it
 directly; the codegen folds it in `stringConst`/`stringVal` and the call
 dispatch (`print(len("hello".capitalize()))` emits `i32 5`).
 
@@ -3515,31 +3516,31 @@ list (interpreter path; elements compare by string content via
 `dictKeyEq`, matching dict keys). `["a", "b", "a"].count("a")` is 2.
 
 `.isdigit()` returns 1 if every rune is a digit (and the string is
-non-empty), else 0, in **both** paths: the interpreter checks
+non-empty), else 0, in **both** paths: the record checks
 `unicode.IsDigit`; the codegen folds it to `i32 1`/`i32 0`
 (`print("123".isdigit())` emits `i32 1`).
 
 `.isalpha()` returns 1 if every rune is alphabetic (and the string is
-non-empty), else 0, in **both** paths: the interpreter checks
+non-empty), else 0, in **both** paths: the record checks
 `unicode.IsLetter`; the codegen folds it to `i32 1`/`i32 0`
 (`print("abc".isalpha())` emits `i32 1`).
 
 `.islower()` / `.isupper()` return 1 if there is at least one cased rune
 and all cased runes are lowercase / uppercase, else 0, in **both** paths:
-the interpreter scans cased runes; the codegen folds to `i32 1`/`i32 0`
+the record scans cased runes; the codegen folds to `i32 1`/`i32 0`
 (`print("abc".islower())` emits `i32 1`).
 
 `.partition(sep)` returns a list `[head, sep, tail]` split at the first
-occurrence of `sep` (or `[s, "", ""]` when absent) in the interpreter
+occurrence of `sep` (or `[s, "", ""]` when absent) on the record
 path. `"a-b-c".partition("-")[0]` is "a".
 
 `.isalnum()` returns 1 if every rune is alphanumeric (and the string is
-non-empty), else 0, in **both** paths: the interpreter checks
+non-empty), else 0, in **both** paths: the record checks
 `unicode.IsLetter`/`unicode.IsDigit`; the codegen folds it to
 `i32 1`/`i32 0` (`print("abc123".isalnum())` emits `i32 1`).
 
 `.isspace()` returns 1 if every rune is whitespace (and the string is
-non-empty), else 0, in **both** paths: the interpreter checks
+non-empty), else 0, in **both** paths: the record checks
 `unicode.IsSpace`; the codegen folds it to `i32 1`/`i32 0`
 (`print("   ".isspace())` emits `i32 1`).
 
@@ -3551,7 +3552,7 @@ in place and returns `None`. All four take no `key=`/`reverse=` argument on the
 method yet — `sort(key=...)` needs first-class functions and refuses, naming that
 reason (roadmap L11.7, ADR 0191).
 
-Ordering is defined per element kind, and both backends implement the same rules:
+Ordering is defined per element kind, and the compiled backend implement the same rules:
 numbers compare numerically (an int and a float mix fine, as Python's `<` does),
 and **strings compare by their text** — never by the interned index the value is
 stored as, which records the order the strings first appeared in the program
@@ -3588,7 +3589,7 @@ shorter list: `zip([1, 2], [10, 20])` -> `[[1, 10], [2, 20]]`. It is
 interpreter-only (the AOT codegen folds builtins only on literal args; nested
 list construction is not yet lowered); see ADR 0084.
 `for x in "abc"` iterates over each character of a string (yielding a
-single-char string per rune), **in both backends** (`programs/for_string_chars.gy`).
+single-char string per rune), **in the compiled backend** (`programs/for_string_chars.gy`).
 The compiled loop unrolls one body copy per character and stores each one the way a
 container slot does — as its interned index — so `for c in "ab"` and a literal list of
 strings compile and print like the interpreter and CPython do (ADR 0208; it used to be
@@ -3600,7 +3601,7 @@ sequences today: `len("café")` is `5` and `"héllo"[1]` is the byte `195` (road
 `programs/unicode_text.gy`).
 `int(x)` converts a value to an integer: `int("42")` -> 42, `int(3.9)` -> 3
 (float truncation). `float(x)` converts to a float: `float("2.5")` -> 2.5,
-`float(3)` -> 3.0. `int` ships in both backends: the AOT codegen folds `int` on
+`float(3)` -> 3.0. `int` ships in the compiled backend: the AOT codegen folds `int` on
 literal int/string args to a compile-time constant. `float` is
 interpreter-only (the AOT codegen has no float representation); see ADR 0086.
 ## Runtime heap for mutable lists (AOT)
@@ -3632,7 +3633,7 @@ corrupt memory. See ADR 0009.
 ## Containers across function boundaries (AOT)
 
 A list, dict or set is a *reference*: passing one to a function must give the
-callee the same live object the interpreter would (see ADR 0161). Both backends
+callee the same live object the record would (see ADR 0161). The compiled backend
 agree, so all of these print the same thing under `--eval` and `--file`:
 
 ```python
@@ -3668,7 +3669,7 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
   a literal, a comprehension (`ys = [x * 2 for x in [1, 2]]`), a generator call, or a
   variable. A comprehension that the compiler constant-folded into a global is copied
   into the heap rather than stored as a global, so `print`, `len`, indexing, iteration
-  and passing it to a function all see the same container the interpreter would. At
+  and passing it to a function all see the same container the record would. At
   module scope the definition also gives the variable its slot and its `gc.roots`
   entry, which is what a later `xs.append(i)` stores through.
 - **At the call site** a container *literal* is materialised into the runtime
@@ -3685,14 +3686,14 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
 - Without that inference the old codegen silently treated the handle as an
   integer and compiled `for x in xs` into a `0..handle` range loop — the same
   program, different answers per backend.
-- Strings cross a function boundary in both backends: `greet("ada")` interns the argument and
+- Strings cross a function boundary in the compiled backend: `greet("ada")` interns the argument and
   the callee receives the index (ADR 0174). What the compiled backend still cannot do is report
   itself rather than miscompile — concatenating a runtime string (`s + "!"`), a string method on
   a parameter (`s.upper()`), arithmetic on a string, and a parameter used as both a
-  string and a number. Each names the interpreter, which supports all four; see
+  string and a number. Each names the record, which supports all four; see
   § Strings across a function boundary. Ordering two texts is no longer one of them: an
   interned index orders by `strcmp` on the text behind it (ADR 0248).
-- Strings are ordinary container elements in both backends (ADR 0173, ADR 0175): lists,
+- Strings are ordinary container elements in the compiled backend (ADR 0173, ADR 0175): lists,
   dictionaries and sets of strings, written as literals (`["a"]`, `{"a": 1}`, `{"a", "b"}`) or
   built with `append` / `add` / item assignment, and printed the way Python renders `repr`.
 - **A container that grows a second kind is promoted, not refused.** A compiled container used to
@@ -3716,7 +3717,7 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
   discards the entered value.
 - On normal completion `__exit__(none, none, none)` is called; on an exception
   `__exit__(exc_type, exc_val, exc_tb)` is called and a truthy return suppresses it.
-- Both backends: `with expr as name` runs the protocol and the body identically
+- The compiled backend: `with expr as name` runs the protocol and the body identically
   interpreted and compiled (`programs/async_effects.gy` and the `with` cases in the
   conformance corpus pin the output; ADR 0181 closed the generator-rooting defect that
   used to block the compiled leg).
@@ -3725,7 +3726,7 @@ How it works in the AOT backend (ADR 0161, ADR 0163):
 
 - `yield from expr` delegates yields to a sub-iterable (a generator call, a list
   literal, or `range(...)`), appending each element to the current generator.
-- Full support in the interpreter; codegen emits a runtime loop over the sub-list.
+- Full support on the record; codegen emits a runtime loop over the sub-list.
 
 ## Async: `async def`, `await`, `async for` (L5.6, L7.1; the await/return discipline L7.6, ADR 0195)
 
@@ -3765,7 +3766,7 @@ print(await double(4)) # 8 — created and awaited in one expression
 ### What the checker proves about async code (L7.6, ADR 0195)
 
 The discipline above is not enforceable by either backend — a dropped coroutine printed
-`<coro>` in the interpreter and the awaited value in the compiled binary, and both
+`<coro>` on the record and the awaited value in the compiled binary, and both
 "worked". So it is checked in the shared front end, and every rule names the fix:
 
 | Code | Level | Rule |
@@ -3838,7 +3839,7 @@ def addf(x):
     x = x + 1.5      # the body stores a double into x's slot
     return x         # `return x` says nothing about the answer's kind
 
-print(addf(1.0))     # CPython 2.5, the interpreter 2.5, the compiled leg answered 1
+print(addf(1.0))     # CPython 2.5, the record 2.5, the compiled leg answered 1
 ```
 
 The return word is now read from the same predicate the emitted body itself asks —
@@ -3882,7 +3883,7 @@ Each names the variable whose double has nowhere to go and says what to write in
 (`return x + 0.0`, bind it to a new name, or take the branch with `if`/`else`). A **method**
 is emitted `i32`-returning whatever its body computes — the receiver's word and the answer's
 are fixed together — so a method with this body is refused the same way; that is a method
-limit, not a language one, and the interpreter answers all of these.
+limit, not a language one, and the record answers all of these.
 
 ## Declaration order (ADR 0197)
 
@@ -3960,7 +3961,7 @@ print(main(0))   # 7
 
 The compiled module defines them as `gy_sync` and `gy_main`. That is not decoration: an LLVM
 function name is a **link name**, and a program emitted as `@sync` had its own call answered by
-libc's `sync()` — the interpreter printed `1`, the binary printed the C library's answer, and the
+libc's `sync()` — the record printed `1`, the binary printed the C library's answer, and the
 build reported success (roadmap Gap R.4). `main` was worse, because the generated entry point is
 `@main`: a program with a `def main` could not be built at all.
 
@@ -3976,7 +3977,7 @@ resolved against the builtin table and answers with the builtin (roadmap R.6).
 ## Built-ins are shadowable (ADR 0199)
 
 `str`, `float`, `len`, `abs`, `min`, `sum`, `round`, `sorted` are ordinary names. Defining one
-shadows the built-in, and the definition wins — in both backends and in CPython:
+shadows the built-in, and the definition wins — in the compiled backend and in CPython:
 
 ```gy
 def str(x):
@@ -4038,8 +4039,8 @@ print(range(4))                     # 12
 — see ADR 0203.
 
 **A claimed built-in name must be defined above every use.** Taking a built-in's name means taking it
-everywhere below the `def`; above it, the two backends would mean different things by the same call —
-the interpreter, executing in order, still reaches the built-in, while the compiled backend resolves
+everywhere below the `def`; above it, the compiled backend would mean different things by the same call —
+the record, executing in order, still reaches the built-in, while the compiled backend resolves
 the call to your definition — so the program is refused at the call instead (ADR 0205):
 
 ```gy
@@ -4121,7 +4122,7 @@ class Worker:
         try:
             return 3
         finally:
-            print("fin")        # fin, then 3 — both backends
+            print("fin")        # fin, then 3 — the compiled backend
 
     def raiser(self) -> int:
         raise ValueError("boom")

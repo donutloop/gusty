@@ -66,10 +66,10 @@ func TestPrintSeparationParity(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			interp := runInterp(t, tc.src)
+			recordOut := runCompiled(t, tc.src)
 			aot := runAOT(t, tc.src)
-			if interp != tc.want {
-				t.Errorf("interpreter = %q, want %q", interp, tc.want)
+			if recordOut != tc.want {
+				t.Errorf("the record leg = %q, want %q", recordOut, tc.want)
 			}
 			if aot != tc.want {
 				t.Errorf("AOT        = %q, want %q", aot, tc.want)

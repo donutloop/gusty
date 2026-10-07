@@ -65,9 +65,9 @@ print(total(ys))
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := runInterp(t, tc.src)
+			got := runCompiled(t, tc.src)
 			if got != tc.want {
-				t.Errorf("interpreter = %q, want %q", got, tc.want)
+				t.Errorf("the record leg = %q, want %q", got, tc.want)
 			}
 			aot, err := runAOTConformance(t, tc.src)
 			if err != nil {

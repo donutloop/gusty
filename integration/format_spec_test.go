@@ -49,7 +49,7 @@ print(f"{n + 1:04d}")`, "0008"},
 // exactly — not "contains", not "has a digit". (The name keeps "Interpreter" in it because the shapes
 // in specFamily are the ones the retired engine used to get wrong; what runs here is the one backend,
 // and what it is compared to is CPython run live, below.)
-func TestCLIInterpreterFormatsLikeTheReference(t *testing.T) {
+func TestCLIFormatsLikeTheReference(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range specFamily {
 		src := writeSrc(t, dir, "spec.gy", c.src)
@@ -156,9 +156,9 @@ func TestCLIUnhonourableSpecRaisesRatherThanAnswersPlainly(t *testing.T) {
 	}
 }
 
-// The two engines must not disagree in the dangerous direction: where the compiled leg ANSWERS, it
-// answers what the interpreter answers. (Where it refuses, that is recorded debt to L12.8/L11.1,
-// not a divergence to fix by making the interpreter refuse too — ADR 0298's rule, restated.)
+// both legs must not disagree in the dangerous direction: where the compiled leg ANSWERS, it
+// answers what the record answers. (Where it refuses, that is recorded debt to L12.8/L11.1,
+// not a divergence to fix by making the record refuse too — ADR 0298's rule, restated.)
 func TestCLIEnginesAgreeWhereBothAnswer(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range specFamily {

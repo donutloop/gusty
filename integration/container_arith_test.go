@@ -46,10 +46,10 @@ func TestContainerArithmeticExitCodesStayOnTheContract(t *testing.T) {
 	}
 }
 
-// TestContainerArithmeticRaiseArmsRunOnBothEngines checks each leg independently. A `try:` arm that never
+// TestContainerArithmeticRaiseArmsRunOnBothLegs checks each leg independently. A `try:` arm that never
 // runs prints NOTHING, so "the compiled path agree" would pass on a pair of silent programs — the arms have to
 // be seen firing, on both, and against a live reference rather than a remembered one.
-func TestContainerArithmeticRaiseArmsRunOnBothEngines(t *testing.T) {
+func TestContainerArithmeticRaiseArmsRunOnBothLegs(t *testing.T) {
 	src := readProgram(t, "probe_a_container_in_arithmetic.gy")
 	dir := t.TempDir()
 	want, wantOK := cpythonPlainOut(t, dir, src)

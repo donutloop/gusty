@@ -88,8 +88,8 @@ func floatArgParity() []struct{ name, src, want string } {
 	}
 }
 
-// TestTheReferenceAndBothEnginesHandTheSameNumber is the parity table: one source, three legs, one answer.
-func TestTheReferenceAndBothEnginesHandTheSameNumber(t *testing.T) {
+// TestTheReferenceAndBothLegsHandTheSameNumber is the parity table: one source, three legs, one answer.
+func TestTheReferenceAndBothLegsHandTheSameNumber(t *testing.T) {
 	for _, tc := range floatArgParity() {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "float_arg.gy", tc.src)

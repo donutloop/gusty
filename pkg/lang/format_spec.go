@@ -5,11 +5,11 @@ package lang
 // `src[:i]` at the first top-level `:` and no AST field kept the remainder, so every road that
 // renders an interpolation answered the PLAIN value — `f"{3.5:.2f}"` printed `3.5` where CPython
 // prints `3.50`, `f"{7:05d}"` printed `7`, `f"{255:x}"` printed `255`, and `f"{3.5:>6}"` printed no
-// padding — on BOTH backends, at exit 0. Parity could not see any of it because the engines agreed.
+// padding — on the compiled backend, at exit 0. Parity could not see any of it because the engines agreed.
 //
-// The spec now travels in the AST (`FStringPart.Spec` / `.Conv`) and both engines format through
+// The spec now travels in the AST (`FStringPart.Spec` / `.Conv`) and both legs format through
 // THIS file, so a spec can no longer mean one thing to `print`, another to `str()` and a third to
-// the interpreter. The rules implemented are CPython's, restricted to what the language's value
+// the record. The rules implemented are CPython's, restricted to what the language's value
 // model can answer today; anything else REFUSES with a sentence naming the spec, rather than
 // answering the plain value again — a wrong number at exit 0 is the failure this row exists to end.
 

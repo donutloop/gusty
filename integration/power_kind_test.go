@@ -4,7 +4,7 @@ package integration
 // the compiled path.
 //
 // The shapes below were measured on a binary built from the pre-cycle HEAD, where each printed a number
-// CPython never prints, at exit 0, with the two engines agreeing with each other:
+// CPython never prints, at exit 0, with both legs agreeing with each other:
 //
 //	print(2 ** -1)     reference 0.5        the compiled path 0        (the int road returned 0 for a negative exponent)
 //	print(4 ** 0.5)    reference 2.0        compiled 1            (fptosi truncated llvm.pow.f64's answer)
@@ -41,9 +41,9 @@ func TestPowerExitCodesStayOnTheContract(t *testing.T) {
 	}
 }
 
-// TestPowerMatchesTheReferenceOnBothEngines runs the promoted probe and a table of single expressions,
+// TestPowerMatchesTheReferenceOnBothLegs runs the promoted probe and a table of single expressions,
 // each against a live python3, on BOTH legs.
-func TestPowerMatchesTheReferenceOnBothEngines(t *testing.T) {
+func TestPowerMatchesTheReferenceOnBothLegs(t *testing.T) {
 	dir := t.TempDir()
 	// The probe's own output is the reference's output, line for line.
 	src := readProgram(t, "probe_a_power_answers_the_right_kind.gy")

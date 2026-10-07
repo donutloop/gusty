@@ -57,7 +57,7 @@ func TestReprTableIsEmittedAlongsideRawText(t *testing.T) {
 	}
 }
 
-// TestPyReprStringMatchesPythonQuoteChoice pins the repr rule the interpreter and the
+// TestPyReprStringMatchesPythonQuoteChoice pins the repr rule the record and the
 // interned repr table share: prefer single quotes, fall back to double quotes when the text
 // contains a single quote and no double quote.
 func TestPyReprStringMatchesPythonQuoteChoice(t *testing.T) {
@@ -76,9 +76,9 @@ func TestPyReprStringMatchesPythonQuoteChoice(t *testing.T) {
 	}
 }
 
-// TestInterpreterRendersContainersLikePython checks the shared printing rules on the
+// TestCompiledRendersContainersLikePython checks the shared printing rules on the
 // interpreter side, including the dict-key case that used to print a raw heap handle.
-func TestInterpreterRendersContainersLikePython(t *testing.T) {
+func TestCompiledRendersContainersLikePython(t *testing.T) {
 	cases := []struct{ src, want string }{
 		{`xs = ["a", "b"]
 print(xs)

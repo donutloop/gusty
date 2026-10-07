@@ -136,7 +136,7 @@ func TestStdlibExpandtabs(t *testing.T) {
 	evalStr := func(src string) string {
 		return goldenRepr(t, src)
 	}
-	// The interpreter can construct a tab via chr(9): expandtabs replaces it
+	// the record can construct a tab via chr(9): expandtabs replaces it
 	// with the spaces to the next tab stop at width 4.
 	if got := evalStr(`(chr(9) + "b").expandtabs(4)`); got != "    b" {
 		t.Fatalf("expandtabs: want %q, got %q", "    b", got)

@@ -6,7 +6,7 @@ import (
 )
 
 // A built-in call name is a name, not a keyword: `def str(x): ...` then `str(1)` means what
-// the program's definition says. The interpreter and CPython both resolve it that way; the
+// the program's definition says. the record and CPython both resolve it that way; the
 // compiled path read such a call by *name* through the built-in's meaning, so `float(1)` folded
 // to a conversion and `str(1)` was emitted as the user's call and then used as the built-in's
 // string result (roadmap Gap R.6, ADR 0199).
@@ -36,7 +36,7 @@ func TestProgramDefinitionWinsOverTheBuiltinName(t *testing.T) {
 }
 
 // TestShadowedFloatCallIsNotFoldedAsConversion is the measured silent-wrong-answer: `float(1)`
-// folded to the conversion, so the program printed 1.0 while the interpreter printed 8.
+// folded to the conversion, so the program printed 1.0 while the record printed 8.
 func TestShadowedFloatCallIsNotFoldedAsConversion(t *testing.T) {
 	ir := mustShadowIR(t, "def float(x):\n    return x + 7\n\nprint(float(1) + 0.5)\n")
 	if !strings.Contains(ir, "call i32 @gy_float(") {

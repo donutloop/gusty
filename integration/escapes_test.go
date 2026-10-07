@@ -85,9 +85,9 @@ func TestStringEscapesMatchPython(t *testing.T) {
 		if py := pythonOutput(t, tc.src); py != tc.want {
 			t.Fatalf("%s: the expected output disagrees with CPython\n cpython = %q\n   want   = %q", tc.name, py, tc.want)
 		}
-		gotInterp := runInterp(t, tc.src)
-		if gotInterp != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterp, tc.want)
+		gotCompiled := runCompiled(t, tc.src)
+		if gotCompiled != tc.want {
+			t.Errorf("%s: the record leg = %q, want %q", tc.name, gotCompiled, tc.want)
 		}
 		res, err := lang.Compile(tc.src)
 		if err != nil {

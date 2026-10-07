@@ -127,7 +127,7 @@ func TestRuntimeBlockReferencedIsATestOfTheCodeNotAFlag(t *testing.T) {
 func TestRuntimeStringIterableIsRefusedRatherThanSilent(t *testing.T) {
 	src := "def txt():\n    return \"hi\"\n\nfor c in txt():\n    print(c)\n"
 	if got := captureStdout(t, src); got != "h\ni\n" {
-		t.Fatalf("interpreted output = %q, want h i", got)
+		t.Fatalf("the record leg output = %q, want h i", got)
 	}
 	res, err := Compile(src)
 	if err != nil {
@@ -139,10 +139,8 @@ func TestRuntimeStringIterableIsRefusedRatherThanSilent(t *testing.T) {
 	if !strings.Contains(res.IR, "_strctr") {
 		t.Fatalf("the loop shares its counter with the variable's slot (ADR 0196):\n%s", res.IR)
 	}
-	if true {
-		return
-	}
-	if !strings.Contains(err.Error(), "interpreter") || !strings.Contains(err.Error(), "string literal") {
-		t.Errorf("the refusal does not name the working backend and the usable shape: %v", err)
-	}
+	// There is no refusal left to inspect here: the compiled backend answers this loop since ADR 0230,
+	// so the unreachable "the refusal names the working backend" assertion — a sentence about a second
+	// engine, sitting behind an `if true { return }` that could never fail — is gone rather than kept as
+	// a comment on paper (ADR 0302, Gap R.190).
 }

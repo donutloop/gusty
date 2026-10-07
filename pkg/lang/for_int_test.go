@@ -2,7 +2,7 @@ package lang
 
 import "testing"
 
-// `for x in <integer>` binds 0, 1, … n-1. The two backends have always agreed about it, which is what
+// `for x in <integer>` binds 0, 1, … n-1. the compiled backend has always agreed about it, which is what
 // makes it a feature; the gap (roadmap R.14, ADR 0207) was that no document said it and no test would
 // notice if it moved — and that its boundary (counts of zero or less, comprehensions) was unstated.
 

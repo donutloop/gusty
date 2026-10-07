@@ -9,11 +9,11 @@ package lang
 //	print(round(2.345, 2))   # CPython 2.35 · --interp 2 · --aot refused, exit 1
 //	print(round(3.5, 0))     # CPython 4.0  · --interp 4 · --aot refused, exit 1
 //
-// The interpreter walked ndigits on the floor and handed back the integer the *one-argument* form
+// the record walked ndigits on the floor and handed back the integer the *one-argument* form
 // answers with; the compiler had `if len(c.Args) != 1 { return "round expects one argument" }`, which
 // is exit 1 — "your program has a compile error" — for a program the reference runs in one line.
 //
-// What the two backends now share is one rule, `roundToDigits`, and one named operation under it: a
+// What the compiled backend now share is one rule, `roundToDigits`, and one named operation under it: a
 // correctly-rounded double→decimal conversion, asked of Go's strconv in the evaluator and of the C
 // library's snprintf/strtod in the compiled runtime. Binary rounding is the wrong question here — not
 // because ties are subtle but because scaling manufactures ties the value never has: `0.005` is
@@ -21,11 +21,11 @@ package lang
 // which a nearest-even rule answers 0. That is why the sweep, not the DoD example, is the evidence:
 // the row's own scale/roundeven/unscale algorithm prints CPython's `2.35` for `round(2.345, 2)` and
 // differs from the reference on 1,077 of the 375,224 swept pairs. 531,272 pairs were compared bit for
-// bit against CPython, and both engines agree with the reference everywhere but the 143
+// bit against CPython, and both legs agree with the reference everywhere but the 143
 // far-magnitude negative-digit cases the row's own scale step causes
 // (docs/roadmap-details.md, Gap R.69).
 //
-// Every row here is CPython's answer on both engines. The shapes that cannot be, because the answer's
+// Every row here is CPython's answer on both legs. The shapes that cannot be, because the answer's
 // kind is a fact only the run time knows, are in the filed-not-fixed table with each engine's number
 // written down beside it — never silently truncated (that is Gap R.129).
 
@@ -36,7 +36,7 @@ import (
 )
 
 // TestADigitCountRoundMovesTheDecimalPoint is the parity table: every shape the rule can name, run
-// through the real compiler and the interpreter, against what CPython prints.
+// through the real compiler and the record, against what CPython prints.
 func TestADigitCountRoundMovesTheDecimalPoint(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- the pair the roadmap row names as its DoD.
@@ -147,7 +147,7 @@ func TestTheDigitCountRoundNamesTheConversionAndFoldsOnce(t *testing.T) {
 }
 
 // TestTheDigitCountIsCheckedAsAnInteger is the trap half: a digit count that is not an integer is
-// CPython's TypeError, raised on both engines, catchable on both, and not a refusal to build the
+// CPython's TypeError, raised on both legs, catchable on both, and not a refusal to build the
 // program (which would be exit 1 for a program the reference merely stops on).
 func TestTheDigitCountIsCheckedAsAnInteger(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -205,7 +205,7 @@ func trapText(e *TrapError) string {
 // TestRoundWithoutADigitCountKeepsItsOwnAnswer pins the neighbour that was already right, and the
 // two arity shapes that used to be one message for both: `round()` was a Go panic in the evaluator
 // (index out of range, exit 2 — the contract's compiler-bug code) and `round(x, 1, 2)` was nothing at
-// all. Both engines now say what is missing, in words (roadmap Gap R.131 covers the other builtins).
+// all. Both legs now say what is missing, in words (roadmap Gap R.131 covers the other builtins).
 func TestRoundWithoutADigitCountKeepsItsOwnAnswer(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"one argument, a float", "print(round(2.5))\n", "2\n"},
@@ -245,7 +245,7 @@ func TestRoundWithoutADigitCountKeepsItsOwnAnswer(t *testing.T) {
 
 // TestTheDigitCountRuleIsTheOnesWeSwept is the rule on its own, without either engine in the way:
 // the values the 531,272-case sweep found interesting, at the digit counts that decide an answer, and
-// the two properties the clamps are supposed to give. A regression here changes both engines at once,
+// the two properties the clamps are supposed to give. A regression here changes both legs at once,
 // which is the point of keeping the rule in one function.
 func TestTheDigitCountRuleIsTheOnesWeSwept(t *testing.T) {
 	for _, tc := range []struct {
@@ -301,7 +301,7 @@ func TestTheDigitCountRuleIsTheOnesWeSwept(t *testing.T) {
 // pinned with each engine's number instead of being asserted (roadmap Gaps R.129 and R.130).
 func TestADigitCountOfAValueTheModuleCannotSeeIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
-		name, src, interpWant, aotWant string
+		name, src, compiledWant, aotWant string
 	}{
 		{
 			"round of a parameter the call filled with a double",
@@ -320,8 +320,8 @@ func TestADigitCountOfAValueTheModuleCannotSeeIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if out := captureStdout(t, tc.src); out != tc.interpWant {
-				t.Errorf("interpreter: got %q, pinned at %q — the row's pin needs rewriting with the change that moves it", tc.interpWant, out)
+			if out := captureStdout(t, tc.src); out != tc.compiledWant {
+				t.Errorf("the record leg: got %q, pinned at %q — the row's pin needs rewriting with the change that moves it", tc.compiledWant, out)
 			}
 			res, err := Compile(tc.src)
 			if err != nil {

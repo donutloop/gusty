@@ -8,7 +8,7 @@ package integration
 //	print(round(2.345, 2))   # CPython 2.35 · --aot 2 · --aot exit 1, "round expects one argument"
 //	print(round(3.5, 0))     # CPython 4.0  · --aot 4 · --aot the same refusal
 //
-// — the interpreter ignored the digit count and returned what the one-argument form answers, and the
+// — the record ignored the digit count and returned what the one-argument form answers, and the
 // compiler refused a program the reference runs, which is exit 1 spent on the wrong event (L11.8's
 // complaint). Both legs now ask the same correctly-rounded decimal conversion their own library
 // owns, and both answer CPython; `programs/round_ndigits.gy` is the conformance row that says so.
@@ -165,11 +165,11 @@ func TestRoundWithoutItsArgumentsSaysSoAtTheCLI(t *testing.T) {
 }
 
 // TestTheDigitCountProbeStillOwesWhatTheRoadmapSays keeps the two filed rows honest at the CLI: the
-// compiled leg answers the number underneath where the interpreter and the reference answer the
+// compiled leg answers the number underneath where the record and the reference answer the
 // rounded value (roadmap Gaps R.129 and R.130 — the tagged value word's, not the rounding's).
 func TestTheDigitCountProbeStillOwesWhatTheRoadmapSays(t *testing.T) {
 	for _, tc := range []struct {
-		name, src, interpWant, aotWant string
+		name, src, compiledWant, aotWant string
 	}{
 		{"a parameter the call filled with a double",
 			"def scale(v):\n    return round(v, 2)\n\nprint(scale(2.345))\n", "2.35\n", "2\n"},
@@ -178,20 +178,20 @@ func TestTheDigitCountProbeStillOwesWhatTheRoadmapSays(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "round_debt.gy", tc.src)
-			if py, ok := cpythonOut(t, path); ok && py != tc.interpWant {
-				t.Fatalf("the pinned interpreter answer is not CPython's: %q vs %q", py, tc.interpWant)
+			if py, ok := cpythonOut(t, path); ok && py != tc.compiledWant {
+				t.Fatalf("the pinned record answer is not CPython's: %q vs %q", py, tc.compiledWant)
 			}
 			// The record arbitrates this row: the pinned answer in the table is the retired engine's, and
 			// the record is where that answer lives now. Where the two agree and the compiled path prints
 			// it, pass; where the compiled path disagrees, that is a drift-ledger row with an owner, not a
 			// second failure worded differently from the first.
-			lang.RecordedStdoutIs(t, tc.src, tc.interpWant)
+			lang.RecordedStdoutIs(t, tc.src, tc.compiledWant)
 			out, code := cliReport(t, "--aot", "--file", path)
 			if t.Skipped() {
 				return
 			}
-			if code != 0 || out != tc.interpWant {
-				t.Errorf("compiled: exit %d, stdout %q, pinned at %q", code, out, tc.interpWant)
+			if code != 0 || out != tc.compiledWant {
+				t.Errorf("compiled: exit %d, stdout %q, pinned at %q", code, out, tc.compiledWant)
 			}
 			out, code = cliReport(t, "--aot", "--file", path)
 			if code == 2 {

@@ -25,7 +25,7 @@ package lang
 //   - `await`ing something provably not a coroutine is a no-op here and a
 //     TypeError in Python: `async.await.not_coroutine`;
 //   - an `async def` that yields is an async generator, which neither backend
-//     lowers (the interpreter loops forever): `async.generator.unsupported`;
+//     lowers (the record loops forever): `async.generator.unsupported`;
 //   - an `async def` path that runs off the end awaits to None while its other
 //     paths await to a value: `async.missing_return`.
 //
@@ -410,7 +410,7 @@ func (p *effectPass) analyzeFunc(fd *FuncDef, name string) {
 		sum.Line = fd.Src.Line
 	}
 	// An `async def` that yields is an async generator. Neither backend lowers
-	// one: the interpreter treats the call as a coroutine and then iterates the
+	// one: the record treats the call as a coroutine and then iterates the
 	// handle (forever), the compiled backend runs it as a plain generator, and
 	// CPython returns an async_generator that a `for` refuses. A refusal beats
 	// all three.

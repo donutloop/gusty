@@ -9,8 +9,8 @@
 // being silently accepted.
 //
 // Until ADR 0302 the matrix had a second leg — the AST interpreter — and a second
-// contract, "the two backends print the same thing" (parity). That contract could not
-// catch a wrong answer both engines shared, which is why the CPython leg was added
+// contract, "the compiled backend prints the same thing" (parity). That contract could not
+// catch a wrong answer both legs shared, which is why the CPython leg was added
 // (ADR 0186); once the reference is in the room, engine-vs-engine agreement is a
 // restatement of "we both got it right" rather than a fact of its own. With one backend
 // the matrix asks one question.
@@ -24,7 +24,7 @@ import (
 // ConformanceSchemaVersion is the machine-readable JSON schema version for the
 // conformance matrix emitted by the integration conformance test.
 //
-// 1.0 (Phase 8) compared the two backends to each other. 1.1 (L11.9, ADR 0186) added the
+// 1.0 (Phase 8) compared the two engines to each other. 1.1 (L11.9, ADR 0186) added the
 // CPython leg: `python_stdout`/`python_ok`/`python_error`, the `*_matches_python` flags,
 // the computed `oracle` classification with its declared counterpart, reason, roadmap
 // reference, notes and the matrix-level oracle counters; 1.2 (ADR 0193) added the pinned
@@ -32,7 +32,7 @@ import (
 //
 // 2.0 (ADR 0302) retires the AST interpreter and every field that described it:
 // `interp_ok`/`interp_stdout`/`interp_error`, `interp_matches_python`, the row's `parity`
-// flag, and the `shared` marker — which said "this case runs on both backends" and is now
+// flag, and the `shared` marker — which said "this case runs on the compiled backend" and is now
 // written as `asserted`, because what an asserted row claims is that the compiled program
 // matches the reference. A pin's `backend` is `"aot"` or `"python"`; `"interpreter"` is no
 // longer a legal value, and a ledger that still carries one fails the build rather than

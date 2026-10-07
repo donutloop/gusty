@@ -13,7 +13,7 @@ import (
 // and ADR 0257/0259 made a verdict printable as a value and as a container slot. What was left is the
 // seam between them: the fold compared two values, kept one, and the print site was then asked what
 // kind to render — with the expression that decided the answer sitting on the far side of the
-// comparison. So `print(max([True, 0]))` printed `1` compiled while CPython and the interpreter printed
+// comparison. So `print(max([True, 0]))` printed `1` compiled while CPython and the record printed
 // `True`, and the compiled answer was *plausible*: a dict-shaped, exit-0, number-looking wrong answer.
 //
 // The rule the rows below keep, all taken from `python3` on the same source:
@@ -105,13 +105,13 @@ func TestAFoldStillPrintsWhatTheWinnerActuallyIs(t *testing.T) {
 
 // The shape this cycle measures and does not fix, pinned rather than skipped: a candidate the source
 // does not write as a number — a name the compiler has not folded — leaves the compiled renderer with
-// no winner to ask, and it prints the number underneath. The interpreter, which really compares and
+// no winner to ask, and it prints the number underneath. the record, which really compares and
 // really keeps the winning object, prints CPython's line. Refusing would be a defensible answer;
 // printing `1` is not, which is why this is a row and not a skip (roadmap Gap R.124).
 func TestACandidateTheCompilerCannotReadStillPrintsTheNumber(t *testing.T) {
 	const src = "i = 0\nprint(max([True, i]))\n"
 	if got, want := captureStdout(t, src), "True\n"; got != want {
-		t.Errorf("interpreter = %q, want CPython's %q", got, want)
+		t.Errorf("the record leg = %q, want CPython's %q", got, want)
 	}
 	res, err := Compile(src)
 	if err != nil {

@@ -93,7 +93,7 @@ handler.
 ## Consequences
 
 - `pkg/lang/container_slot_read_test.go` — four rows moved from
-  `TestContainerSlotReadRefusesWhatItCannotProve` to `TestContainerSlotReadsAnswerInBothEngines`
+  `TestContainerSlotReadRefusesWhatItCannotProve` to `TestContainerSlotReadsAnswerOnBothLegs`
   (`len(xs[0])` after an `append`, after a rebinding, after an item assignment, and after handing the name
   to a function the pass cannot see), plus eight new rows for containers built at run time, one per slot
   kind and a dict slot holding a dict. The refusal table keeps the shapes that still refuse — arithmetic on

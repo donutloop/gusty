@@ -9,7 +9,7 @@ import (
 //
 // CPython's `and` and `or` are the two operators that are not operators: they test the left operand and
 // hand back whichever operand the test chose, unconverted. `print(2 and 3)` is `3`, `print(0 or 5)` is `5`,
-// `print("" or "d")` is the text `d`, and `print([1] and [2])` is `[2]`. Both backends printed `1` for all
+// `print("" or "d")` is the text `d`, and `print([1] and [2])` is `[2]`. The compiled backend printed `1` for all
 // four — exit 0, digits wrong, no diagnostic, on an operator every Python program uses — because the
 // lowering composed two predicates and zero-extended the verdict, and every truthiness table since asked
 // whether the *test* passed rather than what the expression *is*.
@@ -346,7 +346,7 @@ func (g *irGen) numericTruthOf(b *strings.Builder, kind, reg string) string {
 // true, and the truth of a chosen operand is the composition of the operands' truths — so the condition
 // never needs the word the answer would travel in, and no pair, tag or agreement is asked of the operands.
 // It is also the door that used to evaluate the operand a condition never reaches: `if x and boom():` called
-// `boom` with x bound to 0, and `if y or boom():` called it with y true, on both engines (Gap R.149).
+// `boom` with x bound to 0, and `if y or boom():` called it with y true, on both legs (Gap R.149).
 func (g *irGen) logicCondition(b *strings.Builder, n *BinOp) (string, error) {
 	var scratch strings.Builder
 	l, err := g.truthyValue(&scratch, n.L)

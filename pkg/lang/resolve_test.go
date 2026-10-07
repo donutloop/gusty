@@ -25,14 +25,14 @@ func TestResolveImportPathStdlib(t *testing.T) {
 	}
 }
 
-// TestInterpreterStdlibImport verifies that the interpreter can `import math`
+// TestCompiledStdlibImport verifies that the compiled backend can `import math`
 // from the standard library and read a module constant.
-func TestInterpreterStdlibImport(t *testing.T) {
+func TestCompiledStdlibImport(t *testing.T) {
 	out, err := runGoldenStdout(t, "import math\nprint(math.PI)\n")
 	if err != nil {
-		t.Fatalf("InterpreterRun import math: %v", err)
+		t.Fatalf("the compiled run of `import math` failed: %v", err)
 	}
 	if !strings.Contains(out, "3.141592653589793") {
-		t.Fatalf("InterpreterRun import math output = %q, want math.PI", out)
+		t.Fatalf("`import math` printed %q, want math.PI", out)
 	}
 }

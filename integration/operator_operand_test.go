@@ -12,10 +12,10 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// interpReport runs the program on the interpreter through the real CLI and returns what it wrote
+// compiledReport runs the program on the record through the real CLI and returns what it wrote
 // to fd 2 plus its exit status — the report as a user sees it, not the evaluator's internal error
 // value, so this stays honest if the traceback format is what changes.
-func interpReport(t *testing.T, src string) (string, int) {
+func compiledReport(t *testing.T, src string) (string, int) {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "case.gy")
@@ -38,7 +38,7 @@ func interpReport(t *testing.T, src string) (string, int) {
 	return stderr.String(), code
 }
 
-// Gap R.26 / ADR 0215 from the outside. The unit tests pin the interpreter's own strings; this
+// Gap R.26 / ADR 0215 from the outside. The unit tests pin the record's own strings; this
 // file's job is to check them against the reference implementation, and to keep the compiled
 // backend honest: an operand pair it cannot lower must refuse or trap, never answer.
 
@@ -81,7 +81,7 @@ func TestOperatorTrapMessagesMatchCPython(t *testing.T) {
 			if t.Skipped() {
 				return
 			}
-			got, code := interpReport(t, tc.src)
+			got, code := compiledReport(t, tc.src)
 			_, want, wantErr := lang.PythonRun(tc.src)
 			if wantErr == nil {
 				t.Fatalf("the reference implementation did not raise for %q", tc.src)
@@ -114,10 +114,10 @@ func TestOperatorTrapMessagesMatchCPython(t *testing.T) {
 }
 
 // `programs/sequence_ops.gy` is the positive side: the operand kinds the language supports compute
-// the right values. Parity here is byte-for-byte against CPython, not "the two backends agree".
+// the right values. Parity here is byte-for-byte against CPython, not "the compiled backend agrees".
 func TestSequenceOperationsMatchCPython(t *testing.T) {
 	src := readProgram(t, "sequence_ops.gy")
-	got := runInterp(t, src)
+	got := runCompiled(t, src)
 	want, wantErr, perr := lang.PythonRun(src)
 	if perr != nil {
 		t.Skipf("no usable oracle: %v\n%s", perr, wantErr)

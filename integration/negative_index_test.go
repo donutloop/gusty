@@ -12,7 +12,7 @@ import (
 
 // L11.4 (ADR 0210) is the subscript rule: a negative index counts from the end for
 // anything positional, and stays a key for anything keyed. The corpus programs run on all
-// three engines here, because the whole point of closing this gap is that the two backends
+// both legs here, because the whole point of closing this gap is that the compiled backend
 // and the reference implementation now answer the same question the same way.
 
 func TestNegativeSubscriptsAgreeOnEveryPath(t *testing.T) {

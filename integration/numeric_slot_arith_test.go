@@ -113,7 +113,7 @@ func TestTheNumberUseOfARunTimeSlotRaisesLikeTheReferenceAtTheCLI(t *testing.T) 
 			// answers these two shapes with a *number* at exit 0 (Gap R.137, filed the day this door
 			// shipped — negating a text reaches the int evaluator with the interned index inside it),
 			// and a parity test for a divergence that is open is a test that documents the bug as if it
-			// were the spec. The interpreter's exact answer is pinned per leg in
+			// were the spec. The record's exact answer is pinned per leg in
 			// integration/conformance_cases.go, where an open divergence belongs.
 			out, code := cliReport(t, "--aot", "--file", gy)
 			if code == 2 {
@@ -205,7 +205,7 @@ func TestTheNumberDoorStaysShutWhereTheReferenceWouldAnswerTextOrAContainer(t *t
 
 // TestTheCorpusProgramPrintsWhatTheLedgerSays runs the registered conformance file through the compiled path
 // and checks it against the reference: programs/numeric_slot_arith.gy is `oracle: match`, which is a
-// claim about all three engines, and this is where it is checked rather than asserted.
+// claim about both legs, and this is where it is checked rather than asserted.
 func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 	src, err := os.ReadFile("programs/numeric_slot_arith.gy")
 	if err != nil {
@@ -233,7 +233,7 @@ func TestTheCorpusProgramPrintsWhatTheLedgerSays(t *testing.T) {
 // assignment binds the answer to a name (ADR 0267), and — since the pair learned to cross a call — where
 // a call hands the value to a parameter (ADR 0273). What is left is a position that keeps one word for a
 // whole value: the answer read as one number, or handed on to a second function. Those rows are exit 1
-// with the missing half named, and the interpreter answers the reference in their place, so they are
+// with the missing half named, and the record answers the reference in their place, so they are
 // filed rows (roadmap Gap R.146) rather than parity claims.
 func TestTheNumberDoorAnswersThePrintPositionAndRefusesTheRest(t *testing.T) {
 	// The answer bound to a name first is parity surface now (Gap R.138, ADR 0267): it runs beside

@@ -8,7 +8,7 @@ import (
 // Subscript assignment (`d[k] = v`, `xs[i] = v`).
 //
 // The statement used to parse as an expression statement with the `= value` consumed and
-// thrown away: `d[1] = 2` compiled, verified, ran, and did nothing — on both backends.
+// thrown away: `d[1] = 2` compiled, verified, ran, and did nothing — on the compiled backend.
 // These tests pin the AST shape, the runtime semantics, and the emitted IR.
 
 func TestSubscriptAssignmentParsesAsAssignment(t *testing.T) {
@@ -66,7 +66,7 @@ func TestEmptyBracesIsAnEmptyDict(t *testing.T) {
 	}
 }
 
-func TestInterpreterSubscriptAssignment(t *testing.T) {
+func TestCompiledSubscriptAssignment(t *testing.T) {
 	cases := []struct {
 		src  string
 		want string // what print()s must show
@@ -89,7 +89,7 @@ func TestInterpreterSubscriptAssignment(t *testing.T) {
 	}
 }
 
-func TestInterpreterSubscriptAssignmentErrors(t *testing.T) {
+func TestCompiledSubscriptAssignmentErrors(t *testing.T) {
 	cases := []struct{ src, want string }{
 		{"xs = [1]\nxs[5] = 2\n", "index out of range"},
 		{"s = {1, 2}\ns[0] = 5\n", "cannot assign to a set element"},

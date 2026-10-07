@@ -35,7 +35,7 @@ import (
 // the plain load it had — the `fibonacci` and `function_calls` benchmarks emit no box at
 // all.
 //
-// The probe prints on all three engines. The refusals below are the door's honest half:
+// The probe prints on both legs. The refusals below are the door's honest half:
 // each names the position that keeps one word, and none of them is a wrong number.
 
 const floatStateProbe = "probe_int_state_becomes_float"

@@ -18,7 +18,7 @@ import (
 // The rows below are ordered so that the *arrival* order and the *text* order disagree: a table
 // written with "a" first would have passed the old code, which is how this survived.
 
-func TestTextOrderingMatchesCPythonInBothEngines(t *testing.T) {
+func TestTextOrderingMatchesCPythonOnBothLegs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -78,7 +78,7 @@ func TestTextOrderingMatchesCPythonInBothEngines(t *testing.T) {
 			// The row the two doors disagreed over: print(1 if a > b else 0) answered the interned
 			// index, and the same comparison stored in a variable was refused outright. What it
 			// prints now is the verdict, which is what CPython prints: this is the line that used
-			// to read "both engines print 1 today", pinned against an oracle that never said it.
+			// to read "both legs print 1 today", pinned against an oracle that never said it.
 			// L11.1's "bools are values" row landed, and the pin moved with it (ADR 0257).
 			"stored in a variable and printed as a value",
 			"a = \"b\"\nb = \"a\"\nlater = a > b\nprint(later)\n", "True\n",

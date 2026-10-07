@@ -3,7 +3,7 @@ package lang
 import "testing"
 
 // TestValueTagTableIsCanonical locks the %obj kind-tag numbering. The AOT
-// runtime IR emits these constants into LLVM and the interpreter heap uses
+// runtime IR emits these constants into LLVM and the retired engine's heap used
 // them via objKindTag; both read from the same table, so the dynamic type
 // model is shared by construction. Renumbering here changes the wire format.
 func TestValueTagTableIsCanonical(t *testing.T) {
@@ -24,8 +24,8 @@ func TestValueTagTableIsCanonical(t *testing.T) {
 		if objKindTag(kind) != tag {
 			t.Errorf("objKindTag(%q) = %d, want %d", kind, objKindTag(kind), tag)
 		}
-		// AOT and interpreter must round-trip: the canonical name for the tag
-		// must be the heap kind string the interpreter tags.
+		// The one table must round-trip: the canonical name for the tag must be the
+		// heap-kind string the record says it is (the retired engine tagged with the same).
 		if kindForTag(tag) != kind {
 			t.Errorf("kindForTag(%d) = %q, want %q", tag, kindForTag(tag), kind)
 		}
@@ -33,7 +33,7 @@ func TestValueTagTableIsCanonical(t *testing.T) {
 }
 
 // TestKindTagRoundTrip holds the canonical tag table together. It used to compare the interpreter
-// heap's obj tag against the AOT dispatch tag, kind by kind — the two engines' encodings had to
+// heap's obj tag against the AOT dispatch tag, kind by kind — both legs' encodings had to
 // mirror each other, so one table could not move without the other. ADR 0302 left one encoding, and
 // the invariant that survives is the one that matters: every reference kind names a tag, and that
 // tag names the kind back. A container that round-tripped to the wrong name would print a dict as a

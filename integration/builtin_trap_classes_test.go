@@ -8,7 +8,7 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// Gap R.25 (ADR 0214) from the outside: the interpreter must agree with CPython on what the
+// Gap R.25 (ADR 0214) from the outside: the record must agree with CPython on what the
 // handlers *print*, and the shapes the compiled backend will not lower must stay honest refusals —
 // a named, non-zero failure, never a substitute value. That second half matters because the
 // compiled answer to a missing attribute used to be `0`, which is the difference between a gap
@@ -23,17 +23,17 @@ const (
 	btcWant = "attr ok\nvalue ok\nunpack ok\ncall ok\nlen ok\n"
 )
 
-func TestInterpreterHandlesEveryBuiltInTrapLikePython(t *testing.T) {
-	got := runInterp(t, btcSource)
+func TestCompiledHandlesEveryBuiltInTrapLikePython(t *testing.T) {
+	got := runCompiled(t, btcSource)
 	if got != btcWant {
-		t.Errorf("interpreted output =\n%q\nwant\n%q", got, btcWant)
+		t.Errorf("the record leg output =\n%q\nwant\n%q", got, btcWant)
 	}
 	pyOut, pyErr, perr := lang.PythonRun(btcSource)
 	if perr != nil {
 		t.Skipf("no usable oracle: %v\n%s", perr, pyErr)
 	}
 	if pyOut != btcWant {
-		t.Errorf("CPython output =\n%q\nwant\n%q (the interpreter must not diverge on its own handlers)", pyOut, btcWant)
+		t.Errorf("CPython output =\n%q\nwant\n%q (the compiled backend must not diverge on its own handlers)", pyOut, btcWant)
 	}
 	if pyOut != got {
 		t.Errorf("interpreter and CPython disagree:\n%q\n%q", got, pyOut)
@@ -93,7 +93,7 @@ func TestCompiledBackendRefusesOrTrapsEveryBuiltInTrap(t *testing.T) {
 
 // The Gap R.19 divergence, pinned rather than hidden: the compiled backend has no missing-attribute
 // trap yet, so the handler does not run and `print` receives a value. If that ever starts agreeing
-// with the interpreter this test stops being a warning and should be deleted along with the gap.
+// with the record this test stops being a warning and should be deleted along with the gap.
 func TestCompiledMissingAttributeIsStillAGap(t *testing.T) {
 	src := "class P:\n    pass\n\np = P()\ntry:\n    print(p.nope)\nexcept AttributeError:\n    print(\"caught\")\n"
 	got, err := runAOTWithTimeout(t, src, 120*time.Second)

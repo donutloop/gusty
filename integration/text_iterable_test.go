@@ -15,9 +15,9 @@ func cliIterOut(t *testing.T, backend, src string) (string, int) {
 	return cliRunMerged(t, backend, "--file", f)
 }
 
-// The interpreter must answer these the way the reference does — they are exit-0 wrong numbers, not
+// the record must answer these the way the reference does — they are exit-0 wrong numbers, not
 // refusals, which is the class an agent cannot distinguish from success.
-func TestCLIInterpreterIteratesATextLikeTheReference(t *testing.T) {
+func TestCLIIteratesATextLikeTheReference(t *testing.T) {
 	for _, src := range []string{
 		`print([c for c in "abc"])`,
 		`print([c for c in "abc" if c != "b"])`,
@@ -70,7 +70,7 @@ func TestCLICompiledLegNeverInventsATextIteration(t *testing.T) {
 		case code == 2:
 			t.Fatalf("--aot %q spent the contract's exit 2 (compiler bug):\n%s", src, out)
 		case code == 1:
-			t.Logf("--aot %q still refuses (exit 1): %s — the interpreter answers %q; promote this row "+
+			t.Logf("--aot %q still refuses (exit 1): %s — the record answers %q; promote this row "+
 				"into the table above when the road lifts", src, strings.TrimSpace(out), want)
 		case code != 0:
 			t.Fatalf("--aot %q: unexpected exit %d:\n%s", src, code, out)

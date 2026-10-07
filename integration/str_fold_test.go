@@ -9,14 +9,14 @@ import (
 
 // str()/print() of the values whose text does not depend on a bool tag (ADR 0183). The
 // expectation column is CPython's own output: `str(None)` is "None" and not "0", the
-// empty-set rule and float texts are the language's, not a backend's. Both backends must
+// empty-set rule and float texts are the language's, not a backend's. The compiled backend must
 // reproduce it, and a future `--aot` change that re-breaks one of these rows fails here
 // rather than in a user's terminal.
 //
 // Bools are deliberately absent: `print(True)` prints `1` on the compiled path because bools
 // are not values yet in either (roadmap L11.1), which is tracked as gated there rather
 // than half-fixed here.
-func TestStrFormsMatchCPythonOnBothBackends(t *testing.T) {
+func TestStrFormsMatchCPythonOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct {
 		src  string
 		want string

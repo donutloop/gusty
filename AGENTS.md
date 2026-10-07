@@ -2,14 +2,37 @@
 
 This is the root-level prompt for the coding agent building **Pyre** (or whatever name is chosen), a Python-like programming language — familiar indentation-based syntax and dynamic-feeling ergonomics, compiled ahead-of-time through LLVM. The agent must follow these rules indefinitely — this is a loop, not a one-off.
 
-## Two execution paths — both are first-class
+## One execution backend — and the two legs that witness it
 
-The language has **two supported execution backends**, and they must stay in sync:
+The language has **one supported execution backend**. The AST interpreter that used to be the second
+was retired by ADR 0302, and the retired engine took with it every entry point it owned — the retired
+`pkg/lang/jit.go`, the retired `EvalExpr`, the retired `EvalProgram`, the retired `InterpreterRun`, and
+the retired `--interp` flag, which is a usage error rather than a silent no-op:
 
-- **Interpreter** (`pkg/lang/jit.go`, entry `EvalExpr`) — the REPL / `--eval` / `--verify` path. Fast feedback, rich diagnostics, and the place where the full language surface (closures, decorators, classes, generators/`yield`, exceptions, comprehensions) is implemented and tested first.
-- **LLVM AOT codegen** (`pkg/lang/codegen.go` + `pkg/lang/closure.go`, entry `Compile`) — the `--file` / `--emit-llvm` / link-and-run path. Textual IR verified by `llc`/`llvm-as`.
+- **LLVM AOT codegen** (`pkg/lang/codegen.go` + `pkg/lang/closure.go`, entry `Compile`) — every path
+  that runs a program: `--eval`, `--file`, `--repl`, `--emit-llvm`, `--verify`, `--build`. The REPL and
+  `--eval` compile too, in-process, through the LLVM JIT (`pkg/lang/jit_llvm.go`, entry `JIT`); the
+  link-and-run path goes through `cc`. Textual IR, verified by `llc`/`llvm-as`/`opt -passes=verify`.
 
-Every feature must ship in **both** paths unless an ADR explicitly documents the interpreter-only or codegen-only limitation (e.g. arbitrary decorators and nested closures are currently interpreter-only AOT limits). When a feature is added, implement it in the interpreter first (fast, testable), then mirror it in the LLVM codegen and verify the emitted module. Keep `docs/language.md` accurate about which path supports each construct.
+A feature therefore ships **once**, in that backend, and is judged on **two witness legs** — the two
+things a compiled answer can be measured against now that no second engine exists:
+
+- the **record leg** — `pkg/lang/testdata/interpreter-golden.json`, the answer the retired interpreter
+  gave for 5623 sources (value repr, type name, stdout, trap class and message, front-end refusal),
+  read by `pkg/lang/golden.go` (`evalGolden`, `runGoldenStdout`, `goldenRepr`). A *missing* record
+  fails the case, so coverage cannot be deleted by deleting a record. An answer that diverges from the
+  record skips, registers a divergence, and is held against `testdata/interpreter-golden-drift.json`
+  by the package's `TestMain` — failing on a NEW divergence and on one that silently disappeared.
+- the **reference leg** — CPython, through `gustyc --oracle` / the conformance matrix. Where the
+  compiled answer and CPython disagree, the row lives in `integration/testdata/cpython-debt.json`
+  with the reference's answer beside the compiled one and the `roadmap.md` row that owns the fix.
+
+Never describe the two legs as "engines", and never write a claim that a reader could only satisfy by
+running the record: the record is not runnable, and its answers survive only as records.
+The retired engine's record is evidence *about* the language, not the definition of it — where the
+record and CPython disagree, CPython wins and the record is the debt. Keep `docs/language.md` accurate
+about which construct the compiled backend answers, which it refuses in words, and which it still gets
+wrong.
 
 This compiler toolchain is built for BOTH humans and agentic workflows. The interface must reflect that duality at every layer: humans get a friendly CLI/REPL that feels like `python`/`ipython` (help, discoverable commands, readable diagnostics), while agents and scripts get structured, predictable, self-describing access (machine-readable JSON diagnostics, a JSON schema for AST/IR, stable CLI flags, self-describing commands, and deterministic exit codes). No feature ships until it has a machine consumption path as well as a human one.
 
@@ -43,13 +66,15 @@ Think like somebody writing a brand-new Python-like, LLVM-compiled language in 2
    - lexer/parser/AST for syntax, including indentation handling where relevant.
    - semantic analysis / gradual type inference for semantics (respect optional type annotations; fall back to dynamic dispatch where untyped).
    - runtime support if the feature needs it (new boxed value kind, dispatch method, GC/refcount interaction).
-   - interpreter support in `pkg/lang/jit.go` (the REPL/`--eval` path) — implement the feature here first when it touches runtime semantics.
-   - LLVM IR codegen (and any new optimization pass) for lowering, mirroring the interpreter behavior.
+   - LLVM IR codegen (and any new optimization pass) for lowering — the one place a program's behaviour
+     is decided. Where the shape already had an answer, it is the one in the record: check
+     `testdata/interpreter-golden.json` before inventing one, and where the reference disagrees with the
+     record, the reference is right and the disagreement is a ledger row plus a roadmap row.
    - `docs/help.go` (or equivalent) — one-line help per command/flag.
    - `verify/` — known-good verify case (source in, expected IR/output out).
    - docs — `docs/language.md`, `docs/operations.md`, `README.md`, `_001_session_learnings.md`, an ADR if needed.
 3. **Machine path** — if the feature is language/interface, make sure it is discoverable via schema/help and consumable as JSON where it makes sense (agents must not need to scrape prose or parse raw LLVM IR text blindly).
-4. Add tests for the feature before committing: unit tests for the compiler pass, and a codegen/integration test that compiles and runs (or JIT-executes) real source. When the feature is supported in both paths, cover **both** the interpreter (`jit_test.go`, `EvalExpr`) and the LLVM codegen (`integration/`, `Compile` + `llc`).
+4. Add tests for the feature before committing: unit tests for the compiler pass, and a codegen/integration test that compiles and runs (JIT-executes or links) real source. Every behavioural case covers both **legs**, never two engines: the record leg (`evalGolden`/`runGoldenStdout`/`goldenRepr` against `testdata/interpreter-golden.json`) and the reference leg (`integration/`, `Compile` + `llc`, or the CLI against CPython).
 5. Run tests before committing: full test suite must pass, and every emitted module must pass LLVM's module verifier.
 6. Commit with a clear message (`feat(codegen): ...`, `feat(parser): ...`).
 7. Always push your commits: `git push origin HEAD`.
@@ -101,4 +126,10 @@ Every feature or change ships with BOTH:
 - **Unit tests** (in the package/module under change — e.g. parser tests, type-checker tests, codegen tests), and
 - **Integration tests** (`tests/integration/`) that compile real source through the full pipeline (lex → parse → typecheck → codegen → optimize → JIT-execute or link-and-run) and check both the output and that the emitted LLVM module verifies cleanly.
 
-Always add both — never a feature without unit + integration coverage. For features present in both backends, add an interpreter integration/unit case (`EvalExpr`) and an LLVM codegen case (`Compile` → `llc`), and keep both green before commit.
+Always add both — never a feature without unit + integration coverage. Every behavioural case is judged
+on both witness legs, not on two engines: a case that asserts a value, a print or a trap also asks the
+record leg (`evalGolden`/`runGoldenStdout`) and the reference leg (the CLI or `Compile` → `llc` against
+CPython), and keeps all of them green before commit. There is no interpreter case to write: the engine
+is retired, its retired entry points (`EvalExpr` among them) are not callable, and the retired flag
+`--interp` is a usage error — a test that needs one is testing an engine that does not exist, and the
+witness-claim guard in `pkg/lang/witness_claim_test.go` fails it.

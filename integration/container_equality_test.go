@@ -14,7 +14,7 @@ import (
 // equal lists were unequal, and — worse in the other direction — a stored string is an index into
 // the interned table, so a container holding the number 0 and a container holding the first
 // interned string were *equal*. Both were answers, on the compiled path, for as long as the only
-// referee was the two backends agreeing with each other (roadmap L11.1, ADR 0189).
+// referee was the compiled backend agreeing with each other (roadmap L11.1, ADR 0189).
 
 func TestContainerEqualityMatchesCPython(t *testing.T) {
 	for _, tc := range []struct {

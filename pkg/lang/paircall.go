@@ -9,7 +9,7 @@ package lang
 // static number, ADR 0269 to the operators that choose an operand. What stayed outside was a call: the
 // parameter has one word, the argument has two, and the callee — where the arithmetic runs — cannot see
 // the caller's slot at all. `def twice(v): return v * 2` with `print(twice(xs[0][0]))` is CPython's
-// `14` and the interpreter's `14`; the compiled leg spent exit 1 on it naming `xs`'s slots, because the
+// `14` and the record's `14`; the compiled leg spent exit 1 on it naming `xs`'s slots, because the
 // argument went down the ordinary numeric road, which wants a payload alone (roadmap Gap R.139).
 //
 // Two words travel, one each way:

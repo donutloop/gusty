@@ -149,7 +149,7 @@ func TestCallsThatShouldAnswerStillAnswerAtTheCLI(t *testing.T) {
 				t.Fatalf("--aot: exit 2, the contract's compiler-bug code (ADR 0166):\n%s", ao)
 			}
 			if aoCode == 0 && ao != tc.want {
-				t.Fatalf("--aot printed %q where the reference and the interpreter print %q — a wrong number, not a refusal (Gap R.168)", ao, tc.want)
+				t.Fatalf("--aot printed %q where the reference and the record print %q — a wrong number, not a refusal (Gap R.168)", ao, tc.want)
 			}
 		})
 	}

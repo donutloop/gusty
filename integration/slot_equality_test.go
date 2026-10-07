@@ -18,7 +18,7 @@ import (
 // compared the words once the tags matched — two float slots holding 1.5 hold two different box
 // handles, and it called them unequal while the printer one line away called them 1.5.
 //
-// Every row below is checked against CPython first, on the compiled path: the interpreter answers these
+// Every row below is checked against CPython first, on the compiled path: the record answers these
 // today, so a compiled refusal is a divergence, not a limitation the program deserves.
 
 func TestSlotEqualityMatchesCPython(t *testing.T) {

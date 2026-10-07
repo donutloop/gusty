@@ -23,7 +23,7 @@ var exnClasses = []struct {
 	{"ZeroDivisionError", 7},
 	// A local read on a path that never assigned it. It needs its own code, not NameError's:
 	// the two say different things (the name is *in* this frame's scope and simply has no value
-	// yet), a program may catch one and not the other, and both backends must raise the class
+	// yet), a program may catch one and not the other, and the compiled backend must raise the class
 	// CPython does for `except UnboundLocalError:` to match on either of them (roadmap Gap R.36
 	// + R.39, ADR 0228; the same "a built-in trap is a typed raise" rule as ADR 0212).
 	{"UnboundLocalError", 8},

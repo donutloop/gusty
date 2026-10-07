@@ -12,7 +12,7 @@ import (
 //	case Point(a, b):      # the instance has x and y, not a and b
 //
 // The compiled arm matched. @heap's data words cannot tell an attribute that was never written from
-// a stored 0, so the arm bound `pt 0 0` while the interpreter and docs/language.md both say the
+// a stored 0, so the arm bound `pt 0 0` while the record and docs/language.md both say the
 // pattern fails and the next case is tried.
 //
 //	case Alias(x, y):      # Alias = Point, inside a function body
@@ -25,7 +25,7 @@ import (
 //	case f():              # a call compared to the subject
 //
 // Same branch, same discarded error: `%_f.ld1 = load i32, i32* %_f` for a variable that does not
-// exist, because `f` is a function. The interpreter prints `call`.
+// exist, because `f` is a function. the record prints `call`.
 //
 // The two guards at the bottom of this file are the ones that matter most: they are regexes over a
 // set of programs, because three strings written by the person who fixed the three known shapes
@@ -161,7 +161,7 @@ func TestMatchPatternOperandsAreNeverFoldedToAnInteger(t *testing.T) {
 }
 
 func TestMissingAttributeFailsTheClassPattern(t *testing.T) {
-	// The interpreter's half of the parity the compiled half now keeps: the arm is not taken, and
+	// The record's half of the parity the compiled half now keeps: the arm is not taken, and
 	// the capture variables are never bound.
 	src := classPointSrc + "p = Point(2, 3)\nmatch p:\n    case Point(a, b):\n        99\n    case _:\n        7\n"
 	if v := evalStr(t, src); v != 7 {

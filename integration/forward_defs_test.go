@@ -22,7 +22,7 @@ func mustParseForCheck(t *testing.T, src string) *lang.Program {
 // whose functions call each other, or call helpers declared below them, is refused by no
 // part of the toolchain and runs the same way on the compiled path.
 //
-// Before the fix the interpreter ran it and the checker refused it: `undefined name
+// Before the fix the record ran it and the checker refused it: `undefined name
 // "is_odd"`, which — because the compiled path refuses to emit IR for a program the front
 // end rejected — meant the canonical Python shape could not be compiled at all.
 func TestForwardReferencedProgramCompilesAndRuns(t *testing.T) {
@@ -72,7 +72,7 @@ print(1 if is_odd(3) else 0)
 
 	// The interpreted leg of the same program: the fix is in the shared front end, so
 	// the path that always ran this must keep running it identically.
-	interp := strings.TrimSpace(runInterp(t, `def is_even(n):
+	recordOut := strings.TrimSpace(runCompiled(t, `def is_even(n):
     if n == 0:
         return True
     return is_odd(n - 1)
@@ -85,8 +85,8 @@ def is_odd(n):
 print(1 if is_even(4) else 0)
 print(1 if is_odd(3) else 0)
 `))
-	if interp != "1\n1" {
-		t.Errorf("interpreted output = %q, want %q", interp, "1\n1")
+	if recordOut != "1\n1" {
+		t.Errorf("the record leg output = %q, want %q", recordOut, "1\n1")
 	}
 }
 

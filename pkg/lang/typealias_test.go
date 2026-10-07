@@ -43,9 +43,9 @@ func TestTypeAliasParsesAndResolvesStructurally(t *testing.T) {
 	}
 }
 
-// TestTypeAliasInterpNoOp verifies the interpreter treats TypeAliasStmt as a
+// TestTypeAliasIsANoOpInTheCompiledModule verifies the record treats TypeAliasStmt as a
 // compile-time no-op and that a function using an alias runs without error.
-func TestTypeAliasInterpNoOp(t *testing.T) {
+func TestTypeAliasIsANoOpInTheCompiledModule(t *testing.T) {
 	src := "type Count = int\ndef twice(c: Count):\n    return c * 2\nprint(twice(21))\n"
 	if _, diags, err := evalGolden(t, src); err != nil {
 		t.Fatalf("eval: %v (diags=%v)", err, diags)

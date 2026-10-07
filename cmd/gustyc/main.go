@@ -10,7 +10,7 @@
 //	--target <triple>   target triple for codegen (informational)
 //	--opt-level <n>     optimization level (informational)
 //	--lang              list supported language features (self-describing)
-//	--oracle <src>      run interpreter + compiled backend + CPython and compare (exit 6 divergence, 7 no verdict)
+//	--oracle <src>      run the compiled backend and CPython and compare (exit 6 divergence, 7 no verdict)
 //	--variance          print the generic variance table as JSON (L6.6)
 //	--effects <src>     print each function's effect signature (awaits/yields/raises, return + termination shape) as JSON (L7.6)
 //	--version           print version
@@ -95,23 +95,23 @@ func run() int {
 	// a usage error (4), so the parse failure has to be handled here to say that
 	// (roadmap Gap J.3).
 	fs := flag.NewFlagSet("gustyc", flag.ContinueOnError)
-	benchSrc := fs.String("bench", "", "benchmark a source program through both backends (interpreter + AOT JIT)")
+	benchSrc := fs.String("bench", "", "benchmark a source program through the compiled backend (compile, link, run)")
 	benchFile := fs.String("bench-file", "", "benchmark a source file")
-	benchRuns := fs.Int("bench-runs", 3, "runs per backend for benchmarks")
+	benchRuns := fs.Int("bench-runs", 3, "runs per measurement for benchmarks")
 	benchOpt := fs.Int("bench-opt", 2, "AOT optimization level for benchmarks")
-	benchSuite := fs.Bool("bench-suite", false, "benchmark the built-in corpus (interpreter vs AOT)")
+	benchSuite := fs.Bool("bench-suite", false, "benchmark the built-in corpus through the compiled backend")
 	benchDir := fs.String("bench-dir", "", "benchmark every *.gy in a directory (e.g. integration/programs)")
 	benchBaseline := fs.String("bench-baseline", "", "path to a baseline JSON to gate against")
 	benchBaselineUpdate := fs.String("bench-baseline-update", "", "write the measured suite as a baseline JSON to this path")
 	benchTolerance := fs.Float64("bench-tolerance", lang.DefaultBenchTolerance, "slowdown multiplier above which a case is a regression")
 	benchMinMs := fs.Float64("bench-min-ms", lang.DefaultBenchMinMs, "ignore baseline times below this many ms (noise floor)")
-	benchGate := fs.String("bench-gate", lang.BenchGateAOT, "which leg the regression gate watches: aot, interpreter or both")
+	benchGate := fs.String("bench-gate", lang.BenchGateAOT, "which measurement the regression gate watches: aot is the only gate since the interpreter was retired (ADR 0302); any other name is a usage error")
 	evalSrc := fs.String("eval", "", "evaluate a source string")
 	file := fs.String("file", "", "read and evaluate a source file")
 	verify := fs.String("verify", "", "parse + analyze a source string")
 	check := fs.String("check", "", "type-check a source string without executing (mypy-style)")
 	effects := fs.String("effects", "", "print each function's effect signature (awaits / yields / raises, whether it returns a value, whether its control flow can fall off the end) for a source string; --json for the machine document, `gustyc effects <file>...` for files (L7.6)")
-	oracleSrc := fs.String("oracle", "", "run a source string through interpreter + compiled backend + CPython and report whether gusty behaves like Python (exit 6 divergence, 7 no verdict; --json: the leg-by-leg report)")
+	oracleSrc := fs.String("oracle", "", "run a source string through the compiled backend and CPython and report whether gusty behaves like Python (exit 6 divergence, 7 no verdict; --json: the leg-by-leg report)")
 	oracleFile := fs.String("oracle-file", "", "same as --oracle, for a source file")
 	emitLLVMF := fs.String("emit-llvm", "", "print LLVM IR for a source string")
 	emitSourceMapF := fs.String("emit-source-map", "", "print the source-map JSON for a source file (functions and, since version 2, the IR-line-to-source-line table)")
@@ -902,7 +902,7 @@ Verify IR: gustyc --verify-llvm <src> [--json]         # LLVM module-verifier ve
            gustyc --build out src.gy --no-verify        # skip verification (it runs by default in --build)
 Debug info: gustyc --debug-info <src> [--json]          # the compiled line table: functions, IR-line to source-line rows (L8.5)
             gustyc --build out src.gy --debug           # !dbg records + .debug_line, read back with llvm-dwarfdump and reported
-Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus on both backends
+Benchmarks: gustyc --bench-suite --bench-runs 5            # measure the corpus on the compiled backend
             gustyc --bench-dir integration/programs        # benchmark the parity programs too
             gustyc --bench-suite --bench-baseline-update benchmarks/baseline.json   # record a baseline
             gustyc --bench-suite --bench-baseline benchmarks/baseline.json          # gate (exit 5 = slower than baseline)
@@ -924,9 +924,9 @@ func listLang() {
 	fmt.Printf(`gusty language features (%s)
 statements: assign, print, if/elif/else, while, for-in-range, def/return, pass, match, try/except/finally, raise, class, import
 expressions: int, float, string, list, dict, binary ops (+ - * / %% == < <= > >= and or not), call, len, attribute, index, lambda, comprehension (list [x for x in it if c] / set {x for x in it if c} / dict {k: v for k in it if c})
-operators: every operator is a question about the operand's KIND, binary or unary. An operator with no rule for the pair raises CPython's own TypeError at run time — exit 3, catchable by except TypeError: — and never answers with a number. That includes unary -: -"hi", -None, -[1], -{"a":1}, -{1}, -C() each raise bad operand type for unary -: '<kind>' naming the operand's real kind (both backends; ADR 0266, docs/language.md § Unary minus), and abs(): abs("hi"), abs(None), abs([1]), abs({"a":1}), abs({1}), abs(C()) raise bad operand type for abs(): '<kind>' through the same door, so the two operators can never name the same operand differently (both backends; ADR 0271, docs/language.md § abs)
+operators: every operator is a question about the operand's KIND, binary or unary. An operator with no rule for the pair raises CPython's own TypeError at run time — exit 3, catchable by except TypeError: — and never answers with a number. That includes unary -: -"hi", -None, -[1], -{"a":1}, -{1}, -C() each raise bad operand type for unary -: '<kind>' naming the operand's real kind (the compiled backend; ADR 0266, docs/language.md § Unary minus), and abs(): abs("hi"), abs(None), abs([1]), abs({"a":1}), abs({1}), abs(C()) raise bad operand type for abs(): '<kind>' through the same door, so the two operators can never name the same operand differently (the compiled backend; ADR 0271, docs/language.md § abs)
 types: int, float, bool, str, list[T], dict[K, V], set[T], tuple[...], Sequence[T], Callable[[...], R], class, function, any
-patterns: match cases take a literal, _ (wildcard), a bare name (capture), an or-pattern (1 | 2), a guard (case n if n > 1), a sequence [a, b], a mapping {"k": v}, or a class pattern Point(x, y) — attributes bound by capture name, through an alias too (Alias = Point); a missing attribute fails the case (both backends; ADR 0235)
+patterns: match cases take a literal, _ (wildcard), a bare name (capture), an or-pattern (1 | 2), a guard (case n if n > 1), a sequence [a, b], a mapping {"k": v}, or a class pattern Point(x, y) — attributes bound by capture name, through an alias too (Alias = Point); a missing attribute fails the case (the compiled backend; ADR 0235)
 variance: list/set/dict invariant in T, Sequence/iter/tuple covariant, Callable parameters contravariant + return covariant, classes nominal (see gustyc --variance)
 effects: async def calls are deferred until awaited; the checker proves the discipline and --effects prints each function's signature (await, yield, raise / returns / falls-through) — see gustyc --effects
 values: %s
@@ -1125,8 +1125,9 @@ func runEffects(src string, files []string, jsonOut bool) int {
 	return exitOK
 }
 
-// benchMode runs a source program through both the AST interpreter and the
-// AOT JIT, reports wall-clock timings, and prints a human or JSON report.
+// benchMode runs a source program through the one execution backend the language has —
+// the LLVM AOT artifact, run in-process — reports wall-clock timings, and prints a human
+// or JSON report (ADR 0302: the interpreter leg and the speedup ratio it produced are gone).
 func benchMode(src, file string, runs, opt int, jsonOut bool) int {
 	src, err := srcOrFile(src, file)
 	if err != nil {
@@ -1169,11 +1170,20 @@ type benchSuiteReport struct {
 }
 
 // benchSuiteMode measures a corpus (built-in, or every *.gy in --bench-dir) on
-// both backends, optionally gates it against a baseline, and reports.
+// the compiled backend, optionally gates it against a baseline, and reports.
 //
 // Exit codes: 0 when clean, 5 (exitBenchRegression) when the gate fires, 1 on a
 // tooling error (bad baseline path, unreadable directory).
 func benchSuiteMode(useCorpus bool, dir, baselinePath, updatePath string, runs, opt int, tolerance, minMs float64, gate string, jsonOut bool) int {
+	// A gate name is an argument, and an unknown argument is a usage error (exit 4), not a silent
+	// no-op: ADR 0302 retired the engine whose gate this was, and a script still passing the retired
+	// name must find out at the flag rather than discovering later that its gate watched nothing
+	// (the same rule `--interp` follows, and the reason lang.CompareBenchSuite's permissive default
+	// is not enough on its own).
+	if gate != "" && gate != lang.BenchGateAOT {
+		fmt.Fprintf(os.Stderr, "gustyc: --bench-gate %q is not a gate: %q is the only measurement the regression gate watches, since ADR 0302 retired the engine the other gates compared\n", gate, lang.BenchGateAOT)
+		return exitUsage
+	}
 	cases := []lang.BenchCase{}
 	if useCorpus {
 		cases = append(cases, lang.BenchCorpus()...)

@@ -8,7 +8,7 @@ import (
 // slot_division_test.go — the true division of a slot **no literal describes**, at the CLI and against
 // CPython (roadmap L11.1's open clause Gap R.96; ADR 0253).
 //
-// The sibling unit file pins the same claim through Compile/EvalExpr; this one runs the shipped binary
+// The sibling unit file pins the same claim against the record; this one runs the shipped binary
 // on both legs and the oracle on the same source. The measured defect:
 //
 //	xs = []
@@ -21,7 +21,7 @@ import (
 // advance commitment, the result's kind, is settled, and the tag then says whether to unbox, to
 // convert, or to raise CPython's sentence with the slot's real kind in it.
 //
-// The rows are split the way the claim is: what answers must answer identically on three engines; what
+// The rows are split the way the claim is: what answers must answer identically on both legs; what
 // traps must be *raised* by both legs with the same class and sentence and must never be a refusal; and
 // what is still refused must be refused at the front end with exit 1 and the missing half named — never
 // exit 2, the contract's class for a compiler that broke its own module (ADR 0166).
@@ -254,7 +254,7 @@ func TestTrueDivisionOfAnUnliteralisedSlotRefusesHonestly(t *testing.T) {
 // *PHI node entries do not match predecessors* — because the element's own zero guard (ADR 0253) made the
 // block that branches back to the loop header something other than the block the induction `phi` named.
 // The increment now lives in a merge block of its own, so the entry list and the predecessors agree and
-// the program prints `[3.0]` on three engines.
+// the program prints `[3.0]` on both legs.
 func TestTrueDivisionOfAComprehensionLoopVariableMatchesCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"the_shape_the_gap_was_named_for", "xs = []\nxs.append(6)\nprint([v / 2 for v in xs])\n", "[3.0]\n"},

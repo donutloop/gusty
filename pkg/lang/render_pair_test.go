@@ -9,7 +9,7 @@ import (
 //
 // str() and repr() are one pair, which means one thing: for every way a value can be written,
 // the two halves agree with each other, with print, and with CPython. That is a claim about a
-// table, so it is tested as a table — one row per value form, driven through the interpreter and
+// table, so it is tested as a table — one row per value form, driven through the record and
 // through the compiled backend, each expected to write what CPython writes.
 //
 // The rows are CPython's answers, taken from python3 rather than from either backend: pinning the

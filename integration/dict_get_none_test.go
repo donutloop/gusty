@@ -1,7 +1,7 @@
 package integration
 
 // Gap R.174 / ADR 0291 at the CLI. `d.get(key)` with the key absent hands back None, and this front end
-// answered with the number 0 on the interpreter while the compiled leg refused the program outright
+// answered with the number 0 on the record while the compiled leg refused the program outright
 // (`get: key not found and no default`). Both are the bare-word zero: a void leaving a builtin was written
 // `return 0, nil`, the same representation Gap R.171 caught leaving a function body. The third defect lived
 // in the refusal — a name bound to a dict reached the string-method road and was told it was a

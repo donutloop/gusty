@@ -1,9 +1,9 @@
 package lang
 
 // math_names_test.go — `floor`, `ceil`, `sqrt`: the whole-number builtins answer whole numbers, on
-// both backends, in the word a whole number travels in (roadmap L11.6, Gap R.51; ADR 0264).
+// the compiled backend, in the word a whole number travels in (roadmap L11.6, Gap R.51; ADR 0264).
 //
-// The measured defect, three engines and three behaviours, with the checker in the middle calling
+// The measured defect, both legs and three behaviours, with the checker in the middle calling
 // all of them well-typed:
 //
 //	print(floor(3.7))   # math.floor 3 (an int) · --interp NameError, exit 3 · --aot 3.0
@@ -11,7 +11,7 @@ package lang
 //	print(sqrt(-1))     # ValueError: math domain error · --interp NameError · --aot nan
 //	print(floor("a"))   # TypeError: must be real number, not str            · --aot 0.0
 //
-// The interpreter had no such builtins at all — three names in `predeclared.go` that the evaluator
+// the record had no such builtins at all — three names in `predeclared.go` that the evaluator
 // trapped `NameError` for, which is a program the toolchain accepts and then refuses to run. The
 // compiled backend lowered all three on the float road: a float where the reference answers a whole
 // number, `0.0` for a text argument, `nan` for a domain the reference raises, and a compile-time
@@ -19,7 +19,7 @@ package lang
 // could see.
 //
 // Every row here is CPython's answer — the reference's `math.floor` / `math.ceil` / `math.sqrt` — on
-// both engines. The two shapes that cannot be, because the answer's word or the value's kind is a
+// both legs. The two shapes that cannot be, because the answer's word or the value's kind is a
 // fact only one backend has, are in the filed-not-fixed table with each engine's number beside them.
 
 import (
@@ -99,7 +99,7 @@ func TestTheWholeNumberBuiltinsAnswerWholeNumbers(t *testing.T) {
 }
 
 // TestTheDomainAndTheKindAreRaisesNotValues is the trap half. Each of these is a program the
-// reference runs and stops on, so both engines raise the reference's own sentence — catchably — and
+// reference runs and stops on, so both legs raise the reference's own sentence — catchably — and
 // none of them is a refusal to build the program (ADR 0166), a silent `0.0`, or a `nan` printed and
 // the program carried on.
 func TestTheDomainAndTheKindAreRaisesNotValues(t *testing.T) {
@@ -140,7 +140,7 @@ func TestTheDomainAndTheKindAreRaisesNotValues(t *testing.T) {
 			}
 		})
 	}
-	// A raise is a raise: the program can name it and take the branch, on both engines.
+	// A raise is a raise: the program can name it and take the branch, on both legs.
 	for _, tc := range []struct{ name, src, class, want string }{
 		{"the domain caught", "try:\n    print(sqrt(-4))\nexcept ValueError:\n    print(\"caught\")\n", "ValueError", "caught\n"},
 		{"the kind caught", "try:\n    print(floor(\"a\"))\nexcept TypeError:\n    print(\"caught\")\n", "TypeError", "caught\n"},
@@ -257,7 +257,7 @@ func TestTheWholeNumberRuleIsTheOnesTheReferenceUses(t *testing.T) {
 		}
 	}
 	// The two values with no whole number: the reference raises, in two different classes, and so do
-	// we — on both engines, which is the point of the guard the constant fold shares with the runtime.
+	// we — on both legs, which is the point of the guard the constant fold shares with the runtime.
 	for _, tc := range []struct {
 		name, class string
 		f           float64
@@ -308,7 +308,7 @@ func exnText(err error) string {
 // print something today and a refusal would retire them for a message.
 func TestTheWholeNumberBeyondTheWordIsFiledNotFixed(t *testing.T) {
 	for _, tc := range []struct {
-		name, src, interpWant, aotWant string
+		name, src, compiledWant, aotWant string
 	}{
 		{
 			"the whole number past the compiled int word raises rather than wraps (Gap R.133)",
@@ -332,8 +332,8 @@ func TestTheWholeNumberBeyondTheWordIsFiledNotFixed(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if out := captureStdout(t, tc.src); !strings.Contains(out, tc.interpWant) {
-				t.Errorf("interpreter: got %q, pinned at %q — the row's pin needs rewriting with the change that moves it", out, tc.interpWant)
+			if out := captureStdout(t, tc.src); !strings.Contains(out, tc.compiledWant) {
+				t.Errorf("the record leg: got %q, pinned at %q — the row's pin needs rewriting with the change that moves it", out, tc.compiledWant)
 			}
 			res, err := Compile(tc.src)
 			if err != nil {

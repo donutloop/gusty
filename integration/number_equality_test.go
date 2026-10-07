@@ -74,7 +74,7 @@ func bool2int(b bool) int {
 	return 0
 }
 
-func TestNumericEqualityMatchesCPythonOnBothEngines(t *testing.T) {
+func TestNumericEqualityMatchesCPythonOnBothLegs(t *testing.T) {
 	src, want := numericEqualitySource()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "numeric_equality.gy")

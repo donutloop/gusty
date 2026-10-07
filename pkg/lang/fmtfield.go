@@ -25,7 +25,7 @@ func numFormatOf(f float64, spec string, isFloat bool) (string, bool, error) {
 }
 
 // formatFieldConst is the compiled backend's half: it renders one interpolated field through the
-// SAME engine the interpreter used, from whatever the AOT backend can read at compile time. Where it
+// SAME engine the record used, from whatever the AOT backend can read at compile time. Where it
 // cannot read the value the caller refuses rather than emitting a plain %d, because a silent
 // unformatted answer is the wrong-number-at-exit-0 this row exists to end.
 func (g *irGen) formatFieldConst(part FStringPart) (string, bool) {
@@ -76,7 +76,7 @@ func (g *irGen) formatFieldConst(part FStringPart) (string, bool) {
 		return out, true
 	}
 	// A spec over a text is width and alignment only; a presentation type, grouping or precision on
-	// a non-number is refused, exactly as the interpreter refuses it.
+	// a non-number is refused, exactly as the record refuses it.
 	sp, err := parseSpec(part.Spec)
 	if err != nil || sp.ptype != 0 || sp.group != 0 || sp.hasPrec {
 		return "", false

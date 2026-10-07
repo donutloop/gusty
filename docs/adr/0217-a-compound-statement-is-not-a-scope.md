@@ -69,7 +69,7 @@ that is the accurate statement: the name exists and other paths bind it; this pa
 This is a real trade, said plainly rather than argued away. `--check` exits 0 on warnings and 1 only
 on errors, so the partial-capture program that used to fail a build now passes it with a diagnostic.
 What takes over from the build-time stop is the runtime: the interpreter raises `NameError`, matching
-CPython, and that is asserted in `TestUnboundAfterPartialMatchTrapsLikeCPythonInInterpreter`. The
+CPython, and that is asserted in `TestUnboundAfterPartialMatchTrapsLikeCPythonOnTheCompiledBackend`. The
 compiled leg does **not** yet trap there — it loads the untouched slot and prints its contents, which
 is roadmap Gap R.36 and the reason R.36 is the immediate next cycle rather than a backlog item: while
 it stands, the softened diagnostic is unbacked on one of the two paths.
@@ -100,7 +100,7 @@ types the analyser holds for the subject between arms.
 - **Report a partially-bound name as an error**, as the old code did. Rejected: it is the same
   over-strictness in a different costume, and it refuses programs that run — Python raises at
   runtime only when the unbound path is actually taken, which
-  `TestUnboundAfterPartialMatchTrapsOnBothBackends` pins on both engines.
+  `TestUnboundAfterPartialMatchTrapsOnTheCompiledBackend` pins on both engines.
 - **Analyse `finally` in a child scope so its assignments stay hidden.** Rejected: `finally` runs on
   every path, so it is the most definite block in the statement.
 - **Leave `while` in a child scope because loops "shouldn't leak".** Rejected: `for` already shares

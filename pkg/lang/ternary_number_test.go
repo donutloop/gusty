@@ -14,8 +14,8 @@ package lang
 // which instruction chooses it — are now answered once, in `ternaryKind`, and read by the renderer, the
 // return-word gate and both lowerings.
 //
-// Every row here is CPython's answer on both engines, or — for the shape whose arms disagree on a word
-// — a refusal in words on the compiled side with the interpreter still answering CPython. A row that
+// Every row here is CPython's answer on both legs, or — for the shape whose arms disagree on a word
+// — a refusal in words on the compiled side with the record still answering CPython. A row that
 // quietly asserted a truncated number would be the bug wearing a test.
 
 import (
@@ -24,7 +24,7 @@ import (
 )
 
 // TestATernaryAnswersInTheWordItsArmsAnswer is the parity table: every shape the rule can name, run
-// through the real compiler and the interpreter, against what CPython prints.
+// through the real compiler and the record, against what CPython prints.
 func TestATernaryAnswersInTheWordItsArmsAnswer(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		// ---- both arms are doubles: the instruction Gap R.102 was filed for.
@@ -158,7 +158,7 @@ func containsDoubleSelect(body string) bool {
 // double, the other is not, and which arm runs is a run-time fact. A `double` word would render the
 // other arm `1.0` where CPython writes `1`; an i32 truncates the double arm to its integer. Both are
 // number-shaped wrong answers, which ADR 0166 counts as our bug — so the program is refused in words,
-// with the interpreter still answering CPython and the tagged value word named as the owner.
+// with the record still answering CPython and the tagged value word named as the owner.
 func TestATernaryWhoseArmsDisagreeOnAWordIsRefused(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{
@@ -238,10 +238,10 @@ func TestATernaryWhoseArmsDisagreeOnAWordIsRefused(t *testing.T) {
 					t.Errorf("%s message %q does not quote the ternary it refuses", tc.name, err.Error())
 				}
 			}
-			// The interpreter answers every one of these the way CPython does, so the limit is the
+			// The record answers every one of these the way CPython does, so the limit is the
 			// compiled backend's own and the row says so.
 			if out := captureStdout(t, tc.src); out == "" {
-				t.Errorf("%s: the interpreter printed nothing either", tc.name)
+				t.Errorf("%s: the record leg printed nothing either", tc.name)
 			}
 		})
 	}

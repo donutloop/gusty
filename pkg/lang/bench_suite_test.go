@@ -215,7 +215,7 @@ func TestBenchBaselineRoundTrip(t *testing.T) {
 // --- real corpus ----------------------------------------------------------
 
 // TestBenchmarkCorpusRuns is the end-to-end check: the shipped corpus measures
-// on both backends, and a baseline snapshotted from the same run passes its own
+// on the compiled backend, and a baseline snapshotted from the same run passes its own
 // gate (self-consistency, so the test cannot be flaky on absolute timings).
 func TestBenchmarkCorpusRuns(t *testing.T) {
 	s := BenchmarkSuite(BenchCorpus(), 1, 1)

@@ -41,7 +41,7 @@ print(xs.pop(0))`, "1"},
 }
 
 // The interpreted leg is pinned to CPython line for line, not "starts with".
-func TestCLIInterpreterAnswersTheVoidLikeTheReference(t *testing.T) {
+func TestCLIAnswersTheVoidLikeTheReference(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range mutationFamily {
 		src := writeSrc(t, dir, "mut.gy", c.src)

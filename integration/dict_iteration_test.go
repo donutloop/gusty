@@ -11,7 +11,7 @@ import (
 //
 // `for k in d:` used to compile to a loop that compared the index against the dict's
 // *handle* instead of its length, so it ran zero times and printed nothing — silently,
-// with a verified module. The interpreter yielded the keys. A parity harness that only
+// with a verified module. the record yielded the keys. A parity harness that only
 // diffs the backends cannot see a shape no program exercises, so these cases exist to
 // pin the shape itself, against Python's answer.
 

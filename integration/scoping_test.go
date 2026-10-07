@@ -14,10 +14,10 @@ import (
 // belong to the enclosing function/module scope, because Python has one flat scope per def and
 // per module. The checker analysed try/handler/finally/while/match bodies in child scopes it then
 // discarded (and never walked `finally` at all), so `--check` said `undefined name` and the
-// compiled backend refused programs the interpreter ran and CPython agreed with. The fix is only
+// compiled backend refused programs the record ran and CPython agreed with. The fix is only
 // worth anything if the SAME programs now run identically on the compiled path and match CPython.
 
-func TestCompoundStatementBindingsRunOnBothBackends(t *testing.T) {
+func TestCompoundStatementBindingsRunOnTheCompiledBackend(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{
 			"try body, every path assigns",
@@ -57,7 +57,7 @@ func TestCompoundStatementBindingsRunOnBothBackends(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			iout := runInterp(t, tc.src)
+			iout := runCompiled(t, tc.src)
 			if iout != tc.want {
 				t.Fatalf("interpreter printed %q, want %q", iout, tc.want)
 			}
@@ -79,13 +79,13 @@ func TestCompoundStatementBindingsRunOnBothBackends(t *testing.T) {
 	}
 }
 
-func TestUnboundAfterPartialMatchTrapsLikeCPythonInInterpreter(t *testing.T) {
+func TestUnboundAfterPartialMatchTrapsLikeCPythonOnTheCompiledBackend(t *testing.T) {
 	// The other half of the visibility rule: making a name visible must not invent a value.
 	// Only `case y:` would bind it, the literal arm runs, and reading it afterwards is a
 	// NameError — the class CPython raises. Widening the checker's scope did not paper over a
 	// real bug, and that is the assertion that matters here.
 	//
-	// This leg goes through the real CLI: `runInterp` treats any eval error as a test failure,
+	// This leg goes through the real CLI: `runCompiled` treats any eval error as a test failure,
 	// and here the trap IS the expected outcome.
 	src := "z = 1\nmatch z:\n    case 1:\n        pass\n    case y:\n        pass\nprint(y)\n"
 	path := filepath.Join(t.TempDir(), "unbound_match.gy")
@@ -115,10 +115,10 @@ func TestUnboundAfterPartialMatchTrapsLikeCPythonInInterpreter(t *testing.T) {
 
 // TestUnboundAfterPartialMatchReadsGarbageInCompiled pins a KNOWN compiled-backend defect, roadmap
 // Gap R.36: a module-level slot whose only assignment never ran is loaded as-is and printed, so the
-// program reports a number the source never wrote instead of trapping. The interpreter leg above is
+// program reports a number the source never wrote instead of trapping. the record leg above is
 // correct; only this leg is wrong, which is why it is asserted rather than skipped.
 //
-// DELETE THIS TEST when Gap R.36 is fixed, and fold the program into the interpreter test above:
+// DELETE THIS TEST when Gap R.36 is fixed, and fold the program into the record test above:
 // once the compiled leg traps with NameError too, asserting the garbage would be asserting a bug
 // that no longer exists.
 func TestUnboundAfterPartialMatchReadsGarbageInCompiled(t *testing.T) {

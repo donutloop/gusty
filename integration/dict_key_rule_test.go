@@ -11,7 +11,7 @@ import (
 // behaviour — what a person gets from `gustyc --file`, what an agent gets from `--json` and
 // `--oracle`, and the ledger's claim that the two shapes ADR 0259 filed as debt are paid.
 
-// The expected answer is CPython's own, line for line — not the interpreter's, which is the engine that
+// The expected answer is CPython's own, line for line — not the record's, which is the engine that
 // had it wrong.
 const dictKeyRuleWant = "{'a': 2}\n{1: 'b'}\n{1: 2}\n{1.0: 'b'}\n{'a': 3, 'b': 2}\n2\n1\na\n{'a': 2} 1\n{1: 2}\n1\n"
 

@@ -8,7 +8,7 @@ package lang
 // one i32 with no kind beside it, and refused the slot it cannot see into — exit 1 on a program the
 // reference runs. This file pins four things, each a different way to be wrong:
 //
-//   - the bindings answer, on both engines, for every operator the door serves (`+`, `-`, `*`, the
+//   - the bindings answer, on both legs, for every operator the door serves (`+`, `-`, `*`, the
 //     negation) and for a slot the literal never described;
 //   - the module shape: the name's value slot and its companion tag slot are both written, and a
 //     program that never asks the question does not carry the door;
@@ -28,9 +28,9 @@ import (
 
 const builtList = "xs = []\nxs.append([7, 8])\n"
 
-// TestABoundArithmeticAnswerPrintsLikeTheReferenceOnBothBackends is the row itself: the expression
+// TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend is the row itself: the expression
 // ADR 0265 answers in a print argument is the same expression this statement binds to a name.
-func TestABoundArithmeticAnswerPrintsLikeTheReferenceOnBothBackends(t *testing.T) {
+func TestABoundArithmeticAnswerPrintsLikeTheReferenceOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own shape", builtList + "n = xs[0][0] * 2\nprint(n)\n", "14\n"},
 		{"addition", builtList + "n = xs[0][0] + 1\nprint(n)\n", "8\n"},

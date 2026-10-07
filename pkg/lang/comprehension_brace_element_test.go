@@ -17,7 +17,7 @@ import (
 //	`[{1, 2} for x in [1]]`            ListLit[Comp(set, [1,2])]   Comp(list)[SetLit{1,2}]
 //	`[{"k": x} for x in [1, 2]]`       ListLit[Comp(dict, …)]      Comp(list)[DictLit]
 //
-// and both backends answered the mis-parse, in agreement — `[{1,2} for x in [1]]` printed `{1}`
+// and the compiled backend answered the mis-parse, in agreement — `[{1,2} for x in [1]]` printed `{1}`
 // where CPython prints `{1, 2}`, and `[{"k": x} for x in [1,2]]` printed one dict holding both
 // entries, `{'k': 1, 'k': 2}`. Two engines agreeing on a wrong answer is the reason this row is
 // pinned by the AST shape as well as by the output (roadmap Gap R.74, ADR 0244).
@@ -193,7 +193,7 @@ func TestMisParsedShapeIsNotAcceptedAnymore(t *testing.T) {
 }
 
 // TestComprehensionOverAOneKindContainerTagsItsElement is ADR 0244's rule about the element, measured
-// on both engines: a comprehension that walks a container registers the list it builds with the kind
+// on both legs: a comprehension that walks a container registers the list it builds with the kind
 // its slots hold, so the container and one of its slots tell the same story.
 //
 // The row that motivated this is quieter than the exit-2 family and just as wrong: the element *is*
@@ -235,7 +235,7 @@ func TestComprehensionOverAOneKindContainerTagsItsElement(t *testing.T) {
 }
 
 // TestComprehensionOverAMixedContainerTagsItsLoopVariable is Gap R.76 paid rather than refused, on
-// both engines.
+// both legs.
 //
 // The comprehension's loop variable was a plain load while `for` over the same container bound the
 // (payload, tag) pair ADR 0185 put in `%_x` and `%_x_tag`. The compiled backend therefore printed

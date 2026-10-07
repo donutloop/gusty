@@ -57,7 +57,7 @@ func TestGCCorpusCollectsAndAgrees(t *testing.T) {
 			t.Errorf("%s: no recorded answer for this corpus program — the retired engine's answer is the expectation, so record it:\n%s", c.ID, src)
 			continue
 		}
-		want := runInterp(t, src) // the recorded answer, checked against the compiled run
+		want := runCompiled(t, src) // the recorded answer, checked against the compiled run
 		res, err := lang.JIT(src, 0)
 		if err != nil {
 			// A program the backend refuses is a ledger row elsewhere, not a GC finding.
@@ -180,7 +180,7 @@ func TestAOTCollectorReportsAndReclaims(t *testing.T) {
 	// each iteration's address differed, the entry never matched, and top reached 2002
 	// while the heap filled and the program died.
 	src := readProgramSrc("gc_precise")
-	want := runInterp(t, src) // the answer on record, from the engine that used to check this one
+	want := runCompiled(t, src) // the answer on record, from the engine that used to check this one
 	res, err := lang.JIT(src, 0)
 	if err != nil {
 		t.Fatalf("jit: %v", err)
@@ -207,7 +207,7 @@ func TestAOTCollectorReportsAndReclaims(t *testing.T) {
 	// slots last held would stay live forever. `live` at the end is therefore the
 	// frame-discipline assertion.
 	deep := "def deep(n):\n    keep = [n, n * 2]\n    junk = [n, n, n]\n    if n > 0:\n        deep(n - 1)\n    return keep[0] + junk[2]\n\nt = 0\nfor i in range(400):\n    t = t + deep(12)\nprint(t)\n"
-	wantDeep := runInterp(t, deep)
+	wantDeep := runCompiled(t, deep)
 	resDeep, err := lang.JIT(deep, 0)
 	if err != nil {
 		t.Fatalf("jit deep: %v", err)

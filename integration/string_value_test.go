@@ -10,7 +10,7 @@ import (
 // `i32` holding a string global's address — `icmp eq i32 @.str1, %t1`, `ret i32 @.str1` — and come
 // back as exit 2, "LLVM rejected what we emitted", for an ordinary program.
 
-func TestStringValuesMatchCPythonOnBothEngines(t *testing.T) {
+func TestStringValuesMatchCPythonOnBothLegs(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"compare_variable_and_literal", "x = \"hi\"\nprint(1 if x == \"hi\" else 0)\n", "1\n"},
 		{"compare_two_variables", "a = \"hi\"\nb = \"hi\"\nprint(1 if a == b else 0)\n", "1\n"},
@@ -74,18 +74,18 @@ func TestStringValuesMatchCPythonOnBothEngines(t *testing.T) {
 	}
 }
 
-// TestStringSubscriptPrintsTextInTheInterpreter: the row this cycle closed. Both backends used to
-// answer the byte code (98, 99) where CPython answers b and c; the interpreter is asserted here
+// TestStringSubscriptPrintsTextOnTheCompiledBackend: the row this cycle closed. Both backends used to
+// answer the byte code (98, 99) where CPython answers b and c; the record is asserted here
 // because the compiled leg is covered in string_subscript_test.go, and a two-engine table would have
 // let one leg drift unnoticed again (ADR 0225).
-func TestStringSubscriptPrintsTextInTheInterpreter(t *testing.T) {
+func TestStringSubscriptPrintsTextOnTheCompiledBackend(t *testing.T) {
 	path := writeSrc(t, t.TempDir(), "str_index.gy", "s = \"abc\"\nprint(s[1])\nprint(s[-1])\n")
 	out, code := cliRunCode(t, "--aot", path)
 	if code != 0 {
-		t.Fatalf("interp exited %d:\n%s", code, out)
+		t.Fatalf("the compiled run exited %d:\n%s", code, out)
 	}
 	if out != "b\nc\n" {
-		t.Fatalf("interp printed %q, want CPython's \"b\\nc\\n\" (the pinned byte-code divergence 98/99 is meant to be gone)", out)
+		t.Fatalf("the compiled run printed %q, want CPython's \"b\\nc\\n\" (the pinned byte-code divergence 98/99 is meant to be gone)", out)
 	}
 }
 

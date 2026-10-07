@@ -185,15 +185,15 @@ func checkWant(t *testing.T, name, got string) {
 	}
 }
 
-// checkBackendParityWant asserts the interpreter and the AOT pipeline agree on a
+// checkBackendParityWant asserts the record and the AOT pipeline agree on a
 // program (the parity contract) and then compares that shared output against the
 // golden expected/<name>. With -update the golden is rewritten from the AOT run
 // after the backends have been shown to agree, so a golden can never encode a
 // one-sided behaviour.
-func checkBackendParityWant(t *testing.T, interpOut, aotOut, name string) {
+func checkBackendParityWant(t *testing.T, compiledOut, aotOut, name string) {
 	t.Helper()
-	if interpOut != aotOut {
-		t.Errorf("backends disagree on %s:\n interpreter: %q\n AOT:       %q", name, interpOut, aotOut)
+	if compiledOut != aotOut {
+		t.Errorf("backends disagree on %s:\n interpreter: %q\n AOT:       %q", name, compiledOut, aotOut)
 		return
 	}
 	checkWant(t, name, aotOut)
@@ -328,7 +328,7 @@ func TestCLIBuildSingleFile(t *testing.T) {
 
 // TestCLIBuildFString verifies f-strings with runtime integer/float
 // interpolation compile ahead-of-time and print a single combined line,
-// matching the interpreter's one-string Repr.
+// matching the record's one-string Repr.
 func TestCLIBuildFString(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gustyc")

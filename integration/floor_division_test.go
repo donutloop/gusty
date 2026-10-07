@@ -9,7 +9,7 @@ import (
 	"github.com/donutloop/gusty/pkg/lang"
 )
 
-// Gap R.28 / Gap R.30 (ADR 0216) across all three engines. The unit grid asserts the interpreter
+// Gap R.28 / Gap R.30 (ADR 0216) across both legs. The unit grid asserts the record
 // against a Go computation; here the same program is run by CPython as well as by both of our
 // backends, because every one of these operators was "consistent between our two implementations"
 // while being wrong — and two integration tests had even pinned the truncated values as expected,
@@ -39,7 +39,7 @@ func floorGridSource(t *testing.T) string {
 	return body.String()
 }
 
-func TestFloorDivisionMatchesCPythonOnBothBackends(t *testing.T) {
+func TestFloorDivisionMatchesCPythonOnTheCompiledBackend(t *testing.T) {
 	src := floorGridSource(t)
 	oracle, oracleErr, perr := lang.PythonRun(src)
 	if perr != nil {
@@ -57,7 +57,7 @@ func TestFloorDivisionMatchesCPythonOnBothBackends(t *testing.T) {
 
 // The identity, on the compiled path: a truncating pair satisfies it only when both halves
 // truncate, so this is the assertion that would fail if a future change floored `%` and left `//`
-// truncating (the state the interpreter was in before Gap R.28).
+// truncating (the state the record was in before Gap R.28).
 func TestCompiledFloorIdentity(t *testing.T) {
 	src := ""
 	for _, a := range []int64{9, -9, 7, -7, 1, -1} {

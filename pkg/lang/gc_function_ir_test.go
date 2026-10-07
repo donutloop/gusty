@@ -9,7 +9,7 @@ import (
 
 // The compiled backend's collector, asked through the module it emits.
 //
-// These two cases came out of the AST interpreter's memory-model suite (deleted with that engine
+// These two cases came out of the AST record's memory-model suite (deleted with that engine
 // by ADR 0302) because they never tested the interpreter: they compile a program and run the IR,
 // which is the only way there is now to ask whether a function's locals are rooted and whether a
 // body with more allocations than the heap's capacity survives a collection.

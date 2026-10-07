@@ -78,7 +78,7 @@ var unwrittenShapes = []struct{ name, src, stdout, class string }{
 	},
 }
 
-// TestUnwrittenSlotMatchesCPython: each shape, three engines. CPython defines the expectation; the
+// TestUnwrittenSlotMatchesCPython: each shape, both legs. CPython defines the expectation; the
 // interpreter and the compiled binary must print the same stdout, raise the same class, and exit 3.
 func TestUnwrittenSlotMatchesCPython(t *testing.T) {
 	for _, tc := range unwrittenShapes {

@@ -61,11 +61,11 @@ func writeGapLedger(path string) {
 	}
 }
 
-// runInterp keeps the name the suite grew up with. It no longer runs the retired engine: it runs the
+// runCompiled keeps the name the suite grew up with. It no longer runs the retired engine: it runs the
 // compiled binary and checks its stdout against that engine's recorded answer, so the ~3,000 call
 // sites keep their meaning. A program the compiler refuses, or that traps where an answer is recorded,
 // fails here rather than returning an empty string.
-func runInterp(t *testing.T, src string) string {
+func runCompiled(t *testing.T, src string) string {
 	t.Helper()
 	return lang.RecordedStdout(t, src)
 }
@@ -109,7 +109,7 @@ func agreesWithRecord(t *testing.T, src string) {
 	t.Helper()
 	// The record is consulted first: if the compiled backend cannot reproduce it, that is the failure
 	// worth hearing about, and it arrives with the expected and actual answers side by side.
-	want := runInterp(t, src)
+	want := runCompiled(t, src)
 	got := runAOT(t, src)
 	if want != got {
 		t.Fatalf("the linked binary disagrees with the compiled run for:\n%s\n compiled run: %q\n linked binary: %q", src, want, got)
@@ -203,7 +203,7 @@ print("fstr", f"n={n}")
 }
 
 // TestWholeProgramStringIntrospection drives a whole program of string introspection
-// methods that fold in AOT and eval in the interpreter: len, count, find,
+// methods that fold in AOT and eval in the record: len, count, find,
 // rfind, startswith, endswith, isalpha/isdigit/islower/isupper/isalnum/isspace,
 // len(...split(...)) aggregates, and an f-string. Only integer/boolean-returning
 // methods are used (string-producing results are not supported as AOT prints).
@@ -337,7 +337,7 @@ print("done")
 
 // TestWholeProgramMathFloat drives a whole program of float arithmetic, floor/mod/
 // abs, unary minus, float comparisons, and int/float promotion. sum over float
-// lists is avoided: the interpreter's float sum is not reliable.
+// lists is avoided: the record's float sum is not reliable.
 func TestWholeProgramMathFloat(t *testing.T) {
 	agreesWithRecord(t, `
 a = 2.5
@@ -371,10 +371,10 @@ print("done")
 // aggregating method, a subclass overriding a method via super), recursion
 // (factorial), a generator consumed by a counting/summing loop, and an inline
 // comprehension read at a constant index. All fold/eval identically in AOT and
-// the interpreter.
+// the record.
 // TestWholeProgramConversionBuiltins checks that the AOT compiler emits real
 // conversions for float(), round(), and int() on both literals and general
-// (variable) arguments, matching the interpreter.
+// (variable) arguments, matching the record.
 func TestWholeProgramConversionBuiltins(t *testing.T) {
 	agreesWithRecord(t, `
 x = 7
@@ -535,10 +535,10 @@ print("done")
 `)
 }
 
-// TestWholeProgramObjTaggedDispatch proves the AOT runtime and the interpreter agree
+// TestWholeProgramObjTaggedDispatch proves the AOT runtime and the record agree
 // on the dynamic type model end-to-end: a polymorphic call on a runtime
 // receiver is dispatched through the %obj-tagged value representation in the
-// AOT backend and through the same canonical kind tags in the interpreter, so
+// AOT backend and through the same canonical kind tags in the record, so
 // both must produce identical stdout.
 func TestWholeProgramObjTaggedDispatch(t *testing.T) {
 	agreesWithRecord(t, `
@@ -601,7 +601,7 @@ print("done")
 }
 
 // TestWholeProgramDocstrings verifies that `def.__doc__` / `Cls.__doc__` folds to a
-// string constant identically in the interpreter and the AOT backend.
+// string constant identically in the record and the AOT backend.
 func TestWholeProgramDocstrings(t *testing.T) {
 	agreesWithRecord(t, `
 def greet():

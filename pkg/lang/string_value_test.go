@@ -70,7 +70,7 @@ func TestMethodStringResultIsKnownToItsCallers(t *testing.T) {
 		t.Fatalf("the method returned the literal's address instead of its interned index:\n%s", res.IR)
 	}
 	// Printing it must reach the text path, not printf's %d: that is what made `Dog().sound()`
-	// answer `0` -- the index -- where the interpreter and CPython answer `woof`.
+	// answer `0` -- the index -- where the record and CPython answer `woof`.
 	if !strings.Contains(res.IR, "rt_str_ptr") {
 		t.Fatalf("printing a method's string result did not go through the text lookup:\n%s", res.IR)
 	}
@@ -79,7 +79,7 @@ func TestMethodStringResultIsKnownToItsCallers(t *testing.T) {
 // A function whose answer is `str(…)` is a string-returning function too, and its callers must be told.
 // The callee already asked the statement-level rendering door and returned the interned index, so nothing
 // about the body was wrong: `print(g())` asked `printf` with `%d` and answered `0` — the index — where
-// CPython and the interpreter answer `42` (roadmap L11.2, Gap R.163, ADR 0281). It is
+// CPython and the record answer `42` (roadmap L11.2, Gap R.163, ADR 0281). It is
 // TestMethodStringResultIsKnownToItsCallers' rule, one door earlier: the same index, reached through a
 // builtin call instead of a literal.
 func TestStrResultOfAFuncIsKnownToItsCallers(t *testing.T) {

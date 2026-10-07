@@ -32,7 +32,7 @@ func TestPropSourceReproducible(t *testing.T) {
 }
 
 // TestPropSourceParses checks every generated source parses cleanly (so the
-// corpus is runnable through both backends). It deliberately does not assert
+// corpus is runnable through the compiled backend). It deliberately does not assert
 // formatter idempotence (Format(Parse(src)) == src) — the formatter has known
 // parenthesization quirks for unary-minus and tuple-assignment operands that
 // are out of scope for the parity property this package guards.
@@ -46,11 +46,11 @@ func TestPropSourceParses(t *testing.T) {
 	}
 }
 
-// TestPropInterpreterValid checks the generator emits only well-formed programs
+// TestPropGeneratedValid checks the generator emits only well-formed programs
 // the shared surface accepts: every generated program must run cleanly in the
 // interpreter (no undefined names, no runtime errors), so the parity test has
 // observable, comparable output.
-func TestPropInterpreterValid(t *testing.T) {
+func TestPropGeneratedValid(t *testing.T) {
 	g := DefaultPropGrammar()
 	for _, seed := range []int64{1, 42, 20260702, 12345, 54321, 999} {
 		srcs := PropSource(seed, 40, g)
@@ -62,9 +62,9 @@ func TestPropInterpreterValid(t *testing.T) {
 	}
 }
 
-// TestPropInterpreterDeterministic checks the interpreter determinism property:
+// TestPropGeneratedDeterministic checks the record determinism property:
 // running the same generated program twice must produce byte-identical stdout.
-func TestPropInterpreterDeterministic(t *testing.T) {
+func TestPropGeneratedDeterministic(t *testing.T) {
 	g := DefaultPropGrammar()
 	srcs := PropSource(20260702, 40, g)
 	for i, src := range srcs {

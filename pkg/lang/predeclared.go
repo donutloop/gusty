@@ -38,7 +38,7 @@ func isPredeclaredName(nm string) bool { return predeclaredNames[nm] }
 // predeclaredCallables returns the builtin call names as a fresh slice, sorted-free; the
 // checker predeclares each so a call to a real built-in is never reported as an undefined
 // name, and codegen consults the same table. One list, three consumers (checker, codegen
-// guard, LSP completion) — the drift where `sum` worked in both backends but was unknown to
+// guard, LSP completion) — the drift where `sum` worked in the compiled backend but was unknown to
 // the checker is what made `print(sum(xs))` fail to compile (roadmap Gap K.10).
 func predeclaredCallables() []string {
 	out := make([]string, 0, len(predeclaredNames))

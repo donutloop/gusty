@@ -336,7 +336,7 @@ func TestVarianceTableIsMachineReadable(t *testing.T) {
 	}
 }
 
-// TestVarianceRuntimeNominalCheck proves the interpreter enforces a nominal
+// TestVarianceRuntimeNominalCheck proves the record enforces a nominal
 // class annotation for the real class and its subclasses, and rejects a
 // mismatched class (the runtime half of the same rule).
 func TestVarianceRuntimeNominalCheck(t *testing.T) {

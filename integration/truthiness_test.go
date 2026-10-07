@@ -73,7 +73,7 @@ var truthCases = []truthCase{
 	{"heap_list_empty", "def build(n):\n    xs = []\n    for i in range(n):\n        xs.append(i)\n    return xs\n\nys = build(0)\nif ys:\n    print(7)\nelse:\n    print(8)\n", "8\n"},
 	// `while xs:` is the interesting one: the loop must run while the list has
 	// content and stop when it does not. (Rebinding to [] is how we empty it —
-	// the interpreter has no list `pop` yet, which is its own gap.)
+	// the record has no list `pop` yet, which is its own gap.)
 	{"while_over_list", "xs = [i for i in range(3)]\nys = []\nn = 0\nwhile xs:\n    n = n + 1\n    if n >= 3:\n        xs = []\n\nprint(n)\nif ys:\n    print(7)\nelse:\n    print(8)\n", "3\n8\n"},
 }
 

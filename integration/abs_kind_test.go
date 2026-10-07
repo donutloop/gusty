@@ -56,8 +56,8 @@ func absTraps() []struct{ name, src, kind string } {
 	}
 }
 
-// TestTheReferenceAndBothEnginesAnswerAbsWithTheNumber is the parity table for the shapes with an answer.
-func TestTheReferenceAndBothEnginesAnswerAbsWithTheNumber(t *testing.T) {
+// TestTheReferenceAndBothLegsAnswerAbsWithTheNumber is the parity table for the shapes with an answer.
+func TestTheReferenceAndBothLegsAnswerAbsWithTheNumber(t *testing.T) {
 	for _, tc := range absNumbers() {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -82,9 +82,9 @@ func TestTheReferenceAndBothEnginesAnswerAbsWithTheNumber(t *testing.T) {
 	}
 }
 
-// TestTheReferenceAndBothEnginesTrapAbsTheSameWay is the trap table: the reference's sentence, on both
+// TestTheReferenceAndBothLegsTrapAbsTheSameWay is the trap table: the reference's sentence, on both
 // engines, at the trap exit — never a printed operand, never the number zero, never the compiler's own exit.
-func TestTheReferenceAndBothEnginesTrapAbsTheSameWay(t *testing.T) {
+func TestTheReferenceAndBothLegsTrapAbsTheSameWay(t *testing.T) {
 	for _, tc := range absTraps() {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

@@ -11,14 +11,14 @@ package lang
 //	print(sqrt(-1))     # ValueError: math domain error · --interp NameError · --aot nan
 //	print(floor("a"))   # TypeError: must be real number, not str            · --aot 0.0
 //
-// The interpreter had no such builtins at all — it trapped `NameError` for names the checker
+// the record had no such builtins at all — it trapped `NameError` for names the checker
 // predeclares, which is a program the toolchain accepts and then refuses to run. The compiled
 // backend lowered all three on the float road and answered a float where Python answers a whole
 // number, silently turned a text argument into `0.0`, and answered `nan` for the domain error,
 // which is a value where the reference has a raise. `sqrt(-1)` was also a *compile-time refusal*
 // when the constant was visible, i.e. exit 1 for a program CPython runs.
 //
-// What the two backends share now is one rule per name, and the same four questions asked in the
+// What the compiled backend share now is one rule per name, and the same four questions asked in the
 // same order: arity, the argument's kind, the domain, and the word the answer travels in.
 //
 //	                         floor(x)          ceil(x)         sqrt(x)
@@ -34,7 +34,7 @@ package lang
 // that answers `3.0` prints a number the program does not have — the same defect family as ADR
 // 0236's `round`, which also answered the wrong kind before it answered the right rule.
 //
-// Beyond the int word's reach the two engines disagree, and the disagreement is a filed row rather
+// Beyond the int word's reach both legs disagree, and the disagreement is a filed row rather
 // than a silence: `floor(2147483648.0)` is 2147483648 in the evaluator (whose ints are int64) and
 // an `OverflowError` on the compiled side naming L12.12, whose bounded-`int` decision this is
 // (roadmap Gap R.133 — the compiled leg refuses to answer a wrong number, which `fptosi` of an

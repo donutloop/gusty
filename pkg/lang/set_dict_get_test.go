@@ -1,7 +1,7 @@
 // Set-literal deduplication and the kind a `dict.get` answers with (roadmap Gap R.180 and Gap
 // R.181, owner L11.1; ADR 0291's void arrangement, ADR 0257's verdict rule, ADR 0166's exit codes).
 //
-// Both rows are compiled-leg wrong numbers at exit 0 that the interpreter never had:
+// Both rows are compiled-leg wrong numbers at exit 0 that the record never had:
 //
 //	len({1, 2, 2, 3})            reference 3, --aot 4      the static global counted source elements
 //	{1: "a"}.get(1)              reference a, --aot 0      the interned index printed through %d
@@ -130,7 +130,7 @@ func TestDictGetKindIsAskedOfTheFoldOwnLookup(t *testing.T) {
 	}
 }
 
-// The verdict half lives in the shared pure predicate, so the interpreter and the compiler answer the
+// The verdict half lives in the shared pure predicate, so the record and the compiler answer the
 // same question and a REPL cannot echo True beside a binary echoing 1.
 func TestDictGetVerdictGoesThroughTheSharedPredicate(t *testing.T) {
 	src, err := exec.Command("python3", "-c", "print({1: True}.get(1))").Output()

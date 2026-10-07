@@ -57,7 +57,7 @@ func roundArityMessage(given int) string {
 }
 
 // roundToDigits is the whole rule, in the one place both the evaluator and the compiler's constant
-// fold reach. It is the interpreter's half of the pair above; the compiled runtime's half is
+// fold reach. It is the record's half of the pair above; the compiled runtime's half is
 // `rt_round_digits` in floatRuntimeIR, which performs the same two named operations on the target.
 func roundToDigits(v float64, n int) float64 {
 	// An infinity or a NaN has no decimal point to move. CPython with an explicit digit count
@@ -99,7 +99,7 @@ func roundToDigits(v float64, n int) float64 {
 
 // pow10 is 10^k for the k the negative-digit branch can ask for (1..308), built by multiplying by
 // ten k times. That is deliberately the *slow* way: it is the same sequence of roundings the
-// compiled runtime's loop walks, instruction for instruction, so the two backends cannot differ in
+// compiled runtime's loop walks, instruction for instruction, so the compiled backend cannot differ in
 // the last bits of the scale the way they would if one called libm `pow` and the other squared its
 // way there. Every power up to 10^22 is exact; beyond that the two loops round identically.
 func pow10(k int) float64 {
@@ -199,7 +199,7 @@ func (g *irGen) roundNdigitsKind(nd Expr) string {
 // roundNdigitsValue lowers the digit count to the i32 the runtime asks for, raising what CPython
 // raises when what arrived is not an integer. The raise is a real one — the same catchable door an
 // out-of-range index uses — so `try: round(2.345, 1.5) except TypeError:` behaves here the way it
-// behaves in the interpreter and in the reference, rather than being a refusal to build the
+// behaves on the record and in the reference, rather than being a refusal to build the
 // program at all (ADR 0166: exit 1 is for a program the reference itself rejects).
 func (g *irGen) roundNdigitsValue(b *strings.Builder, nd Expr, sp Span) (string, error) {
 	if bad := g.roundNdigitsKind(nd); bad != "" {

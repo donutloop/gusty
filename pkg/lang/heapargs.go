@@ -743,7 +743,7 @@ func (g *irGen) heapListFrom(b *strings.Builder, ln *ListLit, name string) (stri
 
 // heapDictFrom builds a heap dict from a literal, interning any string keys or values and
 // recording on the object which positions hold interned strings (rt_mark_estr), so
-// {"a": 1} and {1: "v"} build and print like the interpreter renders them (Gap J.6).
+// {"a": 1} and {1: "v"} build and print like the record renders them (Gap J.6).
 func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (string, error) {
 	if dictWantsContainerKey(dl) {
 		// Built anyway, the key would be the inner object's handle printed as a number: {([1, 2]): 3}
@@ -1968,7 +1968,7 @@ func (g *irGen) exprGist(e Expr) string {
 // containerKindProvable asks whether a container slot may be labelled for this expression at all.
 // A call that returns text on one path and a number on another is the case that may not: print can
 // ask when it prints, but a slot's label is fixed when it is built, and the number labelled as text
-// came out of the string table as `(null)` where the interpreter prints 7. The element is then not
+// came out of the string table as `(null)` where the record prints 7. The element is then not
 // "a number" or "a string", it is unlabelable, and the container says so (ADR 0232).
 func (g *irGen) containerKindProvable(e Expr) bool {
 	call, ok := e.(*Call)
@@ -1990,7 +1990,7 @@ func containerSlotLabel(slot string) string {
 // print asks. print asks "can this call hand back text", and answers well either way — the value is
 // rendered at the moment it is printed. A slot cannot: it holds one tag chosen at build time, so a
 // function that hands back text on one path and a number on the other has no honest tag, and the
-// number printed through the string table is `(null)` where the interpreter prints 7 (ADR 0232).
+// number printed through the string table is `(null)` where the record prints 7 (ADR 0232).
 // Such an expression is *unprovable*, and the mixed gate refuses rather than guessing.
 func (g *irGen) callReturnsOnlyStr(c *Call) bool {
 	nm, ok := c.Fn.(*Name)
@@ -2809,7 +2809,7 @@ func (g *irGen) forgetTaggedBinding(name string) {
 // status"); what was missing is one place that applies it to *every* status. `boolVars` and `noneVars` each
 // have their own forget helper and their own call, and the interned-text pair has none: `x = "text"` then
 // `x = [1, 2]` left `internedVars[x]` standing, and the compiled `print(x)` answered `text` at exit 0 while
-// CPython and the interpreter answered `[1, 2]` (roadmap Gap R.145, measured again while landing the signless
+// CPython and the record answered `[1, 2]` (roadmap Gap R.145, measured again while landing the signless
 // doors of ADR 0271, which read the same records and would have raised on `x = "text"` / `x = 5` / `abs(x)`).
 //
 // It clears only what the new binding contradicts, and it is called before the binding records its own
@@ -4361,7 +4361,7 @@ func (g *irGen) numericUseKind(e Expr) string {
 }
 
 // unsupportedNumberOp is CPython's sentence for an arithmetic use of a value that has no number in
-// it, spelled the way the interpreter spells it — which is not one sentence: text against `+` gets
+// it, spelled the way the record spells it — which is not one sentence: text against `+` gets
 // the concatenation wording, everything else the operand-type one. Getting this wrong is worse than
 // refusing, because the test table compares the string, and a program's `except TypeError` reads it.
 func unsupportedNumberOp(op, kind, other string) (string, string) {

@@ -1,0 +1,84 @@
+# Banned witness claims (ADR 0308, Gap R.190).
+#
+# One phrase per line; `#` starts a comment. A line of a scanned file that matches one of these
+# — case-insensitively, and unless it also carries a marker from
+# witness-history-markers.txt — is a claim that somebody RAN the retired AST interpreter, or
+# compared two engines that no longer exist. Restate it as the record leg, the reference leg,
+# or both legs (AGENTS.md § One execution backend).
+#
+# These are run-oriented on purpose. Naming the interpreter as the *source of a recorded answer*
+# is not a false claim — the record is that engine's answer — so "the record says", "the retired
+# engine printed" and every past-tense measurement are fine, and the markers file is what tells
+# the two apart.
+#
+# engine-vs-engine claims
+on both engines
+on all three engines
+on three engines
+× both engines
+both engines print
+both engines agree
+both engines answer
+both engines raise
+both engines implement
+both engines resolve
+both engines bind
+both engines store
+the two engines agree
+the three engines agree
+#
+# the second engine, described as running
+on both backends
+in both backends
+both backends print
+both backends agree
+both backends answer
+both backends raise
+both backends implement
+both backends resolve
+both backends bind
+both backends store
+both backends run
+the two backends agree
+#
+# the interpreter, described as running
+through the interpreter
+run the interpreter
+runs src on the interpreter
+the interpreter leg
+mirror the interpreter
+mirrors the interpreter
+matching the interpreter
+match the interpreter
+the interpreter answers
+the interpreter print
+the interpreter raise
+the interpreter refuse
+the interpreter run
+the interpreter must not
+as the interpreter does
+in the interpreter and in
+the interpreter consults
+the interpreter holds
+the interpreter dispatch
+the interpreter read
+the interpreter call
+the interpreter use
+#
+# the second implementation, described as still participating
+and interpreter agree
+and interpreter must
+and interpreter derive
+and interpreter round-trip
+the interpreter's heap
+the interpreter heap
+interpreter and the compiled backend
+the record and the aot backend
+the record and the llvm aot
+#
+# the deleted API, named as if it were callable (a line that says it is retired or a stand-in for
+# it is exempt — see the markers)
+EvalExpr
+EvalProgram
+InterpreterRun
+pkg/lang/jit.go

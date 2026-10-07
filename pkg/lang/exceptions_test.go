@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// One table, three users (ADR 0169): the interpreter's isExnClass, the codegen's
+// One table, three users (ADR 0169): the record's isExnClass, the codegen's
 // exnCode, and the checker's name set all come from pkg/lang/exceptions.go. These
 // tests pin that they cannot drift apart.
 
@@ -51,7 +51,7 @@ func diagHas(diags []Diagnostic, sub string) bool {
 }
 
 // TestBuiltinExceptionClassesResolveInChecker: the checker's `exceptions` map was
-// declared and never populated, so the interpreter's most ordinary raise was an AOT
+// declared and never populated, so the record's most ordinary raise was an AOT
 // compile error (`undefined name "ValueError"`).
 func TestBuiltinExceptionClassesResolveInChecker(t *testing.T) {
 	for _, c := range exnClasses {
@@ -70,7 +70,7 @@ func TestBuiltinExceptionClassesResolveInChecker(t *testing.T) {
 	}
 }
 
-// evalCapture runs src on the interpreter, returning what it printed and the error
+// evalCapture runs src on the record, returning what it printed and the error
 // (without failing the test on the error, so error shapes can be asserted).
 // evalCapture runs src and returns what the program printed plus the failure it produced, without
 // failing the case on the failure — so a case can assert on the shape of a trap. The program is the
@@ -82,7 +82,7 @@ func evalCapture(t *testing.T, src string) (string, error) {
 }
 
 // TestRuntimeIndexErrorsAreTypedAndCatchable: an operation that fails must raise a typed
-// exception, so `except IndexError:` runs on the interpreter as it does in compiled code.
+// exception, so `except IndexError:` runs on the record as it does in compiled code.
 // Runtime errors used to abort instead — while the AOT caught them, i.e. the fast
 // backend was more correct than the reference one.
 func TestRuntimeIndexErrorsAreTypedAndCatchable(t *testing.T) {
@@ -158,7 +158,8 @@ func TestTracebackNamesTheClass(t *testing.T) {
 	if ee.ExnType != "ValueError" || ee.ExnMsg != "boom" {
 		t.Fatalf("typed exception = %+v, want ValueError/boom", ee)
 	}
-	// Rendered with a frame present (EvalProgram fills Traceback in; the CLI prints it).
+	// Rendered with a frame present (the retired engine's entry point filled Traceback in, and the
+	// compiled run fills it in the same way; the CLI prints it).
 	tb := (&TrapError{Msg: ee.Msg, ExnType: ee.ExnType, ExnMsg: ee.ExnMsg,
 		Traceback: []Frame{{Name: "<module>", Line: 1, Col: 1}}}).RenderTraceback()
 	if !strings.Contains(tb, "ValueError: boom") {
@@ -256,7 +257,7 @@ func TestDictMembershipScansEveryKey(t *testing.T) {
 
 // TestRaiseStatementCarriesItsLine: the parser used to build RaiseStmt without a span, so
 // every traceback said `File "prog", line 0` — a report that answers "where" with nothing,
-// on both backends.
+// on the compiled backend.
 func TestRaiseStatementCarriesItsLine(t *testing.T) {
 	prog, err := Parse("print(1)\nraise ValueError(\"x\")\n")
 	if err != nil {

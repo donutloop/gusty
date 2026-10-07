@@ -71,7 +71,7 @@ func compileOptRun(t *testing.T, src string, level int) string {
 
 // TestRealOptPipelineGC is the critical GC-correctness invariant for Gap H: heap roots survive the
 // real `opt` pipeline. The answer the program prints at -O0 is already checked against the record by
-// runInterp, so comparing the -O2 artifact against it asks a real question — did LLVM's optimiser
+// runCompiled, so comparing the -O2 artifact against it asks a real question — did LLVM's optimiser
 // delete a root that keeps a growing list alive — rather than comparing an artifact with itself.
 func TestRealOptPipelineGC(t *testing.T) {
 	haveOptTools(t)
@@ -82,7 +82,7 @@ for i in range(20):
     s = s + lst[0]
 print(len(lst))
 print(s)`
-	want := runInterp(t, src)
+	want := runCompiled(t, src)
 	got := compileOptRun(t, src, 2)
 	if strings.TrimSpace(want) != strings.TrimSpace(got) {
 		t.Fatalf("the -O2 artifact answers differently from the recorded one\nunoptimised: %q\n-O2:         %q", want, got)
@@ -99,7 +99,7 @@ func TestRealOptPipelineHotLoop(t *testing.T) {
 for i in range(1000):
     s = s + i
 print(s)`
-	want := runInterp(t, src)
+	want := runCompiled(t, src)
 	got := compileOptRun(t, src, 2)
 	if strings.TrimSpace(want) != strings.TrimSpace(got) {
 		t.Fatalf("the optimiser changed the hot loop's answer\nunoptimised: %q\n-O2:         %q", want, got)

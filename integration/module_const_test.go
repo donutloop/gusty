@@ -50,7 +50,7 @@ NAME = "red"
 N = 7
 `
 
-func TestADataImportConstantAnswersLikeTheReferenceOnBothEngines(t *testing.T) {
+func TestADataImportConstantAnswersLikeTheReferenceOnBothLegs(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"the census row", "import consts\nprint(consts.PI)\n", "3.141592653589793\n"},
 		{"the second constant", "import consts\nprint(consts.E)\n", "2.718281828459045\n"},

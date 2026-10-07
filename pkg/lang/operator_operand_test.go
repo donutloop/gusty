@@ -6,7 +6,7 @@ import (
 )
 
 // Gap R.26 / ADR 0215: an operator applied to operands it cannot apply used to answer a number.
-// The interpreter consulted no operand kind at all, so a heap handle that reached an arithmetic
+// the record consulted no operand kind at all, so a heap handle that reached an arithmetic
 // path was added or multiplied as an integer — `print("a" * "b")` printed 1099516870662 and exited
 // 0, `print(1 + None)` printed a heap id. Every row below was measured against CPython's own
 // output before it was written; the message is asserted exactly, because the wording is what a

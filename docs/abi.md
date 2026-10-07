@@ -19,7 +19,8 @@ only for incompatible layout changes; tag words never change.
 
 ## Stable struct layouts
 
-The tagged-value ABI struct mirrors the interpreter `%obj` value:
+The tagged-value ABI struct mirrors the **compiled runtime's** `%obj` value (the retired AST
+interpreter held the same shape, which is how the layout was cross-checked while two engines existed):
 
 ```llvm
 %gusty_value = type {i32, i32}

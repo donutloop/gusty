@@ -64,7 +64,7 @@ func TestCLIOracleReportsBothLegs(t *testing.T) {
 }
 
 func TestCLIOracleExitCodeIsTheDivergence(t *testing.T) {
-	// A bool handed to a function prints 1 on both backends and True in CPython (roadmap Gap
+	// A bool handed to a function prints 1 on the compiled backend and True in CPython (roadmap Gap
 	// R.112): the program is valid, it ran, and the answer is wrong. That class is exit 6 — not a
 	// compile error (1) and not a crash (3). This fixture used to be `print([True, 1])`, which stopped
 	// being a divergence when ADR 0259 gave a container slot its bool tag; the debt had to move to a

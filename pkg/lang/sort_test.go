@@ -148,10 +148,10 @@ func TestSortRejectsKeyAndReverseArgs(t *testing.T) {
 	}
 }
 
-// TestSortingBehaviourInterpreted is the behavioural half in the interpreter: the method mutates
+// TestSortingBehaviourOnTheCompiledBackend is the behavioural half in the record: the method mutates
 // and the builtin does not, which is the property a program can see. (print(xs.sort()) rendering
 // as None is the bool/None repr debt pinned by probe_bool_value, so these check the list.)
-func TestSortingBehaviourInterpreted(t *testing.T) {
+func TestSortingBehaviourOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"xs = [3, 1, 2]\nxs.sort()\nprint(xs)\n", "[1, 2, 3]\n"},
 		{"xs = [1, 2, 3]\nxs.reverse()\nprint(xs)\n", "[3, 2, 1]\n"},

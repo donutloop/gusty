@@ -10,7 +10,7 @@ import (
 // min_max_values_test.go — `min` and `max` at the CLI, on the compiled path, against CPython
 // (roadmap Gap R.104 / Gap R.73; ADR 0256).
 //
-// The sibling unit file pins the same claim through Compile/EvalExpr; this one runs the shipped binary.
+// The sibling unit file pins the same claim against the record; this one runs the shipped binary.
 // The measured defects, all four from one CLI sweep:
 //
 //	print(min(1.0, 2), max(1, 2.5))   # CPython 1.0 2.5 · --aot refused the two arguments (Gap R.104)
@@ -26,7 +26,7 @@ import (
 // Rows are split the way the claim is: answers that must match the oracle on all three legs; traps that
 // must be *raised* with the operator and the two kinds, in the order the fold met them; what is still
 // refused, refused at the front end with the missing half named — never exit 2, the compiler's own class
-// (ADR 0166); and the gusty-only scalar form pinned with the two engines against each other.
+// (ADR 0166); and the gusty-only scalar form pinned with both legs against each other.
 
 func TestMinMaxAtTheCLIMatchCPython(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -144,7 +144,7 @@ func TestMinMaxTrapsAreCatchableAtTheCLI(t *testing.T) {
 
 // TestMinMaxScalarCandidatesAreAGustyExtension pins the one place this builtin is deliberately wider than
 // CPython: **one candidate that is not a container** is a one-element collection, so `min(7)` is `7`. The
-// oracle rejects the shape, so the row is the two engines against each other — the convention ADR 0246
+// oracle rejects the shape, so the row is both legs against each other — the convention ADR 0246
 // set for the set-subscript extension — and both must agree.
 func TestMinMaxScalarCandidatesAreAGustyExtension(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
@@ -229,12 +229,12 @@ func TestMinMaxDivergencesPinned(t *testing.T) {
 }
 
 // TestMinMaxShapesStillRefuseHonestlyAtTheCLI is this cycle's honesty table: the **compiled** half refuses
-// where the interpreter answers, and says which half is missing. A container the program built is a heap
+// where the record answers, and says which half is missing. A container the program built is a heap
 // address the compiler cannot read, so its elements stay unknown; candidates whose kinds straddle `int`
 // and `double` only at run time need the *winner's* kind to travel, which is L11.1's tagged value word
 // (Gap R.109); and a container **among** the candidates is a value the compiled fold has no ordering for.
 // The zero-candidate and empty-container forms stay Gap R.37's. Every leg runs: exit 2 is the compiler's
-// own class and fails the row (ADR 0166), and the interpreter's answer is pinned so the divergence cannot
+// own class and fails the row (ADR 0166), and the record's answer is pinned so the divergence cannot
 // be silently "fixed" by moving the row into the parity table.
 func TestMinMaxShapesStillRefuseHonestlyAtTheCLI(t *testing.T) {
 	for _, tc := range []struct {

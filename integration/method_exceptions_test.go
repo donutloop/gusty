@@ -10,7 +10,7 @@ import (
 // program carried on printing), and a construct the compiler refuses inside a `def` was silently
 // dropped inside a method. The expectations below are what CPython prints for the same source.
 
-func TestMethodExceptionsMatchCPythonOnBothEngines(t *testing.T) {
+func TestMethodExceptionsMatchCPythonOnBothLegs(t *testing.T) {
 	cases := []struct {
 		name     string
 		src      string
@@ -73,7 +73,7 @@ func TestMethodExceptionsMatchCPythonOnBothEngines(t *testing.T) {
 }
 
 // TestRefusalInsideAMethodIsNotAToolchainRejection separates the two answers a method body can
-// get for a construct the compiler cannot lower. The interpreter traps at runtime the way Python
+// get for a construct the compiler cannot lower. the record traps at runtime the way Python
 // does (exit 3, our runtime-error class); the compiled backend refuses during codegen (exit 1, a
 // compile error) because a constant `[][0]` is folded before it can become a catchable trap --
 // that asymmetry is roadmap Gap R.37, asserted here rather than hidden. What must never happen is

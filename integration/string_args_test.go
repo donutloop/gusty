@@ -22,7 +22,7 @@ const stringArgProgram = `def greet(name):
 print(greet("ada"))
 `
 
-func TestStringArgumentRunsOnBothBackends(t *testing.T) {
+func TestStringArgumentRunsOnTheCompiledBackend(t *testing.T) {
 	want := "hello ada\n1\n"
 	lang.RecordedStdoutIs(t, stringArgProgram, want)
 	if got := compileAndRun(t, stringArgProgram); got != want {
@@ -69,9 +69,9 @@ var stringArgCases = []struct {
 
 func TestStringParameterProgramsMatchPython(t *testing.T) {
 	for _, tc := range stringArgCases {
-		gotInterp := runInterp(t, tc.src)
-		if gotInterp != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterp, tc.want)
+		gotCompiled := runCompiled(t, tc.src)
+		if gotCompiled != tc.want {
+			t.Errorf("%s: the record leg = %q, want %q", tc.name, gotCompiled, tc.want)
 		}
 		res, err := lang.Compile(tc.src)
 		if err != nil {

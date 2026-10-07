@@ -13,7 +13,7 @@ import (
 // only `Excepts[0]` and then cleared the exception flag, so: a matching arm in position two or
 // three never ran; a bare `except:` after a typed arm never ran; a nested try never reached
 // its outer arm; and an exception no arm matched was deleted — the program continued past the
-// try, printed nothing, and exited 0. Every case below was measured against the interpreter and
+// try, printed nothing, and exited 0. Every case below was measured against the record and
 // CPython first, and both were right, which is the shape of a bug that a two-engine parity check
 // cannot see.
 

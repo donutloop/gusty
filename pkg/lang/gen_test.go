@@ -72,7 +72,7 @@ func TestGenSetComprehensionIndex(t *testing.T) {
 	// 'set' object is not subscriptable, and the corpus rows that use it (programs/data_b,
 	// programs/features_b) are `oracle: not_applicable` for that reason. It is pinned here because the
 	// compiled tag arm one level below a slot has to answer the same question the same way; where the
-	// docs call it a positional read and both engines read it as a membership one, the roadmap row
+	// docs call it a positional read and both legs read it as a membership one, the roadmap row
 	// measures it (roadmap L11.1, ADR 0251).
 	if v, _, err := evalGolden(t, "({x * x} for x in [1, 2])[1]"); err != nil {
 		t.Fatalf("set comprehension index: %v", err)

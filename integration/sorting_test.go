@@ -8,7 +8,7 @@ import (
 )
 
 // TestSortingMatchesCPythonOnAllThreeLegs is the integration half of the sorting feature (roadmap
-// L11.7, ADR 0191): the interpreter, the compiled binary, and CPython must agree on the method that
+// L11.7, ADR 0191): the record, the compiled binary, and CPython must agree on the method that
 // mutates, the builtin that copies, and the comparator that orders interned strings by text. The
 // expectations below are CPython's, transcribed from running the same source — not from what gusty
 // printed, which is the mistake ADR 0186 exists to prevent.
@@ -76,7 +76,7 @@ func TestSortedResultBehavesLikeAListCompiled(t *testing.T) {
 	if res.Output != want {
 		t.Fatalf("compiled\n got %q\nwant %q", res.Output, want)
 	}
-	if got := runInterp(t, src); got != want {
+	if got := runCompiled(t, src); got != want {
 		t.Fatalf("interpreter\n got %q\nwant %q", got, want)
 	}
 	if py := pythonOutput(t, src); py != want {

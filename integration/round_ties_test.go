@@ -10,7 +10,7 @@ import (
 // TestRoundTiesToEvenOnAllThreeLegs is the integration half of Gap R.50 (ADR 0236).
 //
 // `round(2.5)` answered 3 on both gusty backends and 2 in CPython. That is the defect class a
-// two-backend matrix is blind to by construction: the interpreter used `math.Round` and the compiled
+// two-backend matrix is blind to by construction: the record used `math.Round` and the compiled
 // runtime used `llvm.round.f64`, two independent implementations of the same *wrong* rule, so parity
 // passed and said nothing. The only instrument that sees it is the oracle leg — hence expectations
 // here are CPython's, run rather than remembered, and the corpus program `programs/round_ties.gy`

@@ -10,7 +10,7 @@ package integration
 // carries the corpus file as `not_applicable` for exactly the spelling reason, and this file is where
 // the reference gets to vote.
 //
-// What was wrong before, measured on three engines:
+// What was wrong before, measured on both legs:
 //
 //	print(floor(3.7))   # math.floor 3 (an int) · --aot NameError, exit 3 · --aot 3.0
 //	print(ceil(-0.5))   # math.ceil  0 (an int)  · --aot NameError        · --aot -0.0
@@ -223,7 +223,7 @@ func TestWholeNumberBuiltinsCorpusRowMatchesTheTwin(t *testing.T) {
 	}
 }
 
-// TestTheWholeNumberBuiltinsBeyondTheCompiledIntWordAreFiledNotSilent is the one place the two engines
+// TestTheWholeNumberBuiltinsBeyondTheCompiledIntWordAreFiledNotSilent is the one place both legs
 // are allowed to disagree, so it is pinned from both sides rather than averaged (roadmap Gap R.133).
 // `fptosi` of a double outside the 32-bit word the compiled `int` occupies is not a wrong number, it is
 // poison; the guard asks first and raises a catchable OverflowError naming L12.12. The evaluator's ints

@@ -3,14 +3,14 @@ package lang
 // pkg/lang/pair_call_test.go — the (payload, tag) pair crosses a call, in both directions (roadmap
 // Gap R.139, ADR 0273).
 //
-// `def twice(v): return v * 2` with `print(twice(xs[0][0]))` is CPython's `14` and the interpreter's
+// `def twice(v): return v * 2` with `print(twice(xs[0][0]))` is CPython's `14` and the record's
 // `14`; the compiled leg refused it, because the parameter has one word and the argument has two — the
 // callee cannot see the caller's slot. The door is two words, one each way: the argument arrives as
 // payload + tag, and the answer's kind travels back in a word the callee stores beside its own return.
 //
 // Five tables, because the five claims fail differently:
 //
-//   - the answers, on both engines, for the shapes the scan accepts (an int slot, a float slot, a dict
+//   - the answers, on both legs, for the shapes the scan accepts (an int slot, a float slot, a dict
 //     slot by key, a bool slot, three levels, a keyword argument, a default, a pair-bound name);
 //   - the module shape: the `define` carries the tag word, the `call` passes it, the answer's word is
 //     stored on every return road — including the fall-off-the-end and unwinding ones, whose stale tag
@@ -33,9 +33,9 @@ import (
 
 const builtTwice = "def twice(v):\n    return v * 2\n\nxs = []\nxs.append([7, 8])\n"
 
-// TestASlotReadHandedToAFunctionAnswersOnBothBackends is the row itself: the expression the print door
+// TestASlotReadHandedToAFunctionAnswersOnTheCompiledBackend is the row itself: the expression the print door
 // answers (ADR 0265) is the same expression a call hands to a parameter.
-func TestASlotReadHandedToAFunctionAnswersOnBothBackends(t *testing.T) {
+func TestASlotReadHandedToAFunctionAnswersOnTheCompiledBackend(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"the row's own shape", builtTwice + "print(twice(xs[0][0]))\n", "14\n"},
 		{
@@ -351,7 +351,7 @@ func TestAPairParameterIsOnlyGivenWhereTheBodyCanReadItBack(t *testing.T) {
 		{"a text beside the parameter", "    return \"v\" + v\n", ""},
 		// "floor division" (`return v % 3`) left this table with ADR 0278: the flooring operators are now
 		// served over a pair, so the body can read a tagged parameter back and the program answers on both
-		// engines (`print(f(xs[0][0]))` is 1, pinned in TestTheFlooringOperatorsAnswerOverAPairOnBothBackends).
+		// engines (`print(f(xs[0][0]))` is 1, pinned in TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend).
 		// "the parameter handed to another function" left it with ADR 0277 (Gap R.161).
 		{"the parameter handed to a callee that takes a power", "    return other(v)\n", "    return w ** 2\n"},
 		{"the parameter handed to a callee that returns a text", "    return other(v)\n", "    return str(w)\n"},
@@ -420,7 +420,7 @@ func TestACalleeRaiseLeavesThroughTheEmittedDoor(t *testing.T) {
 // mismatched types at exit 2 — the contract's compiler-bug code, spent on a file layout.
 func TestThePairScanIsAskedOfTheProgramNotTheEmittingOrder(t *testing.T) {
 	// The call is written before the `def`. Whether a top-level program may do that at all is a
-	// name-binding question this row does not open (the interpreter answers CPython's `NameError`, and
+	// name-binding question this row does not open (the record answers CPython's `NameError`, and
 	// so does the reference); what the row owns is that the *scan*, which decides the arity, is asked of
 	// the AST and not of the emitting order — so the `define` and the `call` cannot disagree, which is
 	// the module-verifier failure ADR 0166 classes as a compiler bug.
@@ -575,7 +575,7 @@ func TestTheForwardedPairIsSettledWhicheverOrderTheDefsAreWritten(t *testing.T) 
 // or indexes with it — and the caller's mark has to go with it, because a tag word the callee never reads
 // leaves the pair to be half-read one frame down, which is the wrong number this file exists to remove.
 // It used to list a callee that floored its parameter as well: `//` and `%` became carriable with ADR 0278,
-// and that row moved to the parity side of this file (TestTheFlooringOperatorsAnswerOverAPairOnBothBackends).
+// and that row moved to the parity side of this file (TestTheFlooringOperatorsAnswerOverAPairOnTheCompiledBackend).
 func TestAForwardingCallerIsClosedByACalleeThatCannotCarryThePair(t *testing.T) {
 	for _, tc := range []struct{ name, otherBody string }{
 		{"the callee takes a power of it", "    return w ** 2\n"},

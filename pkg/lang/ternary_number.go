@@ -63,7 +63,7 @@ const (
 )
 
 // ternaryKind asks the arms what they are. It is the only place the language decides that a ternary is
-// or is not a float, and both backends' renderers and both lowerings read the same answer.
+// or is not a float, and the compiled backend' renderers and both lowerings read the same answer.
 func (g *irGen) ternaryKind(n *CondExpr) ternaryKind {
 	if taken, ok := constantTestArm(n); ok {
 		if g.isFloat(taken) {

@@ -11,9 +11,9 @@ import (
 // These are the small, total functions the constant folder and the IR emitter share: CPython's
 // text transforms, the slice/index arithmetic, the floor-division pair, the dunder names an
 // operator desugars to, and the generator question a function body answers. They used to live
-// beside the AST interpreter and be called from both paths, which meant "the two backends agree"
-// was a property of two call sites rather than of one definition (ADR 0302 retires the second
-// backend; the functions stay, because what they say is the language's answer, not one
+// beside the AST interpreter and be called from both paths, which meant "the two engines agree"
+// was a property of two call sites rather than of one definition (ADR 0302 retired the second
+// engine; the functions stay, because what they say is the language's answer, not one
 // backend's). Roadmap Gaps R.28/R.30 (the floor pair), R.183 (zfill) and L11.1 (element tags)
 // are each measured against this file being the only place the answer is written.
 
@@ -27,7 +27,7 @@ func reverseStr(s string) string {
 }
 
 // zfillTo pads a numeric-looking text with leading zeros to width, CPython's way: after any leading
-// sign, so "-42" at width 5 is "-0042" and not "00-42". Both engines had their own left-pad and agreed
+// sign, so "-42" at width 5 is "-0042" and not "00-42". Both legs had their own left-pad and agreed
 // with each other rather than with the reference (roadmap Gap R.183, ADR 0297).
 func zfillTo(s string, width int) string {
 	if len(s) >= width {
@@ -163,8 +163,8 @@ func normPosIndex(idx, length int64) int64 {
 // together. Go's `/` and `%` truncate toward zero, so mixed-sign operands break the
 // identity Python guarantees — a == (a // b) * b + (a % b) — which is why `-7 // 2` must
 // be -4 with `-7 % 2` equal to 1, not -3 with -1 (roadmap Gaps R.28, R.30: the compiled
-// backend had both halves wrong, the interpreter only the modulo half). One definition,
-// used by the interpreter, the codegen constant folder and, in IR form, the emitted
+// backend had both halves wrong, the record only the modulo half). One definition,
+// used by the record, the codegen constant folder and, in IR form, the emitted
 // sdiv/srem corrections, so no backend can drift toward C again.
 func floorDiv(a, b int64) int64 {
 	q := a / b

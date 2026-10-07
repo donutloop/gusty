@@ -14,7 +14,7 @@ package lang
 //     rejects).
 //   - The *refusals*: what the door still declines, named rather than crashed.
 //
-// The printed answers — the actual comparison against CPython, both engines — live in
+// The printed answers — the actual comparison against CPython, both legs — live in
 // integration/numeric_slot_arith_test.go, where the reference gets to vote.
 
 import (

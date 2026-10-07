@@ -15,7 +15,7 @@ package lang
 //	x = math.PI
 //	print(x > 3.14)       # CPython True · --interp True · --aot False
 //
-// The interpreter evaluated the module and read the value back, so it was right; the compiled backend
+// the record evaluated the module and read the value back, so it was right; the compiled backend
 // resolved the name to the folded `*FloatLit` only where it *writes* the value (`value()`), and every
 // predicate that decides *how* to write it — is this a double, does it have a sign, is it a verdict — saw an
 // `*Attr` it could not read and took the integer road. `math.PI` is 3.141592653589793; the module printed

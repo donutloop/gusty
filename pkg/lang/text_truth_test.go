@@ -3,7 +3,7 @@
 //
 //	print(not "x")          CPython False   --interp False   --aot True     # asI1 compared the intern slot to 0
 //	print("ab".zfill(5))    CPython 000ab   --interp 000ab   --aot 0        # print listed 3 of 14 text methods
-//	print("-42".zfill(5))   CPython -0042   BOTH engines 00-42              # parity agreed on the wrong answer
+//	print("-42".zfill(5))   CPython -0042   both legs 00-42              # parity agreed on the wrong answer
 package lang
 
 import (
@@ -97,7 +97,7 @@ func TestStringMethodsAnswerTextNotTheirIndex(t *testing.T) {
 	}
 }
 
-// zfill pads AFTER the sign — the row both engines agreed on, which is what makes it invisible to parity.
+// zfill pads AFTER the sign — the row both legs agreed on, which is what makes it invisible to parity.
 func TestZfillPadsAfterASign(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{`print("-42".zfill(5))`, `-0042`},

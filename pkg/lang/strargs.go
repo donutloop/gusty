@@ -390,7 +390,7 @@ func (c *returnCollector) stmt(s Stmt) {
 	}
 }
 
-// isConcat reports `a + b` where either side is a string, the shape the interpreter supports
+// isConcat reports `a + b` where either side is a string, the shape the record supports
 // and codegen refuses until the runtime can allocate a buffer.
 func isConcat(n *BinOp) bool {
 	if n.Op != "+" {

@@ -47,9 +47,9 @@ func TestACallableFromAVariableIsAskedItsArgumentCount(t *testing.T) {
 			if !strings.Contains(msg, tc.wantSub) {
 				t.Errorf("reported %q, which does not contain %q\nsrc: %s", msg, tc.wantSub, tc.src)
 			}
-			// EvalExpr answers (value, diagnostics, error): the value is the last expression's, not
-			// printed text, so "did it print a digit" is a stdout question — and stdout is empty here
-			// precisely because the raise happened before the print.
+			// The record-backed eval answers (value, diagnostics, error): the value is the last
+			// expression's, not printed text, so "did it print a digit" is a stdout question — and stdout
+			// is empty here precisely because the raise happened before the print.
 			if ee, isEval := err.(*TrapError); isEval && ee.ExnType != "" && ee.ExnType != "TypeError" {
 				t.Errorf("the arity trap raised %q; the reference stops these calls with TypeError-class errors\nsrc: %s", ee.ExnType, tc.src)
 			}
@@ -129,7 +129,7 @@ func TestTheAritySentenceIsOneSentenceForBothRoads(t *testing.T) {
 }
 
 // TestTheCompiledRoadAlreadyAskedItIs the record that this row was interpreter-only: the compiled
-// backend refused every one of these at exit 1 with its own arity sentence, so closing the interpreter's
+// backend refused every one of these at exit 1 with its own arity sentence, so closing the record's
 // wrong numbers brings the engines into agreement rather than moving a refusal.
 func TestTheCompiledRoadAlreadyAskedIt(t *testing.T) {
 	for _, tc := range []struct{ name, src, wantSub string }{

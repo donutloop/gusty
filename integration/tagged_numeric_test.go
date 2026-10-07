@@ -158,7 +158,7 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 		// aotOnly marks the one row whose interpreter half is wrong for a reason of its own: the
 		// interpreter has never consulted a tag for a unary operator, and prints a garbage number
 		// where CPython raises. That is roadmap Gap R.89, so the compiled path is pinned here and
-		// the interpreter's answer is not laundered into a pass by this table.
+		// the record's answer is not laundered into a pass by this table.
 		aotOnly bool
 	}{
 		{
@@ -207,7 +207,7 @@ func TestTaggedNumericSlotTrapsAreRaisedNotRefused(t *testing.T) {
 			"'>' not supported between instances of 'int' and 'str'", false,
 		},
 		{
-			// The loop variable is the same read with the index computed by the loop. Both engines raise:
+			// The loop variable is the same read with the index computed by the loop. Both legs raise:
 			// the reference of this row was Gap R.89's `aotOnly` pin, and ADR 0266 paid it.
 			"text_in_the_slot_through_a_loop_index",
 			"xs = [1.5, \"a\"]\ni = 1\nprint(-xs[i])\n",

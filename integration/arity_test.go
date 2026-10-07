@@ -17,7 +17,7 @@ import (
 // A dropped argument used to be invisible to the checker: too many arguments was reported, too
 // few was not, so the parameter simply arrived unbound and the program was blamed later — an
 // undefined-name error pointing inside the function that was called — or answered differently by
-// the two backends. The interpreter already caught it at run time; the fix is that the *compiler*
+// the compiled backend. the record already caught it at run time; the fix is that the *compiler*
 // now says so, at the call, naming the function.
 func TestMissingArgumentIsRefusedWhereItShouldBe(t *testing.T) {
 	dir := t.TempDir()

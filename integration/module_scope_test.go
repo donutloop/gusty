@@ -9,7 +9,7 @@ import (
 )
 
 // Integration coverage for Gap R.35 (roadmap), ADR 0220: the module is a scope, and a function
-// reads it at call time. The interpreter leg is the one that works; the compiled leg is asserted
+// reads it at call time. the record leg is the one that works; the compiled leg is asserted
 // for what it does today by TestModuleScopeIsStillOutOfReachForCompiledCode below.
 
 func TestModuleScopeRunsLikeCPython(t *testing.T) {
@@ -27,7 +27,7 @@ func TestModuleScopeRunsLikeCPython(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			iout := runInterp(t, tc.src)
+			iout := runCompiled(t, tc.src)
 			if iout != tc.want {
 				t.Fatalf("interpreter printed %q, want %q\nsource:\n%s", iout, tc.want, tc.src)
 			}
@@ -63,7 +63,7 @@ func TestModuleScalarsReachCompiledFunctionBodies(t *testing.T) {
 			if want != tc.want+"\n" {
 				t.Fatalf("CPython printed %q, want %q — the expectation itself is wrong", want, tc.want+"\n")
 			}
-			if got := runInterp(t, tc.src); got != tc.want+"\n" {
+			if got := runCompiled(t, tc.src); got != tc.want+"\n" {
 				t.Fatalf("interpreter printed %q, want %q", got, tc.want+"\n")
 			}
 			res, err := lang.Compile(tc.src)

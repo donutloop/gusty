@@ -10,15 +10,15 @@ import (
 )
 
 // L11.4 (ADR 0210) pinned the one rule a positional subscript follows: a negative index
-// counts from the end. It is pinned here where it can actually be seen — the interpreter's
+// counts from the end. It is pinned here where it can actually be seen — the record's
 // values, the IR the compiled backend emits, and the binary that comes out the other end —
 // because a subscript is exactly the kind of thing that can look right while two backends
 // quietly implement two different rules.
 
-// negInterp runs src through the interpreter and returns what it printed.
-// negInterp answers what a program printed, checked against the record the retired engine left
+// negRun runs src through the record and returns what it printed.
+// negRun answers what a program printed, checked against the record the retired engine left
 // (ADR 0302): the compiled program runs, and the answer it owes is the one that was recorded.
-func negInterp(t *testing.T, src string) (string, error) {
+func negRun(t *testing.T, src string) (string, error) {
 	t.Helper()
 	return runGoldenStdout(t, src)
 }
@@ -47,11 +47,11 @@ func negBuildRun(t *testing.T, name, src string) (int, string) {
 	return code, string(out)
 }
 
-func TestNegativeReadCountsFromTheEndInBothBackends(t *testing.T) {
+func TestNegativeReadCountsFromTheEndOnTheCompiledBackend(t *testing.T) {
 	src := "xs = [1, 2, 3]\nprint(xs[-1])\nprint(xs[-3])\nn = -2\nprint(xs[n])\n"
 	const want = "3\n1\n2\n"
-	if got, err := negInterp(t, src); err != nil || got != want {
-		t.Errorf("interpreter: got %q (%v), want %q", got, err, want)
+	if got, err := negRun(t, src); err != nil || got != want {
+		t.Errorf("the record leg: got %q (%v), want %q", got, err, want)
 	}
 	if code, out := negBuildRun(t, "negative_read", src); code == 0 && out != want {
 		t.Errorf("compiled: got %q, want %q", out, want)
@@ -97,8 +97,8 @@ func TestLiteralListWithNegativeIndexDoesNotTakeTheCompilerDown(t *testing.T) {
 func TestNegativeWriteNormalisesAgainstTheLength(t *testing.T) {
 	src := "xs = [1, 2, 3]\nxs[-1] = 30\nprint(xs[2])\nprint(xs[-2])\n"
 	const want = "30\n2\n"
-	if got, err := negInterp(t, src); err != nil || got != want {
-		t.Errorf("interpreter: got %q (%v), want %q", got, err, want)
+	if got, err := negRun(t, src); err != nil || got != want {
+		t.Errorf("the record leg: got %q (%v), want %q", got, err, want)
 	}
 	res, err := Compile(src)
 	if err != nil {
@@ -122,12 +122,12 @@ func TestNegativeWriteNormalisesAgainstTheLength(t *testing.T) {
 
 // A dict subscript is a key, not a position: `-1` is a key you can store, and normalising
 // it would quietly turn `d[-1]` into the last entry. That asymmetry is the part of "one
-// rule" a shared helper could easily get wrong, so it is pinned on all three engines.
+// rule" a shared helper could easily get wrong, so it is pinned on both legs.
 func TestNegativeDictKeysStayKeys(t *testing.T) {
 	src := "d = {-1: \"minus\", 0: \"zero\"}\nprint(d[-1])\nprint(d[0])\n"
 	const want = "minus\nzero\n"
-	if got, err := negInterp(t, src); err != nil || got != want {
-		t.Errorf("interpreter: got %q (%v), want %q", got, err, want)
+	if got, err := negRun(t, src); err != nil || got != want {
+		t.Errorf("the record leg: got %q (%v), want %q", got, err, want)
 	}
 	if code, out := negBuildRun(t, "negative_dict", src); code == 0 && out != want {
 		t.Errorf("compiled: exit %d out %q, want %q", code, out, want)
@@ -142,7 +142,7 @@ func TestNegativeDictKeysStayKeys(t *testing.T) {
 }
 
 // Normalisation does not dissolve the bounds check: past either end is still IndexError,
-// in the interpreter, in the compiled binary and in the reference implementation.
+// in the record, in the compiled binary and in the reference implementation.
 func TestNegativeIndexPastTheStartStillTraps(t *testing.T) {
 	src := "xs = [1, 2, 3]\nprint(xs[-4])\n"
 	pyOut, pyErr, pyRunErr := PythonRun(src)
@@ -152,7 +152,7 @@ func TestNegativeIndexPastTheStartStillTraps(t *testing.T) {
 	if !strings.Contains(pyErr, "IndexError") {
 		t.Fatalf("python: want IndexError in stderr, got %q (%v)", pyErr, pyRunErr)
 	}
-	out, err := negInterp(t, src)
+	out, err := negRun(t, src)
 	if err == nil {
 		t.Fatalf("interpreter: want IndexError, got stdout %q", out)
 	}
@@ -176,8 +176,8 @@ func TestNegativeIndexPastTheStartStillTraps(t *testing.T) {
 func TestNegativeStringSubscriptFollowsTheSameRule(t *testing.T) {
 	src := "s = \"abc\"\nprint(s[-1])\nprint(s[-3])\n"
 	const want = "c\na\n" // CPython prints exactly this
-	if got, err := negInterp(t, src); err != nil || got != want {
-		t.Errorf("interpreter: got %q (%v), want %q", got, err, want)
+	if got, err := negRun(t, src); err != nil || got != want {
+		t.Errorf("the record leg: got %q (%v), want %q", got, err, want)
 	}
 	res, err := Compile(src)
 	if err != nil {

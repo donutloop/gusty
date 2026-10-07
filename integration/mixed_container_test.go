@@ -45,7 +45,7 @@ func cpythonOut(t *testing.T, path string) (string, bool) {
 // strings or numbers, not both"), and the answers the untagged lookups did give — `{1: "one"}`
 // having an entry called "a" — were worse than the refusal.
 
-func TestMixedContainersAnswerLikeTheInterpreter(t *testing.T) {
+func TestMixedContainersAnswerLikeTheRecord(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"mixed_dict_print",
 			"d = {\"a\": 1, \"b\": \"x\", \"c\": None}\nprint(d)\n",
@@ -158,7 +158,7 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 		// documented (docs/language.md, "Sets iterate in insertion order in the compiled path")
 		// and is what makes the two backends' output comparable at all. The engines are
 		// compared against each other for rendering, in
-		// TestMixedContainersAnswerLikeTheInterpreter; the oracle decides the *answers*.
+		// TestMixedContainersAnswerLikeTheRecord; the oracle decides the *answers*.
 		{"mixed_set_membership", "s = {1, \"a\", None}\nprint(1 if 1 in s else 0)\nprint(1 if \"a\" in s else 0)\nprint(1 if 7 in s else 0)\n"},
 		{"mixed_set_discard", "s = {1, \"a\", None}\ns.discard(1)\nprint(len(s))\nprint(1 if 1 in s else 0)\n"},
 		{"a_string_needle_is_not_an_integer_key", "d = {1: \"one\"}\ntry:\n    print(d[\"a\"])\nexcept KeyError:\n    print(\"KeyError\")\n"},
@@ -195,7 +195,7 @@ func TestMixedContainersMatchCPython(t *testing.T) {
 // answer the tag could not justify (ADR 0166's rule, ADR 0232's application of it).
 func TestMixedContainersRefuseWhatNoTagDescribes(t *testing.T) {
 	// The nested shapes this table used to carry are answers now ({1, [1]} and {"a": 1, "b": [1]}
-	// both print correctly, pinned by TestNestedContainersAnswerOnBothBackends). What is left is a
+	// both print correctly, pinned by TestNestedContainersAnswerOnTheCompiledBackend). What is left is a
 	// value with no entry in the tag table at all, and the one nested shape with no rule.
 	for _, tc := range []struct{ name, src, want string }{
 		{"lambda_member", "xs = [1, \"a\"]\nxs.append(lambda x: x)\nprint(xs)\n", "must carry a tag"},

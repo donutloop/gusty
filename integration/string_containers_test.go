@@ -47,9 +47,9 @@ var stringContainerCases = []struct {
 
 func TestStringContainersMatchPython(t *testing.T) {
 	for _, tc := range stringContainerCases {
-		gotInterp := runInterp(t, tc.src)
-		if gotInterp != tc.want {
-			t.Errorf("%s: interpreter = %q, want %q", tc.name, gotInterp, tc.want)
+		gotCompiled := runCompiled(t, tc.src)
+		if gotCompiled != tc.want {
+			t.Errorf("%s: the record leg = %q, want %q", tc.name, gotCompiled, tc.want)
 		}
 		res, err := lang.Compile(tc.src)
 		if err != nil {
@@ -89,7 +89,9 @@ func TestStringsOutsideContainersStillRefuse(t *testing.T) {
 	if err == nil {
 		t.Skip("string parameters are supported now; nothing left to refuse here")
 	}
-	if !strings.Contains(err.Error(), "AOT backend yet") || !strings.Contains(err.Error(), "interpreter") {
+	// A refusal has to name what is missing, not point a reader at an engine they cannot run
+	// (Gap R.38: the sentence used to promise the interpreter answers this).
+	if !strings.Contains(err.Error(), "AOT backend yet") {
 		t.Errorf("refusal should stay actionable: %v", err)
 	}
 }
@@ -156,7 +158,7 @@ func TestContainerLiteralsMatchPython(t *testing.T) {
 	}
 }
 
-func gotInterpHint(got string) string { return got }
+func gotCompiledHint(got string) string { return got }
 
 // These four used to be the refusal list. A container that *grows* with a second kind, and a
 // literal whose keys or values mix kinds, are now built: every slot carries its tag from the moment
@@ -193,12 +195,12 @@ func TestGrowingAContainerPrintsInsteadOfRefusing(t *testing.T) {
 }
 
 // What the container family still refuses, and why the refusal is the answer rather than a lazy
-// copy of the interpreter: the shape would store a word whose meaning the compiler cannot say
+// copy of the record: the shape would store a word whose meaning the compiler cannot say
 // afterwards. The wording is checked because these messages are an agent's only input.
 //
 // Two entries this table used to carry are answers now and are pinned as answers elsewhere: a
 // nested dict value ({"a": [1]}) and a set member that is a list — the first because the slot
-// carries the inner container's tag (TestNestedContainersAnswerOnBothBackends, ADR 0238), the
+// carries the inner container's tag (TestNestedContainersAnswerOnTheCompiledBackend, ADR 0238), the
 // second because CPython *raises* for `s.add([2])` (unhashable), so it is not a three-engine row
 // and has no oracle to be pinned against.
 var mixedContainerCases = []string{

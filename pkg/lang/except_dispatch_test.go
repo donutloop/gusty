@@ -42,7 +42,7 @@ func edBuild(t *testing.T, name, src string) (int, string, string) {
 
 // edRecord answers one dispatch case the way the suite answers a behavioural question now: the
 // compiled program runs, and the retired engine's recorded answer judges it (ADR 0302).
-func edInterp(t *testing.T, src string) (string, error) {
+func edRun(t *testing.T, src string) (string, error) {
 	t.Helper()
 	return runGoldenStdout(t, src)
 }
@@ -96,7 +96,7 @@ func TestExceptArmsDispatchInOrderWhenCompiled(t *testing.T) {
 func TestExceptArmsDispatchInOrderAgainstTheRecord(t *testing.T) {
 	for _, tc := range edCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := edInterp(t, tc.src)
+			got, err := edRun(t, tc.src)
 			if err != nil {
 				t.Fatalf("interpreter: %v (out %q)", err, got)
 			}
@@ -138,7 +138,7 @@ func TestRaisingInsideAHandlerEscapesTheSameTry(t *testing.T) {
 	if !strings.Contains(stderr, "ValueError") {
 		t.Errorf("the report should name ValueError, got %q", stderr)
 	}
-	if _, err := edInterp(t, src); err == nil || !strings.Contains(err.Error()+"", "from the handler") {
+	if _, err := edRun(t, src); err == nil || !strings.Contains(err.Error()+"", "from the handler") {
 		t.Fatalf("interpreter: want the ValueError to propagate, got %v", err)
 	}
 }

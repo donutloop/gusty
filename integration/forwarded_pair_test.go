@@ -9,7 +9,7 @@ package integration
 // body, so no assignment in the program records a binding for it, and the only evidence that `x` can end on
 // a double is the argument `outer`'s own call site was written with. Read without that evidence the compiled
 // leg truncated at each boundary — `print(outer(2.5))` printed 4 at **exit 0**, `print(fib-free add(x, 1))`
-// printed 3 for CPython's 3.5 — while the interpreter, which boxes the value and asks it, printed CPython's
+// printed 3 for CPython's 3.5 — while the record, which boxes the value and asks it, printed CPython's
 // answer.
 //
 // Three claims, three tables:
@@ -193,7 +193,7 @@ func TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad(t *testing.T) {
 			// to. The duplicate "reference" in the old wording was the retired engine, whose leg left
 			// with ADR 0302; the row's real claim is that the compiled program and CPython agree, or that
 			// the compiler refuses this shape out loud.
-			interp, icode := cliRunCode(t, "--aot", "--file", path)
+			recordOut, icode := cliRunCode(t, "--aot", "--file", path)
 			if icode == 2 {
 				t.Fatalf("exit 2 — LLVM rejected the module gusty emitted (ADR 0166):\n%s", cliRun(t, "--aot", "--file", path))
 			}
@@ -201,16 +201,16 @@ func TestAForwardedChainThatCannotCarryThePairStaysOnItsRoad(t *testing.T) {
 			if !ok {
 				t.Fatalf("the reference failed to answer this program: %s", path)
 			}
-			checkCompiledRow(t, interp, icode, tc.src, py)
+			checkCompiledRow(t, recordOut, icode, tc.src, py)
 			out, code := cliRunCode(t, "--aot", "--file", path)
 			if code == 2 {
 				t.Fatalf("the compiled leg rejected the compiler's own module (ADR 0166):\n%s", cliRun(t, "--aot", "--file", path))
 			}
-			if code == 0 && out != interp {
+			if code == 0 && out != recordOut {
 				// The pre-existing half of this family: an answer that disagrees with the reference at
 				// exit 0 is Gap R.162's and Gap R.164's business, and pinning it here would make the
 				// ledger a record of whatever the compiler last did. It is pinned there instead, by name.
-				t.Logf("compiled leg answers %q where the reference answers %q — filed, not pinned", out, interp)
+				t.Logf("compiled leg answers %q where the reference answers %q — filed, not pinned", out, recordOut)
 			}
 			if code != 0 && code != 1 {
 				t.Errorf("exit %d, want 0 (an answer) or 1 (a front-end refusal)", code)

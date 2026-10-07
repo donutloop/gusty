@@ -72,7 +72,7 @@ func TestReboundParameterShapesAgree(t *testing.T) {
 	for _, tc := range reboundShapeCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			recorded := runInterp(t, tc.src)
+			recorded := runCompiled(t, tc.src)
 			if recorded != tc.want {
 				t.Errorf("the compiled run printed %q, want %q", recorded, tc.want)
 			}
@@ -201,7 +201,7 @@ func TestReboundParameterLoopTerminates(t *testing.T) {
 func TestParamRebindProgramPinsTheLedger(t *testing.T) {
 	src := readProgramSrc("param_rebind")
 	const want = "10\n1\n0\n1\n42\n0\n7\n10\n0\n1\n2\n2\n0\n100\n200\n200\n8\n8\n10\n"
-	if got := runInterp(t, src); got != want {
+	if got := runCompiled(t, src); got != want {
 		t.Errorf("the compiled run printed:\n%s\nwant:\n%s", got, want)
 	}
 	aot, aerr := runAOTWithTimeout(t, src, 120*time.Second)

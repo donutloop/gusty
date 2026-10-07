@@ -15,7 +15,7 @@ import (
 //
 //	xs = []
 //	xs.append([7, 8])
-//	print(xs[0][0])          # CPython 7, the interpreter 7, the compiler: exit 1
+//	print(xs[0][0])          # CPython 7, the record 7, the compiler: exit 1
 //
 // `xs` has no literal — the container was built by `append`, so the promise was never made, and the
 // read one level below it had no answer. The answer is the same pair every other tagged context in
@@ -23,12 +23,12 @@ import (
 // outer slot says whether the payload names a list, a dict or a text, and the tag written beside the
 // inner slot says what the value that comes back means. A slot that names neither raises the sentence
 // CPython raises for that kind — `xs.append(5)` then `xs[0][0]` is `'int' object is not
-// subscriptable`, on all three engines, rather than a refusal or a number.
+// subscriptable`, on both legs, rather than a refusal or a number.
 //
 // Three tables: the shapes that now print CPython's answer, the failures that must be *raised* rather
 // than refused, and the uses the door still declines with the missing half named. A slot that holds a
 // set is a fourth case, and not a CPython one: subscripting a set is a documented gusty extension, so
-// it gets its own table that pins the two engines against *each other* (ADR 0186's third leg is why
+// it gets its own table that pins both legs against *each other* (ADR 0186's third leg is why
 // that has to be written down rather than assumed).
 
 func TestRunTimeBuiltNestedSlotReadsMatchCPython(t *testing.T) {
@@ -224,12 +224,12 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 			// And the same program, without the refusal this row is about, must still be a program the
 			// compiled path can run — answering what the reference answers, or refusing with the half it
 			// is missing named (the shapes here are the ones whose slot kind is a run-time fact).
-			interpOut, icode := cliRunCode(t, "--aot", path)
+			compiledOut, icode := cliRunCode(t, "--aot", path)
 			py, ok := cpythonOut(t, path)
 			if !ok {
 				t.Fatalf("the reference failed to answer this program: %s", path)
 			}
-			checkCompiledRow(t, interpOut, icode, tc.src, py)
+			checkCompiledRow(t, compiledOut, icode, tc.src, py)
 		})
 	}
 }
@@ -239,7 +239,7 @@ func TestRunTimeBuiltNestedSlotRefusalsNameTheMissingHalf(t *testing.T) {
 // that use it are `oracle: not_applicable` because CPython rejects the shape, and ADR 0186's third leg
 // is exactly why that has to be *written down* rather than assumed. Reading a set slot one level down
 // is the same question, so it gets the same answer and the same KeyError when the member is absent;
-// the two engines may diverge from CPython here, but never from each other.
+// both legs may diverge from CPython here, but never from each other.
 func TestSetSlotSubscriptIsTheDocumentedExtensionBothWays(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"set_slot_answers_its_member", "xs = []\nxs.append({5, 6, 7})\nprint(xs[0][6])\n", "6\n"},

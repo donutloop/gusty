@@ -193,7 +193,7 @@ func TestFloatReturnCorpusProgramsAgreeOnBothLegs(t *testing.T) {
 }
 
 // TestATernaryAnswersItsArmsWordAtTheCLI is the same rule at the interface a person and an agent use:
-// three engines, one answer per line, and the exit code that says which happened. Every row here is
+// both legs, one answer per line, and the exit code that says which happened. Every row here is
 // CPython's answer on the compiled path; the sibling refusal test below holds the one shape the compiled
 // backend may not answer. Roadmap L11.6, Gap R.102; ADR 0262.
 func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
@@ -252,11 +252,11 @@ func TestATernaryAnswersItsArmsWordAtTheCLI(t *testing.T) {
 // code this repository calls a compiler bug.
 
 // TestATernaryWithDisagreeingArmsRefusesAtTheCLI pins the compiled backend's honest answer for the shape
-// it cannot take: exit 1, the missing word named, and the interpreter answering CPython on the same
+// it cannot take: exit 1, the missing word named, and the record answering CPython on the same
 // source. Exit 2 in any row here fails the file, and a row that printed a truncated number would fail it
 // too — that is the answer this rule removed.
 func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
-	for _, tc := range []struct{ name, src, want, interp string }{
+	for _, tc := range []struct{ name, src, want, recordWant string }{
 		{
 			"one_arm_a_double_at_the_top_level",
 			"c = 1\nprint(1 if c > 0 else 2.5)\n",
@@ -282,8 +282,8 @@ func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, t.TempDir(), "ternary_refuse.gy", tc.src)
-			if py, ok := cpythonOut(t, path); ok && py != tc.interp {
-				t.Fatalf("the interpreter's expectation is not CPython's: got %q want %q", py, tc.interp)
+			if py, ok := cpythonOut(t, path); ok && py != tc.recordWant {
+				t.Fatalf("the record's expectation is not CPython's: got %q want %q", py, tc.recordWant)
 			}
 			_, code := cliRunCode(t, "--aot", path)
 			if code == 2 {
@@ -305,7 +305,7 @@ func TestATernaryWithDisagreeingArmsRefusesAtTheCLI(t *testing.T) {
 			// compile door naming the half it is missing (the row above already pinned which of the two
 			// this shape does, and what the refusal has to say).
 			jitOut, code := cliRunCode(t, "--aot", path)
-			checkCompiledRow(t, jitOut, code, tc.src, tc.interp)
+			checkCompiledRow(t, jitOut, code, tc.src, tc.recordWant)
 		})
 	}
 }

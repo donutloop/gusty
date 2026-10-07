@@ -15,8 +15,8 @@ import (
 // it, which is what lets `print([[1, 2]])` print a container at all. What was still missing was the
 // read that *uses* what comes back: `len(xs[0])`, `xs[0][1]`, `d["a"][1]`, `m[0][1]`, `t[0][0][0]`,
 // `xs[0] == [1, 2]`, `2 in xs[0]` and `for v in xs[0]` were each refused by the compiled backend
-// ("len requires an inline list/dict/set literal") while the interpreter answered every one of them
-// — the two backends disagreeing out loud about the same source.
+// ("len requires an inline list/dict/set literal") while the record answered every one of them
+// — the compiled backend disagreeing out loud about the same source.
 //
 // The read is granted by a compile-time promise rather than a runtime guess: the name must be bound
 // exactly once to a container literal and never mutated, sorted, item-assigned or handed to a

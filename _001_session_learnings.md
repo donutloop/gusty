@@ -1021,7 +1021,7 @@ exceptions in the interpreter (`except IndexError:` could not catch them — whi
   checked. Nothing had ever asked a compiled program about a dict's later keys.
 
 **Process notes.**
-- Writing the *test table* first keeps paying off: `TestRuntimeErrorsAreCatchableOnBothBackends`
+- Writing the *test table* first keeps paying off: `TestRuntimeErrorsAreCatchableOnTheCompiledBackend`
   asserted Python's answer and immediately failed four cases that "both backends agree"
   tests would have blessed.
 - Two self-inflicted 20-minute losses, both the same lesson: **LLVM-IR comments are `;`,
@@ -1069,7 +1069,7 @@ test, not more care.**
   codegen gap and was actually four layers deep (parser-side builtin table, checker, both
   runtimes).
 - I again nearly misread parity: the CLI `--eval` path echoes the final value, so
-  `interp="...|0"` vs `aot="..."` is not a mismatch. The library `runInterp` has no echo —
+  `interp="...|0"` vs `aot="..."` is not a mismatch. The library `runCompiled` has no echo —
   use the harness, not the CLI, for stdout comparisons.
 - `python3` is installed here: `python3 prog.py` gives the oracle for free. The container
   program matched Python on every line except our `1`/`0` booleans, which is documented
@@ -7869,7 +7869,7 @@ when an operator's message names a type, check which operand's type it is *befor
 `HEAD`: **34** subtest failures in `pkg/lang`, **22** exit-2 failures in `integration`, all pass on the
 new binary. The first attempt at this printed `0 / 0` because a bad relative path had silently skipped the
 copy — a baseline that fails nothing is a baseline that proves nothing, so the counts are written down here
-next to the rule. `TestContainerArithmeticRaiseArmsRunOnBothEngines` needed care: a `try:` arm that never
+next to the rule. `TestContainerArithmeticRaiseArmsRunOnBothLegs` needed care: a `try:` arm that never
 runs prints *nothing*, so "both engines agree" would pass on two silent programs — it now requires the arms
 to have fired, and asks the reference to run the same source.
 
@@ -8591,3 +8591,75 @@ field chain asked the field for a single word.
   the merge), `pkg/lang` drift 338, `integration` drift 21, CPython debt 7, 299 ADR files to 0307, conformance
   corpus 169 rows with `programs/probe_fstring_field_asks_the_tag.gy` `match` on both legs.
   `go test -tags=llvm20 ./...` green.
+
+## Cycle — one backend means one witness vocabulary (ADR 0308, Gap R.190 closed)
+
+**Feature (roadmap Gap R.190, owner `docs`).** ADR 0302 deleted the AST interpreter — the code, the flags,
+the oracle's second leg — and left behind the language a 300-ADR repository had been written in. This cycle
+finished the retirement: it deleted the *claims* about the engine, kept the *measurements* made with it, and
+put a guard where the deleting ended.
+
+- **The most dangerous stale text was the contract itself.** `AGENTS.md` still opened with "Two execution
+  paths — both are first-class", still named `pkg/lang/jit.go`/`EvalExpr` as where a feature is implemented
+  first, and still required "an interpreter integration/unit case (`EvalExpr`)" for every feature. Docs that
+  are merely out of date get complained at; a **contract** that is out of date is an instruction to build the
+  deleted thing again. Deleting an engine means deleting its sentence from the file that tells the next
+  cycle what to do.
+- **Interface text is worse than prose.** Four flag descriptions sold a run that cannot happen — `--bench`
+  "through both backends (interpreter + AOT JIT)", `--bench-suite` "(interpreter vs AOT)", `--bench-gate`
+  "aot, interpreter or both", `--oracle` "run interpreter + compiled backend + CPython". An agent discovers
+  this CLI by exactly that text, so it is the most expensive stale sentence in the repository, and it is now
+  pinned: `TestTheCLINeverAdvertisesAnInterpreterLeg` fails if a description names the interpreter without
+  retiring it.
+- **A claim nobody can execute is not weak evidence, it is a false one.** "Every row below is checked on both
+  engines" sends a reader to look for an engine, and they cannot run it, so they cannot check the claim —
+  the exact property the machine-consumption contract exists to guarantee. The vocabulary that replaced it is
+  three phrases, defined once and enforced: **record leg**, **reference leg**, **both legs**.
+- **Restate the present tense; never restate the past.** `// round(2.5) answered 3 on both backends` stays — it
+  is a measurement taken while two engines ran and it is the only surviving evidence of the class of bug two
+  engines find by disagreeing. Rewriting it to "both legs" would describe a leg that never ran, which is worse
+  than stale: a fabricated measurement. So the sweep ran only on lines without a history marker, and the
+  guard's exemption list (`was`, `used to`, `before`, `retir`, `measured 20`, …) is the same list the sweep
+  honoured — the corpus is green because the rule is the edit, not because the edit was finished by hand.
+- **A ratchet, not a sweep.** `pkg/lang/witness_claim_test.go` + two testdata lists (`witness-banned-phrases.txt`,
+  `witness-history-markers.txt`) mean the next stale claim fails a build instead of accumulating. Data files,
+  not code, for the same reason the drift ledgers are: tightening the rule is a ledger edit and reviewable.
+- **The guard cannot be one of its own inputs, and its rules cannot live in it.** The mass restatement I ran
+  over `pkg/**/*.go` ate the guard's own phrase list — the banned strings were in the file that enforced them,
+  and the guard went green by being rewritten, silently. The phrases now live in `testdata/*.txt` and the guard
+  skips its own file **by name**. That is the general lesson for every self-checking corpus: keep the rules
+  outside the thing they police, and never let a check read a copy of itself.
+- **Three assertions the retirement left unable to fail.** `integration/text_truth_test.go` called
+  `cliTextOut(t, "--aot", src)` twice and reported "the compiled path agreed with each other instead";
+  `integration/for_container_literal_test.go` asserted `byEngine["--aot"] != byEngine["--aot"]`;
+  `pkg/lang/runtime_block_emit_test.go` kept `if true { return }` in front of an assertion about a refusal that
+  no longer exists, worded to promise the reader an interpreter. All three are second-operand-collapsed-to-the-
+  survivor bugs: the mechanical edit that retired the engine left the comparison between the survivor and
+  itself. A deleted check is honest; a check that cannot fail is a lie about coverage (ADR 0166's family, and
+  the same shape as the drift ratchet that had been living in a non-test file).
+- **Names are claims too.** `zdInterp`, `boolInterp`, `edInterp`, `negInterp`, `interpRun`, `interpReport`,
+  `interpWant`, `Test…OnBothBackends`, `Test…InTheInterpreter`, and `pkg/lang/jit_test.go` — every one of those
+  said "the interpreter" about a codegen run. Renamed to what they run (`…Run`, `compiledRun`,
+  `recordWant`, `Test…OnTheCompiledBackend`, `Test…OnBothLegs`, `compiled_eval_test.go`). `jit_llvm.go` keeps
+  its name: the LLVM execution engine exists, and renaming it would have made the file *less* truthful.
+- **`strings.Contains(err, "interpreter")` in a test is Gap R.38 wearing a test.** Two cases asserted that a
+  refusal message mentions the interpreter — i.e. pinned a diagnostic that points a user at an engine they
+  cannot run. They now require the message to name what is missing instead (the row that owns the general
+  rule stays open; this cycle only stopped pinning the lie).
+- **A comment describing a check that does not exist is worse than no comment.** `pkg/lang/bench_suite.go`
+  said an unknown `--bench-gate` "fails loudly at the flag"; the CLI accepted `interpreter` and gated
+  **nothing**, printing a clean verdict over an empty comparison. `--bench-gate` now exits 4 like
+  `--interp`, and the test is named for the fact (`TestCLIBenchGateIsAUsageErrorWhenTheGateIsGone`).
+- **The committed conformance artifact could not be diffed.** A leg's `llc` error is stored in
+  `conformance-matrix.json`, and it embedded `/tmp/TestConformanceMatrix<digits>/…` — so the artifact
+  changed on every run and the diff said "the compiled leg failed differently" when nothing had. Leg
+  errors now go through `normalizeRunPaths` (`integration/conformance_test.go`); an artifact that cannot
+  be compared is not machine-readable, which is the whole reason it is committed.
+- **Process: measure before trusting a bulk edit.** 604 non-comment lines moved under the scripted renames; I
+  audited them down to the 13 that changed a **string literal** and read all 13 (help text, failure messages,
+  one schema `description`) before running anything. The audit script's first version read `sys.stdin` while a
+  heredoc owned it — a silent 0-line diff and a false "clean". A review that lists nothing is not a clean
+  review; assert the count is non-zero.
+- **Ledger state after the cycle:** record 5623, `pkg/lang` drift 338, `integration` drift 21, CPython debt 7,
+  300 ADR files to 0308. New: the witness-claim guard, 0 offenders across `pkg/lang`/`integration`/`cmd/gustyc`
+  and the five agent-read documents. `go vet -tags=llvm20 ./...` clean; `go test -tags=llvm20 ./...` green.

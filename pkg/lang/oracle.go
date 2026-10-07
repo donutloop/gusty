@@ -32,7 +32,7 @@ import (
 // matrix (`oracle` / `oracle_declared`) and of `--oracle` JSON output, so it is
 // stable: an agent branches on these strings, not on prose.
 const (
-	// OracleMatch: both backends printed exactly what CPython printed.
+	// OracleMatch: the compiled backend printed exactly what CPython printed.
 	OracleMatch = "match"
 	// OracleDebt: the program is a valid CPython program and at least one backend
 	// answers differently (a wrong value, a refusal, a crash). Every debt row is
@@ -62,7 +62,7 @@ const (
 // DefaultOracleRules are applied to every leg before comparison.
 func DefaultOracleRules() []string { return []string{RuleSetOrder} }
 
-// PythonBinary is the interpreter used for the oracle leg. It is overridable
+// PythonBinary is the record used for the oracle leg. It is overridable
 // (`GUSTY_PYTHON`) because the pinned oracle is a *named* toolchain, recorded in
 // docs/operations.md, not an accident of whoever's PATH came first.
 func PythonBinary() string {

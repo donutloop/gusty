@@ -1392,7 +1392,7 @@ const ASTIRSchema = `{
         "aot_stdout": { "type": "string", "description": "Everything the compiled binary wrote to stdout." },
         "python_stdout": { "type": "string", "description": "Everything the oracle interpreter wrote to stdout for the same source (PYTHONHASHSEED=0, so a run is reproducible)." },
         "aot_matches_python": { "type": "boolean", "description": "compiled stdout equals CPython's after the documented comparison rules." },
-        "oracle": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "Computed verdict: both backends print CPython's answer (match), at least one does not (debt — wrong value, refusal, or crash), or the source is not a CPython program at all (not_applicable)." },
+        "oracle": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "Computed verdict: the compiled backend prints CPython's answer (match), at least one does not (debt — wrong value, refusal, or crash), or the source is not a CPython program at all (not_applicable)." },
         "oracle_declared": { "type": "string", "enum": ["match", "debt", "not_applicable"], "description": "The registry's claim. Absence of a ledger row means the claim is \"match\", so a new divergence cannot enter the corpus silently." },
         "oracle_reason": { "type": "string", "description": "What is wrong, in one sentence (required for debt and not_applicable rows)." },
         "oracle_ref": { "type": "string", "description": "The roadmap item that owns the fix (required for debt rows)." },

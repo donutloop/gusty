@@ -719,7 +719,7 @@ var oracleLedger = map[string]oracleDecl{
 	// list grows by extend/insert, empties by clear, finds by index; the dict grows by update,
 	// answers by pop and setdefault, empties by clear. The compiled leg spends exit 1 on the first
 	// one, because it folds a container method only over a literal written at the call. Before this
-	// row every line was `no such list method` / `no such dict method` on BOTH engines -- a missing
+	// row every line was `no such list method` / `no such dict method` on both legs -- a missing
 	// answer rather than a wrong one, which is why no pin could have caught it.
 	// Gap R.188 / ADR 0301, owner L12.11 (the compiled half, owed).
 	"programs/probe_a_container_has_its_methods": {oracle: lang.OracleDebt,
@@ -863,7 +863,7 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a list comprehension now tags the slot it copies (the fold declines and the runtime builder asks the item), but a set or dict comprehension folds to a compile-time global that has no tag table, so those three lines refuse in words rather than print the number",
 		ref:    "roadmap Gap R.116 (measured while closing Gap R.112, ADR 0259)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true, Err: "comprehension of verdicts needs the tagged set builder"}}},
-	// A repeated key is paid: the interpreter's dict builders put an entry through the dict's own key
+	// A repeated key is paid: the record's dict builders put an entry through the dict's own key
 	// lookup instead of appending it, so the comprehension, the literal and item assignment build the
 	// same one-entry container CPython does (roadmap Gap R.118, ADR 0260 — the program left the debt
 	// ledger, which is ADR 0186's promotion rule).
@@ -935,7 +935,7 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "calling a function through a parameter is refused in AOT (`\"f\" is called but is not a function this backend can build a call to`): no fnptr operand, no indirect call lowering",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-	// The interpreter leg closed with ADR 0283: a top-level `def` now binds its own name to the same
+	// the record leg closed with ADR 0283: a top-level `def` now binds its own name to the same
 	// closure handle a `lambda` gets, so `apply(twice, [1, 2])` maps the function and answers CPython's
 	// `[2, 4]` instead of `undefined name twice`. Only the compiled leg still owes it — its body calls a
 	// *parameter*, which is the higher-order limit L11.7 records — so this stays a debt row with one pin
@@ -944,7 +944,7 @@ var oracleLedger = map[string]oracleDecl{
 		reason: "a def'd function name is a value on the interpreter since ADR 0283 and still is not on the compiled backend, whose body then calls a parameter — the higher-order limit L11.7 records",
 		ref:    "roadmap L11.7 (functions are values that compile)",
 		pins:   []lang.OraclePin{{Backend: "aot", Missing: true}}},
-	// Five lines of CPython parity on the interpreter. The compiled leg answers the two trap lines
+	// Five lines of CPython parity on the record. The compiled leg answers the two trap lines
 	// (`abs(twice)`, `-twice`) byte-for-byte and refuses only the higher-order body — `apply` calls a
 	// *parameter* — which is L11.7's limit rather than this row's name lookup, so the row is a debt with
 	// one leg whole and one leg refused (roadmap Gap R.150, Gap R.151, ADR 0283).

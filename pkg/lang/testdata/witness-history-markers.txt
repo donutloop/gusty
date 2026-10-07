@@ -1,0 +1,56 @@
+# History markers (ADR 0308, Gap R.190).
+#
+# One pattern per line (case-insensitive substring, not a regex). A line that carries any of
+# these is reporting the PAST — the retired engine, a measurement taken while it ran, or the
+# retirement itself — and is therefore allowed to name an engine that no longer runs. That is the
+# whole difference between a stale claim and a measurement: "both engines printed `1` before ADR
+# 0297" is evidence, and deleting it would delete the record of a bug this project found with two
+# implementations and cannot find with one.
+#
+# Keep this list narrow. Every entry is a licence to say "both engines"; adding to it is adding a
+# way to avoid the guard.
+\bused\ to\b
+\bused\ to\ be\b
+\buntil\b
+\bbefore\b
+\bafter\b
+\bwhile\ the\b
+\bsince\b
+\bretir\b
+\bno\ longer\b
+\bformerly\b
+\blegacy\b
+\bstale\b
+\bpre\-cycle\b
+\bpre\-retirement\b
+\bADR\ 0302\b
+\bworktree\b
+\bhad\b
+\bhave\ been\b
+\bwas\b
+\bwere\b
+\bonce\b
+\bhistorically\b
+\boriginally\b
+\bnever\ had\b
+\bthe\ old\b
+\bprevious\b
+\bsecond\ engine\b
+\btree\-walker\b
+\bstand\-in\b
+\brecorded\b
+\bthe\ record\b
+\bthe\ retired\b
+\btwo\-engine\b
+\btwo\ backends\b
+\btwo\ engines\b
+\bthree\ engines\b
+\bfor\ 100\+\ ADRs\b
+\bmeasured\ 20\b
+\bre\-measured\b
+\bit\ used\ to\b
+\bno\ longer\ exists\b
+\bthe\ deleted\b
+\bit\ replaced\b
+\bit\ produces\b
+\bpredecessor\b
