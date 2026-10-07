@@ -887,6 +887,19 @@ for sets). Constant-key lookup resolves at compile time; like lists, these
 literals must be used inline (no assignment-to-variable indirection) in the
 codegen path. the record indexes dicts/sets at runtime and is unchanged.
 
+**An entry the compiler cannot read is written by the runtime, with its tag.** A dict whose key, value or
+member is something this pass cannot classify — a name the pair road bound (`n = xs[0]` over a container the
+program built), a slot read, the answer of arithmetic — goes to `rt_dict_put_tagged(h, k, v, keyTag, valTag)`
+and `rt_set_add_tagged(h, v, tag)`, which take the payload **and** the tag as five and three `i32`s, and branch
+per kind inside (`ADR 0232`, ADR 0187's rule that a payload is never written without its tag). That is the door
+a pair-bound name enters by, and it is why `print({"k": n})` is `{'k': 'a'}` rather than the interned index the
+slot actually holds, and `print({n})` over a float slot is `{2.5}` rather than the box handle (ADR 0310, ADR 0306
+before it for the list element). A key or a member also asks a question an element never does — *can this value
+be hashed* — and only the tag can answer it: a container-valued key or member raises CPython's
+`TypeError: unhashable type: 'list'` / `'dict'` / `'set'`, catchable by the program's `except TypeError:`, where
+reading the payload alone would have put a heap handle in the bucket and printed a plausible container at the
+exit code of success (`Gap R.81` owns the general hashing rule).
+
 > **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
 > `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it
 > does not have is `KeyError: not in set`. CPython rejects the shape outright with
@@ -2202,8 +2215,8 @@ print(abs(txt[0]))       # TypeError: bad operand type for abs(): 'str'  — the
 
 What is **not** answered stays a refusal that names the missing half, and the boundary is deliberate: the
 positions that keep one word for a whole value — `abs(n) + 1`, `abs(n) * 2`, `round(abs(n) / 2)`,
-`abs(-n)`, `min(abs(n), 3)`, `sum([abs(n)])`, and `min(n, 3)` / a dict entry / a set member from the row
-before — still refuse at exit 1. Taking one word out of a pair is not a partial answer, it is a different
+`abs(-n)`, `min(abs(n), 3)`, `sum([abs(n)])`, and `min(n, 3)` / a builtin-folded literal / the mutation roads
+from the row before — still refuse at exit 1. Taking one word out of a pair is not a partial answer, it is a different
 value: a float slot's payload is a box handle and a text slot's is an interned index, and a magnitude of
 either is a plausible number at the exit code of success.
 
@@ -2923,7 +2936,8 @@ What still reports, with the mechanism it is missing named: a **dict keyed by a 
 raises `unhashable type: 'list'`; a **set** does not even that yet — it admits the member and reports a
 length, Gap R.81), a tagged element whose kind only the run time can tell used as a number by a road this
 backend does not open there — a loop variable over a mixed list, or a position that stores one word for it
-(`abs(n)`, `min(n, 3)`, `[n]`, `n and 3`, Gap R.146), or a **tuple unpacking**, which has not taken the pair at all:
+(`min(n, 3)`, `sum([n])`, Gap R.146 — a dict entry, a set member, a list element and the `and`'s operand are
+paid: ADR 0310, ADR 0306 and ADR 0269), or a **tuple unpacking**, which has not taken the pair at all:
 `a, b = xs[0][0] + 1, xs[0][1] + 2` refuses where the plain assignment answers (Gap R.144), **two** such slots ordered against **each other** (`xs[0] > ys[0]` compares payloads where
 CPython raises — one side whose kind comes from the object is a chain, two is a table the compiler would be
 inventing, Gap R.97), a comparison against an expression whose kind cannot be proven (Gap R.83), a
@@ -3172,10 +3186,17 @@ x = 2.5
 print(f"{x!r}")        # 2.5 — a conversion of a variable used to print nothing at all
 ```
 
-What still refuses is a position that keeps one word for the value — `float(n)`, `abs(n)`, `min(n, 3)`, a
-dict entry or set member (`{"k": n}`, `{n}`), a literal `sum`/`min`/`max` folds into a static array
-(`sum([n])`), and an f-string used as a **value** (`s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()`)
-— all owned by Gap R.146, each refusing in a sentence that names the missing half.
+What still refuses is a position that keeps one word for the value — `float(n)`, `min(n, 3)`, a literal
+`sum`/`min`/`max` folds into a static array (`sum([n])`), the mutation roads (`xs.append(n)`, `s.add(n)`,
+`d["k"] = n`, `d[n] = 1`), a pair handed across a call into a body whose parameter is not a pair (`Gap R.154`),
+and an f-string used as a **value** (`s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()`)
+— all owned by Gap R.146, each refusing in a sentence that names the missing half. A **dict entry and a set
+member** are not in that list any more (ADR 0310): the dict and the set each have one builder that takes the tag
+with the payload, so `print({"k": n})` is `{'k': 'a'}`, `print({n: 1})` is `{'a': 1}`, `print({n})` is `{'a'}`
+and everything that reads the bound object back asks the same tag — `d = {"k": n}` answers `d["k"]`, `len(d)`,
+`k in d`, `d[k]`, `str(d)`, `d == {"k": "a"}` and a `for k in d`, and `s = {n}` answers `7 in s`, `len(s)` and a
+`for v in s`. A key or a member that cannot be hashed raises CPython's `TypeError: unhashable type: 'list'`, catchable
+by the program's own `except TypeError:` (`Gap R.81`, ADR 0228).
 
 ## Builtins
 

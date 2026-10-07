@@ -17295,8 +17295,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.runtimeSets[nm.Value] = true
 				// A set whose members describe themselves has no element kind to record: {1, "a"}
-				// is neither the number set nor the string set (roadmap L11.1 (1b), ADR 0232).
-				mixedSet := g.taggableMixedSet(sl)
+				// is neither the number set nor the string set (roadmap L11.1 (1b), ADR 0232). A member
+				// the pair road bound is the same record for the same reason: its tag is a register, and a
+				// member added without it dedups against the payload alone (Gap R.146).
+				mixedSet := g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl)
 				if mixedSet {
 					g.mixedSets[nm.Value] = true
 					g.setElemStr[nm.Value] = false
@@ -17307,17 +17309,27 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindSet))
 				si := 0
 				for _, el := range sl.Elems {
-					ev, interned, err := g.heapElemKind(b, el)
-					if err != nil {
-						return err
-					}
 					if mixedSet {
 						// Adding and tagging are one call: a member added without its tag dedups
 						// against the payload alone and prints through whatever the slot last held.
-						t, _ := g.elemKindTag(el)
-						b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %d)\n", hs, ev, t))
+						// A member the pair road bound hands over the tag the objects wrote instead of
+						// the constant a literal answers, and a member whose kind only that tag can tell
+						// has to be asked whether it can be a member at all (roadmap L11.1, Gap R.146,
+						// Gap R.81; ADR 0187).
+						ev, t, isPair, err := g.taggedSlotWords(b, el)
+						if err != nil {
+							return err
+						}
+						if isPair {
+							g.guardHashableTag(b, t, sl.Src)
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_set_add_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, ev, t))
 						si++
 						continue
+					}
+					ev, interned, err := g.heapElemKind(b, el)
+					if err != nil {
+						return err
 					}
 					if err := g.recordElemKind(nm.Value, "set", interned, el); err != nil {
 						return err
@@ -17386,8 +17398,10 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				}
 				g.runtimeDicts[nm.Value] = true
 				// The set above and heapDictFrom share this rule: a dict whose keys or values mix
-				// kinds has no kind to record, so every slot carries its own tag (ADR 0232).
-				mixedDict := g.taggableMixedDict(dl)
+				// kinds has no kind to record, so every slot carries its own tag (ADR 0232). A key or a
+				// value the pair road bound is the same case with one more word: the entry goes through
+				// the tagged put with the tag register the objects wrote (roadmap L11.1, Gap R.146).
+				mixedDict := g.taggableMixedDict(dl) || g.literalTakesPairSlots(dl)
 				if mixedDict {
 					g.mixedDicts[nm.Value] = true
 					g.dictKeyStr[nm.Value] = false
@@ -17399,6 +17413,27 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 				hs := g.heapSeq
 				b.WriteString(fmt.Sprintf("  %%h%d = call i32 @rt_alloc(i32 %d)\n", hs, HeapKindDict))
 				for i := range dl.Keys {
+					if mixedDict {
+						// Put and tag in one call: an entry stored without its key tag would match
+						// another key with the same payload, and an entry without its value tag
+						// would print the kind the slot held last time. A position the pair road
+						// bound brings its own tag register (roadmap L11.1, Gap R.146; ADR 0187), and a
+						// key whose kind only that register can tell has to be asked whether it can be a
+						// key at all before the store (Gap R.81).
+						kk, kt, kPair, err := g.taggedSlotWords(b, dl.Keys[i])
+						if err != nil {
+							return err
+						}
+						if kPair {
+							g.guardHashableTag(b, kt, dl.Src)
+						}
+						vv, vt, _, err := g.taggedSlotWords(b, dl.Vals[i])
+						if err != nil {
+							return err
+						}
+						b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %%h%d, i32 %s, i32 %s, i32 %s, i32 %s)\n", hs, kk, vv, kt, vt))
+						continue
+					}
 					// A key or value the pair road bound (`d = {"k": n}`) brings its own tag register:
 					// the element has no one word to store, and asking its `value()` is the refusal
 					// Gap R.146 kept for this shape (roadmap L11.1; ADR 0187's payload-never-without-tag).
@@ -17409,15 +17444,6 @@ func (g *irGen) stmt(b *strings.Builder, st Stmt) error {
 					vv, vIsStr, err := g.heapElemKind(b, dl.Vals[i])
 					if err != nil {
 						return err
-					}
-					if mixedDict {
-						// Put and tag in one call: an entry stored without its key tag would match
-						// another key with the same payload, and an entry without its value tag
-						// would print the kind the slot held last time.
-						kt, _ := g.elemKindTag(dl.Keys[i])
-						vt, _ := g.elemKindTag(dl.Vals[i])
-						b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %%h%d, i32 %s, i32 %s, i32 %d, i32 %d)\n", hs, kk, vv, kt, vt))
-						continue
 					}
 					if err := g.recordElemKind(nm.Value, "dict key", kIsStr, dl.Keys[i]); err != nil {
 						return err

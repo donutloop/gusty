@@ -385,6 +385,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// use, not by a lift that would hand a text slot's interned index to a magnitude (roadmap L11.1,
 		// Gap R.146; ADR 0309, ADR 0265's per-operator door, ADR 0271's raise wording).
 		"probe_the_signless_call_answers_for_a_pair_bound_name",
+		// A pair-bound name as a dict entry and a set member: the entry and the member go to the builders that
+		// take the tag with the payload, so a text value prints its text and not its interned index, a float
+		// value its double and not its box handle, a text member its text and not a bucket number — and a key
+		// or member that cannot be hashed says so in CPython's own words, catchable by the program's arm
+		// (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0310, ADR 0306).
+		"probe_pair_bound_dict_entry_and_set_member",
 		// A bool stored in a container, both legs on one source: the slot carries a bool tag, so
 		// the list, the dict and the str()/repr() of both print `[True, 1]` and `{'k': True}` like
 		// CPython — and the numeric questions still answer as the number (True + 1, [True] == [1],

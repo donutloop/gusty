@@ -8746,3 +8746,67 @@ put a guard where the deleting ended.
   not guided, it is misdirected; the descriptions now say what the record *holds*, and the two historical
   fields (`meta.source`, `meta.record_corrections`) keep their pre-retirement wording, because they report what
   was done, not what is true.
+
+## ADR 0310 — a pair-bound name enters a dict entry and a set member (Gap R.146, L11.1, L12.11)
+
+- **The asymmetry picked the cycle, not the row's own example.** `Gap R.146` has always been illustrated with
+  `abs(n)` / `min(n, 3)` / `[n]`, and by the time this cycle started the first and third were paid (ADR 0309,
+  ADR 0306) while the container entries still refused: `print([n])` answered `7` and `print({"k": n})` spent
+  exit 1 on the same name. That difference was the row, and it was measurable in one line each — which is why
+  the cycle began by measuring 60 sources against CPython before any code changed, rather than by reading the
+  tracker's prose about them.
+- **The fix was the one ADR 0306 already made, asked of the two builders that had the door open.** A dict and a
+  set each have exactly one call that takes the tag with the payload — `rt_dict_put_tagged(i32 h, i32 k, i32 v,
+  i32 kt, i32 vt)` and `rt_set_add_tagged(i32 h, i32 v, i32 t)` — and both were being fed by `heapElemKind` +
+  `elemKindTag`/`dictKeyTag`, which label an element from its **spelling**. A name has no spelling that
+  describes what the objects hold. Since a register is an `i32`, the pair's tag could be handed straight to
+  those calls, and **`pkg/lang/runtime.go` has no diff in this commit** — which is the check that tells a later
+  cycle whether the invariant still holds: if a future "fix" grows a pair-aware dict helper, the invariant has
+  been duplicated somewhere rather than kept.
+- **Pay the binding in the same commit as the literal, or the table lies.** `print({"k": n})` and
+  `d2 = {"k": n}; print(d2["k"])` are the same entry question asked by two roads — the expression road and the
+  assignment road, the second of which keeps its own record of a variable's key and value kinds *beside* its own
+  tag slots. Paying only the literal leaves `d2["k"]`, `len(d2)`, `k in d2`, `for k in d2`, `str(d2)` and
+  `d2 == {"k": "a"}` refusing next to an answering `print({"k": n})`, and a half-paid table is worse than an
+  unpaid one because the passing row advertises the family as done. Both were done, and the binding rows are in
+  the same tables.
+- **A key and a member have a question an element never gets, and a payload cannot answer it.** A dict key and
+  a set member must be hashable; CPython raises `TypeError: unhashable type: 'list'` / `'dict'` / `'set'`. A
+  payload answers "hashable" for every value in the language — a list's handle is an i32 like any other — so the
+  tempting implementation would have built a set holding an address and printed `{[1, 2]}` at the exit code of
+  success, the one class the suite's refusal counter is blind to. The guard is therefore three compares against
+  the tag and three raises spelling CPython's own sentences, emitted in the program and catchable by
+  `except TypeError:` — and it is emitted **only** where a pair writes a key or a member, with an IR test that
+  fails if a literal whose kinds are all constants starts paying for a question the compiler already answered.
+  `Gap R.81` still owns the general hashing rule; the row says so rather than inheriting the credit.
+- **A lying arm is a bug with no caller.** `heapElemKind` labelled a **set** element as a `list` and returned a
+  dict's entry count tagged as an `int` — the branch that reads an entry count is not the branch that labels an
+  element, and a set has no entry count. Both were unreachable, and both stayed unreachable only because the
+  taggable-literal gate rejected anything containing a set or dict element first. A dict entry is precisely the
+  caller that would have started using them, so they became `unreachable` assertions in this commit with the lie
+  written in the message where the next reader will find it (the same shape as ADR 0303's `str_of_int`, which sat
+  in the module printing `0` forever because nothing had found it yet).
+- **Widen a gate as far as the proof reaches and no further.** The first version of the dict/set gate admitted a
+  literal containing an unclassifiable set/dict element because the pair sibling "looked safe", and the sweep
+  caught `print({"a": s, 2.5: 1})` regressing from an honest refusal to an answered wrong shape. The gate is now
+  a conjunction — the literal holds a pair **and** every other entry is still something the static tag road can
+  label — so the mixed case keeps its old answer and the pair case gets the new one.
+- **Registering a conformance program is a promise to three harnesses, and this time all three were paid in one
+  pass**: the registry entry in `integration/conformance_cases.go`, the record entry in
+  `testdata/interpreter-golden.json` (ADR 0302 made a missing entry a failure, not a skip), and the committed
+  artifact `conformance-matrix.json` (regenerated, 170 → 171 rows), plus the loud version of the missing-record
+  rule (`TestThePairBoundDictAndSetProbeIsOnRecord`) so deleting the entry fails a test instead of skipping it.
+  The corpus-gate test that fails on an unregistered program also runs before the probe is added, so a probe
+  cannot be introduced into a corpus that is already inconsistent (ADR 0309's own miss, ADR 0308 amended).
+- **A tracker row's own owed-list is a claim surface.** `Gap R.146`'s cell, `L11.1`'s cell and `L12.11`'s
+  owed-list sentence all named "a dict entry and a set member" as what they still owed. Paid rows have to leave
+  those cells in the same commit that pays them — the lesson ADR 0309 learned from a probe program whose prose
+  claimed three legs that no longer run — because the next cycle picks its work out of those cells.
+- **A compacted summary is not a measurement.** Two doc lines this cycle went to edit did not exist on disk (a
+  `docs/language.md` bullet about "statically taggable" and an `AGENTS.md` sentence about the pair arc), and one
+  earlier script appeared to have written a CPython-output file that was never there — every one of them was
+  plausible text carried in from a summary rather than read from the file. The rule for the rest of the loop:
+  `grep`/`sed` the file **in the same turn** you edit it, re-measure any number you did not produce in this
+  session (the record's 5642 → 5703 came out of a script that printed the count, not out of context), and when a
+  command's output is load-bearing — the 60-case reference sweep, the golden-file merge — run it through a script
+  that reports the bytes it read and the keys it changed.

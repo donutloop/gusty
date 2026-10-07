@@ -125,19 +125,15 @@ func TestAPairBoundNameBoundIntoAListKeepsItsTagOnTheObject(t *testing.T) {
 	}
 }
 
-// TestAPairBoundNameStillRefusesTheContainerPositionsThatTakeOneWord is this cycle's honest half. A dict and a
-// set keep their entries in a table the builder fills with one word per key and per value, and the roads that
-// bind them ask `heapElemKind` for every element before any tag question is put — so the shape is still a
-// refusal, in the words that name the missing capability. `sum`/`min`/`max` over a literal fold the elements
-// into a static array, which has the same one-word problem. Each row stays until the pair reaches it; the
-// failure mode that has to remain impossible is a dict whose text key prints its interned index at exit 0.
+// TestAPairBoundNameStillRefusesTheContainerPositionsThatTakeOneWord is this cycle's honest half, narrowed
+// by ADR 0310: the dict entry and the set member went through the same door the list element did (their
+// builders take the tag as an `i32`, and a register is an `i32`), so the shapes below are all that is left
+// of the original table. A literal a builtin folds into a static array has no tag storage at all, and the
+// mutation roads (`append`, `add`, `d[k] = v`) are the entry question asked by a statement rather than an
+// expression. Each row stays until the pair reaches it; the failure mode that has to remain impossible is a
+// dict whose text key prints its interned index at exit 0.
 func TestAPairBoundNameStillRefusesTheContainerPositionsThatTakeOneWord(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"a dict value", intSlot + "print({\"k\": n})\n"},
-		{"a dict key", intSlot + "print({n: 1})\n"},
-		{"a set member", intSlot + "print({n})\n"},
-		{"a bound dict", intSlot + "d2 = {\"k\": n}\nprint(d2)\n"},
-		{"a bound set", intSlot + "s2 = {n}\nprint(s2)\n"},
 		{"sum over a literal", intSlot + "print(sum([n]))\n"},
 		{"min over a literal", intSlot + "print(min([n, 3]))\n"},
 		{"max over a literal", intSlot + "print(max([n, 3]))\n"},

@@ -1,0 +1,79 @@
+# probe_pair_bound_dict_entry_and_set_member.gy — a pair-bound name as a dict entry and a set member
+# (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0310, ADR 0306's list
+# element, ADR 0232's tagged dict/set slots, ADR 0187's rule that a payload is never written without its tag).
+#
+# A name the pair road bound (`n = xs[0]` over a container the program built) holds a (payload, tag) pair. A
+# dict and a set each have ONE builder that takes the tag as a number — rt_dict_put_tagged and rt_set_add_tagged
+# — and the roads that filled them asked the old helper for the element's payload and a tag guessed from the
+# element's SPELLING, which for a name is nothing the pair road wrote. The result was the silent answer: an
+# interned index where the reference prints a text, a box handle where it prints a float, at the exit code of
+# success. The fix is the one ADR 0306 made for a list element: those two calls take an i32 for the tag, a
+# register is an i32, and the pair's tag is a register the objects wrote — no runtime helper changed.
+#
+# The dict and the set ask one question a list element is never asked: can this value be a key at all? The tag
+# is what knows, so the guard is emitted where the tag is read, and CPython's own sentence goes out of the
+# runtime with the kind that triggered it.
+#
+# Every line here is what the reference prints — a text value prints its text and not its interned index, a
+# float value its double and not its box handle, a text member its text and not a bucket number — and the
+# unhashable pair raises a TypeError the program can catch.
+
+xs = []
+xs.append(7)
+xs.append("a")
+xs.append(2.5)
+xs.append(None)
+xs.append(True)
+xs.append([1, 2])
+n = xs[0]
+s = xs[1]
+f = xs[2]
+z = xs[3]
+b = xs[4]
+c = xs[5]
+# the value position, over every kind a slot can hold
+print({"v": n})
+print({"v": s})
+print({"v": f})
+print({"v": z})
+print({"v": b})
+print({"v": c})
+# the key position, and both at once
+print({n: "k"})
+print({s: 1})
+print({f: 1})
+print({z: 1})
+print({n: n})
+print({"a": n, "b": 2})
+# the entry read back from the object the binding built
+d = {"k": n}
+print(d)
+print(len(d))
+print(d["k"])
+print(d["k"] + 1)
+dk = {n: "v"}
+print(n in dk)
+print(dk[n])
+for k in dk:
+    print(k)
+# the member position, and the object the binding built
+print({n})
+print({s})
+print({f})
+print({z})
+print({b})
+ms = {n}
+print(len(ms))
+print(7 in ms)
+print("a" in {s})
+# a value whose only word would be a float's handle, printed through the container that holds it
+print({"pair": [n, s, f], "nested": {"inner": s}})
+# what cannot be a key says so, in the reference's own words, and the program's arm runs
+try:
+    print({c: 1})
+except TypeError:
+    print("caught-the-list-key")
+try:
+    print({c})
+except TypeError:
+    print("caught-the-list-member")

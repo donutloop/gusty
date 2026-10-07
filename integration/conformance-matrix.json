@@ -2530,6 +2530,26 @@
     },
     {
       "case": {
+        "id": "programs/probe_pair_bound_dict_entry_and_set_member",
+        "name": "probe_pair_bound_dict_entry_and_set_member.gy",
+        "source": "# probe_pair_bound_dict_entry_and_set_member.gy — a pair-bound name as a dict entry and a set member\n# (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0310, ADR 0306's list\n# element, ADR 0232's tagged dict/set slots, ADR 0187's rule that a payload is never written without its tag).\n#\n# A name the pair road bound (`n = xs[0]` over a container the program built) holds a (payload, tag) pair. A\n# dict and a set each have ONE builder that takes the tag as a number — rt_dict_put_tagged and rt_set_add_tagged\n# — and the roads that filled them asked the old helper for the element's payload and a tag guessed from the\n# element's SPELLING, which for a name is nothing the pair road wrote. The result was the silent answer: an\n# interned index where the reference prints a text, a box handle where it prints a float, at the exit code of\n# success. The fix is the one ADR 0306 made for a list element: those two calls take an i32 for the tag, a\n# register is an i32, and the pair's tag is a register the objects wrote — no runtime helper changed.\n#\n# The dict and the set ask one question a list element is never asked: can this value be a key at all? The tag\n# is what knows, so the guard is emitted where the tag is read, and CPython's own sentence goes out of the\n# runtime with the kind that triggered it.\n#\n# Every line here is what the reference prints — a text value prints its text and not its interned index, a\n# float value its double and not its box handle, a text member its text and not a bucket number — and the\n# unhashable pair raises a TypeError the program can catch.\n\nxs = []\nxs.append(7)\nxs.append(\"a\")\nxs.append(2.5)\nxs.append(None)\nxs.append(True)\nxs.append([1, 2])\nn = xs[0]\ns = xs[1]\nf = xs[2]\nz = xs[3]\nb = xs[4]\nc = xs[5]\n# the value position, over every kind a slot can hold\nprint({\"v\": n})\nprint({\"v\": s})\nprint({\"v\": f})\nprint({\"v\": z})\nprint({\"v\": b})\nprint({\"v\": c})\n# the key position, and both at once\nprint({n: \"k\"})\nprint({s: 1})\nprint({f: 1})\nprint({z: 1})\nprint({n: n})\nprint({\"a\": n, \"b\": 2})\n# the entry read back from the object the binding built\nd = {\"k\": n}\nprint(d)\nprint(len(d))\nprint(d[\"k\"])\nprint(d[\"k\"] + 1)\ndk = {n: \"v\"}\nprint(n in dk)\nprint(dk[n])\nfor k in dk:\n    print(k)\n# the member position, and the object the binding built\nprint({n})\nprint({s})\nprint({f})\nprint({z})\nprint({b})\nms = {n}\nprint(len(ms))\nprint(7 in ms)\nprint(\"a\" in {s})\n# a value whose only word would be a float's handle, printed through the container that holds it\nprint({\"pair\": [n, s, f], \"nested\": {\"inner\": s}})\n# what cannot be a key says so, in the reference's own words, and the program's arm runs\ntry:\n    print({c: 1})\nexcept TypeError:\n    print(\"caught-the-list-key\")\ntry:\n    print({c})\nexcept TypeError:\n    print(\"caught-the-list-member\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "{'v': 7}\n{'v': 'a'}\n{'v': 2.5}\n{'v': None}\n{'v': True}\n{'v': [1, 2]}\n{7: 'k'}\n{'a': 1}\n{2.5: 1}\n{None: 1}\n{7: 7}\n{'a': 7, 'b': 2}\n{'k': 7}\n1\n7\n8\nTrue\nv\n7\n{7}\n{'a'}\n{2.5}\n{None}\n{True}\n1\nTrue\nTrue\n{'pair': [7, 'a', 2.5], 'nested': {'inner': 'a'}}\ncaught-the-list-key\ncaught-the-list-member\n",
+      "python_ok": true,
+      "python_stdout": "{'v': 7}\n{'v': 'a'}\n{'v': 2.5}\n{'v': None}\n{'v': True}\n{'v': [1, 2]}\n{7: 'k'}\n{'a': 1}\n{2.5: 1}\n{None: 1}\n{7: 7}\n{'a': 7, 'b': 2}\n{'k': 7}\n1\n7\n8\nTrue\nv\n7\n{7}\n{'a'}\n{2.5}\n{None}\n{True}\n1\nTrue\nTrue\n{'pair': [7, 'a', 2.5], 'nested': {'inner': 'a'}}\ncaught-the-list-key\ncaught-the-list-member\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_in_a_container",
         "name": "probe_bool_in_a_container.gy",
         "source": "# What CPython prints for every shape here (python3, 3.12):\n#\n#   [True, 1]\n#   [True]\n#   [False]\n#   {'k': True}\n#   {True}\n#   [1, 2, True]\n#   True\n#   True\n#   True\n#   2\n#   [True, 'a']\n#   {True: 1}\n#   [True, 1, 1]\n#\n# A container slot is allowed to say `bool`. Before this the shape printed the number it is stored\n# as — `[1, 1]` and `{'k': 1}` — and both backends agreed, which is exactly why no two-backend test\n# ever saw it (roadmap Gap R.112, ADR 0259).\n#\n# The rows come in two families. A *literal* slot (`[True, 1]`, `{\"k\": True}`) is a `BoolLit` the tag\n# table can see directly; a slot whose verdict comes from an *expression* — the comparison feeding a\n# `list.append`, the call argument, the ternary among strings, the dict key that is a variable holding\n# a comparison — has to be asked of that expression, through the same `IsBoolExpr` the rendering pair\n# asks (ADR 0257). A list comprehension whose element copies the loop variable is the same question\n# one level indirect: `x` says True only if the item it copied does.\n#\n# What a bool is *not* is the other half of the row: `[True] == [1]` answers True and `True + 1` is 2,\n# because the payload underneath the tag is still the number, and the compiled comparison's numeric\n# family is int, float AND bool.\nprint([True, 1])\nprint([True])\nprint([False])\nprint({\"k\": True})\nprint({True, 1})\nxs = [1, 2]\nb = 1 == 1\nxs.append(b)\nprint(xs)\nprint([True] == [1])\nxs2 = [True, 1]\nprint(xs2[0])\nif xs2[0]:\n    print(True)\nelse:\n    print(False)\nprint(True + 1)\ny = 1 == 1\nprint([True if y else False, \"a\"])\nprint({y: 1})\nprint([x for x in [True, 1, 1]])\n",
@@ -3473,7 +3493,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/141/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/142/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3486,7 +3506,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/141/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/142/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4176,11 +4196,11 @@
       ]
     }
   ],
-  "rows": 170,
+  "rows": 171,
   "skipped": 39,
-  "pass": 131,
+  "pass": 132,
   "fail": 0,
-  "oracle_match": 116,
+  "oracle_match": 117,
   "oracle_debt": 33,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

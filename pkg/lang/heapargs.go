@@ -761,8 +761,10 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 	bits := 0
 	// A dict whose keys or values mix kinds has no kind to record on the object or on the
 	// variable: each slot carries its own tag, and bit 8 tells the printer and the lookup to
-	// read them (roadmap L11.1 (1b), ADR 0232).
-	mixed := g.taggableMixedDict(dl)
+	// read them (roadmap L11.1 (1b), ADR 0232). A key or a value the pair road bound is a second
+	// reason for the same record: its tag is not a constant the compiler can read off a spelling,
+	// so the entry has to go through the tagged put with the register the objects wrote (Gap R.146).
+	mixed := g.taggableMixedDict(dl) || g.literalTakesPairSlots(dl)
 	if mixed {
 		bits |= 8
 		if name != "" {
@@ -774,6 +776,24 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 		}
 	}
 	for i := range dl.Keys {
+		if mixed {
+			// Each of the two positions answers for itself: a pair-bound one brings both of its words,
+			// an ordinary one brings its payload and the tag `elemKindTag` proves. Put and tag stay one
+			// call, so an entry never lands with the tag the previous tenant of that slot left behind.
+			kk, kt, kPair, err := g.taggedSlotWords(b, dl.Keys[i])
+			if err != nil {
+				return "", err
+			}
+			if kPair {
+				g.guardHashableTag(b, kt, dl.Src)
+			}
+			vv, vt, _, err := g.taggedSlotWords(b, dl.Vals[i])
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(b, "  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)\n", h, kk, vv, kt, vt)
+			continue
+		}
 		kk, kIsStr, err := g.heapElemKind(b, dl.Keys[i])
 		if err != nil {
 			return "", err
@@ -781,12 +801,6 @@ func (g *irGen) heapDictFrom(b *strings.Builder, dl *DictLit, name string) (stri
 		vv, vIsStr, err := g.heapElemKind(b, dl.Vals[i])
 		if err != nil {
 			return "", err
-		}
-		if mixed {
-			kt, _ := g.elemKindTag(dl.Keys[i])
-			vt, _ := g.elemKindTag(dl.Vals[i])
-			fmt.Fprintf(b, "  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, kk, vv, kt, vt)
-			continue
 		}
 		if kIsStr {
 			bits |= 2
@@ -819,7 +833,10 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 	fmt.Fprintf(b, "  %s = call i32 @rt_alloc(i32 %d)\n", h, HeapSet)
 	bits := 0
 	idx := 0
-	mixed := g.taggableMixedSet(sl)
+	// A member the pair road bound carries its own tag register, and a set dedups by the pair, so a
+	// member stored without its tag would collide with an ordinary payload that means something else
+	// (roadmap L11.1, Gap R.146; ADR 0232's tagged members, ADR 0187's payload-with-tag).
+	mixed := g.taggableMixedSet(sl) || g.literalTakesPairSlots(sl)
 	if mixed {
 		bits |= 8
 		if name != "" {
@@ -829,16 +846,24 @@ func (g *irGen) heapSetFrom(b *strings.Builder, sl *SetLit, name string) (string
 		}
 	}
 	for _, el := range sl.Elems {
+		if mixed {
+			// Adding and tagging are one call: a member added without its tag dedups against the
+			// payload alone and prints through whatever the slot held last time. A pair member hands
+			// over the tag it already owns instead of that constant.
+			v, t, isPair, err := g.taggedSlotWords(b, el)
+			if err != nil {
+				return "", err
+			}
+			if isPair {
+				g.guardHashableTag(b, t, sl.Src)
+			}
+			fmt.Fprintf(b, "  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %s)\n", h, v, t)
+			idx++
+			continue
+		}
 		v, interned, err := g.heapElemKind(b, el)
 		if err != nil {
 			return "", err
-		}
-		if mixed {
-			// A member the pair road bound carries its own tag; the constant is what a literal answers.
-			t, _ := g.elemKindTag(el)
-			fmt.Fprintf(b, "  call void @rt_set_add_tagged(i32 %s, i32 %s, i32 %d)\n", h, v, t)
-			idx++
-			continue
 		}
 		if interned {
 			bits |= 1
@@ -995,15 +1020,127 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 // Gap R.146; ADR 0187's rule that a payload is never written without its tag).
 func (g *irGen) pairElemPair(b *strings.Builder, e Expr) (payload, tag string, ok bool) {
 	nm, isName := e.(*Name)
-	if !isName || g.taggedVars == nil || !g.taggedVars[nm.Value] || g.taggedOrigin == nil {
+	if !isName || !g.nameIsPairElem(e) {
 		return "", "", false
+	}
+	payload, tag = g.numericPairRegs(b, nm.Value)
+	return payload, tag, true
+}
+
+// nameIsPairElem is `pairElemPair`'s question without the two loads: is this expression a name the
+// pair road bound, whose payload means a different thing per kind and so cannot be stored alone?
+// The gate for a whole literal has to be answered before any IR is emitted, and a predicate that
+// emitted its own loads would leave two dead registers in the module for every literal it opened.
+func (g *irGen) nameIsPairElem(x Expr) bool {
+	nm, isName := x.(*Name)
+	if !isName || g.taggedVars == nil || !g.taggedVars[nm.Value] || g.taggedOrigin == nil {
+		return false
 	}
 	switch g.taggedOrigin[nm.Value] {
 	case taggedOriginArith, taggedOriginFloat, taggedOriginParam, taggedOriginParamArith, taggedOriginSlot, taggedOriginLoop:
-		payload, tag = g.numericPairRegs(b, nm.Value)
-		return payload, tag, true
+		return true
 	}
-	return "", "", false
+	return false
+}
+
+// elemTaggableOrPair is the dict/set gate's element question: can the tagged builder be handed this
+// position at all? A pair element can — its tag arrives as a register the objects wrote, which is
+// what `rt_dict_put_tagged` and `rt_set_add_tagged` already take — and anything else can only when
+// `elemKindTag` can label it. An element the tag cannot label (a tuple, a call that hands back text
+// on one path and a number on another) keeps the literal on the road that refuses it: a payload
+// stored beside a tag nobody proved is exactly the wrong answer the refusal exists to prevent
+// (roadmap L11.1, Gap R.146; ADR 0232's tagged slots, ADR 0187's payload-never-written-without-tag).
+func (g *irGen) elemTaggableOrPair(e Expr) bool {
+	if g.nameIsPairElem(e) {
+		return true
+	}
+	_, ok := g.elemKindTag(e)
+	return ok
+}
+
+// literalTakesPairSlots is the dict's and the set's third gate, beside "does it need the heap"
+// and "can its slots say what they hold": does some position name a value the pair road bound,
+// **and** can every other position still be labelled by the compile-time tag? When both hold the
+// literal goes to the tagged builder, which asks each position for two words instead of one; when
+// the second half fails the builder never runs and the element keeps Gap R.146's refusal, which
+// names the missing half rather than storing a payload that only means something with a tag.
+//
+// ADR 0306 opened this door for a list's element. A dict interleaves key and value in one element
+// array and a set dedups a member by its (payload, tag) pair, so the same question is simply asked
+// more than once per literal — which is why it had to be answered per position and not per literal.
+func (g *irGen) literalTakesPairSlots(e Expr) bool {
+	if !g.literalHasPairElement(e) {
+		return false
+	}
+	switch n := e.(type) {
+	case *SetLit:
+		for _, el := range n.Elems {
+			if !g.elemTaggableOrPair(el) {
+				return false
+			}
+		}
+		return true
+	case *DictLit:
+		for i := range n.Keys {
+			if !g.elemTaggableOrPair(n.Keys[i]) || !g.elemTaggableOrPair(n.Vals[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// taggedSlotWords answers one position of a tagged dict entry or set member: the payload, and the
+// tag as the word it travels in — a constant for an element the compiler can read off its spelling,
+// a register for one the pair road bound. `rt_dict_put_tagged`/`rt_set_add_tagged` take an i32 for
+// the tag, and a register is an i32 (ADR 0306's discovery, applied to the two builders that had not
+// asked it): the runtime needed nothing, only the caller that stops guessing (roadmap L11.1,
+// Gap R.146).
+func (g *irGen) taggedSlotWords(b *strings.Builder, e Expr) (payload, tag string, fromPair bool, err error) {
+	if p, t, isPair := g.pairElemPair(b, e); isPair {
+		return p, t, true, nil
+	}
+	v, _, err := g.heapElemKind(b, e)
+	if err != nil {
+		return "", "", false, err
+	}
+	tg, ok := g.elemKindTag(e)
+	if !ok {
+		// Unreachable through the gates above; honest as a refusal if one is ever widened.
+		if nm, isName := e.(*Name); isName {
+			return "", "", false, g.taggedVarErr(nm.Value)
+		}
+		return "", "", false, fmt.Errorf("codegen: a dict/set slot cannot be labelled with a tag, so its payload cannot be stored (roadmap L11.1, Gap R.146)")
+	}
+	return v, strconv.FormatInt(int64(tg), 10), false, nil
+}
+
+// guardHashableTag is the one question a dict key and a set member have to be asked before the store,
+// which the tag makes a run-time fact once the value arrived as a pair: **can this value be a key at
+// all?** CPython refuses a list, a dict and a set member with `TypeError: unhashable type: 'list'` and
+// company, and a payload alone answers that question "yes" — the handle of a list is an i32, and two
+// lists with different handles are two members, so `{n}` over a container slot became a set that
+// happily holds an address (roadmap Gap R.81, which owns the general rule; ADR 0166's "raise what the
+// reference raises").
+//
+// It is emitted only for a tag the objects wrote. A tag the compiler read off the element's spelling
+// is a constant this pass already looked at, and the literal path keeps its own gate (`dictWantsContainerKey`)
+// and its own open row (Gap R.81) — this guard covers exactly the door ADR 0310 opened, and nothing wider.
+func (g *irGen) guardHashableTag(b *strings.Builder, tag string, sp Span) {
+	for _, k := range []struct {
+		tg   int32
+		name string
+	}{
+		{int32(TagList), "list"},
+		{int32(TagDict), "dict"},
+		{int32(TagSet), "set"},
+	} {
+		c := g.newTmp()
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, k.tg)
+		g.markI1(c)
+		g.branchRaise(b, c, "TypeError", "unhashable type: '"+k.name+"'", sp, "hash")
+	}
 }
 
 func (g *irGen) literalHasPairElement(e Expr) bool {

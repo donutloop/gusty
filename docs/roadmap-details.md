@@ -6496,6 +6496,48 @@ and the row's Status stays ⏳ `OPEN` because of it. Witnesses: `pkg/lang/pair_a
 `integration/pair_abs_test.go`, `programs/probe_the_signless_call_answers_for_a_pair_bound_name.gy` (`match`),
 +19 record entries (5623 → 5642, verified 0 dropped / 0 changed against the committed map — 18 snippets plus the probe program itself, which the corpus needs on record to be checkable at all).
 
+**Amended — the dict entry and the set member are paid (ADR 0310).** A dict entry, and a set member beside
+it, left this field, and they left it through the builders that were already there rather than through new
+ones: `rt_dict_put_tagged(i32 h, i32 k, i32 v, i32 kt, i32 vt)` and `rt_set_add_tagged(i32 h, i32 v, i32 t)`
+take the tag with the payload, **an `i32` is what a register is**, and the pair's tag is a register the objects
+wrote. What was filling them was `heapElemKind` plus `elemKindTag`/`dictKeyTag` — a payload road and a tag road
+that both label an element from its **spelling**, which for a name is nothing the pair road ever wrote. The
+measured asymmetry is the row's whole content: `print([n])` answered (ADR 0306) while `print({"k": n})`,
+`print({n: 1})` and `print({n})` refused, and the bound forms with them. Paid now, each CPython's answer:
+`{'k': 7} / {'k': 'a'} / {'k': 2.5} / {'k': None} / {'k': True} / {'k': [1, 2]} / {'k': 14} / {'v': 9} /
+{7: 'v'} / {'a': 1} / {2.5: 1} / {None: 1} / {True: 1} / {7: 8} / {'a': 7, 'b': 2} / {'k': [7]} / [{'k': 7}] /
+{'a': {'b': 7}} / {7} / {'a'} / {2.5} / {None} / {True}`, and every position that reads the object back —
+`d2["k"]`, `d2["k"] + 1`, `len(d2)`, `n in d2`, `d2[n]`, `for k in d2`, `str(d2)`, `repr`, `==`/`!=`,
+`7 in s2`, `len(s2)`, `s2.add(7)`, `for v in s2`. The silent class is why the row could not stay open behind a
+refusal table: a text slot's payload is its `@str_tab` index and a float slot's a box handle, so one word into
+an entry prints `{'k': 0}` or `{140737488355328}` at exit 0, and the refusal counter never sees it.
+
+The half the list never had to ask is **the hashable question**: a key and a member have to be hashable, and a
+payload alone answers "yes" for every value in the language — a list's handle is an i32 like any other — so the
+compiled leg would have built a set holding an address and printed `{[1, 2]}` as its own success. `guardHashableTag`
+asks the tag instead, per kind, in the program: three compares, three raises spelling CPython's
+`TypeError: unhashable type: 'list'`/`'dict'`/`'set'` (ADR 0271's rule about what a raise says), catchable by
+the program's `except TypeError:`. It is emitted only where a pair writes a key or a member; a literal whose
+kinds are all constants keeps its static road and grows no compares per entry, which
+`TestADictAndSetLiteralTheCompilerCanReadKeepsItsStaticRoad` pins from both sides. `Gap R.81` owns the general
+hashing rule — the guard here is the rule asked for the shapes this door opened, not the rule closed.
+
+What still refuses, and is what keeps the Status ⏳ `OPEN`: a literal a builtin **folds** into a static array
+(`sum([n])`, `min([n, 3])`, `max([n, 3])`) — the array has no tag storage at all, and the lookup that reads it
+back is a second teacher; the **mutation roads** (`ys.append(n)`, `s2.add(n)`, `d2["k"] = n`, `d2[n] = 1`), the
+same entry question in a statement that changes a container rather than an expression that builds one (ADR 0300's
+void mutators); a pair handed **across a call** into a body whose parameter is not a pair (`Gap R.154`'s
+boundary); and an f-string used as a VALUE. `TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord` is
+that half's ledger, at the CLI as well. A dead road was fixed on the way in: `heapElemKind` labelled a set
+element as a list and tagged its entry count as an `int` — the branch that reads a count is not the branch that
+labels an element — with no live caller, which is why it survived; a dict entry is the door that would have
+started calling it, so both arms are `unreachable` assertions now. Witnesses:
+`pkg/lang/pair_dict_set_test.go`, `integration/pair_dict_set_test.go`,
+`programs/probe_pair_bound_dict_entry_and_set_member.gy` (`match`), +61 record entries (5642 → 5703, verified
+0 dropped / 0 changed against the committed map — 60 snippets plus the probe program, which the corpus needs on
+record to be checkable at all), and `TestThePairBoundDictAndSetProbeIsOnRecord` so a deleted record fails loudly
+rather than skipping.
+
 ### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (CLOSED by ADR 0269 on 2026-10-05; owner both engines, measured landing ADR 0268)
 
 ```

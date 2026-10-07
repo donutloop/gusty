@@ -8725,6 +8725,14 @@
    "stdout": "3.0\n",
    "type": "None"
   },
+  "d = {}\nd[\"k\"] = 9\nn = d[\"k\"]\nprint({\"v\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'v': 9}\n",
+   "type": "None"
+  },
   "d = {}\nd[\"k\"] = [1, 2]\nprint(1 if d[\"k\"] == [1, 2] else 0)\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -37470,6 +37478,14 @@
    "hasInt": false,
    "int": 0
   },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {\"k\": n}\nprint(str(d2))\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 'a'}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(-n)\n": {
    "err": "eval error: bad operand type for unary -: 'str'",
    "exnMsg": "bad operand type for unary -: 'str'",
@@ -37554,12 +37570,76 @@
    "stdout": "['a']\n",
    "type": "None"
   },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(repr({\"k\": n}))\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 'a'}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(str(n))\n": {
    "hasInt": true,
    "hasStdout": true,
    "int": 281474976710657,
    "repr": "None",
    "stdout": "a\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = {n}\nprint(\"a\" in s2)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "True\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint({n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'a'}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint({n: 1})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'a': 1}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 'a'}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint({\"k\": n} == {\"k\": \"a\"})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "True\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint({\"k\": n} != {\"k\": \"b\"})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "True\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nprint(str({n}))\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'a'}\n",
    "type": "None"
   },
   "xs = []\nxs.append(\"a\")\nn = xs[0]\ny = [n]\nprint(str(y))\n": {
@@ -38020,6 +38100,30 @@
    "int": 281474976710657,
    "repr": "None",
    "stdout": "1.5\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint({n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{2.5}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint({n: 1})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{2.5: 1}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nprint({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 2.5}\n",
    "type": "None"
   },
   "xs = []\nxs.append(2.5)\nn = xs[0]\ny = [n]\nprint(y)\n": {
@@ -38634,12 +38738,124 @@
    "stdout": "3.5\n",
    "type": "int"
   },
+  "xs = []\nxs.append(7)\nfor v in xs:\n    print({v})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nfor v in xs:\n    print({v: \"x\"})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7: 'x'}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nfor v in xs:\n    print({\"k\": v})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 7}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(7)\nn = xs[0]\nd = 2.5\nprint(n < d)\n": {
    "hasInt": true,
    "hasStdout": true,
    "int": 281474976710657,
    "repr": "None",
    "stdout": "False\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ndef show(d):\n    print(d)\nshow({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {n: \"v\"}\nprint(n in d2)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "True\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {n: \"v\"}\nprint(d2[n])\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "v\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {n: \"v\"}\nfor k in d2:\n    print(k)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {n: \"v\", 1: \"w\"}\nprint(d2[7])\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "v\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {\"k\": n}\nprint(len(d2))\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "1\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {\"k\": n}\nprint(d2[\"k\"])\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {\"k\": n}\nprint(d2[\"k\"] + 1)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "8\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {\"k\": n}\nprint(d2)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {\"k\": n}\nfor k in d2:\n    print(k, d2[k])\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "k 7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {\"k\": n}\nd2[\"j\"] = 2\nprint(d2)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 7, 'j': 2}\n",
    "type": "None"
   },
   "xs = []\nxs.append(7)\nn = xs[0]\nh = n / 2\nprint(h)\nprint(h + 1)\n": {
@@ -38731,6 +38947,14 @@
    "hasStdout": true,
    "int": 281474976710657,
    "stdout": "[7]\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint([{\"k\": n}])\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "[{'k': 7}]\n",
    "type": "None"
   },
   "xs = []\nxs.append(7)\nn = xs[0]\nprint(f\"[{n}]\")\n": {
@@ -38936,6 +39160,110 @@
    "stdout": "2\n",
    "type": "None"
   },
+  "xs = []\nxs.append(7)\nn = xs[0]\nxs.append(7)\nm = xs[1]\nprint({n, m})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = {n}\ns2.add(7)\nprint(len(s2))\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "1\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = {n}\nprint(s2)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = {n}\nprint(len(s2))\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "1\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = {n}\nprint(7 in s2)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "True\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = {n}\nfor v in s2:\n    print(v)\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "7\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint({n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint({n: n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7: 7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint({n: \"v\"})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7: 'v'}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 7}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint({\"k\": [n]})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': [7]}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint({\"a\": {\"b\": n}})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'a': {'b': 7}}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nprint({\"a\": n, \"b\": 2})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'a': 7, 'b': 2}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(7)\nn = xs[0]\ny = [n, 1]\nprint(y)\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -39047,6 +39375,14 @@
    "stdout": "1\n",
    "type": "None"
   },
+  "xs = []\nxs.append(7)\nxs.append(8)\na = xs[0]\nb = xs[1]\nprint({a: b})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{7: 8}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(7)\nxs.append(9)\ni = 1\nn = xs[i]\nprint(n / 3)\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -39122,6 +39458,30 @@
    "hasInt": false,
    "int": 0
   },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint({n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{None}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint({n: 1})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{None: 1}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nprint({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': None}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(None)\nprint(1 if xs[0] > 1 else 0)\n": {
    "err": "eval error: '>' not supported between instances of 'NoneType' and 'int'",
    "exnMsg": "'>' not supported between instances of 'NoneType' and 'int'",
@@ -39174,6 +39534,30 @@
    "stdout": "0.5\n",
    "type": "None"
   },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint({n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{True}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint({n: 1})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{True: 1}\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nprint({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': True}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append(True)\nprint(str(xs[0]))\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -39221,6 +39605,13 @@
    "stdout": "3\n",
    "type": "None"
   },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {n: 1}\nprint(d2)\n": {
+   "err": "TypeError: unhashable type: 'list'",
+   "exnMsg": "unhashable type: 'list'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
   "xs = []\nxs.append([1, 2])\nn = xs[0]\nprint([n])\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -39233,6 +39624,51 @@
    "hasStdout": true,
    "int": 281474976710657,
    "stdout": "[1, 2]\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\ntry:\n    print({n})\nexcept TypeError:\n    print(\"caught\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "caught\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\ntry:\n    print({n: 1})\nexcept TypeError:\n    print(\"caught\")\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "caught\n",
+   "type": "None"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\ns2 = {n}\nprint(s2)\n": {
+   "err": "TypeError: unhashable type: 'list'",
+   "exnMsg": "unhashable type: 'list'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nprint({n})\n": {
+   "err": "TypeError: unhashable type: 'list'",
+   "exnMsg": "unhashable type: 'list'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nprint({n: 1})\n": {
+   "err": "TypeError: unhashable type: 'list'",
+   "exnMsg": "unhashable type: 'list'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nprint({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': [1, 2]}\n",
    "type": "None"
   },
   "xs = []\nxs.append([1, 2])\nprint(1 if xs[0] == [1, 2] else 0)\nprint(1 if xs[0] != [1, 2] else 0)\n": {
@@ -39681,6 +40117,14 @@
    "stdout": "14\n",
    "type": "None"
   },
+  "xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nprint({\"k\": n})\n": {
+   "hasInt": true,
+   "hasStdout": true,
+   "int": 281474976710657,
+   "repr": "None",
+   "stdout": "{'k': 14}\n",
+   "type": "None"
+  },
   "xs = []\nxs.append([7, 8])\nn = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n": {
    "hasInt": true,
    "int": 0,
@@ -40031,6 +40475,20 @@
    "hasStdout": true,
    "stdout": "['42']\n"
   },
+  "xs = []\nxs.append({\"a\": 1})\nn = xs[0]\nprint({n})\n": {
+   "err": "TypeError: unhashable type: 'dict'",
+   "exnMsg": "unhashable type: 'dict'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append({\"a\": 1})\nn = xs[0]\nprint({n: 1})\n": {
+   "err": "TypeError: unhashable type: 'dict'",
+   "exnMsg": "unhashable type: 'dict'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
   "xs = []\nxs.append({\"k\": 1, \"j\": 2})\nprint(len(xs[0]))\n": {
    "hasInt": true,
    "hasStdout": true,
@@ -40116,6 +40574,20 @@
   "xs = []\nxs.append({1})\nn = xs[0]\nprint(n - 1)\n": {
    "err": "eval error: unsupported operand type(s) for -: 'set' and 'int'",
    "exnMsg": "unsupported operand type(s) for -: 'set' and 'int'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append({1})\nn = xs[0]\nprint({n})\n": {
+   "err": "TypeError: unhashable type: 'set'",
+   "exnMsg": "unhashable type: 'set'",
+   "exnType": "TypeError",
+   "hasInt": false,
+   "int": 0
+  },
+  "xs = []\nxs.append({1})\nn = xs[0]\nprint({n: 1})\n": {
+   "err": "TypeError: unhashable type: 'set'",
+   "exnMsg": "unhashable type: 'set'",
    "exnType": "TypeError",
    "hasInt": false,
    "int": 0
@@ -41398,13 +41870,16 @@
    "stdout": "7\n",
    "type": "None"
   },
-  "# probe_the_signless_call_answers_for_a_pair_bound_name.gy \u2014 abs asks the tag.\n#\n# print(n) asks the module's one tag-reading printer (ADR 0303), a container element does too (ADR 0306), an\n# f-string field does (ADR 0307), and `n - 1` / `-n` / `n // 2` / `n % 3` ask the tag through the arithmetic\n# door (ADR 0304) which the double domain joined (ADR 0305). This program pins the position that stopped\n# being a refusal most recently: abs, the signless CALL. Its numeric road reads one word, and a name the pair\n# road bound has two \u2014 so `abs(n)` refused, while routing it through the lift would have taken the magnitude\n# of a text slot's @str_tab index or a float slot's box handle and printed a number at the exit code of\n# success (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0309, ADR 0265's\n# per-operator arithmetic door).\n#\n# abs is the arithmetic door's own op: the operand's kind comes from the tag and the ANSWER's kind follows it,\n# which is why the lines below mix 7, 1 and 2.5 \u2014 an int or bool in, an int out; a float in, a float out. The\n# magnitude exists only for a number, so a text slot leaves through CPython's raise, and the signless call's\n# sentence is its own, not the unary minus's (ADR 0271): `abs` of a text slot is\n# `TypeError: bad operand type for abs(): 'str'`, in a program that never wrote a minus. That leg is pinned in\n# pkg/lang/pair_abs_test.go and integration/pair_abs_test.go rather than here, because appending a text to any\n# container in a program makes an UNRELATED container's nested slot read refuse \u2014 the measured defect filed as\n# Gap R.191 \u2014 and this file's job is the signless call, not that row.\nxs = []\nxs.append(7)\nn = xs[0]\nprint(abs(n))\ny = abs(n)\nprint(y)\nneg = []\nneg.append(-8)\nprint(abs(neg[0]))\nhalf = []\nhalf.append(-2.5)\nprint(abs(half[0]))\npos = []\npos.append(2.5)\nprint(abs(pos[0]))\nflag = []\nflag.append(True)\nprint(abs(flag[0]))\nzero = []\nzero.append(0)\nprint(abs(zero[0]))\nnested = []\nnested.append([7, 8])\nm = nested[0][0] * 2\nprint(abs(m))\nsign = []\nsign.append([7, 8])\nk = sign[0][0] * -2\nprint(abs(k))\ntable = {}\ntable[\"k\"] = -9\nprint(abs(table[\"k\"]))\nbl = []\nbl.append(-5)\nfor v in bl:\n    print(abs(v))\n": {
+  "# probe_the_signless_call_answers_for_a_pair_bound_name.gy — abs asks the tag.\n#\n# print(n) asks the module's one tag-reading printer (ADR 0303), a container element does too (ADR 0306), an\n# f-string field does (ADR 0307), and `n - 1` / `-n` / `n // 2` / `n % 3` ask the tag through the arithmetic\n# door (ADR 0304) which the double domain joined (ADR 0305). This program pins the position that stopped\n# being a refusal most recently: abs, the signless CALL. Its numeric road reads one word, and a name the pair\n# road bound has two — so `abs(n)` refused, while routing it through the lift would have taken the magnitude\n# of a text slot's @str_tab index or a float slot's box handle and printed a number at the exit code of\n# success (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0309, ADR 0265's\n# per-operator arithmetic door).\n#\n# abs is the arithmetic door's own op: the operand's kind comes from the tag and the ANSWER's kind follows it,\n# which is why the lines below mix 7, 1 and 2.5 — an int or bool in, an int out; a float in, a float out. The\n# magnitude exists only for a number, so a text slot leaves through CPython's raise, and the signless call's\n# sentence is its own, not the unary minus's (ADR 0271): `abs` of a text slot is\n# `TypeError: bad operand type for abs(): 'str'`, in a program that never wrote a minus. That leg is pinned in\n# pkg/lang/pair_abs_test.go and integration/pair_abs_test.go rather than here, because appending a text to any\n# container in a program makes an UNRELATED container's nested slot read refuse — the measured defect filed as\n# Gap R.191 — and this file's job is the signless call, not that row.\nxs = []\nxs.append(7)\nn = xs[0]\nprint(abs(n))\ny = abs(n)\nprint(y)\nneg = []\nneg.append(-8)\nprint(abs(neg[0]))\nhalf = []\nhalf.append(-2.5)\nprint(abs(half[0]))\npos = []\npos.append(2.5)\nprint(abs(pos[0]))\nflag = []\nflag.append(True)\nprint(abs(flag[0]))\nzero = []\nzero.append(0)\nprint(abs(zero[0]))\nnested = []\nnested.append([7, 8])\nm = nested[0][0] * 2\nprint(abs(m))\nsign = []\nsign.append([7, 8])\nk = sign[0][0] * -2\nprint(abs(k))\ntable = {}\ntable[\"k\"] = -9\nprint(abs(table[\"k\"]))\nbl = []\nbl.append(-5)\nfor v in bl:\n    print(abs(v))\n": {
    "hasInt": true,
    "hasStdout": true,
    "int": 281474976710657,
    "repr": "None",
    "stdout": "7\n7\n8\n2.5\n2.5\n1\n0\n14\n14\n9\n5\n",
    "type": "None"
+  },
+  "# probe_pair_bound_dict_entry_and_set_member.gy — a pair-bound name as a dict entry and a set member\n# (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0310, ADR 0306's list\n# element, ADR 0232's tagged dict/set slots, ADR 0187's rule that a payload is never written without its tag).\n#\n# A name the pair road bound (`n = xs[0]` over a container the program built) holds a (payload, tag) pair. A\n# dict and a set each have ONE builder that takes the tag as a number — rt_dict_put_tagged and rt_set_add_tagged\n# — and the roads that filled them asked the old helper for the element's payload and a tag guessed from the\n# element's SPELLING, which for a name is nothing the pair road wrote. The result was the silent answer: an\n# interned index where the reference prints a text, a box handle where it prints a float, at the exit code of\n# success. The fix is the one ADR 0306 made for a list element: those two calls take an i32 for the tag, a\n# register is an i32, and the pair's tag is a register the objects wrote — no runtime helper changed.\n#\n# The dict and the set ask one question a list element is never asked: can this value be a key at all? The tag\n# is what knows, so the guard is emitted where the tag is read, and CPython's own sentence goes out of the\n# runtime with the kind that triggered it.\n#\n# Every line here is what the reference prints — a text value prints its text and not its interned index, a\n# float value its double and not its box handle, a text member its text and not a bucket number — and the\n# unhashable pair raises a TypeError the program can catch.\n\nxs = []\nxs.append(7)\nxs.append(\"a\")\nxs.append(2.5)\nxs.append(None)\nxs.append(True)\nxs.append([1, 2])\nn = xs[0]\ns = xs[1]\nf = xs[2]\nz = xs[3]\nb = xs[4]\nc = xs[5]\n# the value position, over every kind a slot can hold\nprint({\"v\": n})\nprint({\"v\": s})\nprint({\"v\": f})\nprint({\"v\": z})\nprint({\"v\": b})\nprint({\"v\": c})\n# the key position, and both at once\nprint({n: \"k\"})\nprint({s: 1})\nprint({f: 1})\nprint({z: 1})\nprint({n: n})\nprint({\"a\": n, \"b\": 2})\n# the entry read back from the object the binding built\nd = {\"k\": n}\nprint(d)\nprint(len(d))\nprint(d[\"k\"])\nprint(d[\"k\"] + 1)\ndk = {n: \"v\"}\nprint(n in dk)\nprint(dk[n])\nfor k in dk:\n    print(k)\n# the member position, and the object the binding built\nprint({n})\nprint({s})\nprint({f})\nprint({z})\nprint({b})\nms = {n}\nprint(len(ms))\nprint(7 in ms)\nprint(\"a\" in {s})\n# a value whose only word would be a float's handle, printed through the container that holds it\nprint({\"pair\": [n, s, f], \"nested\": {\"inner\": s}})\n# what cannot be a key says so, in the reference's own words, and the program's arm runs\ntry:\n    print({c: 1})\nexcept TypeError:\n    print(\"caught-the-list-key\")\ntry:\n    print({c})\nexcept TypeError:\n    print(\"caught-the-list-member\")\n": {
+   "stdout": "{'v': 7}\n{'v': 'a'}\n{'v': 2.5}\n{'v': None}\n{'v': True}\n{'v': [1, 2]}\n{7: 'k'}\n{'a': 1}\n{2.5: 1}\n{None: 1}\n{7: 7}\n{'a': 7, 'b': 2}\n{'k': 7}\n1\n7\n8\nTrue\nv\n7\n{7}\n{'a'}\n{2.5}\n{None}\n{True}\n1\nTrue\nTrue\n{'pair': [7, 'a', 2.5], 'nested': {'inner': 'a'}}\ncaught-the-list-key\ncaught-the-list-member\n"
   }
  },
  "meta": {

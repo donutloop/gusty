@@ -78,17 +78,14 @@ func TestCLIAPairBoundNameInAContainerAgreesWithCPython(t *testing.T) {
 	}
 }
 
-// TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord is the honest half at the CLI: the
-// dict, set and folded-literal roads still ask every element for a single word, and each refusal has to say
-// so in the words that name the missing capability rather than in three words a person cannot act on.
+// TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord is the honest half at the CLI,
+// narrowed by ADR 0310: the dict entry and the set member went through the same door the list element did
+// (their builders take the tag as an `i32`, and a register is an `i32`), so what is left of the original table
+// is the literal a builtin folds into a static array — an array with no tag storage at all. Each refusal has
+// to say so in the words that name the missing capability rather than in three words a person cannot act on.
 func TestCLIAPairBoundNameStillRefusesTheContainerPositionsThatKeepOneWord(t *testing.T) {
 	dir := t.TempDir()
 	for _, tc := range []struct{ name, src string }{
-		{"a dict value", pairContainerBuilt + "print({\"k\": n})\n"},
-		{"a dict key", pairContainerBuilt + "print({n: 1})\n"},
-		{"a set member", pairContainerBuilt + "print({n})\n"},
-		{"a bound dict", pairContainerBuilt + "d2 = {\"k\": n}\nprint(d2)\n"},
-		{"a bound set", pairContainerBuilt + "s2 = {n}\nprint(s2)\n"},
 		{"sum over a literal", pairContainerBuilt + "print(sum([n]))\n"},
 		{"min over a literal", pairContainerBuilt + "print(min([n, 3]))\n"},
 		{"max over a literal", pairContainerBuilt + "print(max([n, 3]))\n"},

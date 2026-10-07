@@ -571,7 +571,11 @@ handle); the answer **handed to a function** is parity surface since
 static number (`Gap R.143`, `programs/probe_pair_bound_name_as_a_number`), a pair-shaped value handed to a
 position that keeps one word (`Gap R.146`, `programs/probe_pair_bound_name_takes_a_value` — the list element
 `[n]` left that family when the container builders learned to ask the tag, ADR 0306, and is parity surface in
-`pair_container_test.go`), and the tuple
+`pair_container_test.go`; the **dict entry and the set member** left it the same way, into the two builders
+that already take `(payload, tag)` — `rt_dict_put_tagged` and `rt_set_add_tagged` — and are parity surface in
+`pair_dict_set_test.go`, `dict_set_test.go` and
+`programs/probe_pair_bound_dict_entry_and_set_member.gy`, ADR 0310; what is left inside that family is a
+literal a builtin folds into a static array, the mutation roads and a pair handed across a call), and the tuple
 unpacking that has not taken the pair (`Gap R.144`, `programs/probe_pair_from_a_tuple_unpack`) — each CPython's
 and the interpreted leg's answer against the compiled leg's exit 1. The same shape one statement earlier — the
 assignment that changes a variable's state from int to float — is parity surface since
