@@ -245,9 +245,10 @@ program whose answer is `-5`. A name answers with what its latest binding gave i
 (ADR 0268) — a name the arithmetic door bound is provably a whole number or a float, so the position lifts it
 into the one word that holds both families rather than guessing. What still refuses is a position that keeps
 **one word** for a whole value — a builtin's argument, a literal a builtin folds into a static array, the
-mutation roads (`Gap R.146`) — while the list element (ADR 0306), the f-string field (ADR 0307), the signless
-call (ADR 0309) and the **dict entry and set member** (ADR 0310) all take the pair now, and so does the float
-road (`n / 4` is `1.75`, ADR 0305). An `and`'s operand is not one of those
+a literal a builtin folds into a static array, a pair handed across a call (`Gap R.146`) — while the list
+element (ADR 0306), the f-string field (ADR 0307), the signless call (ADR 0309), the **dict entry and set
+member** (ADR 0310) and the **mutation roads** — `xs.append(n)`, `s.add(n)`, `xs[i] = n`, `d[k] = n` (ADR 0311)
+— all take the pair now, and so does the float road (`n / 4` is `1.75`, ADR 0305). An `and`'s operand is not one of those
 positions any more: the operator that chooses an operand can ask the pair directly, so `print(n and 3)` prints
 CPython's `3` and `print(n or 3)` its `14`, on all three legs (`Gap R.147`, ADR 0269).
 What still refuses by naming itself: a numeric use whose **result** kind is only knowable while
@@ -871,8 +872,8 @@ knows: `{c: 1}` over a container slot raises `TypeError: unhashable type: 'list'
 own `except TypeError:`, where reading the payload alone would have put an address in the bucket and printed a
 plausible container at the exit code of success (ADR 0310, ADR 0232, Gap R.81). What still refuses is a
 position that keeps **one word** for a whole value — `n + 1`, `abs(n) + 1`, `round(abs(n) / 2)`, `min(n, 3)`,
-a literal `sum`/`min`/`max` folds into a static array, the mutation roads (`xs.append(n)`, `s.add(n)`,
-`d["k"] = n`), a pair handed across a call, an f-string used as a value — and the refusal names
+a literal `sum`/`min`/`max` folds into a static array, a pair handed across a call, and an f-string used as a
+value — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
 R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, `print(f"{xs}")` is Gap
 R.114, and an unrelated container's nested slot read refusing is Gap R.191's). `--json --eval 'repr("hi")'` reports

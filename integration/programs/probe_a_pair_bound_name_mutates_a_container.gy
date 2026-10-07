@@ -1,0 +1,84 @@
+# probe_a_pair_bound_name_mutates_a_container.gy — a pair-bound name written by a STATEMENT
+# (roadmap L11.1, Gap R.146's mutation roads; ADR 0311, ADR 0310's dict entry and set member, ADR 0306's
+# list element, ADR 0187's rule that a payload is never written without its tag).
+#
+# `xs.append(n)`, `s.add(n)`, `xs[i] = v` and `d[k] = v` ask the literal builders' question from the other
+# side of the semicolon: they change a container the program already built. Each already had a tagged door —
+# rt_append_tagged, rt_set_add_tagged, rt_dict_put_tagged, rt_put_elem with rt_tag_elem — because a
+# heterogeneous literal needed one (ADR 0232), and each was being fed by heapElemKind, which asks an element
+# for its spelling and so has nothing to say about a name whose kind lives in `_n_tag`. A register is an i32,
+# the pair's tag is a register the objects wrote, and no runtime helper changed.
+#
+# A value that is NOT a pair is still asked what it is by the ordinary road first. That question is what keeps
+# `d["k"] = xs[0] / 2` an honest refusal rather than a double's payload stored in an i32 slot: a row that stops
+# refusing without answering has not been paid, it has been lost.
+#
+# A member and a key also ask the question no element asks — can this value be hashed — and only the tag can
+# answer it. A container-valued member raises TypeError: unhashable type: 'list', and the program's own arm
+# runs, where reading the payload alone would have put a heap handle in a bucket and printed a plausible
+# container at the exit code of success (Gap R.81, ADR 0228).
+
+xs = []
+xs.append(7)
+xs.append("a")
+xs.append(2.5)
+xs.append(None)
+xs.append(True)
+xs.append([1, 2])
+n = xs[0]
+s = xs[1]
+f = xs[2]
+z = xs[3]
+b = xs[4]
+c = xs[5]
+# the list: grown by append, and one element written by subscript
+ys = []
+ys.append(n)
+ys.append(s)
+ys.append(1)
+print(ys)
+print(len(ys))
+print(7 in ys)
+for v in ys:
+    print(v)
+ys[0] = f
+print(ys)
+print(str(ys))
+# the set: grown by add, deduplicated by (payload, tag) and looped over
+st = set()
+st.add(n)
+st.add(s)
+st.add(n)
+print(len(st))
+print(7 in st)
+print("a" in st)
+print(len(st))
+# the dict: filled by setitem on both sides of the entry, and read back every way it can be
+d = {}
+d["k"] = n
+d["t"] = s
+d[f] = "float-key"
+d[z] = b
+print(d)
+print(d["k"])
+print(d["t"])
+print(d[2.5])
+print(len(d))
+print("k" in d)
+for k in d:
+    print(k, d[k])
+# the answer of arithmetic over a slot is a pair too, and append takes it with its tag
+half = []
+half.append(xs[0] / 2)
+print(half)
+# what cannot be a key says so, in the reference's own words, and the program's arm runs
+try:
+    bad = set()
+    bad.add(c)
+except TypeError:
+    print("caught-the-unhashable-member")
+try:
+    worse = {}
+    worse[c] = 1
+except TypeError:
+    print("caught-the-unhashable-key")

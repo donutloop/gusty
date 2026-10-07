@@ -8332,25 +8332,56 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 	if !ok {
 		return fmt.Errorf("codegen: item assignment needs a container variable on the left (d[k] = v), got %T; CPython accepts more forms", ix.Obj)
 	}
-	v, err := g.value(b, val)
-	if err != nil {
-		return err
-	}
 	h, err := g.value(b, ix.Obj)
 	if err != nil {
 		return err
 	}
-	key, kIsStr, err := g.heapElemKind(b, ix.Idx)
-	if err != nil {
-		return err
+	// The value is asked what it is by the road that is going to store it. A value the pair road bound
+	// hands the container its payload and its tag as two registers, and is the only case that question is
+	// asked differently: every other value still goes through the ordinary road first, which is what keeps
+	// `d["k"] = xs[0] / 2` and `xs[0] = xs[0] / 2` an honest refusal today rather than a payload stored where
+	// its meaning lives in a register nobody read (roadmap L11.1, Gap R.146, ADR 0311).
+	valWord, valTag, valIsPair := g.pairElemPair(b, val)
+	if !valIsPair {
+		if _, verr := g.value(b, val); verr != nil {
+			return verr
+		}
+	}
+	// A key the pair road bound arrives as two registers, and `rt_dict_put_tagged` is the door that takes
+	// them. The list branch keeps asking ONE word for its index: a pair used as a position is a different
+	// question — a text slot's payload is an index into another table, where the reference raises `list
+	// indices must be integers or slices` — and it stays owed (roadmap L11.1, Gap R.146, ADR 0311).
+	var key, keyTag string
+	var kIsStr, kIsPair bool
+	if g.runtimeDicts[nm.Value] {
+		var kErr error
+		key, keyTag, kIsPair, kIsStr, kErr = g.mutationSlotWords(b, ix.Idx)
+		if kErr != nil {
+			return kErr
+		}
+	} else {
+		var kErr error
+		key, kIsStr, kErr = g.heapElemKind(b, ix.Idx)
+		if kErr != nil {
+			return kErr
+		}
 	}
 	switch {
 	case g.runtimeDicts[nm.Value]:
-		v, vIsStr, err := g.heapElemKind(b, val)
-		if err != nil {
-			return err
+		var v string
+		var vIsStr bool
+		if valIsPair {
+			// The pair's payload is the word and its tag travels beside it (ADR 0187); asking
+			// `heapElemKind` here would ask a name for a spelling it does not have.
+			v, vIsStr = valWord, false
+		} else {
+			var verr error
+			v, vIsStr, verr = g.heapElemKind(b, val)
+			if verr != nil {
+				return verr
+			}
 		}
-		if g.printsAsInternedStr(val) {
+		if g.printsAsInternedStr(val) && !valIsPair {
 			vIsStr = true
 		}
 		// The pair and its two tags go in together: a dict entry that keeps the tag of the
@@ -8368,6 +8399,12 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		// promoted to describing itself, and the refusal stays for a value no tag can name.
 		contradicts := (vIsStr && g.dictValInt[nm.Value]) || (!vIsStr && g.dictValStr[nm.Value]) ||
 			(kIsStr && g.dictKeyInt[nm.Value]) || (!kIsStr && g.dictKeyStr[nm.Value])
+		if kIsPair || valIsPair {
+			// An entry whose key or value arrives as a (payload, tag) pair leaves the dict with no
+			// single kind to claim: the kind is a register now, per slot (ADR 0232's promotion, asked of
+			// a value this pass cannot label — roadmap L11.1, Gap R.146, ADR 0311).
+			g.promotePairMixed(b, h, nm.Value, "dict value")
+		}
 		if !g.mixedDicts[nm.Value] {
 			if contradicts {
 				if !g.promoteMixed(b, h, nm.Value, "dict value", val, ix.Idx) {
@@ -8394,7 +8431,19 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 				vt = int32(TagInt)
 			}
 		}
-		b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %d, i32 %d)\n", h, key, v, kt, vt))
+		// The tag is the number the element's spelling describes, except where the element is a pair: then
+		// it is the register the objects wrote, which is the only thing in the module that knows what the
+		// payload means (ADR 0187). A key whose kind only that register can tell is asked whether it can be
+		// a key at all, in the reference's own words (Gap R.81, ADR 0310).
+		ktS, vtS := strconv.FormatInt(int64(kt), 10), strconv.FormatInt(int64(vt), 10)
+		if kIsPair {
+			ktS = keyTag
+			g.guardHashableTag(b, keyTag, ix.Src)
+		}
+		if valIsPair {
+			vtS = valTag
+		}
+		b.WriteString(fmt.Sprintf("  call void @rt_dict_put_tagged(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)\n", h, key, v, ktS, vtS))
 		// An entry whose key or value is a float or None has a payload the dict's compiled kinds
 		// cannot render — a box handle and nothing — so the dict stops claiming them, the same move
 		// ADR 0232 made for an entry that mixes numbers with text (roadmap L11.1, ADR 0233).
@@ -8415,14 +8464,26 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 		}
 		return nil
 	case g.listVars[nm.Value]:
-		if g.mixedLists[nm.Value] {
+		// The element is written with its tag in one operation, whether the tag is a constant this pass
+		// read off a spelling or a register the objects wrote: `elemKindTag` answers the first and
+		// `pairElemPair`/`mixedElemTag` the second, and a value whose kind only they can tell leaves the
+		if valIsPair || g.mixedLists[nm.Value] {
+			if valIsPair {
+				// The slot is written with its tag, and the list stops claiming a kind: the kind is the
+				// register now (ADR 0187, ADR 0232; roadmap L11.1, Gap R.146, ADR 0311).
+				g.promotePairMixed(b, h, nm.Value, "list")
+			}
 			// An element of a tagged list is (payload, tag); writing the payload alone would
 			// leave the slot tagged as whatever lived there before, so the tag is written with
 			// it. This is the shape that used to answer `[1, 'a', None]` for `xs[0] = "z"` —
 			// the interned index printed through the stale int tag (roadmap L11.1, ADR 0187).
-			sv, tag, serr := g.mixedElemTag(b, val)
-			if serr != nil {
-				return serr
+			sv, tag := valWord, valTag
+			if !valIsPair {
+				var serr error
+				sv, tag, serr = g.mixedElemTag(b, val)
+				if serr != nil {
+					return serr
+				}
 			}
 			ln := g.newTmp()
 			b.WriteString(fmt.Sprintf("  %s = call i32 @rt_list_len(i32 %s)\n", ln, h))
@@ -8474,15 +8535,18 @@ func (g *irGen) assignIndex(b *strings.Builder, ix *Index, val Expr) error {
 				g.replaceElemKind(nm.Value, "list", sIsStr)
 			}
 		}
-		v = sv
 		// Bounds are checked so an out-of-range index raises IndexError through the
 		// The index is normalised and bounds-checked by the same helper the read path
 		// uses, so `xs[-1] = v` writes the last element and an out-of-range write
 		// raises IndexError through the same path an explicit `raise` uses
 		// (roadmap L11.4, ADR 0210).
+		//
+		// The element is lowered once, by `heapElemKind` just above, and not first asked of `value` as
+		// this site used to do: the extra call emitted a word nobody read, and for a name the pair road
+		// bound it refused before this road ever got to ask its own question (roadmap L11.1, Gap R.146).
 		endL := g.newLabel("item.end")
 		key = g.normalizeIndex(b, h, key, ix.Span())
-		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, v))
+		b.WriteString(fmt.Sprintf("  call void @rt_put_elem(i32 %s, i32 %s, i32 %s)\n", h, key, sv))
 		b.WriteString(fmt.Sprintf("  call void @rt_tag_elem(i32 %s, i32 %s, i32 %s)\n", h, key, g.elemTagOperand(b, val, sIsStr)))
 		b.WriteString(fmt.Sprintf("  br label %%%s\n", endL))
 		b.WriteString(fmt.Sprintf("%s:\n", endL))
@@ -12087,6 +12151,25 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 					b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s, i32 %s)\n", fn, hs, mv, mt))
 					return "", nil
 				}
+				// A member the pair road bound hands the set its payload and its tag as two registers,
+				// and the tagged add is the door that takes them — adding and tagging are one operation,
+				// because a member added without its tag dedups against the payload alone and prints
+				// through whatever the slot last held (ADR 0187, ADR 0232). A member is also the position
+				// that has to be hashable, and only the tag can say whether it is (Gap R.81, ADR 0310's
+				// literal road; roadmap L11.1, Gap R.146, ADR 0311).
+				if pv, pt, isPair := g.pairElemPair(b, c.Args[0]); isPair {
+					g.heapSeq++
+					hs := g.heapSeq
+					b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%%s\n", hs, "_"+nm.Value))
+					g.promotePairMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "set")
+					g.guardHashableTag(b, pt, c.Src)
+					addFn := "rt_set_add_tagged"
+					if attr.Name.Value == "discard" {
+						addFn = "rt_set_discard_tagged"
+					}
+					b.WriteString(fmt.Sprintf("  call void @%s(i32 %%h%d, i32 %s, i32 %s)\n", addFn, hs, pv, pt))
+					return "", nil
+				}
 				av, interned, err := g.heapElemKind(b, c.Args[0])
 				if err != nil {
 					return "", err
@@ -12228,6 +12311,18 @@ func (g *irGen) call(b *strings.Builder, c *Call) (string, error) {
 		if nm, ok := attr.Obj.(*Name); ok && g.listVars[nm.Value] && attr.Name.Value == "append" {
 			if len(c.Args) != 1 {
 				return "", fmt.Errorf("append expects one argument")
+			}
+			// An element the pair road bound carries its kind in a register, and the tagged append is
+			// the door that takes it: payload and tag are one operation (ADR 0187), and the list stops
+			// claiming a kind this pass cannot state, because the kind is now a register the objects
+			// wrote (roadmap L11.1, Gap R.146; ADR 0306's literal element, ADR 0232's promotion, ADR 0311).
+			if pv, pt, isPair := g.pairElemPair(b, c.Args[0]); isPair {
+				g.heapSeq++
+				hs := g.heapSeq
+				b.WriteString(fmt.Sprintf("  %%h%d = load i32, i32* %%_%s\n", hs, nm.Value))
+				g.promotePairMixed(b, fmt.Sprintf("%%h%d", hs), nm.Value, "list")
+				b.WriteString(fmt.Sprintf("  call void @rt_append_tagged(i32 %%h%d, i32 %s, i32 %s)\n", hs, pv, pt))
+				return "", nil
 			}
 			if g.mixedLists[nm.Value] {
 				// Appending to a tagged list writes the payload and the tag together:

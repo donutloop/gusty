@@ -8810,3 +8810,41 @@ put a guard where the deleting ended.
   session (the record's 5642 → 5703 came out of a script that printed the count, not out of context), and when a
   command's output is load-bearing — the 60-case reference sweep, the golden-file merge — run it through a script
   that reports the bytes it read and the keys it changed.
+
+## ADR 0311 — a pair-bound name is written into a container by a statement (Gap R.146's mutation roads)
+
+- **The row's example list had gone stale, so the row lied.** `Gap R.146` still illustrated itself with
+  `abs(n)`, `min(n, 3)` and `[n]` — all paid by ADR 0309, 0269 and 0306 — while the shapes that actually still
+  refused were `xs.append(n)`, `s.add(n)`, `xs[i] = n`, `d[k] = n`. The next cycle picked the right work only
+  because it measured 144 programs first (six slot kinds × 24 bodies) instead of reading the tracker's prose.
+  When a row's examples are paid, its examples have to be restated in the same commit that pays them.
+- **Measure before you choose, and keep the measurement as the table.** 144 programs → 15 agreeing (every one
+  of those "agreements" was both sides failing). The same JSON that produced that number produced the answer
+  tables in `pkg/lang/pair_mutation_test.go` and `integration/pair_mutation_test.go`, so the expectations in
+  the tests and the numbers in the docs come from one run rather than from memory.
+- **A pair arm on a road that already had a tagged door is not the hard part; knowing when NOT to take the arm
+  is.** All four mutators already had `(payload, tag)` calls from ADR 0232, and `pkg/lang/runtime.go` again has
+  no diff. The bug came from deleting `assignIndex`'s eager `g.value(b, val)` because it refused before the
+  pair road got to answer: `xs[0] = xs[0] / 2` then printed `[2]` and `d["k"] = xs[0] / 2` printed `3.0` where
+  CPython prints `[3.5]` / `{'k': 3.0}` — two honest Gap R.88 refusals quietly converted into wrong answers at
+  exit 0. The eager question is back for every non-pair value; the pair arms take only pairs. The rule for the
+  loop: **a row that stops refusing without answering has not been paid, it has been lost** — and the refusal
+  table is as much a test as the answer table, which is why this cycle pins both.
+- **Widening a shared helper is a much bigger change than it looks.** The tempting patch widened
+  `mixedElemTag`/`taggedOperand` (which also serve the folds and the arithmetic roads) so that "everything"
+  took pairs; the first attempt regressed `elemKindTag`'s guess for a division answer into a container slot and
+  produced the wrong-answer above. Explicit pair arms at the four call sites, plus `promotePairMixed` doing
+  `promoteMixed`'s bookkeeping without `promoteMixed`'s `elemKindTag` precondition, kept the blast radius in
+  the mutation roads.
+- **A record field the harness does not read is not an answer.** The 0310 probe's record entry had been written
+  as `{"stdout": ...}` without `hasStdout: true`; `goldenStdoutIs` reads `rec.HasStd`, so that row was silently
+  comparing nothing while looking recorded. Every entry this cycle added carries the canonical
+  `{hasStdout, stdout}` shape, and the 137 missing flags were fixed in the same commit. When recording by hand
+  rather than through the recorder, copy an existing entry's keys, not just its value.
+- **Registering a conformance program is a promise to three harnesses** (registry entry, record entry with the
+  canonical fields, committed `conformance-matrix.json`), and this cycle paid all three plus the loud
+  missing-record test in one pass: 172 rows / 133 conformant, +138 records (5703 → 5841).
+- **The remote can reject a push with a server-side 500 while fetch works.** ADR 0310's commit could not be
+  pushed (`remote rejected … (Internal Server Error)` on both `main` and a topic branch, retried over several
+  minutes). Keep working, keep the commit local, and keep retrying the push each cycle rather than treating a
+  dead remote as a reason to stop the loop.

@@ -2208,6 +2208,60 @@ func (g *irGen) elemTagOperand(b *strings.Builder, e Expr, interned bool) string
 	return strconv.FormatInt(int64(TagInt), 10)
 }
 
+// mutationSlotWords is the question a MUTATION road asks of the word it is about to store: an operand the
+// pair road bound hands the container its payload AND its tag as two registers, and anything else keeps the
+// one word and the tag this pass read off its spelling. It is `taggedSlotWords` for the statement roads —
+// `xs.append(n)`, `s.add(n)`, `xs[i] = v`, `d[k] = v` — which ask the question of a value they change rather
+// than a value they build (roadmap L11.1, Gap R.146; ADR 0310's dict/set entry, ADR 0306's element).
+//
+// The tag comes back empty for a non-pair on purpose: the roads keep consulting `elemKindTag` for a literal,
+// so a later cycle that widens one of these doors cannot silently stop asking the question the container's
+// kind record depends on.
+func (g *irGen) mutationSlotWords(b *strings.Builder, e Expr) (payload, tag string, fromPair, interned bool, err error) {
+	if p, t, ok := g.pairElemPair(b, e); ok {
+		return p, t, true, false, nil
+	}
+	v, isStr, err := g.heapElemKind(b, e)
+	if err != nil {
+		return "", "", false, false, err
+	}
+	return v, "", false, isStr, nil
+}
+
+// promotePairMixed is promoteMixed's bookkeeping for an element whose kind lives in a register instead of a
+// spelling. It cannot call promoteMixed, which answers false unless `elemKindTag` can label the element — the
+// question a pair-bound name cannot answer, which is the whole reason the pair road exists — so the container
+// is told the same thing by other means: it stops claiming one kind, and it lets its slots speak. The float
+// printer is switched on because the tag, and not this pass, now decides per slot whether an arm prints a
+// box's double (ADR 0232's promotion, ADR 0244's rule for a list the compiler cannot see into).
+func (g *irGen) promotePairMixed(b *strings.Builder, handle, name, kind string) bool {
+	if handle == "" || name == "" {
+		return false
+	}
+	switch kind {
+	case "list":
+		g.mixedLists[name] = true
+		g.listElemStr[name] = false
+		g.listElemInt[name] = false
+	case "set":
+		g.mixedSets[name] = true
+		g.setElemStr[name] = false
+		g.setElemInt[name] = false
+	case "dict key", "dict value":
+		g.mixedDicts[name] = true
+		g.dictKeyStr[name] = false
+		g.dictKeyInt[name] = false
+		g.dictValStr[name] = false
+		g.dictValInt[name] = false
+	default:
+		return false
+	}
+	g.heapUsed = true
+	g.floatFmtUsed = true
+	fmt.Fprintf(b, "  call void @rt_mark_estr(i32 %s, i32 8)\n", handle)
+	return true
+}
+
 // promoteMixed is what a container becomes when a value arriving now contradicts the kind the
 // compiler had recorded for it: the container stops claiming one kind and lets its slots describe
 // themselves. That is not a relaxation — it is available only because every word that ever reached

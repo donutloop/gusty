@@ -238,8 +238,11 @@ func TestThePairBoundDictAndSetProbeIsOnRecord(t *testing.T) {
 }
 
 // TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin is the honest half at the CLI. Three
-// classes keep their refusal: a literal a builtin folds into a static array, the mutation roads that change
-// a container in a statement, and a pair handed across a call into a body whose parameter is not a pair.
+// classes keep their refusal: a literal a builtin folds into a static array, a pair handed across a call
+// into a body whose parameter is not a pair, and a value that is not a pair at all (`d["k"] = xs[0] / 2`),
+// which the ordinary road is asked about first and refuses in words. The MUTATION roads themselves —
+// `xs.append(n)`, `s.add(n)`, `xs[i] = v`, `d[k] = v` — are paid by ADR 0311 and compared with the reference
+// in `pair_mutation_test.go`.
 // Each refusal names the value's origin, the missing half and the roadmap row; exit 2 stays forbidden.
 func TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
 	dir := t.TempDir()
@@ -248,10 +251,6 @@ func TestCLIAgentPairBoundDictAndSetStillRefuseInWordsThatNameTheOrigin(t *testi
 		{"a min over a folded literal", pairDictCLISlot + "print(min([n, 3]))\n"},
 		{"a max over a folded literal", pairDictCLISlot + "print(max([n, 3]))\n"},
 		{"a pair handed through a parameter into a dict", pairDictCLISlot + "def build(k):\n    return {\"k\": k}\nprint(build(n))\n"},
-		{"the pair appended into a list", pairDictCLISlot + "ys = []\nys.append(n)\nprint(ys)\n"},
-		{"the pair added to a set", "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(s2)\n"},
-		{"the pair written into a dict by key", pairDictCLISlot + "d2 = {}\nd2[\"k\"] = n\nprint(d2)\n"},
-		{"the pair used as a dict key by assignment", pairDictCLISlot + "d2 = {}\nd2[n] = 1\nprint(d2)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeSrc(t, dir, "pairdict_refuse.gy", tc.src)

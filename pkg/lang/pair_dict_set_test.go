@@ -317,12 +317,12 @@ func TestADictAndSetLiteralTheCompilerCanReadKeepsItsStaticRoad(t *testing.T) {
 //
 //   - a literal a builtin FOLDS into a static array (`sum([n])`, `min([n, 3])`) — the fold has no tag storage
 //     at all, and teaching it means teaching the lookup that reads the array back;
-//   - the MUTATION roads (`xs.append(n)`, `s.add(n)`, `d["k"] = n`, `d[n] = 1`), which are the same entry
-//     question asked by the statement that changes a container rather than the expression that builds one
-//     (ADR 0300's void-returning mutators) and still ask their element for one word;
 //   - a pair handed through a parameter, which is a different boundary (Gap R.154's family) — the callee's
 //     parameter is not a pair, so the entry inside the body has no tag to carry.
 //
+// The MUTATION roads that used to be here — `xs.append(n)`, `s.add(n)`, `xs[i] = v`, `d[k] = v` — are paid
+// by ADR 0311 and live in `pair_mutation_test.go`, together with the value they still cannot carry
+// (`d["k"] = xs[0] / 2`, which the ordinary road is asked about first and refuses in words).
 // Each keeps the sentence that names the value's origin, the missing half and the roadmap row; exit 2 stays
 // forbidden, because a refusal this backend emits is a diagnostic and not a compiler bug (ADR 0166).
 func TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord(t *testing.T) {
@@ -331,10 +331,6 @@ func TestAPairBoundDictAndSetStillRefuseThePositionsThatTakeOneWord(t *testing.T
 		{"a min over a folded literal", pairDictIntSlot, "print(min([n, 3]))\n"},
 		{"a max over a folded literal", pairDictIntSlot, "print(max([n, 3]))\n"},
 		{"a pair handed through a parameter into a dict", pairDictIntSlot, "def build(k):\n    return {\"k\": k}\nprint(build(n))\n"},
-		{"the pair appended into a list", pairDictIntSlot, "ys = []\nys.append(n)\nprint(ys)\n"},
-		{"the pair added to a set", pairDictTextSlot, "s2 = set()\ns2.add(n)\nprint(s2)\n"},
-		{"the pair written into a dict by key", pairDictIntSlot, "d2 = {}\nd2[\"k\"] = n\nprint(d2)\n"},
-		{"the pair used as a dict key by assignment", pairDictIntSlot, "d2 = {}\nd2[n] = 1\nprint(d2)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := tc.pre + tc.body

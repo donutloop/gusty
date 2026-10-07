@@ -2550,6 +2550,26 @@
     },
     {
       "case": {
+        "id": "programs/probe_a_pair_bound_name_mutates_a_container",
+        "name": "probe_a_pair_bound_name_mutates_a_container.gy",
+        "source": "# probe_a_pair_bound_name_mutates_a_container.gy — a pair-bound name written by a STATEMENT\n# (roadmap L11.1, Gap R.146's mutation roads; ADR 0311, ADR 0310's dict entry and set member, ADR 0306's\n# list element, ADR 0187's rule that a payload is never written without its tag).\n#\n# `xs.append(n)`, `s.add(n)`, `xs[i] = v` and `d[k] = v` ask the literal builders' question from the other\n# side of the semicolon: they change a container the program already built. Each already had a tagged door —\n# rt_append_tagged, rt_set_add_tagged, rt_dict_put_tagged, rt_put_elem with rt_tag_elem — because a\n# heterogeneous literal needed one (ADR 0232), and each was being fed by heapElemKind, which asks an element\n# for its spelling and so has nothing to say about a name whose kind lives in `_n_tag`. A register is an i32,\n# the pair's tag is a register the objects wrote, and no runtime helper changed.\n#\n# A value that is NOT a pair is still asked what it is by the ordinary road first. That question is what keeps\n# `d[\"k\"] = xs[0] / 2` an honest refusal rather than a double's payload stored in an i32 slot: a row that stops\n# refusing without answering has not been paid, it has been lost.\n#\n# A member and a key also ask the question no element asks — can this value be hashed — and only the tag can\n# answer it. A container-valued member raises TypeError: unhashable type: 'list', and the program's own arm\n# runs, where reading the payload alone would have put a heap handle in a bucket and printed a plausible\n# container at the exit code of success (Gap R.81, ADR 0228).\n\nxs = []\nxs.append(7)\nxs.append(\"a\")\nxs.append(2.5)\nxs.append(None)\nxs.append(True)\nxs.append([1, 2])\nn = xs[0]\ns = xs[1]\nf = xs[2]\nz = xs[3]\nb = xs[4]\nc = xs[5]\n# the list: grown by append, and one element written by subscript\nys = []\nys.append(n)\nys.append(s)\nys.append(1)\nprint(ys)\nprint(len(ys))\nprint(7 in ys)\nfor v in ys:\n    print(v)\nys[0] = f\nprint(ys)\nprint(str(ys))\n# the set: grown by add, deduplicated by (payload, tag) and looped over\nst = set()\nst.add(n)\nst.add(s)\nst.add(n)\nprint(len(st))\nprint(7 in st)\nprint(\"a\" in st)\nprint(len(st))\n# the dict: filled by setitem on both sides of the entry, and read back every way it can be\nd = {}\nd[\"k\"] = n\nd[\"t\"] = s\nd[f] = \"float-key\"\nd[z] = b\nprint(d)\nprint(d[\"k\"])\nprint(d[\"t\"])\nprint(d[2.5])\nprint(len(d))\nprint(\"k\" in d)\nfor k in d:\n    print(k, d[k])\n# the answer of arithmetic over a slot is a pair too, and append takes it with its tag\nhalf = []\nhalf.append(xs[0] / 2)\nprint(half)\n# what cannot be a key says so, in the reference's own words, and the program's arm runs\ntry:\n    bad = set()\n    bad.add(c)\nexcept TypeError:\n    print(\"caught-the-unhashable-member\")\ntry:\n    worse = {}\n    worse[c] = 1\nexcept TypeError:\n    print(\"caught-the-unhashable-key\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[7, 'a', 1]\n3\nTrue\n7\na\n1\n[2.5, 'a', 1]\n[2.5, 'a', 1]\n2\nTrue\nTrue\n2\n{'k': 7, 't': 'a', 2.5: 'float-key', None: True}\n7\na\nfloat-key\n4\nTrue\nk 7\nt a\n2.5 float-key\nNone True\n[3.5]\ncaught-the-unhashable-member\ncaught-the-unhashable-key\n",
+      "python_ok": true,
+      "python_stdout": "[7, 'a', 1]\n3\nTrue\n7\na\n1\n[2.5, 'a', 1]\n[2.5, 'a', 1]\n2\nTrue\nTrue\n2\n{'k': 7, 't': 'a', 2.5: 'float-key', None: True}\n7\na\nfloat-key\n4\nTrue\nk 7\nt a\n2.5 float-key\nNone True\n[3.5]\ncaught-the-unhashable-member\ncaught-the-unhashable-key\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_bool_in_a_container",
         "name": "probe_bool_in_a_container.gy",
         "source": "# What CPython prints for every shape here (python3, 3.12):\n#\n#   [True, 1]\n#   [True]\n#   [False]\n#   {'k': True}\n#   {True}\n#   [1, 2, True]\n#   True\n#   True\n#   True\n#   2\n#   [True, 'a']\n#   {True: 1}\n#   [True, 1, 1]\n#\n# A container slot is allowed to say `bool`. Before this the shape printed the number it is stored\n# as — `[1, 1]` and `{'k': 1}` — and both backends agreed, which is exactly why no two-backend test\n# ever saw it (roadmap Gap R.112, ADR 0259).\n#\n# The rows come in two families. A *literal* slot (`[True, 1]`, `{\"k\": True}`) is a `BoolLit` the tag\n# table can see directly; a slot whose verdict comes from an *expression* — the comparison feeding a\n# `list.append`, the call argument, the ternary among strings, the dict key that is a variable holding\n# a comparison — has to be asked of that expression, through the same `IsBoolExpr` the rendering pair\n# asks (ADR 0257). A list comprehension whose element copies the loop variable is the same question\n# one level indirect: `x` says True only if the item it copied does.\n#\n# What a bool is *not* is the other half of the row: `[True] == [1]` answers True and `True + 1` is 2,\n# because the payload underneath the tag is still the number, and the compiled comparison's numeric\n# family is int, float AND bool.\nprint([True, 1])\nprint([True])\nprint([False])\nprint({\"k\": True})\nprint({True, 1})\nxs = [1, 2]\nb = 1 == 1\nxs.append(b)\nprint(xs)\nprint([True] == [1])\nxs2 = [True, 1]\nprint(xs2[0])\nif xs2[0]:\n    print(True)\nelse:\n    print(False)\nprint(True + 1)\ny = 1 == 1\nprint([True if y else False, \"a\"])\nprint({y: 1})\nprint([x for x in [True, 1, 1]])\n",
@@ -3493,7 +3513,7 @@
       },
       "aot_ok": false,
       "aot_stdout": "",
-      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/142/prog.ll:25:28: error: global variable reference must have pointer type",
+      "aot_error": "exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/143/prog.ll:25:28: error: global variable reference must have pointer type",
       "python_ok": true,
       "python_stdout": "[1, 2]\n",
       "aot_matches_python": false,
@@ -3506,7 +3526,7 @@
         "set-order"
       ],
       "oracle_notes": [
-        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/142/prog.ll:25:28: error: global variable reference must have pointer type"
+        "compiled leg failed: exit status 1: llc-20: error: llc-20: /tmp/\u003crun\u003e/143/prog.ll:25:28: error: global variable reference must have pointer type"
       ]
     },
     {
@@ -4196,11 +4216,11 @@
       ]
     }
   ],
-  "rows": 171,
+  "rows": 172,
   "skipped": 39,
-  "pass": 132,
+  "pass": 133,
   "fail": 0,
-  "oracle_match": 117,
+  "oracle_match": 118,
   "oracle_debt": 33,
   "oracle_not_applicable": 21,
   "oracle_drift": 0

@@ -2215,8 +2215,8 @@ print(abs(txt[0]))       # TypeError: bad operand type for abs(): 'str'  — the
 
 What is **not** answered stays a refusal that names the missing half, and the boundary is deliberate: the
 positions that keep one word for a whole value — `abs(n) + 1`, `abs(n) * 2`, `round(abs(n) / 2)`,
-`abs(-n)`, `min(abs(n), 3)`, `sum([abs(n)])`, and `min(n, 3)` / a builtin-folded literal / the mutation roads
-from the row before — still refuse at exit 1. Taking one word out of a pair is not a partial answer, it is a different
+`abs(-n)`, `min(abs(n), 3)`, `sum([abs(n)])`, and `min(n, 3)` / a builtin-folded literal from the row before
+— still refuse at exit 1. Taking one word out of a pair is not a partial answer, it is a different
 value: a float slot's payload is a box handle and a text slot's is an interned index, and a magnitude of
 either is a plausible number at the exit code of success.
 
@@ -3187,9 +3187,8 @@ print(f"{x!r}")        # 2.5 — a conversion of a variable used to print nothin
 ```
 
 What still refuses is a position that keeps one word for the value — `float(n)`, `min(n, 3)`, a literal
-`sum`/`min`/`max` folds into a static array (`sum([n])`), the mutation roads (`xs.append(n)`, `s.add(n)`,
-`d["k"] = n`, `d[n] = 1`), a pair handed across a call into a body whose parameter is not a pair (`Gap R.154`),
-and an f-string used as a **value** (`s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()`)
+`sum`/`min`/`max` folds into a static array (`sum([n])`), a pair handed across a call into a body whose
+parameter is not a pair (`Gap R.154`), and an f-string used as a **value** (`s = f"x{n}"`, `f"{n}" + f"{n}"`, `f"v={n}".upper()`)
 — all owned by Gap R.146, each refusing in a sentence that names the missing half. A **dict entry and a set
 member** are not in that list any more (ADR 0310): the dict and the set each have one builder that takes the tag
 with the payload, so `print({"k": n})` is `{'k': 'a'}`, `print({n: 1})` is `{'a': 1}`, `print({n})` is `{'a'}`
@@ -3197,6 +3196,34 @@ and everything that reads the bound object back asks the same tag — `d = {"k":
 `k in d`, `d[k]`, `str(d)`, `d == {"k": "a"}` and a `for k in d`, and `s = {n}` answers `7 in s`, `len(s)` and a
 `for v in s`. A key or a member that cannot be hashed raises CPython's `TypeError: unhashable type: 'list'`, catchable
 by the program's own `except TypeError:` (`Gap R.81`, ADR 0228).
+
+The same two words travel through the **mutation roads** — the statements that change a container the program
+already built (ADR 0311):
+
+```python
+xs = []
+xs.append(2.5)
+n = xs[0]
+ys = []
+ys.append(n)          # [2.5] — the append takes the payload and the tag together
+ys[0] = 1
+print(ys)             # [1]
+st = set()
+st.add(n)
+print(7 in st, len(st))   # False 1 — dedup reads both words
+d = {}
+d["k"] = n
+d[n] = "v"            # the pair as key and the pair as value, in one program
+print(d["k"], d[2.5], len(d))   # 2.5 v 2
+xs2 = []
+xs2.append([1, 2])
+c = xs2[0]
+st2 = set()
+st2.add(c)            # TypeError: unhashable type: 'list'
+d2 = {}
+d2["k"] = xs[0] / 2     # refused: the value is not a pair, and the ordinary road is asked first
+```
+
 
 ## Builtins
 

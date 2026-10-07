@@ -391,6 +391,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// or member that cannot be hashed says so in CPython's own words, catchable by the program's arm
 		// (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0310, ADR 0306).
 		"probe_pair_bound_dict_entry_and_set_member",
+		// A pair-bound name written by a STATEMENT — appended, subscripted, added, put into an entry: each
+		// mutation goes to the door that takes the payload and the tag together, so an appended text is the text
+		// and not its interned index, an added member dedups on both words, and a member or key that cannot be
+		// hashed raises CPython's `TypeError: unhashable type: 'list'` with the program's arm running (roadmap
+		// L11.1, Gap R.146's mutation roads; ADR 0311, ADR 0310, ADR 0306).
+		"probe_a_pair_bound_name_mutates_a_container",
 		// A bool stored in a container, both legs on one source: the slot carries a bool tag, so
 		// the list, the dict and the str()/repr() of both print `[True, 1]` and `{'k': True}` like
 		// CPython — and the numeric questions still answer as the number (True + 1, [True] == [1],

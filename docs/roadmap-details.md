@@ -6538,6 +6538,40 @@ started calling it, so both arms are `unreachable` assertions now. Witnesses:
 record to be checkable at all), and `TestThePairBoundDictAndSetProbeIsOnRecord` so a deleted record fails loudly
 rather than skipping.
 
+**Amended again — the mutation roads are paid (ADR 0311).** `xs.append(n)`, `s.add(n)`, `xs[i] = n`,
+`d[k] = n` and `d[n] = v` left this field. The measurement came first, because the row's own example list no
+longer contained any of them: six slot kinds (int, text, float, `None`, verdict, container) over 24 bodies —
+the four mutators and every position that reads the container back — 144 programs run against CPython, **15
+agreeing**, all fifteen because both sides failed. Each road already had a tagged door, because a
+heterogeneous literal needed one (ADR 0232) — `rt_append_tagged`, `rt_set_add_tagged`, `rt_dict_put_tagged`,
+`rt_put_elem` with `rt_tag_elem` — and each was being fed by `heapElemKind`, which labels an element from its
+spelling and so has nothing to say about a name whose kind is a register. A register is an `i32`, the pair's
+tag is a register the objects wrote, and **`pkg/lang/runtime.go` has no diff in the commit**.
+`promotePairMixed` does `promoteMixed`'s bookkeeping without `promoteMixed`'s precondition, which is the
+question a pair cannot answer; the container stops claiming one kind, and the printer asks the slots.
+
+**The near-miss is the lesson worth keeping.** The first version deleted `assignIndex`'s eager
+`g.value(b, val)`, because that question refused before the pair road got to answer. Two shapes then went from
+honest refusal to wrong answer at exit 0: `xs[0] = xs[0] / 2` printed `[2]` where the reference prints
+`[3.5]`, and `d["k"] = xs[0] / 2` printed `3.0` only because the dict's printer happened to ask the tag. Both
+had been Gap R.88 refusals. The eager question is restored for every non-pair value, the pair arms take only
+pairs, and `TestWhatTheMutationRoadsStillRefuseIsStillRefusedInWords` pins the refusals as carefully as the
+answer tables pin the answers — a row that stops refusing without answering has not been paid, it has been
+lost. (Where the road already carried a pair — `ys.append(xs[0] / 2)`, arriving through the mixed-list door —
+the answer is `3.5` and is pinned as an answer.)
+
+The hashable question is asked on these roads too, by the same guard ADR 0310 introduced: `s.add(n)` and
+`d[n] = v` put a value in a bucket, and a payload says "hashable" for everything the language has, so the tag
+is compared and CPython's own `TypeError: unhashable type: 'list'` raised, catchable by the program's arm
+(`Gap R.81` still owns the general rule). What the row keeps: `min(n, 3)`, a literal a builtin folds into a
+static array, a pair handed across a call (`Gap R.154`), an f-string used as a value, and a pair used as an
+**index** (`xs[n] = v`), where a text slot's payload is an index into another table and the reference raises
+`list indices must be integers or slices`. Witnesses: `pkg/lang/pair_mutation_test.go`,
+`integration/pair_mutation_test.go`, `programs/probe_a_pair_bound_name_mutates_a_container.gy` (`match`; the
+matrix is 172 rows / 133 conformant), +138 record entries (5703 → 5841) and the 0310 probe's record entry
+corrected to carry `hasStdout`, without which the harness compares nothing — a record field read as "the
+answer" has to be the field the harness reads.
+
 ### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (CLOSED by ADR 0269 on 2026-10-05; owner both engines, measured landing ADR 0268)
 
 ```

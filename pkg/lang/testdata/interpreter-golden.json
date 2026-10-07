@@ -41879,7 +41879,560 @@
    "type": "None"
   },
   "# probe_pair_bound_dict_entry_and_set_member.gy — a pair-bound name as a dict entry and a set member\n# (roadmap L11.1, Gap R.146's positions that keep one word for a whole value; ADR 0310, ADR 0306's list\n# element, ADR 0232's tagged dict/set slots, ADR 0187's rule that a payload is never written without its tag).\n#\n# A name the pair road bound (`n = xs[0]` over a container the program built) holds a (payload, tag) pair. A\n# dict and a set each have ONE builder that takes the tag as a number — rt_dict_put_tagged and rt_set_add_tagged\n# — and the roads that filled them asked the old helper for the element's payload and a tag guessed from the\n# element's SPELLING, which for a name is nothing the pair road wrote. The result was the silent answer: an\n# interned index where the reference prints a text, a box handle where it prints a float, at the exit code of\n# success. The fix is the one ADR 0306 made for a list element: those two calls take an i32 for the tag, a\n# register is an i32, and the pair's tag is a register the objects wrote — no runtime helper changed.\n#\n# The dict and the set ask one question a list element is never asked: can this value be a key at all? The tag\n# is what knows, so the guard is emitted where the tag is read, and CPython's own sentence goes out of the\n# runtime with the kind that triggered it.\n#\n# Every line here is what the reference prints — a text value prints its text and not its interned index, a\n# float value its double and not its box handle, a text member its text and not a bucket number — and the\n# unhashable pair raises a TypeError the program can catch.\n\nxs = []\nxs.append(7)\nxs.append(\"a\")\nxs.append(2.5)\nxs.append(None)\nxs.append(True)\nxs.append([1, 2])\nn = xs[0]\ns = xs[1]\nf = xs[2]\nz = xs[3]\nb = xs[4]\nc = xs[5]\n# the value position, over every kind a slot can hold\nprint({\"v\": n})\nprint({\"v\": s})\nprint({\"v\": f})\nprint({\"v\": z})\nprint({\"v\": b})\nprint({\"v\": c})\n# the key position, and both at once\nprint({n: \"k\"})\nprint({s: 1})\nprint({f: 1})\nprint({z: 1})\nprint({n: n})\nprint({\"a\": n, \"b\": 2})\n# the entry read back from the object the binding built\nd = {\"k\": n}\nprint(d)\nprint(len(d))\nprint(d[\"k\"])\nprint(d[\"k\"] + 1)\ndk = {n: \"v\"}\nprint(n in dk)\nprint(dk[n])\nfor k in dk:\n    print(k)\n# the member position, and the object the binding built\nprint({n})\nprint({s})\nprint({f})\nprint({z})\nprint({b})\nms = {n}\nprint(len(ms))\nprint(7 in ms)\nprint(\"a\" in {s})\n# a value whose only word would be a float's handle, printed through the container that holds it\nprint({\"pair\": [n, s, f], \"nested\": {\"inner\": s}})\n# what cannot be a key says so, in the reference's own words, and the program's arm runs\ntry:\n    print({c: 1})\nexcept TypeError:\n    print(\"caught-the-list-key\")\ntry:\n    print({c})\nexcept TypeError:\n    print(\"caught-the-list-member\")\n": {
+   "hasStdout": true,
    "stdout": "{'v': 7}\n{'v': 'a'}\n{'v': 2.5}\n{'v': None}\n{'v': True}\n{'v': [1, 2]}\n{7: 'k'}\n{'a': 1}\n{2.5: 1}\n{None: 1}\n{7: 7}\n{'a': 7, 'b': 2}\n{'k': 7}\n1\n7\n8\nTrue\nv\n7\n{7}\n{'a'}\n{2.5}\n{None}\n{True}\n1\nTrue\nTrue\n{'pair': [7, 'a', 2.5], 'nested': {'inner': 'a'}}\ncaught-the-list-key\ncaught-the-list-member\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(n)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[7]\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(n)\nys.append(1)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[7, 1]\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(n)\nprint(len(ys))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(n)\nprint(7 in ys)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(n)\nfor v in ys:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(n)\nprint(str(ys))\n": {
+   "hasStdout": true,
+   "stdout": "[7]\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = [0]\nys[0] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[7]\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = [1, 2]\nys[1] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[1, 7]\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{7}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(len(s2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(7 in s2)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = set()\ns2.add(n)\nfor v in s2:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\ns2 = {1}\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{1, 7}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 7}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2[\"k\"])\n": {
+   "hasStdout": true,
+   "stdout": "7\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(len(d2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(\"k\" in d2)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nd2[\"j\"] = 2\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 7, 'j': 2}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{7: 1}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2[n])\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{7: 7}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {\"a\": 1}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a': 1, 7: 7}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(str(d2))\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 7}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = [n]\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [7]}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = []\nys.append(n)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "['a']\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = []\nys.append(n)\nys.append(1)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "['a', 1]\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = []\nys.append(n)\nprint(len(ys))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = []\nys.append(n)\nprint(7 in ys)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = []\nys.append(n)\nfor v in ys:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "a\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = []\nys.append(n)\nprint(str(ys))\n": {
+   "hasStdout": true,
+   "stdout": "['a']\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = [0]\nys[0] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "['a']\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nys = [1, 2]\nys[1] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[1, 'a']\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a'}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(len(s2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(7 in s2)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = set()\ns2.add(n)\nfor v in s2:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "a\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\ns2 = {1}\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{1, 'a'}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 'a'}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2[\"k\"])\n": {
+   "hasStdout": true,
+   "stdout": "a\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(len(d2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(\"k\" in d2)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nd2[\"j\"] = 2\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 'a', 'j': 2}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a': 1}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2[n])\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a': 'a'}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {\"a\": 1}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a': 'a'}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(str(d2))\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 'a'}\n"
+  },
+  "xs = []\nxs.append(\"a\")\nn = xs[0]\nd2 = {}\nd2[\"k\"] = [n]\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': ['a']}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = []\nys.append(n)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[2.5]\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = []\nys.append(n)\nys.append(1)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[2.5, 1]\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = []\nys.append(n)\nprint(len(ys))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = []\nys.append(n)\nprint(7 in ys)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = []\nys.append(n)\nfor v in ys:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = []\nys.append(n)\nprint(str(ys))\n": {
+   "hasStdout": true,
+   "stdout": "[2.5]\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = [0]\nys[0] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[2.5]\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nys = [1, 2]\nys[1] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2.5]\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{2.5}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(len(s2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(7 in s2)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\ns2 = set()\ns2.add(n)\nfor v in s2:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\ns2 = {1}\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{1, 2.5}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 2.5}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2[\"k\"])\n": {
+   "hasStdout": true,
+   "stdout": "2.5\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(len(d2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(\"k\" in d2)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nd2[\"j\"] = 2\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 2.5, 'j': 2}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{2.5: 1}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2[n])\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{2.5: 2.5}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {\"a\": 1}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a': 1, 2.5: 2.5}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(str(d2))\n": {
+   "hasStdout": true,
+   "stdout": "{'k': 2.5}\n"
+  },
+  "xs = []\nxs.append(2.5)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = [n]\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [2.5]}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = []\nys.append(n)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[None]\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = []\nys.append(n)\nys.append(1)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[None, 1]\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = []\nys.append(n)\nprint(len(ys))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = []\nys.append(n)\nprint(7 in ys)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = []\nys.append(n)\nfor v in ys:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = []\nys.append(n)\nprint(str(ys))\n": {
+   "hasStdout": true,
+   "stdout": "[None]\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = [0]\nys[0] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[None]\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nys = [1, 2]\nys[1] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[1, None]\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{None}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(len(s2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(7 in s2)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\ns2 = set()\ns2.add(n)\nfor v in s2:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\ns2 = {1}\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{None, 1}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': None}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2[\"k\"])\n": {
+   "hasStdout": true,
+   "stdout": "None\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(len(d2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(\"k\" in d2)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nd2[\"j\"] = 2\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': None, 'j': 2}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{None: 1}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2[n])\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{None: None}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {\"a\": 1}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a': 1, None: None}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(str(d2))\n": {
+   "hasStdout": true,
+   "stdout": "{'k': None}\n"
+  },
+  "xs = []\nxs.append(None)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = [n]\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [None]}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = []\nys.append(n)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[True]\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = []\nys.append(n)\nys.append(1)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[True, 1]\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = []\nys.append(n)\nprint(len(ys))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = []\nys.append(n)\nprint(7 in ys)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = []\nys.append(n)\nfor v in ys:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = []\nys.append(n)\nprint(str(ys))\n": {
+   "hasStdout": true,
+   "stdout": "[True]\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = [0]\nys[0] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[True]\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nys = [1, 2]\nys[1] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[1, True]\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{True}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(len(s2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\ns2 = set()\ns2.add(n)\nprint(7 in s2)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\ns2 = set()\ns2.add(n)\nfor v in s2:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\ns2 = {1}\ns2.add(n)\nprint(s2)\n": {
+   "hasStdout": true,
+   "stdout": "{1}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': True}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2[\"k\"])\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(len(d2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(\"k\" in d2)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nd2[\"j\"] = 2\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': True, 'j': 2}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{True: 1}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[n] = 1\nprint(d2[n])\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{True: True}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {\"a\": 1}\nd2[n] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'a': 1, True: True}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(str(d2))\n": {
+   "hasStdout": true,
+   "stdout": "{'k': True}\n"
+  },
+  "xs = []\nxs.append(True)\nn = xs[0]\nd2 = {}\nd2[\"k\"] = [n]\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [True]}\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = []\nys.append(n)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[[1, 2]]\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = []\nys.append(n)\nys.append(1)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[[1, 2], 1]\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = []\nys.append(n)\nprint(len(ys))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = []\nys.append(n)\nprint(7 in ys)\n": {
+   "hasStdout": true,
+   "stdout": "False\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = []\nys.append(n)\nfor v in ys:\n    print(v)\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2]\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = []\nys.append(n)\nprint(str(ys))\n": {
+   "hasStdout": true,
+   "stdout": "[[1, 2]]\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = [0]\nys[0] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[[1, 2]]\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nys = [1, 2]\nys[1] = n\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[1, [1, 2]]\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [1, 2]}\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(d2[\"k\"])\n": {
+   "hasStdout": true,
+   "stdout": "[1, 2]\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(len(d2))\n": {
+   "hasStdout": true,
+   "stdout": "1\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(\"k\" in d2)\n": {
+   "hasStdout": true,
+   "stdout": "True\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nd2[\"j\"] = 2\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [1, 2], 'j': 2}\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {}\nd2[\"k\"] = n\nprint(str(d2))\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [1, 2]}\n"
+  },
+  "xs = []\nxs.append([1, 2])\nn = xs[0]\nd2 = {}\nd2[\"k\"] = [n]\nprint(d2)\n": {
+   "hasStdout": true,
+   "stdout": "{'k': [[1, 2]]}\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(xs[0] / 2)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[3.5]\n"
+  },
+  "xs = []\nxs.append(7)\nn = xs[0]\nys = []\nys.append(xs[0] / 2)\nys.append(1)\nprint(ys)\n": {
+   "hasStdout": true,
+   "stdout": "[3.5, 1]\n"
+  },
+  "# probe_a_pair_bound_name_mutates_a_container.gy — a pair-bound name written by a STATEMENT\n# (roadmap L11.1, Gap R.146's mutation roads; ADR 0311, ADR 0310's dict entry and set member, ADR 0306's\n# list element, ADR 0187's rule that a payload is never written without its tag).\n#\n# `xs.append(n)`, `s.add(n)`, `xs[i] = v` and `d[k] = v` ask the literal builders' question from the other\n# side of the semicolon: they change a container the program already built. Each already had a tagged door —\n# rt_append_tagged, rt_set_add_tagged, rt_dict_put_tagged, rt_put_elem with rt_tag_elem — because a\n# heterogeneous literal needed one (ADR 0232), and each was being fed by heapElemKind, which asks an element\n# for its spelling and so has nothing to say about a name whose kind lives in `_n_tag`. A register is an i32,\n# the pair's tag is a register the objects wrote, and no runtime helper changed.\n#\n# A value that is NOT a pair is still asked what it is by the ordinary road first. That question is what keeps\n# `d[\"k\"] = xs[0] / 2` an honest refusal rather than a double's payload stored in an i32 slot: a row that stops\n# refusing without answering has not been paid, it has been lost.\n#\n# A member and a key also ask the question no element asks — can this value be hashed — and only the tag can\n# answer it. A container-valued member raises TypeError: unhashable type: 'list', and the program's own arm\n# runs, where reading the payload alone would have put a heap handle in a bucket and printed a plausible\n# container at the exit code of success (Gap R.81, ADR 0228).\n\nxs = []\nxs.append(7)\nxs.append(\"a\")\nxs.append(2.5)\nxs.append(None)\nxs.append(True)\nxs.append([1, 2])\nn = xs[0]\ns = xs[1]\nf = xs[2]\nz = xs[3]\nb = xs[4]\nc = xs[5]\n# the list: grown by append, and one element written by subscript\nys = []\nys.append(n)\nys.append(s)\nys.append(1)\nprint(ys)\nprint(len(ys))\nprint(7 in ys)\nfor v in ys:\n    print(v)\nys[0] = f\nprint(ys)\nprint(str(ys))\n# the set: grown by add, deduplicated by (payload, tag) and looped over\nst = set()\nst.add(n)\nst.add(s)\nst.add(n)\nprint(len(st))\nprint(7 in st)\nprint(\"a\" in st)\nprint(len(st))\n# the dict: filled by setitem on both sides of the entry, and read back every way it can be\nd = {}\nd[\"k\"] = n\nd[\"t\"] = s\nd[f] = \"float-key\"\nd[z] = b\nprint(d)\nprint(d[\"k\"])\nprint(d[\"t\"])\nprint(d[2.5])\nprint(len(d))\nprint(\"k\" in d)\nfor k in d:\n    print(k, d[k])\n# the answer of arithmetic over a slot is a pair too, and append takes it with its tag\nhalf = []\nhalf.append(xs[0] / 2)\nprint(half)\n# what cannot be a key says so, in the reference's own words, and the program's arm runs\ntry:\n    bad = set()\n    bad.add(c)\nexcept TypeError:\n    print(\"caught-the-unhashable-member\")\ntry:\n    worse = {}\n    worse[c] = 1\nexcept TypeError:\n    print(\"caught-the-unhashable-key\")\n": {
+   "hasStdout": true,
+   "stdout": "[7, 'a', 1]\n3\nTrue\n7\na\n1\n[2.5, 'a', 1]\n[2.5, 'a', 1]\n2\nTrue\nTrue\n2\n{'k': 7, 't': 'a', 2.5: 'float-key', None: True}\n7\na\nfloat-key\n4\nTrue\nk 7\nt a\n2.5 float-key\nNone True\n[3.5]\ncaught-the-unhashable-member\ncaught-the-unhashable-key\n"
   }
  },
  "meta": {
