@@ -33,6 +33,10 @@ func TestCLIArithmeticOfASlotBoundNameAgreesWithCPython(t *testing.T) {
 		{"the subtrahend is the slot", "xs = []\nxs.append(7)\nprint(10 - xs[0])\n"},
 		{"negation", pairNumberBuiltInt + "print(-n)\n"},
 		{"floor division", pairNumberBuiltInt + "print(n // 2)\n"},
+		{"abs of the slot", pairNumberBuiltInt + "print(abs(n))\n"},
+		{"abs of a negative slot", "xs = []\nxs.append(-4)\nn = xs[0]\nprint(abs(n))\n"},
+		{"abs of a bool slot", "xs = []\nxs.append(True)\nn = xs[0]\nprint(abs(n))\n"},
+		{"abs bound and printed again", pairNumberBuiltInt + "y = abs(n)\nprint(y)\n"},
 		{"a float slot keeps its float", "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(n - 1)\n"},
 		{"a float slot negated", "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(-n)\n"},
 		{"a negative slot", "xs = []\nxs.append(-4)\nn = xs[0]\nprint(n - 1)\n"},
@@ -182,8 +186,8 @@ func TestTheOneWordPositionsStillRefuseInWordsThatNameTheOrigin(t *testing.T) {
 		pairNumberBuiltInt + "print(n + 1)\n",
 		pairNumberBuiltInt + "print(n * 2)\n",
 		pairNumberBuiltInt + "print(n % 3)\n",
-		pairNumberBuiltInt + "print(abs(n))\n",
-		// `print([n])` was on this table and is answered since ADR 0306: a container element is no
+		// `print(abs(n))` was on this table and answers since ADR 0309: the signless call takes the
+		// operand's kind from the tag. `print([n])` was on this table too and is answered since ADR 0306: a container element is no
 		// longer a position that keeps one word. It lives in pair_container_test.go's answer table.
 		pairNumberBuiltInt + "print(min(n, 3))\n",
 	} {

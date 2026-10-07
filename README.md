@@ -852,13 +852,18 @@ self-describing (ADR 0306). It is an **f-string field** as well: `print(f"{n}")`
 `6`, a text field prints `xay` rather than the interned index, and `!r` asks the same printer with the quote
 flag — the field, `str(n)` and `print(n)` are one renderer pointed at three sinks, which also ended a
 conversion that printed nothing at exit 0 and a quoted literal that `llc` rejected outright (ADR 0307,
-Gap R.192). What still refuses is a
-position that keeps **one word** for a whole value — `n + 1`, `abs(n)`, `min(n, 3)`, a dict entry or set member,
-a literal `sum`/`min`/`max` folds, an f-string used as a value — and the refusal names
+Gap R.192). It is the **signless call** as well: `print(abs(n))` is `7`, `abs(neg[0])` of a slot holding `-8`
+is `8`, `abs(half[0])` of `-2.5` is `2.5`, `abs(flag[0])` of `True` is `1`, `abs(table["k"])` of `-9` is `9`,
+and the answer is itself a pair so `y = abs(n); print(y)` is `7` — `abs` is the arithmetic door's own operand
+code, taking the magnitude of the *lifted* value, so the answer's kind follows the operand's and a text slot
+raises the call's own sentence, `bad operand type for abs(): 'str'`, never the unary minus's (ADR 0309,
+ADR 0271). What still refuses is a
+position that keeps **one word** for a whole value — `n + 1`, `abs(n) + 1`, `round(abs(n) / 2)`, `min(n, 3)`,
+a dict entry or set member, a literal `sum`/`min`/`max` folds, an f-string used as a value — and the refusal names
 what the value is and where it came from, never a loop that the program does not contain (Gap R.38, Gap R.146; the residual shapes are Gap
-R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, and `print(f"{xs}")` is Gap
-R.114). `--json --eval 'repr("hi")'` reports
-`{"result": "'hi'", "type": "str"}`, and `programs/probe_render_pair.gy` is `match` on all three legs.
+R.115, a container returned from a function is Gap R.67's, a tuple is L11.3's, `print(f"{xs}")` is Gap
+R.114, and an unrelated container's nested slot read refusing is Gap R.191's). `--json --eval 'repr("hi")'` reports
+`{"result": "'hi'", "type": "str"}`, and `programs/probe_render_pair.gy` is `match` on both legs.
 
 A comprehension that folds **is** the literal it folds to: `sa = {x for x in [1, 2, 3]}` and
 `sa = {1, 2, 3}` reach one lowering — a heap object, every slot written with its payload and its tag,
@@ -1444,12 +1449,11 @@ Exit codes are deterministic (full contract in `docs/operations.md` § Exit code
   (lex → parse → typecheck → codegen → run) and asserts stdout matches
   expected output.
 - **Conformance matrix** — `integration/conformance_cases.go` +
-  `conformance-matrix.json`: **169 rows over two legs** — the LLVM AOT
-  binary and **CPython** — 130 asserting parity and 39 recorded without it (the probe and merged
+  `conformance-matrix.json`: **170 rows over two legs** — the LLVM AOT
+  binary and **CPython** — 131 asserting parity and 39 recorded without it (the probe and merged
   rows, which record an answer rather than assert one),
-  the oracle verdict being 115 `match`, 33 `debt` and 21 `not_applicable`. Engine-vs-engine parity was
-  necessary but not sufficient: two engines that share a bug agree, and for this
-  project's history they did (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
+  the oracle verdict being 116 `match`, 33 `debt` and 21 `not_applicable`. Witness-leg parity was
+  necessary but not sufficient: two witnesses that share a bug agree, and this project's history is the proof (`print(True)` printed `1` everywhere, `len("café")` printed `5`).
   A row is conformant when the compiled backend prints what CPython prints. Each case *declares* its
   state — `match` (the default), `debt` (with a reason, a roadmap owner, and a per-leg pin of
   the wrong answer), or `not_applicable` (gusty-only surface the oracle cannot run) — and drift

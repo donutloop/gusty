@@ -379,6 +379,12 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// flag instead of being thrown away at parse time (roadmap Gap R.146's rendering positions,
 		// Gap R.192; ADR 0307, ADR 0303's one printer).
 		"probe_fstring_field_asks_the_tag",
+		// abs asks the tag: the signless CALL over a name the pair road bound takes its operand's kind from
+		// the tag and answers a number whose kind follows it — 7, 1 and 2.5 out of slots that hold an int, a
+		// bool and a float — because the magnitude is taken inside the arithmetic door the operators already
+		// use, not by a lift that would hand a text slot's interned index to a magnitude (roadmap L11.1,
+		// Gap R.146; ADR 0309, ADR 0265's per-operator door, ADR 0271's raise wording).
+		"probe_the_signless_call_answers_for_a_pair_bound_name",
 		// A bool stored in a container, three engines on one source: the slot carries a bool tag, so
 		// the list, the dict and the str()/repr() of both print `[True, 1]` and `{'k': True}` like
 		// CPython — and the numeric questions still answer as the number (True + 1, [True] == [1],

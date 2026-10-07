@@ -2174,9 +2174,38 @@ Three things the first draft of this door had to get right:
 
 What a *name* in the operand holds is the latest binding's answer, not the first one's: `x = "text"` then
 `x = [1, 2]` retires the earlier kind, so `abs(x)` raises `'list'` and `print(x)` prints the container
-(roadmap Gap R.145, ADR 0270). A slot whose kind only the run time can describe — a list the program grew
-from numbers into text — still refuses, naming the missing tag and roadmap L11.1, which is the same open
-clause that owns `abs(n)` for a pair-bound name (Gap R.143).
+(roadmap Gap R.145, ADR 0270).
+
+A slot whose kind only the run time can describe also asks the door, because the kind it needs is the tag the
+object carries: a name bound from a container the program built is two words — a payload and a tag — and
+`abs` takes the magnitude of the **lifted** payload inside the same arithmetic helper the operators use, so
+the answer's kind follows the operand's (roadmap L11.1, Gap R.146; ADR 0309):
+
+```python
+xs = []
+xs.append(7)
+n = xs[0]
+print(abs(n))            # 7          — the pair-bound name, the shape this door exists for
+print(abs(n - 1))        # 6          — the arithmetic road (ADR 0304)
+y = abs(n)
+print(y)                 # 7          — the answer is itself a pair, so it prints right
+neg = []
+neg.append(-2.5)
+print(abs(neg[0]))       # 2.5        — a float slot keeps its kind
+flag = []
+flag.append(True)
+print(abs(flag[0]))      # 1          — a verdict is the number it is
+txt = []
+txt.append("a")
+print(abs(txt[0]))       # TypeError: bad operand type for abs(): 'str'  — the call's own sentence
+```
+
+What is **not** answered stays a refusal that names the missing half, and the boundary is deliberate: the
+positions that keep one word for a whole value — `abs(n) + 1`, `abs(n) * 2`, `round(abs(n) / 2)`,
+`abs(-n)`, `min(abs(n), 3)`, `sum([abs(n)])`, and `min(n, 3)` / a dict entry / a set member from the row
+before — still refuse at exit 1. Taking one word out of a pair is not a partial answer, it is a different
+value: a float slot's payload is a box handle and a text slot's is an interned index, and a magnitude of
+either is a plausible number at the exit code of success.
 
 ## FFI / C interop (`extern fn`)
 

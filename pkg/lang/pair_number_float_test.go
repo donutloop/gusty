@@ -41,6 +41,11 @@ func TestASlotBoundNameEntersTheDoubleDomain(t *testing.T) {
 		{"equality against a float", numFloatSlot + "print(n == 2.5)\n", "False\n"},
 		{"addition with a float", numFloatSlot + "print(n + 2.5)\n", "9.5\n"},
 		{"product with a float", numFloatSlot + "print(n * 2.5)\n", "17.5\n"},
+		// abs of a pair is the arithmetic door's signless call: it answers a number whatever the slot holds,
+		// and so a float slot's magnitude is a float (roadmap L11.1, Gap R.146; ADR 0309).
+		{"abs of a negative slot", "xs = []\nxs.append(-7)\nn = xs[0]\nprint(abs(n))\n", "7\n"},
+		{"abs of a float slot", "xs = []\nxs.append(-2.5)\nn = xs[0]\nprint(abs(n))\n", "2.5\n"},
+		{"abs of a positive float slot", "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(abs(n))\n", "2.5\n"},
 		{
 			"arithmetic over the name, then a float",
 			numFloatSlot + "print(n - 1 + 0.5)\n", "6.5\n",
@@ -306,7 +311,6 @@ func TestTheDoubleDomainStillRefusesThePositionsThatTakeOneWord(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		{"float(n)", numFloatSlot + "print(float(n))\n"},
 		{"a sum element", numFloatSlot + "print(sum([n]))\n"},
-		{"an abs operand", "xs = []\nxs.append(-7)\nn = xs[0]\nprint(abs(n))\n"},
 		{"a min argument", numFloatSlot + "print(min(n, 3))\n"},
 		// `print(f"{n - 1}")` was on this table and answers since ADR 0307: an f-string field asks the
 		// module's one tag-reading printer, so it is pinned in pair_fstring_test.go's answer table.

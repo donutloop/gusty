@@ -233,6 +233,10 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 		{"an operand of a sum", built + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
 		{"the sum of two pair-bound names", built + "a = xs[0][0] + 1\nb = xs[0][1] + 1\nprint(a + b)\n", "17\n"},
 		{"negated", built + "n = xs[0][0] * 2\nprint(-n)\n", "-14\n"},
+		// abs of a pair-bound name is the arithmetic door's signless call: the operand's kind comes from the
+		// tag and the answer's kind follows it (roadmap L11.1, Gap R.146; ADR 0309).
+		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "14\n"},
+		{"handed to abs with the sign already gone", built + "n = xs[0][0] * -2\nprint(abs(n))\n", "14\n"},
 		{"asked for its truth", built + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n", "yes\n"},
 		{"a zero answers false", built + "n = xs[0][0] * 0\nif n:\n    print(\"yes\")\nelse:\n    print(\"no\")\n", "no\n"},
 		{"a while head", built + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n", "14\n"},
@@ -295,7 +299,6 @@ func TestAPairBoundNameAnswersWhereverANumberIsAskedAtTheCLI(t *testing.T) {
 // refusal — not a broken module — until the pair reaches it.
 func TestThePairRoadStillRefusesThePositionsThatTakeAValueAtTheCLI(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
-		{"handed to abs", built + "n = xs[0][0] * 2\nprint(abs(n))\n", "holds the answer of arithmetic over a slot"},
 		{"handed to min", built + "n = xs[0][0] * 2\nprint(min(n, 3))\n", "holds the answer of arithmetic over a slot"},
 		// `n / 4` and `n > d` were on this table, and both are answered now: a pair-bound name reaches the
 		// double domain through the tag-selected arms a slot read walks (the float arm unboxes, the int/bool

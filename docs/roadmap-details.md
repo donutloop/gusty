@@ -6475,6 +6475,27 @@ ledger row. It is the same missing word Gap R.139 named one position over (paid 
 argument now takes the pair across the call): an argument a *builtin* declares, and an element, need the same thing
 in the runtime's own signature.
 
+**Amended — the signless call is paid (ADR 0309).** `abs` left this field, and it left by the operators' door
+rather than by a lift: `rt_num_arith` gained operand code 6 (beside the unary minus) and takes
+`select fcmp olt %af, 0.0 → neg, val` on the **lifted** value, so the answer carries its own kind back out —
+`abs(n)` is `7` from an int slot, `2.5` from a float slot, `1` from `True`, `9` from `d["k"]`, and `y = abs(n)`
+is itself a pair so `print(y)` is right too. `rt_lift_num` + `@llvm.fabs.f64` was the obvious implementation
+and is the one this ADR refuses: the payload of a text slot is its interned index and of a float slot a box
+handle, so a magnitude of one word is a plausible number at the exit code of success — the class the record
+calls the worst one, and the only class the refusal counter cannot see. Two edges came with the door. The
+**raise is the call's own sentence** (`bad operand type for abs(): 'str'`, never the minus's), chosen by which
+call asked rather than which op the helper implements, because sharing the format string is exactly how ADR
+0271's rule broke the first time. And **the compiler crashed on itself**: with `abs` admitted, the float door
+lifted its own `abs(n)` sibling, which asked for the sibling's two words, until the stack gave out
+(`round(abs(n) / 2)`) — a dead compiler on a program CPython answers, neither exit 1 nor the contract's exit 2.
+The door now refuses a pair-shaped sibling instead of recursing, and `arithOperandPair` asks the refusal test
+of a call's *argument*, never of the call, which is what makes the recursion terminate. What still refuses:
+`min(n, 3)` / `max(n, 3)`, a dict entry, a set member, a builtin-folded static array (`sum([n])`), and an
+f-string used as a VALUE — `TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord` is that half's ledger,
+and the row's Status stays ⏳ `OPEN` because of it. Witnesses: `pkg/lang/pair_abs_test.go`,
+`integration/pair_abs_test.go`, `programs/probe_the_signless_call_answers_for_a_pair_bound_name.gy` (`match`),
++18 record entries (5623 → 5641, verified 0 dropped / 0 changed against the committed map).
+
 ### Gap R.147 — `and`/`or` answer the verdict where the reference returns the operand (CLOSED by ADR 0269 on 2026-10-05; owner both engines, measured landing ADR 0268)
 
 ```

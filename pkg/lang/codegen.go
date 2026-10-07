@@ -3086,6 +3086,7 @@ miss:
 // not fit raises rather than wrapping (L12.12 owns the word; until then it owns the message).
 const numArithRuntimeIR = `@rt.num.fmt = private constant [61 x i8] c"TypeError: unsupported operand type(s) for %s: '%s' and '%s'\00"
 @rt.num.negfmt = private constant [46 x i8] c"TypeError: bad operand type for unary -: '%s'\00"
+@rt.num.absfmt = private constant [44 x i8] c"TypeError: bad operand type for abs(): '%s'\00"
 @rt.num.ofmt = private constant [121 x i8] c"OverflowError: the whole number the arithmetic would answer is beyond the word this backend's int holds (roadmap L12.12)\00"
 @rt.num.msg = private global [192 x i8] zeroinitializer
 @rt.k.int = private constant [4 x i8] c"int\00"
@@ -3152,11 +3153,19 @@ entry:
   ; interpolate. One variadic call serving both printed a bare minus where CPython prints the operand's
   ; kind — measured the day this shipped, and the reason the two formats are not shared.
   %isneg = icmp eq i32 %op, 3
+  %isabs = icmp eq i32 %op, 6
+  %signless = or i1 %isneg, %isabs
   %buf = getelementptr [192 x i8], [192 x i8]* @rt.num.msg, i32 0, i32 0
-  br i1 %isneg, label %neg, label %bin
+  br i1 %signless, label %neg, label %bin
 neg:
+  ; Two signless sentences, chosen by which call the operand came from: abs writes
+  ; "bad operand type for abs(): 'str'" and the unary minus writes "bad operand type for unary -: 'str'".
+  ; Sharing one format is how ADR 0271's rule got broken the first time -- abs of a text naming the
+  ; minus in a program that never wrote one.
+  %isneg2 = icmp eq i32 %op, 3
+  %fmt = select i1 %isneg2, i8* getelementptr inbounds ([46 x i8], [46 x i8]* @rt.num.negfmt, i32 0, i32 0), i8* getelementptr inbounds ([44 x i8], [44 x i8]* @rt.num.absfmt, i32 0, i32 0)
   %ln0 = call i8* @rt_kind_name(i32 %lt)
-  %w0 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* getelementptr inbounds ([46 x i8], [46 x i8]* @rt.num.negfmt, i32 0, i32 0), i8* %ln0)
+  %w0 = call i32 (i8*, ...) @snprintf(i8* %buf, i32 192, i8* %fmt, i8* %ln0)
   ret void
 bin:
   %o0 = icmp eq i32 %op, 0
@@ -3278,6 +3287,7 @@ calc:
   %o3 = icmp eq i32 %op, 3
   %o4 = icmp eq i32 %op, 4
   %o5 = icmp eq i32 %op, 5
+  %o6 = icmp eq i32 %op, 6
   ; the two operators whose divisor may be zero, and the reference raises rather than
   ; answering. The lifted divisor is the honest test — an int 0 and a float 0.0 both lift to zero, and
   ; negative zero compares equal to it, which is what CPython raises for too.
@@ -3318,7 +3328,12 @@ have:
   %c2 = select i1 %o2, double %prd, double %c0
   %c3 = select i1 %o3, double %neg, double %c2
   %c4 = select i1 %o4, double %fl, double %c3
-  %r = select i1 %o5, double %md, double %c4
+  %c5 = select i1 %o5, double %md, double %c4
+  ; abs is the signless call: a number out, or the reference's raise. The magnitude is the lifted
+  ; value with its sign removed, which is the honest test for -0.0 too (abs answers 0.0).
+  %isnegv = fcmp olt double %af, 0.000000e+00
+  %absv = select i1 %isnegv, double %neg, double %af
+  %r = select i1 %o6, double %absv, double %c5
   %hi = fcmp oge double %r, 2147483648.000000e+00
   %lo = fcmp olt double %r, -2147483648.000000e+00
   %oor = or i1 %hi, %lo

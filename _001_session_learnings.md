@@ -8663,3 +8663,43 @@ put a guard where the deleting ended.
 - **Ledger state after the cycle:** record 5623, `pkg/lang` drift 338, `integration` drift 21, CPython debt 7,
   300 ADR files to 0308. New: the witness-claim guard, 0 offenders across `pkg/lang`/`integration`/`cmd/gustyc`
   and the five agent-read documents. `go vet -tags=llvm20 ./...` clean; `go test -tags=llvm20 ./...` green.
+
+## ADR 0309 — the signless call asks the tag (`abs` of a pair-bound name; Gap R.146, L11.1)
+
+- **The compiler crashing on itself is how a "safe" widening gets found.** Opening the arithmetic door to
+  `Call(abs, [n])` made `round(abs(n) / 2)` recurse until the goroutine's stack gave out: the float door lifts
+  its own sibling, the signless door lifts the sibling's argument, and the two hands kept lifting each other.
+  That is not an exit-1 refusal and not an exit-2 verifier rejection — it is the compiler dying on a program
+  CPython answers. The guard is now structural: `arithOperandPair` asks `arithWouldRefuse` **of a call's
+  argument, never of the call**, and a pair-shaped sibling makes the door return "not mine" so the position
+  refuses in words. Termination of these lifts is something you have to design, not something the type of the
+  function guarantees. (`TestTheSignlessCallStillRefusesThePositionsThatTakeOneWord` pins seven neighbours and
+  `abs(-n)`, and the crash the fix came from is written in its doc comment.)
+- **A shared opcode table must not mean a shared sentence.** `abs` and unary `-` are one door (one tag read,
+  one lift, one `select` on `fcmp olt`) and two pieces of English: CPython writes `bad operand type for abs():
+  'str'` and `bad operand type for unary -: 'str'`. Picking the format from the op code the helper was *handed*
+  rather than from the op it implements is the difference — the first draft shared `@rt.num.negfmt` and printed
+  a minus's sentence for a program that never wrote one. ADR 0271's rule ("a trap says what the program wrote")
+  is only implementable if the trap knows which syntax it came from.
+- **Constant folding is a feature to re-assert after every widening.** `abs(7)`, `abs(-8)`, `abs(-2.5)`,
+  `abs(True)` and `abs(x)` for a plain `x = -7` still answer at compile time; the new door sits behind the
+  "is this a pair?" test rather than in front of the fold. A test that fails when a *literal* starts calling
+  `@llvm.fabs.f64` through the runtime helper is cheap and is the only thing that keeps a widening from
+  quietly degrading the positions that never needed it.
+- **A parked worktree item must re-check the ADR number it claims.** This cycle's files were written citing
+  "ADR 0308"; between then and now ADR 0308 was claimed by another landing (the witness vocabulary), so the
+  feature's own comments would have cited the wrong decision. ADR numbers are claimed at commit time —
+  `ls docs/adr | tail` is part of landing a parked item, not part of starting it.
+- **`git diff` on the golden record is not a count of what changed.** The abs cycle's record diff looked like
+  129 added / 111 removed entries because re-serialization re-wraps long keys; the truth is in the parsed
+  `entries` map — 0 dropped, 0 changed, **+18** (5623 → 5641). Counting with `grep -c '^  "'` on a diff would
+  have reported a feature that silently rewrote 111 recorded answers. Compare parsed maps whenever the record
+  is touched.
+- **A known defect constrains what a probe may contain.** `probe_the_signless_call_answers_for_a_pair_bound_name.gy`
+  deliberately omits the text-slot raise rows, because appending a text to *any* container in a program makes an
+  UNRELATED container's nested slot read refuse (measured, filed as Gap R.191). The raise rows live in the unit
+  and CLI tests instead; the probe's header says so, so the omission reads as a decision and not as an oversight.
+- **A widening is only half a row.** `abs(n)` leaving `Gap R.146` does not mean the pair-bound name works:
+  `min(n, 3)`, a dict entry, a set member, a builtin-folded static array and an f-string-as-value are still
+  refused, and the row's Status stays ⏳ `OPEN` with the refusal table as its evidence. The honest measure of
+  one of these cycles is the refusal test file as much as the answer test file.

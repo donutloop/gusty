@@ -37,6 +37,13 @@ func TestASlotBoundNameAnswersThePositionsThatNeedANumber(t *testing.T) {
 		{"subtraction", builtIntSlot + "print(n - 1)\n", "6\n"},
 		{"the subtrahend is the slot", "xs = []\nxs.append(7)\nprint(10 - xs[0])\n", "3\n"},
 		{"negation", builtIntSlot + "print(-n)\n", "-7\n"},
+		// abs of a pair-bound name answers now: the arithmetic door's signless call takes the payload and
+		// the tag, and CPython's `bad operand type for abs(): 'str'` is what a non-number slot raises
+		// (roadmap L11.1, Gap R.146; ADR 0309).
+		{"abs of the slot", builtIntSlot + "print(abs(n))\n", "7\n"},
+		{"abs of a negative slot", "xs = []\nxs.append(-4)\nn = xs[0]\nprint(abs(n))\n", "4\n"},
+		{"abs of a bool slot", "xs = []\nxs.append(True)\nn = xs[0]\nprint(abs(n))\n", "1\n"},
+		{"abs bound and printed", builtIntSlot + "y = abs(n)\nprint(y)\n", "7\n"},
 		{"floor division", builtIntSlot + "print(n // 2)\n", "3\n"},
 		{"a float slot keeps its float", "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(n - 1)\n", "1.5\n"},
 		{"a float slot negated", "xs = []\nxs.append(2.5)\nn = xs[0]\nprint(-n)\n", "-2.5\n"},
@@ -222,7 +229,6 @@ func TestTheNumberDoorStillRefusesWhatTheReferenceAnswersWithAValue(t *testing.T
 		{"addition", builtIntSlot + "print(n + 1)\n"},
 		{"repetition", builtIntSlot + "print(n * 2)\n"},
 		{"modulo", builtIntSlot + "print(n % 3)\n"},
-		{"an abs operand", builtIntSlot + "print(abs(n))\n"},
 		{"a min argument", builtIntSlot + "print(min(n, 3))\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

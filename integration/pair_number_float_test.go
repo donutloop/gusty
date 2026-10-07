@@ -42,6 +42,10 @@ func TestCLIDoubleDomainOfASlotBoundNameAgreesWithCPython(t *testing.T) {
 		{"a reversed ordering", numFloatSlotCLI + "print(n >= 7)\n"},
 		{"a comparison the condition asks", numFloatSlotCLI + "if n > 2.5:\n    print(\"big\")\n"},
 		{"the double reaches a builtin", numFloatSlotCLI + "print(round(n / 4))\n"},
+		// abs of a pair is the signless call of the arithmetic door: a number out whatever the slot holds, so a
+		// float slot's magnitude keeps its .0 and a negative slot's answers the positive (ADR 0309).
+		{"abs of a negative slot", "xs = []\nxs.append(-7)\nn = xs[0]\nprint(abs(n))\n"},
+		{"abs of a negative float slot", "xs = []\nxs.append(-2.5)\nn = xs[0]\nprint(abs(n))\n"},
 		{"a float slot keeps its float", "xs = []\nxs.append(7.5)\nn = xs[0]\nprint(n / 2)\n"},
 		{"a float slot ordered against an int", "xs = []\nxs.append(7.5)\nn = xs[0]\nprint(n > 7)\n"},
 		{"a negative slot divided", "xs = []\nxs.append(-8)\nn = xs[0]\nprint(n / 4)\n"},
@@ -188,15 +192,14 @@ func TestCompiledDoubleDomainOfASlotBoundNameBranchesOnTheTag(t *testing.T) {
 }
 
 // TestTheDoubleDomainStillRefusesTheOneWordPositions keeps the remaining half of Gap R.146/R.148 visible: a
-// `float()` argument, a `sum` element, an `abs` operand, a list element, a `min` argument and an f-string field
-// each still keep one word for the value, and refuse in words that name the origin — never a loop the program
-// does not contain (Gap R.38).
+// `float()` argument, a `sum` element and a `min` argument each still keep one word for the value, and refuse
+// in words that name the origin — never a loop the program does not contain (Gap R.38). An `abs` operand and an
+// f-string field were on this table and both answer now (ADR 0306, ADR 0307).
 func TestTheDoubleDomainStillRefusesTheOneWordPositions(t *testing.T) {
 	dir := t.TempDir()
 	for _, src := range []string{
 		numFloatSlotCLI + "print(float(n))\n",
 		numFloatSlotCLI + "print(sum([n]))\n",
-		"xs = []\nxs.append(-7)\nn = xs[0]\nprint(abs(n))\n",
 		// `print([n])` answers since ADR 0306 — the heap builder writes the element's payload and its
 		// tag — and is pinned in pair_container_test.go against the reference instead.
 		numFloatSlotCLI + "print(min(n, 3))\n",

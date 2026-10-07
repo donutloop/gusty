@@ -187,6 +187,8 @@ func TestAPairBoundNameIsReadWhereverANumberIsAsked(t *testing.T) {
 		{"an operand of a sum", builtList + "n = xs[0][0] * 2\nprint(n + 1)\n", "15\n"},
 		{"the sum of two of them", builtList + "n = xs[0][0] * 2\nm = n + n\nprint(m)\n", "28\n"},
 		{"negated", builtList + "n = xs[0][0] * 2\nprint(-n)\n", "-14\n"},
+		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n", "14\n"},
+		{"handed to abs with the sign already gone", builtList + "n = xs[0][0] * -2\nprint(abs(n))\n", "14\n"},
 		{"asked for its truth", builtList + "n = xs[0][0] * 2\nif n:\n    print(\"yes\")\n", "yes\n"},
 		{"a zero answers false", builtList + "n = xs[0][0] * 0\nif n:\n    print(\"yes\")\nelse:\n    print(\"no\")\n", "no\n"},
 		{"a while head", builtList + "n = xs[0][0] * 2\nwhile n > 0:\n    print(n)\n    n = 0\n", "14\n"},
@@ -258,7 +260,6 @@ func TestThePairRoadCarriesTheLiftAndTheRenderer(t *testing.T) {
 // TestAPairBoundNameEntersAContainerByWayOfItsTag once the builders learned to ask for the tag (ADR 0306).
 func TestThePairRoadStillRefusesThePositionsThatTakeAValue(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"handed to abs", builtList + "n = xs[0][0] * 2\nprint(abs(n))\n"},
 		{"handed to min", builtList + "n = xs[0][0] * 2\nprint(min(n, 3))\n"},
 	} {
 		tc := tc

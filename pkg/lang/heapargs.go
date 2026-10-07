@@ -4663,6 +4663,14 @@ func (g *irGen) pairDoubleInCtx(b *strings.Builder, e Expr) (string, bool, error
 			if k := g.numericUseKind(side); k != "" {
 				other = k
 			} else if _, isIx := side.(*Index); !isIx {
+				if g.arithWouldRefuse(side) {
+					// The other side is itself pair-shaped (`abs(n) / 2`): this door would lift THIS side
+					// as a double and read the sibling as one word, which is the truncation the door
+					// exists to prevent — and lowering it through the double road here made the two doors
+					// call each other until the goroutine's stack gave out, a compiler failure ADR 0166
+					// counts as exit 2. So the door keeps its hand off and the position refuses.
+					return "", false, nil
+				}
 				if d := g.floatValue(b, side); d == "" {
 					return "", false, nil // an operand whose kind would make the message a guess
 				}
@@ -5098,6 +5106,17 @@ func (g *irGen) taggedArithPair(b *strings.Builder, e Expr) (val, tag string, ok
 		}
 		l, r = n.L, n.R
 		sp = n.Src
+	case *Call:
+		// abs(x) is the signless call: one operand, the magnitude out, CPython's raise when the tag says
+		// the value has no sign. The door takes the operand twice because it is binary-shaped — the second
+		// word is read only by the operators that ask for a divisor (roadmap L11.1, Gap R.146; ADR 0271's
+		// wording rule, which `rt_num_bad` keeps per call rather than per operator).
+		nm, isName := n.Fn.(*Name)
+		if !isName || nm.Value != "abs" || len(n.Args) != 1 {
+			return "", "", false, nil
+		}
+		op, l, r = 6, n.Args[0], n.Args[0]
+		sp = n.Src
 	case *UnOp:
 		if n.Op != "-" {
 			return "", "", false, nil
@@ -5238,6 +5257,12 @@ func (g *irGen) arithWouldRefuse(e Expr) bool {
 		// alone is the truncated number Gap R.161 and Gap R.164 were measured on. So an arm that is such a
 		// call may take the door — and an arm that is any other call keeps the road it has always had.
 		if nm, ok := n.Fn.(*Name); ok {
+			if nm.Value == "abs" && len(n.Args) == 1 {
+				// abs of a pair is the signless call over a value whose kind the run time decides: the
+				// reference answers a number or raises, so the door takes it whatever the slot holds —
+				// the same rule `-x` follows, with its own sentence (roadmap L11.1, Gap R.146).
+				return g.arithWouldRefuse(n.Args[0])
+			}
 			return g.pairRetDone[nm.Value]
 		}
 		return false
@@ -5643,6 +5668,18 @@ func (g *irGen) arithOperandPair(b *strings.Builder, e Expr) (pl, tg string, ok 
 			return "", "", false, pairErr
 		} else if okPair {
 			return p, t, true, nil
+		}
+		if g.arithWouldRefuse(n) {
+			// An operand that is itself the door's answer — `abs(n) - 1`, `abs(n) * 2` — asks the same door
+			// for its two words. The recursion terminates because the door is asked of the call's ARGUMENT,
+			// never of the call (roadmap L11.1, Gap R.146; ADR 0265's door).
+			p, t, okPair, arithErr := g.taggedArithPair(b, e)
+			if arithErr != nil {
+				return "", "", false, arithErr
+			}
+			if okPair {
+				return p, t, true, nil
+			}
 		}
 	case *Index:
 		if v, t, okPair := g.runtimeSlotPairDeep(b, e); okPair {
